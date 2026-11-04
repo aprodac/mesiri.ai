@@ -133,6 +133,57 @@ python3 teammate/inbox.py items --status open                    # everything st
 python3 teammate/inbox.py item show 12                           # one request with its history
 ```
 
+## One view of all work, and what it used of Claude (TM-76 to TM-80)
+
+Every fix, feature or upgrade has one request number, wherever it started: a WhatsApp group, feedback in
+Mesiri chat, an `@bot` tag, or a Claude Code session on any Claude account. The request log is the list
+of what is being worked on; `docs/plans/V1_TRACKER.md` stays the roadmap and names the `[n]` it serves.
+
+| Where | What you see |
+| --- | --- |
+| `control.mesiri.ai/requests` | Board (New → Needs a decision → Being built → Live, being checked → Done this week), each card with its group, who is on it, Claude usage and commit; "stale" when building with no change for 2 days. `?view=list` is the table, sortable by usage. On top: each Claude account's 5-hour and weekly meter |
+| `@bot status` | every open request, with its usage (`~14% 5h · $2.10`) |
+| `@bot status <n>` | one request: its stage, who is on it, `Claude usage: ~14% of a 5-hour window, ~3% of the week · $2.10 · 5 turns on B (ilan-work)` |
+| `@bot account` | each account: `5-hour 82% (resets ~14:30 IST) ⚠️ · weekly 40%`; the team group is warned once per window at 80% |
+| Evening summary (19:00 IST) | one `🔑 Claude:` line with every account |
+
+**How the numbers are made.** Each bot turn reads its account's plan windows (the Agent SDK's `/usage`,
+plus its `rate_limit_event`s) and charges its cost (Claude's own dollar count) to the request it was for:
+the plan it builds, the request it reviews or re-checks, or the one it logged. The % of a window is an
+estimate: between two readings of an account, the rise over the dollars the bot spent in between is the %
+one dollar takes. Work on that account the bot can't see (a person's own session, a cloud routine) is in
+the rise too, so the estimate leans high, never low. Only accounts whose login is on the bot server
+(`TEAMMATE_CLAUDE_ACCOUNTS`) are read; add an account there to see its meter.
+
+**A Claude Code session checks in** on the request it takes, and reports what it used:
+
+```bash
+export TEAMMATE_CLAUDE_ACCOUNT="B (ilan-work)"     # optional: name the account this session runs on
+python3 teammate/inbox.py item start 231           # claims it; records the session link and account
+python3 teammate/inbox.py item usage 231 --cost 1.80 --pct5 9 --pct7 2   # from /cost and /usage
+python3 teammate/inbox.py item done 231 --ref 4f20ec2 --cost 0.40
+```
+
+**Session-start reminder (to add by hand).** Claude sessions may not change `.claude/` themselves, so a
+person adds this once. `.claude/hooks/session-start.sh` (make it executable):
+
+```bash
+#!/bin/bash
+# TM-77: every session first sees what is already being worked on. Prints only; never fails the session.
+cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
+[ -n "${TEAMMATE_TOKEN:-}" ] || { echo "Request log not reachable (no TEAMMATE_TOKEN)."; exit 0; }
+echo "Being worked on now (don't start these again; add to one with: inbox.py item note <n> ...):"
+TEAMMATE_PROJECT="${TEAMMATE_PROJECT:-mesiri}" timeout 10 python3 teammate/inbox.py items --status in_progress 2>/dev/null | head -25
+echo "Check in on yours: python3 teammate/inbox.py item start <n>  (then item usage / item done --cost)"
+exit 0
+```
+
+and in `.claude/settings.json`, next to `env`:
+
+```json
+"hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh" } ] } ] }
+```
+
 ## Tagging the bot (TM-03)
 
 In a project's **team** group, approved people @-mention the linked number:
