@@ -67,6 +67,7 @@ from .agent import (
 from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory, tools_version
+from .record_links import record_link, with_links
 from .tools import build_tools
 from .units import is_stock_unit_refusal, plain_refusal, unit_rows
 
@@ -413,7 +414,8 @@ class ApiWhatsApp:
         state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
-        words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
+        saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx)) if turn.saved else ""
+        words = turn.reply or turn.question or saved_words
         if got_why:
             words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
         passed_on = any(c.get("tool") == TELL_THE_TEAM for c in calls)
@@ -718,7 +720,7 @@ class ApiWhatsApp:
         left = [r.pending for r in results if not r.ok and r.body != {"detail": UNIT_UNSETTLED}]
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
-        text = _saved_text(results, state.get("language"))
+        text = _saved_text(results, state.get("language"), today=_today(ctx))
         sizes = [r for r in results if not r.ok and is_stock_unit_refusal(_detail(r.body))]
         if left and len(sizes) == len(left):
             # WA-165 (3 Nov, Paraclette: Save tapped twice, refused twice): Save cannot work until they say the size,
@@ -1043,7 +1045,7 @@ def _save_buttons(text: str, batch: str) -> ReplySpec:
                                           ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
 
 
-def _saved_text(results: list[WriteResult], language: str | None = None) -> str:
+def _saved_text(results: list[WriteResult], language: str | None = None, *, today: str | None = None) -> str:
     def converted(r: WriteResult) -> str:
         # WA-151: a line saved in another unit says what went into stock ("10 Numbers = 0.5 load").
         note = r.body.get("converted") if isinstance(r.body, dict) else None
@@ -1051,6 +1053,10 @@ def _saved_text(results: list[WriteResult], language: str | None = None) -> str:
 
     lines = [f"✅ {r.pending.summary}{converted(r)}" if r.ok
              else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}" for r in results]
+    if today:  # [228]: a link to each saved record's dashboard page, built from ids already returned
+        urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) if r.ok else None
+                for r in results]
+        lines = with_links(lines, urls, today=today)
     head = "Saved." if all(r.ok for r in results) else "Not everything could be saved:"
     return head + "\n" + "\n".join(lines)
 
