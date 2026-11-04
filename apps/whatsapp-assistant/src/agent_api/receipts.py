@@ -88,7 +88,8 @@ def _pair(result: WriteResult, ctx: Any, names: tuple[dict, dict], correlation_i
                        "to_site_name": sites.get(str(body.get("to_site_id")), "")}
     elif tool == "record_expense":
         fields = {"amount": body.get("amount"), "category": body.get("category_text") or "",
-                  "description": body.get("description") or body.get("vendor_text") or result.pending.summary}
+                  # [243]: the record's own English words, never the card line (that is in their language).
+                  "description": body.get("description") or body.get("vendor_text") or body.get("category_text") or ""}
     elif tool == "record_attendance":
         fields = {"lines": [{"worker_name": ln.get("worker_name"), "trade": ln.get("trade"),
                              "headcount": ln.get("headcount", 1)} for ln in body.get("lines") or []]}
@@ -99,7 +100,7 @@ def _pair(result: WriteResult, ctx: Any, names: tuple[dict, dict], correlation_i
                   **({"quantity": quantities[0]["quantity"], "unit": quantities[0]["unit"]} if quantities else {})}
     else:  # report_issue
         fields = {"issue_type": body.get("issue_type"), "severity": body.get("severity"),
-                  "narrative": body.get("narrative") or result.pending.summary}
+                  "narrative": body.get("narrative") or body.get("title") or body.get("summary") or body.get("description") or ""}
     key = result.pending.idempotency_key
     draft = DraftActionV2(
         draft_id=f"api-{uuid.uuid4().hex[:12]}", correlation_id=correlation_id or key, workflow_instance_id=key,

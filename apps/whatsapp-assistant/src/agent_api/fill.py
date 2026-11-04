@@ -30,12 +30,49 @@ def _their_line(summary: str, names: tuple[str, ...]) -> str:
     return line
 
 
+def other_script(text: str) -> bool:
+    """[243]: ``text`` has a letter outside the Latin alphabet (Malayalam, Tamil, Devanagari, Arabic, ...)."""
+    return any(c.isalpha() and ord(c) >= _NON_LATIN for c in text)
+
+
+#: [243]: from here on (Greek, Cyrillic, Arabic, the Indic scripts) a letter is not Latin; emoji and ₹ are not letters.
+_NON_LATIN = 0x0370
+_NOT_TEXT = ("enum", "format", "const")
+
+
+def not_english(parameters: dict[str, Any], body: dict[str, Any], at: str = "") -> list[str]:
+    """[243]: the free-text fields of a held body written in another script, read from the tool's own schema (the
+    OpenAPI request body): strings only, never ids, enums or dates. Everything Mesiri saves is English."""
+    out: list[str] = []
+    props = parameters.get("properties", {})
+    for name, value in body.items():
+        schema = props.get(name) or {}
+        variants = [schema, *schema.get("anyOf", []), *schema.get("oneOf", [])]
+        if isinstance(value, str):
+            if name.endswith("_id") or any(k in v for v in variants for k in _NOT_TEXT):
+                continue
+            if other_script(value):
+                out.append(at + name)
+        elif isinstance(value, list):
+            items = next((v.get("items") for v in variants if isinstance(v.get("items"), dict)), {})
+            for i, row in enumerate(value, 1):
+                if isinstance(row, dict):
+                    out += not_english(items, row, f"{at}{name}[{i}].")
+                elif isinstance(row, str) and other_script(row):
+                    out.append(f"{at}{name}[{i}]")
+        elif isinstance(value, dict):
+            nested = next((v for v in variants if v.get("properties")), {})
+            out += not_english(nested, value, f"{at}{name}.")
+    return out
+
+
 def fill_body(tool: str, body: dict[str, Any], summary: str, names: tuple[str, ...] = ()) -> dict[str, Any]:
     """``body`` with the fields the code can derive. A work update with neither a narrative nor a quantity gets its
-    narrative from the entry's summary (their words). Anything else is returned as it was."""
+    narrative from the entry's summary (their words). Anything else is returned as it was. [243]: never a summary in
+    another script (the card line is in their language; the record is English)."""
     if tool == WORK_TOOL and not str(body.get("narrative") or "").strip() and not body.get("quantities"):
         words = _their_line(summary, names)
-        if words:
+        if words and not other_script(words):
             return {**body, "narrative": words}
     return body
 

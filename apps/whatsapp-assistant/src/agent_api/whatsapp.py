@@ -411,6 +411,8 @@ class ApiWhatsApp:
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
             **({"dropped_question": turn.dropped_question} if turn.dropped_question else {}),
         }, started)
+        if turn.language_set:  # [243]: set by the code this turn, so this reply already follows it
+            state["chosen_language"] = None if turn.language_set == "auto" else turn.language_set
         state["language"] = _turn_language(text, state)  # WA-165: "Tower A" keeps it; WA-169: their choice wins
         if turn.sizes_said:
             await self._remember_sizes(ctx, turn.sizes_said)

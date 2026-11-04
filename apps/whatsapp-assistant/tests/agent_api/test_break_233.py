@@ -35,9 +35,8 @@ def _work(line: str) -> tuple[str, dict]:
 
 
 @pytest.mark.parametrize("line,expected", [
-    ("രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു at Green Villa", "രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു"),
+    # [243]: a card line in Malayalam script never becomes the narrative (test_api_english_bodies_243.py).
     ("2nd floor plastering kazhinju at Green Villa", "2nd floor plastering kazhinju"),
-    ("രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു, ഗ്രീൻ വില്ല", "രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു, ഗ്രീൻ വില്ല"),
     ("Plastering done at Green Villa main block, 2nd floor", "Plastering done at Green Villa main block, 2nd floor"),
 ])
 async def test_other_wordings_become_the_narrative_through_a_real_save(line, expected) -> None:
