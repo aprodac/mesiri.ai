@@ -18,6 +18,7 @@ The waiting entries are kept per person in Redis for a day.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime as dt
 import json
 import logging
@@ -270,6 +271,7 @@ class ApiWhatsApp:
                     self._requested.add(message.correlation_id)
         else:
             return False
+        reply = latin_reply(reply, await self._reply_language(ctx))
         await self._send(reply, message.sender.wa_id)
         _lap("v3_send")
         await self._send_saved_card(message, ctx)  # after the "Saved" line: the reply never waits for it
@@ -428,7 +430,8 @@ class ApiWhatsApp:
             self._requested.add(message.correlation_id)  # TM-22 / TM-28: the team bot is poked once it is answered
             # TM-21: the request's reference, the same one the team group sees, so both can talk about it.
             ref = request_ref(message.correlation_id)
-            if ref and ref not in words:
+            words = without_refs(words)  # [231]: a Ref of an older turn the model copied from the history
+            if ref:
                 words = f"{words}\n\nRef {ref}".strip()  # [205]: a bare "#8fa51b" read as internal text
         if passed_on and unchanged and not turn.options:
             # Feedback only: the waiting list (and its buttons) stays as it was; drawing it again under "passed to
@@ -498,7 +501,7 @@ class ApiWhatsApp:
             words = _in(language, "api.feedback_ask", FEEDBACK_ASK)
             state["awaiting_why"] = {"kind": calls[0]["args"].get("kind"), "at": time.time(), "ref": ref}
         await self._save_state(ctx, state)
-        return ReplySpec(text=f"{words}\n\nRef {ref}".strip() if ref else words)
+        return ReplySpec(text=f"{without_refs(words)}\n\nRef {ref}".strip() if ref else words)
 
     async def _failed(self, exc: Exception, text: str, message: Any, ctx: Any, state: dict,
                       started: float) -> ReplySpec:
@@ -795,6 +798,10 @@ class ApiWhatsApp:
             return ReplySpec(text=text, buttons=tuple(rows))
         return _save_buttons(text, state["batch"]) if pending else ReplySpec(text=text)
 
+    async def _reply_language(self, ctx: Any) -> str | None:
+        state = await self._state(ctx)
+        return _chosen(state) or state.get("language")
+
     def _key(self, ctx: Any) -> str:
         return f"agent_api:{ctx.organization_id}:{ctx.user_id}"
 
@@ -893,6 +900,29 @@ def _distinct(pending: list[PendingWrite]) -> list[PendingWrite]:
             seen.add(key)
             out.append(e)
     return out
+
+
+def without_refs(text: str) -> str:
+    """[231]: the text without any "Ref #abc123" (the model copies the one of an earlier turn from the history)."""
+    cleaned = re.sub(r"[ \t]*\bRef\s*#[0-9a-f]{6}\b", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
+def latin_reply(reply: ReplySpec, language: str | None) -> ReplySpec:
+    """[231]: the last step before a reply goes out. For Manglish or Hinglish no Malayalam or Devanagari letter may
+    reach the person (model words, code-drawn lines, card summaries, button titles): each word in script is
+    transliterated. Malayalam, Hindi and English replies, names in Latin letters, emoji and numbers are untouched."""
+    if language not in ("manglish", "hinglish"):
+        return reply
+    from runtime.agent.material_names import to_latin
+
+    def rows(items: Any) -> Any:
+        return tuple(dataclasses.replace(r, title=to_latin(r.title), description=to_latin(r.description))
+                     for r in items) if items else items
+
+    return dataclasses.replace(reply, text=to_latin(reply.text), buttons=rows(reply.buttons),
+                               list_rows=rows(reply.list_rows),
+                               list_button_label=to_latin(reply.list_button_label) if reply.list_button_label else None)
 
 
 def command_call(text: str, message: Any, last_reply: str) -> list[dict[str, Any]]:

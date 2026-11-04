@@ -55,6 +55,16 @@ def specs() -> list[ToolSpec]:
 
 def feedback_instruction(args: dict[str, Any]) -> str:
     """What the model is told after ``tell_the_team``: the words of the reply, never a template."""
+    return f"{_instruction(args)} {_SCRIPT_RULE}"
+
+
+#: The "told the team" sentence slipped into Malayalam script for a person who chose Manglish (4 Nov, [231]).
+_SCRIPT_RULE = ("Write this in the language and script of the system line above, never copying the script of earlier "
+                "replies: for Manglish or Hinglish, Latin letters only (\"Team-ine ariyichittund\"). Do not write a Ref "
+                "number: the code adds it.")
+
+
+def _instruction(args: dict[str, Any]) -> str:
     kind = str(args.get("kind") or "")
     has_reason = bool(str(args.get("why") or "").strip())
     if kind == "missing_feature":
