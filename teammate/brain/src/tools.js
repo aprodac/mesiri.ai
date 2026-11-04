@@ -453,6 +453,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         try {
           const r = await listener.addItem({ chat: ctx.chat, project: chatProject, type: type || "task", title: ctx.project !== chatProject ? `[bot upgrade] ${title}` : title, summary: plan, created_by: `${ctx.sender} via bot`, ...(asked.asked_by ? { asked_by: asked.asked_by, asked_ref: asked.asked_for.join(","), asked_who: asked.asked_who } : {}) });
           itemId = r?.item?.id ?? null;
+          if (itemId != null) (ctx.logged ||= []).push(itemId); // TM-79: this turn's usage goes on it
         } catch {
           // the request log is a convenience; the plan still stands
         }

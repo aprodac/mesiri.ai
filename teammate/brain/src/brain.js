@@ -16,11 +16,11 @@ import { join } from "node:path";
 import { BRAIN_TOOL_NAMES, PREVIEW_KINDS } from "./tools.js";
 import { requestRef } from "./prod_watch.js";
 import { AutoLoop, usageLimit, clock } from "./auto.js";
-import { Accounts } from "./accounts.js";
+import { Accounts, windowsFromEvent, windowsFromUsage } from "./accounts.js";
 import { AutoBuild } from "./autobuild.js";
 import { collectWorkStatus, formatWorkStatus } from "./work_status.js";
 import { Watchdog } from "./watchdog.js";
-import { boardText } from "./board.js";
+import { boardText, usageText } from "./board.js";
 
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
@@ -454,9 +454,17 @@ export class Brain {
     const now = this.now().getTime();
     if (m[1]) {
       const plan = this.planStore.plans[m[1]];
-      if (!plan || !mine(plan)) return `I have no plan [${m[1]}].`;
-      if (plan.status === "proposed") return `[${plan.id}] ${plan.title} is a plan waiting for @bot ok ${plan.id}.`;
-      return formatWorkStatus(await this.workStatus(plan), now);
+      // TM-79: what the request has used of Claude, from the request log (also for requests the bot didn't plan).
+      const item = this.listener.getItem ? await this.listener.getItem(Number(m[1]), project).then((r) => (r?.item?.id === Number(m[1]) ? r.item : null), () => null) : null;
+      const used = usageText(item);
+      const plus = (text) => (used ? `${text}\n${used}` : text);
+      if (!plan || !mine(plan)) {
+        if (!item) return `I have no plan [${m[1]}].`;
+        const on = item.claimed_by && (item.status === "open" || item.status === "in_progress") ? ` · ${item.claimed_by} is on it` : "";
+        return plus(`[${item.id}] ${item.title}\n${item.stage || item.status}${on}${item.done_ref ? ` · ${item.done_ref}` : ""}`);
+      }
+      if (plan.status === "proposed") return plus(`[${plan.id}] ${plan.title} is a plan waiting for @bot ok ${plan.id}.`);
+      return plus(formatWorkStatus(await this.workStatus(plan), now));
     }
     // TM-49: every open request in one message, from the request log (where the group's quiet steps are filed).
     if (this.listener.items) {
@@ -534,6 +542,47 @@ export class Brain {
   /** The partner routine (TM-12) on this group's account, else null. */
   partnerFor(chat, project) {
     return this.accounts.for(chat).partners[project] || null;
+  }
+
+  /**
+   * TM-78: one plan-limit reading for the account a turn runs on, from the SDK's /usage (experimental there, so any
+   * failure or a changed shape is ignored; rate_limit_events still update it). At most 3 s, once per turn.
+   */
+  async readUsage(stream, account) {
+    const fn = stream?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+    if (typeof fn !== "function") return;
+    try {
+      const res = await Promise.race([fn.call(stream, { skipBehaviors: true }), new Promise((r) => setTimeout(() => r(null), 3000).unref?.())]);
+      const w = windowsFromUsage(res);
+      if (w) this.accounts.reading(account, w);
+    } catch {
+      // the reading is a convenience; the turn goes on
+    }
+  }
+
+  /**
+   * TM-79: what a turn used goes on the request it was for: the plan it builds, the request it reviews or re-checks,
+   * or the one request it logged. TM-78: the listener gets every account's latest reading, and the group a warning
+   * once an account passes WARN_PCT of a window. Never throws: the log is a convenience.
+   */
+  async chargeUsage({ req, plan, ctx, result, account, say }) {
+    try {
+      const usd = Number(result?.total_cost_usd) || 0;
+      const share = this.accounts.spend(account, usd);
+      const u = result?.usage || {};
+      const tokens = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      const logged = ctx?.logged || [];
+      const id = [plan?.id, req.review_of, req.verify_plan, logged.length === 1 ? logged[0] : null].find((x) => typeof x === "number");
+      const project = req.reply_project || req.project;
+      if (id != null && (usd || tokens) && this.listener.addUsage) {
+        await this.listener.addUsage(id, { account: this.accounts.label(account), by: "team bot", cost_usd: usd, tokens, ...share, project }).catch(() => {});
+      }
+      if (this.listener.setAccounts) await this.listener.setAccounts(this.accounts.snapshot()).catch(() => {});
+      const warn = this.accounts.warning(account);
+      if (warn && !req.dm) await say(warn).catch(() => {});
+    } catch (e) {
+      this.log(`brain: usage not recorded: ${e.message || e}`);
+    }
   }
 
   /**
@@ -1165,6 +1214,9 @@ export class Brain {
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
     let result = null;
     let sessionId = this.sessions.ids[key] || null;
+    // TM-78: the account this turn runs on (the same pick as the login in env below), and one plan-limit reading.
+    const account = this.accounts.for(req.chat).id;
+    let read = false;
     try {
       const stream = this.queryFn({
         prompt,
@@ -1188,7 +1240,15 @@ export class Brain {
       });
       for await (const msg of stream) {
         if (msg.session_id) sessionId = msg.session_id;
+        if (!read) {
+          read = true;
+          await this.readUsage(stream, account);
+        }
         if (msg.type === "result") result = msg;
+        if (msg.type === "rate_limit_event") {
+          const w = windowsFromEvent(msg.rate_limit_info);
+          if (w) this.accounts.reading(account, w);
+        }
         // The plan's 5-hour window: the SDK reports it as a rate_limit_event / an assistant error.
         if (msg.type === "rate_limit_event" && msg.rate_limit_info?.status === "rejected") limitSeen = { resetsAt: msg.rate_limit_info.resetsAt ? msg.rate_limit_info.resetsAt * 1000 : null };
         if (msg.type === "assistant" && msg.error === "rate_limit") limitSeen ||= { resetsAt: null };
@@ -1215,6 +1275,7 @@ export class Brain {
       return say(abort.signal.aborted ? "⏱️ That took too long and was stopped. Ask again, or split it up." : "⚠️ I hit an error on that one; check the logs.");
     }
     clearTimeout(timer);
+    await this.chargeUsage({ req, plan, ctx, result, account, say });
     if (sessionId) {
       this.sessions.ids[key] = sessionId;
       (this.sessions.repo ||= {})[key] = req.project; // replies to this conversation continue in the same repo

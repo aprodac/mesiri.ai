@@ -287,6 +287,25 @@ _WORKER = os.environ.get("TEAMMATE_WORKER") or (
 )
 
 
+def _session_url() -> str | None:
+    """TM-77: this Claude Code session's claude.ai link, when it runs in the cloud (cse_X -> session_X)."""
+    sdk = os.environ.get("CLAUDE_CODE_REMOTE_SDK_URL") or ""
+    tail = sdk.rstrip("/").rsplit("/", 1)[-1]
+    return f"https://claude.ai/code/session_{tail[4:]}" if tail.startswith("cse_") and len(tail) > 8 else None
+
+
+#: TM-77: which Claude account this session runs on, as the team names it (e.g. "B (ilan-work)"); optional.
+_ACCOUNT = os.environ.get("TEAMMATE_CLAUDE_ACCOUNT") or None
+
+
+def _usage_body(a: argparse.Namespace) -> dict | None:
+    """TM-79: the usage flags of `item usage` / `item done`, or None when none was given."""
+    body = {"cost_usd": a.cost, "tokens": a.tokens, "pct_5h": a.pct5, "pct_7d": a.pct7}
+    if all(v is None for v in body.values()):
+        return None
+    return {**body, "account": a.account or _ACCOUNT, "by": _WORKER, "project": PROJECT}
+
+
 def _item(a: argparse.Namespace) -> None:
     if a.action == "add":
         if len(a.args) < 2 or not a.type:
@@ -323,6 +342,13 @@ def _item(a: argparse.Namespace) -> None:
             bits = [entry.get("status") or "", entry.get("ref") or "", entry.get("note") or ""]
             print(f"  {_when(entry['at'])}  " + "  ".join(b for b in bits if b))
         return
+    if a.action == "usage":
+        body = _usage_body(a)
+        if not body:
+            sys.exit("usage: item usage <id> [--cost USD] [--pct5 N] [--pct7 N] [--tokens N] [--account B]")
+        i = _request("POST", f"/items/{n}/usage", body=body)["item"]
+        print(f"{_item_line(i)}  · Claude usage so far: ${i.get('usage_usd') or 0} · 5-hour {i.get('usage_5h') or '?'}% · weekly {i.get('usage_7d') or '?'}%")
+        return
     if a.action in ("claim", "start"):
         # TM-50: one worker per request. A Claude Code session claims before it works on something; the team bot does
         # the same before it builds. Someone else holding it stops here and names them.
@@ -342,7 +368,14 @@ def _item(a: argparse.Namespace) -> None:
         sys.exit("item done needs --ref (the commit or PR that did it)")
     if a.action == "wontdo" and not a.note:
         sys.exit("item wontdo needs --note (why)")
-    body = {**change, "ref": a.ref, "note": a.note, "project": PROJECT}
+    if a.action == "done" and _usage_body(a):
+        _request("POST", f"/items/{n}/usage", body=_usage_body(a))
+    note = a.note
+    if a.action == "start":
+        # TM-77: who is on it, where to watch it, and on which Claude account: visible on the board and @bot status.
+        where = [f"started by {_WORKER}", _session_url(), f"account {a.account or _ACCOUNT}" if (a.account or _ACCOUNT) else None]
+        note = " · ".join([x for x in [note, *where] if x])
+    body = {**change, "ref": a.ref, "note": note, "project": PROJECT}
     i = _request("POST", f"/items/{n}", body=body)["item"]
     print(_item_line(i))
 
@@ -404,7 +437,7 @@ def main() -> None:
     its.add_argument("--status", choices=["open", "in_progress", "done", "wont_do"])
     its.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
     itm = sub.add_parser("item")
-    itm.add_argument("action", choices=["show", "add", "start", "claim", "note", "done", "wontdo"])
+    itm.add_argument("action", choices=["show", "add", "start", "claim", "note", "usage", "done", "wontdo"])
     itm.add_argument("--take", action="store_true", help="claim it even though someone else holds it (say why in a note)")
     itm.add_argument("args", nargs="*")
     itm.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
@@ -412,6 +445,12 @@ def main() -> None:
     itm.add_argument("--summary")
     itm.add_argument("--ref", help="commit or PR, e.g. aprodac/MERCON#262")
     itm.add_argument("--note")
+    # TM-79: what this session used of Claude for the request (from /usage or /cost), on `usage` or `done`.
+    itm.add_argument("--cost", type=float, help="dollars this session spent on it (Claude Code's /cost)")
+    itm.add_argument("--pct5", type=float, help="percent of the 5-hour window it took (from /usage before and after)")
+    itm.add_argument("--pct7", type=float, help="percent of the weekly window it took")
+    itm.add_argument("--tokens", type=int)
+    itm.add_argument("--account", help='the Claude account, e.g. "B (ilan-work)" (default: TEAMMATE_CLAUDE_ACCOUNT)')
     sm = sub.add_parser("summary")
     sm.add_argument("chat")
     trn = sub.add_parser("translate")

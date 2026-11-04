@@ -195,6 +195,9 @@ const listener = {
   /** TM-50: one worker per request; resolves { ok, by } (ok false: someone else is on it). */
   claimItem: (id, b) => call("POST", `/items/${id}/claim`, b).then(() => ({ ok: true }), (e) => (/^claimed by /.test(e.message) ? { ok: false, by: e.message.replace(/^claimed by /, "").replace(/ at \S+$/, "") } : { ok: true })), // the log down never stops a build
   getItem: (id, project) => call("GET", `/items/${id}?project=${encodeURIComponent(project)}`),
+  /** TM-79: one turn's Claude usage on its request. TM-78: every account's latest plan-limit reading. */
+  addUsage: (id, b) => call("POST", `/items/${id}/usage`, b),
+  setAccounts: (accounts) => call("POST", "/claude/accounts", { accounts }),
   /** TM-26: the project's whole request log (the weekly digest). */
   items: (project) => call("GET", `/items?project=${encodeURIComponent(project)}`),
   /** Translate one message on request (Gemini, in the listener); returns text + cost. */
@@ -517,6 +520,7 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   if (process.env.TEAMMATE_EVENING !== "0") {
     const evening = new Evening({
       loopLine: (project) => selftest.line(project),
+      accountsLine: () => accounts.digestLine(),
       projects: Object.keys(projects),
       items: async (project) => (await listener.items(project)).items || [],
       notify: (project, text) => brain.notifyTeam(project, text),

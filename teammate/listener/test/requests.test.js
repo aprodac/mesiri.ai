@@ -76,3 +76,29 @@ test("a request is held by one worker; finished, stale or taken frees it", () =>
   s.updateItem(id, { status: "in_progress", claimed_by: "someone", claimed_at: "2026-01-01T00:00:00Z" });
   assert.equal(s.claimItem(id, "team bot").ok, true); // stale claim: free
 });
+
+test("TM-79: a request sums its Claude usage over turns; bad numbers are refused, not stored", () => {
+  const s = store();
+  const id = s.addItem({ chat_jid: "T@g.us", type: "bug", title: "Save tap gets no reply" });
+  assert.equal(s.getItem(id).usage_turns, null); // nothing used yet
+  assert.equal(s.addItemUsage(id, { account: "B (ilan-work)", by: "team bot", cost_usd: 1.25, tokens: 40000, pct_5h: 6, pct_7d: 1.5 }), true);
+  s.addItemUsage(id, { account: "A", cost_usd: 0.75, pct_5h: 4 });
+  const it = s.getItem(id);
+  assert.equal(it.usage_usd, 2);
+  assert.equal(it.usage_5h, 10);
+  assert.equal(it.usage_7d, 1.5);
+  assert.equal(it.usage_turns, 2);
+  assert.deepEqual(it.usage_accounts.split(",").sort(), ["A", "B (ilan-work)"]);
+  assert.equal(s.listItems({ project: "mesiri" })[0].usage_usd, 2);
+  assert.throws(() => s.addItemUsage(id, { pct_5h: 300 }), /usage needs/); // out of range is dropped, and then nothing is left
+  assert.equal(s.addItemUsage(9999, { cost_usd: 1 }), false);
+});
+
+test("TM-78: the brain's Claude account readings are kept per account, newest wins", () => {
+  const s = store();
+  s.setClaudeAccounts([{ id: "a", label: "A", five_hour: { pct: 20 } }, { id: "B", label: "B (ilan-work)", five_hour: { pct: 82 } }, { id: "../x" }]);
+  s.setClaudeAccounts([{ id: "a", label: "A", five_hour: { pct: 35 } }]);
+  const list = s.claudeAccounts();
+  assert.deepEqual(list.map((a) => [a.id, a.five_hour.pct]), [["a", 35], ["b", 82]]);
+  assert.ok(list[0].seen_at);
+});

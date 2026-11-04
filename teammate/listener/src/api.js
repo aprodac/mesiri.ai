@@ -15,6 +15,9 @@
 //   POST /items        {chat, type, title, summary?, source?, created_by?, project?}
 //   GET  /items/:id?project=          one request with its history
 //   POST /items/:id/claim {by, take?, project?}  TM-50: one worker per request; 409 names who holds it
+//   POST /items/:id/usage {account?, by?, cost_usd?, tokens?, pct_5h?, pct_7d?, project?}  TM-79: Claude usage of one turn
+//   GET  /claude/accounts              TM-78: each Claude account's plan windows (5-hour, weekly), as the brain last saw them
+//   POST /claude/accounts {accounts: [...]}  the brain posts its reading after each turn
 //   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?, + TM-19 asked_by / asked_ref / asked_who / held / live_at / verified / tried_at}
 //   GET  /people?project=             who may tag the bot (TM-03)
 //   POST /people       {project, phone, name?, role?}   approve someone (role owner | member)
@@ -225,6 +228,25 @@ export function createApi({ store, wa, token, ai = null, brain = null }) {
         if (!body.by) return send(res, 400, { error: "by is required" });
         const r = store.claimItem(item.id, String(body.by).slice(0, 120), { take: Boolean(body.take) });
         return r.ok ? send(res, 200, { item: r.item }) : send(res, 409, { error: `claimed by ${r.by} at ${r.at}`, claimed_by: r.by, claimed_at: r.at });
+      }
+      m = path.match(/^\/items\/(\d+)\/usage$/);
+      if (m && req.method === "POST") {
+        const body = await readJson(req);
+        const item = store.getItem(m[1]);
+        if (!item || (body.project && item.project !== body.project)) return send(res, 404, { error: "no such item" });
+        try {
+          store.addItemUsage(item.id, body);
+          return send(res, 200, { item: store.getItem(item.id) });
+        } catch (err) {
+          return send(res, 400, { error: err.message });
+        }
+      }
+      if (path === "/claude/accounts" && req.method === "GET") return send(res, 200, { accounts: store.claudeAccounts() });
+      if (path === "/claude/accounts" && req.method === "POST") {
+        const body = await readJson(req);
+        if (!Array.isArray(body.accounts)) return send(res, 400, { error: "accounts must be a list" });
+        store.setClaudeAccounts(body.accounts.slice(0, 26));
+        return send(res, 200, { ok: true });
       }
       m = path.match(/^\/items\/(\d+)$/);
       if (m && (req.method === "GET" || req.method === "POST")) {
