@@ -31,7 +31,9 @@ WhatsApp message (text, voice note, photo, button tap)
 - **The locked direction** (2 Nov 2026). Every new assistant feature is built here; classic gets
   only fixes for live breakage; v2's code is gone.
 - **Live on the two test companies** (Mesiri Test Builders, Paraclette): `assistant_mode = "api"`,
-  set by migration 0497 (deployed 1 Nov). Every real customer is still on **classic**.
+  set by migration 0497 (deployed 1 Nov). **Every company created since 4 Nov starts on v3**
+  (WA-176: `create_company` stores `assistant_mode = "api"`, so every door, WhatsApp signup, web
+  signup and the control panel, gives the same answer). Companies made before keep classic until moved.
 - Model: the `api_agent` row in the control panel (Providers page, "WhatsApp API agent"); unset,
   it uses the `agent` row (gemini-2.5-flash today).
 - Not yet measured on real traffic beyond a few days of tester messages and two side-by-side

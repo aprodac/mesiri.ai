@@ -13,7 +13,8 @@ question a day:
     report_time  [7 pm] [8 pm] [Keep 9 pm] -> every project's send deadline
     more_sites   [Add a site] [No] -> the existing "add a site" workflow
 
-Never asked while the owner has a confirmation or question open, so a
+Never asked while the owner has a confirmation or question open, or entries
+waiting for Save (v3's ready list, classic's card or draft, WA-176), so a
 setup question can't land in the middle of something else.
 """
 
@@ -23,6 +24,7 @@ import datetime as dt
 import logging
 import uuid
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
@@ -157,7 +159,7 @@ class SetupQuestions:
             return  # a question is still waiting for its answer
         if await self._redis.get_json(self._idle_key(actor.user_id)):
             return  # checked recently and nothing was due
-        if await self._busy(actor.user_id):
+        if await self._busy(actor.user_id, actor.organization_id):
             return
         # The setup-progress card went out today: its NEXT box is today's ask.
         if await self._redis.get_json(CARD_SENT_KEY.format(user_id=actor.user_id)) == self._today(
@@ -217,12 +219,13 @@ class SetupQuestions:
             _log.info("setup_question.asked org=%s question=%s", org_id, question)
         await send(spec)
 
-    async def is_open(self, user_id: str) -> bool:
+    async def is_open(self, user_id: str, organization_id: Any = None) -> bool:
         """A setup question waits for its answer, or a confirmation / question
-        is open: nothing else unprompted goes out (used by onboarding_progress)."""
+        is open, or entries wait for Save: nothing else unprompted goes out (used
+        by onboarding_progress)."""
         if await self._redis.get_json(self._hint_key(user_id)):
             return True
-        return await self._busy(user_id)
+        return await self._busy(user_id, organization_id)
 
     async def ask(self, actor: ActorIdentity, question: str, send: Callable[..., Any]) -> None:
         """Ask one specific setup question now (the progress card's NEXT box
@@ -495,13 +498,34 @@ class SetupQuestions:
         )
         await self._notifier.post(text, images=images)
 
-    async def _busy(self, user_id: str) -> bool:
+    async def _busy(self, user_id: str, organization_id: Any = None) -> bool:
         try:
             if await self._runtime.get_awaiting_confirmation(user_id):
                 return True
-            return bool(await self._runtime.get_awaiting_input(user_id))
+            if await self._runtime.get_awaiting_input(user_id):
+                return True
+            return await self._save_waiting(user_id, organization_id)
         except Exception:  # noqa: BLE001 -- unsure means don't interrupt
             return True
+
+    async def _save_waiting(self, user_id: str, organization_id: Any) -> bool:
+        """WA-176: entries wait for this person's Save, on any assistant: v3's ready list,
+        classic's open card or its open draft. Asking about a letterhead under an unsaved
+        "10 bags cement" buried the Save (live 4 Nov)."""
+        if not organization_id:
+            return False
+        from agent_api.whatsapp import has_ready_entries, state_key
+        from runtime.agent.cards import OPEN, CardStore
+        from runtime.agent.draft_store import PostgresDraftStore
+
+        if has_ready_entries(await self._redis.get_json(state_key(organization_id, user_id))):
+            return True
+        card = await CardStore(self._redis).get(
+            SimpleNamespace(organization_id=organization_id, user_id=user_id)
+        )
+        if card is not None and card.state == OPEN and card.items:
+            return True
+        return await PostgresDraftStore(self._db).open_for(organization_id, user_id) is not None
 
     async def _clear_hint(self, user_id: str) -> None:
         await self._redis.set_json(self._hint_key(user_id), None, ttl_seconds=60)

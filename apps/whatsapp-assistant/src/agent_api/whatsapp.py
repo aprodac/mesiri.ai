@@ -803,7 +803,7 @@ class ApiWhatsApp:
         return _chosen(state) or state.get("language")
 
     def _key(self, ctx: Any) -> str:
-        return f"agent_api:{ctx.organization_id}:{ctx.user_id}"
+        return state_key(ctx.organization_id, ctx.user_id)
 
     def _sizes_key(self, ctx: Any) -> str:
         return f"agent_api_sizes:{ctx.organization_id}:{ctx.user_id}"
@@ -853,6 +853,20 @@ class ApiWhatsApp:
 
 SEND_TOOLS = ("send_dpr",)
 PENDING_MAX_AGE_S = 4 * 3600  # a ready list nobody saved in four hours is dropped, not carried
+
+
+def state_key(organization_id: Any, user_id: Any) -> str:
+    """The Redis key of one person's v3 state: their ready list, language, last reply."""
+    return f"agent_api:{organization_id}:{user_id}"
+
+
+def has_ready_entries(state: Any) -> bool:
+    """WA-176: entries wait for this person's Save (a list older than PENDING_MAX_AGE_S is dropped
+    on their next message, so it no longer counts). Other messages hold back while this is true."""
+    if not isinstance(state, dict) or not state.get("pending"):
+        return False
+    at = state.get("pending_at")
+    return not at or time.time() - float(at) <= PENDING_MAX_AGE_S
 
 
 def dropping_stale_sends(entries: list[PendingWrite]) -> list[PendingWrite]:
