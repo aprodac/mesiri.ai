@@ -21,6 +21,7 @@ import Replies from './Replies';
 import QueueHealth from './QueueHealth';
 import Database from './Database';
 import Overview from './Overview';
+import People from './People';
 
 function AppLayout() {
   return (
@@ -32,6 +33,7 @@ function AppLayout() {
             <Route path="/" element={<Overview />} />
             <Route path="/organizations" element={<Companies />} />
             <Route path="/organizations/:id" element={<OrganizationDetail />} />
+            <Route path="/people" element={<People />} />
             <Route path="/branding-requests" element={<BrandingRequests />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/costs" element={<Costs />} />
