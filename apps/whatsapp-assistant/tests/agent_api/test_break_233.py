@@ -2,24 +2,20 @@
 
 from __future__ import annotations
 
-import pytest
-from tests.agent_api.test_api_agent_124 import CTX, _message, _service
-from tests.agent_api.test_api_refused_line_233 import BASE, LABOUR, WORDS, WORK, _app, _tools  # noqa: F401
-
-from agent_api import whatsapp as wa
-from agent_api.agent import SAVE_READY, PendingWrite
-from agent_api.fill import fill_body, missing_in_body
-from agent_api.tools import CONFIRM_ARG
-from mesiri_ai.fakes import FakeToolCallingProvider
-
-
 import datetime as dt
 import uuid
 
+import pytest
 from fastapi import Depends
 from pydantic import BaseModel
+from tests.agent_api.test_api_agent_124 import CTX, _message, _service
+from tests.agent_api.test_api_refused_line_233 import BASE, LABOUR, WORDS, WORK, _app, _tools  # noqa: F401
 
+from agent_api.agent import SAVE_READY, PendingWrite
+from agent_api.fill import fill_body, missing_in_body
+from agent_api.tools import CONFIRM_ARG
 from mesiri.domains.shared.auth import get_current_user
+from mesiri_ai.fakes import FakeToolCallingProvider
 
 
 class Line(BaseModel):
