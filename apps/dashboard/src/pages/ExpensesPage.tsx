@@ -1,881 +1,427 @@
 import * as React from 'react'
-import { exportCsv } from '@/lib/export'
-import {
-  DollarSign,
-  Plus,
-  Search,
-  Download,
-  CheckCircle2,
-  AlertCircle,
-  MessageSquare,
-  Laptop,
-  MoreVertical,
-  Eye,
-  Receipt,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  Image as ImageIcon,
-} from 'lucide-react'
-import { useScope } from '@/lib/ScopeContext'
-import { KpiCard } from '@/components/ui/kpi-card'
-import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Download, Filter, Image as ImageIcon, MessageSquare, MoreHorizontal, Plus, Receipt, Search, TriangleAlert, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
-import { useSearchParams } from 'react-router-dom'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
+import { FilterSelect, PeriodSelect } from '@/components/filter-select'
 import { RecordExpenseDialog } from '@/components/expenses/record-expense-dialog'
-import { ExpenseDetailSheet } from '@/components/expenses/expense-detail-sheet'
-import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet'
-import { VendorDetailSheet } from '@/components/vendors/vendor-detail-sheet'
-import { CategoryDetailSheet } from '@/components/categories/category-detail-sheet'
-import { CustodianProfileSheet } from '@/components/accounts/custodian-profile-sheet'
-import { WhatsAppTraceModal } from '@/components/whatsapp/whatsapp-trace-modal'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { ExpenseDetailSheet, type ExpenseDetailData } from '@/components/expenses/expense-detail-sheet'
+import { useScope } from '@/lib/ScopeContext'
+import { useReadOnly } from '@/lib/trial'
+import { useUrlState } from '@/lib/url-state'
+import { usePageTitle } from '@/lib/page-title'
+import { periodRange, type Period } from '@/lib/period'
+import { exportCsv } from '@/lib/export'
+import { CHIP } from '@/lib/site-day'
+import { cn } from '@/lib/utils'
+import { fetchAllExpenseAttachmentsApi, fetchCategoriesApi, fetchExpensesApi, reverseExpenseApi } from '@/lib/api'
 
-interface ExpenseItem {
+// WEB-51 (Ilan, 5 Nov): Finance > Expenses, one page for what used to be Expenses, Receipts and the expense page.
+// A list grouped by day, with the real vendor, project, site and number (the old page showed "Direct Payee",
+// "Org Wide" and a number made from the id). Filters are dropdowns kept in the address: category, payment, bill
+// photo (what Receipts was), source, period, search. A row opens the expense's panel; its menu shows the bill photo
+// or takes the expense back. /finance/expenses/:id opens that expense here.
+
+interface Expense {
   id: string
-  expense_number: string
+  number: string | null
   amount: number
-  currency: string
-  category_name: string
   category_id: string
-  description: string
-  vendor_name: string
-  occurred_date: string
-  payment_status: 'paid' | 'partially_paid' | 'unpaid'
-  workflow_status: 'confirmed' | 'pending' | 'reversed'
+  category: string
+  vendor: string | null
+  project: string | null
+  site: string | null
+  description: string | null
+  date: string
+  payment: 'paid' | 'partially_paid' | 'unpaid'
   source: 'whatsapp' | 'web'
-  project_name: string
-  site_name: string
-  payment_method?: string
-  tax_rate?: number | null
-  tax_amount?: number | null
-  is_tax_inclusive?: boolean
+  reversed: boolean
+  correlation_id: string | null
 }
 
-type SortField = 'date' | 'amount' | 'number' | 'category'
-type SortOrder = 'asc' | 'desc'
+const PAGE = 50
+const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+const dayLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+const PAYMENT = {
+  paid: { label: 'Paid', className: 'bg-success-soft text-success' },
+  partially_paid: { label: 'Part paid', className: 'bg-draft-soft text-draft' },
+  unpaid: { label: 'Unpaid', className: 'bg-draft-soft text-draft' },
+} as const
 
-import { fetchExpensesApi, reverseExpenseApi, fetchAllExpenseAttachmentsApi } from '@/lib/api'
-import { useToast } from '@/components/ui/toast-notification'
-import { toLocalISODate } from '@/lib/utils'
+function toExpense(raw: any): Expense {
+  return {
+    id: String(raw.id),
+    number: raw.expense_number ?? null,
+    amount: Number(raw.amount) || 0,
+    category_id: String(raw.category_id ?? ''),
+    category: raw.category_name || 'No category',
+    vendor: raw.vendor_name ?? null,
+    project: raw.project_name ?? null,
+    site: raw.site_name ?? null,
+    description: raw.description ?? null,
+    date: raw.occurred_date,
+    payment: raw.payment_status === 'paid' ? 'paid' : raw.payment_status === 'partially_paid' ? 'partially_paid' : 'unpaid',
+    source: raw.source === 'whatsapp' ? 'whatsapp' : 'web',
+    reversed: raw.workflow_status === 'reversed',
+    correlation_id: raw.correlation_id ?? null,
+  }
+}
 
 export default function ExpensesPage() {
+  usePageTitle('Expenses')
   const { scope } = useScope()
-  const toast = useToast()
+  const readOnly = useReadOnly()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const { id: routeId } = useParams()
+  const [params, setParams] = useSearchParams()
 
-  const [expenses, setExpenses] = React.useState<ExpenseItem[]>([])
-  const [search, setSearch] = React.useState('')
-  const [categoryFilter, setCategoryFilter] = React.useState('ALL')
-  const [paymentStatusFilter, setPaymentStatusFilter] = React.useState('ALL')
-  const [sourceFilter, setSourceFilter] = React.useState('ALL')
-  const [datePreset, setDatePreset] = React.useState('ALL')
-  // expense_id -> first receipt's presigned URL. Fetched once alongside the
-  // expenses list (one batched call, not one per row) -- see
-  // GET /expenses/attachments in backend/src/mesiri/domains/expenses/router.py.
-  const [receiptUrlByExpenseId, setReceiptUrlByExpenseId] = React.useState<Record<string, string>>({})
+  const [q, setQ] = useUrlState<string>('q', '')
+  const [category, setCategory] = useUrlState<string>('category', 'all')
+  const [payment, setPayment] = useUrlState<string>('payment', 'all')
+  const [photo, setPhoto] = useUrlState<string>('photo', 'all')
+  const [source, setSource] = useUrlState<string>('source', 'all')
+  const [period, setPeriod] = useUrlState<Period>('period', '30d')
+  const [from, setFrom] = useUrlState<string>('from', '')
+  const [to, setTo] = useUrlState<string>('to', '')
+  const [shownCount, setShownCount] = React.useState(PAGE)
+  const [recordOpen, setRecordOpen] = React.useState(false)
+  const [taking, setTaking] = React.useState<Expense | null>(null)
+  const [photoUrl, setPhotoUrl] = React.useState<string | null>(null)
 
-  React.useEffect(() => {
-    let active = true
-    async function loadBackendExpenses() {
-      try {
-        const rawData = await fetchExpensesApi({
-          project_id: scope.mode !== 'portfolio' ? scope.projectId : undefined,
-          site_id: scope.mode === 'site' ? scope.siteId : undefined,
-        })
-        if (active && Array.isArray(rawData)) {
-          const mapped: ExpenseItem[] = rawData.map((item: any, idx: number) => ({
-            id: String(item.id) || `exp_real_${idx}`,
-            expense_number: `EXP-${String(item.id || '').slice(0, 4).toUpperCase() || String(1000 + idx)}`,
-            amount: parseFloat(item.amount) || 0,
-            currency: item.currency || 'INR',
-            category_name: item.category_name || item.category_id || 'General Expense',
-            category_id: String(item.category_id || 'general'),
-            description: item.description || 'Recorded Expense',
-            vendor_name: 'Direct Payee',
-            occurred_date: item.occurred_date || toLocalISODate(),
-            payment_status: item.payment_status === 'paid' ? 'paid' : item.payment_status === 'partially_paid' ? 'partially_paid' : 'unpaid',
-            workflow_status: item.workflow_status === 'reversed' ? 'reversed' : item.workflow_status === 'pending' ? 'pending' : 'confirmed',
-            source: item.source === 'whatsapp' ? 'whatsapp' : 'web',
-            project_name: scope.mode === 'portfolio' ? 'Org Wide' : scope.projectName,
-            site_name: scope.mode === 'site' ? scope.siteName : 'All Sites',
-          }))
-          setExpenses(mapped)
-        }
-      } catch (err) {
-        console.warn('Live backend expenses fetch error:', err)
-        if (active) setExpenses([])
-      }
-    }
-    async function loadReceiptUrls() {
-      try {
-        const attachments = await fetchAllExpenseAttachmentsApi({
-          project_id: scope.mode !== 'portfolio' ? scope.projectId : undefined,
-          site_id: scope.mode === 'site' ? scope.siteId : undefined,
-          limit: 200,
-        })
-        if (!active) return
-        const byExpenseId: Record<string, string> = {}
-        for (const a of attachments) {
-          // First attachment wins when an expense has more than one -- the
-          // lightbox only shows one image today.
-          if (!byExpenseId[a.expense_id]) byExpenseId[a.expense_id] = a.url
-        }
-        setReceiptUrlByExpenseId(byExpenseId)
-      } catch (err) {
-        console.warn('Live backend receipt attachments fetch error:', err)
-        if (active) setReceiptUrlByExpenseId({})
-      }
-    }
-    loadBackendExpenses()
-    loadReceiptUrls()
-    return () => {
-      active = false
-    }
-  }, [scope])
+  const scoped = {
+    project_id: scope.mode !== 'portfolio' ? scope.projectId : undefined,
+    site_id: scope.mode === 'site' ? scope.siteId : undefined,
+  }
+  const list = useQuery({
+    queryKey: ['finance', 'expenses', scoped],
+    queryFn: async () => ((await fetchExpensesApi(scoped)) as any[]).map(toExpense),
+  })
+  const photos = useQuery({
+    queryKey: ['finance', 'expense-photos', scoped],
+    queryFn: async () => {
+      const byExpense: Record<string, string> = {}
+      for (const a of await fetchAllExpenseAttachmentsApi({ ...scoped, limit: 500 })) byExpense[a.expense_id] ??= a.url
+      return byExpense
+    },
+  })
+  const categories = useQuery({ queryKey: ['finance', 'categories'], queryFn: fetchCategoriesApi, staleTime: 60_000 })
+  const takeBack = useMutation({
+    mutationFn: (e: Expense) => reverseExpenseApi(e.id),
+    onSuccess: () => {
+      setTaking(null)
+      queryClient.invalidateQueries({ queryKey: ['finance'] })
+    },
+  })
 
-  // Selection & Bulk Action state
-  const [selectedIds, setSelectedIds] = React.useState<string[]>([])
+  const { from: rangeFrom, to: rangeTo } = periodRange(period, from, to)
+  const needle = q.trim().toLowerCase()
+  const expenses = React.useMemo(() => {
+    const byPhoto = photos.data ?? {}
+    return (list.data ?? [])
+      .filter((e) => (!rangeFrom || e.date >= rangeFrom) && (!rangeTo || e.date <= rangeTo))
+      .filter((e) => category === 'all' || e.category_id === category)
+      .filter((e) => payment === 'all' || e.payment === payment)
+      .filter((e) => source === 'all' || e.source === source)
+      .filter((e) => photo === 'all' || (photo === 'yes') === !!byPhoto[e.id])
+      .filter((e) => !needle || [e.number, e.category, e.vendor, e.description, e.site, e.project].join(' ').toLowerCase().includes(needle))
+      .sort((a, b) => b.date.localeCompare(a.date))
+  }, [list.data, photos.data, rangeFrom, rangeTo, category, payment, source, photo, needle])
+  const live = expenses.filter((e) => !e.reversed)
+  const total = live.reduce((n, e) => n + e.amount, 0)
+  const unpaid = live.filter((e) => e.payment !== 'paid').reduce((n, e) => n + e.amount, 0)
+  const filtered = q !== '' || category !== 'all' || payment !== 'all' || photo !== 'all' || source !== 'all'
 
-  // Sorting state
-  const [sortField, setSortField] = React.useState<SortField>('date')
-  const [sortOrder, setSortOrder] = React.useState<SortOrder>('desc')
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(10)
-
-  // Dialog & Sheet state
-  const [searchParams] = useSearchParams()
-  const [recordDialogOpen, setRecordDialogOpen] = React.useState(false)
-  const [selectedExpense, setSelectedExpense] = React.useState<ExpenseItem | null>(null)
-  const [sheetOpen, setSheetOpen] = React.useState(false)
-  const [previewReceiptUrl, setPreviewReceiptUrl] = React.useState<string | null>(null)
-
-  // Connected Sub-sheet States
-  const [accountSheetId, setAccountSheetId] = React.useState<string | null>(null)
-  const [vendorSheetId, setVendorSheetId] = React.useState<string | null>(null)
-  const [categorySheetId, setCategorySheetId] = React.useState<string | null>(null)
-  const [custodianSheetId, setCustodianSheetId] = React.useState<string | null>(null)
-  const [whatsappTraceId, setWhatsappTraceId] = React.useState<string | null>(null)
-
-  React.useEffect(() => {
-    const paramId = searchParams.get('id')
-    const paramCatId = searchParams.get('category_id')
-    const paramVendorId = searchParams.get('vendor_id')
-
-    if (paramCatId) {
-      setCategoryFilter(paramCatId)
-    }
-    if (paramVendorId) {
-      setSearch(paramVendorId)
-    }
-    if (paramId && expenses.length > 0) {
-      const match = expenses.find((e) => e.id === paramId || e.expense_number === paramId)
-      if (match) {
-        setSelectedExpense(match)
-        setSheetOpen(true)
-      }
-    }
-  }, [searchParams, expenses])
-
-  const handleExpenseCreated = (newExpense: ExpenseItem) => {
-    setExpenses((prev) => [newExpense, ...prev])
+  // /finance/expenses/:id (and the old ?id=) opens that expense's panel.
+  const openId = routeId ?? params.get('id')
+  const opened = openId ? (list.data ?? []).find((e) => e.id === openId) ?? null : null
+  const open = (e: Expense) => setParams((prev) => {
+    const next = new URLSearchParams(prev)
+    next.set('id', e.id)
+    return next
+  })
+  const close = () => {
+    if (routeId) navigate(`/finance/expenses?${params.toString()}`, { replace: true })
+    else setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('id')
+      return next
+    })
+  }
+  const detail: ExpenseDetailData | null = opened && {
+    id: opened.id,
+    amount: opened.amount,
+    category_name: opened.category,
+    category_id: opened.category_id,
+    vendor_name: opened.vendor ?? undefined,
+    project_name: opened.project ?? undefined,
+    site_name: opened.site ?? undefined,
+    recorded_date: opened.date,
+    status: opened.reversed ? 'reversed' : opened.payment,
+    receipt_url: photos.data?.[opened.id],
+    description: opened.description ?? undefined,
+    correlation_id: opened.correlation_id ?? undefined,
   }
 
-  // Handle Sort Toggle
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortField(field)
-      setSortOrder('desc')
-    }
-  }
-
-  // Filtered & Sorted expenses
-  const filteredExpenses = React.useMemo(() => {
-    const today = toLocalISODate()
-
-    return expenses
-      .filter((item) => {
-        const matchesSearch =
-          item.expense_number.toLowerCase().includes(search.toLowerCase()) ||
-          item.description.toLowerCase().includes(search.toLowerCase()) ||
-          item.vendor_name.toLowerCase().includes(search.toLowerCase()) ||
-          item.category_name.toLowerCase().includes(search.toLowerCase())
-
-        if (!matchesSearch) return false
-
-        if (categoryFilter !== 'ALL' && item.category_id !== categoryFilter) return false
-        if (paymentStatusFilter !== 'ALL' && item.payment_status !== paymentStatusFilter) return false
-        if (sourceFilter !== 'ALL' && item.source !== sourceFilter) return false
-
-        // Date Preset filter
-        if (datePreset === 'TODAY' && item.occurred_date !== today) return false
-        if (datePreset === 'THIS_MONTH') {
-          const itemMonth = item.occurred_date.substring(0, 7)
-          const currentMonth = today.substring(0, 7)
-          if (itemMonth !== currentMonth) return false
-        }
-
-        return true
-      })
-      .sort((a, b) => {
-        let modifier = sortOrder === 'asc' ? 1 : -1
-        if (sortField === 'date') return a.occurred_date.localeCompare(b.occurred_date) * modifier
-        if (sortField === 'amount') return (a.amount - b.amount) * modifier
-        if (sortField === 'number') return a.expense_number.localeCompare(b.expense_number) * modifier
-        if (sortField === 'category') return a.category_name.localeCompare(b.category_name) * modifier
-        return 0
-      })
-  }, [expenses, search, categoryFilter, paymentStatusFilter, sourceFilter, datePreset, sortField, sortOrder])
-
-  // Pagination calculation
-  const totalPages = Math.ceil(filteredExpenses.length / pageSize) || 1
-  const paginatedExpenses = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return filteredExpenses.slice(start, start + pageSize)
-  }, [filteredExpenses, currentPage, pageSize])
-
-  // Summary Metrics calculation
-  const metrics = React.useMemo(() => {
-    const totalSpent = expenses.reduce((acc, curr) => acc + curr.amount, 0)
-    const unpaidAmount = expenses
-      .filter((e) => e.payment_status === 'unpaid')
-      .reduce((acc, curr) => acc + curr.amount, 0)
-    const paidAmount = expenses
-      .filter((e) => e.payment_status === 'paid')
-      .reduce((acc, curr) => acc + curr.amount, 0)
-    const whatsappCount = expenses.filter((e) => e.source === 'whatsapp').length
-    const webCount = expenses.filter((e) => e.source === 'web').length
-
-    return {
-      totalSpent,
-      unpaidAmount,
-      paidAmount,
-      count: expenses.length,
-      whatsappCount,
-      webCount,
-    }
-  }, [expenses])
-
-  // Filtered total sum
-  const filteredSum = React.useMemo(() => {
-    return filteredExpenses.reduce((acc, curr) => acc + curr.amount, 0)
-  }, [filteredExpenses])
-
-  // Bulk Selection Handlers
-  const isAllSelected = paginatedExpenses.length > 0 && paginatedExpenses.every((e) => selectedIds.includes(e.id))
-  
-  const toggleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(paginatedExpenses.map((e) => e.id))
-    }
-  }
-
-  const toggleSelectRow = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    )
-  }
-
-  const handleBulkMarkAsPaid = () => {
-    setExpenses((prev) =>
-      prev.map((item) => (selectedIds.includes(item.id) ? { ...item, payment_status: 'paid' as const } : item))
-    )
-    setSelectedIds([])
-  }
-
-  const handleVoidExpense = async (id: string, expenseNumber: string) => {
-    if (!confirm(`Void expense ${expenseNumber}? This will reverse any associated payment entries in the ledger.`)) return
-    try {
-      await reverseExpenseApi(id)
-      setExpenses((prev) =>
-        prev.map((e) => (e.id === id ? { ...e, workflow_status: 'reversed' as const } : e))
-      )
-      toast.success(`Expense ${expenseNumber} voided`, 'Reversal entry posted to general ledger')
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail
-      const msg = Array.isArray(detail) ? detail.join(', ') : detail || err.message || 'Server connection error'
-      toast.error('Failed to void expense', msg)
-    }
-  }
-
-  const handleBulkVoid = async () => {
-    if (!confirm(`Are you sure you want to void ${selectedIds.length} selected expenses?`)) return
-    const idsToVoid = [...selectedIds]
-    setSelectedIds([])
-    let successCount = 0
-    for (const id of idsToVoid) {
-      try {
-        await reverseExpenseApi(id)
-        setExpenses((prev) =>
-          prev.map((e) => (e.id === id ? { ...e, workflow_status: 'reversed' as const } : e))
-        )
-        successCount++
-      } catch (err: any) {
-        console.warn(`Failed to void expense ${id}:`, err)
-      }
-    }
-    if (successCount > 0) {
-      toast.success(`${successCount} expenses voided`, 'Reversal transactions recorded')
-    }
-  }
-
-  // WEB-48: real exports (they used to only show "Exporting..." and download nothing).
-  const exportRows = (rows: typeof expenses, name: string) =>
+  const exportRows = (rows: Expense[]) =>
     exportCsv(
-      name,
-      ['Number', 'Date', 'Category', 'Vendor', 'Description', 'Amount', 'Payment', 'From'],
-      rows.map((e) => [e.expense_number, e.occurred_date, e.category_name, e.vendor_name, e.description, e.amount, e.payment_status, e.source]),
+      'expenses.csv',
+      ['Number', 'Date', 'Category', 'Vendor', 'Project', 'Site', 'Description', 'Amount', 'Payment', 'From', 'Taken back'],
+      rows.map((e) => [e.number ?? '', e.date, e.category, e.vendor ?? '', e.project ?? '', e.site ?? '', e.description ?? '', e.amount, PAYMENT[e.payment].label, e.source === 'whatsapp' ? 'WhatsApp' : 'Dashboard', e.reversed ? 'yes' : '']),
     )
-  const handleBulkExport = () => exportRows(expenses.filter((e) => selectedIds.includes(e.id)), 'expenses-selected.csv')
 
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(val)
-  }
-
-  const renderSortIcon = (field: SortField) => {
-    if (sortField !== field) return <ArrowUpDown className="size-3 text-muted-foreground/60 ml-1 inline" />
-    return sortOrder === 'asc' ? (
-      <ArrowUp className="size-3 text-emerald-500 ml-1 inline" />
-    ) : (
-      <ArrowDown className="size-3 text-emerald-500 ml-1 inline" />
-    )
-  }
+  const days = React.useMemo(() => {
+    const out: { date: string; rows: Expense[] }[] = []
+    for (const e of expenses.slice(0, shownCount)) {
+      const last = out[out.length - 1]
+      if (last?.date === e.date) last.rows.push(e)
+      else out.push({ date: e.date, rows: [e] })
+    }
+    return out
+  }, [expenses, shownCount])
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
-        <div className="flex items-center gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 text-xs font-medium"
-            disabled={filteredExpenses.length === 0}
-            onClick={() => exportRows(filteredExpenses, 'expenses.csv')}
-          >
-            <Download className="size-3.5" />
-            Export CSV
-          </Button>
-          <Button
-            size="sm"
-            className="h-8 gap-1.5 text-xs font-bold shadow-2xs"
-            onClick={() => setRecordDialogOpen(true)}
-          >
-            <Plus className="size-4" />
-            Record Expense
-          </Button>
-        </div>
-      </div>
-
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          title="Total spent"
-          value={<span>{formatCurrency(metrics.totalSpent)}</span>}
-          description="Total recorded spend"
-          icon={<Receipt  />}
-        />
-        <KpiCard
-          title="Unpaid"
-          value={<span>{formatCurrency(metrics.unpaidAmount)}</span>}
-          description="Outstanding invoices"
-          icon={<AlertCircle  />}
-        />
-        <KpiCard
-          title="Paid"
-          value={<span>{formatCurrency(metrics.paidAmount)}</span>}
-          description="Paid disbursements"
-          icon={<CheckCircle2  />}
-        />
-        <KpiCard
-          title="Recorded"
-          value={<span>{metrics.count} Entries</span>}
-          description="WhatsApp & Web logs"
-          icon={<MessageSquare  />}
-        />
-      </div>
-
-      {/* Filter & Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between border border-border/80 p-2.5 rounded-lg bg-card/40">
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto flex-1 items-center">
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Search expenses, vendors, number..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-9 text-xs"
-            />
-          </div>
-
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="h-9 text-xs w-full sm:w-40">
-              <SelectValue placeholder="All Categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Categories</SelectItem>
-              <SelectItem value="fuel">Fuel & Transportation</SelectItem>
-              <SelectItem value="equipment">Equipment & Hire</SelectItem>
-              <SelectItem value="labor">Labor & Wages</SelectItem>
-              <SelectItem value="materials">Raw Materials</SelectItem>
-              <SelectItem value="maintenance">Maintenance</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={datePreset} onValueChange={setDatePreset}>
-            <SelectTrigger className="h-9 text-xs w-full sm:w-36">
-              <Calendar className="size-3.5 mr-1 text-muted-foreground" />
-              <SelectValue placeholder="All Dates" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Dates</SelectItem>
-              <SelectItem value="TODAY">Today</SelectItem>
-              <SelectItem value="THIS_MONTH">This Month</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="h-9 text-xs w-full sm:w-32">
-              <SelectValue placeholder="All Sources" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Sources</SelectItem>
-              <SelectItem value="whatsapp">WhatsApp</SelectItem>
-              <SelectItem value="web">Web Dashboard</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Payment Status Tab Filter */}
-        <Tabs value={paymentStatusFilter} onValueChange={setPaymentStatusFilter} className="w-full sm:w-auto">
-          <TabsList className="h-9 text-xs grid grid-cols-4 w-full sm:w-auto">
-            <TabsTrigger value="ALL" className="text-xs px-2.5">All</TabsTrigger>
-            <TabsTrigger value="paid" className="text-xs px-2.5">Paid</TabsTrigger>
-            <TabsTrigger value="partially_paid" className="text-xs px-2.5">Partial</TabsTrigger>
-            <TabsTrigger value="unpaid" className="text-xs px-2.5">Unpaid</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      {/* Filter Summary Banner */}
-      <div className="flex items-center justify-between text-xs px-1 text-muted-foreground font-medium">
-        <div>
-          Showing <span className="text-foreground font-semibold">{filteredExpenses.length}</span> of {expenses.length} records
-          {filteredExpenses.length !== expenses.length && (
-            <span> • Filtered Total: <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{formatCurrency(filteredSum)}</span></span>
-          )}
-        </div>
-        {selectedIds.length > 0 && (
-          <span className="text-emerald-600 font-semibold text-xs">
-            {selectedIds.length} items checked
-          </span>
-        )}
-      </div>
-
-      {/* Main Expense Table */}
-      <div className="border rounded-lg overflow-hidden bg-card shadow-2xs">
-        <Table>
-          <TableHeader className="bg-muted/40">
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[40px] px-3">
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  onChange={toggleSelectAll}
-                  className="size-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
-                  title="Select All"
-                />
-              </TableHead>
-              <TableHead
-                className="text-xs font-semibold h-10 w-[110px] cursor-pointer select-none"
-                onClick={() => toggleSort('number')}
-              >
-                Expense # {renderSortIcon('number')}
-              </TableHead>
-              <TableHead
-                className="text-xs font-semibold h-10 cursor-pointer select-none"
-                onClick={() => toggleSort('date')}
-              >
-                Date {renderSortIcon('date')}
-              </TableHead>
-              <TableHead
-                className="text-xs font-semibold h-10 cursor-pointer select-none"
-                onClick={() => toggleSort('category')}
-              >
-                Category {renderSortIcon('category')}
-              </TableHead>
-              <TableHead className="text-xs font-semibold h-10">Description / Payee</TableHead>
-              <TableHead className="text-xs font-semibold h-10">Channel</TableHead>
-              <TableHead
-                className="text-xs font-semibold h-10 text-right cursor-pointer select-none"
-                onClick={() => toggleSort('amount')}
-              >
-                Amount (₹) {renderSortIcon('amount')}
-              </TableHead>
-              <TableHead className="text-xs font-semibold h-10 text-center">Status</TableHead>
-              <TableHead className="text-xs font-semibold h-10 text-right w-[60px]">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedExpenses.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="h-32 text-center text-xs text-muted-foreground">
-                  No expense records match your search or filter criteria.
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedExpenses.map((row) => {
-                const isSelected = selectedIds.includes(row.id)
-                return (
-                  <TableRow
-                    key={row.id}
-                    className={`hover:bg-muted/40 cursor-pointer transition-colors ${isSelected ? 'bg-emerald-500/5' : ''}`}
-                    onClick={() => {
-                      setSelectedExpense(row)
-                      setSheetOpen(true)
-                    }}
-                  >
-                    <TableCell className="px-3" onClick={(e) => toggleSelectRow(row.id, e)}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => {}}
-                        className="size-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
-                      />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs font-semibold text-foreground">
-                      {row.expense_number}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {row.occurred_date}
-                    </TableCell>
-                    <TableCell className="text-xs font-medium">
-                      <Badge
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setCategorySheetId(row.category_id || row.category_name)
-                        }}
-                        className="font-normal text-[11px] bg-background hover:border-indigo-500/50 hover:text-indigo-600 transition-colors cursor-pointer"
-                      >
-                        {row.category_name}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div className="font-medium text-foreground truncate max-w-[200px] flex items-center gap-1.5">
-                        {row.description}
-                        {receiptUrlByExpenseId[row.id] && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setPreviewReceiptUrl(receiptUrlByExpenseId[row.id])
-                            }}
-                            className="text-muted-foreground hover:text-emerald-600"
-                            title="View Receipt"
-                          >
-                            <ImageIcon className="size-3.5" />
-                          </button>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setVendorSheetId(row.vendor_name)
-                        }}
-                        className="text-[11px] text-muted-foreground hover:text-emerald-600 truncate transition-colors font-medium text-left"
-                      >
-                        {row.vendor_name}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {row.source === 'whatsapp' ? (
-                        <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] gap-1 font-normal">
-                          <MessageSquare className="size-3" />
-                          WhatsApp
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20 text-[10px] gap-1 font-normal">
-                          <Laptop className="size-3" />
-                          Web
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono font-bold text-right tabular-nums text-foreground">
-                      {formatCurrency(row.amount)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge
-                        className={
-                          row.payment_status === 'paid'
-                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold'
-                            : row.payment_status === 'partially_paid'
-                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-semibold'
-                            : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[10px] font-semibold'
-                        }
-                      >
-                        {row.payment_status === 'paid'
-                          ? 'Paid'
-                          : row.payment_status === 'partially_paid'
-                          ? 'Partial'
-                          : 'Unpaid'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-7">
-                            <MoreVertical className="size-4 text-muted-foreground" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="text-xs">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setSelectedExpense(row)
-                              setSheetOpen(true)
-                            }}
-                          >
-                            <Eye className="size-3.5 mr-1.5" /> View Details
-                          </DropdownMenuItem>
-                          {row.payment_status !== 'paid' && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedExpense(row)
-                                setSheetOpen(true)
-                              }}
-                            >
-                              <DollarSign className="size-3.5 mr-1.5 text-emerald-500" /> Record Settlement
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-rose-600"
-                            onClick={() => handleVoidExpense(row.id, row.expense_number)}
-                          >
-                            <Trash2 className="size-3.5 mr-1.5" /> Void Expense
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                )
-              })
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader
+        title="Expenses"
+        actions={
+          <>
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={expenses.length === 0} onClick={() => exportRows(expenses)}>
+              <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
+            </Button>
+            {!readOnly && (
+              <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setRecordOpen(true)}>
+                <Plus className="size-4" /> Record expense
+              </Button>
             )}
-          </TableBody>
-        </Table>
+          </>
+        }
+      />
 
-        {/* Pagination Bar */}
-        <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/20 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">Rows per page:</span>
-            <Select value={pageSize.toString()} onValueChange={(val) => setPageSize(Number(val))}>
-              <SelectTrigger className="h-7 text-xs w-16">
-                <SelectValue placeholder="10" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-muted-foreground font-mono">
-              Page {currentPage} of {totalPages}
-            </span>
-            <div className="flex gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 size-7 p-0"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
-              >
-                <ChevronLeft className="size-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 size-7 p-0"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-              >
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-2 size-4 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search expenses" className="h-8 w-[160px] pl-8" />
         </div>
+        <FilterSelect
+          label="Category"
+          value={category}
+          onChange={setCategory}
+          icon={Filter}
+          className="w-[160px]"
+          options={[{ value: 'all', label: 'All categories' }, ...(categories.data ?? []).map((c) => ({ value: String(c.id), label: c.name }))]}
+        />
+        <FilterSelect
+          label="Payment"
+          value={payment}
+          onChange={setPayment}
+          className="w-[130px]"
+          options={[
+            { value: 'all', label: 'Paid or not' },
+            { value: 'unpaid', label: 'Unpaid' },
+            { value: 'partially_paid', label: 'Part paid' },
+            { value: 'paid', label: 'Paid' },
+          ]}
+        />
+        <FilterSelect
+          label="Bill photo"
+          value={photo}
+          onChange={setPhoto}
+          icon={ImageIcon}
+          className="w-[150px]"
+          options={[
+            { value: 'all', label: 'Any bill photo' },
+            { value: 'yes', label: 'With bill photo' },
+            { value: 'no', label: 'No bill photo' },
+          ]}
+        />
+        <FilterSelect
+          label="From"
+          value={source}
+          onChange={setSource}
+          icon={MessageSquare}
+          className="w-[140px]"
+          options={[
+            { value: 'all', label: 'WhatsApp or web' },
+            { value: 'whatsapp', label: 'WhatsApp' },
+            { value: 'web', label: 'Dashboard' },
+          ]}
+        />
+        <PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />
       </div>
 
-      {/* Floating Bulk Action Bar */}
-      <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])}>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs gap-1.5 font-semibold text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10"
-          onClick={handleBulkMarkAsPaid}
+      {list.isError ? (
+        <Callout
+          tone="draft"
+          icon={TriangleAlert}
+          action={
+            <Button variant="outline" size="sm" className="bg-background" onClick={() => list.refetch()}>
+              Try again
+            </Button>
+          }
         >
-          <CheckCircle2 className="size-3.5" />
-          Mark as Paid
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs gap-1.5 font-semibold"
-          onClick={handleBulkExport}
-        >
-          <Download className="size-3.5" />
-          Export Selected
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs gap-1.5 font-semibold text-rose-600 border-rose-500/40 hover:bg-rose-500/10"
-          onClick={handleBulkVoid}
-        >
-          <Trash2 className="size-3.5" />
-          Void Selected
-        </Button>
-      </BulkActionBar>
+          The expenses could not be loaded.
+        </Callout>
+      ) : list.isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-16 rounded-xl" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 rounded-lg" />
+          ))}
+        </div>
+      ) : (
+        <>
+          <StatStrip
+            stats={[
+              { label: 'Spent', value: rupees(total), icon: Receipt, hint: `${live.length} ${live.length === 1 ? 'expense' : 'expenses'}` },
+              { label: 'Unpaid', value: unpaid ? rupees(unpaid) : '—', tone: unpaid ? 'warn' : 'good', icon: TriangleAlert },
+              { label: 'Paid', value: rupees(total - unpaid), tone: 'good', icon: Receipt },
+            ]}
+          />
 
-      {/* Receipt Image Lightbox Dialog */}
-      <Dialog open={!!previewReceiptUrl} onOpenChange={() => setPreviewReceiptUrl(null)}>
-        <DialogContent className="sm:max-w-[500px] p-2">
-          <DialogHeader className="px-3 pt-2">
-            <DialogTitle className="text-sm font-semibold flex items-center gap-1.5">
-              <ImageIcon className="size-4 text-emerald-500" />
-              Receipt / Invoice Attachment
-            </DialogTitle>
-          </DialogHeader>
-          {previewReceiptUrl && (
-            <div className="p-2 flex items-center justify-center bg-black/90 rounded-md overflow-hidden">
-              <img
-                src={previewReceiptUrl}
-                alt="Receipt Attachment"
-                className="max-h-[400px] w-auto object-contain rounded"
-              />
+          {expenses.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+              <Receipt className="size-6 text-muted-foreground" aria-hidden="true" />
+              <p className="text-sm font-medium">{filtered ? 'No expenses match these filters' : 'No expenses in this period'}</p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                {filtered ? '' : 'Send a bill photo or "paid 1500 for tea" on WhatsApp, or record one here.'}
+              </p>
+              {filtered && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setParams((prev) => {
+                      const next = new URLSearchParams(prev)
+                      ;['q', 'category', 'payment', 'photo', 'source'].forEach((k) => next.delete(k))
+                      return next
+                    })
+                  }
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {days.map((day) => (
+                <section key={day.date} className="flex flex-col gap-1">
+                  <h3 className="flex items-baseline justify-between text-xs font-semibold text-muted-foreground">
+                    <span>{dayLabel(day.date)}</span>
+                    <span className="tabular-nums">{rupees(day.rows.filter((e) => !e.reversed).reduce((n, e) => n + e.amount, 0))}</span>
+                  </h3>
+                  <ul className="divide-y rounded-lg border">
+                    {day.rows.map((e) => (
+                      <li key={e.id} className={cn('relative flex items-start gap-3 px-3 py-2 hover:bg-muted/30', e.reversed && 'opacity-60')}>
+                        <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left after:absolute after:inset-0" onClick={() => open(e)}>
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className={cn('font-medium', e.reversed && 'line-through')}>{e.vendor || e.category}</span>
+                            {e.vendor && <span className="text-xs text-muted-foreground">{e.category}</span>}
+                            {e.reversed ? (
+                              <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Taken back</span>
+                            ) : (
+                              e.payment !== 'paid' && <span className={cn(CHIP, PAYMENT[e.payment].className)}>{PAYMENT[e.payment].label}</span>
+                            )}
+                          </span>
+                          <span className="line-clamp-1 text-xs text-muted-foreground">
+                            {[e.number, e.site ?? e.project, e.description, e.source === 'whatsapp' ? 'WhatsApp' : null].filter(Boolean).join(' · ')}
+                          </span>
+                        </button>
+                        <span className="flex shrink-0 items-center gap-1">
+                          {photos.data?.[e.id] && <ImageIcon className="size-3.5 text-muted-foreground" aria-label="Has a bill photo" />}
+                          <span className="font-semibold tabular-nums">{rupees(e.amount)}</span>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button type="button" variant="ghost" size="icon" className="relative z-10 size-8" aria-label={`More for ${e.number ?? e.category}`}>
+                                <MoreHorizontal className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem onClick={() => open(e)}>Open</DropdownMenuItem>
+                              {photos.data?.[e.id] && <DropdownMenuItem onClick={() => setPhotoUrl(photos.data![e.id])}>Bill photo</DropdownMenuItem>}
+                              {!e.reversed && !readOnly && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setTaking(e)}>
+                                    <Undo2 className="mr-2 size-3.5" /> Take back
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+              {expenses.length > shownCount && (
+                <Button variant="outline" className="self-center" onClick={() => setShownCount((n) => n + PAGE)}>
+                  Load more ({expenses.length - shownCount} left)
+                </Button>
+              )}
             </div>
           )}
+        </>
+      )}
+
+      <RecordExpenseDialog
+        open={recordOpen}
+        onOpenChange={setRecordOpen}
+        scope={scope}
+        onExpenseCreated={() => queryClient.invalidateQueries({ queryKey: ['finance'] })}
+      />
+      <ExpenseDetailSheet
+        open={!!detail}
+        onOpenChange={(o) => !o && close()}
+        expense={detail}
+        onOpenVendor={() => {
+          if (opened?.vendor) setQ(opened.vendor)
+          close()
+        }}
+        onOpenCategory={(id) => {
+          setCategory(id)
+          close()
+        }}
+        onOpenAccount={(id) => navigate(`/finance/money?account=${id}`)}
+      />
+
+      <Dialog open={taking !== null} onOpenChange={(o) => !o && setTaking(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Take back {taking?.number ?? 'this expense'}?</DialogTitle>
+            <DialogDescription>
+              {taking && `${rupees(taking.amount)} · ${taking.vendor ?? taking.category} · ${dayLabel(taking.date)}. `}
+              It comes off the list and out of every total, and any payment recorded for it is reversed. To change an expense,
+              take it back and record it again.
+            </DialogDescription>
+          </DialogHeader>
+          {takeBack.isError && <p className="text-sm text-destructive">It could not be taken back. Try again.</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTaking(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={takeBack.isPending} onClick={() => taking && takeBack.mutate(taking)}>
+              {takeBack.isPending ? 'Taking back…' : 'Take back'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialogs & Sheets */}
-      <RecordExpenseDialog
-        open={recordDialogOpen}
-        onOpenChange={setRecordDialogOpen}
-        scope={scope}
-        onExpenseCreated={handleExpenseCreated}
-      />
-
-      <ExpenseDetailSheet
-        expense={
-          selectedExpense
-            ? {
-                id: selectedExpense.id,
-                amount: selectedExpense.amount,
-                category_name: selectedExpense.category_name,
-                category_id: selectedExpense.category_id,
-                vendor_name: selectedExpense.vendor_name,
-                status: selectedExpense.workflow_status,
-                recorded_date: selectedExpense.occurred_date,
-                payment_method: selectedExpense.payment_method,
-                receipt_url: receiptUrlByExpenseId[selectedExpense.id],
-                description: selectedExpense.description,
-              }
-            : null
-        }
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        onOpenAccount={(accId) => setAccountSheetId(accId)}
-        onOpenVendor={(venId) => setVendorSheetId(venId)}
-        onOpenCategory={(catId) => setCategorySheetId(catId)}
-        onOpenCustodian={(custodian) => setCustodianSheetId(custodian)}
-        onOpenWhatsAppTrace={(traceId) => setWhatsappTraceId(traceId)}
-      />
-
-      <AccountDetailSheet
-        open={!!accountSheetId}
-        onOpenChange={(op) => !op && setAccountSheetId(null)}
-        account={accountSheetId ? { id: accountSheetId, name: 'Money Account', account_type: 'bank', currency: 'INR', opening_balance: 0, current_balance: 0, status: 'active', created_at: '' } : null}
-      />
-
-      <VendorDetailSheet
-        open={!!vendorSheetId}
-        onOpenChange={(op) => !op && setVendorSheetId(null)}
-        vendor={vendorSheetId ? { id: vendorSheetId, name: 'Vendor', status: 'active', expense_count: 0, total_amount_paid: 0 } : null}
-      />
-
-      <CategoryDetailSheet
-        open={!!categorySheetId}
-        onOpenChange={(op) => !op && setCategorySheetId(null)}
-        category={categorySheetId ? { id: categorySheetId, code: 'CAT', name: 'Expense Category', status: 'active', total_amount_spent: 0, expense_count: 0 } : null}
-      />
-
-      <CustodianProfileSheet
-        open={!!custodianSheetId}
-        onOpenChange={(op) => !op && setCustodianSheetId(null)}
-        custodianIdOrName={custodianSheetId}
-        onOpenAccount={(accId) => setAccountSheetId(accId)}
-      />
-
-      <WhatsAppTraceModal
-        open={!!whatsappTraceId}
-        onOpenChange={(op) => !op && setWhatsappTraceId(null)}
-        correlationId={whatsappTraceId}
-      />
+      <Dialog open={photoUrl !== null} onOpenChange={(o) => !o && setPhotoUrl(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Bill photo</DialogTitle>
+          </DialogHeader>
+          {photoUrl && <img src={photoUrl} alt="Bill photo" className="max-h-[70vh] w-full rounded-md object-contain" />}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

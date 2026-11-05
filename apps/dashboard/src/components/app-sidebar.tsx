@@ -14,15 +14,11 @@ import {
   Wallet,
   Boxes,
   Landmark,
-  PieChart,
-  ArrowLeftRight,
   Store,
-  Tags,
   SlidersHorizontal,
   ChevronRight,
   ChevronDown,
   CalendarDays,
-  Bot,
   Sun,
   Moon,
   HardHat,
@@ -95,15 +91,11 @@ const FINANCE_CATEGORY: NavCategory = {
   icon: Landmark,
   tone: 'finance',
   items: [
-    { title: 'Overview', url: '/finance/overview', icon: PieChart },
+    // WEB-51: four pages. Who sees what is unchanged: Expenses for the roles that see spending (SEC-01); the
+    // rest as Accounts / Petty cash / Vendors / Settings were.
     { title: 'Expenses', url: '/finance/expenses', icon: DollarSign, allowedRoles: EXPENSE_VIEW_ROLES },
-    { title: 'Accounts', url: '/finance/accounts', icon: Landmark },
-    { title: 'WhatsApp Automations', url: '/finance/whatsapp', icon: Bot },
-    { title: 'Transactions', url: '/finance/transactions', icon: ArrowLeftRight },
-    { title: 'Petty Cash', url: '/finance/petty-cash', icon: Wallet },
+    { title: 'Money', url: '/finance/money', icon: Wallet },
     { title: 'Vendors', url: '/finance/vendors', icon: Store },
-    { title: 'Categories', url: '/finance/categories', icon: Tags },
-    { title: 'Reports', url: '/finance/reports', icon: FileText },
     { title: 'Settings', url: '/finance/settings', icon: SlidersHorizontal },
   ],
 }
@@ -257,7 +249,7 @@ function checkIsItemActive(pathname: string, itemUrl: string): boolean {
   if (pathname === itemUrl) return true
   if (itemUrl === '/today' && pathname === '/') return true
   if (itemUrl === '/operations/dashboard' && (pathname === '/operations' || pathname === '/operations/dashboard' || pathname === '/overview')) return true
-  if (itemUrl === '/finance/overview' && pathname === '/finance') return true
+  if (itemUrl === '/finance/expenses' && pathname === '/finance') return true
   if (itemUrl === '/materials/overview' && pathname === '/materials') return true
   if (itemUrl !== '/' && pathname.startsWith(itemUrl)) return true
   return false

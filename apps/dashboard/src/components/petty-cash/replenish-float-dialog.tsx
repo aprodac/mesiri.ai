@@ -33,10 +33,9 @@ interface ReplenishFloatDialogProps {
   onReplenishCompleted?: (boxId: string, amount: number) => void
 }
 
-const DEFAULT_BANKS: BankAccountItem[] = [
-  { id: 'acc_01', name: 'HDFC Corporate Main Account', current_balance: 3450000 },
-  { id: 'acc_02', name: 'ICICI Operations Account', current_balance: 1820000 },
-]
+// WEB-51: no default banks. The old default was two made-up accounts ("HDFC Corporate Main Account", ₹34.5 L) shown
+// whenever the caller passed none; the money can only come from the company's real accounts.
+const NO_BANKS: BankAccountItem[] = []
 
 import { replenishFloatApi } from '@/lib/api'
 import { toLocalISODate } from '@/lib/utils'
@@ -45,10 +44,13 @@ export function ReplenishFloatDialog({
   open,
   onOpenChange,
   cashBoxes,
-  bankAccounts = DEFAULT_BANKS,
+  bankAccounts = NO_BANKS,
   onReplenishCompleted,
 }: ReplenishFloatDialogProps) {
-  const [sourceBankId, setSourceBankId] = React.useState(DEFAULT_BANKS[0].id)
+  const [sourceBankId, setSourceBankId] = React.useState('')
+  React.useEffect(() => {
+    if (!sourceBankId && bankAccounts.length > 0) setSourceBankId(bankAccounts[0].id)
+  }, [bankAccounts, sourceBankId])
   const [targetBoxId, setTargetBoxId] = React.useState('')
   const [amount, setAmount] = React.useState('')
   const [description, setDescription] = React.useState('')
