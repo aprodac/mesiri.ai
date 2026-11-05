@@ -343,6 +343,18 @@
         "cor_bd6fd016803c42de953613cd600e15ab"
       ],
       "message": "Ilan, ippo Malayalam-il paranjaalum Mesiri ellaam English-il thanne save cheyyum: cement, sand, report ellaam list-umaayi match aakum. Oru voice note ayachu nokkoo. Thanks!"
+    },
+    {
+      "id": "listed-materials-242",
+      "date": "2026-11-05",
+      "for": [
+        "cor_bd6fd016803c42de953613cd600e15ab",
+        "cor_d80f9a3fd9324d27b2e584b7e36667bc",
+        "cor_ac4c4578b54b4a14b700a96f669bbf2a",
+        "cor_3e970b57b78b4f299ddcfa7a67bd71da",
+        "cor_92ebb989afb4436e84b3f3b6988c10ce"
+      ],
+      "message": "Ningal paranja prashnam shariyaakki: list-il ulla Cement, M Sand pole ulla materials ini puthiyathaayi add cheyyilla, delivery list-ile material-il thanne save aakum. 'List-il illa' ennulla chodyavum ini varilla. Try: '50 bag cement vannu'. Thanks, ningal kaaranam ithu ellarkkum shariyaayi."
     }
   ]
 }
