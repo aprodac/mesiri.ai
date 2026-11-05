@@ -517,7 +517,11 @@ class PostgresFactReviewRepository:
                     "        WHERE c ->> 'tool' = 'record_transfer' "
                     "        AND jsonb_typeof(COALESCE(c -> 'arguments', c -> 'args')) = 'object'))) "
                     "   FROM journey_traces jt WHERE jt.correlation_id = im.correlation_id "
-                    "   AND jt.stage IN ('agent_api_turn', 'agent_tools')) AS turns "
+                    "   AND jt.stage IN ('agent_api_turn', 'agent_tools')) AS turns, "
+                    # What Mesiri heard: a voice note's words are only in its turn's trace, not on the message.
+                    " (SELECT jt.stage_payload::jsonb ->> 'text' FROM journey_traces jt "
+                    "   WHERE jt.correlation_id = im.correlation_id AND jt.stage = 'agent_api_turn' "
+                    "   ORDER BY jt.created_at LIMIT 1) AS heard "
                     " FROM inbound_messages im "
                     " LEFT JOIN sites s ON s.id = im.site_id "
                     " LEFT JOIN projects p ON p.id = COALESCE(im.project_id, s.project_id) "
@@ -538,7 +542,8 @@ class PostgresFactReviewRepository:
             {
                 "id": str(r["id"]),
                 "type": r["message_type"],
-                "text": r["body_text"],
+                # Most real messages are Malayalam voice notes (5 Nov): show the words Mesiri heard.
+                "text": r["body_text"] or (r["heard"] if _is_voice(r["message_type"]) else None),
                 "translated_text": r["body_text_en"],
                 "reply": r["assistant_reply"],
                 "media_object_key": r["media_object_key"],
@@ -725,3 +730,9 @@ class PostgresFactReviewRepository:
                 )
             except HTTPException as exc:
                 raise FactReviewError(str(exc.detail)) from exc
+
+
+def _is_voice(message_type: str | None) -> bool:
+    """A voice note (WhatsApp says "voice" or "audio")."""
+    kind = str(message_type or "").lower()
+    return "voice" in kind or "audio" in kind

@@ -79,3 +79,31 @@ async def test_a_transfer_comes_with_its_two_sites(conn) -> None:  # noqa: F811
     what = live_feed.classify(rows[0])
     assert (what["kind"], what["state"]) == ("transfer", "draft")
     assert what["transfer"] == {"from_site_id": str(a), "to_site_id": str(b)}
+
+
+async def test_a_voice_note_shows_the_words_mesiri_heard(conn) -> None:  # noqa: F811
+    """5 Nov: most real messages are Malayalam voice notes, whose words live only in the turn's trace."""
+    from sqlalchemy import text
+
+    created = await create_company(
+        conn,
+        NewCompany(name="Voice Builders", owner_name="Ravi", owner_phone="+" + SENDER,
+                   project_name="Hospital", site_names=("Tower A",), auto_dpr=False),
+        now=NOW,
+    )
+    org, project, site = created.organization_id, created.project_id, created.sites[0].site_id
+    correlation = await _message(conn, org, text_=None, reply="Ready", tools=[], project=project, site=site)
+    await conn.execute(text("UPDATE inbound_messages SET message_type = 'voice' WHERE correlation_id = :c"), {"c": correlation})
+    await conn.execute(
+        text("INSERT INTO journey_traces (id, correlation_id, stage, stage_payload, succeeded)"
+             " VALUES (gen_random_uuid(), :c, 'agent_api_turn', CAST(:p AS jsonb), true)"),
+        {"c": correlation, "p": json.dumps({"text": "ഇന്ന് 50 ചാക്ക് സിമന്റ് വന്നു", "calls": [], "saved": [], "pending": []})},
+    )
+    # The guard: a typed message keeps its own words, and a tap's trace text ("(tapped Save)") never shows.
+    await _message(conn, org, text_="hi", reply="Hi", tools=[], minutes=1)
+
+    rows = await PostgresFactReviewRepository(conn).live_feed(
+        organization_id=org, since=NOW - dt.timedelta(hours=1), until=NOW + dt.timedelta(hours=1)
+    )
+
+    assert [r["text"] for r in rows] == ["ഇന്ന് 50 ചാക്ക് സിമന്റ് വന്നു", "hi"]
