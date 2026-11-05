@@ -35,9 +35,12 @@ the plan or fix the details, and the reply says plainly when that post failed.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import json
 import logging
-from collections.abc import Callable
+import re
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -159,7 +162,7 @@ NOT_A_NAME_MESSAGE = (
     "That doesn't look like a {what} name. Please send just the name, e.g. *{example}*. {question}"
 )
 CONFIRM_MESSAGE = (
-    "Please check:\n*Company:* {company}\n*Site:* {site}\n*Your name:* {owner}\n\n"
+    "Please check:\n*Company:* {company}\n*Site:* {site}\n*Your name:* {owner}{details}\n\n"
     "This creates a *new* company on Mesiri. Shall I set it up?"
 )
 CONFIRM_REMINDER = "Tap *Looks good* to set this up, or *Edit* to change the names."
@@ -190,6 +193,9 @@ TEAM_POST = (
 )
 EDIT_MESSAGE = "No problem, let's redo it."
 TYPE_IT_MESSAGE = "Please type the answer as a message. {question}"
+#: [256]: a voice answer that could not be heard; a long answer with no name in it (its details are kept).
+COULD_NOT_HEAR_MESSAGE = "Sorry, I couldn't hear that clearly. Please say it again, or type it. {question}"
+DETAILS_KEPT_MESSAGE = "Thanks, I've kept those details for your project. {question}"
 TOO_LONG_MESSAGE = "That's a bit long. Please keep it under {limit} characters. {question}"
 CANCELLED_MESSAGE = "No problem, nothing was set up. Message *Hi* any time to start again."
 ALREADY_SET_UP_MESSAGE = "This number is already set up on Mesiri. Send your update any time."
@@ -216,6 +222,12 @@ _TEAM_BUTTON = ListRow(id=TEAM_ID, title="Talk to our team")
 _WELCOME_BUTTONS = [_SETUP_BUTTON, _JOIN_BUTTON, _ABOUT_BUTTON]
 #: SS-23: after a refused trial "Set up my company" could only be refused again.
 _REFUSED_BUTTONS = [_TEAM_BUTTON, _JOIN_BUTTON, _ABOUT_BUTTON]
+
+
+def _joined(old: str | None, new: Any) -> str | None:
+    """[256]: project details said over several answers, all kept."""
+    parts = [p for p in (str(old or "").strip(), str(new or "").strip()) if p]
+    return " ".join(dict.fromkeys(parts)) or None
 
 
 def left_label(left: dt.timedelta) -> str:
@@ -259,6 +271,41 @@ def _not_a_name(text: str) -> bool:
     )
 
 
+#: [256]: an answer longer than this many words is read for the name in it (one model call); a shorter one is the name.
+_SHORT_ANSWER_WORDS = 4
+#: The model call that reads a long answer gets this long; past it, the answer is treated as before.
+READ_SECONDS = 8.0
+_LEADS = {
+    # [256] ("We are rolla builders" was saved as the company name): the lead-in is not part of the name.
+    "company": re.compile(r"^(?:we\s+are|we're|i\s+am|i'm|this\s+is|it\s+is|it's|ours\s+is|(?:my|our|the)\s+"
+                          r"company(?:'s)?(?:\s+name)?\s+is|company(?:\s+name)?\s+is|company\s*[:\-])\s+", re.I),
+    "site": re.compile(r"^(?:(?:my|our|the)\s+site(?:'s)?(?:\s+name)?\s+is|site(?:\s+name)?\s+is|site\s*[:\-]|"
+                       r"we\s+are\s+(?:at|in)|working\s+(?:at|in|on))\s+", re.I),
+    "owner_name": re.compile(r"^(?:i\s+am|i'm|my\s+name\s+is|this\s+is|name\s*[:\-])\s+", re.I),
+}
+_READ_PROMPT = (
+    "A construction company owner is signing up on WhatsApp. They were asked: {question!r}. Read their answer and "
+    "return JSON with these keys (null when not said): \"company_name\" (the company's name only, as they would "
+    "write it, in English letters, without words like 'we are'), \"site_name\" (the site or project they are "
+    "working on now: a name and place if said, in English letters), \"description\" (everything else they said "
+    "about the project or company, in English, one or two sentences: building type, size, floors, contract, stage). "
+    "Never invent a name that is not in the answer."
+)
+
+
+def _name_only(text: str, stage: str) -> str:
+    """[256]: the name without its lead-in ("We are rolla builders" -> "Rolla Builders"); a name typed all in lower
+    case gets capitals, any other spelling stays exactly as typed."""
+    lead = _LEADS.get(stage)
+    name = lead.sub("", text).strip(" .!,;:-") if lead else text
+    name = name or text
+    return name.title() if name.islower() else name
+
+
+def _long_answer(text: str) -> bool:
+    return len(text.split()) > _SHORT_ANSWER_WORDS or len(text) > _NAME_MAX
+
+
 def _looks_like_work(message: Any, lowered: str) -> bool:
     """SS-22: a first message that is more than a greeting (a site update, a voice
     note, a photo) gets told it was not saved, so it is sent again once they are in."""
@@ -277,7 +324,13 @@ class SignupJourney:
         renderer: ReceiptRenderer | None = None,
         notifier: TeamNotifier | None = None,
         now: Callable[[], dt.datetime] | None = None,
+        transcribe: Callable[[Any], Awaitable[tuple[str, str | None, str | None]]] | None = None,
+        ai: Any | None = None,
     ) -> None:
+        # [256]: a voice answer is heard with the assistant's own transcription; a long answer is read for the
+        # name in it with one model call (``generate_json``). Without them, signup works as before (typed only).
+        self._transcribe = transcribe
+        self._ai = ai
         # The onboarding cards' renderer; without one signup is all text.
         self._renderer = renderer
         # SS-23: "Talk to our team" posts to the Mesiri team's WhatsApp group.
@@ -311,8 +364,12 @@ class SignupJourney:
             if message.modality is InputModality.TEXT
             else ""
         )
-        lowered = text.lower().strip(" .!")
         state = await self._store.get(wa_id)
+        heard = False
+        if message.modality is InputModality.VOICE and state is not None and self._transcribe is not None:
+            # [256]: a voice note answers like a typed message, at every step.
+            text, heard = await self._heard(message), True
+        lowered = text.lower().strip(" .!")
 
         # SS-22: a deactivated or suspended person is not a stranger: no trial offer
         # (their number is still theirs, so a trial would be refused at the end anyway).
@@ -369,7 +426,7 @@ class SignupJourney:
                 return await self._welcome(wa_id, message.sender.profile_name)
             if tap == EDIT_ID:
                 # The name is asked too: the WhatsApp profile's may be a nickname.
-                await self._store.set(wa_id, SignupState(stage="company", ask_name=True))
+                await self._store.set(wa_id, SignupState(stage="company", ask_name=True, description=state.description))
                 await self._say(wa_id, EDIT_MESSAGE)
                 return await self._say(wa_id, ASK_COMPANY)
             return await self._create(wa_id, state, state.owner_name or "")
@@ -397,8 +454,24 @@ class SignupJourney:
             return await self._confirm_prompt(wa_id, state, reminder=True)
 
         question = _QUESTION[state.stage]
+        if not text and heard:
+            return await self._say(wa_id, COULD_NOT_HEAR_MESSAGE.format(question=question))
         if not text:
             return await self._say(wa_id, TYPE_IT_MESSAGE.format(question=question))
+        description, extra_site = state.description, None
+        if state.stage in ("company", "site") and _long_answer(text) and self._ai is not None:
+            # [256]: "new commercial building in Kerala, a supermarket, G+1, turnkey..." holds the details of the
+            # project, maybe its name: the name is taken, the rest kept for the project, and only what's missing asked.
+            found = await self._read_answer(text, question, getattr(message, "correlation_id", None))
+            if found is not None:
+                description = _joined(description, found.get("description"))
+                text = str(found.get("company_name" if state.stage == "company" else "site_name") or "").strip()
+                if state.stage == "company":
+                    extra_site = str(found.get("site_name") or "").strip() or None
+                if not text:
+                    await self._store.set(wa_id, replace(state, description=description))
+                    return await self._say(wa_id, DETAILS_KEPT_MESSAGE.format(question=question))
+        text = _name_only(text, state.stage)
         if len(text) > _NAME_MAX:
             return await self._say(
                 wa_id, TOO_LONG_MESSAGE.format(limit=_NAME_MAX, question=question)
@@ -412,10 +485,13 @@ class SignupJourney:
             )
 
         if state.stage == "company":
-            await self._store.set(
-                wa_id, SignupState(stage="site", company_name=text, ask_name=state.ask_name)
+            state = SignupState(
+                stage="site", company_name=text, ask_name=state.ask_name, description=description
             )
-            return await self._say(wa_id, ASK_SITE)
+            if extra_site is None or _not_a_name(extra_site) or len(extra_site) > _NAME_MAX:
+                await self._store.set(wa_id, state)
+                return await self._say(wa_id, ASK_SITE)
+            text = extra_site  # [256]: the site was in the same answer: not asked again
 
         if state.stage == "site":
             owner_name = None if state.ask_name else _clean_profile_name(message.sender.profile_name)
@@ -423,7 +499,8 @@ class SignupJourney:
                 await self._store.set(
                     wa_id,
                     SignupState(
-                        stage="owner_name", company_name=state.company_name, site_name=text
+                        stage="owner_name", company_name=state.company_name, site_name=text,
+                        description=description,
                     ),
                 )
                 return await self._say(wa_id, ASK_OWNER_NAME)
@@ -436,16 +513,44 @@ class SignupJourney:
                 company_name=state.company_name,
                 site_name=state.site_name if state.stage == "owner_name" else text,
                 owner_name=owner_name,
+                description=description,
             ),
         )
+
+    async def _heard(self, message: Any) -> str:
+        """[256]: a voice answer's words ("" when it can't be heard). Names in Latin letters: the transcript when it
+        is written that way, else its English."""
+        try:
+            transcript, translated, _ = await self._transcribe(message)  # type: ignore[misc]
+        except Exception:  # noqa: BLE001 -- said plainly ("couldn't hear"), never silence
+            _log.warning("signup.transcribe_failed", exc_info=True)
+            return ""
+        words = " ".join(str(transcript or "").split())
+        if words and not all(ord(c) < 0x250 for c in words if c.isalpha()):
+            words = " ".join(str(translated or "").split()) or words
+        return words
+
+    async def _read_answer(self, text: str, question: str, correlation_id: Any) -> dict[str, Any] | None:
+        """[256]: {company_name, site_name, description} from a long answer, or None when it could not be read (the
+        answer is then checked as before). Never raises."""
+        try:
+            raw = await asyncio.wait_for(self._ai.generate_json(  # type: ignore[union-attr]
+                system_prompt=_READ_PROMPT.format(question=question.split("\n")[-1]),
+                user_prompt=f"ANSWER:\n{text[:1500]}", correlation_id=correlation_id or None), timeout=READ_SECONDS)
+            found = json.loads(str(raw).strip().removeprefix("```json").removeprefix("```").removesuffix("```"))
+        except Exception:  # noqa: BLE001
+            _log.warning("signup.read_failed", exc_info=True)
+            return None
+        return found if isinstance(found, dict) else None
 
     async def _confirm_prompt(
         self, wa_id: str, state: SignupState, *, reminder: bool = False
     ) -> str:
         """SET-03: show what will be created and let them fix it before it is."""
         await self._store.set(wa_id, state)
+        details = f"\n*Project details:* {state.description}" if state.description else ""
         body = CONFIRM_MESSAGE.format(
-            company=state.company_name, site=state.site_name, owner=state.owner_name
+            company=state.company_name, site=state.site_name, owner=state.owner_name, details=details
         )
         if reminder:
             body = f"{CONFIRM_REMINDER}\n\n{body}"
@@ -546,6 +651,7 @@ class SignupJourney:
             owner_phone=wa_id,
             project_name=state.site_name,
             site_name=state.site_name,
+            project_description=state.description,  # [256]: what they said about the project, kept
             auto_dpr=True,
             start_as="trial",
             signup_source="whatsapp",

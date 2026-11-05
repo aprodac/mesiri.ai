@@ -192,6 +192,11 @@ _OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", BUDGET_REPLY: "outage.budget", G
 NOTHING_HELD = "I haven't got anything ready to save yet. Please send it again, with what's missing."
 PRESS_SAVE = "Tap *Save* to record these."
 READY_HEADING = "*Ready to save:*"
+#: [264]: a card that holds only a report send says Send, not Save.
+READY_SEND_HEADING = "*Ready to send:*"
+PRESS_SEND = "Tap *Send* and it goes out in about a minute."
+REPORT_SENT = "📤 Report sent: {line}. It reaches the people who get the daily report in about a minute."
+SEND_TITLE = "Send"
 
 
 def _in_with(language: str | None, key: str, english: str, **values: str) -> str:
@@ -484,7 +489,7 @@ class ApiWhatsApp:
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx)) if turn.saved else ""
-        words = turn.reply or turn.question or saved_words
+        words = without_heard_echo(turn.reply or turn.question or saved_words)  # [258]: the code draws "🎤 ..." once
         if got_why:
             words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
         passed_on = any(c.get("tool") == TELL_THE_TEAM for c in calls)
@@ -823,7 +828,7 @@ class ApiWhatsApp:
             await self._save_state(ctx, state)
             return ReplySpec(text=text, buttons=(ListRow(id=f"{CANCEL_PREFIX}{state['batch']}", title="Cancel"),))
         await self._save_state(ctx, state)
-        return _save_buttons(text, state["batch"]) if left else ReplySpec(text=text)
+        return _save_buttons(text, state["batch"], send=only_sends(left)) if left else ReplySpec(text=text)
 
     async def _on_edit(self, tap: str, ctx: Any) -> ReplySpec:
         """WA-208: "✏️ Edit" on a ready list. One line: ask its right figure at once; several: pick the line first.
@@ -953,12 +958,15 @@ class ApiWhatsApp:
         text = without_ready_block(text) or "OK."
         # [229]: only the code tells them to tap Save, and only under a list it holds with the button sent with it.
         text = without_save_prompt(text) or ("OK." if not pending else "")
+        sending = only_sends(pending)
         if pending:
-            text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending])) or "OK."
+            text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending]))
+            # [264]: a bare "OK." says nothing above a held list: the list and the Save / Send line speak instead.
+            text = "" if text.strip(" .").casefold() in ("", "ok") else text
             listed = "\n".join(f"{i}. {without_ids(e.summary)}" for i, e in enumerate(pending, 1))
-            text = f"{text}\n\n{READY_HEADING}\n{listed}".strip()
+            text = f"{text}\n\n{READY_SEND_HEADING if sending else READY_HEADING}\n{listed}".strip()
             if not options:
-                text = f"{text}\n\n{_in(language, 'api.press_save', PRESS_SAVE)}"
+                text = f"{text}\n\n{press_line(pending, language)}"
         if options:
             rows = [ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])]
             if pending and len(rows) < 3:  # WA-197: a size question too: the line is on the list, Save holds it
@@ -966,7 +974,7 @@ class ApiWhatsApp:
                 # (last, so the option taps keep their numbers; WhatsApp allows 3 buttons).
                 rows.append(ListRow(id=f"{SAVE_PREFIX}{state['batch']}", title="Save"))
             return ReplySpec(text=text, buttons=tuple(rows))
-        return _save_buttons(text, state["batch"]) if pending else ReplySpec(text=text)
+        return _save_buttons(text, state["batch"], send=sending) if pending else ReplySpec(text=text)
 
     async def _reply_language(self, ctx: Any) -> str | None:
         state = await self._state(ctx)
@@ -1056,10 +1064,11 @@ def for_memory(sent: str) -> str:
     """What the conversation keeps of a reply (WA-130): the words, and the drawn list only as a
     short note. Kept whole, the model saw the list's format in the history and wrote it again
     itself (Paraclette 2 Nov 10:52: the list twice)."""
+    sent = without_heard_echo(sent)  # [258]: the model never sees the "🎤 heard" line, so it never writes one
     words = without_ready_block(sent)
     if words == sent.strip():
         return sent
-    parts = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
+    parts = re.split(r"[\s*_]*Ready to (?:save|send)[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
     if len(parts) < 2:
         return words
     items = [re.sub(r"^\d+\.\s*", "", line).strip() for line in parts[1].splitlines() if line.strip()]
@@ -1147,7 +1156,7 @@ def without_ready_block(text: str) -> str:
     """The model's words without a "Ready to save:" list it wrote itself (the code draws the list), and without
     the memory's own note about that list ([205], 2 Nov: Ilan was shown "(under this reply, waiting for the Save
     button: ...)", copied by the model from the conversation)."""
-    words = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    words = re.split(r"[\s*_]*Ready to (?:save|send)[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0]
     return re.sub(r"\s*\(under this reply, waiting for the Save button[^)]*\)?", "", words).strip()
 
 
@@ -1304,9 +1313,21 @@ def _refused_to_keep(results: list[WriteResult], state: dict) -> tuple[list[Pend
     return keep, dropped
 
 
-def _save_buttons(text: str, batch: str) -> ReplySpec:
+def only_sends(entries: list[PendingWrite]) -> bool:
+    """[264]: everything waiting is a send (today's report), nothing to record: the card says Send."""
+    return bool(entries) and all(e.tool in SEND_TOOLS for e in entries)
+
+
+def press_line(entries: list[PendingWrite], language: str | None) -> str:
+    """The code's one line under a held list: "Tap Save to record these", or for a report send "Tap Send ..."."""
+    if only_sends(entries):
+        return _in(language, "api.press_send", PRESS_SEND)
+    return _in(language, "api.press_save", PRESS_SAVE)
+
+
+def _save_buttons(text: str, batch: str, *, send: bool = False) -> ReplySpec:
     # WA-208: Edit between them: fix one line (a misheard number, a wrong material) without cancelling it all.
-    return ReplySpec(text=text, buttons=(ListRow(id=f"{SAVE_PREFIX}{batch}", title="Save"),
+    return ReplySpec(text=text, buttons=(ListRow(id=f"{SAVE_PREFIX}{batch}", title=SEND_TITLE if send else "Save"),
                                           ListRow(id=f"{EDIT_PREFIX}{batch}", title=EDIT_TITLE),
                                           ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
 
@@ -1315,18 +1336,27 @@ def without_listed_lines(text: str, entries: list[PendingWrite], language: str |
     """WA-210 / WA-215: the reply text once the draft slip shows the list: every listed line comes out (the slip has
     them all, numbered), with the "Ready to save:" heading and the "tap Save" line (the button is under the card)."""
     listed = {f"{i}. {without_ids(e.summary)}" for i, e in enumerate(entries, 1)}
-    press = _in(language, "api.press_save", PRESS_SAVE)
+    press = press_line(entries, language)
     kept = [line for line in text.split("\n")
-            if line not in listed and line.strip() not in (press, READY_HEADING)]
+            if line not in listed and line.strip() not in (press, READY_HEADING, READY_SEND_HEADING)]
     words = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
-    return words or "OK."
+    # [264]: with no words of its own, the card's caption is the Save / Send line, never a bare "OK.".
+    return words or press
 
 
 def _saved_short(results: list[WriteResult], language: str | None, *, today: str) -> str:
     """WA-210: everything on the preview card saved: one line, then the record links (no repeat of the list)."""
     urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) for r in results]
     links = [line for line in with_links([""] * len(results), urls, today=today) if line]
-    return "\n".join([_in(language, "api.saved_short", SAVED_SHORT), *links])
+    sent = [sent_line(r, language) for r in results if r.pending.tool in SEND_TOOLS]
+    saved = [] if len(sent) == len(results) else [_in(language, "api.saved_short", SAVED_SHORT)]
+    return "\n".join([*saved, *sent, *links])
+
+
+def sent_line(result: WriteResult, language: str | None) -> str:
+    """[264]: what a Send tap did: "📤 Report sent: today's report for X. ...", never "Saved"."""
+    line = without_ids(result.pending.summary).removeprefix("📤").strip().rstrip(".") or "today's report"
+    return _in_with(language, "api.report_sent", REPORT_SENT, line=line)
 
 
 #: WA-208: an Edit answered within this long changes the line; later it is an ordinary message.
@@ -1381,17 +1411,21 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
     def converted(r: WriteResult) -> str:
         # WA-151: a line saved in another unit says what went into stock ("10 Numbers = 0.5 load").
         note = r.body.get("converted") if isinstance(r.body, dict) else None
+        if isinstance(r.body, dict) and r.body.get("already_listed"):
+            return " (already in your list)"  # [246]: added elsewhere first; its lines went on it
         return f" ({note} in stock)" if note else ""
 
     waiting = [r for r in results if held(r)]  # WA-197: held for the admin's size: never called saved
     results = [r for r in results if not held(r)]
-    lines = [f"✅ {r.pending.summary}{converted(r)}" if r.ok
-             else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}" for r in results]
+    lines = [(sent_line(r, language) if r.pending.tool in SEND_TOOLS else f"✅ {r.pending.summary}{converted(r)}")
+             if r.ok else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}" for r in results]
     if today:  # [228]: a link to each saved record's dashboard page, built from ids already returned
         urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) if r.ok else None
                 for r in results]
         lines = with_links(lines, urls, today=today)
     head = ("Saved." if all(r.ok for r in results) else "Not everything could be saved:") if results else ""
+    if results and all(r.ok and r.pending.tool in SEND_TOOLS for r in results):
+        head = ""  # [264]: a send is not a save: its own line says what happened
     text = (head + "\n" + "\n".join(lines)).strip()
     if waiting:
         lang = language if language in _HELD else "english"
@@ -1420,6 +1454,15 @@ def _channel(message: Any) -> str:
 
 #: WA-209: the transcript above a voice note's reply is cut here (a long note is still read in full).
 HEARD_MAX = 200
+
+
+_HEARD = re.compile(r"^[ \t]*🎤[^\n]*(?:\n|$)", re.MULTILINE)
+
+
+def without_heard_echo(text: str) -> str:
+    """[258] (5 Nov 13:07: the transcript shown twice): the text without a "🎤 _what was heard_" line. Only the code
+    draws that line (``heard_line``), once, on a voice note's reply; a copy the model wrote from the history goes."""
+    return re.sub(r"\n{3,}", "\n\n", _HEARD.sub("", text)).strip()
 
 
 def heard_line(said: str) -> str:

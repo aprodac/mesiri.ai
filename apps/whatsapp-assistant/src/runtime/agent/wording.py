@@ -458,6 +458,28 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "✅ सेव हो गया।",
         "hinglish": "✅ Save ho gaya.",
     },
+    # [264]: a card that holds only a report send: its line, the Send sentence, and what the tap did.
+    "api.send_line": {
+        "english": "📤 Today's report for *{project}*",
+        "manglish": "📤 *{project}* innathe report",
+        "malayalam": "📤 *{project}* ഇന്നത്തെ റിപ്പോർട്ട്",
+        "hindi": "📤 *{project}* की आज की रिपोर्ट",
+        "hinglish": "📤 *{project}* ki aaj ki report",
+    },
+    "api.press_send": {
+        "english": "Tap *Send* and it goes out in about a minute.",
+        "manglish": "*Send* amarthiyaal oru minute-il report pokum.",
+        "malayalam": "*Send* അമർത്തിയാൽ ഒരു മിനിറ്റിൽ റിപ്പോർട്ട് പോകും.",
+        "hindi": "*Send* दबाइए, लगभग एक मिनट में रिपोर्ट चली जाएगी।",
+        "hinglish": "*Send* dabaiye, ek minute mein report chali jayegi.",
+    },
+    "api.report_sent": {
+        "english": "📤 Report sent: {line}. It reaches the people who get the daily report in about a minute.",
+        "manglish": "📤 Report ayachu: {line}. Daily report kittunna ellaavarkkum oru minute-il ethum.",
+        "malayalam": "📤 റിപ്പോർട്ട് അയച്ചു: {line}. ദിവസ റിപ്പോർട്ട് കിട്ടുന്ന എല്ലാവർക്കും ഒരു മിനിറ്റിൽ എത്തും.",
+        "hindi": "📤 रिपोर्ट भेज दी: {line}. लगभग एक मिनट में रोज़ की रिपोर्ट पाने वाले सबको पहुँच जाएगी।",
+        "hinglish": "📤 Report bhej di: {line}. Ek minute mein daily report paane wale sabko pahunch jayegi.",
+    },
     "api.press_save": {
         "english": "Tap *Save* to record these.",
         "manglish": "Ithokke record cheyyaan *Save* amarthuka.",

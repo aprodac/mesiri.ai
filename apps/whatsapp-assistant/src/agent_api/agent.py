@@ -745,7 +745,14 @@ class ApiAgent:
                 if check.get("line"):
                     arguments = {**arguments, CONFIRM_ARG: check["line"]}  # drawn by the code, never the model's
             if name == ADD_TOOL:
-                if listed := await already_listed(client, str(body.get("name") or "")):
+                if (listed := await already_listed(client, str(body.get("name") or ""))) and " or " in listed:
+                    # [254]: "Metal" is the listed aggregate of either size: one question, never a new material.
+                    unit_ask[:] = [n.split(" (material_id")[0] for n in listed.split(" or ")][:3]
+                    return ToolOutcome(content={"error": (
+                        f"{body.get('name')!r} is what sites call {listed}, already in the company's list. Nothing was "
+                        "prepared. Do not add it: ask ONE question with `ask`, in their language, which one it is; "
+                        "then prepare the line on that material_id.")})
+                if listed:
                     # [243]: a material the company has is never added again; the line goes on the listed one.
                     return ToolOutcome(content={"error": (
                         f"{listed} is already in the company's list. Nothing was prepared. Do not add it: prepare the "
@@ -825,6 +832,10 @@ class ApiAgent:
                     # [257]: a project line the model wrote named a contract value and payment terms the body never
                     # carried; the card line is drawn from the fields that will be saved.
                     said_line = project_line(name, body, places, path) or said_line
+                if name in SEND_LINE_TOOLS:
+                    # [264] (5 Nov, Adarsh: "Send todays report" -> "OK." and a card line "Today's DPR report"): the
+                    # line of a report send is drawn by the code and names the project it goes out for.
+                    said_line = send_line(path, places, language) or said_line
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
                     summary=said_line + filled_unit + unit_note + site_note,
@@ -1558,6 +1569,20 @@ def project_line(tool: str, body: dict[str, Any], places: Places | None, path: s
     return f"*{current or 'Project'}*: {'; '.join(parts)}"
 
 
+#: [264] Writes that send something out (not a record): their card line is drawn by the code.
+SEND_LINE_TOOLS = frozenset({"send_dpr"})
+
+
+def send_line(path: str, places: Places | None, language: str | None) -> str:
+    """[264]: "📤 Today's report for *Green Villa*" in their language, from the project in the send's path.
+    Empty when the project is not one of theirs (the model's line then stays)."""
+    from runtime.agent.wording import say
+
+    m = re.search(r"/projects/([^/]+)/send", path or "")
+    name = next((pname for pid, pname in (places.projects if places else ()) if m and pid == m.group(1)), "")
+    return say("api.send_line", language or "english", project=name) if name else ""
+
+
 def _project_exists(twins: list[str], language: str | None) -> str:
     """[219]: "Rana Mart already exists ✅", and when there are several, that they can tidy them up on the dashboard."""
     from runtime.agent.wording import say
@@ -1677,9 +1702,19 @@ async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[s
                 continue
             entry = _with_material(entry, ref, material_id)
         done[i] = await _confirm_one(client, entry, names)
+        if entry.tool == ADD_TOOL and (existing := _already_there(done[i])):
+            # [246]: added elsewhere while the card waited (the dashboard, another message): the material is in the
+            # list, so the add counts as done and its lines go on the one already there, never refused with it.
+            done[i] = WriteResult(done[i].pending, 200, {"id": existing, "already_listed": True})
         if entry.tool == ADD_TOOL and done[i].ok and isinstance(done[i].body, dict) and done[i].body.get("id"):
             created[alias_key(str(entry.body.get("name") or ""))] = str(done[i].body["id"])
     return [done[i] for i in range(len(pending))]
+
+
+def _already_there(result: WriteResult) -> str:
+    """[246]: the id of the material an add found already listed (the API's 409 carries it), or ""."""
+    body = result.body if isinstance(result.body, dict) else {}
+    return str(body.get("existing_id") or "") if result.status == 409 else ""
 
 
 def _new_ref(entry: PendingWrite) -> str | None:

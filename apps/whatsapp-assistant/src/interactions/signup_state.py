@@ -39,6 +39,8 @@ class SignupState:
     trial_refused: bool = False
     #: SS-23: the team was already told today; a second tap does not post again.
     asked_team: bool = False
+    #: [256]: what they said about their project ("supermarket, G+1, ~7,000 sqft, turnkey"), kept for the project.
+    description: str | None = None
 
 
 class _RedisLike(Protocol):
@@ -67,6 +69,7 @@ class SignupStateStore:
             ask_name=bool(raw.get("ask_name")),
             trial_refused=bool(raw.get("trial_refused")),
             asked_team=bool(raw.get("asked_team")),
+            description=raw.get("description"),
         )
 
     async def set(
