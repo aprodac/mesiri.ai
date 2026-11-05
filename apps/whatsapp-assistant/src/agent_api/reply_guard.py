@@ -112,3 +112,23 @@ def without_internals(text: str) -> str:
     """``text`` without ids, and without any sentence that is an API error: the person cannot act on either."""
     kept = [part for part in sentences(text or "") if part and not _API_ERROR.search(_URL.sub("", part))]
     return without_ids("".join(kept))
+
+
+#: [247] Words too common in tool descriptions to say what a question is about.
+_PLAIN = frozenset("this that with from have what when where which done work site sites into your their them then also "
+                   "other about mesiri tool tools reply please project projects answer answers questions".split())
+
+
+def read_tools_for(topic: str, tools: dict[str, object]) -> list[str]:
+    """[247] The read tools (GET) whose name or description shares a word with ``topic``: the model's own words for what it
+    was asked (its tell_the_team ``about``, its reply), matched against the tools it has. No list of topic words here:
+    a new route is found by its own description. Empty when nothing matches (then the guard stays out)."""
+    stems = {w[:5] for w in re.findall(r"[a-z]{4,}", (topic or "").casefold()) if w not in _PLAIN}
+    found: list[str] = []
+    for name, tool in tools.items():
+        if getattr(tool, "is_write", True):
+            continue
+        words = re.findall(r"[a-z]{4,}", f"{name.replace('_', ' ')} {tool.spec.description}".casefold())  # type: ignore[attr-defined]
+        if stems & {w[:5] for w in words if w not in _PLAIN}:
+            found.append(name)
+    return found

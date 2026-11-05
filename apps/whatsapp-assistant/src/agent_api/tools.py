@@ -299,3 +299,24 @@ def _clean(schema: dict[str, Any], components: dict[str, Any], depth: int = 0) -
     if "type" not in out and "properties" not in out:
         out["type"] = "string"
     return out
+
+
+def what_mesiri_does(tools: dict[str, ApiTool]) -> str:
+    """[247] A short "What Mesiri does" block drawn from the tool list itself, so a new route is in it with no edit
+    here. Three groups by what the route is: record (a write, saved on one Save tap), reports (the day, the DPR, the
+    timeline) and ask (every other read). The model answers "what can Mesiri do" from it (SOP rule 11)."""
+    groups: dict[str, list[str]] = {"record": [], "ask": [], "reports": []}
+    for tool in tools.values():
+        first = tool.spec.description.replace(_WRITE, "").split(". ")[0].strip().rstrip(".")
+        line = f"{tool.name}: {first[:110]}"
+        if tool.is_write:
+            groups["record"].append(line)
+        elif tool.path.startswith(("/dpr", "/timeline")):
+            groups["reports"].append(line)
+        else:
+            groups["ask"].append(line)
+    heads = {"record": "Record (the person sends it as a message, a voice note or a photo; one Save tap keeps it)",
+             "ask": "Ask (answered from what is recorded: progress, issues, stock, attendance, expenses, materials)",
+             "reports": "Reports (what happened on a day, the daily report, the timeline)"}
+    return "What Mesiri does (from your tools, this is the whole list):\n" + "\n".join(
+        f"{heads[g]}:\n" + "\n".join(f"- {line}" for line in lines) for g, lines in groups.items() if lines)

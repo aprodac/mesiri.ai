@@ -45,11 +45,12 @@ from .materials import (
 from .reply_guard import (
     claims_cannot,
     claims_saved,
+    read_tools_for,
     without_ids,
     without_internals,
     without_saved_claims,
 )
-from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
+from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool, what_mesiri_does
 from .units import (
     is_stock_unit_refusal,
     is_uuid,
@@ -383,7 +384,7 @@ class ApiAgent:
     def system_prompt(self, *, sender_name: str, today: dt.date, ready: list[PendingWrite] | None = None,
                       facts: str = "") -> str:
         who = f"You are talking to {sender_name}. " if sender_name else ""
-        prompt = f"{self._sop}\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
+        prompt = f"{self._sop}\n\n{what_mesiri_does(self._tools)}\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
         if facts:
             prompt += f"\n\n{facts}"
         if ready:
@@ -831,7 +832,8 @@ class ApiAgent:
             # out four times on 3 Nov, WA-196). One more try: the tools first; if none does it, the team builds it.
             again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
                 role="user", text="(You said it can't be done, but you looked at no tool. Check your tools first: if one "
-                                  "does what I asked, do it now. If none does, call tell_the_team (missing_feature) and "
+                                  "does what I asked, do it now" + hint_reads(read_tools_for(f"{text} {result.text}", self._tools))
+                                  + ". If none does, call tell_the_team (missing_feature) and "
                                   "tell me the way for now, or what you can do instead. Never just say no.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
             again_asked = True
@@ -840,6 +842,26 @@ class ApiAgent:
                 code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
                     "kind": "missing_feature", "about": f"Mesiri said it cannot do this; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-199)"}})
+        looked = lambda calls: any(getattr(self._tools.get(c.name), "is_write", True) is False for c in calls)  # noqa: E731
+        if told(result.calls) and not looked(result.calls) and not again_asked:
+            # [247] (Ilan, 5 Nov): "how far is the project / what can Mesiri do" went to the team as a missing feature
+            # while work_progress, list_issues and day_summary were there. The topic is the model's own (what it told
+            # the team); a read tool that shares it makes the turn run once more, told which. If that reads, the
+            # team is not told (nothing is missing); if it does not, the team stays told.
+            asked_about = " ".join(f"{c.arguments.get('about', '')} {c.arguments.get('why', '')}" for c in result.calls
+                                   if c.name == TELL_THE_TEAM)
+            reads = read_tools_for(f"{asked_about} {result.text}", self._tools)
+            if reads:
+                again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                    role="user", text="(You passed this to the team, but you read nothing" + hint_reads(reads) + ". "
+                                      "If one of them answers my message, use it now and answer from what it returns; "
+                                      "if nothing is recorded, say so and give an example message to send. Do not call "
+                                      "tell_the_team for something these tools answer.)")])
+                again_asked = True
+                if looked(again.calls):
+                    result = again.model_copy(update={"calls": [c for c in result.calls if c.name != TELL_THE_TEAM] + again.calls})
+                else:  # nothing read: the team stays told once, not twice
+                    result = again.model_copy(update={"calls": [*result.calls, *[c for c in again.calls if c.name != TELL_THE_TEAM]]})
         lost = left_over(own_words(text), " ".join([
             kept_texts(result.calls, [e for e in waiting if e is not None] + new, asked, result.text),
             *_place_names(places)])) if (new or changed) and not again_asked else []  # "Tower 2" is a name
@@ -1328,6 +1350,11 @@ def claims_team(text: str | None) -> bool:
 
 def told(calls: list[Any]) -> bool:
     return any(getattr(c, "name", None) == TELL_THE_TEAM for c in calls)
+
+
+def hint_reads(names: list[str]) -> str:
+    """[247] ", a read tool exists: a, b" for the corrective retries; nothing when no tool matched."""
+    return f". A read tool exists for this: {', '.join(names[:6])}" if names else ""
 
 
 async def unit_from_summary(client: ApiClient, entry: PendingWrite) -> str:
