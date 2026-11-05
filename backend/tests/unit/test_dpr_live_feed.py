@@ -101,6 +101,20 @@ def test_spending_is_marked_money():
     assert live_feed.classify(_row("m", [_turn(["record_receipt"])]))["money"] is False
 
 
+def test_what_mesiri_did_in_plain_words_once_each():
+    what = live_feed.classify(_row("m", [_turn(["search_materials", "stock_check", "stock_check", "record_usage", "unknown_tool"])]))
+    assert what["did"] == ["Found the material", "Checked the stock", "Prepared the usage"]
+
+
+def test_a_transfer_names_its_two_sites():
+    a, b = str(uuid.uuid4()), str(uuid.uuid4())
+    what = live_feed.classify(_row("m", [_turn(["record_transfer"], transfers=[{"from_site_id": a, "to_site_id": b}])]))
+    assert (what["kind"], what["transfer"]) == ("transfer", {"from_site_id": a, "to_site_id": b})
+    # The guard: a half-known transfer draws no arc.
+    half = live_feed.classify(_row("m", [_turn(["record_transfer"], transfers=[{"from_site_id": a, "to_site_id": None}])]))
+    assert half["transfer"] is None
+
+
 def test_unknown_trace_shapes_never_break_it():
     what = live_feed.classify(_row("m", [None, {"tools": None, "saved": "x", "pending": [None, ""]}]))  # type: ignore[list-item]
     assert what["kind"] == "chat"

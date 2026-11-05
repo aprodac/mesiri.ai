@@ -81,6 +81,45 @@ KIND_LABELS: dict[str, str] = {
 }
 
 
+#: What Mesiri did along the way, in plain words, for the screen's "brain" line. A tool not here is left out.
+TOOL_WORDS: dict[str, str] = {
+    "list_projects": "Looked up the projects",
+    "list_sites": "Found the site",
+    "day_summary": "Read the day's updates",
+    "timeline": "Read who reported what",
+    "site_day": "Read the site's report",
+    "search_materials": "Found the material",
+    "list_units": "Checked the unit",
+    "stock_levels": "Checked the stock",
+    "stock_check": "Checked the stock",
+    "stock_summary": "Worked out the stock",
+    "list_receipts": "Read what came in",
+    "list_usage": "Read what was used",
+    "labour_attendance": "Read the attendance",
+    "list_workers": "Looked up the workers",
+    "work_progress": "Read the work done",
+    "work_item": "Found the work item",
+    "list_issues": "Read the open issues",
+    "list_expenses": "Read the expenses",
+    "expense_categories": "Checked the categories",
+    "money_accounts": "Checked the accounts",
+    "list_vendors": "Looked up the vendor",
+    "material_categories": "Checked the categories",
+    "size_requests": "Checked the sizes asked",
+    "my_requests": "Read your requests",
+    "record_attendance": "Prepared the attendance",
+    "record_work": "Prepared the work entry",
+    "correct_work": "Prepared the correction",
+    "record_receipt": "Prepared the delivery",
+    "record_usage": "Prepared the usage",
+    "record_transfer": "Prepared the transfer",
+    "record_expense": "Prepared the expense",
+    "report_issue": "Prepared the issue",
+    "resolve_issue": "Prepared closing the issue",
+    "send_dpr": "Prepared the report",
+}
+
+
 def _tools(turns: list[dict[str, Any]]) -> list[str]:
     return [t for turn in turns for t in (turn.get("tools") or []) if isinstance(t, str) and t]
 
@@ -96,7 +135,9 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
     ``draft`` (waiting for ✅ Save), ``asked`` (Mesiri asked something back),
     ``answered`` (a question, answered), ``failed`` (a save refused), or
     ``heard`` (nothing more to show). ``summaries``: the entries it saved or
-    holds, in Mesiri's words. ``money``: about spending (SEC-01).
+    holds, in Mesiri's words. ``did``: its lookups and preparations in plain
+    words (``TOOL_WORDS``). ``transfer``: a transfer's two site ids, for the
+    arc between them. ``money``: about spending (SEC-01).
     """
     turns = [t for t in (row.get("turns") or []) if isinstance(t, dict)]
     tools = _tools(turns)
@@ -145,8 +186,23 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
     money = kind in MONEY_KINDS or any(t in EXPENSE_TOOLS for t in tools) or (
         tapped_tool is not None and WRITE_KINDS.get(tapped_tool) in MONEY_KINDS
     )
+    did: list[str] = []
+    for tool in tools:
+        words = TOOL_WORDS.get(tool)
+        if words and words not in did:
+            did.append(words)
+    transfer = next(
+        (
+            {"from_site_id": str(t["from_site_id"]), "to_site_id": str(t["to_site_id"])}
+            for turn in turns for t in (turn.get("transfers") or [])
+            if isinstance(t, dict) and t.get("from_site_id") and t.get("to_site_id")
+        ),
+        None,
+    )
     return {
         "kind": kind,
+        "did": did[:5],
+        "transfer": transfer,
         "label": KIND_LABELS[kind],
         "state": state,
         "summaries": summaries[:6],
