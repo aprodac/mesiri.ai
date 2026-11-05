@@ -433,6 +433,7 @@ Plan: [procurement-plan.md](procurement-plan.md). Decisions D1–D6 in the plan;
 | PRC-15 | Rate on the order card | S | Should | PRC-14, PRC-09 | todo | — | |
 | PRC-16 | Rates page; vendor page shows last rates | M | Must | PRC-14 | todo | — | |
 | PRC-17 | Stock for a period (opening, received, used, closing) per category and site, WhatsApp and dashboard; running low | M | Must | PRC-01 | todo | — | |
+| PRC-17a | **Categories in WhatsApp stock answers** (asked by Ilan 5 Nov: "in messages the categories should come too"): every stock row names its category ("Electrical › Switches & sockets"); `GET /materials/inventory?category_id=` (a main category includes its subs); "electrical stock?" answered by category; a long stock answer grouped by main category | S | Must | PRC-01, PRC-02 | in progress | Claude (session 5 Nov, procurement) | |
 | PRC-18 | Direct vs petty cash in every total | S | Must | — | todo | — | D3 |
 | PRC-19 | Weekly / monthly report: PDF, Excel, dashboard page | L | Must | PRC-17, PRC-18 | todo | — | |
 | PRC-20 | Scheduled period report on WhatsApp (`MONTHLY`, `SEND_PERIOD_REPORT`) | S | Should | PRC-19 | todo | — | |
