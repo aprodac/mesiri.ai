@@ -17,7 +17,7 @@ LANG = "manglish"
 
 async def _cancelled(h: Harness):
     await h.service.handle(_message(), CTX)
-    _save, cancel = h.buttons()
+    _save, _edit, cancel = h.buttons()
     await h.service.handle(_message("Cancel", tap=cancel), CTX)
     return h.sent[-1]
 
@@ -70,7 +70,7 @@ async def test_tm45_every_save_tap_is_traced_with_what_was_refused_and_why() -> 
     """2 Nov (Ilan's loop): three refused Saves left no trace, so nobody saw the same line refused again and again."""
     h = Harness(two_receipts_model(), refuse_tmt=True)
     await h.service.handle(_message(), CTX)
-    save, _cancel = h.buttons()
+    save, _edit, _cancel = h.buttons()
     await h.service.handle(_message("Save", tap=save), CTX)
     payload = h.trace.log_stage.await_args.kwargs["stage_payload"]
     results = payload["save_results"]

@@ -72,7 +72,7 @@ async def test_dont_know_holds_the_line_for_the_admin_keeps_the_rest_and_runs_no
     await h.service.handle(_message("🤷 Ariyilla", tap="apiag:opt:2"), ENGINEER)
     reply = h.sent[-1]
     assert reply.text.startswith("👍 Maatti vechu: 1 load msand Tower A.")
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]  # the cement still saves with one tap
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]  # the cement still saves with one tap
     held = store.size_requests[0]
     assert held["held_lines"][0]["body"]["unit_id"] == LOAD and held["held_lines"][0]["body"]["quantity"] == 1
     assert "size_needed" not in await h.state()

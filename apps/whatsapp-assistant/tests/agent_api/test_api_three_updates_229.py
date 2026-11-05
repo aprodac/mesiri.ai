@@ -138,12 +138,12 @@ async def test_the_whole_journey_three_updates_one_save(posted: list) -> None:
     voice = _message(None, modality=wa.InputModality.VOICE)
     assert await h.service.handle(voice, CTX)
     reply = h.sent[-1]
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]  # the Save button is sent with the list
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]  # the Save button is sent with the list
     assert all(f"{i}. " in reply.text for i in (1, 2, 3))
     assert "Ithu save cheyyanayi" not in reply.text  # the model's own copy is cut
     assert reply.text.count(say("api.press_save", "manglish")) == 1  # the code's line, once (their language)
     assert posted == []  # nothing saved before Save
-    save, _cancel = h.buttons()
+    save, _edit, _cancel = h.buttons()
     assert await h.service.handle(_message("Save", tap=save), CTX)
     by_kind = {k: b for k, b in posted}
     assert len(posted) == 3
@@ -160,13 +160,13 @@ async def test_a_question_for_one_line_keeps_the_others_with_save(posted: list) 
     reply = h.sent[-1]
     assert "1. 20 bags cement" in reply.text and "2. 5 masons" in reply.text
     # A question with no buttons of its own leaves Save / Cancel under the list.
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
 
 
 async def test_a_said_date_is_used_as_said(posted: list) -> None:
     h = _harness(_model([_labour(5, occurred_date="2026-11-03")], "Ready."), posted)
     await h.service.handle(_message("innale 5 mason undayirunnu"), CTX)
-    save, _ = h.buttons()
+    save, _edit, _ = h.buttons()
     await h.service.handle(_message("Save", tap=save), CTX)
     assert posted[0][1]["occurred_date"] == "2026-11-03"
 
@@ -175,7 +175,7 @@ async def test_each_number_stays_with_its_item(posted: list) -> None:
     # "aaru" = 6; the model first reuses the cement's 20, the code refuses, the model corrects itself.
     h = _harness(_model([_receipt(20), _labour(20)], [_labour(6)], "Ready."), posted)
     await h.service.handle(_message("20 bag cement, aaru mason pani eduthu"), CTX)
-    save, _ = h.buttons()
+    save, _edit, _ = h.buttons()
     await h.service.handle(_message("Save", tap=save), CTX)
     assert {k: b for k, b in posted}["labour"]["lines"][0]["headcount"] == 6
 

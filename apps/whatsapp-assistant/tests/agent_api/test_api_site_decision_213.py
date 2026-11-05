@@ -133,7 +133,7 @@ async def test_through_whatsapp_the_saved_site_stays_the_site_after_a_new_projec
     await service.handle(_message("20 bag cement vannu"), ctx)
     [entry] = (await service._state(ctx))["pending"]
     assert entry["body"]["project_id"] == PROJECT and entry["body"]["site_id"] == SITE
-    assert [b.title for b in sent[-1].buttons] == ["Save", "Cancel"]
+    assert [b.title for b in sent[-1].buttons] == ["Save", "✏️ Edit", "Cancel"]
 
 
 # [215] (re-opens [209]/[212]/[213]; the [213] build never reached main). Live, 3 Nov ~09:45 IST, Mesiri Test Builders,

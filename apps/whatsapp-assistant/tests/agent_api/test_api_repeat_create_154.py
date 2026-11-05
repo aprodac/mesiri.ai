@@ -105,4 +105,4 @@ async def test_through_whatsapp_a_resent_message_asks_before_a_second_copy() -> 
 
     service._agent._provider = FakeToolCallingProvider(prepare)
     await service.handle(_message("athe, onnu koodi"), CTX)  # yes, another
-    assert [b.title for b in sent[-1].buttons] == ["Save", "Cancel"]
+    assert [b.title for b in sent[-1].buttons] == ["Save", "✏️ Edit", "Cancel"]

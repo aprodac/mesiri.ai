@@ -73,7 +73,7 @@ async def test_a_prepared_entry_called_saved_is_still_only_ready() -> None:
     await service.handle(_message("50 bag cement vannu"), CTX)
     reply = sent[-1]
     assert "saved." not in reply.text.casefold().split("ready to save")[0]
-    assert LINE in reply.text and [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert LINE in reply.text and [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
 
 
 async def test_saved_with_no_tool_gets_one_more_try_and_the_entry_is_prepared() -> None:

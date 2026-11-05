@@ -131,7 +131,7 @@ async def test_a_question_comes_with_its_options_as_buttons_and_a_tap_answers_it
 async def test_without_a_question_the_list_has_one_save_button() -> None:
     service, sent = _service(two_receipts_model())
     await service.handle(_message("50 bag cement and 50 TMT"), CTX)
-    assert [b.title for b in sent[-1].buttons] == ["Save", "Cancel"]
+    assert [b.title for b in sent[-1].buttons] == ["Save", "✏️ Edit", "Cancel"]
 
 
 # -- a bill photo ----------------------------------------------------------------------------

@@ -75,7 +75,7 @@ async def test_malayalam_script_prose_telling_to_press_save_is_cut_and_the_code_
     service, sent = _service(model, app=_app([]))
     await service.handle(_message("സിമന്റ് 20 ബാഗ് വന്നു, 20 മേസൺ പണി, സ്ലാബ് പണി കഴിഞ്ഞു"), CTX)
     reply = sent[-1]
-    assert "\n3. " in reply.text and [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert "\n3. " in reply.text and [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
     assert "ഇത് സേവ് ചെയ്യാൻ" not in reply.text  # the model's sentence is cut
     assert reply.text.count(say("api.press_save", "malayalam")) == 1
 
@@ -86,7 +86,7 @@ async def test_hindi_prose_with_a_held_list_has_one_save_line_in_hindi() -> None
     service, sent = _service(model, app=_app([]))
     await service.handle(_message("20 बोरी सीमेंट आया, 20 मिस्त्री ने काम किया, स्लैब का काम हो गया"), CTX)
     reply = sent[-1]
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
     assert "सेव करने के लिए Save बटन" not in reply.text
     assert reply.text.count(say("api.press_save", "hindi")) == 1
 
@@ -129,7 +129,7 @@ async def test_the_same_mistake_in_another_tool_usage_without_a_date_gets_today(
     model = FakeToolCallingProvider([[usage], "Ready."])
     service, sent = _service(model, app=_app(posted))
     await service.handle(_message("5 bag cement upayogichu"), CTX)
-    assert [b.title for b in sent[-1].buttons] == ["Save", "Cancel"]
+    assert [b.title for b in sent[-1].buttons] == ["Save", "✏️ Edit", "Cancel"]
     await service.handle(_message("Save", tap=sent[-1].buttons[0].id), CTX)
     assert posted and posted[0][1]["occurred_date"].isoformat() == TODAY
 
@@ -139,7 +139,7 @@ async def test_guard_one_ready_line_with_model_prose_that_says_save_keeps_a_sing
     service, sent = _service(model, app=_app([]))
     await service.handle(_message("20 bag cement came"), CTX)
     reply = sent[-1]
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
     assert "Please tap Save" not in reply.text and reply.text.count(say("api.press_save", "english")) == 1
 
 
@@ -148,5 +148,5 @@ async def test_hinglish_prose_with_a_held_list_has_one_save_line() -> None:
     service, sent = _service(model, app=_app([]))
     await service.handle(_message("20 bag cement aaya, slab ka kaam ho gaya"), CTX)
     reply = sent[-1]
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
     assert "Save dabao." not in reply.text.replace(say("api.press_save", "hinglish"), "")

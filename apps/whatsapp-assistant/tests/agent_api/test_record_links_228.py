@@ -107,7 +107,7 @@ async def test_the_whole_journey_message_save_then_ask_for_the_link() -> None:
     h = Harness(two_receipts_model())
     await h.service.handle(_message("50 bag cement, 50 TMT vannu"), CTX)
     assert "🔗" not in h.sent[-1].text  # nothing saved yet, nothing to open
-    save, _cancel = h.buttons()
+    save, _edit, _cancel = h.buttons()
     await h.service.handle(_message("Save", tap=save), CTX)
     reply = h.sent[-1].text
     posted = [p for m, p, *_ in h.seen if m == "POST"]

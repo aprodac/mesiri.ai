@@ -88,7 +88,7 @@ async def test_a_message_gets_the_models_words_the_ready_list_and_save_cancel() 
     reply = h.sent[-1]
     assert reply.text.startswith("Ready: 50 bags cement")
     assert "*Ready to save:*\n1. 50 bags cement, Green Villa\n2. 50 TMT bars, Green Villa" in reply.text
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
     assert h.posts() == 0
     h.logger.log_reply.assert_awaited()
     h.logger.mark_completed.assert_awaited()
@@ -100,7 +100,7 @@ async def test_a_message_gets_the_models_words_the_ready_list_and_save_cancel() 
 async def test_save_sends_them_to_the_api_once() -> None:
     h = Harness(two_receipts_model())
     await h.service.handle(_message(), CTX)
-    save, _cancel = h.buttons()
+    save, _edit, _cancel = h.buttons()
     assert await h.service.handle(_message("Save", tap=save), CTX)
     assert h.posts() == 2
     assert h.sent[-1].text.startswith("Saved.") and "✅ 50 TMT bars, Green Villa" in h.sent[-1].text
@@ -127,7 +127,7 @@ async def test_cancel_and_an_older_lists_button_save_nothing() -> None:
         # second message: the model prepares one more entry; the list (and its buttons) is new
     ]))
     await h.service.handle(_message(), CTX)
-    old_save, cancel = h.buttons()
+    old_save, _edit, cancel = h.buttons()
     await h.service.handle(_message("Cancel", tap=cancel), CTX)
     assert h.sent[-1].buttons and h.sent[-1].buttons[0].id.startswith(wa.WHY_PREFIX) and h.posts() == 0  # WA-146
     await h.service.handle(_message("Save", tap=old_save), CTX)
@@ -149,7 +149,7 @@ async def test_a_voice_note_is_transcribed_first() -> None:
     h = Harness(model, transcript="50 bag cement, 50 TMT vannu")
     assert await h.service.handle(_message(None, modality=InputModality.VOICE), CTX)
     assert model.last_messages[-1].text == "50 bag cement, 50 TMT vannu"
-    assert [b.title for b in h.sent[-1].buttons] == ["Save", "Cancel"]
+    assert [b.title for b in h.sent[-1].buttons] == ["Save", "✏️ Edit", "Cancel"]
 
 
 async def test_an_empty_voice_note_is_said_plainly() -> None:
@@ -219,7 +219,7 @@ async def test_a_company_on_api_mode_gets_the_api_agent(monkeypatch) -> None:
     await on_normalized(_message(), {})
     sent = deps["sender"].send_button.await_args.kwargs
     assert "*Ready to save:*" in sent["body"]
-    assert [b.title for b in sent["buttons"]] == ["Save", "Cancel"]
+    assert [b.title for b in sent["buttons"]] == ["Save", "✏️ Edit", "Cancel"]
     deps["memory_coordinator"].record_turn.assert_not_awaited()  # the classic turn never ran
 
 

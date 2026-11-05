@@ -78,7 +78,7 @@ async def test_three_updates_in_one_voice_note_are_held_with_one_save_and_saved_
     await service.handle(_message("20 bag cement vannu, 20 mason pani eduthu, slab pani kazhinju"), CTX)
     reply = sent[-1]
     assert reply.text.count("\n1. ") == 1 and "\n3. " in reply.text  # three lines held
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]
+    assert [b.title for b in reply.buttons] == ["Save", "✏️ Edit", "Cancel"]
     assert reply.text.lower().count("save") == 2  # "Ready to save:" and the code's own line; the model's was cut
     assert "Press Save" not in reply.text
     await service.handle(_message("Save", tap=reply.buttons[0].id), CTX)

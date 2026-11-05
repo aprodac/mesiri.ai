@@ -363,6 +363,29 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "धन्यवाद 👍 टीम को बता दिया। सही तरीके से फिर भेजिए, मैं तैयार कर दूँगा।",
         "hinglish": "Thanks 👍 Team ko bata diya. Sahi tarike se phir bhejiye, main ready kar dunga.",
     },
+    # WA-208: the Edit button on a ready list. The Malayalam and Hindi lines are Claude's drafts, for the team
+    # to correct.
+    "api.edit_which": {
+        "english": "Which line do you want to change?",
+        "manglish": "Ethu line aanu maattendathu?",
+        "malayalam": "ഏത് വരിയാണ് മാറ്റേണ്ടത്?",
+        "hindi": "कौन सी लाइन बदलनी है?",
+        "hinglish": "Kaunsi line badalni hai?",
+    },
+    "api.edit_pick": {
+        "english": "Choose the line",
+        "manglish": "Line choose cheyyu",
+        "malayalam": "വരി തിരഞ്ഞെടുക്കൂ",
+        "hindi": "लाइन चुनें",
+        "hinglish": "Line chuniye",
+    },
+    "api.edit_ask": {
+        "english": "What should *{item}* be? Send the right figure, typed or as a voice note.",
+        "manglish": "*{item}*: sheriyaaya figure enthaanu? Type cheytho voice note aayo ayakkoo.",
+        "malayalam": "*{item}*: ശരിയായ കണക്ക് എന്താണ്? ടൈപ്പ് ചെയ്തോ വോയ്സ് നോട്ട് ആയോ അയക്കൂ.",
+        "hindi": "*{item}*: सही आँकड़ा क्या है? टाइप करके या वॉइस नोट से भेजिए।",
+        "hinglish": "*{item}*: sahi figure kya hai? Type karke ya voice note se bhejiye.",
+    },
     "api.cancel_other": {
         "english": "Thanks. What was wrong? Send it as a message or a voice note.",
         "manglish": "Thanks. Enthaanu thettiyathu? Message aayo voice note aayo ayakkoo.",

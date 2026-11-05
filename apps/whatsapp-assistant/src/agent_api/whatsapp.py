@@ -99,6 +99,10 @@ STATE_TTL_SECONDS = 24 * 3600
 SIZES_TTL_SECONDS = 180 * 24 * 3600
 SAVE_PREFIX = "apiag:save:"
 CANCEL_PREFIX = "apiag:cancel:"
+#: WA-208: "✏️ Edit" on a ready list ("apiag:edit:<batch>"), and the line picked from a longer list
+#: ("apiag:editline:<batch>:<number>").
+EDIT_PREFIX = "apiag:edit:"
+EDIT_LINE_PREFIX = "apiag:editline:"
 OPTION_PREFIX = "apiag:opt:"
 #: WA-168: an admin's one tap confirming a size proposed for the company ("apiag:size:<request id>").
 SIZE_PREFIX = "apiag:size:"
@@ -145,6 +149,11 @@ _SEND_PDF_TOOL = ToolSpec(name=SEND_PDF, description=(
 SPOKEN_LANGUAGE = {"manglish": "malayalam", "hinglish": "hindi"}
 
 COULD_NOT_HEAR = "I couldn't hear that voice note. Please send it again or type it."
+#: WA-208: the Edit button and its questions.
+EDIT_TITLE = "✏️ Edit"
+EDIT_WHICH = "Which line do you want to change?"
+EDIT_PICK = "Choose the line"
+EDIT_ASK = "What should *{item}* be? Send the right figure, typed or as a voice note."
 COULD_NOT_READ = "I couldn't read that photo. Please send it again, or type what it is."
 NOT_NOW = "I couldn't work on that just now. Please send it again in a minute."
 NOTHING_WAITING = "There is nothing waiting to save."
@@ -248,6 +257,9 @@ class ApiWhatsApp:
                 # WA-147: every Cancel is counted (the weekly digest, the production watch), reason or not.
                 cancelled = (await self._state(ctx)).get("cancelled") or []
                 await self._trace_turn(message, {"text": said, "calls": [], "cancelled": cancelled}, started)
+        elif tap.startswith((EDIT_PREFIX, EDIT_LINE_PREFIX)):
+            said = "(tapped Edit)"
+            reply = await self._on_edit(tap, ctx)
         elif tap.startswith(SIZE_PREFIX):
             said = "(tapped to confirm a size)"
             reply = await self._on_size_tap(tap[len(SIZE_PREFIX):], ctx)
@@ -362,8 +374,13 @@ class ApiWhatsApp:
                 # how it should be instead; the waiting list is kept as it is, not drawn again.
                 return await self._feedback_only(message, ctx, state, calls, text, started)
             places = _places(ctx, state.get("working_site"))
+            # WA-208: after Edit, this message is the right figure for one line: the model is told which, and the
+            # code makes sure that line is the one changed (below).
+            editing = _editing(state, ready)
+            state.pop("editing", None)
             run = dict(
-                text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
+                text=_edit_note(editing) + text if editing else text,
+                history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 facts=facts + _working_fact(places), photo_key=photo_key, language=_turn_language(text, state),
                 language_chosen=bool(_chosen(state)),
@@ -391,6 +408,8 @@ class ApiWhatsApp:
             return await self._failed(exc, text, message, ctx, state, started)
         finally:
             await client.close()
+        if editing:
+            turn = dataclasses.replace(turn, pending=edited_list(ready, turn.pending, editing["number"]))
         calls = [{**c, "args": c.get("arguments")} for c in turn.calls]
         unchanged = not turn.saved and [e.summary for e in turn.pending] == [e.summary for e in ready]
         awaiting = state.pop("awaiting_why", None)
@@ -759,6 +778,38 @@ class ApiWhatsApp:
         await self._save_state(ctx, state)
         return _save_buttons(text, state["batch"]) if left else ReplySpec(text=text)
 
+    async def _on_edit(self, tap: str, ctx: Any) -> ReplySpec:
+        """WA-208: "✏️ Edit" on a ready list. One line: ask its right figure at once; several: pick the line first.
+        The next message (typed or a voice note) changes only that line."""
+        state = await self._state(ctx)
+        batch, _, number = tap.split(":", 2)[2].partition(":")
+        if not state.get("pending") or state.get("batch") != batch:
+            return ReplySpec(text=NOTHING_WAITING)
+        entries = [PendingWrite.from_json(e) for e in state["pending"]]
+        language = state.get("language")
+        if not number and len(entries) > 1:
+            rows = tuple(
+                ListRow(id=f"{EDIT_LINE_PREFIX}{batch}:{i}", title=_row_title(i, e.summary),
+                        description=without_ids(e.summary)[:72])
+                for i, e in enumerate(entries[:10], 1)
+            )
+            return ReplySpec(text=_in(language, "api.edit_which", EDIT_WHICH),
+                             list_button_label=_in(language, "api.edit_pick", EDIT_PICK), list_rows=rows)
+        line = int(number) if number.isdigit() else 1
+        if not 1 <= line <= len(entries):
+            return ReplySpec(text=NOTHING_WAITING)
+        state["editing"] = {"batch": batch, "number": line, "summary": entries[line - 1].summary, "at": time.time()}
+        await self._save_state(ctx, state)
+        item = without_ids(entries[line - 1].summary)
+        if language and language != "english":
+            from runtime.agent.wording import say
+
+            ask = say("api.edit_ask", language, item=item)
+        else:
+            ask = EDIT_ASK.format(item=item)
+        return ReplySpec(text=ask,
+                         buttons=(ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel"),))
+
     async def _on_why(self, code: str, message: Any, ctx: Any) -> ReplySpec:
         """WA-146: the reason for a Cancel, as feedback to the team bot (the shape its watch reads)."""
         started = time.monotonic()
@@ -849,7 +900,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -1153,8 +1204,58 @@ def _refused_to_keep(results: list[WriteResult], state: dict) -> tuple[list[Pend
 
 
 def _save_buttons(text: str, batch: str) -> ReplySpec:
+    # WA-208: Edit between them: fix one line (a misheard number, a wrong material) without cancelling it all.
     return ReplySpec(text=text, buttons=(ListRow(id=f"{SAVE_PREFIX}{batch}", title="Save"),
+                                          ListRow(id=f"{EDIT_PREFIX}{batch}", title=EDIT_TITLE),
                                           ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
+
+
+#: WA-208: an Edit answered within this long changes the line; later it is an ordinary message.
+EDIT_SECONDS = 15 * 60
+
+
+def _editing(state: dict, ready: list[PendingWrite]) -> dict | None:
+    """The line an Edit tap asked about, while it is still on the list and the tap is recent."""
+    editing = state.get("editing")
+    if not isinstance(editing, dict) or time.time() - float(editing.get("at") or 0) > EDIT_SECONDS:
+        return None
+    if editing.get("batch") != state.get("batch"):
+        return None
+    number = int(editing.get("number") or 0)
+    if not 1 <= number <= len(ready) or ready[number - 1].summary != editing.get("summary"):
+        return None
+    return editing
+
+
+def _edit_note(editing: dict) -> str:
+    return (f"(They tapped Edit on ready entry {editing['number']}: \"{without_ids(editing['summary'])}\". "
+            "This message is its right value: change ONLY that entry with change_ready_entry; "
+            "prepare nothing new.)\n")
+
+
+def edited_list(ready: list[PendingWrite], pending: list[PendingWrite], number: int) -> list[PendingWrite]:
+    """WA-208: after an Edit the list keeps its lines, with only line `number` changed. The model reads the
+    figure; the code decides where it goes: a new entry it prepared instead of changing the line takes the
+    line's place, and nothing else is added or lost."""
+    kept = {e.idempotency_key for e in ready}
+    new = [e for e in pending if e.idempotency_key not in kept]  # a changed line is a new write (new key)
+    by_key = {e.idempotency_key: e for e in pending}
+    out: list[PendingWrite] = []
+    for i, old in enumerate(ready, 1):
+        if i == number:
+            # The changed line (or the one prepared instead); gone when they said to remove it.
+            line = new[0] if new else by_key.get(old.idempotency_key)
+            if line is not None:
+                out.append(line)
+        else:
+            out.append(old)  # the other lines stay exactly as they were, whatever the model did to them
+    return out
+
+
+def _row_title(number: int, summary: str) -> str:
+    """A list row's title is at most 24 characters: "1. Cement in: 10 bags"."""
+    title = f"{number}. {without_ids(summary)}"
+    return title if len(title) <= 24 else title[:23].rstrip() + "…"
 
 
 def _saved_text(results: list[WriteResult], language: str | None = None, *, today: str | None = None) -> str:
