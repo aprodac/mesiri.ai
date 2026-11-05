@@ -108,7 +108,10 @@ async def _create(name: str, text: str, language: str | None, places: Places = P
 async def test_an_existing_project_is_said_by_the_code_and_not_offered_again() -> None:
     turn = await _create("rana  mart", "Rana Mart project create", None)
     assert turn.pending == [] and turn.options == [] and turn.question == ""
-    assert turn.reply == "Rana Mart already exists ✅ (2 of them: please tidy them up on the dashboard)"
+    # [221]: the copies are listed here (records unreadable in this stand-in: never archived on a guess), not sent to
+    # the dashboard.
+    assert turn.reply.startswith("Rana Mart already exists ✅ You have 2 projects with this name:")
+    assert "dashboard" not in turn.reply
 
 
 async def test_sibling_in_manglish_and_a_single_existing_project() -> None:

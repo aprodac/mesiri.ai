@@ -788,6 +788,19 @@ class ApiAgent:
                 # [219]: a project they already have is said by the code, in their language; never "I made a mistake",
                 # never an offer to make a second one with the same name.
                 exists[:] = [_project_exists(twins, language)]
+                if len(twins) > 1:
+                    # [221] (3 Nov: "3 of them: please tidy them up on the dashboard"): tidied here. The copies are listed
+                    # with their sites and records; empty copies are held for archiving (Save), never deleted.
+                    line, archive = await tidy_twins(client, str(body.get("name") or ""), places, language)
+                    exists[:] = [line]
+                    new.extend(archive)
+                    numbered = "; ".join(f"{i}. project_id {pid}" for i, pid in enumerate(
+                        twin_ids(str(body.get("name") or ""), places), 1))
+                    return ToolOutcome(content={"status": (
+                        f"{twins[0]} already exists {len(twins)} times; nothing new was prepared. The code lists them "
+                        f"for the person ({numbered}) and holds archiving the empty copies, if any. Say nothing about "
+                        "it. If they later say which number to keep, prepare update_project status \"archived\" for "
+                        "the OTHER numbers (never delete).")})
                 return ToolOutcome(content={"status": (
                     f"{twins[0]} already exists; nothing was prepared. The code tells the person; say nothing about "
                     "it and do not offer to create another one with the same name.")})
@@ -1613,6 +1626,53 @@ def send_line(path: str, places: Places | None, language: str | None) -> str:
     m = re.search(r"/projects/([^/]+)/send", path or "")
     name = next((pname for pid, pname in (places.projects if places else ()) if m and pid == m.group(1)), "")
     return say("api.send_line", language or "english", project=name) if name else ""
+
+
+def twin_ids(name: str, places: Places | None) -> list[str]:
+    """[221]: the ids of the person's projects called ``name`` (case and spacing aside), in their list's order."""
+    key = " ".join(name.casefold().split())
+    return [pid for pid, pname in (places.projects if places else ()) if " ".join(pname.casefold().split()) == key]
+
+
+async def _records(client: ApiClient, project_id: str) -> int | None:
+    """[221]: how many records a project has (its timeline's total), or None when it can't be read."""
+    try:
+        response = await client.call("GET", "/timeline", params={"project_id": project_id, "limit": 1})
+    except Exception:  # noqa: BLE001
+        return None
+    body = response.body if response.ok and isinstance(response.body, dict) else {}
+    total = body.get("total")
+    return int(total) if isinstance(total, int) else None
+
+
+async def tidy_twins(client: ApiClient, name: str, places: Places | None,
+                     language: str | None) -> tuple[str, list[PendingWrite]]:
+    """[221]: the person's projects called ``name``, listed ("1. Rana Mart · 2 sites · 14 records"), and the empty
+    copies held for archiving (the dashboard's own status, through update_project): Save tidies them, nothing is
+    deleted. When more than one copy has records, nothing is held: they say which to keep. A copy whose records
+    can't be read counts as having some (never archived on a guess)."""
+    import asyncio
+
+    from runtime.agent.wording import say
+
+    lang = language or "english"
+    twins = [(pid, pname) for pid, pname in (places.projects if places else ()) if pid in twin_ids(name, places)]
+    counts = await asyncio.gather(*(_records(client, pid) for pid, _ in twins))
+    sites = {pid: sum(1 for s in (places.sites if places else ()) if s[2] == pid) for pid, _ in twins}
+    lines = [say("api.twin_line", lang, number=str(i), name=pname, sites=str(sites[pid]),
+                 records="—" if n is None else str(n)) for i, ((pid, pname), n) in enumerate(zip(twins, counts, strict=True), 1)]
+    head = say("api.project_twins_found", lang, name=twins[0][1] if twins else name, count=str(len(twins)))
+    used = [i for i, n in enumerate(counts) if n != 0]
+    if len(used) > 1:
+        return "\n".join([head, *lines, "", say("api.project_twins_pick", lang)]), []
+    keep = used[0] if used else 0
+    archive = [PendingWrite(tool="update_project", method="PUT", path=f"/projects/{pid}", params={},
+                            body={"status": "archived"},
+                            summary=say("api.twin_archive", lang, number=str(i), name=pname),
+                            idempotency_key=new_idempotency_key())
+               for i, (pid, pname) in enumerate(twins, 1) if i - 1 != keep]
+    tail = say("api.project_twins_archive", lang, number=str(keep + 1))
+    return "\n".join([head, *lines, "", tail]), archive
 
 
 def _project_exists(twins: list[str], language: str | None) -> str:

@@ -408,6 +408,42 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "{name} पहले से है ✅",
         "hinglish": "{name} pehle se hai ✅",
     },
+    # [221]: twin projects tidied on WhatsApp (archived through update_project, never deleted).
+    "api.project_twins_found": {
+        "english": "{name} already exists ✅ You have {count} projects with this name:",
+        "manglish": "{name} ippo thanne undu ✅ Ee peril {count} project undu:",
+        "malayalam": "{name} ഇപ്പോൾ തന്നെ ഉണ്ട് ✅ ഈ പേരിൽ {count} പ്രോജക്റ്റുകൾ ഉണ്ട്:",
+        "hindi": "{name} पहले से है ✅ इस नाम के {count} प्रोजेक्ट हैं:",
+        "hinglish": "{name} pehle se hai ✅ Is naam ke {count} projects hain:",
+    },
+    "api.twin_line": {
+        "english": "{number}. {name} · {sites} sites · {records} records",
+        "manglish": "{number}. {name} · {sites} site · {records} records",
+        "malayalam": "{number}. {name} · {sites} സൈറ്റ് · {records} റെക്കോർഡ്",
+        "hindi": "{number}. {name} · {sites} साइट · {records} रिकॉर्ड",
+        "hinglish": "{number}. {name} · {sites} site · {records} records",
+    },
+    "api.twin_archive": {
+        "english": "🗂️ Archive copy {number} of *{name}* (no records)",
+        "manglish": "🗂️ *{name}* copy {number} archive cheyyuka (records illa)",
+        "malayalam": "🗂️ *{name}* കോപ്പി {number} ആർക്കൈവ് ചെയ്യുക (റെക്കോർഡ് ഇല്ല)",
+        "hindi": "🗂️ *{name}* की कॉपी {number} आर्काइव करें (कोई रिकॉर्ड नहीं)",
+        "hinglish": "🗂️ *{name}* ki copy {number} archive karein (koi record nahi)",
+    },
+    "api.project_twins_archive": {
+        "english": "Number {number} stays. Save archives the empty copies: nothing is deleted.",
+        "manglish": "{number}-aam number nilkkum. Save amarthiyaal records illaatha copies archive aakum: onnum delete aakilla.",
+        "malayalam": "{number}-ാം നമ്പർ നിലനിൽക്കും. Save അമർത്തിയാൽ റെക്കോർഡ് ഇല്ലാത്ത കോപ്പികൾ ആർക്കൈവ് ആകും: ഒന്നും ഡിലീറ്റ് ആകില്ല.",
+        "hindi": "नंबर {number} रहेगा. Save दबाने पर खाली कॉपियाँ आर्काइव होंगी: कुछ भी डिलीट नहीं होगा.",
+        "hinglish": "Number {number} rahega. Save dabane par khaali copies archive hongi: kuch delete nahi hoga.",
+    },
+    "api.project_twins_pick": {
+        "english": "More than one has records. Tell me which number to keep, and I'll get the others ready to archive (nothing is deleted).",
+        "manglish": "Onniladhikam project-il records undu. Ethu number vekkanam ennu parayoo, baakki archive cheyyaan ready aakkaam (onnum delete aakilla).",
+        "malayalam": "ഒന്നിലധികം പ്രോജക്റ്റുകളിൽ റെക്കോർഡ് ഉണ്ട്. ഏത് നമ്പർ വെക്കണം എന്ന് പറയൂ, ബാക്കി ആർക്കൈവ് ചെയ്യാൻ തയ്യാറാക്കാം (ഒന്നും ഡിലീറ്റ് ആകില്ല).",
+        "hindi": "एक से ज़्यादा में रिकॉर्ड हैं. बताइए कौन सा नंबर रखना है, बाकी को आर्काइव के लिए तैयार कर दूँगा (कुछ डिलीट नहीं होगा).",
+        "hinglish": "Ek se zyada mein records hain. Batao kaunsa number rakhna hai, baaki ko archive ke liye ready kar dunga (kuch delete nahi hoga).",
+    },
     "api.project_twins": {
         "english": "({count} of them: please tidy them up on the dashboard)",
         "manglish": "({count} ennam undu: dashboard-il onnaakkoo)",
