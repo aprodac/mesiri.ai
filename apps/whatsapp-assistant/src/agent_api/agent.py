@@ -768,6 +768,7 @@ class ApiAgent:
                 system, msgs, specs, handler, max_steps=self._max_steps, timeout_seconds=self._timeout,
                 correlation_id=correlation_id, **extra)
 
+        again_asked = False  # WA-198: one corrective retry per turn at most (reply time)
         try:
             result = await ask_model(messages)
         except Exception as exc:
@@ -784,6 +785,7 @@ class ApiAgent:
                 role="user", text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
                                   "message asks now with the tools, or say plainly what you need.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            again_asked = True
         if claims_team(result.text) and not told(result.calls):
             # WA-155 (3 Nov): nothing checked that "I've told the team" was true. One more try, told plainly; if it
             # still says so without calling, the code passes it on itself, so what the person was told is true.
@@ -792,6 +794,7 @@ class ApiAgent:
                                   "If I asked for something you can't do, or complained, call tell_the_team now; "
                                   "otherwise answer without saying the team was told.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            again_asked = True
             if claims_team(result.text) and not told(result.calls):
                 code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
                     "kind": "missing_feature", "about": f"Mesiri told them the team was told; passed on by the code: {text[:300]}"},
@@ -804,6 +807,19 @@ class ApiAgent:
                 role="user", text="(You called no tool, so nothing was saved in this turn. Do what my message asks now "
                                   "with the tools. If you were telling me about an earlier record, look it up with a "
                                   "tool and answer from that.)")])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            again_asked = True
+        lost = left_over(own_words(text), " ".join([
+            kept_texts(result.calls, [e for e in waiting if e is not None] + new, asked, result.text),
+            *_place_names(places)])) if (new or changed) and not again_asked else []  # "Tower 2" is a name
+        if lost:
+            # WA-198 (basic 2, lose nothing): a number they said is in nothing this turn prepared, asked or answered
+            # ("20 bag cement, 6 mason" with only the cement on the card). One more try, told which; never a loop.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                role="user", text=(f"(My message also said {', '.join(lost)}, and nothing you prepared, asked or "
+                                   "answered has it. Every part of my message is prepared or asked about: prepare that "
+                                   "part now, or ask about it in one question. Keep everything already prepared. If "
+                                   "it is not an update (a phone number, a time), just answer.)"))])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
         false_saved = (claims_saved(result.text) and not any(r.ok for r in saved) and not told(result.calls)
                        and bool(new or changed or saved or not result.calls))
@@ -881,6 +897,48 @@ def number_clash(text: str, body: dict[str, Any], others: list[dict[str, Any]]) 
                     "Nothing was prepared. Use the number they said for THIS item (a number word counts: "
                     "aaru/ആറ് = 6, anchu/അഞ്ച് = 5, pathu = 10), or ask for it with `ask` if you cannot tell.")
     return ""
+
+
+#: WA-198: numbers that are not amounts: times (10:30, 10am), dates (5/11, 05-11-2026), ordinals and floors (2nd,
+#: 3rd), refs (#123, [243]), and long digit runs (phone numbers, ids).
+_NOT_AN_AMOUNT = re.compile(
+    r"\d{1,2}[:.]\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm)\b|\d{1,4}[/-]\d{1,2}(?:[/-]\d{2,4})?"
+    r"|\d+(?:st|nd|rd|th)\b|[#\[]\d+\]?|\d{6,}", re.IGNORECASE)
+
+
+#: WA-198: ids in what a turn kept (uuids, hex keys): their digits are not amounts ("4b2e5df7-4..." holds a "4").
+_IDS = re.compile(r"\b(?=[0-9a-f-]*[a-f])[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b|\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)"
+                  r"[0-9a-f]{12,}\b", re.IGNORECASE)
+
+
+def left_over(text: str, kept: str) -> list[str]:
+    """WA-198: the numbers written in ``text`` (their message) that appear nowhere in ``kept`` (everything the turn
+    prepared, asked, answered or looked up). Times, dates, ordinals, refs and phone numbers are not amounts."""
+    said = _NUMBER.findall(_NOT_AN_AMOUNT.sub(" ", text or ""))
+    have = {float(n) for n in _NUMBER.findall(_IDS.sub(" ", kept or ""))}
+    return list(dict.fromkeys(n for n in said if float(n) not in have))
+
+
+def own_words(text: str) -> str:
+    """WA-198: the person's own words: a photo's reading (added by the code, a bill's GST and invoice numbers) is not."""
+    return (text or "").split(PHOTO_SHOWS, 1)[0]
+
+
+#: How the code adds a photo's reading to the message (``whatsapp._photo_text``).
+PHOTO_SHOWS = "\nWhat the photo shows:"
+
+
+def kept_texts(calls: list[Any], held: list[PendingWrite], asked: dict[str, Any], reply: str | None) -> str:
+    """WA-198: what a turn did with the message, as text: the held entries (bodies and lines), the question and its
+    options, the reply, and the arguments of every call. A call the code refused counts too: the model did use the
+    number, and the refusal tells it what to do with it ("Already saved", a number said once)."""
+    parts = [json.dumps(e.body, default=str, ensure_ascii=False) + " " + e.summary for e in held]
+    parts += [str(asked.get("question") or ""), " ".join(asked.get("options") or []), reply or ""]
+    for c in calls:
+        if c.name in (SAVE_READY, DROP_READY, CHANGE_READY):
+            continue  # entry numbers, not their amounts
+        parts.append(json.dumps(c.arguments, default=str, ensure_ascii=False))
+    return " ".join(parts)
 
 
 def _typed(old: Any, value: Any) -> Any:
