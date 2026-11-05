@@ -822,6 +822,10 @@ class ApiAgent:
                     # [257]: a project line the model wrote named a contract value and payment terms the body never
                     # carried; the card line is drawn from the fields that will be saved.
                     said_line = project_line(name, body, places, path) or said_line
+                if name in SEND_LINE_TOOLS:
+                    # [264] (5 Nov, Adarsh: "Send todays report" -> "OK." and a card line "Today's DPR report"): the
+                    # line of a report send is drawn by the code and names the project it goes out for.
+                    said_line = send_line(path, places, language) or said_line
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
                     summary=said_line + filled_unit + unit_note + site_note,
@@ -1553,6 +1557,20 @@ def project_line(tool: str, body: dict[str, Any], places: Places | None, path: s
     if not parts:
         return ""
     return f"*{current or 'Project'}*: {'; '.join(parts)}"
+
+
+#: [264] Writes that send something out (not a record): their card line is drawn by the code.
+SEND_LINE_TOOLS = frozenset({"send_dpr"})
+
+
+def send_line(path: str, places: Places | None, language: str | None) -> str:
+    """[264]: "📤 Today's report for *Green Villa*" in their language, from the project in the send's path.
+    Empty when the project is not one of theirs (the model's line then stays)."""
+    from runtime.agent.wording import say
+
+    m = re.search(r"/projects/([^/]+)/send", path or "")
+    name = next((pname for pid, pname in (places.projects if places else ()) if m and pid == m.group(1)), "")
+    return say("api.send_line", language or "english", project=name) if name else ""
 
 
 def _project_exists(twins: list[str], language: str | None) -> str:
