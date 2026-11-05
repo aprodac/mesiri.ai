@@ -35,7 +35,7 @@ a view switch (`Segmented`), not several sidebar entries.
 | **WhatsApp** | `/whatsapp` (`?view=messages`, `?view=automations`) | Conversations · All messages · Automations (module) (was WhatsApp Inbox, Automations, Company > messages) |
 | Finance | `/finance/...` | only when the company has the module |
 | *(no sidebar)* | `/live` | the company Live (WEB-53, WEB-54): every message to Mesiri with its reply, Mesiri's character handling each (voice waveform, words turning into English, what it did), the sites flashing as they land, a transfer flying between sites, a new site popping in, "Mesiri noticed" when it catches a mistake, the day's totals; Replay the day; Presenter mode with a QR code; Tell Mesiri |
-| *(no sidebar)* | `/live?site=…` | a site's Live report: the day writing itself as messages come in; Replay the day; Tell Mesiri |
+| *(no sidebar)* | `/live?site=…` | the company Live with a site's Live report in a panel over it (WEB-59): the day writing itself, its modules, Replay the day; Close / Esc back to the company |
 | *(no sidebar)* | `/login`, `/signup`, `/welcome` | sign-in and signup with the intro conversation on the left on desktop (sign-in shows only the form below desktop width); the first-update screen after signup (SS-18) |
 
 Rules:

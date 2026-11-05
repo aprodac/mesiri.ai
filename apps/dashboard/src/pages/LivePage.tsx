@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Mic, Monitor } from 'lucide-react'
+import { AlertTriangle, Mic, Monitor, X } from 'lucide-react'
 import {
   fetchBranding,
   fetchFactSourcesApi,
@@ -581,15 +581,36 @@ function DayProgress({
 }
 
 export default function LivePage() {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [today] = React.useState(() => localIsoDate(new Date()))
   const date = params.get('date') || today
-  // WEB-53: the company Live by default; a site's Live report when one is named (old links keep working).
-  if (!params.get('site')) return <CompanyLive date={date} isToday={date === today} />
-  return <SiteLive />
+  // WEB-59: one Live, the company's. A site's own report writing itself opens over it in a panel (?site=…, so old
+  // links open the company Live with that site's panel open); closing the panel takes ?site off the address.
+  const closeSite = React.useCallback(
+    () =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('site')
+          next.delete('tell')
+          return next
+        },
+        { replace: true },
+      ),
+    [setParams],
+  )
+  return (
+    <CompanyLive
+      date={date}
+      isToday={date === today}
+      sitePanel={params.get('site') ? <SiteLive onClose={closeSite} /> : null}
+      onCloseSite={closeSite}
+    />
+  )
 }
 
-function SiteLive() {
+/** A site's day writing itself (WEB-37 ..); shown in the company Live's site panel (WEB-59). */
+function SiteLive({ onClose }: { onClose: () => void }) {
   const { me } = useAuth()
   const [params, setParams] = useSearchParams()
   const [today] = React.useState(() => localIsoDate(new Date()))
@@ -1575,7 +1596,7 @@ function SiteLive() {
   }
 
   return (
-    <div className="min-h-svh bg-background px-4 pb-16 sm:px-8 lg:px-12">
+    <div className="bg-background px-4 pb-16 sm:px-8 lg:px-10">
       <div className="mx-auto max-w-[1440px]">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-6 pb-4">
           <div className="flex items-baseline gap-4">
@@ -1633,15 +1654,13 @@ function SiteLive() {
                 Review
               </Link>
             )}
-            <Link
-              to={`/live${params.get('date') ? `?date=${date}` : ''}`}
-              className="border-b border-foreground font-mono text-[11px] uppercase tracking-[0.06em]"
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex items-center gap-2 border border-foreground px-3 py-2 text-sm font-medium hover:bg-foreground hover:text-background"
             >
-              Whole company
-            </Link>
-            <Link to="/today" className="border-b border-foreground font-mono text-[11px] uppercase tracking-[0.06em]">
-              Exit
-            </Link>
+              <X className="size-4" /> Close
+            </button>
           </div>
         </header>
         <div className="h-px bg-foreground" />

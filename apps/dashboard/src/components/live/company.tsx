@@ -1,8 +1,9 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowLeftRight,
   Boxes,
   Camera,
@@ -36,7 +37,6 @@ import {
   fetchSiteDaysApi,
   type LiveFeedItem,
   type LiveKind,
-  type SiteDayItem,
 } from '@/lib/api'
 import { noticeOf } from '@/lib/live-reading'
 import { longDate } from '@/lib/site-day'
@@ -48,7 +48,8 @@ import { Label } from '@/components/onboarding/conversation'
 import { QrCode } from '@/components/onboarding/qr-code'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { CountTo } from './ink'
-import { useCinematicGo } from './modules'
+import { LIVE_MODULES, useCinematicGo } from './modules'
+import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
 import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, LanguageMoment, answers as answersOf, cleanReply } from './moments'
 import { Spark, type SparkMood } from './spark'
@@ -123,6 +124,55 @@ const TONES: Record<KindLook['tone'], string> = {
   money: 'text-[var(--draft)] bg-[var(--draft-soft)]',
   info: 'text-[var(--ai)] bg-[var(--ai-soft)]',
   plain: 'text-muted-foreground bg-muted',
+}
+
+/** Where Mesiri's work goes (WEB-59): the module pages, the company Live's right column. The first four are the site
+ * Live's own (LIVE_MODULES); a message flies to the one that keeps what it said, and each opens its page. */
+type DestKey = 'labour' | 'work' | 'materials' | 'issues' | 'expenses' | 'reports' | 'projects'
+interface Dest {
+  key: DestKey
+  name: string
+  keeps: string
+  path: string
+  icon: LucideIcon
+  module?: ModuleKey
+}
+const DESTS: Dest[] = [
+  ...LIVE_MODULES.map((m) => ({ key: m.section as DestKey, name: m.name, keeps: m.keeps, path: m.path, icon: m.icon, module: m.module })),
+  { key: 'expenses', name: 'Expenses', keeps: 'Money spent, with the bills', path: '/finance/expenses', icon: IndianRupee, module: 'finance' },
+  { key: 'reports', name: 'Daily reports', keeps: 'Each site’s report, sent at the day’s end', path: '/reports', icon: FileText, module: 'dpr' },
+  { key: 'projects', name: 'Projects & sites', keeps: 'Sites, people, report time', path: '/projects', icon: Flag },
+]
+const KIND_DEST: Partial<Record<LiveKind, DestKey>> = {
+  attendance: 'labour',
+  work: 'work',
+  correction: 'work',
+  delivery: 'materials',
+  usage: 'materials',
+  transfer: 'materials',
+  catalogue: 'materials',
+  issue: 'issues',
+  issue_closed: 'issues',
+  expense: 'expenses',
+  report: 'reports',
+  setup: 'projects',
+}
+/** What a question looked up, from what Mesiri did ("Checked the stock" → Materials). */
+const LOOKUP_DEST: [RegExp, DestKey][] = [
+  [/stock|material|came in|used/i, 'materials'],
+  [/attendance|workers/i, 'labour'],
+  [/work/i, 'work'],
+  [/issue/i, 'issues'],
+  [/expense|account|vendor/i, 'expenses'],
+  [/report|day’s updates|who reported/i, 'reports'],
+  [/project|site/i, 'projects'],
+]
+/** The module a message's work went to, if any. */
+function destOf(m: LiveFeedItem): Dest | null {
+  const key =
+    KIND_DEST[m.kind === 'saved' && m.saved_kind ? m.saved_kind : m.kind] ??
+    (m.kind === 'question' ? LOOKUP_DEST.find(([re]) => m.did.some((d) => re.test(d)))?.[1] : undefined)
+  return DESTS.find((d) => d.key === key) ?? null
 }
 
 const isVoice = (m: LiveFeedItem) => /voice|audio/.test(m.type)
@@ -293,7 +343,20 @@ function Flyer({ flight, onDone }: { flight: Flight; onDone: () => void }) {
   )
 }
 
-export function CompanyLive({ date, isToday }: { date: string; isToday: boolean }) {
+export function CompanyLive({
+  date,
+  isToday,
+  sitePanel,
+  onCloseSite,
+}: {
+  date: string
+  isToday: boolean
+  /** A site's own Live report, shown in a panel over the company Live (?site=…). */
+  sitePanel: React.ReactNode
+  onCloseSite: () => void
+}) {
+  const [, setParams] = useSearchParams()
+  const moduleEnabled = useModuleEnabled()
   const [since, until] = React.useMemo(() => dayWindow(date), [date])
   const feed = useQuery({
     queryKey: ['live-feed', date],
@@ -353,7 +416,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
   /** Replay plays faster. */
   const speed = React.useRef(1)
   const sparkRef = React.useRef<HTMLDivElement>(null)
-  const siteRefs = React.useRef(new Map<string, HTMLElement>())
+  const destRefs = React.useRef(new Map<DestKey, HTMLElement>())
   /** Each site's lines Mesiri has flagged, as last read: a new one is a mistake just caught. */
   const flagged = React.useRef(new Map<string, Set<string>>())
 
@@ -428,17 +491,12 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
       const fly = (a: DOMRect | undefined, b: DOMRect | undefined, delay = 0) => {
         if (a && b && !prefersReducedMotion()) setFlights((f) => [...f, { key: Math.random(), from: a, to: b, delay }])
       }
-      const transfer = item.transfer
-      if (transfer && siteRefs.current.has(transfer.from_site_id) && siteRefs.current.has(transfer.to_site_id)) {
-        // Materials move from one site to the other: three lights along the arc between them.
-        const a = siteRefs.current.get(transfer.from_site_id)?.getBoundingClientRect()
-        const b = siteRefs.current.get(transfer.to_site_id)?.getBoundingClientRect()
-        for (const delay of [0, 160, 320]) fly(a, b, delay)
-        ring(transfer.from_site_id, 'land', 0)
-        ring(transfer.to_site_id, 'land', 900)
-      } else if (item.site_id) {
-        fly(from, siteRefs.current.get(item.site_id)?.getBoundingClientRect())
-        ring(item.site_id, alarm ? 'alarm' : 'land', 850)
+      // Its work flies on to the module that keeps it (a transfer: three, one after another, as the stock moves).
+      const dest = destOf(item)
+      if (dest) {
+        const to = destRefs.current.get(dest.key)?.getBoundingClientRect()
+        for (const delay of item.transfer ? [0, 160, 320] : [0]) fly(from, to, delay)
+        ring(dest.key, alarm ? 'alarm' : 'land', 850)
       }
       // The sites' numbers (and a site just added) catch up as it lands.
       if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
@@ -597,13 +655,51 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
   })()
   const answers = current ? qa.of.get(current.item.id) ?? null : null
 
-  const openSite = (s: SiteDayItem, el: HTMLElement) =>
+  /** A site's own report writing itself, in the panel (?site=…, so the address can be shared). */
+  const openSite = (siteId: string | null, projectId: string | null) => {
+    if (!siteId) return
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('site', siteId)
+      if (projectId) next.set('project', projectId)
+      return next
+    })
+  }
+  /** A module's page, with a cinematic cut: the whole company, or one message's project and site. */
+  const openDest = (d: Dest, el: HTMLElement, m?: LiveFeedItem) => {
+    const scope = new URLSearchParams()
+    if (m?.project_id) scope.set('project', m.project_id)
+    if (m?.site_id) scope.set('site', m.site_id)
     cinematic.go({
       from: el.getBoundingClientRect(),
-      to: `/live?project=${s.project_id}&site=${s.site_id}${isToday ? '' : `&date=${date}`}`,
-      title: s.site_name,
-      kicker: [s.project_name, longDate(date)].filter(Boolean).join(' · '),
+      to: `${d.path}${scope.size ? `?${scope}` : ''}`,
+      title: d.name,
+      kicker: [m?.site_name ?? 'All sites', longDate(date)].filter(Boolean).join(' · '),
+      line: m ? m.summaries[0] ?? m.text ?? undefined : undefined,
     })
+  }
+  const destOn = (d: Dest) => !d.module || moduleEnabled(d.module)
+  // What each module got today: entries saved there, and the last one.
+  const destCounts = new Map<DestKey, { n: number; last: string | null }>()
+  for (const m of items) {
+    if (!shown.has(m.id)) continue
+    const d = destOf(m)
+    if (!d) continue
+    const was = destCounts.get(d.key) ?? { n: 0, last: null }
+    destCounts.set(d.key, {
+      n: was.n + (m.state === 'saved' || m.state === 'answered' ? 1 : 0),
+      last: m.summaries[0] ?? (m.kind === 'question' ? cleanReply(m.reply) : m.text) ?? was.last,
+    })
+  }
+  const newSiteNames = sites.filter((s) => newSites.has(s.site_id)).map((s) => s.site_name)
+  React.useEffect(() => {
+    if (!sitePanel) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseSite()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sitePanel, onCloseSite])
 
   return (
     <div className={cn('min-h-svh bg-background px-4 pb-6 sm:px-8 sm:pb-24 lg:px-12', presenting && 'text-[1.12rem]')}>
@@ -696,7 +792,11 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
               ) : (
                 <ol className="m-0 mt-4 grid list-none gap-3 p-0" aria-live="polite">
                   {stream.slice(0, 40).map((m) => (
-                    <MessageCard key={m.id} m={m} active={current?.item.id === m.id} answers={qa.of.get(m.id) ?? null} answered={qa.answered.has(m.id)} />
+                    <MessageCard key={m.id} m={m} active={current?.item.id === m.id} answers={qa.of.get(m.id) ?? null}
+                      answered={qa.answered.has(m.id)}
+                      onSite={() => openSite(m.site_id, m.project_id)}
+                      onDest={(d, el) => openDest(d, el, m)}
+                    />
                   ))}
                 </ol>
               )}
@@ -802,6 +902,16 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                 </div>
                 <Steps step={current?.step ?? null} />
                 <Did current={current} />
+                {current?.step === 'done' && destOf(current.item) && current.item.source !== 'sample' && (
+                  <button
+                    type="button"
+                    onClick={(e) => openDest(destOf(current.item)!, e.currentTarget, current.item)}
+                    className="flex items-center gap-1.5 border-b border-foreground text-sm font-medium hover:text-primary"
+                    style={prefersReducedMotion() ? undefined : { animation: 'live-in 400ms ease-out' }}
+                  >
+                    Open in {destOf(current.item)!.name} <ArrowRight className="size-3.5" />
+                  </button>
+                )}
                 {presenting && qrLink && (
                   <div className="mt-2 flex items-center gap-5 border-t border-foreground/15 pt-6 text-left">
                     <QrCode value={qrLink} label={`QR code to message Mesiri at ${number}`} className="size-36 shrink-0" />
@@ -820,57 +930,85 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
               )}
             </section>
 
-            {/* The sites */}
-            <section aria-label="Sites" className="order-3 min-w-0 lg:col-span-2 xl:col-span-1">
-              <Label>Sites · {totals.reported} of {sites.length} heard from</Label>
-              <ul className="m-0 mt-4 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-1">
-                {sites.map((s) => (
-                  <li key={s.site_id}>
-                    <button
-                      type="button"
-                      ref={(el) => {
-                        if (el) siteRefs.current.set(s.site_id, el)
-                        else siteRefs.current.delete(s.site_id)
-                      }}
-                      onClick={(e) => openSite(s, e.currentTarget)}
-                      className={cn(
-                        'relative grid w-full gap-2 border bg-background px-4 py-3 text-left transition-colors hover:border-foreground',
-                        ringing.get(s.site_id) === 'alarm' ? 'z-40 border-[var(--destructive)]' : newSites.has(s.site_id) ? 'border-primary' : 'border-foreground/20',
-                      )}
-                      style={
-                        prefersReducedMotion()
-                          ? undefined
-                          : ringing.get(s.site_id) === 'alarm'
-                            ? { animation: 'live-shake 600ms ease-out 2' }
-                            : ringing.has(s.site_id)
-                              ? { animation: 'live-land 1.4s ease-out' }
-                              : newSites.has(s.site_id)
-                                ? { animation: 'live-pop 900ms cubic-bezier(.3,1.5,.5,1) both' }
-                                : undefined
-                      }
-                    >
-                      {newSites.has(s.site_id) && (
-                        <span className="absolute -top-2.5 right-3 bg-primary px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-primary-foreground">
-                          New site
+            {/* Where it goes: the modules that keep Mesiri's work, each opening its page. */}
+            <section aria-label="Where it goes" className="order-3 min-w-0 lg:col-span-2 xl:col-span-1">
+              <Label>Where it goes</Label>
+              <ul className="m-0 mt-4 grid list-none grid-cols-1 gap-px bg-foreground/15 p-0 sm:grid-cols-2 xl:grid-cols-1">
+                {DESTS.filter(destOn).map((d) => {
+                  const Icon = d.icon
+                  const got = destCounts.get(d.key)
+                  const how = ringing.get(d.key)
+                  const fresh = d.key === 'projects' && newSiteNames.length > 0
+                  return (
+                    <li key={d.key} className="bg-background">
+                      <button
+                        type="button"
+                        ref={(el) => {
+                          if (el) destRefs.current.set(d.key, el)
+                          else destRefs.current.delete(d.key)
+                        }}
+                        onClick={(e) => openDest(d, e.currentTarget)}
+                        className={cn(
+                          'group relative grid w-full gap-1 border px-3.5 py-3 text-left transition-colors duration-300 hover:bg-foreground hover:text-background',
+                          how === 'alarm' ? 'z-40 border-[var(--destructive)] bg-background' : fresh ? 'border-primary' : 'border-transparent',
+                        )}
+                        style={
+                          prefersReducedMotion()
+                            ? undefined
+                            : how === 'alarm'
+                              ? { animation: 'live-shake 600ms ease-out 2' }
+                              : how
+                                ? { animation: 'live-land 1.4s ease-out' }
+                                : fresh
+                                  ? { animation: 'live-pop 900ms cubic-bezier(.3,1.5,.5,1) both' }
+                                  : undefined
+                        }
+                      >
+                        {fresh && (
+                          <span className="absolute -top-2.5 right-3 bg-primary px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-primary-foreground">
+                            New site
+                          </span>
+                        )}
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2 text-[14px] font-semibold">
+                            <span className="grid size-7 place-items-center rounded-full border border-current">
+                              <Icon className="size-3.5" />
+                            </span>
+                            {d.name}
+                          </span>
+                          <span className="flex items-center gap-1.5 font-mono text-[13px] tabular-nums">
+                            <CountTo value={got?.n ?? 0} />
+                            <ArrowRight className="size-3.5 opacity-40 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100" />
+                          </span>
                         </span>
-                      )}
-                      <span className="flex items-baseline justify-between gap-3">
-                        <span className="truncate text-[15px] font-semibold">{s.site_name}</span>
-                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                          {s.last_update_at ? clock(s.last_update_at) : 'not yet'}
+                        <span className="truncate pl-9 text-[12px] text-muted-foreground group-hover:text-background/70">
+                          {fresh ? `New: ${newSiteNames.join(', ')}` : got?.last ? short(got.last, 60) : d.keeps}
                         </span>
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">{s.project_name}</span>
-                      <span className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px]">
-                        <Stat n={s.workers} what={s.workers === 1 ? 'worker' : 'workers'} />
-                        <Stat n={s.work_items + s.progress_updates} what="work" />
-                        <Stat n={s.materials} what="materials" />
-                        {s.open_issues > 0 && <Stat n={s.open_issues} what={s.open_issues === 1 ? 'issue' : 'issues'} warn />}
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
+              <label className="mt-5 grid gap-1.5">
+                <Label>A site’s day</Label>
+                <select
+                  aria-label="Open a site’s day"
+                  value=""
+                  onChange={(e) => {
+                    const s = sites.find((x) => x.site_id === e.target.value)
+                    if (s) openSite(s.site_id, s.project_id)
+                  }}
+                  className="h-9 border border-foreground/30 bg-background px-2 text-sm"
+                >
+                  <option value="">Open a site… ({totals.reported} of {sites.length} heard from)</option>
+                  {sites.map((s) => (
+                    <option key={s.site_id} value={s.site_id}>
+                      {s.site_name} · {s.project_name}
+                      {s.last_update_at ? ` · ${clock(s.last_update_at)}` : ' · not yet'}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </section>
           </div>
         )}
@@ -892,6 +1030,14 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
         </div>
       </footer>
 
+      {sitePanel && (
+        <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true" aria-label="A site’s day">
+          <button type="button" aria-label="Close" onClick={onCloseSite} className="absolute inset-0 cursor-default bg-foreground/30 animate-in fade-in duration-300" />
+          <div className="absolute inset-y-0 right-0 w-full max-w-[1240px] overflow-y-auto border-l-2 border-foreground bg-background animate-in slide-in-from-right duration-500 motion-reduce:animate-none">
+            {sitePanel}
+          </div>
+        </div>
+      )}
       {current?.alarm && current.step === 'done' && (
         <div
           aria-hidden="true"
@@ -949,14 +1095,6 @@ function Did({ current }: { current: Current | null }) {
   )
 }
 
-function Stat({ n, what, warn }: { n: number; what: string; warn?: boolean }) {
-  return (
-    <span className={cn(warn ? 'text-[var(--destructive)]' : n ? 'text-foreground' : 'text-muted-foreground')}>
-      <CountTo value={n} /> {what}
-    </span>
-  )
-}
-
 function Total({ n, what, big }: { n: number; what: string; big: boolean }) {
   return (
     <span className="flex items-baseline gap-2">
@@ -977,7 +1115,24 @@ const STATE_CHIP: Record<LiveFeedItem['state'], { text: string; className: strin
   heard: null,
 }
 
-function MessageCard({ m, active, answers, answered }: { m: LiveFeedItem; active: boolean; answers: string | null; answered: boolean }) {
+function MessageCard({
+  m,
+  active,
+  answers,
+  answered,
+  onSite,
+  onDest,
+}: {
+  m: LiveFeedItem
+  active: boolean
+  answers: string | null
+  answered: boolean
+  /** Opens the message's site's day in the panel. */
+  onSite: () => void
+  /** Opens the module that keeps what it said. */
+  onDest: (d: Dest, el: HTMLElement) => void
+}) {
+  const dest = destOf(m)
   const look = KINDS[m.saved_kind && m.kind === 'saved' ? m.saved_kind : m.kind]
   const Icon = look.icon
   const chip = m.state === 'asked' ? (answered ? { text: 'Answered ✓', className: 'text-[var(--success)]' } : { text: 'Waiting for answer', className: 'text-[var(--draft)]' }) : STATE_CHIP[m.state]
@@ -998,7 +1153,14 @@ function MessageCard({ m, active, answers, answered }: { m: LiveFeedItem; active
         <div className="min-w-0 flex-1">
           <p className="m-0 truncate text-sm font-semibold">{m.sender_name ?? 'Unknown number'}</p>
           <p className="m-0 truncate text-xs text-muted-foreground">
-            {[m.site_name ?? m.project_name, clock(m.received_at)].filter(Boolean).join(' · ')}
+            {m.site_id && m.source !== 'sample' ? (
+              <button type="button" onClick={onSite} className="border-b border-dotted border-current hover:text-foreground">
+                {m.site_name}
+              </button>
+            ) : (
+              m.site_name ?? m.project_name
+            )}
+            {m.received_at ? ` · ${clock(m.received_at)}` : ''}
           </p>
         </div>
         <span className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium', TONES[look.tone])}>
@@ -1032,7 +1194,18 @@ function MessageCard({ m, active, answers, answered }: { m: LiveFeedItem; active
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           {m.source === 'sample' ? 'Sample · Meet Mesiri' : m.source === 'dashboard' ? 'Mesiri web' : <><WhatsAppIcon className="size-3" /> WhatsApp</>}
         </span>
-        {chip && <span className={cn('text-[12px] font-medium', chip.className)}>{chip.text}</span>}
+        <span className="flex items-center gap-3">
+          {dest && m.source !== 'sample' && (m.state === 'saved' || m.state === 'draft' || m.state === 'answered') && (
+            <button
+              type="button"
+              onClick={(e) => onDest(dest, e.currentTarget)}
+              className="flex items-center gap-1 border-b border-foreground text-[12px] font-medium hover:text-primary"
+            >
+              {dest.name} <ArrowRight className="size-3" />
+            </button>
+          )}
+          {chip && <span className={cn('text-[12px] font-medium', chip.className)}>{chip.text}</span>}
+        </span>
       </div>
     </li>
   )
