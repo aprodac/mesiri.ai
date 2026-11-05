@@ -20,17 +20,10 @@ import ProjectDetails from '@/pages/ProjectDetails'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
 import ExpensesPage from '@/pages/ExpensesPage'
-import ReceiptsPage from '@/pages/ReceiptsPage'
-import AccountsPage from '@/pages/AccountsPage'
-import WhatsAppFinancePage from '@/pages/WhatsAppFinancePage'
-import PettyCashPage from '@/pages/PettyCashPage'
-import FinanceOverviewPage from '@/pages/FinanceOverviewPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
 import FinanceSettingsPage from '@/pages/FinanceSettingsPage'
-import ExpenseDetailPage from '@/pages/ExpenseDetailPage'
-import TransactionsPage from '@/pages/TransactionsPage'
 import VendorsPage from '@/pages/VendorsPage'
-import CategoriesPage from '@/pages/CategoriesPage'
+import MoneyPage from '@/pages/MoneyPage'
 import OperationsIssuesPage from '@/pages/OperationsIssuesPage'
 import OperationsAnalyticsPage from '@/pages/OperationsAnalyticsPage'
 import { ToastProvider } from '@/components/ui/toast-notification'
@@ -113,18 +106,20 @@ export default function App() {
 
           {/* Finance (module; not in V1 by default) */}
           <Route path="finance" element={fin(<Navigate to="/finance/expenses" replace />)} />
-          <Route path="finance/overview" element={fin(<FinanceOverviewPage />)} />
+          {/* WEB-51: Finance is four pages (Expenses, Money, Vendors, Settings); the old addresses land on the right one. */}
           <Route path="finance/expenses" element={fin(<ExpensesPage />)} />
-          <Route path="finance/expenses/:id" element={fin(<ExpenseDetailPage />)} />
-          <Route path="finance/receipts" element={fin(<ReceiptsPage />)} />
-          <Route path="finance/accounts" element={fin(<AccountsPage />)} />
-          <Route path="finance/whatsapp" element={fin(<WhatsAppFinancePage />)} />
-          <Route path="finance/transactions" element={fin(<TransactionsPage />)} />
-          <Route path="finance/petty-cash" element={fin(<PettyCashPage />)} />
+          <Route path="finance/expenses/:id" element={fin(<ExpensesPage />)} />
+          <Route path="finance/money" element={fin(<MoneyPage />)} />
           <Route path="finance/vendors" element={fin(<VendorsPage />)} />
-          <Route path="finance/categories" element={fin(<CategoriesPage />)} />
-          <Route path="finance/reports" element={fin(<FinanceReportsPage />)} />
           <Route path="finance/settings" element={fin(<FinanceSettingsPage />)} />
+          <Route path="finance/reports" element={fin(<FinanceReportsPage />)} />
+          <Route path="finance/overview" element={<Navigate to="/finance/expenses" replace />} />
+          <Route path="finance/receipts" element={<Navigate to="/finance/expenses?photo=yes" replace />} />
+          <Route path="finance/accounts" element={<Navigate to="/finance/money" replace />} />
+          <Route path="finance/petty-cash" element={<Navigate to="/finance/money" replace />} />
+          <Route path="finance/transactions" element={<Navigate to="/finance/money?view=transactions" replace />} />
+          <Route path="finance/categories" element={<Navigate to="/finance/settings" replace />} />
+          <Route path="finance/whatsapp" element={<Navigate to="/finance/settings" replace />} />
 
           {/* Old addresses */}
           <Route path="today/sites/:id/:date" element={<MovedDayPage level="sites" />} />

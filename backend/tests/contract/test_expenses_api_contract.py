@@ -43,6 +43,7 @@ async def clean_db(test_engine: AsyncEngine):
         await conn.execute(sa.text("DELETE FROM expense_payments"))
         await conn.execute(sa.text("DELETE FROM expense_attachments"))
         await conn.execute(sa.text("DELETE FROM expenses"))
+        await conn.execute(sa.text("DELETE FROM vendors"))  # WEB-51: the list test names a vendor
         await conn.execute(sa.text("DELETE FROM expense_categories"))
         await conn.execute(sa.text("DELETE FROM sites"))
         await conn.execute(sa.text("DELETE FROM projects"))
@@ -52,7 +53,15 @@ async def clean_db(test_engine: AsyncEngine):
 
 
 @pytest.fixture
-async def client(test_engine: AsyncEngine):
+async def client(test_engine: AsyncEngine, monkeypatch):
+    # The module gate and the expense save handler (WA-121) open their own transaction on the app's database, which
+    # is the in-memory fake under the test settings: point them at the real one.
+    from mesiri.infrastructure.postgres.database import PostgresDatabase
+
+    database = PostgresDatabase(Settings().postgres)
+    await database.connect()
+    monkeypatch.setattr("mesiri.domains.shared.modules._database_for", lambda request: database)
+    monkeypatch.setattr("mesiri.domains.shared.modules.database_for", lambda request: database)
     app = create_app()
 
     async def override_get_db_conn():
@@ -278,3 +287,17 @@ async def test_cross_organization_read_is_rejected(client, test_engine, admin_ct
 
     resp = await client.get(f"/expenses/{expense_id}", headers=_auth(other_token))
     assert resp.status_code == 404
+
+
+async def test_the_list_names_the_vendor_project_site_and_number(client, admin_ctx):
+    """WEB-51: the Expenses page showed "Direct Payee" / "Org Wide" for every row because the list did not carry them."""
+    resp = await client.post(
+        "/expenses",
+        json={**_body(admin_ctx), "vendor_text": "KMS Agencies"},
+        headers={**_auth(admin_ctx["token"]), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 201, resp.text
+    rows = (await client.get("/expenses", headers=_auth(admin_ctx["token"]))).json()
+    row = next(r for r in rows if r["id"] == resp.json()["id"])
+    assert row["vendor_name"] == "KMS Agencies" and row["vendor_id"]
+    assert row["project_name"] and row["expense_number"]

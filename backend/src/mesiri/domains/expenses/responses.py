@@ -19,6 +19,8 @@ class ExpenseResponse(BaseModel):
     category_name: str | None = None
     vendor_id: uuid.UUID | None = None
     vendor_name: str | None = None
+    #: WEB-51: the company's sequential number ("EXP-0042"); None for expenses made before numbering.
+    expense_number: str | None = None
     account_id: str | None = None
     account_name: str | None = None
     custodian_name: str | None = None
