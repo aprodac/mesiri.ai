@@ -743,10 +743,14 @@ class PostgresDprRepository:
             f"""
             SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
                    mm.movement_type, mm.quantity, mm.source_type, mm.source_id,
-                   COALESCE(mr.movement_reason, mu.movement_reason) AS movement_reason
+                   COALESCE(mr.movement_reason, mu.movement_reason) AS movement_reason,
+                   COALESCE(mcp.name, mcc.name) AS main_category,
+                   COALESCE(mcp.sort_order, mcc.sort_order) AS main_category_order
             FROM material_movements mm
             JOIN materials_catalog mc ON mc.id = mm.material_id
             JOIN units_of_measure u ON u.id = mm.unit_id
+            LEFT JOIN material_categories mcc ON mcc.id = mc.category_id
+            LEFT JOIN material_categories mcp ON mcp.id = mcc.parent_id
             LEFT JOIN material_receipts mr
                    ON mm.source_type = 'material_receipt' AND mr.id = mm.source_id
             LEFT JOIN material_usage mu
@@ -788,6 +792,8 @@ class PostgresDprRepository:
                     text(
                         f"""
                     SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
+                           COALESCE(mcp.name, mcc.name) AS main_category,
+                           COALESCE(mcp.sort_order, mcc.sort_order) AS main_category_order,
                            SUM(CASE WHEN {_day("mm.occurred_at")} < :report_date
                                     THEN CASE WHEN mm.movement_type = 'RECEIPT'
                                               THEN mm.quantity ELSE -mm.quantity END
@@ -797,11 +803,13 @@ class PostgresDprRepository:
                     FROM material_movements mm
                     JOIN materials_catalog mc ON mc.id = mm.material_id
                     JOIN units_of_measure u ON u.id = mm.unit_id
+                    LEFT JOIN material_categories mcc ON mcc.id = mc.category_id
+                    LEFT JOIN material_categories mcp ON mcp.id = mcc.parent_id
                     WHERE mm.organization_id = :org_id
                       AND mm.site_id = :site_id
                       AND {_day("mm.occurred_at")} <= :report_date
                       AND {fact_review.movement_counted_sql("mm") if saved_only else "true"}
-                    GROUP BY mm.material_id, mc.name, u.code
+                    GROUP BY mm.material_id, mc.name, u.code, mcp.name, mcc.name, mcp.sort_order, mcc.sort_order
                     HAVING bool_or({_day("mm.occurred_at")} = :report_date)
                     """
                     ),

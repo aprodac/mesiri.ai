@@ -91,7 +91,10 @@ def _material_summary(
             row.get("material_id"),
             {"material_name": row.get("material_name"), "unit": row.get("unit"),
              "received": Decimal("0"), "used": Decimal("0"), "adjusted": Decimal("0"),
-             "opening": None, "closing": None},
+             "opening": None, "closing": None,
+             # PRC-17c: the material's main category, so the report groups by it.
+             "main_category": row.get("main_category"),
+             "main_category_order": row.get("main_category_order")},
         )
 
     for row in movement_rows:
@@ -119,9 +122,21 @@ def _material_summary(
         entry["closing"] = closing
         entry["adjusted"] = closing - opening - entry["received"] + entry["used"]
 
+    # PRC-17c: grouped by main category in the company's order, the rest last; by name inside a group. A
+    # company without categories keeps the order it always had.
+    ordered = list(materials.values()) if not any(e["main_category"] for e in materials.values()) else sorted(
+        materials.values(),
+        key=lambda e: (
+            e["main_category"] is None,
+            e["main_category_order"] if e["main_category_order"] is not None else 0,
+            str(e["main_category"] or "").lower(),
+            str(e["material_name"] or "").lower(),
+        ),
+    )
     return [
         {
             "material_name": entry["material_name"],
+            "main_category": entry["main_category"],
             "unit": entry["unit"],
             "received": str(entry["received"]),
             "used": str(entry["used"]),
@@ -130,7 +145,7 @@ def _material_summary(
             "closing": None if entry["closing"] is None else str(entry["closing"]),
             "beyond_stock": entry["closing"] is not None and entry["closing"] < 0,
         }
-        for entry in materials.values()
+        for entry in ordered
     ]
 
 

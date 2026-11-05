@@ -90,8 +90,20 @@ ALLOWED: tuple[Allowed, ...] = (
         "category.",
     ),
     Allowed("stock_check", "GET", "/materials/stock-check", "Current stock of one material at one site."),
-    Allowed("list_receipts", "GET", "/materials/inflows", "Materials received: what, where, when, who recorded it."),
-    Allowed("list_usage", "GET", "/materials/outflows", "Materials used or issued: what, where, when, who recorded it."),
+    # PRC-17: "previous stock, used, balance" for a period, and what is running low.
+    Allowed(
+        "stock_summary", "GET", "/materials/stock-summary",
+        "Stock for a period per site and material: opening (before the period), received, used, adjusted, closing, "
+        "days left at the last week's use, and running_low. Default period: the last 7 days to today. Filter by "
+        "project, site, material or category (a main category includes its sub-categories). Each row names its "
+        "category.",
+    ),
+    Allowed("list_receipts", "GET", "/materials/inflows",
+            "Materials received: what, where, when, who recorded it, and each one's category. Filter by category "
+            "(category_id from material_categories; a main category includes its sub-categories)."),
+    Allowed("list_usage", "GET", "/materials/outflows",
+            "Materials used or issued: what, where, when, who recorded it, and each one's category. Filter by "
+            "category as list_receipts."),
     Allowed("record_receipt", "POST", "/materials/inflows", "Prepare a material receipt (material that arrived at a site)." + _WRITE),
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),

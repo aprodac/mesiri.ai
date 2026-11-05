@@ -7,7 +7,7 @@ from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.application.dpr import fact_review
+from mesiri.application.dpr import fact_review, project_day
 from mesiri.domains.materials.names import alias_key, require_latin_name
 
 _material_receipts = sa.Table(
@@ -98,6 +98,34 @@ _material_categories = sa.Table(
 )
 _category = _material_categories.alias("category")
 _parent_category = _material_categories.alias("parent_category")
+
+
+def _category_columns(material_id_col: sa.ColumnElement) -> list:
+    """PRC-17b: a row's category ("Main › Sub") and main category, looked up from its material."""
+    cat, parent = _material_categories.alias("row_category"), _material_categories.alias("row_parent_category")
+    source = _materials_catalog.join(cat, cat.c.id == _materials_catalog.c.category_id).outerjoin(
+        parent, parent.c.id == cat.c.parent_id
+    )
+    label = sa.case((parent.c.name.is_not(None), parent.c.name + " › " + cat.c.name), else_=cat.c.name)
+    where = _materials_catalog.c.id == material_id_col
+    return [
+        sa.select(label).select_from(source).where(where).scalar_subquery().label("category"),
+        sa.select(sa.func.coalesce(parent.c.name, cat.c.name)).select_from(source).where(where)
+        .scalar_subquery().label("main_category"),
+    ]
+
+
+def _in_category(material_id_col: sa.ColumnElement, category_id: uuid.UUID) -> sa.ColumnElement:
+    """Rows whose material sits in ``category_id``, a main category's sub-categories included."""
+    cat = _material_categories.alias("filter_category")
+    return sa.exists(
+        sa.select(sa.literal(1))
+        .select_from(_materials_catalog.join(cat, cat.c.id == _materials_catalog.c.category_id))
+        .where(
+            _materials_catalog.c.id == material_id_col,
+            sa.or_(cat.c.id == category_id, cat.c.parent_id == category_id),
+        )
+    )
 
 _material_aliases = sa.Table(
     "material_aliases",
@@ -239,8 +267,10 @@ class PostgresMaterialReadRepository:
         date_to: datetime.date | None = None,
         limit: int = 50,
         offset: int = 0,
+        category_id: uuid.UUID | None = None,
     ) -> tuple[list[dict], int]:
-        """List material receipts (inflows) matching parameters, with total count."""
+        """List material receipts (inflows) matching parameters, with total count. Each row names its
+        material's category; ``category_id`` keeps one category, a main one with its sub-categories (PRC-17b)."""
         where_clauses = _receipt_where(
             organization_id,
             project_ids,
@@ -253,6 +283,8 @@ class PostgresMaterialReadRepository:
             date_from,
             date_to,
         )
+        if category_id is not None:
+            where_clauses.append(_in_category(_material_receipts.c.material_id, category_id))
 
         count_stmt = (
             sa.select(sa.func.count()).select_from(_material_receipts).where(*where_clauses)
@@ -271,7 +303,7 @@ class PostgresMaterialReadRepository:
         ).label("is_reversed")
 
         stmt = (
-            sa.select(_material_receipts, is_reversed)
+            sa.select(_material_receipts, is_reversed, *_category_columns(_material_receipts.c.material_id))
             .where(*where_clauses)
             .order_by(
                 _material_receipts.c.occurred_date.desc(), _material_receipts.c.created_at.desc()
@@ -306,8 +338,9 @@ class PostgresMaterialReadRepository:
         date_to: datetime.date | None = None,
         limit: int = 50,
         offset: int = 0,
+        category_id: uuid.UUID | None = None,
     ) -> tuple[list[dict], int]:
-        """List material usages (outflows) matching parameters, with total count."""
+        """List material usages (outflows) matching parameters, with total count; categories as list_receipts."""
         where_clauses = _usage_where(
             organization_id,
             project_ids,
@@ -320,12 +353,14 @@ class PostgresMaterialReadRepository:
             date_from,
             date_to,
         )
+        if category_id is not None:
+            where_clauses.append(_in_category(_material_usage.c.material_id, category_id))
 
         count_stmt = sa.select(sa.func.count()).select_from(_material_usage).where(*where_clauses)
         total = (await self.conn.execute(count_stmt)).scalar_one()
 
         stmt = (
-            sa.select(_material_usage)
+            sa.select(_material_usage, *_category_columns(_material_usage.c.material_id))
             .where(*where_clauses)
             .order_by(_material_usage.c.occurred_date.desc(), _material_usage.c.created_at.desc())
             .limit(limit)
@@ -462,6 +497,102 @@ class PostgresMaterialReadRepository:
                 "NEGATIVE_STOCK" if stock < 0 else "OUT_OF_STOCK" if stock == 0 else "AVAILABLE"
             )
         return rows
+
+    async def get_stock_summary(
+        self,
+        organization_id: uuid.UUID,
+        *,
+        date_from: datetime.date,
+        date_to: datetime.date,
+        project_ids: set[uuid.UUID] | None = None,
+        site_id: uuid.UUID | None = None,
+        material_id: uuid.UUID | None = None,
+        category_id: uuid.UUID | None = None,
+    ) -> list[dict]:
+        """PRC-17: per site and material, the stock before ``date_from`` (opening), what was delivered and used
+        from ``date_from`` to ``date_to`` (company dates), and the stock at the end of ``date_to`` (closing), with
+        the last week's use for "running low" (``stock_summary.finish_row``). Saved entries only (WA-77), as the
+        stock everywhere. A delivery and its correction cancel out of received / used, as on the daily report;
+        opening and closing come from the whole ledger. Lists every material the site held or moved."""
+        from mesiri.domains.materials.stock_summary import (
+            RECEIVED_REASONS,
+            USE_WINDOW_DAYS,
+            USED_REASONS,
+            finish_row,
+        )
+
+        day = project_day.local_date_sql("mm.occurred_at", ":org_id")
+        signed = "CASE WHEN mm.movement_type = 'RECEIPT' THEN mm.quantity ELSE -mm.quantity END"
+        reason = "COALESCE(mr.movement_reason, mu.movement_reason)"
+        plain = (
+            "mm.reversal_of_movement_id IS NULL AND NOT EXISTS "
+            "(SELECT 1 FROM material_movements r WHERE r.reversal_of_movement_id = mm.id)"
+        )
+        received = (
+            f"mm.movement_type = 'RECEIPT' AND {plain} "
+            f"AND ({reason} IS NULL OR {reason} IN ({', '.join(repr(r) for r in RECEIVED_REASONS)}))"
+        )
+        used = (
+            f"mm.movement_type = 'ISSUE' AND {plain} "
+            f"AND ({reason} IS NULL OR {reason} IN ({', '.join(repr(r) for r in USED_REASONS)}))"
+        )
+        where = [
+            "mm.organization_id = :org_id",
+            f"{day} <= :date_to",
+            fact_review.movement_counted_sql("mm"),
+        ]
+        params: dict = {
+            "org_id": organization_id,
+            "date_from": date_from,
+            "date_to": date_to,
+            "recent_from": date_to - datetime.timedelta(days=USE_WINDOW_DAYS - 1),
+        }
+        if project_ids is not None:
+            if not project_ids:
+                return []
+            where.append("mm.project_id = ANY(:project_ids)")
+            params["project_ids"] = list(project_ids)
+        if site_id is not None:
+            where.append("mm.site_id = :site_id")
+            params["site_id"] = site_id
+        if material_id is not None:
+            where.append("mm.material_id = :material_id")
+            params["material_id"] = material_id
+        if category_id is not None:
+            where.append("(cat.id = :category_id OR cat.parent_id = :category_id)")
+            params["category_id"] = category_id
+        sql = f"""
+            SELECT mm.project_id, mm.site_id, mm.material_id, mc.name AS material_name, u.code AS unit,
+                   mc.category_id,
+                   CASE WHEN parent.name IS NOT NULL THEN parent.name || ' › ' || cat.name ELSE cat.name END
+                       AS category,
+                   COALESCE(parent.name, cat.name) AS main_category,
+                   SUM(CASE WHEN {day} < :date_from THEN {signed} ELSE 0 END) AS opening,
+                   SUM({signed}) AS closing,
+                   SUM(CASE WHEN {day} >= :date_from AND {received} THEN mm.quantity ELSE 0 END) AS received,
+                   SUM(CASE WHEN {day} >= :date_from AND {used} THEN mm.quantity ELSE 0 END) AS used,
+                   SUM(CASE WHEN {day} >= :recent_from AND {used} THEN mm.quantity ELSE 0 END) AS used_recently,
+                   bool_or({day} >= :date_from) AS moved
+              FROM material_movements mm
+              JOIN materials_catalog mc ON mc.id = mm.material_id
+              JOIN units_of_measure u ON u.id = mm.unit_id
+              LEFT JOIN material_receipts mr ON mm.source_type = 'material_receipt' AND mr.id = mm.source_id
+              LEFT JOIN material_usage mu ON mm.source_type = 'material_usage' AND mu.id = mm.source_id
+              LEFT JOIN material_categories cat ON cat.id = mc.category_id
+              LEFT JOIN material_categories parent ON parent.id = cat.parent_id
+             WHERE {" AND ".join(where)}
+             GROUP BY mm.project_id, mm.site_id, mm.material_id, mc.name, u.code, mc.category_id,
+                      cat.name, parent.name
+             ORDER BY lower(COALESCE(parent.name, cat.name, '~')), lower(mc.name)
+        """
+        rows = (await self.conn.execute(sa.text(sql), params)).mappings().all()
+        out = []
+        for row in rows:
+            data = dict(row)
+            if not data.pop("moved") and Decimal(str(data["opening"] or 0)) == 0:
+                continue  # nothing held and nothing moved: not part of this period
+            out.append(finish_row(data))
+        return out
 
     async def get_last_purchase_price(
         self, organization_id: uuid.UUID, material_id: uuid.UUID

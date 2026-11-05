@@ -13,6 +13,9 @@ class MaterialReceiptResponse(BaseModel):
     project_id: uuid.UUID
     site_id: uuid.UUID | None
     material_name: str
+    #: PRC-17b: the material's category ("Main › Sub") and main category, in lists; None when it has none.
+    category: str | None = None
+    main_category: str | None = None
     quantity: Decimal
     unit: str
     unit_cost: Decimal | None
@@ -57,6 +60,9 @@ class MaterialUsageResponse(BaseModel):
     project_id: uuid.UUID
     site_id: uuid.UUID | None
     material_name: str
+    #: PRC-17b: the material's category ("Main › Sub") and main category, in lists; None when it has none.
+    category: str | None = None
+    main_category: str | None = None
     quantity: Decimal
     unit: str
     work_item: str | None
@@ -190,3 +196,26 @@ class CategorySuggestionResponse(BaseModel):
 class StandardCategoriesResponse(BaseModel):
     categories_added: int
     materials_placed: int
+
+
+class MaterialStockSummaryResponse(BaseModel):
+    """PRC-17: one site+material over a period. opening + received + adjusted - used == closing."""
+
+    project_id: uuid.UUID
+    site_id: uuid.UUID | None
+    material_id: uuid.UUID
+    material_name: str
+    unit: str
+    category_id: uuid.UUID | None = None
+    category: str | None = None
+    main_category: str | None = None
+    opening: Decimal
+    received: Decimal
+    used: Decimal
+    #: Opening stock, adjustments and corrections in the period: what moved stock besides deliveries and use.
+    adjusted: Decimal
+    closing: Decimal
+    #: Days the closing stock lasts at the last 7 days' use; None when nothing was used or nothing is left.
+    days_left: int | None = None
+    #: At or below zero, or under 3 days left at that use.
+    running_low: bool

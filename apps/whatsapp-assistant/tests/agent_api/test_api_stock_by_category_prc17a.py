@@ -105,3 +105,11 @@ def test_the_sop_says_how_to_answer_by_category() -> None:
 
     sop = (Path(__file__).resolve().parents[2] / "src" / "agent_api" / "SOP.md").read_text(encoding="utf-8")
     assert "stock_levels` with its `category_id`" in sop
+
+
+def test_deliveries_and_use_take_a_category_on_the_real_api() -> None:
+    """PRC-17b: the same filter on list_receipts / list_usage."""
+    tools = _real_tools()
+    for name in ("list_receipts", "list_usage"):
+        assert "category_id" in tools[name].query_params
+        assert "categor" in tools[name].spec.description.lower()
