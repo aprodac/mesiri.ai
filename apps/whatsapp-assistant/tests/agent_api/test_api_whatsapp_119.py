@@ -57,7 +57,10 @@ class Harness:
         async def send(spec: ReplySpec, wa_id: str) -> None:
             self.sent.append(spec)
 
-        async def transcribe(message: Any) -> tuple[str, str | None, str | None]:
+        self.hints: list = []
+
+        async def transcribe(message: Any, hint: str | None = None) -> tuple[str, str | None, str | None]:
+            self.hints.append(hint)  # [258]: the speech hint the transcription got
             return transcript, None, "ml"
 
         self.redis = FakeRedis()

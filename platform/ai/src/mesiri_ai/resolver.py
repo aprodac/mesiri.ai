@@ -329,6 +329,7 @@ class DynamicAIProviderResolver:
         semantic_hint: str | None = None,
         expense_categories: list[str] | None = None,
         correlation_id: str | None = None,
+        speech_hint: str | None = None,
     ) -> ExtractionResult:
         """Transcribe + extract in one call when voice is routed to Gemini
         (the real win -- previously two sequential calls, ~4.5s combined).
@@ -346,8 +347,10 @@ class DynamicAIProviderResolver:
                 semantic_hint=semantic_hint,
                 expense_categories=expense_categories,
                 correlation_id=correlation_id,
+                speech_hint=speech_hint,
             )
 
+        # [258]: the speech-only route (Sarvam) takes no hint.
         speech = await self.transcribe(audio, correlation_id=correlation_id)
         normalized_text = speech.translated_text or speech.transcript
         extraction = await self.extract(

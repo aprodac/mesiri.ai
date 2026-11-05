@@ -276,6 +276,31 @@ async def test_gemini_understand_voice_returns_combined_result_in_one_call():
     assert len(captured["contents"]) == 2
 
 
+async def test_gemini_understand_voice_puts_the_speech_hint_first_and_only_when_given():
+    """[258]: Manglish voice notes came back as English-sounding nonsense; the speaker's language and the company's
+    own words now travel in the same (one) call, ahead of the transcription instructions. No hint: the prompt is
+    as before."""
+    prompts: list[str] = []
+
+    class _FakeModels:
+        def generate_content(self, *, model, contents, config=None):
+            prompts.append(contents[0])
+            return SimpleNamespace(text=json.dumps({"transcript": "x", "intents": []}))
+
+    provider = GeminiProvider.__new__(GeminiProvider)
+    provider._settings = SimpleNamespace(model="gemini-test", timeout_seconds=5, max_retries=0)
+    provider._client = _aio(_FakeModels())
+
+    hint = "Speaker uses Manglish. Likely words: Green Villa, Cement, M Sand, helper, mason."
+    await provider.understand_voice(b"audio", correlation_id="cor_1", speech_hint=hint)
+    await provider.understand_voice(b"audio", correlation_id="cor_2")
+
+    with_hint, without = prompts
+    assert with_hint.startswith("About the speaker") and hint in with_hint
+    assert with_hint.endswith(without)  # the rest of the prompt is unchanged
+    assert "About the speaker" not in without
+
+
 async def test_gemini_transcribe_requests_json_with_translation_and_language():
     """transcribe() asks Gemini to transcribe, translate, and identify the
     source language in one call -- it used to only transcribe and silently

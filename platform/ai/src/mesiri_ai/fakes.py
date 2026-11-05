@@ -167,10 +167,12 @@ class FakeVoiceExtractionProvider:
         semantic_hint: str | None = None,
         expense_categories: list[str] | None = None,
         correlation_id: str | None = None,
+        speech_hint: str | None = None,
     ) -> ExtractionResult:
         self.calls += 1
         self.last_semantic_hint = semantic_hint
         self.last_expense_categories = expense_categories
+        self.last_speech_hint = speech_hint
         if self._delay:
             await asyncio.sleep(self._delay)
         if self._error is not None:

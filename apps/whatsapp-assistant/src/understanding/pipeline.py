@@ -78,15 +78,16 @@ class UnderstandingPipeline:
         self._media_cache: dict[str, bytes] = {}
 
     async def transcribe_voice(
-        self, message: NormalizedMessage
+        self, message: NormalizedMessage, *, hint: str | None = None
     ) -> tuple[str, str | None, str | None]:
         """Just the words of a voice note: ``(transcript, translated_text,
         detected_language)``. The tool-calling agent reads the message itself,
         so it needs the speech step only. Same provider call as
         `_handle_voice` (which also extracts, in the one call)."""
         audio = await self._read_media(message)
+        # [258]: who speaks and their company's words go in the same call (no second call).
         result = await self._voice_extraction.understand_voice(
-            audio, correlation_id=message.correlation_id
+            audio, correlation_id=message.correlation_id, speech_hint=hint
         )
         return (result.transcript or "", result.translated_text, result.detected_language)
 

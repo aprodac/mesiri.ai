@@ -250,6 +250,7 @@ class ApiWhatsApp:
         self._call_agent = ApiAgent(provider, tools, sop=SOP + CALL_RULES, max_steps=CALL_MAX_STEPS,
                                     timeout_seconds=CALL_TIMEOUT_SECONDS, capability="api_agent")
         self._catalog: dict[str, tuple[float, str]] = {}
+        self._material_names_by_org: dict[str, list[str]] = {}
 
     # -- entry point -----------------------------------------------------------------------
 
@@ -366,14 +367,40 @@ class ApiWhatsApp:
             await client.close()
 
     async def _voice(self, message: Any, ctx: Any) -> str:
+        hint = await self._speech_hint(ctx)
         try:
-            transcript, translated, _ = await self._transcribe(message)  # type: ignore[misc]
+            transcript, translated, _ = await self._transcribe(message, hint=hint)  # type: ignore[misc,call-arg]
         except Exception as exc:  # noqa: BLE001 -- said plainly, never silence
             _log.exception("agent_api.transcribe_failed user=%s", ctx.user_id)
             if is_outage_error(exc):
                 await self._outage(message, ctx, "", exc)
             return ""
         return (transcript or translated or "").strip()
+
+    async def _speech_hint(self, ctx: Any) -> str:
+        """[258] (5 Nov, Adarsh: Manglish voice notes heard as "for lab as itra lab as work you end"): the speaker's
+        language and the words they are likely to say, for the transcription itself (same call). Only this company's
+        names: its projects, sites and materials (cached; never waits more than HINT_SECONDS for them), and the
+        trades every site uses. Never raises; "" when nothing is known."""
+        try:
+            language = await self._reply_language(ctx)
+            names = [str(p.name) for p in getattr(ctx, "projects", None) or []]
+            names += [str(s.name) for s in getattr(ctx, "sites", None) or []]
+            client = ApiClient(_actor(ctx), app=self._app)
+            try:
+                names += await asyncio.wait_for(self._material_names(ctx, client), timeout=HINT_SECONDS)
+            except Exception:  # noqa: BLE001 -- the hint goes without the materials
+                pass
+            finally:
+                await client.close()
+        except Exception:  # noqa: BLE001
+            _log.warning("agent_api.speech_hint_failed", exc_info=True)
+            return ""
+        return speech_hint(language, names)
+
+    async def _material_names(self, ctx: Any, client: ApiClient) -> list[str]:
+        await self._catalog_for(ctx, client)
+        return list(self._material_names_by_org.get(str(ctx.organization_id), []))
 
     async def _photo(self, message: Any, ctx: Any) -> str:
         caption = (message.text or "").strip()
@@ -772,6 +799,9 @@ class ApiWhatsApp:
             lines.append("Units (unit_id): " + ", ".join(f"{code} ({uid})" for uid, code in unit_name.items()))
         if materials.ok and isinstance(materials.body, dict):
             items = materials.body.get("items") or []
+            # [258]: the names (and what people call them) also go to the voice transcription as likely words.
+            self._material_names_by_org[org] = [str(n) for m in items if isinstance(m, dict)
+                                                for n in (m.get("name"), *(m.get("aliases") or [])) if n]
             lines.append("Materials (material_id, default unit):")
             lines += [f"- {m.get('name')} ({m.get('id')}, {unit_name.get(m.get('default_unit_id'), '?')})"
                       + (f" also called: {', '.join(m['aliases'])}" if m.get("aliases") else "")
@@ -1463,6 +1493,31 @@ def without_heard_echo(text: str) -> str:
     """[258] (5 Nov 13:07: the transcript shown twice): the text without a "🎤 _what was heard_" line. Only the code
     draws that line (``heard_line``), once, on a voice note's reply; a copy the model wrote from the history goes."""
     return re.sub(r"\n{3,}", "\n\n", _HEARD.sub("", text)).strip()
+
+
+#: [258]: the speech hint never waits longer than this for the company's material list (cached after the first read).
+HINT_SECONDS = 0.6
+#: At most this many of the company's own names go in the hint (the prompt stays short).
+HINT_NAMES = 60
+#: Words every site says, in English, mixed into Malayalam or Hindi.
+SITE_WORDS = ("labour", "labourers", "helper", "helpers", "mason", "masons", "carpenter", "bar bender", "plumber",
+              "electrician", "attendance", "site", "load", "bags", "cement", "sand", "steel", "slab", "shuttering",
+              "concrete", "plastering", "today", "came", "used")
+_SPEAKS = {
+    "manglish": "Speaker uses Manglish: Malayalam with English words mixed in (site, material and trade words in "
+                "English).",
+    "malayalam": "Speaker speaks Malayalam, often with English words for site, material and trade words.",
+    "hinglish": "Speaker uses Hinglish: Hindi with English words mixed in.",
+    "hindi": "Speaker speaks Hindi, often with English words for site, material and trade words.",
+    "english": "Speaker speaks Indian English, sometimes with Malayalam or Hindi words.",
+}
+
+
+def speech_hint(language: str | None, names: list[str]) -> str:
+    """[258]: "Speaker uses Manglish ... Likely words: Green Villa, Cement, ..., helper, mason." for the transcription."""
+    own = list(dict.fromkeys(n.strip() for n in names if n and n.strip()))[:HINT_NAMES]
+    words = ", ".join([*own, *SITE_WORDS])
+    return f"{_SPEAKS.get(language or '', _SPEAKS['manglish'])} Construction site update. Likely words: {words}."
 
 
 def heard_line(said: str) -> str:

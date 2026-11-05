@@ -56,3 +56,44 @@ async def test_guard_a_typed_message_gets_no_heard_line() -> None:
     h = Harness(model)
     await h.service.handle(_message("helpers ethra"), CTX)
     assert "🎤" not in h.sent[-1].text
+
+
+# -- [258] part 1: the speech hint (Ilan approved the platform/ai field in session, 5 Nov) ----------------------------
+
+
+async def test_a_voice_note_is_transcribed_with_the_language_and_the_companys_words() -> None:
+    model = FakeToolCallingProvider(["Ethra helpers vannu?"])
+    h = Harness(model, transcript="innu ethra helpers vannu")
+    from types import SimpleNamespace
+
+    ctx = SimpleNamespace(**vars(CTX), projects=[SimpleNamespace(id="p1", name="Green Villa")],
+                          sites=[SimpleNamespace(id="s1", name="Kakkanad block", project_id="p1")])
+    await h.service.handle(_message(None, modality=InputModality.VOICE), ctx)
+    (hint,) = h.hints
+    assert "Manglish" in hint  # no language chosen: Manglish (WA-207)
+    assert "Green Villa" in hint and "Kakkanad block" in hint  # their own project and site names
+    assert "helper" in hint
+
+
+def test_the_hint_names_their_words_and_never_runs_long() -> None:
+    hint = wa.speech_hint("hinglish", ["Tower A", "Tower A", "Cement"] + [f"Item {i}" for i in range(200)])
+    assert hint.startswith("Speaker uses Hinglish") and hint.count("Tower A") == 1
+    assert "Item 59" not in hint and "mason" in hint
+
+
+def test_guard_english_speakers_get_an_english_hint() -> None:
+    assert wa.speech_hint("english", []).startswith("Speaker speaks Indian English")
+
+
+async def test_guard_a_slow_material_list_never_holds_the_voice_note(monkeypatch) -> None:  # noqa: ANN001
+    import asyncio
+
+    async def slow(self, ctx, client):  # noqa: ANN001, ANN202
+        await asyncio.sleep(5)
+        return ["never"]
+
+    monkeypatch.setattr(wa.ApiWhatsApp, "_material_names", slow)
+    monkeypatch.setattr(wa, "HINT_SECONDS", 0.05)
+    h = Harness(FakeToolCallingProvider(["ok"]), transcript="10 helpers")
+    await h.service.handle(_message(None, modality=InputModality.VOICE), CTX)
+    assert h.hints and "never" not in h.hints[0] and "Manglish" in h.hints[0]

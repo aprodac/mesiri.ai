@@ -97,6 +97,17 @@ _VISION_PROMPT = (
     "omit that key -- a value that was never on the paper must not be invented."
 )
 
+def _speech_hint_block(hint: str) -> str:
+    """[258]: who speaks and the words they are likely to say, ahead of the transcription instructions. Code-mixed
+    speech (Manglish: Malayalam with English words) was written as English-sounding nonsense without it."""
+    return (
+        "About the speaker (use it to hear the words right; never add words that were not said): "
+        f"{hint.strip()[:1200]}\n"
+        "Write Malayalam (or Hindi) words in their own script and English words in English, exactly as "
+        "spoken; a name from the list is spelled as listed.\n\n"
+    )
+
+
 _EXTRACTION_PROMPT = (
     "The text may be in any language (Malayalam, Hindi, Tamil, Bengali, English, "
     "or code-mixed) -- read it directly, do not wait for a translation. Extract "
@@ -876,6 +887,7 @@ class GeminiProvider:
         semantic_hint: str | None = None,
         expense_categories: list[str] | None = None,
         correlation_id: str | None = None,
+        speech_hint: str | None = None,
     ) -> ExtractionResult:
         """Transcribe and extract in one call instead of two sequential
         round trips (transcribe() then extract() -- previously ~4.5s
@@ -906,6 +918,8 @@ class GeminiProvider:
             'English), "detected_language" (the source language\'s common '
             'English name, e.g. "Malayalam", "English").\n\n'
         ) + _EXTRACTION_PROMPT
+        if speech_hint:
+            prompt = _speech_hint_block(speech_hint) + prompt
         if semantic_hint:
             prompt += (
                 f'\n\nHint: the user selected the "{semantic_hint}" category just before '

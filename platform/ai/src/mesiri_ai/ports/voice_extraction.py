@@ -31,9 +31,14 @@ class VoiceExtractionProvider(Protocol):
         semantic_hint: str | None = None,
         expense_categories: list[str] | None = None,
         correlation_id: str | None = None,
+        speech_hint: str | None = None,
     ) -> ExtractionResult:
         """Returns an ExtractionResult with transcript/translated_text/
         detected_language populated alongside the usual extraction fields --
         see models.ExtractionResult and _EXTRACTION_PROMPT's per-type field
-        schema, which this reuses verbatim."""
+        schema, which this reuses verbatim.
+
+        ``speech_hint`` ([258], optional): who speaks and the words they are likely to say (their language, the
+        company's site, material, trade and worker names), so code-mixed speech is written as it was said. An
+        adapter that cannot use it ignores it."""
         ...
