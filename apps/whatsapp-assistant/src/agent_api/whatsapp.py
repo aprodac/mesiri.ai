@@ -262,6 +262,8 @@ class ApiWhatsApp:
         self._material_names_by_org: dict[str, list[str]] = {}
         #: [221]: per new message, the times of the kept messages answered just before it.
         self._kept_answered: dict[str, list[str]] = {}
+        #: WA-246: per voice note, whether its reply starts with what was heard (from the same preferences read).
+        self._heard_shown: dict[str, bool] = {}
 
     # -- entry point -----------------------------------------------------------------------
 
@@ -336,9 +338,11 @@ class ApiWhatsApp:
         # WA-210: a ready list goes out on its TO SAVE card (the header of the Save / Edit / Cancel message).
         reply = await self._with_preview(reply, ctx, message.correlation_id)
         _lap("v3_preview")
-        if message.modality is InputModality.VOICE and said:
+        heard_shown = self._heard_shown.pop(message.correlation_id, False)
+        if message.modality is InputModality.VOICE and said and heard_shown:
             # WA-209 (4 Nov: "5 chaak" heard as 30, unseen until Save): what was heard comes first, so a misheard
-            # number is caught on the list, where Edit fixes it.
+            # number is caught on the list, where Edit fixes it. WA-246 (Ilan, 5 Nov): only where it is switched
+            # on (the person's own switch, else the company's; off by default), read with the reply language.
             reply = dataclasses.replace(reply, text=heard_line(said) + reply.text)
         if (retry_attempt.get() or 1) > 1 or _REPLAYING.get():
             # [221] (5 Nov 12:36 and 12:38: Ilan's voice notes from 12:15 and 12:18, kept through the AI pause, were
@@ -442,7 +446,11 @@ class ApiWhatsApp:
         try:
             state, history, facts, sizes, open_requests, chosen = await asyncio.gather(
                 self._state(ctx), self._memory.load(ctx), self._facts(ctx, client), self._sizes(ctx),
-                self._open_requests(message), self._chosen_language(client))
+                self._open_requests(message), self._preferences(client))
+            if message.modality is InputModality.VOICE:
+                self._heard_shown[message.correlation_id] = (chosen is not _UNREAD
+                                                             and chosen.get("voice_transcript") is True)
+            chosen = _chosen_of(chosen)
             if chosen is not _UNREAD:
                 state["chosen_language"] = chosen  # WA-169: the database decides; kept for the lines that don't read it
             facts = f"{facts}\n\n{open_requests}" if open_requests else facts
@@ -774,10 +782,10 @@ class ApiWhatsApp:
             sent = False
         return {"status": "sent to their WhatsApp"} if sent else {"status": "not sent; tell them to ask again"}
 
-    async def _chosen_language(self, client: ApiClient) -> Any:
-        """WA-169: the reply language this person chose (``users.reply_language`` via ``GET /me/preferences``), None
-        when they chose none, ``_UNREAD`` when it could not be read (the last known choice then stands). In parallel
-        with the facts, at most ``CHOSEN_LANGUAGE_TIMEOUT_S``."""
+    async def _preferences(self, client: ApiClient) -> Any:
+        """WA-169 / WA-246: this person's ``GET /me/preferences`` (the reply language they chose, whether a voice
+        note's reply shows what was heard), ``_UNREAD`` when it could not be read. In parallel with the facts, at
+        most ``CHOSEN_LANGUAGE_TIMEOUT_S``."""
         try:
             response = await asyncio.wait_for(client.call("GET", "/me/preferences"), timeout=CHOSEN_LANGUAGE_TIMEOUT_S)
         except Exception:  # noqa: BLE001 -- a reply in the detected language is still a reply
@@ -785,8 +793,7 @@ class ApiWhatsApp:
             return _UNREAD
         if not response.ok or not isinstance(response.body, dict):
             return _UNREAD
-        value = response.body.get("reply_language")
-        return value if value in LANGUAGE_LINES or value == FOLLOW_EACH else None
+        return response.body
 
     async def _open_requests(self, message: Any) -> str:
         """TM-69: what this person told the team about and is being fixed, so "is the primer thing fixed?" or the same
@@ -1609,6 +1616,15 @@ def late_line(message: Any, ctx: Any, language: str | None) -> str:
     if not clock:
         return ""
     return _in_with(language, "api.late_answer", LATE_ANSWER, kind=kind, time=clock) + "\n\n"
+
+
+def _chosen_of(preferences: Any) -> Any:
+    """WA-169: the reply language chosen, None when none, ``_UNREAD`` when the preferences could not be read (the
+    last known choice then stands)."""
+    if preferences is _UNREAD:
+        return _UNREAD
+    value = preferences.get("reply_language")
+    return value if value in LANGUAGE_LINES or value == FOLLOW_EACH else None
 
 
 def heard_line(said: str) -> str:

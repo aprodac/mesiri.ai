@@ -21,7 +21,11 @@ export interface EditableUser {
   whatsapp_number: string | null;
   access_mode: string;
   project_access: { project_id: string; project_name: string; site_access: string }[];
+  // WA-246: this person's own "show what was heard" switch; null follows the company.
+  voice_transcript?: boolean | null;
 }
+
+type VoiceTranscript = 'company' | 'on' | 'off';
 
 const ROLES = ['ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'];
 
@@ -54,6 +58,9 @@ interface Props {
 export default function UserAccessEditor({ orgId, user, projects, onClose, onSaved }: Props) {
   const [role, setRole] = useState(user.role || 'SITE_ENGINEER');
   const [whatsapp, setWhatsapp] = useState(user.whatsapp_number || '');
+  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscript>(
+    user.voice_transcript === true ? 'on' : user.voice_transcript === false ? 'off' : 'company'
+  );
   const [allProjects, setAllProjects] = useState(user.access_mode === 'all_projects');
   const [grants, setGrants] = useState<Record<string, SiteAccess>>({});
   const [saving, setSaving] = useState(false);
@@ -103,6 +110,7 @@ export default function UserAccessEditor({ orgId, user, projects, onClose, onSav
       await api.patch(`/admin/organizations/${orgId}/users/${user.id}`, {
         role,
         whatsapp_number: whatsapp.trim(),
+        voice_transcript: voiceTranscript,
       });
 
       const projectGrants: ProjectGrant[] = Object.entries(grants).map(([projectId, siteAccess]) => ({
@@ -203,6 +211,22 @@ export default function UserAccessEditor({ orgId, user, projects, onClose, onSav
         />
         <p style={{ fontSize: '12px', color: 'var(--neutral-500)', margin: '0 0 var(--space-4)' }}>
           This is how an incoming WhatsApp message is matched to this person. Leave blank to unmap.
+        </p>
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: 4 }}>
+          Show what was heard on voice-note replies
+        </label>
+        <select
+          value={voiceTranscript}
+          onChange={(e) => setVoiceTranscript(e.target.value as VoiceTranscript)}
+          style={{ width: '100%', marginBottom: 4, padding: '8px' }}
+        >
+          <option value="company">Same as the company (Settings: voice_transcript)</option>
+          <option value="on">On for this person</option>
+          <option value="off">Off for this person</option>
+        </select>
+        <p style={{ fontSize: '12px', color: 'var(--neutral-500)', margin: '0 0 var(--space-4)' }}>
+          On: the reply to a voice note starts with "🎤 what Mesiri heard". Off by default for every company.
         </p>
 
         <div

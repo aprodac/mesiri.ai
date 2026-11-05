@@ -2,7 +2,7 @@
 copied it: the conversation memory kept each voice reply with its heard line, so the model saw that format and
 wrote it again itself. Only the code draws the line, once; the memory keeps the reply without it.
 
-Guards: a voice note's reply still starts with the heard line (WA-209); a typed message gets none; other words of
+Guards: a voice note's reply still starts with the heard line where it is switched on (WA-209, WA-246); a typed message gets none; other words of
 the model are untouched.
 """
 
@@ -30,7 +30,7 @@ def _stand_in_tools(monkeypatch):  # noqa: ANN001, ANN202
 
 async def test_the_heard_line_the_model_copied_is_not_shown_twice() -> None:
     model = FakeToolCallingProvider([f"🎤 _{HEARD}_\n\nEthra helpers vannu ennu onnu koodi parayaamo?"])
-    h = Harness(model, transcript=HEARD)
+    h = Harness(model, transcript=HEARD, voice_transcript=True)
     await h.service.handle(_message(None, modality=InputModality.VOICE), CTX)
     text = h.sent[-1].text
     assert text.count("🎤") == 1 and text.startswith(f"🎤 _{HEARD}_\n\n")

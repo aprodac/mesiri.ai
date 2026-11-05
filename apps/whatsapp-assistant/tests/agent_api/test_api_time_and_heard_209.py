@@ -55,7 +55,7 @@ def test_the_heard_line_is_short_and_marked() -> None:
 
 
 async def test_a_voice_notes_reply_starts_with_what_was_heard() -> None:
-    h = Harness(two_receipts_model(), transcript="50 bag cement, 50 TMT vannu")
+    h = Harness(two_receipts_model(), transcript="50 bag cement, 50 TMT vannu", voice_transcript=True)
     await h.service.handle(_message(None, modality=InputModality.VOICE), CTX)
     reply = h.sent[-1]
     assert reply.text.startswith("🎤 _50 bag cement, 50 TMT vannu_\n\n")

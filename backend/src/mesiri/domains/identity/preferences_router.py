@@ -15,8 +15,12 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.infrastructure.postgres.dependency import get_db_conn
+from mesiri.infrastructure.postgres.repositories.organization_settings import (
+    PostgresOrganizationSettingsRepository,
+)
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -33,6 +37,7 @@ _users = sa.Table(
     sa.Column("id", sa.UUID(as_uuid=True)),
     sa.Column("organization_id", sa.UUID(as_uuid=True)),
     sa.Column("reply_language", sa.String),
+    sa.Column("voice_transcript", sa.Boolean),
 )
 
 
@@ -40,6 +45,9 @@ class Preferences(BaseModel):
     #: The language replies are in: a chosen one, "manglish" when none was chosen (WA-207), or "auto" (follow each
     #: message, when they asked for that).
     reply_language: str | None = None
+    #: WA-246: a voice note's reply starts with what was heard ("🎤 ..."): the person's own switch, else the
+    #: company's ``voice_transcript`` setting; off by default.
+    voice_transcript: bool = False
 
 
 class ReplyLanguageIn(BaseModel):
@@ -56,9 +64,19 @@ async def get_preferences(
     ctx: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ) -> Preferences:
-    """The caller's preferences: ``reply_language`` (none chosen: Manglish, WA-207; "auto": follow each message)."""
-    value = (await conn.execute(sa.select(_users.c.reply_language).where(_mine(ctx)))).scalar_one_or_none()
-    return Preferences(reply_language=effective_reply_language(value))
+    """The caller's preferences: ``reply_language`` (none chosen: Manglish, WA-207; "auto": follow each message) and
+    ``voice_transcript`` (WA-246)."""
+    row = (await conn.execute(sa.select(_users.c.reply_language, _users.c.voice_transcript).where(_mine(ctx)))).first()
+    return Preferences(reply_language=effective_reply_language(row.reply_language if row else None),
+                       voice_transcript=await _voice_transcript(conn, ctx, row.voice_transcript if row else None))
+
+
+async def _voice_transcript(conn: AsyncConnection, ctx: AuthorizationContext, person: bool | None) -> bool:
+    """WA-246: the person's own switch, else the company's (one indexed read only when the person has none)."""
+    if isinstance(person, bool):
+        return person
+    company = await PostgresOrganizationSettingsRepository(conn).get(ctx.organization_id, org_settings.VOICE_TRANSCRIPT)
+    return org_settings.voice_transcript_shown(None, company)
 
 
 def effective_reply_language(stored: str | None) -> str:
@@ -80,4 +98,4 @@ async def set_reply_language(
     result = await conn.execute(_users.update().where(_mine(ctx)).values(reply_language=value))
     if not result.rowcount:
         raise HTTPException(status_code=404, detail="User not found")
-    return Preferences(reply_language=value)
+    return Preferences(reply_language=value)  # voice_transcript: read with GET

@@ -47,12 +47,17 @@ def _message(text: str | None = "50 bag cement, 50 TMT vannu", modality=InputMod
 
 
 class Harness:
-    def __init__(self, model: Any, *, refuse_tmt: bool = False, transcript: str = "") -> None:
+    def __init__(self, model: Any, *, refuse_tmt: bool = False, transcript: str = "",
+                 voice_transcript: bool | None = None) -> None:
         self.seen: list = []
         self.sent: list[ReplySpec] = []
         self.logger = AsyncMock()
         self.trace = AsyncMock()
         self.app = stand_in_api(self.seen, refuse_tmt=refuse_tmt)
+        if voice_transcript is not None:  # WA-246: what GET /me/preferences says (none: unreadable, so off)
+            @self.app.get("/me/preferences")
+            async def preferences() -> dict:
+                return {"voice_transcript": voice_transcript}
 
         async def send(spec: ReplySpec, wa_id: str) -> None:
             self.sent.append(spec)

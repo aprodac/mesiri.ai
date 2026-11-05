@@ -17,14 +17,21 @@ CTX = SimpleNamespace(user_id=USER, organization_id=ORG, role="SITE_ENGINEER")
 
 
 class Conn:
-    def __init__(self, stored: str | None = None, rows: int = 1) -> None:
+    def __init__(self, stored: str | None = None, rows: int = 1, *, person: bool | None = None,
+                 company: object = None) -> None:
         self.stored, self.rows, self.statements = stored, rows, []
+        self.person, self.company = person, company
 
     async def execute(self, statement):  # noqa: ANN001, ANN201
-        self.statements.append(statement)
         compiled = statement.compile()
+        if statement.is_select and "organization_settings" in str(compiled):  # WA-246: the company's switch
+            self.settings_reads = getattr(self, "settings_reads", 0) + 1
+            row = None if self.company is None else SimpleNamespace(value=self.company)
+            return SimpleNamespace(first=lambda: row)
+        self.statements.append(statement)
         if statement.is_select:
-            return SimpleNamespace(scalar_one_or_none=lambda: self.stored)
+            row = SimpleNamespace(reply_language=self.stored, voice_transcript=self.person)
+            return SimpleNamespace(first=lambda: row)
         self.stored = compiled.params.get("reply_language")
         return SimpleNamespace(rowcount=self.rows)
 
@@ -64,3 +71,25 @@ async def test_get_reads_the_callers_own_row(stored: str | None, shown: str | No
     conn = Conn(stored)
     assert (await me.get_preferences(CTX, conn)).reply_language == shown
     assert _where_params(conn) == {USER, ORG}
+
+
+# WA-246 (Ilan, 5 Nov: "option to turn on or off this for companies or users, and by default for all turn it off"):
+# the "🎤 what was heard" line above a voice note's reply.
+@pytest.mark.parametrize(("person", "company", "shown"), [
+    (None, None, False),     # nothing set anywhere: off for everyone
+    (None, True, True),      # the company switched it on
+    (None, False, False),
+    (False, True, False),    # the person's own off wins over the company's on
+    (True, None, True),      # and their on over the company's default
+    (None, "yes", False),    # an unreadable company value is off
+])
+async def test_voice_transcript_person_then_company_then_off(person, company, shown) -> None:  # noqa: ANN001
+    conn = Conn(person=person, company=company)
+    assert (await me.get_preferences(CTX, conn)).voice_transcript is shown
+    assert _where_params(conn) == {USER, ORG}
+
+
+async def test_a_persons_own_choice_needs_no_company_read() -> None:
+    conn = Conn(person=True, company=False)
+    await me.get_preferences(CTX, conn)
+    assert not getattr(conn, "settings_reads", 0)
