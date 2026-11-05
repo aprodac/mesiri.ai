@@ -917,6 +917,9 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         db=material_db,
         renderer=receipt_renderer,
         notifier=team_notifier,
+        # [256]: voice answers heard, long answers read for the name in them (same transcription and resolver).
+        transcribe=pipeline.transcribe_voice,
+        ai=ai_resolver,
     )
 
     # SA-11: errors to the super admins on WhatsApp; same 24 h window rule

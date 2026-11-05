@@ -101,3 +101,12 @@ def test_bad_requests_are_refused(overrides, message) -> None:
     with pytest.raises(CompanyCreationError, match=message) as exc:
         validate(_new(**overrides))
     assert exc.value.conflict is False
+
+
+def test_validate_keeps_the_project_description_trimmed() -> None:
+    """[256]: what the owner said about the project at sign-up survives validation (trimmed, capped)."""
+    new = validate(_new(project_name="Supermarket",
+                        project_description="  G+1 supermarket, about 7,000 sqft, turnkey  "))
+    assert new.project_description == "G+1 supermarket, about 7,000 sqft, turnkey"
+    assert validate(_new(project_name="C")).project_description is None
+    assert len(validate(_new(project_name="C", project_description="x" * 5000)).project_description or "") == 2000

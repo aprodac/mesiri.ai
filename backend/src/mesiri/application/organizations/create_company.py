@@ -99,6 +99,7 @@ _projects = sa.Table(
     sa.Column("name", sa.String),
     sa.Column("reporting_timezone", sa.String),
     sa.Column("auto_generate_dpr", sa.Boolean),
+    sa.Column("description", sa.String),
 )
 _sites = sa.Table(
     "sites",
@@ -135,6 +136,8 @@ class NewCompany:
     project_name: str | None = None
     # Defaults to the project's name when a project is given without one.
     site_name: str | None = None
+    # [256]: what the owner said about the first project at sign-up (kept as its description).
+    project_description: str | None = None
     # Several sites under the one project (SA-01), instead of `site_name`.
     # Blank entries are dropped; after `validate` it holds every site,
     # `site_name` being the first.
@@ -251,6 +254,7 @@ def validate(new: NewCompany) -> NewCompany:
         project_name=project,
         site_name=site,
         site_names=sites,
+        project_description=(new.project_description or "").strip()[:2000] or None,
         auto_dpr=bool(new.auto_dpr),
         start_as=start_as,
         signup_source=source,
@@ -380,6 +384,7 @@ async def create_company(
                 name=new.project_name,
                 reporting_timezone=new.timezone,
                 auto_generate_dpr=new.auto_dpr,
+                description=new.project_description,
             )
         )
         # One project, one or more sites: each site gets its own report and
