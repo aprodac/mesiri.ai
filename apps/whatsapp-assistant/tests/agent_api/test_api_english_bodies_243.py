@@ -96,10 +96,12 @@ async def test_sibling_malayalam_issue_saves_in_english() -> None:
     assert dict(posted)["issue"]["narrative"] == "Water tank is leaking"
 
 
-async def test_still_not_english_after_one_retry_is_asked_never_held_never_saved() -> None:
+async def test_still_not_english_after_one_retry_is_held_never_asked_of_the_person() -> None:
+    # [248] replaces [243]'s "ask the person what it is called in English": translating is never the person's job.
+    # With no translation route (this stand-in model has none) and the model still in Malayalam, the line is held.
     w = _work("പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു")
-    posted, sent = await _journey([[w], [w], "ഇംഗ്ലീഷിൽ എന്താണ് പേര്?"], "പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു")
-    assert posted == [] and not sent[-1].buttons
+    posted, sent = await _journey([[w], [w], "റെഡി."], "പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു")
+    assert len(posted) == 1 and "English" not in sent[0].text
 
 
 async def test_a_work_update_without_narrative_never_takes_a_malayalam_summary() -> None:

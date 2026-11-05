@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from mesiri.domains.materials.names import alias_key
@@ -115,16 +116,26 @@ async def already_listed(client: ApiClient, name: str) -> str:
 
 
 async def settle_material(client: ApiClient, body: dict[str, Any], said: str, words: str,
-                          taught: list[tuple[str, str]]) -> tuple[str, list[str]]:
+                          taught: list[tuple[str, str]],
+                          english: Callable[[str], Awaitable[str]] | None = None) -> tuple[str, list[str]]:
     """Check ``body["material_id"]`` is the material they meant. ``taught``: (material_id, alias) pairs already
-    prepared this conversation (the person just chose). Returns ("", []) when it is, else what to tell the model
-    and the buttons. The list unreadable: ("", []), and the API's own checks decide."""
+    prepared this conversation (the person just chose). ``english``: Mesiri's own translation of a word ([248]).
+    Returns ("", []) when it is, else what to tell the model and the buttons. The list unreadable: ("", []), and the
+    API's own checks decide."""
     rows = await catalogue(client)
     if not rows:
         return "", []
     picked = str(body.get("material_id") or "")
     row = next((r for r in rows if str(r["id"]) == picked), None)
     said = " ".join(str(said or "").split())
+    if said and other_script(said) and not any(is_material(said, r, rows) for r in rows):
+        # [248]: "സിമൻ്റ്" is translated by Mesiri, then matched in English ("cement" -> the listed Cement). Never the
+        # person's job: when no translation comes back, the model's own pick stands (it read the word).
+        translated = await english(said) if english is not None else ""
+        if translated and not other_script(translated):
+            said = translated
+        elif row is not None:
+            return "", []
     if row is not None:
         if said and (is_material(said, row, rows) or any(m == picked and _same(a, said) for m, a in taught)):
             return "", []
@@ -138,10 +149,10 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
         body["material_id"] = str(hit["id"])
         return "", []
     if other_script(said):
-        # [243]: "സിമന്റ്" is matched in English ("cement" -> the listed Cement), never offered as a new material.
+        # [243]/[248]: no material picked and no translation: the model translates it in this turn. Never the person.
         return ("material_said is not in English. Nothing is prepared. Call it again now with material_said in English "
-                "(their word translated: സിമന്റ് = cement, മണൽ = sand, കമ്പി = steel); the code matches it to the "
-                "company's list.", [])
+                "(translate their word yourself: സിമന്റ് = cement, മണൽ = sand, കമ്പി = steel); the code matches it to "
+                "the company's list. Never ask the person to say it in English.", [])
     near = nearest(said, rows, row)
     word = title(said)
     names = [str(r["name"]) for r in near]

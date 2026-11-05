@@ -31,7 +31,14 @@ from runtime.agent.reply_text import asks_to_tap_save
 from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
-from .fill import NARRATIVE_REFUSAL, fill_body, missing_in_body, not_english
+from .fill import (
+    NARRATIVE_REFUSAL,
+    fill_body,
+    missing_in_body,
+    not_english,
+    to_english,
+    translate_body,
+)
 from .materials import (
     ADD_TOOL,
     NEW,
@@ -432,7 +439,11 @@ class ApiAgent:
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
         tz = ZoneInfo(timezone or "Asia/Kolkata")
         their_words = " ".join([*(m.text or "" for m in history or [] if m.role == "user"), text])
-        tries: dict[str, int] = {}  # [243]: a body not in English is sent back once per tool, then asked about
+        tries: dict[str, int] = {}  # [243]: a body Mesiri could not translate is sent back to the model once per tool
+
+        async def english(word: str) -> str:
+            """[248]: Mesiri's own English for a word the person said ("സിമൻ്റ്" -> "Cement"), or ""."""
+            return (await to_english(self._provider, [word], correlation_id)).get(word, "")
         reply_in = LANGUAGE_LINES.get(language or "", "their language")
         language_set: list[str] = []
 
@@ -610,6 +621,10 @@ class ApiAgent:
                 path = path.replace("{" + p + "}", str(arguments[p]))
             params = {q: arguments[q] for q in tool.query_params if arguments.get(q) not in (None, "")}
             body = {f: arguments[f] for f in tool.body_fields if f in arguments}
+            if tool.is_write:
+                # [248]: Mesiri translates a free-text field left in another script itself, before any check reads it
+                # (a new material "സിമന്റ്" is then "Cement", already in the list, never a second one).
+                await translate_body(self._provider, tool.spec.parameters, body, correlation_id)
             body.update({k: (channel if v == TEXT_CHANNEL else v) for k, v in tool.fixed})
             if tool.is_write and str(body.get("vendor_text") or "").strip():
                 # WA-201 (basic 5, no duplicates): "ravi trader" for the listed "Ravi Traders" is that vendor, not a new one.
@@ -631,7 +646,7 @@ class ApiAgent:
                 taught = [(e.path.split("/")[2], str(e.body.get("alias") or "")) for e in [*waiting, *new]
                           if e is not None and e.tool == ALIAS_TOOL]
                 problem, buttons = await settle_material(
-                    client, body, str(arguments.get(MATERIAL_SAID) or ""), their_words, taught)
+                    client, body, str(arguments.get(MATERIAL_SAID) or ""), their_words, taught, english)
                 if problem:
                     unit_ask[:] = buttons
                     return ToolOutcome(content={"error": problem})
@@ -726,18 +741,17 @@ class ApiAgent:
                 if gaps := missing_in_body(tool.spec.parameters, body):
                     return ToolOutcome(content={"error": f"missing: {', '.join(gaps)}. Nothing was prepared. Ask the "
                                                          "person for it in this reply (one question)."})
-                if foreign := not_english(tool.spec.parameters, body):
-                    # [243]: everything Mesiri saves is English (the model filled the body in the conversation's
-                    # language: "സിമന്റ്" became a new material). The card line and the reply stay in theirs.
+                if (foreign := not_english(tool.spec.parameters, body)) and (tries.get(name, 0) < 1 or name == ADD_TOOL):
+                    # A material's own name is never added in another script (it would be the company's list entry).
+                    # [243]: everything Mesiri saves is English; the card line and the reply stay in theirs.
+                    # [248]: Mesiri translates the fields itself first; only what it could not is sent back to the
+                    # model, once. After that the line is held as it is: translating is never the person's job.
                     tries[name] = tries.get(name, 0) + 1
-                    if tries[name] > 1:
-                        return ToolOutcome(content={"error": (
-                            f"{', '.join(foreign)} still not in English. Nothing was prepared. Ask the person, in "
-                            f"{reply_in}, one plain question: what it is called in English.")})
                     return ToolOutcome(content={"error": (
                         f"write body fields in English; keep the reply in {reply_in}. Not English: {', '.join(foreign)}. "
-                        "Nothing was prepared: call it again now with those fields translated to English (names of "
-                        "people and places as they are, in English letters); confirm_line stays in their language.")})
+                        "Nothing was prepared: call it again now with those fields translated to English yourself "
+                        "(names of people and places as they are, in English letters); confirm_line stays in their "
+                        "language. Never ask the person to say anything in English.")})
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
                     summary=str(arguments.get(CONFIRM_ARG) or "").strip() + filled_unit + unit_note + site_note,

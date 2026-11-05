@@ -7,6 +7,7 @@ derive and holds only a body that will pass.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -94,3 +95,83 @@ def missing_in_body(parameters: dict[str, Any], body: dict[str, Any]) -> list[st
                 if row.get(need) in (None, "", []):
                     out.append(f"{name}[{i}].{need}")
     return out
+
+
+#: [248]: how long one fallback translation may take before the field is left as it is (it is a few words).
+TRANSLATE_SECONDS = 6.0
+_PATH = re.compile(r"([^.\[\]]+)(?:\[(\d+)\])?")
+
+
+async def to_english(provider: Any, texts: list[str], correlation_id: str | None = None) -> dict[str, str]:
+    """[248]: Mesiri translates a word or a field into English itself; the person is never asked to.
+
+    5 Nov (New India, a new owner's first voice note): the model left "സിമൻ്റ്" in Malayalam twice and Mesiri asked
+    the person to say "cement" in English. Translating is the AI's job. This runs only on the rare path where the
+    model's body is still in another script (one short call per distinct text, in parallel), through the provider's
+    own translation route (``translate_to_english``, the control panel's "translation" row). Returns {text: English}
+    for the texts it could translate; one it could not (no route, a failure, a timeout, still not Latin) is left out.
+    """
+    translate = getattr(provider, "translate_to_english", None)
+    wanted = [t for t in dict.fromkeys(texts) if isinstance(t, str) and other_script(t)]
+    if translate is None or not wanted:
+        return {}
+
+    async def one(text: str) -> str:
+        try:
+            result = await asyncio.wait_for(translate(text, correlation_id=correlation_id), TRANSLATE_SECONDS)
+        except Exception:  # noqa: BLE001 -- a failed translation leaves the field as it is; never the person's job
+            return ""
+        out = " ".join(str(getattr(result, "translated_text", "") or "").split()).strip(" .\"'")
+        return "" if not out or other_script(out) else out
+
+    done = await asyncio.gather(*(one(t) for t in wanted))
+    return {t: e for t, e in zip(wanted, done, strict=True) if e}
+
+
+def _steps(path: str) -> list[str | int]:
+    out: list[str | int] = []
+    for name, index in _PATH.findall(path):
+        out.append(name)
+        if index:
+            out.append(int(index) - 1)
+    return out
+
+
+def field_at(body: Any, path: str) -> Any:
+    """The value at a :func:`not_english` path ("narrative", "lines[2].trade"), or None."""
+    node = body
+    for step in _steps(path):
+        try:
+            node = node[step]
+        except (KeyError, IndexError, TypeError):
+            return None
+    return node
+
+
+def set_field(body: Any, path: str, value: Any) -> None:
+    """Set the value at a :func:`not_english` path; a path that is not there is left alone."""
+    steps = _steps(path)
+    parent = body
+    for step in steps[:-1]:
+        try:
+            parent = parent[step]
+        except (KeyError, IndexError, TypeError):
+            return
+    try:
+        parent[steps[-1]] = value
+    except (KeyError, IndexError, TypeError):
+        return
+
+
+async def translate_body(provider: Any, parameters: dict[str, Any], body: dict[str, Any],
+                         correlation_id: str | None = None) -> list[str]:
+    """[248]: translate the body's free-text fields that are not English, in place. Returns the fields still not
+    English (none, when every one was translated)."""
+    foreign = not_english(parameters, body)
+    if not foreign:
+        return []
+    done = await to_english(provider, [str(field_at(body, p) or "") for p in foreign], correlation_id)
+    for path in foreign:
+        if (english := done.get(str(field_at(body, path) or ""))):
+            set_field(body, path, english)
+    return not_english(parameters, body)
