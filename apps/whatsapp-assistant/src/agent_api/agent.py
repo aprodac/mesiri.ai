@@ -37,6 +37,7 @@ from .materials import (
     NEW,
     already_listed,
     catalogue,
+    known_vendor,
     material_name,
     pending_ref,
     settle_material,
@@ -610,6 +611,16 @@ class ApiAgent:
             params = {q: arguments[q] for q in tool.query_params if arguments.get(q) not in (None, "")}
             body = {f: arguments[f] for f in tool.body_fields if f in arguments}
             body.update({k: (channel if v == TEXT_CHANNEL else v) for k, v in tool.fixed})
+            if tool.is_write and str(body.get("vendor_text") or "").strip():
+                # WA-201 (basic 5, no duplicates): "ravi trader" for the listed "Ravi Traders" is that vendor, not a new one.
+                if (listed := await known_vendor(client, str(body["vendor_text"]))) and listed != body["vendor_text"]:
+                    body["vendor_text"] = listed
+            if tool.is_write and (sum_ := worked_out(own_words(text), body)) and not tries.get(f"{name}:sum"):
+                # WA-200 (basic 4, never change their data): "2 drum primer" held as 40 litres (2 x 20), the model's
+                # arithmetic. The quantity is the number they said, in their unit; the code converts. Once: a number
+                # they did mean (a total they worked out themselves) goes through when it comes back the same.
+                tries[f"{name}:sum"] = 1
+                return ToolOutcome(content={"error": sum_})
             if tool.is_write and (clash := number_clash(text, body, [e.body for e in new])):
                 # [229]: "20 bag cement, aaru mason" became 20 masons: a number said once cannot count two things.
                 return ToolOutcome(content={"error": clash})
@@ -925,6 +936,27 @@ def entry_numbers(body: dict[str, Any]) -> list[float]:
         except (TypeError, ValueError):
             pass
     return out
+
+
+def worked_out(text: str, body: dict[str, Any]) -> str:
+    """WA-200: a quantity in ``body`` that is not a number they said but two of their numbers multiplied or added
+    ("2 drum, 20 litre each" -> 40). Returns what to tell the model, or "". Word numbers ("aaru") are not in digits
+    and are never checked."""
+    said = [float(n) for n in _NUMBER.findall(_NOT_AN_AMOUNT.sub(" ", text or ""))]
+    if len(said) < 2:
+        return ""
+    for n in dict.fromkeys(entry_numbers(body)):
+        if n in said:
+            continue
+        pairs = [(a, b) for i, a in enumerate(said) for b in said[i + 1:]]
+        hit = next(((a, b, op) for a, b in pairs for op, v in (("x", a * b), ("+", a + b)) if abs(v - n) < 1e-9), None)
+        if hit:
+            a, b, op = hit
+            return (f"{n:g} is not a number they said: it is {a:g} {op} {b:g}, worked out. Nothing was prepared. Use the "
+                    f"number they said, in the unit they said (\"2 drum\" stays 2 drum): the code converts it to the stock "
+                    "unit and shows it on the line. If a size is part of it (\"20 litre drum\"), prepare "
+                    "`set_unit_conversion` for it too.")
+    return ""
 
 
 def number_clash(text: str, body: dict[str, Any], others: list[dict[str, Any]]) -> str:

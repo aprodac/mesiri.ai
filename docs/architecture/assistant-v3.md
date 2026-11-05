@@ -40,8 +40,8 @@ after [230] was marked done).
 | 1 | **Save in English, reply in their language.** Every saved field is English; the reply and card line stay in theirs | Code (`fill.py`: non-English body text is refused back to the model). Manglish in Latin letters rests on the SOP | [243] landed `5dd2fef2` |
 | 2 | **Lose nothing.** Every part of a message is saved or asked about | SOP rules 1 and 4, some code ([229]); since 5 Nov a number said that nothing kept gets one more try (WA-198) | [237], [234], [232] |
 | 3 | **Say "saved" only when it saved.** Prepared is not saved | Code (`reply_guard.py`, WA-193): the claim is cut from the model's words; "saved" with no tool gets one more try | |
-| 4 | **Never change their data.** Same number, same unit, no swapped material | Materials in code; quantities in a reply mostly rule | |
-| 5 | **Never create a duplicate.** Recognise what already exists | Repeat saves in code (idempotency key, "Already saved at"); an add for a listed material is not caught | [242] |
+| 4 | **Never change their data.** Same number, same unit, no swapped material | Materials in code; since 5 Nov a worked-out quantity goes back once (WA-200) | |
+| 5 | **Never create a duplicate.** Recognise what already exists | Repeat saves in code (idempotency key, "Already saved at"); a listed material ([243]) and a listed vendor (WA-201) are matched; workers blocked on approval (WA-202) | [242] |
 | 6 | **Right site, right person, right day** | Code (`decide_site`, missing date filled with today) | |
 | 7 | **Work it out first.** At most one question, with buttons and a way out | SOP rules 2 and 3; code since 5 Nov: an unknown material is held as new (WA-194), an unknown size or a missing unit never blocks a line (WA-197) | [232] |
 | 8 | **One reply language.** No mixing, in their script | Decided by code; the wording is the model's, with some code-side checks ([231]) | [239] |

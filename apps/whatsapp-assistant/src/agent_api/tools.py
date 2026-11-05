@@ -117,6 +117,7 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("list_expenses", "GET", "/expenses", "Expenses recorded, per project or site."),
     Allowed("expense_categories", "GET", "/expenses/categories", "The company's expense categories and their ids."),
     Allowed("money_accounts", "GET", "/finance/accounts", "The company's money accounts (petty cash, bank) and balances."),
+    Allowed("list_vendors", "GET", "/finance/vendors", "The company's vendors (shops, suppliers): names, how many expenses, total paid."),
     Allowed(
         "record_expense", "POST", "/expenses", "Prepare an expense (money spent), from words or a bill photo; the photo is attached by itself. "
         "Vendor and category as text, as they said or as the bill shows." + _WRITE,

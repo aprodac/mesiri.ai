@@ -156,3 +156,26 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
             f"{said!r}, in the unit they said. Everything saves in one Save, the new material first. Your reply says "
             f"in ONE line, in their language, that it is new and Save adds it to their material list, and that if it "
             f"is {' or '.join(names)} they can just say so. No buttons, no question.", [])
+
+
+def name_key(text: str) -> str:
+    """WA-201: how a vendor's name is matched: case, spaces and punctuation aside, each word singular ("Ravi
+    Traders." = "ravi trader")."""
+    words = _WORD.findall(alias_key(text))
+    return " ".join(w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words)
+
+
+async def known_vendor(client: ApiClient, said: str) -> str:
+    """WA-201: the company's active vendor that ``said`` already names ("ravi trader." -> "Ravi Traders"), else "".
+    The API matches a vendor by its exact name and makes a new one otherwise, so the name goes in as it is listed.
+    The list unreadable (the finance module off): "", and the API decides as before."""
+    key = name_key(said)
+    if not key:
+        return ""
+    try:
+        response = await client.call("GET", "/finance/vendors")
+    except Exception:  # noqa: BLE001
+        return ""
+    rows = response.body if response.ok and isinstance(response.body, list) else []
+    return next((str(r["name"]) for r in rows if isinstance(r, dict) and r.get("status", "active") == "active"
+                 and r.get("name") and name_key(str(r["name"])) == key), "")
