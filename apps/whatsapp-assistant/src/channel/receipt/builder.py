@@ -83,6 +83,16 @@ class RecordReceiptBuilder:
             logger.exception("receipt.render_failed parts=%s", len(parts))
             return None
 
+    async def build_slip(self, slip: Any) -> bytes | None:
+        """WA-215: the draft slip of a ready list (``draft_slip.Slip``), before Save. None when drawing fails."""
+        from .draft_slip import render_slip_html
+
+        try:
+            return await self._renderer.render_png(render_slip_html(slip))
+        except Exception:
+            logger.exception("receipt.slip_render_failed lines=%s", len(getattr(slip, "lines", []) or []))
+            return None
+
     async def _localized(self, parts: list[ReceiptData], actor: Any) -> list[ReceiptData]:
         if self._localize is None:
             return parts

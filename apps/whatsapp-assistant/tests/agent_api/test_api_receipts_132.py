@@ -64,11 +64,12 @@ class Cards:
         self.previews: list = []
         self._preview = preview
 
+    async def build_slip(self, slip: Any) -> bytes | None:  # noqa: ANN401 -- WA-215: the draft slip before Save
+        self.previews.append(slip)
+        return b"PREVIEW" if self._preview else None
+
     async def build_combined(self, saved: list, actor: Any, *, kept: bool = False, localize: bool = True
                              ) -> bytes | None:
-        if not kept:
-            self.previews.append((saved, localize))
-            return b"PREVIEW" if self._preview else None
         self.asked.append((saved, kept))
         return b"PNG"
 

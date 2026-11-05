@@ -168,11 +168,11 @@ Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
 1. A write tool prepares an entry (`PendingWrite`: route, body, confirm line, idempotency key) and
    tells the model "ready, NOT saved". The SOP forbids "saved / recorded / njan record cheythu"
    until it is.
-2. The reply is **one message: the TO SAVE card** of the entries (`receipts.preview_card`, the same
-   `RecordReceiptBuilder` with `kept=False`, not translated, within `PREVIEW_SECONDS` = 3 s) as the
-   header image, the model's one short line, and **Save / ✏️ Edit / Cancel** (WA-208, WA-210). The
-   text no longer lists what the card shows; entries with no card (a material being added, a size, a
-   project) stay under **Ready to save:**. No builder, or the card can't be drawn in time: the text
+2. The reply is **one message: the draft slip** of the entries (`receipts.preview_card` ->
+   `channel/receipt/draft_slip.py`, the "site ticket": DRAFT · NOT SAVED, one numbered row per line,
+   not translated, within `PREVIEW_SECONDS` = 3 s) as the header image, the model's one short line,
+   and **Save / ✏️ Edit / Cancel** (WA-208, WA-210, WA-215). Every line is on the slip, so the text
+   lists none. No builder, or the card can't be drawn in time: the text
    list, as before. Edit asks the line's right figure and offers **🗑️ Remove** (that line only). A
    question asked with `ask` shows its options as buttons (Save last).
 3. **Save** (or "save it" in words) sends each entry to the API as the person, with its
@@ -373,6 +373,7 @@ Tracked in [V1_TRACKER.md](../plans/V1_TRACKER.md):
 | WA-129 [204] | Outages queued, other errors fall back to v2, greetings by code |
 | WA-131 [203] | `send_dpr` only when asked, one turn |
 | WA-132 | The SAVED card after a Save |
+| WA-215 | The draft slip ("site ticket") replaces the receipt-style preview |
 | WA-210 | The TO SAVE card before Save (one message with Save / Edit / Cancel), Remove one line, "typing..." kept after the ✅ |
 | WA-118 | Calls (read-only) |
 | WA-134 | **v3 locked** (Alan and Ilan, 2 Nov); v2 removed, failures fall back to classic |

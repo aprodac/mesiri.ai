@@ -10,10 +10,13 @@ issue) are left out. Never raises: the Save and its line already went through.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import uuid
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from channel.receipt.draft_slip import Slip, SlipLine
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
@@ -22,6 +25,7 @@ from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from .agent import PendingWrite, WriteResult
 from .client import ApiClient
 from .materials import NEW
+from .reply_guard import without_ids
 from .units import unit_rows
 
 _log = logging.getLogger(__name__)
@@ -40,32 +44,113 @@ _MATERIAL_TOOLS = {"record_receipt", "record_usage", "record_transfer"}
 
 
 def has_card(entry: PendingWrite) -> bool:
-    """WA-210: the entry is drawn on the card (receipt, usage, transfer, expense, attendance, work, issue)."""
+    """WA-210: the entry has a SAVED receipt card (receipt, usage, transfer, expense, attendance, work, issue)."""
     return entry.tool in CARD_TYPES
 
 
 async def preview_card(builder: Any, entries: list[PendingWrite], ctx: Any, client: ApiClient,
                        correlation_id: str | None) -> bytes | None:
-    """WA-210 (Ilan, 5 Nov: "before saving itself you get the image card, and you save after that"): the TO SAVE
-    card of the ready list, sent as the header of the Save / Edit / Cancel message. Not translated (the record is
-    kept in English, [243], and a translation call would sit on the reply path). None when no entry has a card,
-    there is no builder, or drawing failed: the list then goes out as text, as before."""
-    if builder is None:
-        return None
-    carded = [e for e in entries if has_card(e)]
-    if not carded:
+    """WA-210 / WA-215: the draft slip of the ready list (every line, numbered as the ✏️ Edit list numbers them), sent
+    as the header of the Save / Edit / Cancel message. Not translated (records are kept in English, [243]; a
+    translation call would sit on the reply path). None when there is nothing to draw, no builder, or drawing failed:
+    the list then goes out as text, as before."""
+    if builder is None or not entries or not hasattr(builder, "build_slip"):
         return None
     try:
-        names = await _names(client) if any(e.tool in _MATERIAL_TOOLS for e in carded) else ({}, {})
-        pairs = [pair for e in carded if (pair := _pair(e, PREVIEW_ROW, ctx, names, correlation_id)) is not None]
-        return await builder.build_combined(pairs, ctx, kept=False, localize=False) if pairs else None
+        names = await _names(client) if any(e.tool in _MATERIAL_TOOLS for e in entries) else ({}, {})
+        return await builder.build_slip(slip_for(entries, ctx, names))
     except Exception:  # noqa: BLE001 -- the list still goes out as text
         _log.exception("agent_api.preview_card_failed user=%s", getattr(ctx, "user_id", None))
         return None
 
 
-#: WA-210: the preview card's row id: nothing is saved yet, so the card's reference reads "...-PREV".
-PREVIEW_ROW = "preview"
+def _amount(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value or "")
+    return f"{number:,.2f}".rstrip("0").rstrip(".") if number % 1 else f"{int(number):,}"
+
+
+def _clean(value: Any, limit: int = 60) -> str:
+    text = " ".join(without_ids(str(value or "")).split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def slip_for(entries: list[PendingWrite], ctx: Any, names: tuple[dict, dict], now: dt.datetime | None = None) -> Slip:
+    """WA-215: the slip's rows from the entries Save will send, in list order: what each one is, in plain words,
+    and its quantity. Lines with no receipt card (a new material, a size, a project) get a row too, so the card
+    is the whole list."""
+    material, unit = names
+    sites = {str(s.id): s.name for s in (getattr(ctx, "sites", None) or [])}
+    projects = {str(p.id): p.name for p in (getattr(ctx, "projects", None) or [])}
+    lines = [_line(i, e, material, unit, sites) for i, e in enumerate(entries, 1)]
+    places = {str(e.body.get("site_id") or e.body.get("from_site_id") or "") for e in entries} - {""}
+    if len(places) == 1:
+        site = sites.get(next(iter(places)), "")
+    elif len(places) > 1:
+        site = f"{len(places)} sites"
+    else:
+        site = next((projects[str(e.body["project_id"])] for e in entries
+                     if str(e.body.get("project_id") or "") in projects), "")
+    try:
+        zone = ZoneInfo(str(getattr(ctx, "timezone", None) or "Asia/Kolkata"))
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("Asia/Kolkata")
+    local = (now or dt.datetime.now(dt.UTC)).astimezone(zone)
+    when = f"{local.day} {local:%b}, {local:%I:%M %p}".replace(" 0", " ").replace("AM", "am").replace("PM", "pm")
+    return Slip(site=site, when=when, lines=lines)
+
+
+def _plural(trade: str, count: int) -> str:
+    """"Helper" -> "Helpers" for more than one ("Mason" -> "Masons"); a word already plural stays."""
+    return trade if count == 1 or trade.endswith("s") else f"{trade}s"
+
+
+def _line(number: int, entry: PendingWrite, material: dict[str, str], unit: dict[str, str],
+          sites: dict[str, str]) -> SlipLine:
+    body, tool = entry.body, entry.tool
+    if tool in _MATERIAL_TOOLS:
+        raw = str(body.get("material_id") or "")
+        note = {"record_receipt": "came to site", "record_usage": "used"}.get(tool, "moved")
+        if tool == "record_receipt" and body.get("supplier"):
+            note = f"from {_clean(body['supplier'], 30)}"
+        elif tool == "record_usage" and body.get("work_item"):
+            note = f"used for {_clean(body['work_item'], 30)}"
+        elif tool == "record_transfer":
+            note = f"to {sites.get(str(body.get('to_site_id')), 'another site')}"
+        return SlipLine(number, "material", _material_name(raw, material), note, _amount(body.get("quantity")),
+                        unit.get(str(body.get("unit_id")), ""), new=raw.startswith(NEW))
+    if tool == "record_attendance":
+        rows = [ln for ln in body.get("lines") or [] if isinstance(ln, dict)]
+        total = sum(int(ln.get("headcount") or 1) for ln in rows)
+        trades = [str(ln.get("worker_name") or ln.get("trade") or "worker").strip() for ln in rows]
+        if len(rows) == 1:
+            title = trades[0] if rows[0].get("worker_name") else _plural(trades[0].title(), total)
+            return SlipLine(number, "labour", title, "at work", str(total))
+        detail = " · ".join(f"{t.title()} {int(ln.get('headcount') or 1)}" for t, ln in zip(trades, rows, strict=True))
+        return SlipLine(number, "labour", "Workers", _clean(detail), str(total))
+    if tool == "record_work":
+        quantities = [q for q in body.get("quantities") or [] if isinstance(q, dict)]
+        title = _clean(body.get("work_type") or body.get("narrative") or entry.summary, 40)
+        narrative = _clean(body.get("narrative"))
+        note = narrative if narrative and narrative.casefold() != title.casefold() else "work done"
+        if quantities:
+            return SlipLine(number, "work", title, note, _amount(quantities[0].get("quantity")),
+                            str(quantities[0].get("unit") or ""))
+        return SlipLine(number, "work", title, note)
+    if tool == "report_issue":
+        title = _clean(body.get("title") or body.get("narrative") or body.get("summary") or entry.summary, 40)
+        severity = str(body.get("severity") or "").title()
+        return SlipLine(number, "issue", title, f"{severity} issue".strip() if severity else "issue")
+    if tool == "record_expense":
+        title = _clean(body.get("description") or body.get("category_text") or "Expense", 40)
+        note = _clean(body.get("vendor_text") or body.get("category_text") or "expense", 30)
+        return SlipLine(number, "expense", title, note, f"₹{_amount(body.get('amount'))}")
+    if tool == "add_material":
+        return SlipLine(number, "list", _clean(body.get("name") or entry.summary, 40), "new on your material list",
+                        new=True)
+    return SlipLine(number, "list", _clean(entry.summary, 70))
 
 
 async def saved_card(builder: Any, results: list[WriteResult], ctx: Any, client: ApiClient,

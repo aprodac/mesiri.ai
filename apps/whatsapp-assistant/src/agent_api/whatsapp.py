@@ -72,7 +72,7 @@ from .agent import (
 from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory, tools_version
-from .receipts import has_card, preview_card
+from .receipts import preview_card
 from .record_links import record_link, with_links
 from .reply_guard import without_ids
 from .tools import build_tools
@@ -882,9 +882,9 @@ class ApiWhatsApp:
         return reply
 
     async def _with_preview(self, reply: ReplySpec, ctx: Any, correlation_id: str | None) -> ReplySpec:
-        """WA-210: the reply that carries the ready list's Save button gets the list's TO SAVE card as its header
-        image, and its text loses the lines the card shows (and the "tap Save" line: the button is under the
-        card). Lines with no card (a material being added, a size, a project) stay as text. Drawn within
+        """WA-210 / WA-215: the reply that carries the ready list's Save button gets the list's draft slip as its header
+        image, and its text loses the list (the slip shows every line, numbered) and the "tap Save" line (the button
+        is under the card). Drawn within
         PREVIEW_SECONDS; when it can't be, the reply goes out exactly as before. Never raises."""
         if self._receipts is None or reply.header_image is not None or not reply.buttons:
             return reply
@@ -895,8 +895,6 @@ class ApiWhatsApp:
                     b.id == f"{SAVE_PREFIX}{batch}" for b in reply.buttons):
                 return reply
             entries = [PendingWrite.from_json(e) for e in state["pending"]]
-            if not any(has_card(e) for e in entries):
-                return reply
             client = ApiClient(_actor(ctx), app=self._app)
             try:
                 image = await asyncio.wait_for(
@@ -908,7 +906,7 @@ class ApiWhatsApp:
             state["previewed"] = batch
             await self._save_state(ctx, state)
             return dataclasses.replace(reply, header_image=image,
-                                       text=without_carded_lines(reply.text, entries, state.get("language")))
+                                       text=without_listed_lines(reply.text, entries, state.get("language")))
         except Exception:  # noqa: BLE001 -- the list goes out as text
             _log.warning("agent_api.preview_not_sent user=%s", getattr(ctx, "user_id", None), exc_info=True)
             return reply
@@ -1313,28 +1311,13 @@ def _save_buttons(text: str, batch: str) -> ReplySpec:
                                           ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
 
 
-def without_carded_lines(text: str, entries: list[PendingWrite], language: str | None) -> str:
-    """WA-210: the reply text once the preview card shows the list: the lines the card draws come out, the
-    others stay (as bullets), the "Ready to save:" heading goes when no line is left under it, and the
-    "tap Save" line goes (the button is under the card)."""
-    listed = {f"{i}. {without_ids(e.summary)}": has_card(e) for i, e in enumerate(entries, 1)}
+def without_listed_lines(text: str, entries: list[PendingWrite], language: str | None) -> str:
+    """WA-210 / WA-215: the reply text once the draft slip shows the list: every listed line comes out (the slip has
+    them all, numbered), with the "Ready to save:" heading and the "tap Save" line (the button is under the card)."""
+    listed = {f"{i}. {without_ids(e.summary)}" for i, e in enumerate(entries, 1)}
     press = _in(language, "api.press_save", PRESS_SAVE)
-    out: list[str] = []
-    for line in text.split("\n"):
-        if line in listed:
-            if not listed[line]:
-                out.append("• " + line.split(". ", 1)[1])
-            continue
-        if line.strip() == press:
-            continue
-        out.append(line)
-    kept: list[str] = []
-    for i, line in enumerate(out):
-        if line.strip() == READY_HEADING:
-            following = next((x for x in out[i + 1:] if x.strip()), "")
-            if not following.startswith("• "):
-                continue
-        kept.append(line)
+    kept = [line for line in text.split("\n")
+            if line not in listed and line.strip() not in (press, READY_HEADING)]
     words = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
     return words or "OK."
 

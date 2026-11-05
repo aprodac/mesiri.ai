@@ -19,7 +19,7 @@ from tests.agent_api.test_api_receipts_132 import CTX, Cards, _message, _service
 
 from agent_api import whatsapp as wa
 from agent_api.agent import PendingWrite
-from agent_api.receipts import has_card, preview_card
+from agent_api.receipts import preview_card, slip_for
 from channel.whatsapp.outbound import WhatsAppSender
 from runtime.agent.wording import say
 
@@ -50,9 +50,9 @@ async def test_a_ready_list_goes_out_on_its_to_save_card_with_save_edit_cancel()
     reply = sent[-1]
     assert reply.header_image == b"PREVIEW"
     assert [b.title for b in reply.buttons] == ["Save", wa.EDIT_TITLE, "Cancel"]
-    (pairs, localize), = cards.previews
-    assert len(pairs) == 2 and localize is False  # no translation call on the reply path
-    assert {p[0].draft_action.fields["material_name"] for p in pairs} == {"Cement", "TMT bar"}
+    (slip,) = cards.previews
+    assert [(ln.number, ln.title, ln.quantity) for ln in slip.lines] == [(1, "Cement", "50"), (2, "TMT bar", "50")]
+    assert slip.site == "Main block"
 
 
 async def test_the_text_no_longer_repeats_the_lines_or_says_tap_save() -> None:
@@ -82,7 +82,7 @@ async def test_a_card_that_cannot_be_drawn_keeps_the_text_list() -> None:
 
 async def test_a_slow_card_never_holds_the_reply(monkeypatch) -> None:  # noqa: ANN001
     class Slow(Cards):
-        async def build_combined(self, saved: list, actor: Any, *, kept: bool = False, localize: bool = True):
+        async def build_slip(self, slip: Any) -> bytes:  # noqa: ANN401
             await asyncio.sleep(1)
             return b"LATE"
 
@@ -95,18 +95,43 @@ async def test_a_slow_card_never_holds_the_reply(monkeypatch) -> None:  # noqa: 
     assert sent[-1].header_image is None and wa.READY_HEADING in sent[-1].text
 
 
-def test_lines_with_no_card_stay_as_bullets() -> None:
+def test_the_slip_carries_every_line_so_the_text_keeps_none() -> None:
     entries = [
         PendingWrite("add_material", "POST", "/materials", {}, {"name": "Wash Basin"}, "Add Wash Basin", "k1"),
         PendingWrite("record_receipt", "POST", "/materials/inflows", {}, {}, "20 nos Wash Basin, Green Villa", "k2"),
     ]
     text = "\n\n".join(["Ithaa.", f"{wa.READY_HEADING}\n1. Add Wash Basin\n2. 20 nos Wash Basin, Green Villa",
                         wa.PRESS_SAVE])
-    assert wa.without_carded_lines(text, entries, "english") == f"Ithaa.\n\n{wa.READY_HEADING}\n• Add Wash Basin"
-    only_cards = entries[1:]
-    text = f"Ithaa.\n\n{wa.READY_HEADING}\n1. 20 nos Wash Basin, Green Villa\n\n{wa.PRESS_SAVE}"
-    assert wa.without_carded_lines(text, only_cards, "english") == "Ithaa."
-    assert not has_card(entries[0]) and has_card(entries[1])
+    assert wa.without_listed_lines(text, entries, "english") == "Ithaa."
+    slip = slip_for(entries, CTX, ({}, {}))
+    assert [(ln.number, ln.kind, ln.title, ln.new) for ln in slip.lines] == [
+        (1, "list", "Wash Basin", True), (2, "material", "Material", False)]
+
+
+def test_slip_rows_in_plain_words() -> None:
+    def entry(tool: str, body: dict) -> PendingWrite:
+        return PendingWrite(tool, "POST", "/x", {}, body, "x", "k")
+
+    lines = slip_for([
+        entry("record_attendance", {"lines": [{"trade": "helper", "headcount": 10}]}),
+        entry("record_attendance", {"lines": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 4}]}),
+        entry("record_work", {"work_type": "Plastering", "narrative": "2nd floor"}),
+        entry("record_expense", {"amount": 1250.5, "description": "Tea and snacks", "vendor_text": "Chai Point"}),
+        entry("report_issue", {"narrative": "Water tank leak", "severity": "CRITICAL"}),
+    ], CTX, ({}, {})).lines
+    assert [(ln.title, ln.note, ln.quantity) for ln in lines] == [
+        ("Helpers", "at work", "10"), ("Workers", "Mason 6 · Helper 4", "10"), ("Plastering", "2nd floor", ""),
+        ("Tea and snacks", "Chai Point", "₹1,250.5"), ("Water tank leak", "Critical issue", "")]
+
+
+def test_the_slip_html_says_draft_and_has_no_record_number() -> None:
+    from channel.receipt.draft_slip import Slip, SlipLine, render_slip_html
+
+    html = render_slip_html(Slip("Green Villa", "5 Nov, 2:43 pm", [SlipLine(1, "material", "<Cement>", "came", "30",
+                                                                             "bags", new=True)]))
+    assert "DRAFT · NOT SAVED" in html and "&lt;Cement&gt;" in html and ">NEW<" in html and "1 line<" in html
+    many = render_slip_html(Slip("x", "y", [SlipLine(i, "work", f"w{i}") for i in range(1, 12)]))
+    assert "+4 more on the list" in many and ">w7<" in many and ">w8<" not in many
 
 
 async def test_a_material_being_added_in_the_same_list_is_named_on_the_card() -> None:
@@ -122,8 +147,8 @@ async def test_a_material_being_added_in_the_same_list_is_named_on_the_card() ->
             return SimpleNamespace(ok=True, body={"items": []})
 
     assert await preview_card(cards, [entry], CTX, Client(), "cor_x") == b"PREVIEW"
-    (pairs, _), = cards.previews
-    assert pairs[0][0].draft_action.fields["material_name"] == "GI roofing sheet"
+    (slip,) = cards.previews
+    assert slip.lines[0].title == "GI roofing sheet" and slip.lines[0].new is True
 
 
 # -- Save after the preview --------------------------------------------------------------------------------------
@@ -174,7 +199,7 @@ async def test_remove_takes_off_only_that_line_and_shows_the_rest_on_a_new_card(
     await service.handle(_message("Remove", tap=sent[-1].buttons[0].id), CTX)
     reply = sent[-1]
     assert reply.text.startswith(say("api.removed", "manglish", item="50 bags cement, Main block").split("*")[0])
-    assert reply.header_image == b"PREVIEW" and len(cards.previews[-1][0]) == 1
+    assert reply.header_image == b"PREVIEW" and len(cards.previews[-1].lines) == 1
     save = reply.buttons[0].id
     assert save.startswith(wa.SAVE_PREFIX) and not save.endswith(old)  # a new list: the old buttons no longer act
 
