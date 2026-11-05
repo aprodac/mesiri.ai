@@ -10,6 +10,7 @@ import { LedgerView } from '@/components/materials/ledger-view'
 import { InventoryView } from '@/components/materials/inventory-view'
 import { CatalogueView } from '@/components/materials/catalogue-view'
 import { SizesView } from '@/components/materials/sizes-view'
+import { CategoryView } from '@/components/materials/category-view'
 import { RecordInflowDialog } from '@/components/materials/record-inflow-dialog'
 import { RecordOutflowDialog } from '@/components/materials/record-outflow-dialog'
 import { RecordTransferDialog } from '@/components/materials/record-transfer-dialog'
@@ -21,7 +22,7 @@ import { useReadOnly } from '@/lib/trial'
 // one table (In green, Out red), narrowed by material, site, dates -- and
 // the Catalogue. What each site holds now opens from "Stock now".
 
-type MaterialsView = 'ledger' | 'catalogue' | 'sizes'
+type MaterialsView = 'ledger' | 'categories' | 'catalogue' | 'sizes'
 
 export default function MaterialsPage() {
   const { scope } = useScope()
@@ -32,9 +33,16 @@ export default function MaterialsPage() {
   // WA-168: Sizes (how much one load / drum is) -- admins and project managers, as the API allows.
   const canSize = isAdmin || me?.role === 'PROJECT_MANAGER' || me?.role === 'OWNER'
   const [requested, setView] = useUrlState<string>('view', 'ledger')
-  // Catalogue is admin-only; every other (older) view is the ledger.
+  // PRC-17d: By category for everyone; the Catalogue (categories, import) for the company-setup roles, the same as
+  // Sizes and the import API (admin, owner, project manager). Every other (older) view is the ledger.
   const view: MaterialsView =
-    requested === 'catalogue' && isAdmin ? 'catalogue' : requested === 'sizes' && canSize ? 'sizes' : 'ledger'
+    requested === 'categories'
+      ? 'categories'
+      : requested === 'catalogue' && canSize
+        ? 'catalogue'
+        : requested === 'sizes' && canSize
+          ? 'sizes'
+          : 'ledger'
   const [stockOpen, setStockOpen] = React.useState(false)
 
   // Older links (?view=inflows / outflows / inventory …) open the ledger,
@@ -64,18 +72,21 @@ export default function MaterialsPage() {
 
   const switcher = (
     <>
-      {canSize && (
-        <Segmented<MaterialsView>
-          label="View"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'ledger', label: 'Ledger' },
-            ...(isAdmin ? [{ value: 'catalogue' as const, label: 'Catalogue' }] : []),
-            { value: 'sizes', label: 'Sizes' },
-          ]}
-        />
-      )}
+      <Segmented<MaterialsView>
+        label="View"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'ledger', label: 'Ledger' },
+          { value: 'categories', label: 'By category' },
+          ...(canSize
+            ? [
+                { value: 'catalogue' as const, label: 'Catalogue' },
+                { value: 'sizes' as const, label: 'Sizes' },
+              ]
+            : []),
+        ]}
+      />
       <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setStockOpen(true)}>
         <Boxes className="size-3.5" /> Stock now
       </Button>
@@ -109,6 +120,12 @@ export default function MaterialsPage() {
       {/* WEB-40: the view switch and Stock now open the ledger's filter row,
           so the top of the page is one line of controls. */}
       {view === 'ledger' && <LedgerView projectId={projectId} siteId={siteId} leading={switcher} />}
+      {view === 'categories' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">{switcher}</div>
+          <CategoryView projectId={projectId} siteId={siteId} />
+        </>
+      )}
       {view === 'catalogue' && (
         <>
           <div className="flex flex-wrap items-center gap-2">{switcher}</div>

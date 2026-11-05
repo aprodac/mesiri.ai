@@ -885,3 +885,43 @@ export async function runImport(file: File): Promise<ImportReport> {
   const res = await api.post<ImportReport>('/materials/import', { file_base64: await fileBase64(file) })
   return res.data
 }
+
+// ---------------------------------------------------------------------
+// Stock for a period (PRC-17 / PRC-17d)
+// ---------------------------------------------------------------------
+
+export interface StockSummaryRow {
+  project_id: string
+  site_id: string | null
+  material_id: string
+  material_name: string
+  unit: string
+  category_id: string | null
+  // "Electrical › Switches & sockets", or the main category alone; null without one.
+  category: string | null
+  main_category: string | null
+  opening: string
+  received: string
+  used: string
+  adjusted: string
+  closing: string
+  days_left: number | null
+  running_low: boolean
+  // Only for roles that see the company's spending; null for the rest.
+  spend: string | null
+  spend_complete: boolean | null
+  last_rate: string | null
+}
+
+export interface StockSummaryFilters {
+  date_from?: string
+  date_to?: string
+  project_id?: string
+  site_id?: string
+  category_id?: string
+}
+
+export async function fetchStockSummary(filters: StockSummaryFilters = {}): Promise<StockSummaryRow[]> {
+  const res = await api.get<StockSummaryRow[]>('/materials/stock-summary', { params: filters })
+  return res.data
+}
