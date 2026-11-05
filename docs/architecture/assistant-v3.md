@@ -43,7 +43,7 @@ after [230] was marked done).
 | 4 | **Never change their data.** Same number, same unit, no swapped material | Materials in code; quantities in a reply mostly rule | |
 | 5 | **Never create a duplicate.** Recognise what already exists | Repeat saves in code (idempotency key, "Already saved at"); an add for a listed material is not caught | [242] |
 | 6 | **Right site, right person, right day** | Code (`decide_site`, missing date filled with today) | |
-| 7 | **Work it out first.** At most one question, with buttons and a way out | SOP rules 2 and 3 | [232] |
+| 7 | **Work it out first.** At most one question, with buttons and a way out | SOP rules 2 and 3; code since 5 Nov: an unknown material is held as new (WA-194), an unknown size or a missing unit never blocks a line (WA-197) | [232] |
 | 8 | **One reply language.** No mixing, in their script | Decided by code; the wording is the model's, with some code-side checks ([231]) | [239] |
 | 9 | **Never show internal things.** Ids, error messages, memory notes | Code (`reply_guard.py`, WA-193): ids and API-error sentences are cut; links keep theirs | [242] for the root cause ([226] fixed) |
 | 10 | **Never a dead end.** Always an answer or a next step; check the tools before "I can't" | SOP rule 10; outage handling in code | [227], [235], [236], [238], [204] |
