@@ -287,6 +287,10 @@ class ApiWhatsApp:
                     self._requested.add(message.correlation_id)
         else:
             return False
+        if message.modality is InputModality.VOICE and said:
+            # WA-209 (4 Nov: "5 chaak" heard as 30, unseen until Save): what was heard comes first, so a misheard
+            # number is caught on the list, where Edit fixes it.
+            reply = dataclasses.replace(reply, text=heard_line(said) + reply.text)
         reply = latin_reply(reply, await self._reply_language(ctx))
         await self._send(reply, message.sender.wa_id)
         _lap("v3_send")
@@ -689,24 +693,29 @@ class ApiWhatsApp:
     async def _today(self, ctx: Any, client: ApiClient, sites: list[Any]) -> str:
         """WA-127: what is already recorded today (the timeline, newest last), so "did anyone report
         X?" needs no lookup and a second entry of the same delivery can be pointed out. Never cached."""
-        day = dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date().isoformat()
+        zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
+        now = dt.datetime.now(zone)
+        day = now.date().isoformat()
+        # WA-209 (4 Nov: 12:27 pm read as "yesterday morning"): the model is told the company's time, and every time
+        # it reads in a tool result is UTC, to be said in this time.
+        clock = now_line(now, zone)
         try:
             got = await client.call("GET", "/timeline", params={"date_from": day, "date_to": day, "limit": TODAY_ENTRIES})
         except Exception:  # noqa: BLE001 -- the model can still look it up
-            return ""
+            return clock
         rows = got.body.get("items") if got.ok and isinstance(got.body, dict) else None
         if rows is None:
-            return ""
+            return clock
         if not rows:
-            return f"Recorded today ({day}) so far: nothing yet."
+            return f"{clock}\nRecorded today ({day}) so far: nothing yet."
         site_name = {str(s.id): s.name for s in sites}
         lines = []
         for row in sorted(rows, key=lambda r: str(r.get("occurred_at") or ""))[-TODAY_ENTRIES:]:
-            at = str(row.get("occurred_at") or "")[11:16]
+            at = local_clock(row.get("occurred_at"), zone)
             where = site_name.get(str(row.get("site_id")), "")
             lines.append(f"- {at} {where + ' · ' if where else ''}{row.get('event_type')}: {row.get('summary')}")
-        return (f"Recorded today ({day}) so far, oldest first (answer 'did anyone report X' from this; if a new "
-                "entry repeats one of these, say so before preparing it):\n" + "\n".join(lines))
+        return (f"{clock}\nRecorded today ({day}) so far, oldest first, in that time (answer 'did anyone report X' "
+                "from this; if a new entry repeats one of these, say so before preparing it):\n" + "\n".join(lines))
 
     async def _catalog_for(self, ctx: Any, client: ApiClient) -> str:
         org = str(ctx.organization_id)
@@ -1297,3 +1306,34 @@ def _channel(message: Any) -> str:
     if modality in (InputModality.IMAGE, InputModality.DOCUMENT):
         return "whatsapp_image"
     return "whatsapp_text"
+
+
+#: WA-209: the transcript above a voice note's reply is cut here (a long note is still read in full).
+HEARD_MAX = 200
+
+
+def heard_line(said: str) -> str:
+    """WA-209: "🎤 _what was heard_" and a blank line, for the top of a voice note's reply."""
+    text = " ".join(said.split())
+    if len(text) > HEARD_MAX:
+        text = text[: HEARD_MAX - 1].rstrip() + "…"
+    return f"🎤 _{text}_\n\n"
+
+
+def local_clock(value: Any, zone: dt.tzinfo) -> str:
+    """WA-209: an API time ("2026-11-05T06:57:00+00:00") as the company's clock ("12:27"); "" when unreadable."""
+    try:
+        moment = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.UTC)
+    return moment.astimezone(zone).strftime("%H:%M")
+
+
+def now_line(now: dt.datetime, zone: dt.tzinfo) -> str:
+    """WA-209: the company's date and time now, and how to read the times tools return."""
+    offset = now.strftime("%z")
+    return (f"It is now {now:%A %d %b %Y, %H:%M} in the company's time (UTC{offset[:3]}:{offset[3:]}). Every time "
+            "in a tool result is UTC (+00:00): turn it into the company's time before you say it, and say "
+            "today / yesterday from the company's date.")
