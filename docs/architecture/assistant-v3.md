@@ -38,7 +38,7 @@ after [230] was marked done).
 | # | Basic | Held by, 4 Nov 2026 | Open or recent |
 |---|---|---|---|
 | 1 | **Save in English, reply in their language.** Every saved field is English; the reply and card line stay in theirs | Code (`fill.py`: non-English body text is refused back to the model). Manglish in Latin letters rests on the SOP | [243] landed `5dd2fef2` |
-| 2 | **Lose nothing.** Every part of a message is saved or asked about | SOP rules 1 and 4, some code ([229]) | [237], [234], [232] |
+| 2 | **Lose nothing.** Every part of a message is saved or asked about | SOP rules 1 and 4, some code ([229]); since 5 Nov a number said that nothing kept gets one more try (WA-198) | [237], [234], [232] |
 | 3 | **Say "saved" only when it saved.** Prepared is not saved | Code (`reply_guard.py`, WA-193): the claim is cut from the model's words; "saved" with no tool gets one more try | |
 | 4 | **Never change their data.** Same number, same unit, no swapped material | Materials in code; quantities in a reply mostly rule | |
 | 5 | **Never create a duplicate.** Recognise what already exists | Repeat saves in code (idempotency key, "Already saved at"); an add for a listed material is not caught | [242] |
