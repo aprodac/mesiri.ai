@@ -340,6 +340,27 @@ async def update_expense_category(
     )
 
 
+async def _list_names(conn: AsyncConnection, organization_id: uuid.UUID, items: list) -> dict[str, dict]:
+    """Vendor, project and site names for a page of expenses, one query per kind."""
+    from sqlalchemy import text
+
+    out: dict[str, dict] = {"vendors": {}, "projects": {}, "sites": {}}
+    wanted = {
+        "vendors": {getattr(i, "vendor_id", None) for i in items} - {None},
+        "projects": {i.project_id for i in items} - {None},
+        "sites": {i.site_id for i in items} - {None},
+    }
+    for kind, ids in wanted.items():
+        if not ids:
+            continue
+        rows = await conn.execute(
+            text(f"SELECT id, name FROM {kind} WHERE organization_id = :org AND id = ANY(:ids)"),
+            {"org": organization_id, "ids": list(ids)},
+        )
+        out[kind] = {r.id: r.name for r in rows}
+    return out
+
+
 @router.get("", response_model=list[ExpenseResponse])
 async def list_expenses(
     project_id: uuid.UUID | None = None,
@@ -367,13 +388,22 @@ async def list_expenses(
         cat = await cat_repo.get_by_id(auth_context.organization_id, cid)
         if cat:
             cat_names[cid] = cat.name
+    # WEB-51: the list names the vendor, project and site (the dashboard showed "Direct Payee" / "Org Wide" for every
+    # row without them), one query each.
+    names = await _list_names(conn, auth_context.organization_id, items)
 
     return [
         ExpenseResponse(
             id=item.id,
             organization_id=item.organization_id,
             project_id=item.project_id,
+            project_name=names["projects"].get(item.project_id),
             site_id=item.site_id,
+            site_name=names["sites"].get(item.site_id),
+            vendor_id=getattr(item, "vendor_id", None),
+            vendor_name=names["vendors"].get(getattr(item, "vendor_id", None)),
+            expense_number=getattr(item, "expense_number", None),
+            tax_amount=getattr(item, "tax_amount", None),
             category_id=item.category_id,
             category_name=cat_names.get(item.category_id),
             amount=item.amount,
