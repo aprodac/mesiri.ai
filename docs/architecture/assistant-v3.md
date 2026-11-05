@@ -8,6 +8,34 @@
 > **Locked 2 Nov 2026: v3 is the assistant's architecture** (Alan and Ilan approved). v2 is removed
 > (WA-134); classic serves real customers until they are moved (WA-137), then it is deleted (WA-138).
 
+## What Mesiri is: a site engineer who lives inside the software
+
+> Agreed in session, 5 Nov 2026 (after [248] and PRC-02). Every v3 change is built toward this picture.
+
+Mesiri is an experienced site engineer that every worker can talk to on WhatsApp, and that can record
+what they say into the company's system. Not a form, not a chatbot with menus.
+
+| The engineer's… | In v3 | A problem here is fixed by… |
+|---|---|---|
+| **Head**: understands and knows the trade | the model + `SOP.md`: their languages (Malayalam, Manglish, Hindi, voice), construction knowledge (rates, mixes, quantities, methods), answering like a senior engineer on the phone | a rule in `SOP.md`, or a better model (control panel `api_agent` route) |
+| **Hands**: does the work in the system | the tools = the dashboard's own API routes (`tools.py` `ALLOWED`) | adding a route to `ALLOWED` (the dashboard gets it too) |
+| **Office rules**: what is recorded must be right | the code around the model: the right material and site, no made-up quantity or worked-out number, nothing claimed saved that was not, one Save | a check in `agent.py` / `materials.py` (or the API itself when it is a business rule) |
+
+What follows from it:
+
+- **The worker only talks.** One message, one Save tap. The engineer works out the rest: the site, the
+  date, the unit, the category, the English word. Translating, matching and placing are the engineer's
+  job, never the worker's ([248]: never "say cement in English").
+- **The AI thinks, the code decides what is recorded.** The model may read a message wrongly; the code
+  never lets that become wrong data. That split is why it can be trusted with a company's records.
+- **A question is answered, not recorded.** A trade question gets an engineer's answer from its own
+  knowledge; a question about their records gets it from the tools. Structural and safety answers always
+  end with "a structural engineer must check it on site".
+- **"Mesiri can't" is rare.** A good engineer has an answer or a next step. A real gap goes to the team
+  (`tell_the_team`) and comes back as a fix.
+- **How good the engineer is** depends on the model it runs on and on real use: every change is proven on
+  real WhatsApp conversations, not only scripted tests.
+
 ## In one picture
 
 ```
