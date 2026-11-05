@@ -52,7 +52,7 @@ function Typed({ text, ms = 28, delay = 0 }: { text: string; ms?: number; delay?
 }
 
 /** A number counting up from 0, starting `delay` seconds in. */
-function Count({ to, delay = 0, ms = 900, format = (n: number) => String(n) }: { to: number; delay?: number; ms?: number; format?: (n: number) => string }) {
+export function Count({ to, delay = 0, ms = 900, format = (n: number) => String(n) }: { to: number; delay?: number; ms?: number; format?: (n: number) => string }) {
   const [n, setN] = React.useState(still() ? to : 0)
   React.useEffect(() => {
     if (still()) return

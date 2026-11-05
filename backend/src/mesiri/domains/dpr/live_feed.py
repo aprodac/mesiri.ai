@@ -57,6 +57,16 @@ EXPENSE_TOOLS: frozenset[str] = frozenset({"list_expenses", "money_accounts", "l
 #: The kinds that carry the company's spending (SEC-01).
 MONEY_KINDS: frozenset[str] = frozenset({"expense"})
 
+#: An expense's fields the screen shows (Live's bill moment), as (key on screen, request field).
+EXPENSE_FIELDS: tuple[tuple[str, str], ...] = (
+    ("amount", "amount"),
+    ("vendor", "vendor_text"),
+    ("category", "category_text"),
+    ("date", "occurred_date"),
+    ("tax", "tax_amount"),
+    ("what", "description"),
+)
+
 #: What every kind is called on screen, so the dashboard and the API agree.
 KIND_LABELS: dict[str, str] = {
     "attendance": "Attendance",
@@ -137,7 +147,9 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
     ``heard`` (nothing more to show). ``summaries``: the entries it saved or
     holds, in Mesiri's words. ``did``: its lookups and preparations in plain
     words (``TOOL_WORDS``). ``transfer``: a transfer's two site ids, for the
-    arc between them. ``money``: about spending (SEC-01).
+    arc between them. ``expense``: the amount, vendor, category, date, tax
+    and words Mesiri read (a bill photo's fields). ``language``: the reply
+    language chosen. ``money``: about spending (SEC-01).
     """
     turns = [t for t in (row.get("turns") or []) if isinstance(t, dict)]
     tools = _tools(turns)
@@ -191,18 +203,33 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
         words = TOOL_WORDS.get(tool)
         if words and words not in did:
             did.append(words)
+    writes = [w for turn in turns for w in (turn.get("writes") or []) if isinstance(w, dict) and isinstance(w.get("args"), dict)]
     transfer = next(
         (
-            {"from_site_id": str(t["from_site_id"]), "to_site_id": str(t["to_site_id"])}
-            for turn in turns for t in (turn.get("transfers") or [])
-            if isinstance(t, dict) and t.get("from_site_id") and t.get("to_site_id")
+            {"from_site_id": str(w["args"]["from_site_id"]), "to_site_id": str(w["args"]["to_site_id"])}
+            for w in writes
+            if w.get("tool") == "record_transfer" and w["args"].get("from_site_id") and w["args"].get("to_site_id")
         ),
+        None,
+    )
+    expense = next(
+        (
+            {key: (str(w["args"][field]) if w["args"].get(field) not in (None, "") else None) for key, field in EXPENSE_FIELDS}
+            for w in writes
+            if w.get("tool") == "record_expense" and w["args"].get("amount") not in (None, "")
+        ),
+        None,
+    )
+    language = next(
+        (str(w["args"]["reply_language"]) for w in writes if w.get("tool") == "set_reply_language" and w["args"].get("reply_language")),
         None,
     )
     return {
         "kind": kind,
         "did": did[:5],
         "transfer": transfer,
+        "expense": expense,
+        "language": language,
         "label": KIND_LABELS[kind],
         "state": state,
         "summaries": summaries[:6],

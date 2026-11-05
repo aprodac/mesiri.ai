@@ -2053,6 +2053,10 @@ export interface LiveFeedItem {
   first_message: boolean
   /** A transfer's two sites, for the arc between them. */
   transfer: { from_site_id: string; to_site_id: string } | null
+  /** What Mesiri read for an expense (a bill photo's fields); only for roles that see spending. */
+  expense: { amount: string | null; vendor: string | null; category: string | null; date: string | null; tax: string | null; what: string | null } | null
+  /** The reply language chosen ("malayalam", "manglish", …). */
+  language: string | null
 }
 
 export async function fetchLiveFeedApi(since: Date, until: Date): Promise<LiveFeedItem[]> {

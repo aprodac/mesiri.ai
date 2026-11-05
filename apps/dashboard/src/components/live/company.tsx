@@ -50,6 +50,7 @@ import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { CountTo } from './ink'
 import { useCinematicGo } from './modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
+import { AnswerMoment, AskedMoment, BillMoment, LanguageMoment, answers as answersOf } from './moments'
 import { Spark, type SparkMood } from './spark'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
@@ -125,6 +126,8 @@ const TONES: Record<KindLook['tone'], string> = {
 }
 
 const isVoice = (m: LiveFeedItem) => /voice|audio/.test(m.type)
+/** An expense with a bill photo or what Mesiri read from it: its own moment (moments.tsx). */
+const isBill = (m: LiveFeedItem) => (m.kind === 'expense' || m.saved_kind === 'expense') && !!(m.expense || (m.media_url && /image|photo/.test(m.type)))
 const isPhoto = (m: LiveFeedItem) => /image|photo/.test(m.type)
 const clock = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
@@ -170,7 +173,9 @@ function sparkSays(m: LiveFeedItem, step: Step, alarm: string | null): string {
   const where = m.site_name ?? m.project_name
   if (step === 'arrive') return `${who} sent a ${isVoice(m) ? 'voice note' : isPhoto(m) ? 'photo' : 'message'}${where ? ` from ${where}` : ''}`
   if (step === 'read') return isVoice(m) ? 'Listening…' : isPhoto(m) ? 'Looking at the photo…' : 'Reading…'
+  if (step === 'understood' && isBill(m)) return `A bill${m.expense?.vendor ? ` from ${m.expense.vendor}` : ''}`
   if (step === 'understood') return m.translated_text || m.text || (isPhoto(m) ? 'A photo from site' : '…')
+  if (isBill(m) && m.reply) return short(m.reply, 160)
   const goes = KINDS[m.saved_kind ?? m.kind].goes
   const what = m.summaries.join(' · ')
   switch (m.state) {
@@ -306,6 +311,8 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
   const cinematic = useCinematicGo()
 
   const items = React.useMemo(() => feed.data ?? [], [feed.data])
+  /** Which message answers which question Mesiri asked back. */
+  const qa = React.useMemo(() => answersOf(items), [items])
   const sites = React.useMemo(
     () => [...(days.data?.items ?? [])].sort((a, b) => (b.last_update_at ?? '').localeCompare(a.last_update_at ?? '')),
     [days.data],
@@ -400,7 +407,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
       setBeat((b) => b + 1)
       // Read the site's flags while Mesiri reads the message, so the answer is there by "done".
       const flags = live && item.site_id && flagged.current.has(item.site_id) ? readFlags(item.site_id) : null
-      const flips = !!(item.translated_text && item.text && item.translated_text !== item.text)
+      const flips = !!(item.translated_text && item.text && item.translated_text !== item.text) || isBill(item)
       for (const step of ['arrive', 'read', 'understood'] as Step[]) {
         setCurrent({ item, step, alarm: null })
         await wait(step === 'understood' ? STEP_MS + (flips ? 2_200 : 600) : step === 'read' && isVoice(item) ? STEP_MS + 900 : STEP_MS)
@@ -435,7 +442,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
       }
       // The sites' numbers (and a site just added) catch up as it lands.
       if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
-      await wait(alarm ? STEP_MS + 3_400 : STEP_MS + 1_200)
+      await wait(alarm ? STEP_MS + 3_400 : isBill(item) || item.kind === 'language' || item.state === 'asked' ? STEP_MS + 2_400 : STEP_MS + 1_200)
     }
     setCurrent(null)
     playing.current = false
@@ -561,6 +568,8 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
           did: [],
           transfer: null,
           first_message: false,
+          expense: null,
+          language: null,
         }),
       )
       if (add.length) setSamples((all) => [...all, ...add])
@@ -575,6 +584,17 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
     reported: sites.filter((s) => s.last_update_at).length,
   }
   const company = branding.data?.company_name
+  // The moment for what Mesiri is handling now (moments.tsx), if its kind has one.
+  const moment: 'bill' | 'language' | 'asked' | 'answer' | null = (() => {
+    if (!current || (current.alarm && current.step === 'done')) return null
+    const m = current.item
+    if (isBill(m)) return 'bill'
+    if (m.kind === 'language' && (current.step === 'understood' || current.step === 'done')) return 'language'
+    if (current.step === 'done' && m.state === 'asked' && m.asked) return 'asked'
+    if (current.step === 'done' && m.kind === 'question' && m.reply) return 'answer'
+    return null
+  })()
+  const answers = current ? qa.of.get(current.item.id) ?? null : null
 
   const openSite = (s: SiteDayItem, el: HTMLElement) =>
     cinematic.go({
@@ -675,7 +695,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
               ) : (
                 <ol className="m-0 mt-4 grid list-none gap-3 p-0" aria-live="polite">
                   {stream.slice(0, 40).map((m) => (
-                    <MessageCard key={m.id} m={m} active={current?.item.id === m.id} />
+                    <MessageCard key={m.id} m={m} active={current?.item.id === m.id} answers={qa.of.get(m.id) ?? null} answered={qa.answered.has(m.id)} />
                   ))}
                 </ol>
               )}
@@ -704,20 +724,46 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                   <Spark
                     mood={current ? sparkMood(current.item, current.step, current.alarm) : 'idle'}
                     beat={beat}
-                    size={presenting ? 220 : 170}
+                    size={moment ? (presenting ? 140 : 110) : presenting ? 220 : 170}
                   />
                 </div>
-                <div className="min-h-[5.5rem] max-w-[34rem] sm:min-h-[7.5rem]" aria-live="polite">
+                <div className={cn('min-h-[5.5rem] sm:min-h-[7.5rem]', moment === 'bill' ? 'w-full max-w-[44rem]' : 'max-w-[34rem]')} aria-live="polite">
                   {current ? (
                     <>
                       <Label className={cn('block', current.alarm && current.step === 'done' && 'text-[var(--destructive)]')}>
                         {current.alarm && current.step === 'done' ? 'Mesiri noticed' : STEP_LABEL[current.step]}
                       </Label>
+                      {answers && current.step !== 'done' && (
+                        <p className="m-0 mt-2 inline-block border border-foreground/30 px-2 py-0.5 text-[13px] text-muted-foreground" style={prefersReducedMotion() ? undefined : { animation: 'live-in 400ms ease-out' }}>
+                          ↳ Answer to Mesiri: “{short(answers, 70)}”
+                        </p>
+                      )}
                       {current.step === 'read' && isVoice(current.item) && (
                         <div className="mt-3">
                           <Waveform big={presenting} />
                         </div>
                       )}
+                      {moment === 'bill' && (
+                        <div className="mt-3">
+                          <BillMoment item={current.item} step={current.step} presenting={presenting} />
+                        </div>
+                      )}
+                      {moment === 'language' && (
+                        <div className="mt-3">
+                          <LanguageMoment language={current.item.language} presenting={presenting} />
+                        </div>
+                      )}
+                      {moment === 'asked' && (
+                        <div className="mt-3">
+                          <AskedMoment question={current.item.asked ?? ''} who={current.item.sender_name?.split(/\s+/)[0] ?? null} presenting={presenting} />
+                        </div>
+                      )}
+                      {moment === 'answer' && (
+                        <div className="mt-3 grid justify-items-center">
+                          <AnswerMoment reply={current.item.reply ?? ''} presenting={presenting} />
+                        </div>
+                      )}
+                      {(moment !== 'asked' && moment !== 'answer' && moment !== 'language') || current.step !== 'done' ? (
                       <p
                         key={`${current.item.id}-${current.step}`}
                         className={cn(
@@ -732,6 +778,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                           <Typed text={sparkSays(current.item, current.step, current.alarm)} />
                         )}
                       </p>
+                      ) : null}
                     </>
                   ) : (
                     <>
@@ -919,10 +966,10 @@ const STATE_CHIP: Record<LiveFeedItem['state'], { text: string; className: strin
   heard: null,
 }
 
-function MessageCard({ m, active }: { m: LiveFeedItem; active: boolean }) {
+function MessageCard({ m, active, answers, answered }: { m: LiveFeedItem; active: boolean; answers: string | null; answered: boolean }) {
   const look = KINDS[m.saved_kind && m.kind === 'saved' ? m.saved_kind : m.kind]
   const Icon = look.icon
-  const chip = STATE_CHIP[m.state]
+  const chip = m.state === 'asked' ? (answered ? { text: 'Answered ✓', className: 'text-[var(--success)]' } : { text: 'Waiting for answer', className: 'text-[var(--draft)]' }) : STATE_CHIP[m.state]
   const english = m.translated_text && m.translated_text !== m.text ? m.translated_text : null
   return (
     <li
@@ -961,8 +1008,10 @@ function MessageCard({ m, active }: { m: LiveFeedItem; active: boolean }) {
           {short(m.text, 220)}
         </p>
       )}
+      {answers && <p className="m-0 text-[12px] text-muted-foreground">↳ Answer to Mesiri: “{short(answers, 80)}”</p>}
       {english && <p className="m-0 text-sm italic text-muted-foreground">“{short(english, 220)}”</p>}
-      {m.reply && (
+      {m.state === 'asked' && m.asked && <p className="m-0 text-[13px] font-medium">Mesiri asked: {short(m.asked, 140)}</p>}
+      {m.reply && m.reply !== m.asked && (
         <div className="flex items-start gap-2 border-l-2 border-foreground/20 pl-3">
           <Spark mood="idle" quiet size={22} className="mt-0.5 shrink-0" label="Mesiri's reply" />
           <p className="m-0 text-sm leading-snug text-muted-foreground">{short(m.reply, 200)}</p>

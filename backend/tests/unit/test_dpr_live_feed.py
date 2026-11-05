@@ -108,11 +108,26 @@ def test_what_mesiri_did_in_plain_words_once_each():
 
 def test_a_transfer_names_its_two_sites():
     a, b = str(uuid.uuid4()), str(uuid.uuid4())
-    what = live_feed.classify(_row("m", [_turn(["record_transfer"], transfers=[{"from_site_id": a, "to_site_id": b}])]))
+    what = live_feed.classify(_row("m", [_turn(["record_transfer"], writes=[{"tool": "record_transfer", "args": {"from_site_id": a, "to_site_id": b}}])]))
     assert (what["kind"], what["transfer"]) == ("transfer", {"from_site_id": a, "to_site_id": b})
     # The guard: a half-known transfer draws no arc.
-    half = live_feed.classify(_row("m", [_turn(["record_transfer"], transfers=[{"from_site_id": a, "to_site_id": None}])]))
+    half = live_feed.classify(_row("m", [_turn(["record_transfer"], writes=[{"tool": "record_transfer", "args": {"from_site_id": a, "to_site_id": None}}])]))
     assert half["transfer"] is None
+
+
+def test_a_bill_photo_says_what_mesiri_read_from_it():
+    what = live_feed.classify(_row("m", [_turn(["record_expense"], writes=[{"tool": "record_expense", "args": {
+        "amount": "4500", "vendor_text": "KP Fuels", "category_text": "Diesel", "occurred_date": "2026-11-05",
+        "tax_amount": None, "project_id": "p"}}])], type_="image"))
+    assert what["kind"] == "expense" and what["money"] is True
+    assert what["expense"] == {"amount": "4500", "vendor": "KP Fuels", "category": "Diesel", "date": "2026-11-05", "tax": None, "what": None}
+    # The guard: no amount, no bill moment.
+    assert live_feed.classify(_row("m", [_turn(["record_expense"], writes=[{"tool": "record_expense", "args": {}}])]))["expense"] is None
+
+
+def test_a_language_change_names_the_language():
+    what = live_feed.classify(_row("m", [_turn(["set_reply_language"], writes=[{"tool": "set_reply_language", "args": {"reply_language": "malayalam"}}])]))
+    assert (what["kind"], what["language"]) == ("language", "malayalam")
 
 
 def test_unknown_trace_shapes_never_break_it():

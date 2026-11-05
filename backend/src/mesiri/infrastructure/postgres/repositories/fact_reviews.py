@@ -508,13 +508,13 @@ class PostgresFactReviewRepository:
                     "     'pending', jt.stage_payload::jsonb -> 'pending', "
                     "     'asked', jt.stage_payload::jsonb -> 'asked', "
                     "     'cancelled', jt.stage_payload::jsonb -> 'cancelled', "
-                    # A transfer's two sites, for the arc between them on the screen.
-                    "     'transfers', (SELECT jsonb_agg(jsonb_build_object("
-                    "        'from_site_id', COALESCE(c -> 'arguments', c -> 'args') ->> 'from_site_id', "
-                    "        'to_site_id', COALESCE(c -> 'arguments', c -> 'args') ->> 'to_site_id')) "
+                    # What a few writes carried, for their moment on the screen: a transfer's two sites,
+                    # an expense's amount / vendor / category, the reply language chosen.
+                    "     'writes', (SELECT jsonb_agg(jsonb_build_object("
+                    "        'tool', c ->> 'tool', 'args', COALESCE(c -> 'arguments', c -> 'args'))) "
                     "        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb -> 'calls') = 'array' "
                     "        THEN jt.stage_payload::jsonb -> 'calls' ELSE '[]'::jsonb END) c "
-                    "        WHERE c ->> 'tool' = 'record_transfer' "
+                    "        WHERE c ->> 'tool' IN ('record_transfer', 'record_expense', 'set_reply_language') "
                     "        AND jsonb_typeof(COALESCE(c -> 'arguments', c -> 'args')) = 'object'))) "
                     "   FROM journey_traces jt WHERE jt.correlation_id = im.correlation_id "
                     "   AND jt.stage IN ('agent_api_turn', 'agent_tools')) AS turns, "
