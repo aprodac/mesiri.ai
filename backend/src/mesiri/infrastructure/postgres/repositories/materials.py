@@ -88,6 +88,17 @@ _materials_catalog = sa.Table(
     sa.Column("updated_by", sa.UUID(as_uuid=True)),
 )
 
+# PRC-17a: a stock row names its category, and a main category filters in its sub-categories.
+_material_categories = sa.Table(
+    "material_categories",
+    sa.MetaData(),
+    sa.Column("id", sa.UUID(as_uuid=True)),
+    sa.Column("parent_id", sa.UUID(as_uuid=True)),
+    sa.Column("name", sa.String),
+)
+_category = _material_categories.alias("category")
+_parent_category = _material_categories.alias("parent_category")
+
 _material_aliases = sa.Table(
     "material_aliases",
     sa.MetaData(),
@@ -341,8 +352,13 @@ class PostgresMaterialReadRepository:
         material_id: uuid.UUID | None = None,
         *,
         include_unsaved: bool = False,
+        category_id: uuid.UUID | None = None,
     ) -> list[dict]:
         """Aggregated inventory stock levels, derived solely from material_movements.
+
+        PRC-17a: each row names its category ("Electrical › Switches & sockets") and its main
+        category; ``category_id`` keeps the materials in that category, a main category's
+        sub-categories included.
 
         WA-77 (Alan, 25 Oct): stock is what is saved; an entry still waiting
         for its Save on WhatsApp is left out. `include_unsaved` counts it,
@@ -396,6 +412,11 @@ class PostgresMaterialReadRepository:
             _material_movements.c.material_id,
             _materials_catalog.c.name.label("material_name"),
             _materials_catalog.c.category_id,
+            sa.case(
+                (_parent_category.c.name.is_not(None), _parent_category.c.name + " › " + _category.c.name),
+                else_=_category.c.name,
+            ).label("category"),
+            sa.func.coalesce(_parent_category.c.name, _category.c.name).label("main_category"),
             _units_of_measure.c.code.label("unit"),
             received.label("total_received"),
             used.label("total_used"),
@@ -404,7 +425,10 @@ class PostgresMaterialReadRepository:
         ).select_from(
             _material_movements.join(
                 _materials_catalog, _materials_catalog.c.id == _material_movements.c.material_id
-            ).join(_units_of_measure, _units_of_measure.c.id == _material_movements.c.unit_id)
+            )
+            .join(_units_of_measure, _units_of_measure.c.id == _material_movements.c.unit_id)
+            .outerjoin(_category, _category.c.id == _materials_catalog.c.category_id)
+            .outerjoin(_parent_category, _parent_category.c.id == _category.c.parent_id)
         ).where(_material_movements.c.organization_id == organization_id)
 
         if not include_unsaved:
@@ -415,6 +439,8 @@ class PostgresMaterialReadRepository:
             stmt = stmt.where(_material_movements.c.site_id == site_id)
         if material_id is not None:
             stmt = stmt.where(_material_movements.c.material_id == material_id)
+        if category_id is not None:
+            stmt = stmt.where(sa.or_(_category.c.id == category_id, _category.c.parent_id == category_id))
 
         stmt = stmt.group_by(
             _material_movements.c.organization_id,
@@ -423,6 +449,8 @@ class PostgresMaterialReadRepository:
             _material_movements.c.material_id,
             _materials_catalog.c.name,
             _materials_catalog.c.category_id,
+            _category.c.name,
+            _parent_category.c.name,
             _units_of_measure.c.code,
         ).order_by(_materials_catalog.c.name.asc())
 

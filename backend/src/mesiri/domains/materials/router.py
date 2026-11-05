@@ -1013,10 +1013,14 @@ async def list_inventory(
     project_id: uuid.UUID | None = None,
     site_id: uuid.UUID | None = None,
     material_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = Query(
+        default=None, description="Only materials in this category; a main category includes its sub-categories."
+    ),
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """Get aggregated material inventory (stock levels), derived from the movement ledger."""
+    """Get aggregated material inventory (stock levels), derived from the movement ledger.
+    Each row names its category (PRC-17a)."""
     project_ids, denied = _resolve_project_ids(auth_context, project_id)
     if denied or _site_filter_denied(auth_context, project_id, site_id):
         return []
@@ -1027,6 +1031,7 @@ async def list_inventory(
         project_ids=project_ids,
         site_id=site_id,
         material_id=material_id,
+        category_id=category_id,
     )
 
 
