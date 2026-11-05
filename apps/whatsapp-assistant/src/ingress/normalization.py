@@ -23,6 +23,26 @@ _SUPPORTED_TYPES = {
 }
 
 
+def audio_media(message: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """[250] (5 Nov, Ilan: a forwarded voice note was refused, twice): the audio a message carries, else None. Every
+    `audio` message counts, push-to-talk or not (a forwarded voice note or WhatsApp Web arrive with voice=false), and
+    so does a `document` whose type is audio; both only in Ogg/Opus for now. The one decision for both normalisation
+    (VOICE) and the media download."""
+    raw_type = message.get("type")
+    if raw_type == "audio":
+        audio = message.get("audio") or {}
+    elif raw_type == "document":
+        audio = message.get("document") or {}
+        if not str(audio.get("mime_type") or "").lower().startswith("audio/"):
+            return None
+    else:
+        return None
+    # The speech step reads Ogg/Opus (what WhatsApp records and forwards); another format (.mp3, .m4a) would be sent
+    # to it mislabelled, so it stays declined until the speech step takes the file's own type.
+    mime = str(audio.get("mime_type") or "audio/ogg").lower()
+    return audio if ("ogg" in mime or "opus" in mime) else None
+
+
 class MessageNormalizer:
     """Map Meta webhook message payloads to Mesiri's canonical message format."""
 
@@ -105,12 +125,10 @@ class MessageNormalizer:
         original type through so that reply can be specific.
         """
         raw_type = message.get("type")
+        if audio_media(message) is not None:
+            return InputModality.VOICE  # [250]: forwarded / recorded audio and audio files too
         if raw_type == "audio":
-            audio_payload = message.get("audio") or {}
-            if not audio_payload.get("voice"):
-                return InputModality.UNKNOWN
-            return InputModality.VOICE
-
+            return InputModality.UNKNOWN  # an audio format the speech step can't take yet: declined politely
         return _SUPPORTED_TYPES.get(raw_type, InputModality.UNKNOWN)
 
     def _resolve_sender(

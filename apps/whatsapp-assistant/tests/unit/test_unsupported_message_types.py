@@ -109,7 +109,7 @@ def test_text_and_image_are_unaffected() -> None:
         ("sticker", "stickers"),
         ("location", "location pins"),
         ("contacts", "shared contacts"),
-        ("audio", "audio files"),
+        ("audio", "audio file type"),
     ],
 )
 def test_decline_reply_names_the_actual_type(raw_type: str, expected_fragment: str) -> None:
@@ -230,3 +230,47 @@ async def test_receiver_accepts_a_pdf_without_downloading_it() -> None:
     assert normalized.modality is InputModality.UNKNOWN
     assert normalized.metadata["raw_type"] == "document"
     assert normalized.media is None
+
+
+# -- [250] (5 Nov, Ilan): a forwarded voice note (audio, voice=false, Ogg/Opus) was refused, twice ----------------
+
+
+def test_a_forwarded_voice_note_is_a_voice_note() -> None:
+    normalized = _normalize(
+        _message("audio", audio={"id": "m1", "voice": False, "mime_type": "audio/ogg; codecs=opus"})
+    )
+    assert normalized.modality is InputModality.VOICE
+
+
+def test_an_ogg_audio_document_is_a_voice_note_and_a_pdf_is_not() -> None:
+    from ingress.normalization import audio_media
+
+    ogg = _message("document", document={"id": "d1", "mime_type": "audio/ogg", "filename": "site.ogg"})
+    assert _normalize(ogg).modality is InputModality.VOICE
+    assert audio_media(ogg) == {"id": "d1", "mime_type": "audio/ogg", "filename": "site.ogg"}
+    pdf = _message("document", document={"id": "d2", "mime_type": "application/pdf"})
+    assert _normalize(pdf).modality is InputModality.UNKNOWN and audio_media(pdf) is None
+
+
+def test_an_audio_decline_never_asks_for_the_audio_they_just_sent() -> None:
+    reply = render_unsupported_media_reply("audio")
+    assert "mic button" in reply and "Send it one of these ways" not in reply
+
+
+async def test_the_receiver_downloads_a_forwarded_voice_note() -> None:
+    from types import SimpleNamespace
+
+    from ingress.receiver import WhatsAppReceiver
+
+    asked: list[str] = []
+
+    async def download(media_id: str):  # noqa: ANN202
+        asked.append(media_id)
+        return SimpleNamespace(id=media_id)
+
+    receiver = WhatsAppReceiver.__new__(WhatsAppReceiver)
+    receiver._media_downloader = SimpleNamespace(download=download)
+    message = {"type": "audio", "audio": {"id": "m9", "voice": False, "mime_type": "audio/ogg; codecs=opus"}}
+    await receiver._download_media_if_required(message)
+    await receiver._download_media_if_required({"type": "audio", "audio": {"id": "mp3", "mime_type": "audio/mpeg"}})
+    assert asked == ["m9"]

@@ -14,7 +14,7 @@ from channel.whatsapp import usage as message_usage
 from ingress.deduplication import DeduplicationStore
 from ingress.media_handoff import upload_downloaded_media
 from ingress.media_ingestion import DownloadedMedia, MediaDownloader
-from ingress.normalization import MessageNormalizer
+from ingress.normalization import MessageNormalizer, audio_media
 from mesiri_contracts.assistant import NormalizedMessage
 from mesiri_contracts.common.storage import ObjectStoragePort
 from runtime.ai_outage import AIUnavailableError
@@ -440,10 +440,11 @@ class WhatsAppReceiver:
     ) -> DownloadedMedia | None:
         message_type = message.get("type")
 
+        audio = audio_media(message)  # [250]: the same decision normalisation makes
         if message_type == "image":
             media_id = (message.get("image") or {}).get("id")
-        elif message_type == "audio" and (message.get("audio") or {}).get("voice"):
-            media_id = (message.get("audio") or {}).get("id")
+        elif audio is not None:
+            media_id = audio.get("id")
         else:
             # Text, interactive, and everything Mesiri can't act on yet
             # (document/video/sticker/location/contacts, or a music file

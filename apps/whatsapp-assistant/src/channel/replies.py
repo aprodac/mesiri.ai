@@ -539,9 +539,8 @@ _UNSUPPORTED_TYPE_LABELS: dict[str, str] = {
     "sticker": "stickers",
     "location": "location pins",
     "contacts": "shared contacts",
-    # A voice note normalizes to VOICE and never reaches here; a music/audio
-    # file (audio.voice falsy) does.
-    "audio": "audio files",
+    # [250]: any Ogg/Opus audio is read as a voice note; only another audio format (.mp3, .m4a) reaches here.
+    "audio": "this audio file type",
 }
 
 # Not user-authored content, so declining would be noise rather than help:
@@ -565,6 +564,10 @@ def render_unsupported_media_reply(raw_type: str | None) -> str:
     a reply.
     """
     label = _UNSUPPORTED_TYPE_LABELS.get(str(raw_type or ""), "this kind of message")
+    if raw_type == "audio":
+        # [250]: never "send a voice note instead" to someone who just sent audio.
+        return ("🎤 I can't play this audio file type yet. Record it with the mic button in this chat "
+                "(a forwarded voice note works too), or type it out.")
     return (
         f"📎 Got your message — but I can't read {label} yet.\n\n"
         "Send it one of these ways instead:\n"
