@@ -291,6 +291,25 @@
   to { opacity: 1; transform: none; }
 }
 
+/* "Meet Mesiri" (WEB-56): the show's moves. Flat: no glow, no blur. */
+@keyframes meet-rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes meet-pop { 0% { opacity: 0; transform: scale(0.85); } 70% { opacity: 1; transform: scale(1.03); } 100% { opacity: 1; transform: none; } }
+@keyframes meet-deal { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes meet-slide { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes meet-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes meet-flip { 0% { opacity: 0; transform: rotateX(90deg); } 100% { opacity: 1; transform: none; } }
+@keyframes meet-grow { from { width: 0%; } }
+@keyframes meet-strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes meet-press { 0%, 100% { transform: none; } 40% { transform: scale(0.92); background: var(--foreground); color: var(--background); } 60% { background: var(--foreground); color: var(--background); } }
+@keyframes meet-stamp { 0% { opacity: 0; transform: scale(2.2); } 70% { opacity: 1; transform: scale(0.95); } 100% { opacity: 1; transform: none; } }
+@keyframes meet-converge { to { opacity: 0.15; transform: scale(0.9); filter: grayscale(1); } }
+@keyframes meet-dots { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes meet-out { to { opacity: 0; transform: translateY(-100%); } }
+@keyframes meet-in-up { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: none; } }
+@keyframes meet-drop { to { opacity: 0; transform: translateY(120px) scale(0.6); } }
+@keyframes meet-send { to { opacity: 0; transform: translate(40%, -30%) scale(0.35) rotate(-8deg); } }
+@keyframes meet-plane { 0% { opacity: 0; transform: translate(-80px, 40px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(260px, -220px) rotate(-10deg); } }
+
 /* Mesiri noticing a mistake in the Live report: the line shudders once. */
 @keyframes live-shake {
   0%, 100% { transform: translateX(0); }
