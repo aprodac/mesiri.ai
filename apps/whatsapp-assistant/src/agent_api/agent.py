@@ -742,7 +742,14 @@ class ApiAgent:
                 if check.get("line"):
                     arguments = {**arguments, CONFIRM_ARG: check["line"]}  # drawn by the code, never the model's
             if name == ADD_TOOL:
-                if listed := await already_listed(client, str(body.get("name") or "")):
+                if (listed := await already_listed(client, str(body.get("name") or ""))) and " or " in listed:
+                    # [254]: "Metal" is the listed aggregate of either size: one question, never a new material.
+                    unit_ask[:] = [n.split(" (material_id")[0] for n in listed.split(" or ")][:3]
+                    return ToolOutcome(content={"error": (
+                        f"{body.get('name')!r} is what sites call {listed}, already in the company's list. Nothing was "
+                        "prepared. Do not add it: ask ONE question with `ask`, in their language, which one it is; "
+                        "then prepare the line on that material_id.")})
+                if listed:
                     # [243]: a material the company has is never added again; the line goes on the listed one.
                     return ToolOutcome(content={"error": (
                         f"{listed} is already in the company's list. Nothing was prepared. Do not add it: prepare the "

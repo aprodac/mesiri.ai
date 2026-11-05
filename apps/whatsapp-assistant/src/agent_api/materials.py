@@ -19,6 +19,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from mesiri.domains.materials.defaults import trade_name_of
 from mesiri.domains.materials.names import alias_key
 
 from .client import ApiClient
@@ -90,6 +91,28 @@ def title(said: str) -> str:
     return " ".join(said.split())[:1].upper() + " ".join(said.split())[1:]
 
 
+def trade_rows(said: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """[254]: the company's listed materials ``said`` is a trade name of ("metal" -> Aggregate 20mm and 40mm), in the
+    starter list's order; only names the company still has. [] for anything else ("metal sheet", "baby metal")."""
+    names = trade_name_of(said)
+    return [r for n in names for r in rows if _same(n, str(r.get("name") or ""))]
+
+
+def _told_apart(row: dict[str, Any], traded: list[dict[str, Any]], words: str) -> bool:
+    """[254]: the person's words carry what only ``row`` of the ``traded`` ones has ("20mm" for Aggregate 20mm)."""
+    others = set().union(*(_words(str(r.get("name") or "")) for r in traded if r is not row))
+    return bool((_words(str(row.get("name") or "")) - others) & _words(words))
+
+
+def trade_choice(said: str, found: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    """[254]: plain "metal" is either aggregate: ONE question with both as buttons; nothing new is added."""
+    names = [str(r["name"]) for r in found]
+    return (f"{title(said)!r} is what sites call {' or '.join(names)}, both in the company's list. Nothing was "
+            f"prepared, and it is NOT a new material: do not prepare add_material. Ask ONE question with `ask`, in their "
+            f"language, which one it is, with options {names}. When they answer, prepare the line on that material_id "
+            f"in the unit they said.", names[:3])
+
+
 async def catalogue(client: ApiClient) -> list[dict[str, Any]]:
     """The company's active materials (name, aliases, id), the one place this package reads the list. Unreadable:
     [] (the API's own checks then decide)."""
@@ -111,7 +134,10 @@ async def already_listed(client: ApiClient, name: str) -> str:
     A new material is never a second "Cement"."""
     if not name.strip():
         return ""
-    row = next((r for r in await catalogue(client) if any(_same(name, n) for n in _names(r))), None)
+    rows = await catalogue(client)
+    row = next((r for r in rows if any(_same(name, n) for n in _names(r))), None)
+    if row is None and (traded := trade_rows(name, rows)):  # [254]: "Metal" is the listed aggregate, never a new one
+        return " or ".join(f"{r['name']} (material_id {r['id']})" for r in traded)
     return f"{row['name']} (material_id {row['id']})" if row else ""
 
 
@@ -136,18 +162,29 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
             said = translated
         elif row is not None:
             return "", []
+    # [254]: a trade name ("metal") outranks a word inside another name ("Baby Metal"); a name or alias said whole wins.
+    traded = [] if any(_same(said, n) for r in rows for n in _names(r)) else trade_rows(said, rows) if said else []
     if row is not None:
-        if said and (is_material(said, row, rows) or any(m == picked and _same(a, said) for m, a in taught)):
+        if said and traded and row not in traded and not any(m == picked and _same(a, said) for m, a in taught):
+            pass  # the model's pick is not what the trade name means: decided below
+        elif said and (is_material(said, row, rows) or any(m == picked and _same(a, said) for m, a in taught)):
             return "", []
         if not said and in_their_words(words, row, rows):
             return "", []
     if not said:
         return ("say which material they named: pass material_said, their own word for it. Nothing is prepared yet.",
                 [])
-    hit = next((r for r in rows if is_material(said, r, rows)), None)
+    hit = None if traded else next((r for r in rows if is_material(said, r, rows)), None)
     if hit is not None:  # the word is another material in the list: that one, never the near one
         body["material_id"] = str(hit["id"])
         return "", []
+    if traded:  # [254]: "metal" is aggregate, "msand" is M Sand: never a new material
+        if len(traded) == 1:
+            body["material_id"] = str(traded[0]["id"])
+            return "", []
+        if row is not None and row in traded and _told_apart(row, traded, words):
+            return "", []  # they already said which ("20mm", or tapped "Aggregate 20mm"): no second question
+        return trade_choice(said, traded)
     if other_script(said):
         # [243]/[248]: no material picked and no translation: the model translates it in this turn. Never the person.
         return ("material_said is not in English. Nothing is prepared. Call it again now with material_said in English "
@@ -161,6 +198,11 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
         if (hit := next((r for r in rows if any(_same(translated, n) for n in _names(r))), None)) is not None:
             body["material_id"] = str(hit["id"])
             return "", []
+        if traded := trade_rows(translated, rows):  # [254]: "ജല്ലി" -> "jelly" -> the aggregates
+            if len(traded) == 1:
+                body["material_id"] = str(traded[0]["id"])
+                return "", []
+            return trade_choice(translated, traded)
         said_english = translated
     else:
         said_english = said

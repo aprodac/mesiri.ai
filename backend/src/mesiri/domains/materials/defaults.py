@@ -49,3 +49,38 @@ STARTER_MATERIALS: tuple[StarterMaterial, ...] = (
     StarterMaterial("PVC Pipe", "nos", "Plumbing"),
     StarterMaterial("Electrical Wire", "rolls", "Electrical"),
 )
+
+
+# [254] (5 Nov, Adarsh: "10 bags metal came" made "Metal" a new material): the words sites use for the starter
+# materials, said in English letters. "metal" / "jelly" IS aggregate in Kerala; plain "metal" is either size, so it
+# names both and the person picks. A trade name matches a whole word said ("metal"), never a word inside a longer
+# name ("metal sheet", "baby metal" are not aggregate). Only names the company still has are offered.
+TRADE_NAMES: dict[str, tuple[str, ...]] = {
+    "Aggregate 20mm": ("metal", "jelly", "chips", "20mm metal", "metal 20mm", "20mm jelly", "jelly 20mm",
+                       "20mm aggregate", "3/4 metal", "three fourth metal"),
+    "Aggregate 40mm": ("metal", "jelly", "chips", "40mm metal", "metal 40mm", "40mm jelly", "jelly 40mm",
+                       "40mm aggregate", "1 1/2 metal"),
+    "M Sand": ("msand", "manufactured sand", "crusher sand"),
+    "P Sand": ("psand", "plastering sand", "plaster sand"),
+    "Steel": ("kambi", "tmt", "tmt bar", "tmt bars", "tmt steel", "rod", "rods", "steel rod", "steel rods"),
+    "Solid Blocks": ("solid block", "concrete block", "concrete blocks", "cement block", "cement blocks"),
+    "Laterite Stone": ("chenkallu", "chenkal", "vettukallu"),
+    "Bricks": ("ishtika", "ishtik"),
+}
+
+
+def trade_key(text: str) -> str:
+    """How a trade name is compared: lower case, letters, digits and "/" only ("M-Sand", "m sand" -> "msand")."""
+    return "".join(c for c in (text or "").casefold() if c.isalnum() or c == "/")
+
+
+_BY_TRADE: dict[str, tuple[str, ...]] = {}
+for _material, _words in TRADE_NAMES.items():
+    for _word in _words:
+        _BY_TRADE[trade_key(_word)] = (*_BY_TRADE.get(trade_key(_word), ()), _material)
+
+
+def trade_name_of(said: str) -> tuple[str, ...]:
+    """[254]: the starter materials ``said`` is a trade name of ("metal" -> both aggregates), or ()."""
+    return _BY_TRADE.get(trade_key(said), ())
+
