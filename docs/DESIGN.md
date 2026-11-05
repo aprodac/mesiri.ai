@@ -34,7 +34,8 @@ a view switch (`Segmented`), not several sidebar entries.
 | **Company** | `/company` | details, letterhead |
 | **WhatsApp** | `/whatsapp` (`?view=messages`, `?view=automations`) | Conversations · All messages · Automations (module) (was WhatsApp Inbox, Automations, Company > messages) |
 | Finance | `/finance/...` | only when the company has the module |
-| *(no sidebar)* | `/live` | the Live report: the day writing itself as messages come in; Replay the day; Tell Mesiri |
+| *(no sidebar)* | `/live` | the company Live (WEB-53): every message to Mesiri, the Spark (Mesiri's character) handling each, the sites ringing as they land, the day's totals; Presenter mode with a QR code; Tell Mesiri |
+| *(no sidebar)* | `/live?site=…` | a site's Live report: the day writing itself as messages come in; Replay the day; Tell Mesiri |
 | *(no sidebar)* | `/login`, `/signup`, `/welcome` | sign-in and signup with the intro conversation on the left on desktop (sign-in shows only the form below desktop width); the first-update screen after signup (SS-18) |
 
 Rules:
@@ -484,3 +485,13 @@ sender's WhatsApp chat. Used by: entry, stock history and invoice
 - Words for reasons live in `lib/materials.ts REASON_WORDS`; moves read
   "Moved to Block B" / "Moved from Block A". Never show the codes.
 - **No bulk actions.** Corrections are one at a time from an entry.
+
+### The Spark (WEB-53)
+
+Mesiri's character on the company Live: a small glowing orb in the brand colour with two eyes and a
+yellow hard hat (`components/live/spark.tsx`, SVG and CSS, `spark-*` keyframes in `index.css`). Its
+moods follow what Mesiri does with a message: `idle` (breathes, blinks), `alert` (a message came),
+`listen` (voice note), `look` (photo, with a magnifying glass), `think`, `happy` (saved: a hop and
+sparkles), `worry` (not saved: a red hand sign), `send` (a report: a paper plane). Reduced motion
+keeps the faces and drops the movement. Later, the same character can be empty states, loading and
+onboarding; not done yet.

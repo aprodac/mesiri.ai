@@ -312,7 +312,7 @@ export default function TodayPage() {
           <>
             {isToday && projects.length > 0 && (
               <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
-                <Link to="/live" title="Watch today's report write itself as updates come in">
+                <Link to="/live" title="Watch every message to Mesiri land, across the company">
                   <Radio className="size-4 text-primary" /> Live
                 </Link>
               </Button>

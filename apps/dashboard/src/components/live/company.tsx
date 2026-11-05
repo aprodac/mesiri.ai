@@ -1,0 +1,631 @@
+import * as React from 'react'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Boxes,
+  Camera,
+  CheckCheck,
+  CheckCircle2,
+  FileText,
+  Flag,
+  Hammer,
+  HardHat,
+  HelpCircle,
+  IndianRupee,
+  Languages,
+  type LucideIcon,
+  MessageCircle,
+  Mic,
+  Monitor,
+  PackageMinus,
+  PencilLine,
+  Truck,
+  Undo2,
+  X,
+  XCircle,
+} from 'lucide-react'
+import {
+  fetchBranding,
+  fetchLiveFeedApi,
+  fetchSetupProgress,
+  fetchSiteDaysApi,
+  type LiveFeedItem,
+  type LiveKind,
+  type SiteDayItem,
+} from '@/lib/api'
+import { longDate } from '@/lib/site-day'
+import { prefersReducedMotion } from '@/lib/timeline'
+import { cn } from '@/lib/utils'
+import { MesiriWordmark } from '@/components/brand/mesiri-logo'
+import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
+import { Label } from '@/components/onboarding/conversation'
+import { QrCode } from '@/components/onboarding/qr-code'
+import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
+import { CountTo } from './ink'
+import { useCinematicGo } from './modules'
+import { Spark, type SparkMood } from './spark'
+
+// The company Live (WEB-53): every message the company sends Mesiri, on one
+// screen, as it happens, with Mesiri as a character (the Spark) seen
+// handling each one. Left, the messages come in (any site, any kind:
+// attendance, a delivery, a question, a photo, a "hi"). In the middle the
+// Spark takes each in turn: it perks up, listens to a voice note or looks
+// at a photo, says in English what it understood, then what it did (saved
+// to Materials, waiting for ✅ Save, asked something back, answered). A
+// light flies from the Spark to the site's card, which rings, and the
+// company's numbers along the bottom count up. A site's card opens that
+// site's own Live report (the day's report writing itself). Presenter mode
+// is the demo: full screen, larger, and a QR code that opens a WhatsApp
+// chat with Mesiri, so a phone in the room can send a message and everyone
+// watches it land. Read-only, like the site Live.
+
+const FEED_POLL_MS = 3_000
+const SITES_POLL_MS = 10_000
+/** How long each step of the Spark's handling shows. */
+const STEP_MS = 1_300
+/** At most this many new messages are played in turn; older ones just appear. */
+const QUEUE_MAX = 6
+
+interface KindLook {
+  icon: LucideIcon
+  /** The module it goes to, as the Spark says it. */
+  goes: string | null
+  tone: 'work' | 'materials' | 'issues' | 'money' | 'info' | 'plain'
+}
+
+const KINDS: Record<LiveKind, KindLook> = {
+  attendance: { icon: HardHat, goes: 'Labour', tone: 'work' },
+  work: { icon: Hammer, goes: 'Site log', tone: 'work' },
+  correction: { icon: PencilLine, goes: 'Site log', tone: 'work' },
+  delivery: { icon: Truck, goes: 'Materials', tone: 'materials' },
+  usage: { icon: PackageMinus, goes: 'Materials', tone: 'materials' },
+  transfer: { icon: ArrowLeftRight, goes: 'Materials', tone: 'materials' },
+  catalogue: { icon: Boxes, goes: 'Materials', tone: 'materials' },
+  expense: { icon: IndianRupee, goes: 'Expenses', tone: 'money' },
+  issue: { icon: AlertTriangle, goes: 'Issues', tone: 'issues' },
+  issue_closed: { icon: CheckCircle2, goes: 'Issues', tone: 'issues' },
+  undo: { icon: Undo2, goes: null, tone: 'plain' },
+  setup: { icon: Flag, goes: 'Projects', tone: 'info' },
+  language: { icon: Languages, goes: null, tone: 'info' },
+  report: { icon: FileText, goes: 'Reports', tone: 'info' },
+  question: { icon: HelpCircle, goes: null, tone: 'info' },
+  saved: { icon: CheckCheck, goes: null, tone: 'work' },
+  cancelled: { icon: XCircle, goes: null, tone: 'plain' },
+  photo: { icon: Camera, goes: null, tone: 'plain' },
+  chat: { icon: MessageCircle, goes: null, tone: 'plain' },
+}
+
+const TONES: Record<KindLook['tone'], string> = {
+  work: 'text-[var(--success)] bg-[var(--success-soft)]',
+  materials: 'text-[var(--info)] bg-[var(--info-soft)]',
+  issues: 'text-[var(--destructive)] bg-[color-mix(in_srgb,var(--destructive)_12%,transparent)]',
+  money: 'text-[var(--draft)] bg-[var(--draft-soft)]',
+  info: 'text-[var(--ai)] bg-[var(--ai-soft)]',
+  plain: 'text-muted-foreground bg-muted',
+}
+
+const isVoice = (m: LiveFeedItem) => /voice|audio/.test(m.type)
+const isPhoto = (m: LiveFeedItem) => /image|photo/.test(m.type)
+const clock = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
+const initials = (name: string | null) =>
+  (name ?? '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('') || '?'
+const short = (s: string | null | undefined, n = 140) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s ?? '')
+
+/** The viewer's day for `date` (YYYY-MM-DD). */
+function dayWindow(date: string): [Date, Date] {
+  const [y, m, d] = date.split('-').map(Number)
+  return [new Date(y, m - 1, d), new Date(y, m - 1, d + 1)]
+}
+
+/** The steps the Spark goes through with one message, and what it says at each. */
+type Step = 'arrive' | 'read' | 'understood' | 'done'
+
+function sparkMood(m: LiveFeedItem, step: Step): SparkMood {
+  if (step === 'arrive') return 'alert'
+  if (step === 'read') return isVoice(m) ? 'listen' : isPhoto(m) ? 'look' : 'think'
+  if (step === 'understood') return 'think'
+  if (m.state === 'failed') return 'worry'
+  if (m.kind === 'report') return 'send'
+  if (m.state === 'saved') return 'happy'
+  if (m.state === 'asked') return 'think'
+  return 'idle'
+}
+
+function sparkSays(m: LiveFeedItem, step: Step): string {
+  const who = m.sender_name?.split(/\s+/)[0] ?? 'Someone'
+  const where = m.site_name ?? m.project_name
+  if (step === 'arrive') return `${who} sent a ${isVoice(m) ? 'voice note' : isPhoto(m) ? 'photo' : 'message'}${where ? ` from ${where}` : ''}`
+  if (step === 'read') return isVoice(m) ? 'Listening…' : isPhoto(m) ? 'Looking at the photo…' : 'Reading…'
+  if (step === 'understood') return m.translated_text || m.text || (isPhoto(m) ? 'A photo from site' : '…')
+  const goes = KINDS[m.saved_kind ?? m.kind].goes
+  const what = m.summaries.join(' · ')
+  switch (m.state) {
+    case 'saved':
+      return `Saved${goes ? ` to ${goes}` : ''}${what ? `: ${what}` : ''}`
+    case 'draft':
+      return `Ready, waiting for ✅ Save${what ? `: ${what}` : ''}`
+    case 'asked':
+      return `I asked: ${m.asked}`
+    case 'failed':
+      return 'That could not be saved. I told them why.'
+    case 'answered':
+      return short(m.reply, 160) || 'Answered'
+    default:
+      return short(m.reply, 160) || 'Got it'
+  }
+}
+
+/** Letters written in one by one. */
+function Typed({ text, ms = 18 }: { text: string; ms?: number }) {
+  const [n, setN] = React.useState(prefersReducedMotion() ? text.length : 0)
+  React.useEffect(() => {
+    if (prefersReducedMotion()) {
+      setN(text.length)
+      return
+    }
+    setN(0)
+    const t = window.setInterval(() => setN((k) => (k >= text.length ? k : k + 1)), ms)
+    return () => window.clearInterval(t)
+  }, [text, ms])
+  return (
+    <span>
+      {text.slice(0, n)}
+      {n < text.length && <span className="ml-px inline-block h-[1em] w-[2px] translate-y-[2px] animate-pulse bg-current" />}
+    </span>
+  )
+}
+
+/** A light that flies from one element to another. */
+interface Flight {
+  key: number
+  from: DOMRect
+  to: DOMRect
+}
+function Flyer({ flight, onDone }: { flight: Flight; onDone: () => void }) {
+  const ref = React.useRef<HTMLSpanElement>(null)
+  React.useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const fx = flight.from.left + flight.from.width / 2
+    const fy = flight.from.top + flight.from.height / 2
+    const tx = flight.to.left + flight.to.width / 2
+    const ty = flight.to.top + Math.min(24, flight.to.height / 2)
+    const anim = el.animate(
+      [
+        { transform: `translate(${fx}px, ${fy}px) scale(1.4)`, opacity: 1 },
+        { transform: `translate(${(fx + tx) / 2}px, ${Math.min(fy, ty) - 80}px) scale(1)`, opacity: 1, offset: 0.5 },
+        { transform: `translate(${tx}px, ${ty}px) scale(0.6)`, opacity: 0.2 },
+      ],
+      { duration: 900, easing: 'cubic-bezier(.5,0,.3,1)' },
+    )
+    anim.onfinish = onDone
+    return () => anim.cancel()
+  }, [flight, onDone])
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      className="pointer-events-none fixed left-0 top-0 z-50 -ml-2 -mt-2 size-4 rounded-full bg-primary shadow-[0_0_24px_8px_color-mix(in_srgb,var(--primary)_60%,transparent)]"
+    />
+  )
+}
+
+export function CompanyLive({ date, isToday }: { date: string; isToday: boolean }) {
+  const [since, until] = React.useMemo(() => dayWindow(date), [date])
+  const feed = useQuery({
+    queryKey: ['live-feed', date],
+    queryFn: () => fetchLiveFeedApi(since, until),
+    refetchInterval: isToday ? FEED_POLL_MS : false,
+    retry: false,
+  })
+  const days = useQuery({
+    queryKey: ['live-site-days', date, null],
+    queryFn: () => fetchSiteDaysApi(date),
+    refetchInterval: isToday ? SITES_POLL_MS : false,
+  })
+  const branding = useQuery({ queryKey: ['company-branding'], queryFn: fetchBranding, retry: false, staleTime: 10 * 60_000 })
+  const setup = useQuery({ queryKey: ['setup-progress'], queryFn: fetchSetupProgress, retry: false, staleTime: 10 * 60_000 })
+  const cinematic = useCinematicGo()
+
+  const items = React.useMemo(() => feed.data ?? [], [feed.data])
+  const sites = React.useMemo(
+    () => [...(days.data?.items ?? [])].sort((a, b) => (b.last_update_at ?? '').localeCompare(a.last_update_at ?? '')),
+    [days.data],
+  )
+
+  // Which messages are on screen, and the one the Spark is handling.
+  const [shown, setShown] = React.useState<Set<string>>(new Set())
+  const [current, setCurrent] = React.useState<{ item: LiveFeedItem; step: Step } | null>(null)
+  const [beat, setBeat] = React.useState(0)
+  const [ringing, setRinging] = React.useState<Set<string>>(new Set())
+  const [flights, setFlights] = React.useState<Flight[]>([])
+  const queue = React.useRef<LiveFeedItem[]>([])
+  const playing = React.useRef(false)
+  const seeded = React.useRef(false)
+  const sparkRef = React.useRef<HTMLDivElement>(null)
+  const siteRefs = React.useRef(new Map<string, HTMLElement>())
+
+  const play = React.useCallback(async () => {
+    if (playing.current) return
+    playing.current = true
+    const wait = (ms: number) => new Promise((r) => window.setTimeout(r, prefersReducedMotion() ? 0 : ms))
+    while (queue.current.length) {
+      const item = queue.current.shift()!
+      setShown((s) => new Set(s).add(item.id))
+      setBeat((b) => b + 1)
+      for (const step of ['arrive', 'read', 'understood', 'done'] as Step[]) {
+        setCurrent({ item, step })
+        if (step === 'done' && item.site_id) {
+          const from = sparkRef.current?.getBoundingClientRect()
+          const to = siteRefs.current.get(item.site_id)?.getBoundingClientRect()
+          if (from && to && !prefersReducedMotion()) setFlights((f) => [...f, { key: Date.now(), from, to }])
+          const site = item.site_id
+          window.setTimeout(() => setRinging((r) => new Set(r).add(site)), 850)
+          window.setTimeout(
+            () =>
+              setRinging((r) => {
+                const next = new Set(r)
+                next.delete(site)
+                return next
+              }),
+            2_400,
+          )
+        }
+        await wait(step === 'understood' ? STEP_MS + 600 : step === 'done' ? STEP_MS + 1_200 : STEP_MS)
+      }
+    }
+    setCurrent(null)
+    playing.current = false
+  }, [])
+
+  // The first read just shows the day; later reads play what is new.
+  React.useEffect(() => {
+    if (!feed.data) return
+    if (!seeded.current) {
+      seeded.current = true
+      setShown(new Set(feed.data.map((m) => m.id)))
+      return
+    }
+    const known = new Set([...shown, ...queue.current.map((m) => m.id), current?.item.id])
+    const fresh = feed.data.filter((m) => !known.has(m.id))
+    if (!fresh.length) return
+    const late = fresh.slice(0, Math.max(0, fresh.length - QUEUE_MAX))
+    if (late.length) setShown((s) => new Set([...s, ...late.map((m) => m.id)]))
+    queue.current.push(...fresh.slice(-QUEUE_MAX))
+    void play()
+  }, [feed.data, shown, current, play])
+
+  // Presenter mode: full screen, larger, the QR code to message Mesiri.
+  const [presenting, setPresenting] = React.useState(false)
+  const [telling, setTelling] = React.useState(false)
+  const present = async (on: boolean) => {
+    setPresenting(on)
+    try {
+      if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen?.()
+      if (!on && document.fullscreenElement) await document.exitFullscreen?.()
+    } catch {
+      // Full screen refused (an iframe, a browser setting): presenter mode still works in the window.
+    }
+  }
+  React.useEffect(() => {
+    const left = () => {
+      if (!document.fullscreenElement) setPresenting(false)
+    }
+    document.addEventListener('fullscreenchange', left)
+    return () => document.removeEventListener('fullscreenchange', left)
+  }, [])
+
+  const number = setup.data?.whatsapp_number ?? null
+  const qrLink = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Mesiri')}` : null
+
+  const stream = items.filter((m) => shown.has(m.id)).reverse()
+  const totals = {
+    workers: sites.reduce((n, s) => n + (s.workers || 0), 0),
+    messages: items.filter((m) => shown.has(m.id)).length,
+    saved: items.filter((m) => shown.has(m.id) && m.state === 'saved').length,
+    issues: sites.reduce((n, s) => n + (s.open_issues || 0), 0),
+    reported: sites.filter((s) => s.last_update_at).length,
+  }
+  const company = branding.data?.company_name
+
+  const openSite = (s: SiteDayItem, el: HTMLElement) =>
+    cinematic.go({
+      from: el.getBoundingClientRect(),
+      to: `/live?project=${s.project_id}&site=${s.site_id}${isToday ? '' : `&date=${date}`}`,
+      title: s.site_name,
+      kicker: [s.project_name, longDate(date)].filter(Boolean).join(' · '),
+    })
+
+  return (
+    <div className={cn('min-h-svh bg-background px-4 pb-6 sm:px-8 sm:pb-24 lg:px-12', presenting && 'text-[1.12rem]')}>
+      <div className="mx-auto max-w-[1600px]">
+        <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-6 pb-4">
+          <div className="flex items-baseline gap-4">
+            <MesiriWordmark className={presenting ? 'text-2xl' : 'text-lg'} />
+            <Label className="flex items-center gap-2">
+              <span className="relative flex size-2" aria-hidden="true">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60 motion-reduce:animate-none" />
+                <span className="relative inline-flex size-2 rounded-full bg-primary" />
+              </span>
+              Live{company ? ` · ${company}` : ''} · {longDate(date)}
+            </Label>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            {!presenting && (
+              <button
+                type="button"
+                onClick={() => setTelling((t) => !t)}
+                aria-expanded={telling}
+                className={cn(
+                  'flex items-center gap-2 border border-foreground px-4 py-2 text-sm font-medium',
+                  telling ? 'bg-foreground text-background' : 'hover:bg-foreground hover:text-background',
+                )}
+              >
+                <Mic className="size-4" /> Tell Mesiri
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void present(!presenting)}
+              className="flex items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            >
+              {presenting ? <X className="size-4" /> : <Monitor className="size-4" />}
+              {presenting ? 'Leave presenter mode' : 'Presenter mode'}
+            </button>
+            {!presenting && (
+              <Link to="/today" className="border-b border-foreground font-mono text-[11px] uppercase tracking-[0.06em]">
+                Exit
+              </Link>
+            )}
+          </div>
+        </header>
+        <div className="h-px bg-foreground" />
+
+        {telling && !presenting && (
+          <div className="mt-6 border border-foreground px-4 py-4 animate-in fade-in slide-in-from-top-2 duration-300 motion-reduce:animate-none">
+            <Label className="block pb-3">Tell Mesiri · speak or type, and watch the Spark take it</Label>
+            <TellMesiri compact />
+          </div>
+        )}
+
+        {feed.isError ? (
+          <p className="py-10 text-sm text-muted-foreground">Could not read the company's messages. Trying again…</p>
+        ) : (
+          <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] xl:grid-cols-[minmax(300px,0.9fr)_minmax(0,1.2fr)_minmax(280px,0.9fr)]">
+            {/* The messages, newest first */}
+            <section aria-label="Messages" className="order-2 min-w-0 lg:order-1">
+              <Label>Messages · {totals.messages} today</Label>
+              {feed.isLoading ? (
+                <p className="mt-4 text-sm text-muted-foreground">Loading…</p>
+              ) : stream.length === 0 ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Nothing yet today. Send Mesiri a message on WhatsApp and watch it arrive here.
+                </p>
+              ) : (
+                <ol className="m-0 mt-4 grid list-none gap-3 p-0" aria-live="polite">
+                  {stream.slice(0, 40).map((m) => (
+                    <MessageCard key={m.id} m={m} active={current?.item.id === m.id} />
+                  ))}
+                </ol>
+              )}
+            </section>
+
+            {/* The Spark, handling one message at a time */}
+            <section aria-label="Mesiri" className="order-1 min-w-0 lg:order-2">
+              <div className="sticky top-6 grid justify-items-center gap-4 border border-foreground/15 px-4 py-5 text-center sm:gap-5 sm:px-6 sm:py-8">
+                <div ref={sparkRef}>
+                  <Spark
+                    mood={current ? sparkMood(current.item, current.step) : 'idle'}
+                    beat={beat}
+                    size={presenting ? 220 : 170}
+                  />
+                </div>
+                <div className="min-h-[5.5rem] max-w-[34rem] sm:min-h-[7.5rem]" aria-live="polite">
+                  {current ? (
+                    <>
+                      <Label className="block">{STEP_LABEL[current.step]}</Label>
+                      <p
+                        key={`${current.item.id}-${current.step}`}
+                        className={cn(
+                          'm-0 mt-2 font-medium tracking-[-0.01em]',
+                          presenting ? 'text-[30px] leading-[1.25]' : 'text-[22px] leading-[1.3]',
+                          current.step === 'done' && current.item.state === 'failed' && 'text-[var(--destructive)]',
+                        )}
+                      >
+                        <Typed text={sparkSays(current.item, current.step)} />
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Label className="block">Mesiri · listening</Label>
+                      <p className={cn('m-0 mt-2 text-muted-foreground', presenting ? 'text-[26px]' : 'text-lg')}>
+                        Waiting for the next message from site…
+                      </p>
+                    </>
+                  )}
+                </div>
+                <Steps step={current?.step ?? null} />
+                {presenting && qrLink && (
+                  <div className="mt-2 flex items-center gap-5 border-t border-foreground/15 pt-6 text-left">
+                    <QrCode value={qrLink} label={`QR code to message Mesiri at ${number}`} className="size-36 shrink-0" />
+                    <div>
+                      <p className="m-0 flex items-center gap-2 text-xl font-semibold">
+                        <WhatsAppIcon className="size-5" /> Send Mesiri a message
+                      </p>
+                      <p className="m-0 mt-1 text-base text-muted-foreground">
+                        Scan, send anything about site, and watch it land here. {number}
+                      </p>
+                      <p className="m-0 mt-1 text-sm text-muted-foreground">Only numbers on this company's team are filed.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* The sites */}
+            <section aria-label="Sites" className="order-3 min-w-0 lg:col-span-2 xl:col-span-1">
+              <Label>Sites · {totals.reported} of {sites.length} heard from</Label>
+              <ul className="m-0 mt-4 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-1">
+                {sites.map((s) => (
+                  <li key={s.site_id}>
+                    <button
+                      type="button"
+                      ref={(el) => {
+                        if (el) siteRefs.current.set(s.site_id, el)
+                        else siteRefs.current.delete(s.site_id)
+                      }}
+                      onClick={(e) => openSite(s, e.currentTarget)}
+                      className="grid w-full gap-2 border border-foreground/20 bg-background px-4 py-3 text-left transition-colors hover:border-foreground"
+                      style={ringing.has(s.site_id) && !prefersReducedMotion() ? { animation: 'live-land 1.4s ease-out' } : undefined}
+                    >
+                      <span className="flex items-baseline justify-between gap-3">
+                        <span className="truncate text-[15px] font-semibold">{s.site_name}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                          {s.last_update_at ? clock(s.last_update_at) : 'not yet'}
+                        </span>
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">{s.project_name}</span>
+                      <span className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px]">
+                        <Stat n={s.workers} what={s.workers === 1 ? 'worker' : 'workers'} />
+                        <Stat n={s.work_items + s.progress_updates} what="work" />
+                        <Stat n={s.materials} what="materials" />
+                        {s.open_issues > 0 && <Stat n={s.open_issues} what={s.open_issues === 1 ? 'issue' : 'issues'} warn />}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        )}
+      </div>
+
+      {/* The company's day, counting up */}
+      <footer className="-mx-4 mt-10 border-t border-foreground bg-background/95 backdrop-blur sm:fixed sm:inset-x-0 sm:bottom-0 sm:z-40 sm:mx-0 sm:mt-0">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-baseline justify-between gap-x-8 gap-y-1 px-4 py-3 sm:px-8 lg:px-12">
+          <Total n={totals.workers} what={totals.workers === 1 ? 'worker on site' : 'workers on site'} big={presenting} />
+          <Total n={totals.messages} what={totals.messages === 1 ? 'message' : 'messages'} big={presenting} />
+          <Total n={totals.saved} what={totals.saved === 1 ? 'entry saved' : 'entries saved'} big={presenting} />
+          <Total n={totals.issues} what={totals.issues === 1 ? 'open issue' : 'open issues'} big={presenting} />
+          <Total n={totals.reported} what={`of ${sites.length} sites heard from`} big={presenting} />
+        </div>
+      </footer>
+
+      {flights.map((f) => (
+        <Flyer key={f.key} flight={f} onDone={() => setFlights((all) => all.filter((x) => x.key !== f.key))} />
+      ))}
+      {cinematic.overlay}
+    </div>
+  )
+}
+
+const STEP_LABEL: Record<Step, string> = {
+  arrive: 'New message',
+  read: 'Mesiri',
+  understood: 'Understood',
+  done: 'Done',
+}
+
+/** Heard → understood → done, lighting up as the Spark goes. */
+function Steps({ step }: { step: Step | null }) {
+  const order: Step[] = ['arrive', 'read', 'understood', 'done']
+  const at = step ? order.indexOf(step) : -1
+  return (
+    <ol className="m-0 flex list-none items-center gap-2 p-0 font-mono text-[11px] uppercase tracking-[0.06em]" aria-hidden="true">
+      {['Heard', 'Reading', 'Understood', 'Done'].map((w, i) => (
+        <li key={w} className="flex items-center gap-2">
+          {i > 0 && <span className={cn('h-px w-6 transition-colors duration-500', i <= at ? 'bg-primary' : 'bg-foreground/20')} />}
+          <span className={cn('transition-colors duration-500', i <= at ? 'text-primary' : 'text-muted-foreground')}>{w}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function Stat({ n, what, warn }: { n: number; what: string; warn?: boolean }) {
+  return (
+    <span className={cn(warn ? 'text-[var(--destructive)]' : n ? 'text-foreground' : 'text-muted-foreground')}>
+      <CountTo value={n} /> {what}
+    </span>
+  )
+}
+
+function Total({ n, what, big }: { n: number; what: string; big: boolean }) {
+  return (
+    <span className="flex items-baseline gap-2">
+      <span className={cn('font-semibold tabular-nums tracking-[-0.02em]', big ? 'text-4xl' : 'text-2xl')}>
+        <CountTo value={n} />
+      </span>
+      <span className="text-sm text-muted-foreground">{what}</span>
+    </span>
+  )
+}
+
+const STATE_CHIP: Record<LiveFeedItem['state'], { text: string; className: string } | null> = {
+  saved: { text: '✅ Saved', className: 'text-[var(--success)]' },
+  draft: { text: 'Waiting for Save', className: 'text-[var(--draft)]' },
+  asked: { text: 'Mesiri asked back', className: 'text-[var(--ai)]' },
+  answered: { text: 'Answered', className: 'text-[var(--ai)]' },
+  failed: { text: 'Not saved', className: 'text-[var(--destructive)]' },
+  heard: null,
+}
+
+function MessageCard({ m, active }: { m: LiveFeedItem; active: boolean }) {
+  const look = KINDS[m.saved_kind && m.kind === 'saved' ? m.saved_kind : m.kind]
+  const Icon = look.icon
+  const chip = STATE_CHIP[m.state]
+  const english = m.translated_text && m.translated_text !== m.text ? m.translated_text : null
+  return (
+    <li
+      className={cn(
+        'grid gap-2 border px-4 py-3 transition-[border-color,background-color] duration-500',
+        active ? 'border-primary bg-[color-mix(in_srgb,var(--primary)_6%,transparent)]' : 'border-foreground/15',
+      )}
+      style={prefersReducedMotion() ? undefined : { animation: 'live-in 500ms ease-out' }}
+    >
+      <div className="flex items-center gap-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-[12px] font-semibold text-background">
+          {initials(m.sender_name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="m-0 truncate text-sm font-semibold">{m.sender_name ?? 'Unknown number'}</p>
+          <p className="m-0 truncate text-xs text-muted-foreground">
+            {[m.site_name ?? m.project_name, clock(m.received_at)].filter(Boolean).join(' · ')}
+          </p>
+        </div>
+        <span className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium', TONES[look.tone])}>
+          <Icon className="size-3.5" aria-hidden="true" /> {m.kind === 'saved' ? 'Saved' : m.label}
+        </span>
+      </div>
+      {m.media_url && (
+        <img
+          src={m.media_url}
+          alt="Photo from site"
+          className="max-h-48 w-full object-cover"
+          style={active && !prefersReducedMotion() ? { animation: 'live-develop 1.6s ease-out both' } : undefined}
+        />
+      )}
+      {(m.text || isVoice(m)) && (
+        <p className="m-0 text-[15px] leading-snug">
+          {isVoice(m) && <Mic className="mr-1.5 inline size-4 align-[-2px] text-primary" aria-label="Voice note" />}
+          {short(m.text, 220)}
+        </p>
+      )}
+      {english && <p className="m-0 text-sm italic text-muted-foreground">“{short(english, 220)}”</p>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          {m.source === 'dashboard' ? 'Mesiri web' : <><WhatsAppIcon className="size-3" /> WhatsApp</>}
+        </span>
+        {chip && <span className={cn('text-[12px] font-medium', chip.className)}>{chip.text}</span>}
+      </div>
+    </li>
+  )
+}

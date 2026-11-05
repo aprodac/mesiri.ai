@@ -2020,6 +2020,42 @@ export async function fetchSiteQuestionsApi(siteId: string, since: Date, until: 
   return res.data.items
 }
 
+/** What a message to Mesiri was (WEB-53); the backend's `live_feed.KIND_LABELS` says each one's name. */
+export type LiveKind =
+  | 'attendance' | 'work' | 'correction' | 'delivery' | 'usage' | 'transfer' | 'expense' | 'issue' | 'issue_closed'
+  | 'undo' | 'setup' | 'catalogue' | 'language' | 'report' | 'question' | 'saved' | 'cancelled' | 'photo' | 'chat'
+
+/** One message on the company Live, and what Mesiri did with it. */
+export interface LiveFeedItem {
+  id: string
+  type: string
+  text: string | null
+  translated_text: string | null
+  reply: string | null
+  received_at: string | null
+  project_id: string | null
+  site_id: string | null
+  site_name: string | null
+  project_name: string | null
+  sender_name: string | null
+  source: string
+  media_url: string | null
+  kind: LiveKind
+  label: string
+  /** saved, draft (waiting for ✅ Save), asked (Mesiri asked back), answered, failed, or heard. */
+  state: 'saved' | 'draft' | 'asked' | 'answered' | 'failed' | 'heard'
+  summaries: string[]
+  asked: string | null
+  saved_kind: LiveKind | null
+}
+
+export async function fetchLiveFeedApi(since: Date, until: Date): Promise<LiveFeedItem[]> {
+  const res = await api.get<{ items: LiveFeedItem[] }>('/dpr/live/feed', {
+    params: { since: since.toISOString(), until: until.toISOString() },
+  })
+  return res.data.items
+}
+
 /** Confirm one draft (BE-09). */
 export async function confirmFactApi(factType: FactType, factId: string): Promise<void> {
   await api.post(`/dpr/facts/${factType}/${factId}/confirm`)

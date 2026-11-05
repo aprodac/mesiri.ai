@@ -23,6 +23,7 @@ import { MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
 import { Label, WordsIn } from '@/components/onboarding/conversation'
 import { CountTo, Ink } from '@/components/live/ink'
+import { CompanyLive } from '@/components/live/company'
 import { DustText } from '@/components/live/dust'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { LIVE_MODULES, ModuleRail, moduleOf, useCinematicGo, type LiveModule, type ModuleSection } from '@/components/live/modules'
@@ -592,6 +593,15 @@ function DayProgress({
 }
 
 export default function LivePage() {
+  const [params] = useSearchParams()
+  const [today] = React.useState(() => localIsoDate(new Date()))
+  const date = params.get('date') || today
+  // WEB-53: the company Live by default; a site's Live report when one is named (old links keep working).
+  if (!params.get('site')) return <CompanyLive date={date} isToday={date === today} />
+  return <SiteLive />
+}
+
+function SiteLive() {
   const { me } = useAuth()
   const [params, setParams] = useSearchParams()
   const [today] = React.useState(() => localIsoDate(new Date()))
@@ -608,19 +618,6 @@ export default function LivePage() {
   const latestSite = [...sites].sort((a, b) => (b.last_update_at ?? '').localeCompare(a.last_update_at ?? ''))[0]
   const siteId = params.get('site') || latestSite?.site_id || ''
   const site = sites.find((s) => s.site_id === siteId)
-  // Pin it in the address, so a later update elsewhere never switches the page under the viewer.
-  React.useEffect(() => {
-    if (!params.get('site') && latestSite) {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev)
-          next.set('site', latestSite.site_id)
-          return next
-        },
-        { replace: true },
-      )
-    }
-  }, [params, latestSite, setParams])
 
   const detail = useQuery({
     queryKey: ['live-site-day', siteId, date],
@@ -1648,6 +1645,12 @@ export default function LivePage() {
                 Review
               </Link>
             )}
+            <Link
+              to={`/live${params.get('date') ? `?date=${date}` : ''}`}
+              className="border-b border-foreground font-mono text-[11px] uppercase tracking-[0.06em]"
+            >
+              Whole company
+            </Link>
             <Link to="/today" className="border-b border-foreground font-mono text-[11px] uppercase tracking-[0.06em]">
               Exit
             </Link>
