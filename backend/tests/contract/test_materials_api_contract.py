@@ -1585,3 +1585,191 @@ async def test_catalog_list_carries_the_stock_unit_id(client, admin_ctx):
     resp = await client.get("/materials", headers=_auth(admin_ctx["token"]))
     [item] = [m for m in resp.json()["items"] if m["name"] == "Cement UNIT"]
     assert item["default_unit_id"] == bags_id
+
+
+# ---------------------------------------------------------------------------
+# PRC-01 / PRC-03: material categories
+# ---------------------------------------------------------------------------
+async def _make_category(client, token: str, name: str, parent_id: str | None = None) -> str:
+    body = {"name": name} if parent_id is None else {"name": name, "parent_id": parent_id}
+    resp = await client.post("/materials/categories", json=body, headers=_auth(token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+async def test_category_tree_is_two_levels_with_unique_names_per_parent(client, admin_ctx):
+    token = admin_ctx["token"]
+    electrical = await _make_category(client, token, "Electrical")
+    switches = await _make_category(client, token, "Switches & sockets", electrical)
+    fire = await _make_category(client, token, "Fire protection")
+
+    # A size or type is a material, not a third level.
+    resp = await client.post(
+        "/materials/categories", json={"name": "2-way", "parent_id": switches}, headers=_auth(token)
+    )
+    assert resp.status_code == 422
+    assert "already a sub-category" in resp.json()["detail"]
+
+    # Same name under the same parent, any case or spacing: refused.
+    resp = await client.post("/materials/categories", json={"name": "  electrical "}, headers=_auth(token))
+    assert resp.status_code == 409
+    # The same sub-category name under two main categories is fine ("Pipes & fittings").
+    await _make_category(client, token, "Pipes & fittings", fire)
+    await _make_category(client, token, "Pipes & fittings", electrical)
+
+    resp = await client.get("/materials/categories", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    by_id = {c["id"]: c for c in body["items"]}
+    assert by_id[switches]["parent_id"] == electrical
+    assert by_id[electrical]["parent_id"] is None
+    assert body["uncategorised"] == 0
+
+    # Rename onto a sibling's name is refused; a plain rename works.
+    resp = await client.patch(
+        f"/materials/categories/{switches}", json={"name": "pipes & fittings"}, headers=_auth(token)
+    )
+    assert resp.status_code == 409
+    resp = await client.patch(
+        f"/materials/categories/{switches}", json={"name": "Switches and sockets"}, headers=_auth(token)
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Switches and sockets"
+
+
+async def test_material_takes_a_category_keeps_it_and_leaves_it(client, test_engine, test_org, admin_ctx):
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    structural = await _make_category(client, token, "Structural")
+    masonry = await _make_category(client, token, "Masonry", structural)
+
+    resp = await client.post(
+        "/materials",
+        json={"name": "Cement", "default_unit_id": bags_id, "category_id": masonry},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    material_id = resp.json()["id"]
+    assert resp.json()["category_id"] == masonry
+
+    # A PATCH that does not mention the category leaves it alone.
+    resp = await client.patch(f"/materials/{material_id}", json={"sku": "OPC-53"}, headers=_auth(token))
+    assert resp.json()["category_id"] == masonry
+    # Moved to the main category, then taken out.
+    resp = await client.patch(f"/materials/{material_id}", json={"category_id": structural}, headers=_auth(token))
+    assert resp.json()["category_id"] == structural
+    resp = await client.patch(f"/materials/{material_id}", json={"category_id": None}, headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json()["category_id"] is None
+
+    # Another company's category is never accepted.
+    other_org = uuid.uuid4()
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO organizations (id, name, deployment_type, db_route, status, created_at, updated_at) "
+                "VALUES (:id, 'Other', 'local', 'default', 'active', now(), now())"
+            ),
+            {"id": other_org},
+        )
+        foreign = (
+            await conn.execute(
+                sa.text("INSERT INTO material_categories (organization_id, name) VALUES (:org, 'Gas') RETURNING id"),
+                {"org": other_org},
+            )
+        ).scalar_one()
+    resp = await client.patch(f"/materials/{material_id}", json={"category_id": str(foreign)}, headers=_auth(token))
+    assert resp.status_code == 422
+    resp = await client.get("/materials/categories", headers=_auth(token))
+    assert str(foreign) not in {c["id"] for c in resp.json()["items"]}
+
+
+async def test_category_in_use_is_switched_off_never_deleted(client, admin_ctx):
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    lift = await _make_category(client, token, "Lift")
+    gas = await _make_category(client, token, "Gas")
+    resp = await client.post(
+        "/materials", json={"name": "Lift rail", "default_unit_id": bags_id, "category_id": lift}, headers=_auth(token)
+    )
+    material_id = resp.json()["id"]
+
+    resp = await client.delete(f"/materials/categories/{lift}", headers=_auth(token))
+    assert resp.status_code == 409
+    resp = await client.patch(f"/materials/categories/{lift}", json={"is_active": False}, headers=_auth(token))
+    assert resp.json()["is_active"] is False
+    # Its material keeps it; a new material can't be put in a switched-off category.
+    resp = await client.get("/materials", headers=_auth(token))
+    assert next(m for m in resp.json()["items"] if m["id"] == material_id)["category_id"] == lift
+    resp = await client.post(
+        "/materials", json={"name": "Lift door", "default_unit_id": bags_id, "category_id": lift}, headers=_auth(token)
+    )
+    assert resp.status_code == 422
+
+    resp = await client.delete(f"/materials/categories/{gas}", headers=_auth(token))
+    assert resp.status_code == 204
+
+
+async def test_standard_categories_place_only_what_a_fixed_rule_places(client, test_engine, test_org, admin_ctx):
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    for name, group in (("Cement", "Masonry"), ("PVC Pipe", "Plumbing"), ("Door handle", "Hardware"), ("Sand", None)):
+        resp = await client.post(
+            "/materials", json={"name": name, "default_unit_id": bags_id, "category": group}, headers=_auth(token)
+        )
+        assert resp.status_code == 201
+    # A company category of its own, and a material someone already placed in it, stay as they are.
+    mine = await _make_category(client, token, "Structural")
+    resp = await client.post(
+        "/materials",
+        json={"name": "Steel", "default_unit_id": bags_id, "category": "Steel", "category_id": mine},
+        headers=_auth(token),
+    )
+
+    resp = await client.post("/materials/categories/standard", headers=_auth(token))
+    assert resp.status_code == 200
+    first = resp.json()
+    assert first["materials_placed"] == 2  # Cement (old group) and PVC Pipe (by name)
+
+    cats = (await client.get("/materials/categories", headers=_auth(token))).json()["items"]
+    path = {}
+    for c in cats:
+        parent = next((p["name"] for p in cats if p["id"] == c["parent_id"]), None)
+        path[c["id"]] = (parent, c["name"]) if parent else (c["name"], None)
+    assert sum(1 for c in cats if c["name"] == "Structural" and c["parent_id"] is None) == 1  # reused, not doubled
+    mats = {m["name"]: m for m in (await client.get("/materials", headers=_auth(token))).json()["items"]}
+    assert path[mats["Cement"]["category_id"]] == ("Structural", "Masonry")
+    assert path[mats["PVC Pipe"]["category_id"]] == ("Plumbing & CP", "Pipes")
+    assert mats["Steel"]["category_id"] == mine  # never moved
+    assert mats["Door handle"]["category_id"] is None  # "Hardware" is no fixed rule: left for the company
+    assert mats["Sand"]["category_id"] is None
+
+    resp = await client.post("/materials/categories/standard", headers=_auth(token))
+    assert resp.json() == {"categories_added": 0, "materials_placed": 0}
+
+
+async def test_stock_rows_carry_the_material_category(client, admin_ctx):
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    masonry = await _make_category(client, token, "Masonry")
+    resp = await client.post(
+        "/materials", json={"name": "Cement", "default_unit_id": bags_id, "category_id": masonry}, headers=_auth(token)
+    )
+    material_id = resp.json()["id"]
+    body = {
+        "project_id": str(admin_ctx["project_id"]),
+        "site_id": str(admin_ctx["site_id"]),
+        "material_id": material_id,
+        "unit_id": bags_id,
+        "quantity": "40",
+        "movement_reason": "RECEIVED",
+        "occurred_date": str(datetime.date.today()),
+    }
+    assert (await client.post("/materials/inflows", json=body, headers=_auth(token))).status_code == 201
+    resp = await client.get(
+        "/materials/inventory", params={"project_id": str(admin_ctx["project_id"])}, headers=_auth(token)
+    )
+    assert resp.status_code == 200
+    row = next(r for r in resp.json() if r["material_id"] == material_id)
+    assert row["category_id"] == masonry
+    assert Decimal(row["current_stock"]) == Decimal("40")

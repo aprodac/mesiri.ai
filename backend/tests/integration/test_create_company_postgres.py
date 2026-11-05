@@ -221,6 +221,31 @@ async def test_new_company_gets_the_starter_materials(conn) -> None:
     assert hit is not None and hit["name"] == "Cement"
 
 
+async def test_a_new_company_starts_with_the_builders_categories(conn) -> None:
+    """PRC-03: every starter material lands in the standard tree, so stock groups by category on day one."""
+    from mesiri.domains.materials.categories import STANDARD_CATEGORIES
+
+    created = await create_company(
+        conn, NewCompany(name="Builder Co", owner_name="B", owner_phone="9876500021"), now=_NOW
+    )
+    cats = (
+        await conn.execute(
+            text("SELECT id, parent_id, name FROM material_categories WHERE organization_id = :org"),
+            {"org": created.organization_id},
+        )
+    ).mappings().all()
+    mains = {c["name"] for c in cats if c["parent_id"] is None}
+    assert mains == {main for main, _ in STANDARD_CATEGORIES}
+    assert len(cats) == len(STANDARD_CATEGORIES) + sum(len(subs) for _, subs in STANDARD_CATEGORIES)
+    unplaced = (
+        await conn.execute(
+            text("SELECT name FROM materials_catalog WHERE organization_id = :org AND category_id IS NULL"),
+            {"org": created.organization_id},
+        )
+    ).scalars().all()
+    assert unplaced == []
+
+
 async def test_seeding_again_adds_nothing_and_keeps_existing_names(conn) -> None:
     from mesiri.application.materials.starter_catalog import seed_starter_materials
 

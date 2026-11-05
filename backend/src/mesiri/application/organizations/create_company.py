@@ -33,6 +33,7 @@ import sqlalchemy as sa
 from mesiri.application.audit.record import record_admin_action
 from mesiri.application.dpr.recipients import RecipientError, normalize_phone
 from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
+from mesiri.application.materials.categories import apply_standard_categories
 from mesiri.application.materials.starter_catalog import seed_starter_materials
 from mesiri.domains.audit import actions as audit
 from mesiri.domains.organizations import lifecycle
@@ -401,6 +402,8 @@ async def create_company(
     # resolves instead of "ask your admin". Units, issue types and trades are
     # platform-wide already; only the materials catalogue is per company.
     materials_seeded = await seed_starter_materials(conn, org_id, created_by=owner_id)
+    # PRC-03: the builder's standard categories, with the starter materials already in place.
+    await apply_standard_categories(conn, org_id, created_by=owner_id)
 
     # WA-176: v3 is the assistant (locked by WA-134); classic only serves the companies
     # made before it, until they move. Written here so every door gives the same answer.

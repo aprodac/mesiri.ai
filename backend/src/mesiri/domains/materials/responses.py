@@ -93,6 +93,8 @@ class MaterialStockResponse(BaseModel):
     site_id: uuid.UUID | None
     material_id: uuid.UUID | None
     material_name: str
+    #: PRC-01: the material's category (main or sub), for stock grouped by category.
+    category_id: uuid.UUID | None = None
     unit: str
     total_received: Decimal
     total_used: Decimal
@@ -111,6 +113,8 @@ class MaterialCatalogResponse(BaseModel):
     # from here; without it they send no unit_id and every write is a 422.
     default_unit_id: uuid.UUID | None = None
     category: str | None
+    #: PRC-01: its place in the company's category tree (``material_categories``); ``category`` is the old free text.
+    category_id: uuid.UUID | None = None
     sku: str | None
     is_active: bool
     created_at: datetime.datetime
@@ -149,3 +153,26 @@ class MaterialLedgerResponse(BaseModel):
     total: int
     current_balance: Decimal | None
     unit: str | None
+
+
+class MaterialCategoryResponse(BaseModel):
+    """PRC-01: one category; ``parent_id`` is None for a main category."""
+
+    id: uuid.UUID
+    parent_id: uuid.UUID | None
+    name: str
+    sort_order: int
+    is_active: bool
+    #: Materials directly in this category (not counting its sub-categories).
+    material_count: int = 0
+
+
+class MaterialCategoryListResponse(BaseModel):
+    items: list[MaterialCategoryResponse]
+    #: Materials with no category yet.
+    uncategorised: int
+
+
+class StandardCategoriesResponse(BaseModel):
+    categories_added: int
+    materials_placed: int

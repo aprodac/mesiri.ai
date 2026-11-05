@@ -79,6 +79,7 @@ _materials_catalog = sa.Table(
     sa.Column("default_unit", sa.String),
     sa.Column("default_unit_id", sa.UUID(as_uuid=True)),
     sa.Column("category", sa.String),
+    sa.Column("category_id", sa.UUID(as_uuid=True)),
     sa.Column("sku", sa.String),
     sa.Column("is_active", sa.Boolean),
     sa.Column("created_at", sa.DateTime(timezone=True)),
@@ -394,6 +395,7 @@ class PostgresMaterialReadRepository:
             _material_movements.c.site_id,
             _material_movements.c.material_id,
             _materials_catalog.c.name.label("material_name"),
+            _materials_catalog.c.category_id,
             _units_of_measure.c.code.label("unit"),
             received.label("total_received"),
             used.label("total_used"),
@@ -420,6 +422,7 @@ class PostgresMaterialReadRepository:
             _material_movements.c.site_id,
             _material_movements.c.material_id,
             _materials_catalog.c.name,
+            _materials_catalog.c.category_id,
             _units_of_measure.c.code,
         ).order_by(_materials_catalog.c.name.asc())
 
@@ -779,6 +782,7 @@ class PostgresMaterialCatalogRepository:
         category: str | None,
         sku: str | None,
         created_by: uuid.UUID,
+        category_id: uuid.UUID | None = None,
     ) -> dict:
         new_id = uuid.uuid4()
         # Request 165: one rule for every creator (API, WhatsApp, starter catalogue).
@@ -790,6 +794,7 @@ class PostgresMaterialCatalogRepository:
             default_unit=default_unit,
             default_unit_id=default_unit_id,
             category=category,
+            category_id=category_id,
             sku=sku,
             is_active=True,
             created_by=created_by,
@@ -808,8 +813,13 @@ class PostgresMaterialCatalogRepository:
         sku: str | None = None,
         is_active: bool | None = None,
         updated_by: uuid.UUID,
+        set_category_id: bool = False,
+        category_id: uuid.UUID | None = None,
     ) -> dict | None:
+        """``set_category_id`` writes ``category_id`` even when it is None (a material taken out of its category)."""
         values: dict = {"updated_by": updated_by}
+        if set_category_id:
+            values["category_id"] = category_id
         if name is not None:
             values["name"] = require_latin_name(name)
         if default_unit_id is not None:

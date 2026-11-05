@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.domains.materials.categories import clean_category_name
 from mesiri.domains.materials.invoices import (
     attach_invoice_document,
     build_expense_command,
@@ -26,12 +27,15 @@ from mesiri.domains.materials.posting import post_material_movement
 from mesiri.domains.materials.responses import (
     MaterialCatalogListResponse,
     MaterialCatalogResponse,
+    MaterialCategoryListResponse,
+    MaterialCategoryResponse,
     MaterialLedgerResponse,
     MaterialReceiptResponse,
     MaterialReceiptsListResponse,
     MaterialStockResponse,
     MaterialUsageListResponse,
     MaterialUsageResponse,
+    StandardCategoriesResponse,
 )
 from mesiri.domains.materials.transfers import (
     MaterialRuleError,
@@ -227,6 +231,8 @@ class MaterialCatalogCreate(BaseModel):
     name: str
     default_unit_id: uuid.UUID
     category: str | None = None
+    #: PRC-01: its category (main or sub) in the company's tree.
+    category_id: uuid.UUID | None = None
     sku: str | None = None
 
 
@@ -234,8 +240,22 @@ class MaterialCatalogUpdate(BaseModel):
     name: str | None = None
     default_unit_id: uuid.UUID | None = None
     category: str | None = None
+    #: PRC-01: sent as null, the material leaves its category; left out, it stays.
+    category_id: uuid.UUID | None = None
     sku: str | None = None
     is_active: bool | None = None
+
+
+async def _require_category(conn: AsyncConnection, organization_id: uuid.UUID, category_id: uuid.UUID) -> dict:
+    """The company's own, switched-on category, or a 422 (a material is never put in another company's)."""
+    from mesiri.infrastructure.postgres.repositories.material_categories import (
+        PostgresMaterialCategoryRepository,
+    )
+
+    category = await PostgresMaterialCategoryRepository(conn).get(organization_id, category_id)
+    if category is None or not category["is_active"]:
+        raise HTTPException(status_code=422, detail="category_id is not one of this company's categories")
+    return category
 
 
 @router.get("", response_model=MaterialCatalogListResponse)
@@ -261,6 +281,136 @@ async def list_materials(
     for item in items:
         item["aliases"] = aliases.get(str(item["id"]), [])
     return {"items": items, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# Material categories (PRC-01): main category -> sub-category, per company
+# ---------------------------------------------------------------------------
+class MaterialCategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    #: A main category's id to make a sub-category; left out, it is a main category.
+    parent_id: uuid.UUID | None = None
+
+
+class MaterialCategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    sort_order: int | None = None
+    is_active: bool | None = None
+
+
+def _category_repo(conn: AsyncConnection):
+    from mesiri.infrastructure.postgres.repositories.material_categories import (
+        PostgresMaterialCategoryRepository,
+    )
+
+    return PostgresMaterialCategoryRepository(conn)
+
+
+@router.get("/categories", response_model=MaterialCategoryListResponse)
+async def list_material_categories(
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The company's categories (main and sub, in order), how many materials sit in each, and how many have none."""
+    repo = _category_repo(conn)
+    items = await repo.list_all(auth_context.organization_id)
+    return {"items": items, "uncategorised": await repo.count_uncategorised(auth_context.organization_id)}
+
+
+@router.post("/categories", response_model=MaterialCategoryResponse, status_code=201)
+async def create_material_category(
+    body: MaterialCategoryCreate,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Add a main category, or a sub-category under a main one (two levels: sizes and types are materials)."""
+    repo = _category_repo(conn)
+    name = clean_category_name(body.name)
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    if body.parent_id is not None:
+        parent = await repo.get(auth_context.organization_id, body.parent_id)
+        if parent is None:
+            raise HTTPException(status_code=422, detail="parent_id is not one of this company's categories")
+        if parent["parent_id"] is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"'{parent['name']}' is already a sub-category; add this under its main category instead.",
+            )
+    clash = await repo.find(auth_context.organization_id, body.parent_id, name)
+    if clash is not None:
+        raise HTTPException(status_code=409, detail=f"'{clash['name']}' already exists here.")
+    return await repo.create(
+        auth_context.organization_id,
+        name=name,
+        parent_id=body.parent_id,
+        sort_order=await repo.next_sort_order(auth_context.organization_id, body.parent_id),
+        created_by=auth_context.user_id,
+    )
+
+
+@router.post("/categories/standard", response_model=StandardCategoriesResponse)
+async def apply_standard_material_categories(
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-03: add the builder's standard categories the company doesn't have yet, and place the materials
+    that fit them by fixed rules. Safe to repeat; never moves a material someone already placed."""
+    from mesiri.application.materials.categories import apply_standard_categories
+
+    result = await apply_standard_categories(conn, auth_context.organization_id, auth_context.user_id)
+    return {"categories_added": result.categories_added, "materials_placed": result.materials_placed}
+
+
+@router.patch("/categories/{category_id}", response_model=MaterialCategoryResponse)
+async def update_material_category(
+    category_id: uuid.UUID,
+    body: MaterialCategoryUpdate,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Rename, reorder, or switch a category off (its materials keep it; it is no longer offered)."""
+    repo = _category_repo(conn)
+    existing = await repo.get(auth_context.organization_id, category_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+    name = clean_category_name(body.name) if body.name is not None else None
+    if body.name is not None and not name:
+        raise HTTPException(status_code=422, detail="name can't be empty")
+    if name and name != existing["name"]:
+        clash = await repo.find(auth_context.organization_id, existing["parent_id"], name, exclude_id=category_id)
+        if clash is not None:
+            raise HTTPException(status_code=409, detail=f"'{clash['name']}' already exists here.")
+    updated = await repo.update(
+        auth_context.organization_id,
+        category_id,
+        name=name,
+        sort_order=body.sort_order,
+        is_active=body.is_active,
+        updated_by=auth_context.user_id,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return updated
+
+
+@router.delete("/categories/{category_id}", status_code=204)
+async def delete_material_category(
+    category_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Delete an empty category. One with materials or sub-categories is switched off instead."""
+    repo = _category_repo(conn)
+    if await repo.get(auth_context.organization_id, category_id) is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+    if await repo.is_in_use(auth_context.organization_id, category_id):
+        raise HTTPException(
+            status_code=409,
+            detail="This category has materials or sub-categories. Move them out first, or switch it off instead.",
+        )
+    await repo.delete(auth_context.organization_id, category_id)
+    return None
 
 
 class UnitConversionSet(BaseModel):
@@ -579,6 +729,8 @@ async def create_material(
             status_code=409,
             detail=f"A Material named '{existing['name']}' already exists. Use that one instead.",
         )
+    if body.category_id is not None:
+        await _require_category(conn, auth_context.organization_id, body.category_id)
     # Materials Catalog is org-scoped (no project_id/site_id), so it does not
     # fit the Timeline projector's per-project/site aggregate model — creation
     # is audited via the row's own created_at/created_by columns instead of
@@ -591,6 +743,7 @@ async def create_material(
         category=body.category.strip() if body.category else None,
         sku=body.sku.strip() if body.sku else None,
         created_by=auth_context.user_id,
+        category_id=body.category_id,
     )
 
 
@@ -638,6 +791,10 @@ async def update_material(
                 detail=f"Another Material is already named '{clash['name']}'.",
             )
 
+    set_category_id = "category_id" in body.model_fields_set
+    if set_category_id and body.category_id is not None and body.category_id != existing.get("category_id"):
+        await _require_category(conn, auth_context.organization_id, body.category_id)
+
     updated = await repo.update(
         auth_context.organization_id,
         material_id,
@@ -647,6 +804,8 @@ async def update_material(
         sku=body.sku,
         is_active=body.is_active,
         updated_by=auth_context.user_id,
+        set_category_id=set_category_id,
+        category_id=body.category_id,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Material not found")
