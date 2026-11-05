@@ -21,6 +21,8 @@ class MaterialReceiptResponse(BaseModel):
     unit_cost: Decimal | None
     total_cost: Decimal | None
     supplier: str | None
+    #: PRC-04: the vendor this delivery came from (the supplier text linked to the vendor list).
+    vendor_id: uuid.UUID | None = None
     # A correction has been posted against this purchase, so its cost must not
     # be counted toward spend totals -- the money was netted off.
     is_reversed: bool = False

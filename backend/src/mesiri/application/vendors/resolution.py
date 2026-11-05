@@ -44,11 +44,22 @@ class PostgresVendorResolver(VendorResolver):
         if not cmd.vendor_text:
             return VendorResolutionResult(vendor_id=None)
 
-        organization_id = uuid.UUID(cmd.organization_id)
-        repo = PostgresVendorRepository(conn)
-        vendor = await repo.find_by_name_exact_active(organization_id, cmd.vendor_text)
-        if vendor is None:
-            vendor = await repo.create(
-                organization_id, cmd.vendor_text, created_by=uuid.UUID(cmd.created_by)
-            )
-        return VendorResolutionResult(vendor_id=vendor.id)
+        vendor_id = await vendor_for_name(
+            conn, uuid.UUID(cmd.organization_id), cmd.vendor_text, created_by=uuid.UUID(cmd.created_by)
+        )
+        return VendorResolutionResult(vendor_id=vendor_id)
+
+
+async def vendor_for_name(
+    conn: AsyncConnection, organization_id: uuid.UUID, name: str | None, *, created_by: uuid.UUID | None
+) -> uuid.UUID | None:
+    """The one rule for a shop named in words (an expense's vendor, a delivery's supplier, PRC-04): the company's
+    active vendor with exactly that name (case aside), else a new vendor with it; None when no name was given."""
+    text = (name or "").strip()
+    if not text:
+        return None
+    repo = PostgresVendorRepository(conn)
+    vendor = await repo.find_by_name_exact_active(organization_id, text)
+    if vendor is None:
+        vendor = await repo.create(organization_id, text, created_by=created_by)
+    return vendor.id

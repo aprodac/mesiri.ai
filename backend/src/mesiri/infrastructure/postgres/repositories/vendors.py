@@ -15,6 +15,9 @@ _vendors = sa.Table(
     sa.Column("name", sa.String),
     sa.Column("code", sa.String),
     sa.Column("status", sa.String),
+    sa.Column("phone", sa.String),
+    sa.Column("gstin", sa.String),
+    sa.Column("address", sa.String),
     sa.Column("created_at", sa.DateTime(timezone=True)),
     sa.Column("created_by", sa.UUID(as_uuid=True)),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
@@ -42,6 +45,9 @@ def _row_to_vendor(row) -> Vendor:
         name=row.name,
         status=row.status,
         code=getattr(row, "code", None),
+        phone=getattr(row, "phone", None),
+        gstin=getattr(row, "gstin", None),
+        address=getattr(row, "address", None),
     )
 
 
@@ -176,8 +182,13 @@ class PostgresVendorRepository:
         name: str | None = None,
         status: str | None = None,
         updated_by: uuid.UUID,
+        details: dict | None = None,
     ) -> Vendor | None:
+        """``details`` (PRC-04): phone / gstin / address to write, already cleaned; a key with None clears it."""
         values: dict = {"updated_by": updated_by, "updated_at": sa.func.now()}
+        for key, value in (details or {}).items():
+            if key in ("phone", "gstin", "address"):
+                values[key] = value
         if name is not None:
             values["name"] = name.strip()
         if status is not None:

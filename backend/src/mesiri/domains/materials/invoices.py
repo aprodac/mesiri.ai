@@ -100,6 +100,7 @@ async def insert_invoice_line(
     supplier_name: str | None,
     occurred_date: datetime.date,
     created_by: uuid.UUID,
+    vendor_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """One purchase, recorded exactly like any other inflow but carrying its
     invoice's id. Deliberately a normal `material_receipts` row: inventory,
@@ -110,10 +111,10 @@ async def insert_invoice_line(
         text(
             "INSERT INTO material_receipts "
             "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
-            "supplier, occurred_date, occurred_date_source, source, movement_reason, "
+            "supplier, vendor_id, occurred_date, occurred_date_source, source, movement_reason, "
             "material_id, unit_cost, total_cost, invoice_id, created_by) "
             "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, :quantity, "
-            ":unit, :unit_id, :supplier, :occurred_date, 'reported', 'invoice', 'RECEIVED', "
+            ":unit, :unit_id, :supplier, :vendor_id, :occurred_date, 'reported', 'invoice', 'RECEIVED', "
             ":material_id, :unit_cost, :total_cost, :invoice_id, :created_by)"
         ),
         {
@@ -126,6 +127,7 @@ async def insert_invoice_line(
             "unit": unit["code"],
             "unit_id": unit["id"],
             "supplier": supplier_name,
+            "vendor_id": vendor_id,
             "occurred_date": occurred_date,
             "material_id": material["id"],
             "unit_cost": unit_cost,

@@ -1194,6 +1194,30 @@ async def get_material_ledger(
 # ---------------------------------------------------------------------------
 # Write Schemas & Endpoints
 # ---------------------------------------------------------------------------
+async def _delivery_vendor(
+    conn: AsyncConnection,
+    auth_context: AuthorizationContext,
+    supplier: str | None,
+    vendor_id: uuid.UUID | None,
+) -> tuple[str | None, uuid.UUID | None]:
+    """PRC-04: a delivery's (supplier text, vendor_id). A picked vendor must be this company's (404 otherwise, never
+    confirming another company's exists); a supplier in words goes through ``vendor_for_name``, the one rule."""
+    from mesiri.application.vendors.resolution import vendor_for_name
+    from mesiri.infrastructure.postgres.repositories.vendors import PostgresVendorRepository
+
+    if vendor_id is not None:
+        vendor = await PostgresVendorRepository(conn).get_by_id(auth_context.organization_id, vendor_id)
+        if vendor is None:
+            raise HTTPException(status_code=404, detail="Vendor not found")
+        return vendor.name, vendor.id
+    text_value = supplier.strip() if supplier else None
+    if not text_value:
+        return None, None
+    return text_value, await vendor_for_name(
+        conn, auth_context.organization_id, text_value, created_by=auth_context.user_id
+    )
+
+
 class MaterialInflowCreate(BaseModel):
     project_id: uuid.UUID
     site_id: uuid.UUID | None = None
@@ -1203,6 +1227,9 @@ class MaterialInflowCreate(BaseModel):
     # WA-119: valid values shown in the schema; validation unchanged (422 on another value).
     movement_reason: str = Field(default="RECEIVED", json_schema_extra={"enum": list(RECEIPT_REASONS)})
     supplier: str | None = None
+    #: PRC-04: the vendor picked from the list; its name becomes `supplier`. Without it, a `supplier` in words
+    #: is linked to the vendor of that name (created when new), the rule expenses use.
+    vendor_id: uuid.UUID | None = None
     notes: str | None = None
     occurred_date: datetime.date
     # Rate per stock unit as printed on the supplier's document. Both stay
@@ -1396,16 +1423,17 @@ async def create_inflow(
     if body.movement_reason == OPENING_STOCK:
         await _assert_no_opening_stock(conn, auth_context.organization_id, body.site_id, material)
     unit_cost, total_cost = _resolve_costs(body.quantity, body.unit_cost, body.total_cost)
+    supplier, vendor_id = await _delivery_vendor(conn, auth_context, body.supplier, body.vendor_id)
 
     row_id = uuid.uuid4()
     await conn.execute(
         text(
             "INSERT INTO material_receipts "
             "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
-            "supplier, occurred_date, occurred_date_source, source, movement_reason, notes, "
+            "supplier, vendor_id, occurred_date, occurred_date_source, source, movement_reason, notes, "
             "material_id, unit_cost, total_cost, created_by) "
             "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
-            ":quantity, :unit, :unit_id, :supplier, :occurred_date, 'reported', 'web', "
+            ":quantity, :unit, :unit_id, :supplier, :vendor_id, :occurred_date, 'reported', 'web', "
             ":movement_reason, :notes, :material_id, :unit_cost, :total_cost, :created_by)"
         ),
         {
@@ -1417,7 +1445,8 @@ async def create_inflow(
             "quantity": body.quantity,
             "unit": unit["code"],
             "unit_id": unit["id"],
-            "supplier": body.supplier.strip() if body.supplier else None,
+            "supplier": supplier,
+            "vendor_id": vendor_id,
             "occurred_date": body.occurred_date,
             "movement_reason": body.movement_reason,
             "notes": body.notes.strip() if body.notes else None,
@@ -1670,21 +1699,14 @@ async def create_invoice(
         unit_cost, total_cost = _resolve_costs(line.quantity, line.unit_cost, line.total_cost)
         resolved.append((line, material, unit, unit_cost, total_cost))
 
-    if body.vendor_id is not None:
-        vendor = (
-            await conn.execute(
-                text("SELECT id FROM vendors WHERE id = :id AND organization_id = :org"),
-                {"id": body.vendor_id, "org": auth_context.organization_id},
-            )
-        ).first()
-        # 404 rather than 403: confirming that another org's vendor exists
-        # would leak it.
-        if vendor is None:
-            raise HTTPException(status_code=404, detail="Vendor not found")
+    # PRC-04: the bill's vendor, by the one rule deliveries use (a picked vendor must be this company's: 404,
+    # never confirming another company's exists; a name in words is linked to the vendor of that name).
+    vendor_name, vendor_id = await _delivery_vendor(conn, auth_context, body.supplier_name, body.vendor_id)
 
     invoice_id = uuid.uuid4()
     occurred_date = body.invoice_date or datetime.date.today()
-    supplier_name = body.supplier_name.strip() if body.supplier_name else None
+    # The name as printed on the bill stays; a picked vendor's name only when the bill gave none.
+    supplier_name = (body.supplier_name.strip() if body.supplier_name else None) or vendor_name
 
     await insert_invoice(
         conn,
@@ -1692,7 +1714,7 @@ async def create_invoice(
         organization_id=auth_context.organization_id,
         project_id=body.project_id,
         site_id=body.site_id,
-        vendor_id=body.vendor_id,
+        vendor_id=vendor_id,
         supplier_name=supplier_name,
         invoice_number=body.invoice_number.strip() if body.invoice_number else None,
         invoice_date=body.invoice_date,
@@ -1721,6 +1743,7 @@ async def create_invoice(
                 supplier_name=supplier_name,
                 occurred_date=occurred_date,
                 created_by=auth_context.user_id,
+                vendor_id=vendor_id,
             )
         )
 
