@@ -338,7 +338,10 @@ def what_mesiri_does(tools: dict[str, ApiTool]) -> str:
     groups: dict[str, list[str]] = {"record": [], "ask": [], "reports": []}
     for tool in tools.values():
         first = tool.spec.description.replace(_WRITE, "").split(". ")[0].strip().rstrip(".")
-        line = f"{tool.name}: {first[:110]}"
+        # [249]: plain words only: the model copied tool names into the answer (a description can name another tool).
+        from agent_api.reply_guard import without_tool_names
+
+        line = without_tool_names(first, set(tools))[:80].strip()
         if tool.is_write:
             groups["record"].append(line)
         elif tool.path.startswith(("/dpr", "/timeline")):
@@ -348,5 +351,6 @@ def what_mesiri_does(tools: dict[str, ApiTool]) -> str:
     heads = {"record": "Record (the person sends it as a message, a voice note or a photo; one Save tap keeps it)",
              "ask": "Ask (answered from what is recorded: progress, issues, stock, attendance, expenses, materials)",
              "reports": "Reports (what happened on a day, the daily report, the timeline)"}
-    return "What Mesiri does (from your tools, this is the whole list):\n" + "\n".join(
-        f"{heads[g]}:\n" + "\n".join(f"- {line}" for line in lines) for g, lines in groups.items() if lines)
+    return ("What Mesiri does (from your tools; answer in at most 6 short lines, plain words, never a tool name):\n"
+            + "\n".join(f"{heads[g]}:\n" + "\n".join(f"- {line}" for line in lines)
+                        for g, lines in groups.items() if lines))

@@ -107,16 +107,17 @@ async def test_what_can_mesiri_do_is_in_the_system_context_and_writes_nothing() 
     turn, api = await _turn(model, "Mesiri-kku enthokke cheyyaam?")
     block = what_mesiri_does(_real_tools())
     assert block in seen[0]
-    assert all(name in block for name in ("record_attendance", "record_work", "record_receipt", "report_issue",
-                                          "record_expense", "work_progress", "stock_levels", "labour_attendance",
-                                          "send_dpr", "day_summary"))
+    # [249]: the block is in plain words (the model copied tool names into its answer); every group is there.
+    assert all(head in block for head in ("Record (", "Ask (", "Reports ("))
+    assert not any(name in block for name in ("record_attendance", "record_receipt", "work_progress", "send_dpr"))
     assert turn.calls == [] and not turn.pending and api.seen == [] and model.calls == 1
 
 
 def test_the_block_follows_the_tool_list() -> None:
     extra = Allowed("list_snags", "GET", "/progress/issues", "Snag list per site.")
     tools = build_tools(__import__("agent_api.app", fromlist=["x"]).build_api_app(None).openapi(), (*ALLOWED, extra))
-    assert "list_snags: Snag list per site" in what_mesiri_does(tools)
+    block = what_mesiri_does(tools)
+    assert "- Snag list per site" in block and "list_snags" not in block  # [249]: by its words, never its name
 
 
 def test_the_sop_maps_both_questions() -> None:

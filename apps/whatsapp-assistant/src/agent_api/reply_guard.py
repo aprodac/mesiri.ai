@@ -108,10 +108,25 @@ def without_ids(text: str) -> str:
     return "".join(pieces).strip()
 
 
-def without_internals(text: str) -> str:
-    """``text`` without ids, and without any sentence that is an API error: the person cannot act on either."""
+def without_internals(text: str, tool_names: frozenset[str] | set[str] = frozenset()) -> str:
+    """``text`` without ids, without any sentence that is an API error, and without tool names ([249]: "(record\\_receipt)"
+    in a "what can Mesiri do" answer): the person cannot act on any of them."""
     kept = [part for part in sentences(text or "") if part and not _API_ERROR.search(_URL.sub("", part))]
-    return without_ids("".join(kept))
+    return without_tool_names(without_ids("".join(kept)), tool_names)
+
+
+def without_tool_names(text: str, tool_names: frozenset[str] | set[str]) -> str:
+    """[249]: a tool's snake_case name (also markdown-escaped, ``record\\_receipt``) is cut, with the brackets or
+    backticks around it; a sentence that only had the name in brackets reads on."""
+    if not text or not tool_names:
+        return text
+    names = sorted((n for n in tool_names if "_" in n), key=len, reverse=True)
+    if not names:
+        return text
+    alternation = "|".join(re.escape(n).replace("_", r"\\?_") for n in names)
+    text = re.sub(rf"\s*\((?:\s*`?(?:{alternation})`?\s*,?\s*)+\)", "", text)
+    text = re.sub(rf"`?\b(?:{alternation})\b`?", "", text)
+    return re.sub(r"[ \t]{2,}", " ", re.sub(r" +([,.;:])", r"\1", text))
 
 
 #: [247] Words too common in tool descriptions to say what a question is about.

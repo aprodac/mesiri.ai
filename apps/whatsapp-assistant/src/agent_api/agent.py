@@ -1047,7 +1047,7 @@ class ApiAgent:
                 options = []
         if claimed_ready and not still and not new and not asked and not exists and not options:
             reply = ""  # [229]: "ready, tap Save" with nothing held: the code says what is true instead
-        clean = without_internals(reply)  # WA-193: last, so a line the code added is checked too
+        clean = without_internals(reply, frozenset(self._tools))  # WA-193: last, so a line the code added is checked too
         if clean != reply.strip():
             fixed.append("internals")
             reply = clean or (plain_refusal("", language) if not still and not new else "")
