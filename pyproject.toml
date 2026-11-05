@@ -129,6 +129,7 @@ markers = [
     "scenario: milestone gate scenario.",
     "golden: milestone golden-path proof.",
     "live: runs the real model (conversation eval set, request [68]). Not in CI; use -m live.",
+    "default_language: WA-207, a v3 test of the Manglish default (others run as a person who chose 'auto').",
 ]
 filterwarnings = ["ignore::DeprecationWarning"]
 

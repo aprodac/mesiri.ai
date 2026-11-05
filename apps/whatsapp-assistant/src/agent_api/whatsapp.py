@@ -416,7 +416,7 @@ class ApiWhatsApp:
             **({"reply_fixed": turn.reply_fixed} if turn.reply_fixed else {}),
         }, started)
         if turn.language_set:  # [243]: set by the code this turn, so this reply already follows it
-            state["chosen_language"] = None if turn.language_set == "auto" else turn.language_set
+            state["chosen_language"] = turn.language_set  # WA-207: "auto" is kept as the choice to follow each message
         state["language"] = _turn_language(text, state)  # WA-165: "Tower A" keeps it; WA-169: their choice wins
         if turn.sizes_said:
             await self._remember_sizes(ctx, turn.sizes_said)
@@ -633,7 +633,7 @@ class ApiWhatsApp:
         if not response.ok or not isinstance(response.body, dict):
             return _UNREAD
         value = response.body.get("reply_language")
-        return value if value in LANGUAGE_LINES else None
+        return value if value in LANGUAGE_LINES or value == FOLLOW_EACH else None
 
     async def _open_requests(self, message: Any) -> str:
         """TM-69: what this person told the team about and is being fixed, so "is the primer thing fixed?" or the same
@@ -1053,10 +1053,19 @@ def _language(text: str, usual: str | None = None) -> str | None:
         return None
 
 
+#: WA-207 (5 Nov 2026, set in session): everyone is answered in Manglish unless they chose otherwise.
+DEFAULT_REPLY_LANGUAGE = "manglish"
+#: The choice "reply in my language again": follow the language of each message.
+FOLLOW_EACH = "auto"
+
+
 def _chosen(state: dict) -> str | None:
-    """WA-169: the reply language this person chose, as last read from the database (None: none chosen)."""
+    """WA-169: the reply language this person gets, as last read from the database: the one they chose; None when
+    they chose to follow each message ("auto"); Manglish when they chose nothing (WA-207, also before it was read)."""
     value = state.get("chosen_language")
-    return value if value in LANGUAGE_LINES else None
+    if value == FOLLOW_EACH:
+        return None
+    return value if value in LANGUAGE_LINES else DEFAULT_REPLY_LANGUAGE
 
 
 def _turn_language(text: str, state: dict) -> str | None:

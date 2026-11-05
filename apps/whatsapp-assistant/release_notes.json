@@ -1,5 +1,5 @@
 {
-  "_doc": "TM-16: see src/runtime/release_notes.py. One entry per shipped fix or feature that someone hit: id (kebab-case), date (YYYY-MM-DD, the deploy day), for (the correlation ids of their production messages, from the watch report), message (in their language: it works now, and how to try it). Sent once per person, inside the 24-hour window.",
+  "_doc": "TM-16: see src/runtime/release_notes.py. One entry per shipped fix or feature that someone hit: id (kebab-case), date (YYYY-MM-DD, the deploy day), for (the correlation ids of their production messages, from the watch report), message (in Manglish unless the person chose another reply language, WA-207: it works now, and how to try it). Sent once per person, inside the 24-hour window.",
   "notes": [
     {
       "id": "lookup-as-image",

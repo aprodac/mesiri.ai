@@ -40,10 +40,11 @@ async def test_set_stores_the_choice_on_the_callers_own_row() -> None:
     assert _where_params(conn) == {USER, ORG}
 
 
-async def test_auto_clears_it() -> None:
+async def test_auto_is_kept_as_follow_each_message() -> None:
+    # WA-207: no choice now means Manglish, so "reply in my language again" is stored as "auto" (migration 0504).
     conn = Conn("manglish")
     out = await me.set_reply_language(me.ReplyLanguageIn(reply_language="auto"), CTX, conn)
-    assert out.reply_language is None and conn.stored is None
+    assert out.reply_language == "auto" and conn.stored == "auto"
 
 
 async def test_no_row_is_a_404() -> None:
@@ -57,7 +58,8 @@ def test_an_unknown_language_is_refused() -> None:
         me.ReplyLanguageIn(reply_language="klingon")
 
 
-@pytest.mark.parametrize(("stored", "shown"), [("malayalam", "malayalam"), (None, None), ("tamil", None)])
+@pytest.mark.parametrize(("stored", "shown"), [("malayalam", "malayalam"), ("auto", "auto"),
+                                               (None, "manglish"), ("tamil", "manglish")])  # WA-207: Manglish by default
 async def test_get_reads_the_callers_own_row(stored: str | None, shown: str | None) -> None:
     conn = Conn(stored)
     assert (await me.get_preferences(CTX, conn)).reply_language == shown
