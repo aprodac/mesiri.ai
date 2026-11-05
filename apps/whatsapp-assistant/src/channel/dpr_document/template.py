@@ -76,6 +76,7 @@ _DOCUMENT_TEMPLATE_SRC = """
 
   /* Sections */
   .section { margin-top: 18px; }
+  tr.group td { padding-top: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; color: {{ sub }}; }
   .section-title { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; font-weight: 700;
     margin-bottom: 6px; break-after: avoid; }
   .section-title .no { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
@@ -250,6 +251,7 @@ _DOCUMENT_TEMPLATE_SRC = """
         <th class="num" style="width:18%">Used</th><th style="width:18%">Unit</th></tr></thead>
       <tbody>
         {% for m in data.materials %}
+        {% if m.group %}<tr class="group"><td colspan="4">{{ m.group }}</td></tr>{% endif %}
         <tr><td class="strong">{{ m.material_name }}</td><td class="num">{{ m.received }}</td><td class="num">{{ m.used }}</td><td>{{ m.unit }}</td></tr>
         {% else %}
         <tr><td colspan="4" class="empty">No material movements recorded for this date.</td></tr>

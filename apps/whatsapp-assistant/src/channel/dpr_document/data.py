@@ -64,6 +64,9 @@ class DprMaterialRow:
     # known to hold. Absent from reports stored before BE-12.
     closing: str | None = None
     beyond_stock: bool = False
+    # PRC-17c: the heading this row starts ("Electrical") when its main category differs from the row before;
+    # None otherwise, and for every row of a company without categories (the table looks as before).
+    group: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,17 +242,24 @@ def build_document_data(
         DprTradeRow(trade=trade_label(t.get("trade")) or "—", headcount=int(t.get("headcount") or 0))
         for t in labour.get("trades", [])
     ]
-    materials = [
-        DprMaterialRow(
-            material_name=_pretty(m.get("material_name")),
-            received=str(m.get("received") or "0"),
-            used=str(m.get("used") or "0"),
-            unit=m.get("unit") or "—",
-            closing=m.get("closing"),
-            beyond_stock=bool(m.get("beyond_stock")),
+    raw_materials = payload.get("materials", [])
+    grouped = any(m.get("main_category") for m in raw_materials)
+    materials = []
+    previous: object = object()
+    for m in raw_materials:
+        main = m.get("main_category") or ("Other" if grouped else None)
+        materials.append(
+            DprMaterialRow(
+                material_name=_pretty(m.get("material_name")),
+                received=str(m.get("received") or "0"),
+                used=str(m.get("used") or "0"),
+                unit=m.get("unit") or "—",
+                closing=m.get("closing"),
+                beyond_stock=bool(m.get("beyond_stock")),
+                group=main if grouped and main != previous else None,
+            )
         )
-        for m in payload.get("materials", [])
-    ]
+        previous = main
     sites = [
         DprSiteRow(
             site_name=_pretty(s.get("site_name")),
