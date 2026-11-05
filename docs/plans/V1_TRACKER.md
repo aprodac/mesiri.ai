@@ -439,6 +439,7 @@ Plan: [procurement-plan.md](procurement-plan.md). Decisions D1–D6 in the plan;
 | PRC-18 | Direct vs petty cash in every total | S | Must | — | todo | — | D3 |
 | PRC-19 | Weekly / monthly report: PDF, Excel, dashboard page | L | Must | PRC-17, PRC-18 | todo | — | |
 | PRC-20 | Scheduled period report on WhatsApp (`MONTHLY`, `SEND_PERIOD_REPORT`) | S | Should | PRC-19 | todo | — | |
+| PRC-21 | **Finance on by default for every company** (Ilan, 5 Nov: "they will have finance ... by default turn finance on for everyone"): the vendor list, expenses and petty cash are Finance | S | Must | — | done (commit in report) | Claude (session 5 Nov, procurement) | `V1_MODULES` / `DEFAULT_ENABLED_MODULES` include finance (a company never set gets it). Migration 0506 adds finance to every stored module list without it and records those companies in `finance_switched_on_0506`; downgrade removes it from exactly those. Still switchable off per company in the control panel. Who sees expenses is unchanged (SEC-01 roles). Automations stays off by default. Tests: `test_module_switch.py` updated to the new rule; migration up/down checked by hand. Rollback: revert; `alembic downgrade 0505`. |
 
 ---
 

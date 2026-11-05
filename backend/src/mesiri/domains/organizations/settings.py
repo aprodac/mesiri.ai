@@ -106,14 +106,16 @@ MODULE_LABELS: dict[str, str] = {
 # DPR is the product: a company without it has nothing to use.
 ALWAYS_ON_MODULES: frozenset[str] = frozenset({"dpr"})
 
-# What V1 sells.
-V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials")
+# What V1 sells. Finance joined on 5 Nov 2026 (Ilan: "by default turn finance on for everyone"; migration 0506
+# switched it on for companies whose list was already stored).
+V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials", "finance")
 
 # A company that has never had its modules set gets V1. Flipped from "every
 # module on" in the same release as the dashboard hiding (WEB-02) and the
 # WhatsApp polite refusal (WA-07), so a switched-off module is hidden
-# everywhere at the moment it stops working. Finance and automations are
-# switched on per company from the control panel (SA-07).
+# everywhere at the moment it stops working. Automations is switched on per
+# company from the control panel (SA-07); finance is on by default and can be
+# switched off there.
 DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 
 # Settings only a platform admin may change. Modules are tied to what a

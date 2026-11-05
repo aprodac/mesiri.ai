@@ -29,10 +29,11 @@ from mesiri.domains.shared.auth import get_current_user
 
 def test_default_is_v1():
     """A company whose modules were never set gets what V1 sells (flipped
-    from "everything on" together with WEB-02 and WA-07): finance and
-    automations are switched on per company from the control panel."""
+    from "everything on" together with WEB-02 and WA-07). Finance is part of
+    it since 5 Nov 2026 (Ilan); automations is switched on per company from
+    the control panel."""
     assert settings.default_for(settings.ENABLED_MODULES) == list(settings.V1_MODULES)
-    assert not settings.module_enabled("finance", None)
+    assert settings.module_enabled("finance", None)
     assert not settings.module_enabled("automations", None)
 
 
@@ -66,9 +67,11 @@ def test_validate_rejects_non_list():
         ("finance", ["dpr", "labour"], False),
         ("labour", ["dpr", "labour"], True),
         ("dpr", [], True),  # always on, even if a stored row omits it
-        ("finance", "garbage", False),  # malformed row falls back to the V1 default
+        ("finance", "garbage", True),  # malformed row falls back to the V1 default (finance in it)
+        ("automations", "garbage", False),
         ("labour", "garbage", True),
-        ("finance", None, False),
+        ("finance", None, True),
+        ("automations", None, False),
         ("finance", ["dpr", "finance"], True),
     ],
 )
@@ -153,11 +156,10 @@ def test_gate_passes_when_module_is_on(client):
     assert client.get("/thing", headers={"Authorization": _token(str(ORG))}).status_code == 200
 
 
-def test_gate_blocks_finance_for_a_company_on_the_default(client):
-    """No stored row = the V1 default, which has no finance."""
+def test_gate_lets_finance_through_for_a_company_on_the_default(client):
+    """No stored row = the V1 default, which has finance since 5 Nov 2026 (Ilan)."""
     response = client.get("/thing", headers={"Authorization": _token(str(ORG))})
-    assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "MODULE_DISABLED"
+    assert response.status_code == 200
 
 
 def test_gate_blocks_when_module_is_off(client):
@@ -204,5 +206,6 @@ def test_module_catalogue_matches_modules_and_flags():
     assert by_key["dpr"]["always_on"] is True
     assert by_key["finance"]["always_on"] is False
     assert by_key["labour"]["in_v1"] is True
-    assert by_key["finance"]["in_v1"] is False
+    assert by_key["finance"]["in_v1"] is True
+    assert by_key["automations"]["in_v1"] is False
     assert all(m["label"] and m["description"] for m in catalogue)
