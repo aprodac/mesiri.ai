@@ -458,6 +458,14 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "✅ सेव हो गया।",
         "hinglish": "✅ Save ho gaya.",
     },
+    # [221]: an answer that comes after an AI pause says which message it answers.
+    "api.late_answer": {
+        "english": "⏱️ Your {kind} from {time}:",
+        "manglish": "⏱️ {time}-nu ayacha {kind}:",
+        "malayalam": "⏱️ {time}-ന് അയച്ച {kind}:",
+        "hindi": "⏱️ {time} बजे का आपका {kind}:",
+        "hinglish": "⏱️ {time} baje ka aapka {kind}:",
+    },
     # [264]: a card that holds only a report send: its line, the Send sentence, and what the tap did.
     "api.send_line": {
         "english": "📤 Today's report for *{project}*",
@@ -592,6 +600,13 @@ LINES: dict[str, dict[str, str]] = {
         "malayalam": "ക്ഷമിക്കണം, ആ സന്ദേശം പ്രോസസ് ചെയ്യാൻ കഴിഞ്ഞില്ല — ഒന്നും സേവ് ചെയ്തില്ല. കുറച്ചു കഴിഞ്ഞ് ഒന്നുകൂടി അയയ്ക്കാമോ.",
         "hindi": "माफ़ कीजिए, वह संदेश प्रोसेस नहीं हो सका — कुछ सेव नहीं हुआ. थोड़ी देर बाद फिर भेजिए.",
         "hinglish": "Sorry, woh message process nahi ho saka — kuch save nahi hua. Thodi der baad phir bhejo.",
+    },
+    "outage.kept": {
+        "english": "Sorry, I couldn't do that message yet — nothing was saved. I've kept it: I'll do it as soon as you send your next message.",
+        "manglish": "Kshamikkanam, aa message ippo cheyyaan pattiyilla — onnum save aayilla. Njan athu sookshichittundu: adutha message ayakkumbol aadyam athu cheyyaam.",
+        "malayalam": "ക്ഷമിക്കണം, ആ സന്ദേശം ഇപ്പോൾ ചെയ്യാൻ കഴിഞ്ഞില്ല — ഒന്നും സേവ് ആയില്ല. ഞാൻ അത് സൂക്ഷിച്ചിട്ടുണ്ട്: അടുത്ത സന്ദേശം അയയ്ക്കുമ്പോൾ ആദ്യം അത് ചെയ്യാം.",
+        "hindi": "माफ़ कीजिए, वह संदेश अभी नहीं हो सका — कुछ सेव नहीं हुआ. मैंने उसे रख लिया है: आपके अगले संदेश पर पहले वही करूँगा.",
+        "hinglish": "Sorry, woh message abhi nahi ho saka — kuch save nahi hua. Maine use rakh liya hai: aapke agle message par pehle wahi karunga.",
     },
     "outage.resend": {
         "english": "I can't process messages right now — nothing was saved. Please send it again in a few minutes.",

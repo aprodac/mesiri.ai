@@ -83,6 +83,10 @@ _log = logging.getLogger(__name__)
 #: WA-136: the journey's step timer for the message being handled (``StepTimer.lap``), so v3's own
 #: steps show in the perf report instead of one "_unaccounted_ms". Per message (concurrent turns).
 _LAP: ContextVar[Callable[[str], None] | None] = ContextVar("agent_api_lap", default=None)
+#: [221]: True while a kept message (one the AI pause made Mesiri give up on) is answered before the new one.
+_REPLAYING: ContextVar[bool] = ContextVar("agent_api_replaying", default=False)
+#: [221]: messages kept per person after an AI pause (oldest first); more are not kept.
+KEPT_MAX = 5
 
 
 def _lap(name: str) -> None:
@@ -186,7 +190,11 @@ class _Answered(Exception):
 
 
 #: The outage wording by its English text (``reply_for_attempt`` picks the text).
-_OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", BUDGET_REPLY: "outage.budget", GAVE_UP_REPLY: "outage.gave_up", RESEND_REPLY: "outage.resend"}
+#: [221]: v3 keeps a message it could not do and answers it before the person's next one.
+KEPT_REPLY = ("Sorry, I couldn't do that message yet — nothing was saved. I've kept it: I'll do it as soon as you send "
+              "your next message.")
+_OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", BUDGET_REPLY: "outage.budget", GAVE_UP_REPLY: "outage.gave_up",
+                 RESEND_REPLY: "outage.resend", KEPT_REPLY: "outage.kept"}
 
 
 NOTHING_HELD = "I haven't got anything ready to save yet. Please send it again, with what's missing."
@@ -195,6 +203,7 @@ READY_HEADING = "*Ready to save:*"
 #: [264]: a card that holds only a report send says Send, not Save.
 READY_SEND_HEADING = "*Ready to send:*"
 PRESS_SEND = "Tap *Send* and it goes out in about a minute."
+LATE_ANSWER = "⏱️ Your {kind} from {time}:"
 REPORT_SENT = "📤 Report sent: {line}. It reaches the people who get the daily report in about a minute."
 SEND_TITLE = "Send"
 
@@ -251,6 +260,8 @@ class ApiWhatsApp:
                                     timeout_seconds=CALL_TIMEOUT_SECONDS, capability="api_agent")
         self._catalog: dict[str, tuple[float, str]] = {}
         self._material_names_by_org: dict[str, list[str]] = {}
+        #: [221]: per new message, the times of the kept messages answered just before it.
+        self._kept_answered: dict[str, list[str]] = {}
 
     # -- entry point -----------------------------------------------------------------------
 
@@ -268,6 +279,8 @@ class ApiWhatsApp:
 
     async def _handle(self, message: Any, ctx: Any) -> bool:
         tap = str((message.metadata or {}).get("interactive_reply_id") or "")
+        if not tap and not _REPLAYING.get() and (retry_attempt.get() or 1) == 1:
+            await self._answer_kept(ctx, message.correlation_id)
         said = (message.text or "").strip()
         if tap.startswith(WHY_PREFIX):
             said = "(tapped why it was cancelled)"
@@ -327,6 +340,11 @@ class ApiWhatsApp:
             # WA-209 (4 Nov: "5 chaak" heard as 30, unseen until Save): what was heard comes first, so a misheard
             # number is caught on the list, where Edit fixes it.
             reply = dataclasses.replace(reply, text=heard_line(said) + reply.text)
+        if (retry_attempt.get() or 1) > 1 or _REPLAYING.get():
+            # [221] (5 Nov 12:36 and 12:38: Ilan's voice notes from 12:15 and 12:18, kept through the AI pause, were
+            # answered 20 minutes later with no sign of what the answer was about): a late answer says which message.
+            reply = dataclasses.replace(reply, text=late_line(message, ctx, await self._reply_language(ctx))
+                                        + reply.text)
         reply = latin_reply(reply, await self._reply_language(ctx))
         await self._send(reply, message.sender.wa_id)
         _lap("v3_send")
@@ -446,8 +464,9 @@ class ApiWhatsApp:
             # code makes sure that line is the one changed (below).
             editing = _editing(state, ready)
             state.pop("editing", None)
+            answered = self._kept_answered.pop(message.correlation_id, [])
             run = dict(
-                text=_edit_note(editing) + text if editing else text,
+                text=(_edit_note(editing) if editing else "") + kept_note(answered) + text,
                 history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 facts=facts + _working_fact(places), photo_key=photo_key, language=_turn_language(text, state),
@@ -645,6 +664,8 @@ class ApiWhatsApp:
         attempt = retry_attempt.get()
         budget = is_budget_error(error)
         english, will_retry = reply_for_attempt(attempt, budget=budget)
+        if not will_retry:
+            english = KEPT_REPLY  # [221]: the message is kept (below) and answered with their next one: never "send it again"
         _log.error("agent_api.outage correlation_id=%s attempt=%s error=%r", message.correlation_id, attempt,
                    error, exc_info=error)
         if english:
@@ -659,8 +680,53 @@ class ApiWhatsApp:
                                                     error_code="AI_UNAVAILABLE"))
             raise AIUnavailableError(f"agent_api: the AI is unavailable for {message.correlation_id}",
                                      budget_exhausted=budget) from error
+        await self._keep(ctx, message)  # [221]: given up on, but never lost: answered before their next message
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
         raise _Answered
+
+    async def _keep(self, ctx: Any, message: Any) -> None:
+        """[221]: a message Mesiri gave up on (the AI paused past its last try) is kept with the person's state."""
+        try:
+            state = await self._state(ctx)
+            kept = [k for k in state.get("kept") or [] if isinstance(k, dict)]
+            state["kept"] = (kept + [message.model_dump(mode="json")])[-KEPT_MAX:]
+            await self._save_state(ctx, state)
+        except Exception:  # noqa: BLE001 -- the "send it again" line already went
+            _log.warning("agent_api.keep_failed user=%s", getattr(ctx, "user_id", None), exc_info=True)
+
+    async def _answer_kept(self, ctx: Any, correlation_id: str) -> None:
+        """[221] (3 Nov: "try again" after the AI pause re-ran an old request from the history): the person's kept
+        messages are answered first, oldest first, each its own reply headed with its time; the new message then
+        runs as usual, and the model is told what was just answered, so a bare "try again" needs nothing more.
+        If the AI is still down, they stay kept (and the new message is retried as usual)."""
+        state = await self._state(ctx)
+        kept = [k for k in state.get("kept") or [] if isinstance(k, dict)]
+        if not kept:
+            return
+        state.pop("kept", None)
+        await self._save_state(ctx, state)
+        from mesiri_contracts.assistant.normalized_message import NormalizedMessage
+
+        token = _REPLAYING.set(True)
+        try:
+            for i, raw in enumerate(kept):
+                try:
+                    old = NormalizedMessage.model_validate(raw)
+                except Exception:  # noqa: BLE001 -- an unreadable kept message is dropped, never blocks
+                    _log.warning("agent_api.kept_unreadable", exc_info=True)
+                    continue
+                try:
+                    await self.handle(old, ctx)
+                except AIUnavailableError:
+                    state = await self._state(ctx)
+                    state["kept"] = kept[i:] + [k for k in state.get("kept") or [] if k not in kept]
+                    await self._save_state(ctx, state)
+                    raise
+                stamp = old.timestamp.isoformat() if isinstance(old.timestamp, dt.datetime) else ""
+                clock = local_clock(stamp, ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata"))
+                self._kept_answered.setdefault(correlation_id, []).append(clock or "earlier")
+        finally:
+            _REPLAYING.reset(token)
 
     async def on_call(self, text: str, ctx: Any, correlation_id: str, wa_id: str) -> str:
         """WA-118: one turn of a phone call. Entries join the ready list and go to the chat as the
@@ -1039,7 +1105,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing", "previewed")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing", "previewed", "kept")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -1406,6 +1472,15 @@ def _editing(state: dict, ready: list[PendingWrite]) -> dict | None:
     return editing
 
 
+def kept_note(times: list[str]) -> str:
+    """[221]: what the model is told when kept messages were just answered above this one."""
+    if not times:
+        return ""
+    return (f"(Their message(s) from {', '.join(times)}, kept while the AI was paused, were just answered above, each "
+            "with its own reply. If this message only asks to try again, that is done: say so in one line and prepare "
+            "nothing.)\n")
+
+
 def _edit_note(editing: dict) -> str:
     return (f"(They tapped Edit on ready entry {editing['number']}: \"{without_ids(editing['summary'])}\". "
             "This message is its right value: change ONLY that entry with change_ready_entry; "
@@ -1518,6 +1593,20 @@ def speech_hint(language: str | None, names: list[str]) -> str:
     own = list(dict.fromkeys(n.strip() for n in names if n and n.strip()))[:HINT_NAMES]
     words = ", ".join([*own, *SITE_WORDS])
     return f"{_SPEAKS.get(language or '', _SPEAKS['manglish'])} Construction site update. Likely words: {words}."
+
+
+_KINDS = {InputModality.VOICE: "voice note", InputModality.IMAGE: "photo", InputModality.DOCUMENT: "document"}
+
+
+def late_line(message: Any, ctx: Any, language: str | None) -> str:
+    """[221]: "⏱️ Your voice note from 12:15:" and a blank line, on top of an answer that comes after an AI pause."""
+    zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
+    sent = getattr(message, "timestamp", None)
+    clock = local_clock(sent.isoformat(), zone) if isinstance(sent, dt.datetime) else ""
+    kind = _KINDS.get(getattr(message, "modality", None), "message")
+    if not clock:
+        return ""
+    return _in_with(language, "api.late_answer", LATE_ANSWER, kind=kind, time=clock) + "\n\n"
 
 
 def heard_line(said: str) -> str:

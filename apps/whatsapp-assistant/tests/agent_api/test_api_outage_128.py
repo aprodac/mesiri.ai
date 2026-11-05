@@ -102,14 +102,14 @@ async def test_later_attempts_are_quiet_and_the_last_says_it_gave_up() -> None:
         assert await service.handle(_message("cement came"), CTX) is True
     finally:
         ai_outage.retry_attempt.reset(token)
-    assert [s.text for s in sent] == [ai_outage.GAVE_UP_REPLY]
+    assert [s.text for s in sent] == [wa.KEPT_REPLY]  # [221]: kept and answered with their next message
 
 
 async def test_outside_the_worker_the_sender_is_asked_to_resend() -> None:
     sent: list[ReplySpec] = []
     service, _ = _service(_quota(), sent)
     assert await service.handle(_message("cement came"), CTX) is True
-    assert [s.text for s in sent] == [ai_outage.RESEND_REPLY]
+    assert [s.text for s in sent] == [wa.KEPT_REPLY]  # [221]: no retry queue: kept for their next message
 
 
 async def test_a_bug_in_v3_or_a_tool_falls_back_to_classic_and_is_traced() -> None:

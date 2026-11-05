@@ -18,10 +18,11 @@ from arq import Retry
 
 from mesiri.bootstrap.settings import get_settings as get_backend_settings
 from runtime.ai_outage import (
-    BUDGET_RETRY_DEFER_STEP_SECONDS,
+    BUDGET_MAX_ATTEMPTS,
     MAX_ATTEMPTS,
     RETRY_DEFER_STEP_SECONDS,
     AIUnavailableError,
+    budget_defer_seconds,
     retry_attempt,
 )
 from runtime.dependencies import Settings, build_container
@@ -97,10 +98,10 @@ async def process_claimed_message_job(ctx: dict, envelope: dict) -> None:
         # a plain exception just marks it failed -- so ask for it explicitly,
         # a little later each time; much later when the AI budget is used up
         # (WA-143: a person has to raise the cap first).
-        step = BUDGET_RETRY_DEFER_STEP_SECONDS if exc.budget_exhausted else RETRY_DEFER_STEP_SECONDS
+        defer = budget_defer_seconds(attempt) if exc.budget_exhausted else RETRY_DEFER_STEP_SECONDS * attempt
         logger.warning("whatsapp.ingress_job_deferred message_id=%s try=%s budget=%s", message_id, attempt,
                        exc.budget_exhausted)
-        raise Retry(defer=step * attempt) from None
+        raise Retry(defer=defer) from None
     finally:
         retry_attempt.reset(token)
     if result is None:
@@ -117,6 +118,10 @@ async def process_claimed_message_job(ctx: dict, envelope: dict) -> None:
         # converts "swallowed and logged" back into "ARQ will actually retry
         # it" without changing that shared method's contract for its other
         # callers.
+        if attempt >= MAX_ATTEMPTS:
+            # [221]: max_tries is BUDGET_MAX_ATTEMPTS now; any other failure still stops at MAX_ATTEMPTS.
+            logger.error("whatsapp.ingress_job_gave_up message_id=%s try=%s", message_id, attempt)
+            return
         raise RuntimeError(
             f"whatsapp ingress failed for message_id={message_id} -- see trace log"
         )
@@ -145,7 +150,9 @@ class WorkerSettings:
     # for repeatedly reprocessing a message that fails deterministically.
     # 3 keeps a bad message from hammering downstream providers forever
     # while still surviving one or two transient failures.
-    max_tries = MAX_ATTEMPTS
+    # [221]: a budget outage keeps a message for ~18 hours (BUDGET_MAX_ATTEMPTS); every other AI failure still stops
+    # at MAX_ATTEMPTS by itself (runtime/ai_outage.reply_for_attempt answers and stops raising).
+    max_tries = BUDGET_MAX_ATTEMPTS
     # The full journey (STT/vision -> extraction -> DB -> reply) has been
     # observed taking several seconds on media messages; this bounds a
     # stuck job well above that without letting one hang indefinitely.

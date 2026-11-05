@@ -26,8 +26,14 @@ from mesiri_contracts.assistant.confidence import ConfidenceLevel
 from mesiri_contracts.assistant.understanding_result import UnderstandingResult
 from mesiri_contracts.common.errors import ErrorCode
 
-#: Matches worker.WorkerSettings.max_tries (worker.py reads it from here).
+#: Tries of a message while the AI is down (a blip, a provider error): then "could not process".
 MAX_ATTEMPTS = 3
+#: [221] (3 and 5 Nov: "Your message is kept" was dropped after the third try, about an hour in): while the AI budget
+#: is used up the message really is kept, tried again for about 18 hours (``budget_defer_seconds``). This is
+#: worker.WorkerSettings.max_tries; every other failure still stops at MAX_ATTEMPTS (``reply_for_attempt``).
+BUDGET_MAX_ATTEMPTS = 12
+#: The longest wait between two tries while the budget is used up.
+BUDGET_DEFER_MAX_SECONDS = 2 * 3600
 
 #: The pause before the one immediate second try, so a provider blip never
 #: reaches the sender (request 57, A5); only if that also fails is "I'll
@@ -104,10 +110,15 @@ def reply_for_attempt(attempt: int | None, *, budget: bool = False) -> tuple[str
     spending budget is used up (WA-143): the queued line says so."""
     if attempt is None:
         return RESEND_REPLY, False
-    if attempt >= MAX_ATTEMPTS:
+    if attempt >= (BUDGET_MAX_ATTEMPTS if budget else MAX_ATTEMPTS):
         return GAVE_UP_REPLY, False
     # Told once, on the first try; later tries stay quiet until they succeed.
     return ((BUDGET_REPLY if budget else QUEUED_REPLY) if attempt == 1 else ""), True
+
+
+def budget_defer_seconds(attempt: int) -> int:
+    """[221]: the wait before the next try while the AI budget is used up: 20 min, 40 min, ... then every 2 hours."""
+    return min(BUDGET_RETRY_DEFER_STEP_SECONDS * max(attempt, 1), BUDGET_DEFER_MAX_SECONDS)
 
 
 def is_provider_failure(error: BaseException) -> bool:
