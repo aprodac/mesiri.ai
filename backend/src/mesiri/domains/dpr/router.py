@@ -39,6 +39,8 @@ from mesiri.application.dpr.site_day import (
     InvalidSiteDayTransition,
 )
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.authorization.roles import may_view_expenses
+from mesiri.domains.dpr import live_feed
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import signed_media_url
@@ -445,6 +447,52 @@ async def list_site_day_questions(
         )
         if kind is not None:
             items.append({**row, "kind": kind})
+    return {"items": items}
+
+
+@router.get("/live/feed")
+async def list_live_feed(
+    since: datetime.datetime,
+    until: datetime.datetime,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+    object_storage: ObjectStoragePort = Depends(get_object_storage),
+):
+    """Every message the company sent Mesiri between `since` and `until`
+    (the viewer's day) and what Mesiri did with each, for the company Live
+    (WEB-53). Read-only. The viewer sees a message only when they can see
+    its site (the site day's rule), its project when it named no site, and
+    the whole company when it named neither. Messages about spending are
+    left out for roles that may not see it (SEC-01), as on the site Live."""
+    if until <= since or until - since > datetime.timedelta(days=2):
+        raise HTTPException(status_code=422, detail="Ask for one day at a time")
+    rows = await PostgresFactReviewRepository(conn).live_feed(
+        organization_id=auth_context.organization_id, since=since, until=until
+    )
+    sees_money = may_view_expenses(auth_context.role)
+    org_wide = auth_context.project_scope.grants_all_org_projects
+    items = []
+    for row in rows:
+        project_id, site_id = row.pop("project_id"), row.pop("site_id")
+        if project_id is None:
+            if not org_wide:
+                continue
+        elif _site_denied(auth_context, project_id, site_id):
+            continue
+        what = live_feed.classify(row)
+        if what.pop("money") and not sees_money:
+            continue
+        row.pop("turns", None)
+        key = row.pop("media_object_key", None)
+        # Photos only: the screen shows them; a voice note shows as its words.
+        is_photo = any(t in str(row.get("type") or "").lower() for t in ("image", "photo"))
+        row["media_url"] = await signed_media_url(object_storage, key) if key and is_photo else None
+        items.append({
+            **row,
+            **what,
+            "project_id": str(project_id) if project_id else None,
+            "site_id": str(site_id) if site_id else None,
+        })
     return {"items": items}
 
 

@@ -476,6 +476,76 @@ class PostgresFactReviewRepository:
             for r in rows
         ]
 
+    async def live_feed(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        since: datetime.datetime,
+        until: datetime.datetime,
+        limit: int = 300,
+    ) -> list[dict[str, Any]]:
+        """Every message the company sent Mesiri in a window, newest ``limit``
+        kept, oldest first, with what Mesiri did with each (WEB-53's company
+        Live): the tools its turn called, what it saved, what it holds for
+        Save, what it asked back. Read from the turn's traces
+        (``agent_api_turn`` for v3, ``agent_tools`` for classic), the same
+        traces the site Live's questions read. Raw rows: the router decides
+        what each one was (``live_feed.classify``) and who may see it."""
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT * FROM ("
+                    " SELECT im.id, im.message_type, im.body_text, im.body_text_en, im.assistant_reply, "
+                    " im.media_object_key, im.received_at, COALESCE(im.project_id, s.project_id) AS project_id, im.site_id, s.name AS site_name, p.name AS project_name, "
+                    " su.full_name AS sender_name, "
+                    " COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source, "
+                    " (SELECT jsonb_agg(jsonb_build_object("
+                    "     'tools', (SELECT jsonb_agg(c ->> 'tool') FROM jsonb_array_elements("
+                    "        CASE WHEN jsonb_typeof(jt.stage_payload::jsonb -> 'calls') = 'array' "
+                    "        THEN jt.stage_payload::jsonb -> 'calls' ELSE '[]'::jsonb END) c), "
+                    "     'saved', jt.stage_payload::jsonb -> 'saved', "
+                    "     'save_results', jt.stage_payload::jsonb -> 'save_results', "
+                    "     'pending', jt.stage_payload::jsonb -> 'pending', "
+                    "     'asked', jt.stage_payload::jsonb -> 'asked', "
+                    "     'cancelled', jt.stage_payload::jsonb -> 'cancelled')) "
+                    "   FROM journey_traces jt WHERE jt.correlation_id = im.correlation_id "
+                    "   AND jt.stage IN ('agent_api_turn', 'agent_tools')) AS turns "
+                    " FROM inbound_messages im "
+                    " LEFT JOIN sites s ON s.id = im.site_id "
+                    " LEFT JOIN projects p ON p.id = COALESCE(im.project_id, s.project_id) "
+                    # One name per message, even if two people share a number.
+                    " LEFT JOIN LATERAL (SELECT u.full_name FROM users u "
+                    "   WHERE u.organization_id = im.organization_id "
+                    "   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') "
+                    "       = regexp_replace(im.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true "
+                    " WHERE im.organization_id = :org "
+                    " AND im.received_at >= :since AND im.received_at < :until "
+                    " ORDER BY im.received_at DESC, im.id DESC LIMIT :limit"
+                    ") q ORDER BY q.received_at, q.id"
+                ),
+                {"org": organization_id, "since": since, "until": until, "limit": limit},
+            )
+        ).mappings().all()
+        return [
+            {
+                "id": str(r["id"]),
+                "type": r["message_type"],
+                "text": r["body_text"],
+                "translated_text": r["body_text_en"],
+                "reply": r["assistant_reply"],
+                "media_object_key": r["media_object_key"],
+                "received_at": r["received_at"].isoformat() if r["received_at"] else None,
+                "project_id": r["project_id"],
+                "site_id": r["site_id"],
+                "site_name": r["site_name"],
+                "project_name": r["project_name"],
+                "sender_name": r["sender_name"],
+                "source": r["source"] or "whatsapp",
+                "turns": r["turns"] if isinstance(r["turns"], list) else json.loads(r["turns"] or "[]"),
+            }
+            for r in rows
+        ]
+
     async def locate(
         self, organization_id: uuid.UUID, fact_type: str, fact_id: uuid.UUID
     ) -> dict[str, Any]:
