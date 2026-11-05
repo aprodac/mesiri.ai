@@ -341,7 +341,8 @@ async def test_no_words_after_a_lookup_gets_one_more_ask_for_the_answer() -> Non
     service._agent._provider = Two()
     await service.handle(_message("cement stock ethra und?"), CTX)
     assert sent[-1].text == "Cement stock is 0 at Main block."
-    assert answered.last_messages[-1].text == "(answer my message now, in words)"
+    note = answered.last_messages[-1].text  # [265]: marked as the code's, never as the person's words
+    assert note.startswith("(A check by Mesiri's code, not a message from the person") and "answer my message now, in words." in note
 
 
 async def test_double_star_bold_is_whatsapp_bold() -> None:

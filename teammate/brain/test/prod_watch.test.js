@@ -611,3 +611,11 @@ test("TM-45: the same line refused twice for one person is a loop, flagged and a
   const other = [msg({ at: T0, refused }), msg({ at: T0 + 60, refused: "50 bags cement :: stock too low" })];
   assert.equal(flagRows(other).flatMap((f) => f.flags).filter((f) => f.kind === "loop").length, 0);
 });
+
+test("[265] a voice note is read as what the assistant heard, in full, never only the cut echo in the reply", () => {
+  const sql = watchSql(T0);
+  assert.match(sql, /coalesce\(left\(m\.body_text, 400\), \(SELECT '🎤 ' \|\| left\(jt\.stage_payload::jsonb->>'text', 2000\)/);
+  assert.match(sql, /jt\.stage = 'agent_api_turn' AND m\.message_type IN \('voice', 'audio'\)/);
+  assert.doesNotMatch(sql, /--/); // one plain statement, no comments
+  assert.match(watchPrompt("mesiri", [], { minutes: 5 }), /never the cut 🎤 echo/);
+});

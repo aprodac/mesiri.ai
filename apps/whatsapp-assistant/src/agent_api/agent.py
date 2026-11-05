@@ -57,6 +57,7 @@ from .reply_guard import (
     claims_saved,
     read_tools_for,
     unbacked_figures,
+    without_apology,
     without_ids,
     without_internals,
     without_saved_claims,
@@ -72,6 +73,20 @@ from .units import (
 )
 
 SOP = (Path(__file__).with_name("SOP.md")).read_text(encoding="utf-8")
+
+
+def check_note(text: str) -> ChatMessage:
+    """[265] (5 Nov, Sahal: a voice note gave the client, 2.5 crore, the signing date and the payment terms; the
+    "every number is kept" check asked once more, written as the person ("My message also said 2026-05-21"), and the
+    reply that went out was only "My bad! Sorry, I missed that date. The contract was signed on 2026-05-21."): every
+    corrective retry says it comes from the code, unseen by the person, and asks for the WHOLE reply again, so the
+    person never gets an apology for a mistake they never saw, nor an answer to the check instead of to them."""
+    note = text.strip().removeprefix("(").removesuffix(")").strip()
+    note += "" if note.endswith((".", "!", "?")) else "."
+    return ChatMessage(role="user", text=(
+        f"(A check by Mesiri's code, not a message from the person; they never see it: {note} Then write your WHOLE "
+        "reply to their message again, as your only reply, covering everything it said: no apology, no \"I missed\", "
+        "never mention this check.)"))
 
 MAX_STEPS = 8
 TIMEOUT_SECONDS = 40.0
@@ -295,6 +310,45 @@ OTHER_SITE = "Other"
 
 def site_options(names: list[str]) -> list[str]:
     return names if len(names) <= SITE_BUTTONS else [*names[:SITE_BUTTONS], OTHER_SITE]
+
+
+#: [265]: the site of a project that has none yet; Save adds the site (named as the project) and puts its id in.
+SITE_OF = "site-of:"
+
+
+def place_of_project(place: Place | list[str], tool: ApiTool) -> bool:
+    """A report that needs a site, going to a project that has no site yet."""
+    return (isinstance(place, Place) and place.site_id is None and bool(place.project_id)
+            and ("site_id" in tool.required or tool.path_params == ("site_id",)))
+
+
+async def site_for_project(client: ApiClient, project_id: str, name: str = "") -> str | None:
+    """[265]: the project's site; when it has none, its first one, named as the project (what sign-up does). The
+    API's own checks decide (access, a duplicate name); None when no site could be had."""
+    try:
+        got = await client.call("GET", f"/projects/{project_id}/sites")
+        rows = got.body if isinstance(got.body, list) else (got.body or {}).get("items") if isinstance(
+            got.body, dict) else None
+        if got.ok and rows:
+            return str(rows[0].get("id"))
+        if not name:
+            project = await client.call("GET", f"/projects/{project_id}")
+            name = str((project.body or {}).get("name") or "") if project.ok and isinstance(project.body, dict) else ""
+        if not name:
+            return None
+        made = await client.call("POST", f"/projects/{project_id}/sites", json={"name": name},
+                                 idempotency_key=new_idempotency_key())
+    except Exception:  # noqa: BLE001 -- the line then says it could not be saved
+        return None
+    return str(made.body["id"]) if made.ok and isinstance(made.body, dict) and made.body.get("id") else None
+
+
+def _site_ref(entry: PendingWrite) -> str | None:
+    value = str(entry.body.get("site_id") or "")
+    if value.startswith(SITE_OF):
+        return value
+    m = re.search(rf"/sites/({re.escape(SITE_OF)}[^/]+)", entry.path or "")
+    return m.group(1) if m else None
 
 
 def working_place(places: Places | None, entries: list[PendingWrite]) -> Place | None:
@@ -594,6 +648,11 @@ class ApiAgent:
                 # [213]: the code decides where a report goes, never the model (it took the project just created).
                 working = working_place(places, [e for e in waiting if e is not None] + new)
                 place = decide_site(text, places, arguments.get("site_id"), arguments.get("project_id"), working)  # type: ignore[arg-type]
+                if place_of_project(place, tool):
+                    # [265] (5 Nov, Sahal: "Supermarket Kerala" made on WhatsApp had no site, so picking it only asked
+                    # "which site?" again): the line goes on the project; Save gives it its site first.
+                    place = Place(f"{SITE_OF}{place.project_id}", place.project_id, place.name)
+                    site_note = " (new site)"
                 if isinstance(place, list) or (place.site_id is None and "site_id" in tool.required):
                     names = place if isinstance(place, list) else [place.name]
                     site_ask[:] = site_options(names)
@@ -605,7 +664,9 @@ class ApiAgent:
                     arguments["site_id"] = place.site_id
                 if "project_id" in tool.body_fields and place.project_id:
                     arguments["project_id"] = place.project_id
-                if working is not None and place != working:
+                if site_note:  # [265]: Save adds this project's first site
+                    site_note = f" · 📍 *{place.name}*{site_note}"
+                elif working is not None and place != working:
                     site_note = f" · 📍 *{place.name}* (not {working.name})"
             new_ref = None
             if tool.is_write and name != ADD_TOOL and "material_id" in (*tool.body_fields, *tool.path_params):
@@ -914,16 +975,14 @@ class ApiAgent:
         if not result.calls and SAVE_WORD in (result.text or "").casefold() and nothing_done():
             # 2 Nov (Ilan, 23:10, three times): "ready, tap Save" with no tool called, so nothing was prepared.
             # The code checks: one more try, told plainly that nothing is in the list.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                role="user", text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
                                   "message asks now with the tools, or say plainly what you need.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
             again_asked = True
         if claims_team(result.text) and not told(result.calls):
             # WA-155 (3 Nov): nothing checked that "I've told the team" was true. One more try, told plainly; if it
             # still says so without calling, the code passes it on itself, so what the person was told is true.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                role="user", text="(You said the team was told, but you did not call tell_the_team, so nobody was told. "
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text="(You said the team was told, but you did not call tell_the_team, so nobody was told. "
                                   "If I asked for something you can't do, or complained, call tell_the_team now; "
                                   "otherwise answer without saying the team was told.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
@@ -936,8 +995,7 @@ class ApiAgent:
         if not result.calls and nothing_done() and claims_saved(result.text):
             # "Saved" with no tool called: nothing happened. One more try. Answering about an earlier record takes a
             # look-up here, which is how the check below tells that apart from a false "saved".
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                role="user", text="(You called no tool, so nothing was saved in this turn. Do what my message asks now "
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text="(You called no tool, so nothing was saved in this turn. Do what my message asks now "
                                   "with the tools. If you were telling me about an earlier record, look it up with a "
                                   "tool and answer from that.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
@@ -945,8 +1003,7 @@ class ApiAgent:
         if not result.calls and not again_asked and claims_cannot(result.text) and not told(result.calls):
             # WA-199 (basic 10, never a dead end): "I can't" from memory, with no tool looked at (the same refusal went
             # out four times on 3 Nov, WA-196). One more try: the tools first; if none does it, the team builds it.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                role="user", text="(You said it can't be done, but you looked at no tool. Check your tools first: if one "
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text="(You said it can't be done, but you looked at no tool. Check your tools first: if one "
                                   "does what I asked, do it now" + hint_reads(read_tools_for(f"{text} {result.text}", self._tools))
                                   + ". If none does, call tell_the_team (missing_feature) and "
                                   "tell me the way for now, or what you can do instead. Never just say no.)")])
@@ -961,8 +1018,7 @@ class ApiAgent:
                 unbacked := unbacked_figures(result.text, text, f"{facts} {' '.join(e.summary for e in ready or [])}")):
             # [260] (basic 2/3, honest answers): figures about what is recorded with nothing looked up. The conversation
             # holds lines that were cancelled or never saved, so a figure must come from a tool or today's records.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                role="user", text=f"(You gave figures ({', '.join(unbacked[:3])}) without looking anything up. What is "
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=f"(You gave figures ({', '.join(unbacked[:3])}) without looking anything up. What is "
                                   "recorded comes only from a tool or today's records above; the conversation can hold "
                                   "lines that were cancelled or never saved. Look it up now"
                                   + hint_reads(read_tools_for(f"{text} {result.text}", self._tools))
@@ -981,8 +1037,7 @@ class ApiAgent:
                                    if c.name == TELL_THE_TEAM)
             reads = read_tools_for(f"{asked_about} {result.text}", self._tools)
             if reads:
-                again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                    role="user", text="(You passed this to the team, but you read nothing" + hint_reads(reads) + ". "
+                again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text="(You passed this to the team, but you read nothing" + hint_reads(reads) + ". "
                                       "If one of them answers my message, use it now and answer from what it returns; "
                                       "if nothing is recorded, say so and give an example message to send. Do not call "
                                       "tell_the_team for something these tools answer.)")])
@@ -997,8 +1052,7 @@ class ApiAgent:
         if lost:
             # WA-198 (basic 2, lose nothing): a number they said is in nothing this turn prepared, asked or answered
             # ("20 bag cement, 6 mason" with only the cement on the card). One more try, told which; never a loop.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                role="user", text=(f"(My message also said {', '.join(lost)}, and nothing you prepared, asked or "
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=(f"(My message also said {', '.join(lost)}, and nothing you prepared, asked or "
                                    "answered has it. Every part of my message is prepared or asked about: prepare that "
                                    "part now, or ask about it in one question. Keep everything already prepared. If "
                                    "it is not an update (a phone number, a time), just answer.)"))])
@@ -1007,8 +1061,7 @@ class ApiAgent:
         if lines_lost and not lost and not again_asked:
             # [248] (5 Nov, New India: three new materials on the card, their 20 + 20 + 30 + 1 load dropped, and the
             # reply said all were ready): a line refused for its material and never held after. One more try.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
-                role="user", text=(f"(These lines are NOT on the card: {'; '.join(lines_lost)}. Their material was refused "
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=(f"(These lines are NOT on the card: {'; '.join(lines_lost)}. Their material was refused "
                                    "(read the error of that call). Prepare each now as the error says: a material "
                                    "being added in this message is material_id \"new:<its name>\". Keep everything "
                                    "already prepared.)"))])
@@ -1024,7 +1077,7 @@ class ApiAgent:
                 and not false_saved):
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
-                                     ChatMessage(role="user", text="(answer my message now, in words)")])
+                                     check_note(text="(answer my message now, in words)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls] + code_told
@@ -1035,7 +1088,7 @@ class ApiAgent:
             dont_know = DONT_KNOW.get(language or "", DONT_KNOW["english"])
             # WA-197: the line is on the list, so Save comes third (WhatsApp shows 3 buttons): one size option at most.
             options = [o for o in options if o != dont_know][:1] + [dont_know]
-        reply = (result.text or "").strip()
+        reply = without_apology((result.text or "").strip())  # [265]: never "My bad!" for a slip they never saw
         missing = [u for u in dict.fromkeys(links) if u not in reply]
         if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
             reply = "\n".join([reply, *missing]).strip()
@@ -1782,6 +1835,7 @@ async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[s
         return 0 if pending[i].tool == ADD_TOOL else 1 if pending[i].tool in SETTINGS_FIRST else 2
 
     created: dict[str, str] = {}  # the new material's name (alias_key) -> its id
+    sites_made: dict[str, str | None] = {}  # [265]: project id -> the site Save found or added for it
     done: dict[int, WriteResult] = {}
     for i in sorted(range(len(pending)), key=rank):
         entry = pending[i]
@@ -1793,7 +1847,19 @@ async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[s
                                                              "yet (adding it did not save)"})
                 continue
             entry = _with_material(entry, ref, material_id)
+        if (site_ref := _site_ref(entry)) is not None:
+            project_id = site_ref.removeprefix(SITE_OF)
+            if project_id not in sites_made:
+                sites_made[project_id] = await site_for_project(client, project_id)
+            if sites_made[project_id] is None:
+                done[i] = WriteResult(entry, 424, {"detail": "the project has no site yet, and adding one did not work"})
+                continue
+            entry = _with_site(entry, site_ref, str(sites_made[project_id]))
         done[i] = await _confirm_one(client, entry, names)
+        if entry.tool == PROJECT_TOOL and done[i].ok and isinstance(done[i].body, dict) and done[i].body.get("id"):
+            # [265]: a project made on WhatsApp gets its first site, named as it, so updates can go to it at once.
+            pid = str(done[i].body["id"])
+            sites_made[pid] = await site_for_project(client, pid, str(done[i].body.get("name") or entry.body.get("name") or ""))
         if entry.tool == ADD_TOOL and (existing := _already_there(done[i])):
             # [246]: added elsewhere while the card waited (the dashboard, another message): the material is in the
             # list, so the add counts as done and its lines go on the one already there, never refused with it.
@@ -1823,6 +1889,11 @@ def _with_material(entry: PendingWrite, ref: str, material_id: str) -> PendingWr
     body = {**entry.body, "material_id": material_id} if entry.body.get("material_id") == ref else entry.body
     return PendingWrite(tool=entry.tool, method=entry.method, path=entry.path.replace(ref, material_id),
                         params=entry.params, body=body, summary=entry.summary, idempotency_key=entry.idempotency_key)
+
+
+def _with_site(entry: PendingWrite, ref: str, site_id: str) -> PendingWrite:
+    body = {**entry.body, "site_id": site_id} if entry.body.get("site_id") == ref else entry.body
+    return replace(entry, path=entry.path.replace(ref, site_id), body=body)
 
 
 def _place_names(places: Places | None) -> tuple[str, ...]:

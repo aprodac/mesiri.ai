@@ -57,6 +57,9 @@ export function skipPatterns(value) {
  * The one read: the newest messages since `since` (epoch seconds), settled for 2 minutes, oldest first, of every
  * company. `is_test` marks the skip-list companies (no AI screen for them); `feedback` is what Mesiri passed on with
  * `tell_the_team` in that turn ("missing_feature: create a project from WhatsApp | bad_ux: ... / why: ...").
+ * [265] (5 Nov, Sahal): a voice note has no body_text, and the reply echoes only the first ~200 characters of what was
+ * heard, so the watch told him Mesiri "made up" a date, a value and terms he had said. `text` of a voice note is what
+ * the assistant heard (its turn's text), in full.
  */
 export function watchSql(since, limit = 400, skip = [], newest = false, request = null) {
   const from = Number.isFinite(since) ? Number(since).toFixed(3) : "0";
@@ -67,7 +70,10 @@ export function watchSql(since, limit = 400, skip = [], newest = false, request 
        o.name AS company, ${isTest} AS is_test, md5(coalesce(m.sender_wa_id, '')) AS who, right(coalesce(m.sender_wa_id, ''), 4) AS last4,
        su.full_name AS person, su.role AS person_role,
        m.message_type AS kind, m.processing_status AS status, m.error_code,
-       left(m.body_text, 400) AS text, left(m.assistant_reply, 700) AS reply,
+       coalesce(left(m.body_text, 400), (SELECT '🎤 ' || left(jt.stage_payload::jsonb->>'text', 2000) FROM journey_traces jt
+          WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_api_turn' AND m.message_type IN ('voice', 'audio')
+            AND coalesce(jt.stage_payload::jsonb->>'text', '') <> '' ORDER BY jt.created_at LIMIT 1)) AS text,
+       left(m.assistant_reply, 700) AS reply,
        (SELECT left(string_agg((c->'args'->>'kind') || ': ' || coalesce(c->'args'->>'about', '')
                  || coalesce(' / why: ' || (c->'args'->>'why'), ''), ' | '), 400)
           FROM journey_traces jt,
@@ -370,6 +376,8 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   specifically (what they did, what went wrong) and what it cost them (\"…2 drum save aayilla: avide stock 40 L",
     "   kuravaanu\"). Not \"your feedback\", not a question, not the cause in code words. For a fix of a fix: what you",
     "   found this time. Mesiri adds \"the team is fixing it now\" and the reference.",
+    "   Never tell them they did NOT say something (\"a date you never gave\") unless you read their whole message: a voice",
+    "   note's words are the 🎤 text of the user line, never the cut 🎤 echo inside Mesiri's reply ([265], 5 Nov).",
     "   Then, whenever what they will see changes (a bad-UX, missing-feature or idea request, and a bug fix too, TM-69),",
     "   draw the reply Mesiri will give them after the fix and send_preview it (TM-33): the person sees \"Is this how you want it?\" with Confirm / Change",
     "   it. Don't wait: the plan builds. A \"preview ... is not what they want\" feedback (they tapped Change it) plus their",

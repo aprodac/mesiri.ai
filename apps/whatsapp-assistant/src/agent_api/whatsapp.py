@@ -815,7 +815,9 @@ class ApiWhatsApp:
             lines += [f"  - site {s.name} (site_id {s.id})" for s in sites if s.project_id == project.id]
         lines += [f"- site {s.name} (site_id {s.id}, project_id {s.project_id})"
                   for s in sites if s.project_id not in {p.id for p in projects}]
-        if len(sites) == 1:
+        bare = [p for p in projects if not any(s.project_id == p.id for s in sites)]
+        lines += [f"  ({p.name} has no site yet: a report for it goes on {p.name}; Save adds its site.)" for p in bare]
+        if len(sites) == 1 and not bare:  # [265]: a project with no site is a place too (the code asks which)
             lines.append(f"Only one site: {sites[0].name}. Use it; never ask which site.")
         catalog, today = await asyncio.gather(self._catalog_for(ctx, client), self._today(ctx, client, sites))
         return "\n".join(lines) + "\n\n" + catalog + "\n\n" + today

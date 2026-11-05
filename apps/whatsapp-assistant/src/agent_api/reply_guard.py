@@ -82,6 +82,22 @@ def _cut(sentence: str) -> str:
     return body + (end.group(0) if end else "")
 
 
+#: [265]: a sentence that is only an apology for a slip ("My bad!", "Sorry, I missed that date.", "Apologies for the
+#: oversight."): what a corrective retry from the code drew out of the model, about a mistake the person never saw.
+_BARE_APOLOGY = re.compile(
+    r"^\s*(?:(?:my\s+bad|oops|sorry|apologies|my\s+apologies|my\s+mistake)[\s!.,]*)+$"
+    r"|^\s*(?:my\s+bad|oops|(?:so\s+)?sorry|apologies|i\s+apologi[sz]e|my\s+apologies|my\s+mistake)\b[^0-9\n:]{0,40}"
+    r"\b(?:missed|forgot|overlooked|oversight|mistake|confusion|got\s+(?:that|it)\s+wrong)\b[^0-9\n:]{0,25}[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def without_apology(text: str) -> str:
+    """[265]: ``text`` without sentences that are only an apology; a sentence with an action or a figure stays."""
+    kept = [part for part in sentences(text or "") if part and not _BARE_APOLOGY.match(part.strip())]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
 _URL = re.compile(r"(https?://\S+)")
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 #: An id with what introduces it: "(id: 3fa8…)", "`3fa8…`". Links keep theirs: the dashboard needs it.
