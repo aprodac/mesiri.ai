@@ -509,8 +509,13 @@ class PostgresMaterialReadRepository:
         site_id: uuid.UUID | None = None,
         material_id: uuid.UUID | None = None,
         category_id: uuid.UUID | None = None,
+        with_money: bool = False,
     ) -> list[dict]:
-        """PRC-17: per site and material, the stock before ``date_from`` (opening), what was delivered and used
+        """``with_money`` (PRC-17d): also ``spend`` (the known cost of what was delivered in the period),
+        ``spend_complete`` (every delivery in it had a cost) and ``last_rate`` (the latest rate paid for the material,
+        any site, up to ``date_to``); None without it.
+
+        PRC-17: per site and material, the stock before ``date_from`` (opening), what was delivered and used
         from ``date_from`` to ``date_to`` (company dates), and the stock at the end of ``date_to`` (closing), with
         the last week's use for "running low" (``stock_summary.finish_row``). Saved entries only (WA-77), as the
         stock everywhere. A delivery and its correction cancel out of received / used, as on the daily report;
@@ -573,6 +578,16 @@ class PostgresMaterialReadRepository:
                    SUM(CASE WHEN {day} >= :date_from AND {received} THEN mm.quantity ELSE 0 END) AS received,
                    SUM(CASE WHEN {day} >= :date_from AND {used} THEN mm.quantity ELSE 0 END) AS used,
                    SUM(CASE WHEN {day} >= :recent_from AND {used} THEN mm.quantity ELSE 0 END) AS used_recently,
+                   SUM(CASE WHEN {day} >= :date_from AND {received} THEN COALESCE(mr.total_cost, 0) ELSE 0 END)
+                       AS spend,
+                   bool_and(CASE WHEN {day} >= :date_from AND {received} AND mm.source_type = 'material_receipt'
+                                 THEN mr.total_cost IS NOT NULL ELSE true END) AS spend_complete,
+                   (SELECT r.unit_cost FROM material_receipts r
+                     WHERE r.organization_id = :org_id AND r.material_id = mm.material_id
+                       AND r.unit_cost IS NOT NULL AND r.occurred_date <= :date_to
+                       AND r.movement_reason = 'RECEIVED'
+                       AND NOT EXISTS (SELECT 1 FROM material_usage u WHERE u.reverses_movement_id = r.id)
+                     ORDER BY r.occurred_date DESC, r.created_at DESC LIMIT 1) AS last_rate,
                    bool_or({day} >= :date_from) AS moved
               FROM material_movements mm
               JOIN materials_catalog mc ON mc.id = mm.material_id
@@ -592,6 +607,8 @@ class PostgresMaterialReadRepository:
             data = dict(row)
             if not data.pop("moved") and Decimal(str(data["opening"] or 0)) == 0:
                 continue  # nothing held and nothing moved: not part of this period
+            if not with_money:
+                data.update(spend=None, spend_complete=None, last_rate=None)
             out.append(finish_row(data))
         return out
 

@@ -1140,6 +1140,8 @@ async def stock_summary(
         raise HTTPException(status_code=422, detail="date_from is after date_to")
     if (date_to - date_from).days > 366:
         raise HTTPException(status_code=422, detail="A period is at most a year.")
+    from mesiri.authorization.roles import may_view_expenses
+
     return await PostgresMaterialReadRepository(conn).get_stock_summary(
         auth_context.organization_id,
         date_from=date_from,
@@ -1148,6 +1150,8 @@ async def stock_summary(
         site_id=site_id,
         material_id=material_id,
         category_id=category_id,
+        # PRC-17d: money only for the roles that see the company's spending (SEC-01), as on the expenses pages.
+        with_money=may_view_expenses(auth_context.role),
     )
 
 

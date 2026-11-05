@@ -2148,3 +2148,31 @@ async def test_import_is_for_admins_and_reads_only_excel(client, test_engine, te
     bad = base64.b64encode(b"name,unit\nNails,nos\n").decode()
     resp = await client.post("/materials/import/preview", json={"file_base64": bad}, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 422 and "Excel" in resp.json()["detail"]
+
+
+async def test_stock_for_a_period_shows_money_only_to_roles_that_see_spending(client, test_engine, test_org, admin_ctx):
+    """PRC-17d: spend in the period and the last rate paid, for the roles that see expenses (SEC-01); a site
+    engineer sees the same stock without the money."""
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    cement = await _make_material(client, token, "Cement", bags_id)
+    today = datetime.date.today()
+    base = {"project_id": str(admin_ctx["project_id"]), "site_id": str(admin_ctx["site_id"]), "material_id": cement,
+            "unit_id": bags_id, "movement_reason": "RECEIVED"}
+    for qty, rate, days_ago in (("100", "380", 3), ("50", "395", 1), ("10", None, 0)):
+        body = {**base, "quantity": qty, "occurred_date": str(today - datetime.timedelta(days=days_ago))}
+        if rate:
+            body["unit_cost"] = rate
+        assert (await client.post("/materials/inflows", json=body, headers=_auth(token))).status_code == 201
+
+    row = (await client.get("/materials/stock-summary", headers=_auth(token))).json()[0]
+    assert Decimal(row["spend"]) == 100 * 380 + 50 * 395
+    assert row["spend_complete"] is False  # the 10 bags came without a price
+    assert Decimal(row["last_rate"]) == 395
+
+    engineer = await _make_user(test_engine, test_org, "SITE_ENGINEER")
+    seen = (await client.get(
+        "/materials/stock-summary", headers=_auth(_token(engineer, test_org, "SITE_ENGINEER"))
+    )).json()[0]
+    assert Decimal(seen["closing"]) == 160
+    assert seen["spend"] is None and seen["last_rate"] is None and seen["spend_complete"] is None

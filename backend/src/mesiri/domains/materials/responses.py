@@ -221,3 +221,8 @@ class MaterialStockSummaryResponse(BaseModel):
     days_left: int | None = None
     #: At or below zero, or under 3 days left at that use.
     running_low: bool
+    #: PRC-17d, only for roles that see expenses (SEC-01); None for the rest: the known cost of what was delivered
+    #: in the period, whether every delivery had a cost, and the latest rate paid (any site).
+    spend: Decimal | None = None
+    spend_complete: bool | None = None
+    last_rate: Decimal | None = None
