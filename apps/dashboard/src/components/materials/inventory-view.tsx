@@ -4,8 +4,8 @@ import { Boxes, ChevronRight, MapPin, TriangleAlert } from 'lucide-react'
 import { Package as IcPackage, MapPin as IcMapPin, PackageX as IcPackageX, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Callout, StatStrip } from '@/components/dpr-page'
-import { fetchInventory, type MaterialStock } from '@/lib/materials'
+import { Callout, Segmented, StatStrip } from '@/components/dpr-page'
+import { categoryPaths, categoryTree, fetchInventory, fetchMaterialCategories, type MaterialStock } from '@/lib/materials'
 import { useSiteNames } from '@/lib/site-names'
 import { qty } from '@/lib/site-day'
 import { cn, timeAgo } from '@/lib/utils'
@@ -16,6 +16,8 @@ import { MaterialLedgerSheet } from './material-ledger-sheet'
 // the scope's cached lists, so "All projects" no longer shows site ids.
 // The bulk "Deactivate materials" (it switched catalogue entries off for the
 // whole company from here) is gone; the Catalogue does that.
+// PRC-01: or grouped by main category (Structural, Electrical, ...), each line
+// naming its sub-category and, across sites, its site.
 
 interface InventoryViewProps {
   projectId: string | null
@@ -31,6 +33,12 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
     queryFn: () => fetchInventory(filters),
   })
   const rows = React.useMemo(() => data ?? [], [data])
+  const [groupBy, setGroupBy] = React.useState<'site' | 'category'>('site')
+  const { data: categoryList } = useQuery({
+    queryKey: ['materials', 'categories'],
+    queryFn: fetchMaterialCategories,
+    staleTime: 30_000,
+  })
 
   const groups = React.useMemo(() => {
     const bySite = new Map<string, MaterialStock[]>()
@@ -44,6 +52,23 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
       }))
       .sort((a, b) => (a.project + a.name).localeCompare(b.project + b.name))
   }, [rows, siteNames])
+
+  const byCategory = React.useMemo(() => {
+    const cats = categoryList?.items ?? []
+    const paths = categoryPaths(cats)
+    const order = new Map(categoryTree(cats).map(({ main }, i) => [main.id, i]))
+    const groupsByMain = new Map<string, { key: string; name: string; list: { row: MaterialStock; sub: string | null }[] }>()
+    for (const r of rows) {
+      const path = r.category_id ? paths.get(r.category_id) : undefined
+      const key = path?.main.id ?? 'none'
+      const g = groupsByMain.get(key) ?? { key, name: path?.main.name ?? 'No category', list: [] }
+      g.list.push({ row: r, sub: path?.sub?.name ?? null })
+      groupsByMain.set(key, g)
+    }
+    return [...groupsByMain.values()]
+      .map((g) => ({ ...g, list: g.list.sort((a, b) => (a.sub ?? '').localeCompare(b.sub ?? '') || a.row.material_name.localeCompare(b.row.material_name)) }))
+      .sort((a, b) => (order.get(a.key) ?? 1e9) - (order.get(b.key) ?? 1e9))
+  }, [rows, categoryList])
 
   const below = rows.filter((r) => r.stock_state === 'NEGATIVE_STOCK')
   const out = rows.filter((r) => r.stock_state === 'OUT_OF_STOCK')
@@ -102,7 +127,43 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
         </Callout>
       )}
 
-      {groups.map((g) => (
+      <Segmented<'site' | 'category'>
+        label="Group stock"
+        value={groupBy}
+        onChange={setGroupBy}
+        options={[
+          { value: 'site', label: 'By site' },
+          { value: 'category', label: 'By category' },
+        ]}
+      />
+
+      {groupBy === 'category' &&
+        byCategory.map((g) => (
+          <section key={g.key} className="flex flex-col gap-1.5">
+            <h3 className="flex items-baseline gap-2 text-sm">
+              <span className="font-semibold">{g.name}</span>
+              <span className="text-muted-foreground">{g.list.length}</span>
+            </h3>
+            <ul className="divide-y rounded-lg border">
+              {g.list.map(({ row: r, sub }) => (
+                <li key={`${r.site_id}:${r.material_id}`}>
+                  <button type="button" onClick={() => setSelected(r)} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/40">
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-medium">{r.material_name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {[sub, groups.length > 1 ? siteNames.get(r.site_id)?.name : null].filter(Boolean).join(' · ')}
+                      </span>
+                    </span>
+                    <StockFigure r={r} />
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+
+      {groupBy === 'site' && groups.map((g) => (
         <section key={g.sid} className="flex flex-col gap-1.5">
           <h3 className="flex items-baseline gap-2 text-sm">
             <MapPin className="size-3.5 self-center text-muted-foreground" aria-hidden="true" />
@@ -111,8 +172,6 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
           </h3>
           <ul className="divide-y rounded-lg border">
             {g.list.map((r) => {
-              const bad = r.stock_state === 'NEGATIVE_STOCK'
-              const empty = r.stock_state === 'OUT_OF_STOCK'
               return (
                 <li key={r.material_id}>
                   <button
@@ -125,14 +184,7 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
                       +{qty(r.total_received)} in · −{qty(r.total_used)} used
                       {r.last_movement_at ? ` · ${timeAgo(r.last_movement_at)}` : ''}
                     </span>
-                    <span
-                      className={cn(
-                        'w-28 text-right tabular-nums',
-                        bad ? 'font-semibold text-destructive' : empty ? 'font-semibold text-draft' : 'font-semibold',
-                      )}
-                    >
-                      {qty(r.current_stock)} <span className="font-normal text-muted-foreground">{r.unit}</span>
-                    </span>
+                    <StockFigure r={r} />
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   </button>
                 </li>
@@ -154,5 +206,15 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
         />
       )}
     </div>
+  )
+}
+
+function StockFigure({ r }: { r: MaterialStock }) {
+  const bad = r.stock_state === 'NEGATIVE_STOCK'
+  const empty = r.stock_state === 'OUT_OF_STOCK'
+  return (
+    <span className={cn('w-28 text-right tabular-nums font-semibold', bad ? 'text-destructive' : empty && 'text-draft')}>
+      {qty(r.current_stock)} <span className="font-normal text-muted-foreground">{r.unit}</span>
+    </span>
   )
 }

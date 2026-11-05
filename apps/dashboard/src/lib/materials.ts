@@ -14,9 +14,28 @@ export interface MaterialCatalog {
   // use this unit_id; no unit conversion, and it can't change once the
   // material has any recorded movement (see backend PATCH /materials/{id}).
   default_unit_id: string
+  // The old free-text group; the material's place is `category_id` (PRC-01).
   category: string | null
+  category_id: string | null
   sku: string | null
   is_active: boolean
+}
+
+// PRC-01: a company's material categories, two levels. `parent_id` null = main category.
+export interface MaterialCategory {
+  id: string
+  parent_id: string | null
+  name: string
+  sort_order: number
+  is_active: boolean
+  // Materials directly in this category (not its sub-categories).
+  material_count: number
+}
+
+export interface MaterialCategoryListResponse {
+  items: MaterialCategory[]
+  // Materials with no category yet.
+  uncategorised: number
 }
 
 export interface MaterialCatalogListResponse {
@@ -148,6 +167,7 @@ export interface MaterialStock {
   site_id: string
   material_id: string
   material_name: string
+  category_id: string | null
   unit: string
   total_received: string
   total_used: string
@@ -209,6 +229,7 @@ export async function createMaterial(payload: {
   name: string
   default_unit_id: string
   category?: string
+  category_id?: string | null
   sku?: string
 }): Promise<MaterialCatalog> {
   const res = await api.post<MaterialCatalog>('/materials', payload)
@@ -221,6 +242,8 @@ export async function updateMaterial(
     name?: string
     default_unit_id?: string
     category?: string
+    // null takes the material out of its category; left out, it stays.
+    category_id?: string | null
     sku?: string
     is_active?: boolean
   }
@@ -235,6 +258,69 @@ export async function deleteMaterial(id: string): Promise<void> {
 
 export async function setMaterialActive(id: string, isActive: boolean): Promise<MaterialCatalog> {
   return updateMaterial(id, { is_active: isActive })
+}
+
+// ---------------------------------------------------------------------
+// Categories (PRC-01)
+// ---------------------------------------------------------------------
+
+export async function fetchMaterialCategories(): Promise<MaterialCategoryListResponse> {
+  const res = await api.get<MaterialCategoryListResponse>('/materials/categories')
+  return res.data
+}
+
+export async function createMaterialCategory(payload: { name: string; parent_id?: string | null }): Promise<MaterialCategory> {
+  const res = await api.post<MaterialCategory>('/materials/categories', payload)
+  return res.data
+}
+
+export async function updateMaterialCategory(
+  id: string,
+  payload: { name?: string; sort_order?: number; is_active?: boolean },
+): Promise<MaterialCategory> {
+  const res = await api.patch<MaterialCategory>(`/materials/categories/${id}`, payload)
+  return res.data
+}
+
+export async function deleteMaterialCategory(id: string): Promise<void> {
+  await api.delete(`/materials/categories/${id}`)
+}
+
+// The builder's standard list; places the materials a fixed rule places. Safe to repeat.
+export async function applyStandardCategories(): Promise<{ categories_added: number; materials_placed: number }> {
+  const res = await api.post<{ categories_added: number; materials_placed: number }>('/materials/categories/standard')
+  return res.data
+}
+
+export interface CategoryPath {
+  main: MaterialCategory
+  sub: MaterialCategory | null
+}
+
+// id -> its main category and, for a sub-category, itself. A label for each: "Electrical › Switches & sockets".
+export function categoryPaths(categories: MaterialCategory[]): Map<string, CategoryPath> {
+  const byId = new Map(categories.map((c) => [c.id, c]))
+  const paths = new Map<string, CategoryPath>()
+  for (const c of categories) {
+    const parent = c.parent_id ? byId.get(c.parent_id) : undefined
+    if (c.parent_id && !parent) continue
+    paths.set(c.id, parent ? { main: parent, sub: c } : { main: c, sub: null })
+  }
+  return paths
+}
+
+export function categoryLabel(path: CategoryPath | undefined): string {
+  if (!path) return 'No category'
+  return path.sub ? `${path.main.name} › ${path.sub.name}` : path.main.name
+}
+
+// Main categories in order, each with its sub-categories in order.
+export function categoryTree(categories: MaterialCategory[]): { main: MaterialCategory; subs: MaterialCategory[] }[] {
+  const order = (a: MaterialCategory, b: MaterialCategory) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
+  return categories
+    .filter((c) => !c.parent_id)
+    .sort(order)
+    .map((main) => ({ main, subs: categories.filter((c) => c.parent_id === main.id).sort(order) }))
 }
 
 export async function fetchUnitsOfMeasure(): Promise<UnitsOfMeasureListResponse> {
