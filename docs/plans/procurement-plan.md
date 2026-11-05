@@ -109,16 +109,23 @@ is overwritten.
 - Migration 0503's index on `category_id` is named `ix_materials_catalog_category_id`: migration 0180 already owns
   `ix_materials_catalog_category` (on the old text column).
 
-### 4b. As built: category for new items (PRC-02)
+### 4b. As built: category for new items (PRC-02, PRC-02b)
 
-- `suggest_path(name)` (`domains/materials/categories.py`): a starter material's name inside the new name places it
-  (longest first: "Binding Wire" is Steel); else a word that belongs to exactly ONE category ("MCB" -> Electrical ›
-  DB & MCBs). A word shared by several categories ("pipe", "fitting") places nothing.
-- Then the caller's hint in words ("Plumbing & CP > Pipes"): main › sub, or a name only one category has.
-- Only the company's own switched-on categories; a sub the company removed falls back to its main; never creates one.
-- WhatsApp (v3): `add_material` passes `category` in words; the code calls the route, sets `category_id` and shows
-  "📂 Main › Sub" on the Save card. `category_id` stays hidden from the model. No fit: added without one, as before.
-- Not built: prefilling the dashboard's picker with the suggestion; moving a material to another category from WhatsApp.
+- **The model first** (it reads the whole name: "Stainless steel sink" is Plumbing & CP › Sanitaryware, not steel):
+  `add_material` / `update_material` carry `category` in words ("Plumbing & CP > Pipes"); `read_hint` takes main ›
+  sub, or a name only one category has.
+- **Then the name alone, strictly** (`suggest_path`): sizes and numbers aside, the name IS a starter material
+  ("Cement", "PVC Pipes 4 inch") or every word is a word of exactly one category ("MCB 32A"). A known word inside a
+  longer name places nothing ("Sand paper", "Cement paint", "Steel door" were wrong before PRC-02b).
+- Both through `GET /materials/categories/suggest?name&hint` (`categories.suggest`, one decision for the dashboard
+  and the assistant). Only the company's own switched-on categories; a sub the company removed falls back to its
+  main; never creates one.
+- Not theirs: the model gets the company's own list once (renamed / added categories are only there) and answers
+  one of them or "none"; after that, held without a category (no third round). No categories at all: never asked.
+- The card line shows "📂 Main › Sub". A waiting material that is renamed gets its category again; a category
+  switched off before Save: the material saves without it (never refused with the delivery waiting on it).
+- "Put it in Plumbing" on a listed material: `update_material` with `category` in words moves it.
+- Not built: prefilling the dashboard's picker with the suggestion.
 
 ---
 

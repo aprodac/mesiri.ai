@@ -151,16 +151,18 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare taking back a material transfer saved by mistake." + _WRITE),
     Allowed("undo_expense", "POST", "/expenses/{expense_id}/reverse",
             "Prepare taking back an expense saved by mistake (find it with list_expenses)." + _WRITE),
-    # PRC-02: the code picks `category_id` (the API's suggest rule, then the model's `category` in words); a guessed
-    # id would fail the save, so it stays hidden.
+    # PRC-02: the code picks `category_id` (the model's `category` in words, then the API's rule on the name); a
+    # guessed id would fail the save, so it stays hidden on add and update.
     Allowed("add_material", "POST", "/materials",
             "Prepare adding a material to the company's list (name, default unit, other names it is called, and "
-            "category: its trade category in English as 'Main > Sub', e.g. 'Plumbing & CP > Pipes', 'Electrical > "
-            "Wires & cables', 'Structural > Steel'; the code places it in the company's own list)." + _WRITE,
+            "category: its trade category in English as 'Main > Sub', from what the WHOLE name is ('Stainless steel "
+            "sink' is 'Plumbing & CP > Sanitaryware', not steel; 'Plumbing & CP > Pipes', 'Electrical > Wires & "
+            "cables'); the code places it in the company's own list)." + _WRITE,
             hide=("category_id",)),
     Allowed("update_material", "PATCH", "/materials/{material_id}",
-            "Prepare changing a material in the list: its name, default unit, or the other names it is called "
-            "(aliases, e.g. 'kambi' for steel)." + _WRITE,
+            "Prepare changing a material in the list: its name, default unit, the other names it is called "
+            "(aliases, e.g. 'kambi' for steel), or its category in words ('Plumbing & CP > Pipes'; the code moves it "
+            "to the company's own category)." + _WRITE,
             hide=("category_id",)),
     Allowed("set_unit_conversion", "PUT", "/materials/{material_id}/unit-conversions",
             "Prepare setting, for the whole company, how much ONE of the unit they count in is in the material's "

@@ -181,27 +181,67 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
             f"is {' or '.join(names)} they can just say so. No buttons, no question.", [])
 
 
-async def settle_category(client: ApiClient, body: dict[str, Any]) -> str:
-    """PRC-02: put a new material in the company's category before it is held: its name read against the standard list
-    first, then the model's ``category`` in words ("Plumbing & CP > Pipes"), through the API (``GET
-    /materials/categories/suggest``, the dashboard's own rule). Returns "Main › Sub" for the card, or "" (no
-    category fits, the company has none, or the route is unreadable: the material is added without one, as before)."""
+#: PRC-02: what the card line says about a material's category (" · 📂 Electrical › DB & MCBs").
+CATEGORY_NOTE = " · 📂 "
+_CATEGORY_NOTE = re.compile(r" · 📂 [^·]*")
+#: The model's word for "none of their categories fits".
+NO_CATEGORY = "none"
+
+
+def without_category_note(summary: str) -> str:
+    return _CATEGORY_NOTE.sub("", summary).rstrip()
+
+
+async def category_labels(client: ApiClient) -> list[str]:
+    """The company's switched-on categories as "Main › Sub" (and each main alone), for the model to choose from."""
+    try:
+        response = await client.call("GET", "/materials/categories")
+    except Exception:  # noqa: BLE001
+        return []
+    items = response.body.get("items") if response.ok and isinstance(response.body, dict) else None
+    rows = [r for r in items or [] if isinstance(r, dict) and r.get("is_active", True)]
+    mains = {str(r["id"]): str(r["name"]) for r in rows if not r.get("parent_id")}
+    labels = []
+    for row in rows:
+        parent = str(row.get("parent_id") or "")
+        if not parent:
+            labels.append(str(row["name"]))
+        elif parent in mains:
+            labels.append(f"{mains[parent]} > {row['name']}")
+    return labels
+
+
+async def settle_category(client: ApiClient, body: dict[str, Any], *, ask: bool = True) -> tuple[str, str]:
+    """PRC-02: put a material in one of the company's own categories before it is held.
+
+    The model's ``category`` in words first (it read the whole name: "Stainless steel sink" is sanitaryware), then the
+    name alone when it settles it, through the API (``GET /materials/categories/suggest``, the dashboard's own rule).
+    Returns (label for the card, problem for the model). Neither found and ``ask``: the model is given the company's
+    own list once (a renamed or added category is only there), and says one of them or "none". Found nothing after
+    that, "none", no categories, or the route unreadable: ("", ""), held without one (as before PRC-02)."""
     name = str(body.get("name") or "").strip()
-    if not name:
-        return ""
-    params = {"name": name}
-    if hint := str(body.get("category") or "").strip():
-        params["hint"] = hint
+    hint = str(body.get("category") or "").strip()
+    if hint.casefold() == NO_CATEGORY:
+        body.pop("category", None)
+        return "", ""
+    if not name and not hint:
+        return "", ""
+    params = {k: v for k, v in (("name", name), ("hint", hint)) if v}
     try:
         response = await client.call("GET", "/materials/categories/suggest", params=params)
-    except Exception:  # noqa: BLE001 -- no suggestion: added without a category, as before PRC-02
-        return ""
+    except Exception:  # noqa: BLE001 -- no suggestion: held without a category, as before PRC-02
+        return "", ""
     found = response.body if response.ok and isinstance(response.body, dict) else {}
-    if not found.get("category_id"):
-        return ""
-    body["category_id"] = str(found["category_id"])
-    body.pop("category", None)  # the old free-text group is only a hint for a material with no category
-    return str(found.get("label") or "")
+    if found.get("category_id"):
+        body["category_id"] = str(found["category_id"])
+        body.pop("category", None)  # the old free-text group is only a hint for a material with no category
+        return str(found.get("label") or ""), ""
+    if not ask or not response.ok or not (labels := await category_labels(client)):
+        return "", ""
+    said = f"{hint!r} is not one of the company's categories" if hint else "no category was given"
+    return "", (f"{said}. Nothing was prepared. Call it again now with `category` set to the one of THEIR categories "
+                f"this material belongs in, written exactly as here: {'; '.join(labels)}. If none fits, category "
+                f"\"{NO_CATEGORY}\". Never a category that is not in this list.")
 
 
 def name_key(text: str) -> str:

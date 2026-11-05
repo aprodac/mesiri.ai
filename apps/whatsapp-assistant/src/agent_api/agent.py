@@ -41,6 +41,7 @@ from .fill import (
 )
 from .materials import (
     ADD_TOOL,
+    CATEGORY_NOTE,
     NEW,
     already_listed,
     catalogue,
@@ -49,6 +50,7 @@ from .materials import (
     pending_ref,
     settle_category,
     settle_material,
+    without_category_note,
 )
 from .reply_guard import (
     claims_cannot,
@@ -340,6 +342,8 @@ PHOTO_FIELD = "media_object_key"
 #: the message really came by, so a sheet photo or a voice note is not recorded as typed text.
 TEXT_CHANNEL = "whatsapp_text"
 CHANNELS = frozenset({TEXT_CHANNEL, "whatsapp_voice", "whatsapp_image"})
+#: PRC-02: the tool that changes a material in the list (its category in words, among others).
+UPDATE_MATERIAL_TOOL = "update_material"
 _ASK_TOOL = ToolSpec(name=ASK, description=(
     "Ask the person ONE short question you cannot work out yourself. With options (2-3 short "
     "choices) they answer with one tap. Put the question in your reply too."), parameters={
@@ -499,6 +503,13 @@ class ApiAgent:
                     return {"error": problem}
             unit_note = ""
             size_note = ""
+            category_note = ""
+            if entry.tool in (ADD_TOOL, UPDATE_MATERIAL_TOOL) and {"name", "category"} & set(changes):
+                # PRC-02: a waiting material renamed or moved gets its category worked out again, never the old one.
+                if entry.tool == ADD_TOOL or "category" in changes:
+                    body.pop("category_id", None)
+                    label, _ = await settle_category(client, body, ask=False)
+                    category_note = f"{CATEGORY_NOTE}{label}" if label else ""
             if "unit_id" in body and {"unit_id", "unit", "material_id", "quantity"} & set(changes):
                 # WA-165: a corrected unit, material or quantity is checked against the stock unit like a new line.
                 problem, unit_note = await settle_stock_unit(
@@ -506,6 +517,8 @@ class ApiAgent:
                 if problem:  # WA-197: the change goes through; the size is asked beside it
                     size_note = problem
             summary = (str(arguments.get("confirm_line") or "").strip() + unit_note) or entry.summary
+            if entry.tool in (ADD_TOOL, UPDATE_MATERIAL_TOOL) and {"name", "category"} & set(changes):
+                summary = without_category_note(summary) + category_note
             key = new_idempotency_key()
             waiting[n - 1] = PendingWrite(tool=entry.tool, method=entry.method, path=entry.path, params=entry.params,
                                           body=body, summary=summary, idempotency_key=key)
@@ -720,8 +733,20 @@ class ApiAgent:
                     return ToolOutcome(content={"error": problem})
                 if counted:
                     unit_note = f" · counted in {counted}"
-                if label := await settle_category(client, body):  # PRC-02: shown on the Save card
-                    unit_note += f" · 📂 {label}"
+                label, problem = await settle_category(client, body, ask=not tries.get(f"{name}:category"))
+                if problem:  # PRC-02: the model's category is not theirs: their own list, once
+                    tries[f"{name}:category"] = 1
+                    return ToolOutcome(content={"error": problem})
+                if label:  # shown on the Save card
+                    unit_note += f"{CATEGORY_NOTE}{label}"
+            if name == UPDATE_MATERIAL_TOOL and str(body.get("category") or "").strip():
+                # PRC-02: "put it in Plumbing" moves the material to one of their categories (in words, never an id).
+                label, problem = await settle_category(client, body, ask=not tries.get(f"{name}:category"))
+                if problem:
+                    tries[f"{name}:category"] = 1
+                    return ToolOutcome(content={"error": problem})
+                if label:
+                    unit_note += f"{CATEGORY_NOTE}{label}"
             if name == MEMBER_TOOL:
                 problem, buttons = await settle_member(client, path, body)
                 if problem:
@@ -1498,9 +1523,21 @@ async def _confirm_one(client: ApiClient, entry: PendingWrite, names: tuple[str,
             entry = replace(entry, body=retry, idempotency_key=new_idempotency_key())
             response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
                                          idempotency_key=entry.idempotency_key)
+    if response.status == 422 and entry.body.get("category_id") and CATEGORY_REFUSAL in _detail(response.body):
+        # PRC-02: the category was switched off (or removed) while the line waited: the material is saved without it,
+        # never refused with the delivery that waits on it. The card said the category; the result line says it did not.
+        entry = replace(entry, body={k: v for k, v in entry.body.items() if k != "category_id"},
+                        summary=without_category_note(entry.summary), idempotency_key=new_idempotency_key())
+        response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
+                                     idempotency_key=entry.idempotency_key)
     if not response.ok and is_stock_unit_refusal(_detail(response.body)):
         return await _held_for_size(client, entry) or WriteResult(entry, response.status, response.body)
     return WriteResult(entry, response.status, response.body)
+
+
+#: PRC-02: the API's refusal of a category that is not (or no longer) one of the company's switched-on ones
+#: (``materials/router.py`` ``_require_category``).
+CATEGORY_REFUSAL = "category_id is not one of this company's categories"
 
 
 #: WA-197: the result of a line held for the admin's size (``WriteResult.body``): saved by itself when they answer.

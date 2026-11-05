@@ -87,11 +87,6 @@ def _words(text: str) -> list[str]:
     return out
 
 
-def _contains(name: list[str], phrase: list[str]) -> bool:
-    n = len(phrase)
-    return n > 0 and any(name[i:i + n] == phrase for i in range(len(name) - n + 1))
-
-
 def _starter_paths() -> list[tuple[list[str], Path]]:
     """Every starter material name (as words) and where it goes, longest first ("Binding Wire" before "Wire")."""
     from mesiri.domains.materials.defaults import STARTER_MATERIALS
@@ -100,26 +95,34 @@ def _starter_paths() -> list[tuple[list[str], Path]]:
     for starter in STARTER_MATERIALS:
         path = standard_path_for(starter.name, starter.category)
         if path is not None:
-            paths.append((_words(starter.name), path))
+            paths.append((_meaning(starter.name), path))
     return sorted(paths, key=lambda p: -len(p[0]))
 
 
+#: Size words that say nothing about what a material is ("12 mm", "18 gauge", "53 grade").
+_SIZE_WORDS = frozenset({"mm", "cm", "m", "inch", "in", "ft", "feet", "kg", "gauge", "grade", "sqmm", "ltr", "litre", "l"})
+
+
+def _meaning(text: str) -> list[str]:
+    """The words that say what a material is: sizes and numbers aside ("Aggregate 20mm" -> ["aggregate"])."""
+    return [w for w in _words(text) if w not in _SIZE_WORDS and not any(c.isdigit() for c in w)]
+
+
 def suggest_path(material_name: str) -> Path | None:
-    """Where a new material most likely goes in the standard list, from its name alone, or None.
+    """Where a new material goes in the standard list when its name ALONE settles it, or None.
 
-    1. The name holds a starter material's name ("Cement OPC 53" -> Structural > Masonry, "TMT Steel 12mm" ->
-       Structural > Steel); the longest starter name wins ("Binding Wire" is Steel, not a wire).
-    2. Else a word of the name is a word of exactly ONE category ("Ceramic tiles" -> Finishing > Tiles & flooring,
-       "MCB 32A" -> Electrical > DB & MCBs). A word shared by several ("pipe": plumbing, fire, gas; "fitting") places
-       nothing, and neither do two words pointing to different categories.
-
-    Nothing else is guessed: the caller may ask the model next, and a material may stay without a category.
+    Strict on purpose (5 Nov: "Stainless steel sink" went to Structural > Steel, "Sand paper" to Masonry): every word
+    of the name, sizes and numbers aside, must say the same thing:
+    1. the name is a starter material's name ("Cement", "PVC Pipes", "Binding Wire 18 gauge");
+    2. or every word is a word of exactly ONE category, all the same one ("MCB 32A" -> Electrical > DB & MCBs).
+    A word it does not know ("stainless", "paper", "hammer") or a word several categories share ("pipe", "fitting")
+    places nothing: the caller's hint in words (the model, which reads the whole name) decides, else none.
     """
-    name = _words(material_name)
+    name = _meaning(material_name)
     if not name:
         return None
     for phrase, path in _starter_paths():
-        if _contains(name, phrase):
+        if name == phrase:
             return path
     owners: dict[str, set[Path]] = {}
     for main, subs in STANDARD_CATEGORIES:
@@ -128,7 +131,11 @@ def suggest_path(material_name: str) -> Path | None:
         for sub in subs:
             for word in _words(sub):
                 owners.setdefault(word, set()).add((main, sub))
-    found = {next(iter(owners[w])) for w in name if len(owners.get(w, ())) == 1}
+    found: set[Path] = set()
+    for word in name:
+        if len(owners.get(word, ())) != 1:
+            return None
+        found |= owners[word]
     return next(iter(found)) if len(found) == 1 else None
 
 
@@ -169,3 +176,14 @@ def category_label(categories: list[dict], category: dict) -> str:
     """"Main › Sub", or the main category's name."""
     parent = next((c for c in categories if c["id"] == category.get("parent_id")), None)
     return f"{parent['name']} › {category['name']}" if parent else str(category["name"])
+
+
+def suggest(categories: list[dict], name: str | None, hint: str | None) -> dict:
+    """PRC-02: the answer of ``GET /materials/categories/suggest``: the hint in words first, then the name alone when it
+    settles it; only one of ``categories`` (the company's), never a new one."""
+    found, source = (read_hint(categories, hint), "hint") if hint else (None, "")
+    if found is None and name and (path := suggest_path(name)):
+        found, source = find_category(categories, path), "rule"
+    if found is None:
+        return {"category_id": None, "label": "", "source": ""}
+    return {"category_id": found["id"], "label": category_label(categories, found), "source": source}

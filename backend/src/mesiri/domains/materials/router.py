@@ -320,28 +320,17 @@ async def list_material_categories(
 
 @router.get("/categories/suggest", response_model=CategorySuggestionResponse)
 async def suggest_material_category(
-    name: str = Query(min_length=1, max_length=200, description="The new material's name"),
+    name: str | None = Query(default=None, max_length=200, description="The material's name"),
     hint: str | None = Query(default=None, max_length=200, description="A category in words: 'Plumbing & CP > Pipes'"),
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """PRC-02: where a new material goes. Its name read against the standard list first (fixed rules), then the
-    caller's ``hint``; only one of the company's own switched-on categories, never a new one. None found: none."""
-    from mesiri.domains.materials.categories import (
-        category_label,
-        find_category,
-        read_hint,
-        suggest_path,
-    )
+    """PRC-02: where a material goes. The ``hint`` in words first (the caller read the whole name: "Stainless steel
+    sink" is sanitaryware, not steel), then the name alone when it settles it (fixed rules). Only one of the company's
+    own switched-on categories, never a new one. None found: none."""
+    from mesiri.domains.materials.categories import suggest
 
-    categories = await _category_repo(conn).list_all(auth_context.organization_id)
-    path = suggest_path(name)
-    found, source = (find_category(categories, path), "rule") if path else (None, "")
-    if found is None and hint:
-        found, source = read_hint(categories, hint), "hint"
-    if found is None:
-        return {"category_id": None, "label": "", "source": ""}
-    return {"category_id": found["id"], "label": category_label(categories, found), "source": source}
+    return suggest(await _category_repo(conn).list_all(auth_context.organization_id), name, hint)
 
 
 @router.post("/categories", response_model=MaterialCategoryResponse, status_code=201)
