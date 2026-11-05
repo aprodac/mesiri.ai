@@ -11,13 +11,18 @@ import re
 from runtime.agent.reply_text import sentences
 
 #: "saved", "save cheythu", "daal diya", "സേവ് ചെയ്തു", "सेव कर दिया": the SOP's words for a thing already kept.
+#: WA-195: "noted" / "stored" / "made a note" / "kurichu vechu" / "note kar liya" say the same thing ("I have noted
+#: the information about his increased rate", with no tool called and nothing kept). "Updated" is not here: it is
+#: how the model says it changed a line on the ready list, which is true.
 _SAVED = re.compile(
-    r"\b(?:saved|recorded|logged|added|entered)\b"
-    r"|\b(?:save|record|note|add|entry)\s*(?:cheythu|cheythittund\w*|aakki\w*|aayi)\b"
+    r"\b(?:saved|recorded|logged|added|entered|noted|stored)\b"
+    r"|\b(?:made|taken|took|kept)\s+(?:a\s+)?(?:note|record)\b"
+    r"|\b(?:save|record|note|add|entry)\s*(?:cheythu|cheythittund\w*|chethu|aakki\w*|aayi)\b"
     r"|\brekhappeduthi\w*|\bcherthu\b|\bdaal\s*(?:diya|diye|di)\b"
-    r"|\b(?:save|record|add|darj)\s*(?:kar\s*)?(?:diya|liya|kiya|ho\s*gaya)\b"
-    r"|സേവ്\s*(?:ചെയ്തു|ചെയ്തിട്ടുണ്ട്|ആയി)|രേഖപ്പെടുത്തി|ചേർത്തു"
-    r"|(?:सेव|दर्ज|रिकॉर्ड)\s*(?:कर\s*)?(?:दिया|लिया|किया|हो\s*गया)",
+    r"|\b(?:kurichu|ezhuthi)\s*(?:vechu|vachu|vechittund\w*|vachittund\w*)\b"
+    r"|\b(?:save|record|add|darj|note)\s*(?:kar\s*)?(?:diya|liya|kiya|ho\s*gaya)\b"
+    r"|സേവ്\s*(?:ചെയ്തു|ചെയ്തിട്ടുണ്ട്|ആയി)|രേഖപ്പെടുത്തി|ചേർത്തു|കുറിച്ചു\s*വെച്ചു|കുറിച്ചുവച്ചു|എഴുതി\s*വെച്ചു"
+    r"|(?:सेव|दर्ज|रिकॉर्ड|नोट)\s*(?:कर\s*)?(?:दिया|लिया|किया|हो\s*गया)",
     re.IGNORECASE,
 )
 #: The same words that say the opposite: not yet, once they tap, or about an earlier day ("saved an hour ago").

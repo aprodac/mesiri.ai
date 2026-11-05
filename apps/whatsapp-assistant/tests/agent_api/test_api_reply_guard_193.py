@@ -40,6 +40,10 @@ def _tools(monkeypatch):
 @pytest.mark.parametrize("words", [
     "Saved ✅", "50 bags cement recorded.", "Added to your records.", "njan record cheythu", "save cheythu",
     "stock mein daal diya", "save kar diya", "സേവ് ചെയ്തു", "രേഖപ്പെടുത്തി", "सेव कर दिया", "दर्ज हो गया",
+    # WA-195 (users' feedback, 3 Nov 19:07): "noted" with no tool called, and its siblings.
+    "I have noted the information about the electrician's increased rate.", "Noted.", "Stored it for you.",
+    "I've made a note of the rate.", "I kept a record of it.", "rate note cheythu", "njan kurichu vechittundu",
+    "ezhuthi vechu", "rate note kar liya", "കുറിച്ചുവച്ചു", "नोट कर लिया",
 ])
 def test_a_claim_in_any_language_is_seen(words: str) -> None:
     assert claims_saved(words)
@@ -49,6 +53,9 @@ def test_a_claim_in_any_language_is_seen(words: str) -> None:
     "Nothing saved yet.", "It isn't saved yet.", "Not saved.", "It will be saved when you tap.", "Ready to be saved.",
     "You saved this an hour ago.", "Already saved at 10:00.", "Was it saved?", "save cheythittilla",
     "രേഖപ്പെടുത്തിയിട്ടില്ല", "सेव नहीं किया", "50 bags cement is ready", "Slab work done",
+    # WA-195 guards: noted as a question / not yet / a change on the ready list / a note they are asked for.
+    "Noted, which site?", "I haven't noted it anywhere.", "It will be noted once you tap Save.",
+    "Updated the cement to 10 bags.", "Please send a note of the rate.", "note cheythittilla",
 ])
 def test_what_is_no_claim_stays(words: str) -> None:
     assert not claims_saved(words)
@@ -163,3 +170,21 @@ async def test_an_id_in_the_reply_and_on_the_card_never_reaches_the_person() -> 
 
 def test_without_ids_keeps_plain_words() -> None:
     assert without_ids(LINE) == LINE
+
+
+async def test_noted_with_no_tool_is_cut_and_the_waiting_card_stays() -> None:
+    """WA-195 (users' feedback, 3 Nov 19:07): a card was waiting; "he now wants 1300" got "I have noted the
+    information about his increased rate." with no tool called. Nothing was kept, so the claim goes; the card stays."""
+    app = stand_in_api([])
+    ready = await _waiting(app)
+    noted = "I have noted the information about the electrician's increased rate. One entry is ready for you."
+    client = ApiClient(ACTOR, app=app)
+    try:
+        model = FakeToolCallingProvider([noted, noted])
+        turn = await ApiAgent(model, stand_in_tools(app)).run(client, "electrician ini 1300 venam ennu", ready=ready)
+    finally:
+        await client.close()
+    assert model.calls == 2  # one more try, as for "saved"
+    assert "noted" not in turn.reply.casefold() and "One entry is ready for you." in turn.reply
+    assert "saved" in turn.reply_fixed
+    assert [e.summary for e in turn.pending] == [e.summary for e in ready]
