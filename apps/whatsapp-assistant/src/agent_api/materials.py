@@ -89,18 +89,28 @@ def title(said: str) -> str:
     return " ".join(said.split())[:1].upper() + " ".join(said.split())[1:]
 
 
+async def catalogue(client: ApiClient) -> list[dict[str, Any]]:
+    """The company's active materials (name, aliases, id), the one place this package reads the list. Unreadable:
+    [] (the API's own checks then decide)."""
+    try:
+        response = await client.call("GET", "/materials", params={"limit": 200, "is_active": True})
+    except Exception:  # noqa: BLE001 -- the list unreadable: the API's own checks decide
+        return []
+    items = response.body.get("items") if response.ok and isinstance(response.body, dict) else None
+    return [r for r in items or [] if isinstance(r, dict) and r.get("id")]
+
+
+async def material_name(client: ApiClient, material_id: str) -> str:
+    """The listed name of ``material_id`` ("Paint"), or "" when it is not in the list."""
+    return next((str(r.get("name") or "") for r in await catalogue(client) if str(r["id"]) == material_id), "")
+
+
 async def already_listed(client: ApiClient, name: str) -> str:
     """[243]: the company's material that ``name`` already is (its name or a taught alias, singular or plural), or "".
     A new material is never a second "Cement"."""
     if not name.strip():
         return ""
-    try:
-        response = await client.call("GET", "/materials", params={"limit": 200, "is_active": True})
-    except Exception:  # noqa: BLE001 -- the list unreadable: the API's own checks decide
-        return ""
-    items = response.body.get("items") if response.ok and isinstance(response.body, dict) else None
-    row = next((r for r in items or [] if isinstance(r, dict) and r.get("id")
-                and any(_same(name, n) for n in _names(r))), None)
+    row = next((r for r in await catalogue(client) if any(_same(name, n) for n in _names(r))), None)
     return f"{row['name']} (material_id {row['id']})" if row else ""
 
 
@@ -109,12 +119,7 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
     """Check ``body["material_id"]`` is the material they meant. ``taught``: (material_id, alias) pairs already
     prepared this conversation (the person just chose). Returns ("", []) when it is, else what to tell the model
     and the buttons. The list unreadable: ("", []), and the API's own checks decide."""
-    try:
-        response = await client.call("GET", "/materials", params={"limit": 200, "is_active": True})
-    except Exception:  # noqa: BLE001
-        return "", []
-    items = response.body.get("items") if response.ok and isinstance(response.body, dict) else None
-    rows = [r for r in items or [] if isinstance(r, dict) and r.get("id")]
+    rows = await catalogue(client)
     if not rows:
         return "", []
     picked = str(body.get("material_id") or "")

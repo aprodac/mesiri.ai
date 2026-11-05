@@ -32,7 +32,7 @@ from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
 from .fill import NARRATIVE_REFUSAL, fill_body, missing_in_body, not_english
-from .materials import ADD_TOOL, NEW, already_listed, pending_ref, settle_material
+from .materials import ADD_TOOL, NEW, already_listed, material_name, pending_ref, settle_material
 from .reply_guard import claims_saved, without_ids, without_internals, without_saved_claims
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
 from .units import is_uuid, plain_refusal, resolve_unit, unit_choices, unit_rows
@@ -454,8 +454,9 @@ class ApiAgent:
             waiting[n - 1] = PendingWrite(tool=entry.tool, method=entry.method, path=entry.path, params=entry.params,
                                           body=body, summary=summary, idempotency_key=new_idempotency_key())
             changed.append(n)
-            moved = moved_off_new(waiting, str(entry.body.get("material_id") or ""), str(body.get("material_id") or ""),
-                                  self._tools.get(ALIAS_TOOL))
+            before, after = str(entry.body.get("material_id") or ""), str(body.get("material_id") or "")
+            moved = moved_off_new(waiting, before, after, self._tools.get(ALIAS_TOOL),
+                                  await material_name(client, after) if before.startswith(NEW) and is_uuid(after) else "")
             return {"status": "changed in the ready list, NOT saved", "entry": n, "now": summary, **moved}
 
         async def handler(name: str, arguments: dict) -> ToolOutcome:
@@ -1043,11 +1044,13 @@ MEMBER_TOOL = "add_project_member"
 ALIAS_TOOL = "add_material_alias"
 
 
-def moved_off_new(waiting: list[PendingWrite | None], before: str, after: str, alias_tool: Any) -> dict[str, Any]:
+def moved_off_new(waiting: list[PendingWrite | None], before: str, after: str, alias_tool: Any,
+                  after_name: str = "") -> dict[str, Any]:
     """WA-194: a line for a material waiting to be added (``new:<name>``) was moved to one in the list ("it's
     Paint"). With no line left on it, the new material and its settings leave the ready list (never a stray catalogue
     entry), and the word is remembered as that material's name (an ``add_material_alias`` entry), so it is matched
-    next time. Returns what to tell the model."""
+    next time. ``after_name``: the listed name of ``after`` ("Paint"), for the card line. Returns what to tell
+    the model."""
     if not before.startswith(NEW) or after == before or after.startswith(NEW):
         return {}
     if any(e is not None and str(e.body.get("material_id") or "") == before for e in waiting):
@@ -1063,7 +1066,8 @@ def moved_off_new(waiting: list[PendingWrite | None], before: str, after: str, a
             e is not None and e.tool == ALIAS_TOOL and e.path.split("/")[2] == after for e in waiting):
         waiting.append(PendingWrite(
             tool=ALIAS_TOOL, method=alias_tool.method, path=alias_tool.path.replace("{material_id}", after),
-            params={}, body={"alias": name}, summary=f"🏷️ {name} = the same material from now on",
+            params={}, body={"alias": name},
+            summary=f"🏷️ {name} = {after_name or 'the same material'} from now on",
             idempotency_key=new_idempotency_key()))
         out["also"] += f" {name} is remembered as that material's name (on the list; saves with Save)."
     return out

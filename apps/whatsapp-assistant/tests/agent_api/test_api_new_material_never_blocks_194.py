@@ -44,6 +44,7 @@ async def test_it_is_paint_moves_the_line_drops_the_new_material_and_remembers_t
     turn = await _turn(store, [[change], "Moved to Paint."], "athu paint aanu", ready=held.pending)
     assert [e.tool for e in turn.pending] == ["record_receipt", "add_material_alias"]
     assert turn.pending[1].path == f"/materials/{PAINT}/aliases" and turn.pending[1].body == {"alias": "Primer"}
+    assert turn.pending[1].summary == "🏷️ Primer = Paint from now on"  # the card names the material, not an id
     results = await _save(store, turn.pending)
     assert all(r.ok for r in results)
     assert [r["name"] for r in store.catalog] == ["Paint"]  # no stray Primer in the catalogue
