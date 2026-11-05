@@ -40,6 +40,14 @@ function isScopeAllowed(scope: AppScope, allowed: string[]): boolean {
   return allowed.includes(scope.mode)
 }
 
+function forgetStoredScope() {
+  try {
+    localStorage.removeItem(SCOPE_STORAGE_KEY)
+  } catch {
+    // storage unavailable: nothing to forget
+  }
+}
+
 export function ScopeProvider({ children }: { children: React.ReactNode }) {
   const { me } = useAuth()
   const allowed = useAllowedScopes()
@@ -152,6 +160,9 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
   // Restore scope from localStorage / apply role-based fallback on initial load
   const hasResolvedInitialScope = React.useRef(false)
+  // The site restored from storage: checked once the project's sites arrive, and dropped
+  // quietly if it is gone, instead of blocking the page the person asked for.
+  const restoredSiteId = React.useRef<string | null>(null)
 
   React.useEffect(() => {
     if (!me || projects.length === 0) return
@@ -182,18 +193,25 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       const stored = localStorage.getItem(SCOPE_STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored) as AppScope
-        if (isScopeAllowed(parsed, allowed)) {
-          setSearchParams((prev) => {
-            if (parsed.mode === 'project' || parsed.mode === 'site') {
+        // A stored project that was deleted, or belongs to an account that used this browser
+        // before, must not be put in the URL: it would block every page with "doesn't exist".
+        const stillVisible =
+          parsed.mode !== 'portfolio' && projects.some((p) => p.id === parsed.projectId)
+        if (stillVisible && isScopeAllowed(parsed, allowed)) {
+          if (parsed.mode === 'site') restoredSiteId.current = parsed.siteId
+          setSearchParams(
+            (prev) => {
               prev.set('project', parsed.projectId)
-            }
-            if (parsed.mode === 'site') {
-              prev.set('site', parsed.siteId)
-            }
-            return prev
-          })
+              if (parsed.mode === 'site') {
+                prev.set('site', parsed.siteId)
+              }
+              return prev
+            },
+            { replace: true }
+          )
           return
         }
+        forgetStoredScope()
       }
     } catch {
       // ignore malformed scope
@@ -207,10 +225,13 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     // For project-restricted roles, fall back to first accessible project
     const defaultProject = projects[0]
     if (defaultProject) {
-      setSearchParams((prev) => {
-        prev.set('project', defaultProject.id)
-        return prev
-      })
+      setSearchParams(
+        (prev) => {
+          prev.set('project', defaultProject.id)
+          return prev
+        },
+        { replace: true }
+      )
     }
   }, [me, projects, allowed, searchParams, setSearchParams, routeProjectId])
 
@@ -242,15 +263,6 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       siteName,
     }
   }, [projectId, siteId, projects, sites])
-
-  // Persist resolved scope to localStorage as a convenience
-  React.useEffect(() => {
-    if (scope.mode !== 'portfolio') {
-      try {
-        localStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify(scope))
-      } catch {}
-    }
-  }, [scope])
 
   // Validate scope parameters
   const validation = React.useMemo(() => {
@@ -291,6 +303,41 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     isSitesFetching,
   ])
 
+  // Persist the scope as a convenience, but only one that was checked: a dead id from a link
+  // or a bookmark saved here came back on every reload and every later WhatsApp link.
+  const scopeIsResolved =
+    scope.mode === 'portfolio' ||
+    (projects.some((p) => p.id === scope.projectId) &&
+      (scope.mode === 'project' || sites.some((s) => s.id === scope.siteId)))
+
+  React.useEffect(() => {
+    if (scope.mode === 'portfolio' || !validation.isValid || !scopeIsResolved) return
+    try {
+      localStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify(scope))
+    } catch {
+      // storage unavailable: the scope still works from the URL
+    }
+  }, [scope, validation.isValid, scopeIsResolved])
+
+  // A site that came from storage and no longer exists: drop it, stay on the project.
+  React.useEffect(() => {
+    if (!siteId || siteId !== restoredSiteId.current) return
+    if (sites.some((s) => s.id === siteId)) {
+      restoredSiteId.current = null
+      return
+    }
+    if (isSitesLoading || isSitesFetching || !hasAttemptedSiteRefetch) return
+    restoredSiteId.current = null
+    forgetStoredScope()
+    setSearchParams(
+      (prev) => {
+        prev.delete('site')
+        return prev
+      },
+      { replace: true }
+    )
+  }, [siteId, sites, isSitesLoading, isSitesFetching, hasAttemptedSiteRefetch, setSearchParams])
+
   const setPortfolioScope = () => {
     setSearchParams((prev) => {
       prev.delete('project')
@@ -329,8 +376,27 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     )
   }
 
+  // The way out of a dead link: forget the stored scope too (or the next reload brings it
+  // back), and land where the role may be: all projects, or the first project it can see.
+  const leaveInvalidScope = () => {
+    forgetStoredScope()
+    const fallback = allowed.includes('portfolio') ? null : projects[0]
+    setSearchParams(
+      (prev) => {
+        prev.delete('site')
+        if (fallback) prev.set('project', fallback.id)
+        else prev.delete('project')
+        return prev
+      },
+      { replace: true }
+    )
+  }
+  const canLeave = allowed.includes('portfolio') || projects.length > 0
+  const siteOnlyBad = !!projectId && projects.some((p) => p.id === projectId)
+
   // Render error UI if scope parameters are invalid
-  if (!validation.isValid) {
+  const isRestoredSitePending = !!siteId && siteId === restoredSiteId.current
+  if (!validation.isValid && !isRestoredSitePending) {
     return (
       <div className="flex h-svh items-center justify-center p-6 text-center">
         <div className="flex flex-col items-center gap-4 max-w-md bg-card p-6 rounded-lg border border-border shadow-xs">
@@ -339,9 +405,28 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-muted-foreground leading-relaxed">
             {validation.reason}
           </p>
-          <Button size="sm" onClick={setPortfolioScope} className="mt-2">
-            Show all projects
-          </Button>
+          {siteOnlyBad ? (
+            <Button
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                forgetStoredScope()
+                setSearchParams(
+                  (prev) => {
+                    prev.delete('site')
+                    return prev
+                  },
+                  { replace: true }
+                )
+              }}
+            >
+              Show the whole project
+            </Button>
+          ) : canLeave ? (
+            <Button size="sm" onClick={leaveInvalidScope} className="mt-2">
+              {allowed.includes('portfolio') ? 'Show all projects' : 'Go to my project'}
+            </Button>
+          ) : null}
         </div>
       </div>
     )
