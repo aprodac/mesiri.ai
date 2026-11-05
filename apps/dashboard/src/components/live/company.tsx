@@ -24,6 +24,7 @@ import {
   Play,
   PackageMinus,
   PencilLine,
+  Sparkles,
   Truck,
   Undo2,
   X,
@@ -111,6 +112,7 @@ const KINDS: Record<LiveKind, KindLook> = {
   language: { icon: Languages, goes: null, tone: 'info' },
   report: { icon: FileText, goes: 'Reports', tone: 'info' },
   question: { icon: HelpCircle, goes: null, tone: 'info' },
+  intro: { icon: Sparkles, goes: null, tone: 'info' },
   saved: { icon: CheckCheck, goes: null, tone: 'work' },
   cancelled: { icon: XCircle, goes: null, tone: 'plain' },
   photo: { icon: Camera, goes: null, tone: 'plain' },
@@ -462,6 +464,19 @@ export function CompanyLive({
       while (greeting.current) await new Promise((r) => window.setTimeout(r, 300))
       const item = queue.current.shift()!
       const live = speed.current === 1
+      // WEB-60: they asked what Mesiri can do: the message comes in, then Mesiri's whole introduction plays for them,
+      // then its own answer, as a conversation.
+      if (live && item.kind === 'intro') {
+        setShown((s) => new Set(s).add(item.id))
+        setBeat((b) => b + 1)
+        setCurrent({ item, step: 'arrive', alarm: null })
+        await wait(STEP_MS)
+        setCurrent(null)
+        await showMeet(item.sender_name?.split(/\s+/)[0] ?? null, false)
+        setCurrent({ item, step: 'done', alarm: null })
+        await wait(STEP_MS + 3_000)
+        continue
+      }
       // Someone's first message ever: Mesiri says hello before it reads it.
       if (live && item.first_message) {
         await showMeet(item.sender_name?.split(/\s+/)[0] ?? null, true)
@@ -650,7 +665,7 @@ export function CompanyLive({
     if (m.kind === 'language' && (current.step === 'understood' || current.step === 'done')) return 'language'
     if (current.step === 'done' && m.state === 'asked' && m.asked) return 'asked'
     if (current.step === 'done' && m.kind === 'question' && cleanReply(m.reply)) return 'answer'
-    if (current.step === 'done' && (m.kind === 'chat' || m.kind === 'photo') && m.text && cleanReply(m.reply)) return 'chat'
+    if (current.step === 'done' && (m.kind === 'chat' || m.kind === 'photo' || m.kind === 'intro') && m.text && cleanReply(m.reply)) return 'chat'
     return null
   })()
   const answers = current ? qa.of.get(current.item.id) ?? null : null
@@ -998,7 +1013,7 @@ export function CompanyLive({
                     const s = sites.find((x) => x.site_id === e.target.value)
                     if (s) openSite(s.site_id, s.project_id)
                   }}
-                  className="h-9 border border-foreground/30 bg-background px-2 text-sm"
+                  className="h-9 w-full min-w-0 border border-foreground/30 bg-background px-2 text-sm"
                 >
                   <option value="">Open a site… ({totals.reported} of {sites.length} heard from)</option>
                   {sites.map((s) => (
