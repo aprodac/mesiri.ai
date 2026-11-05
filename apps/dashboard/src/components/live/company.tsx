@@ -38,6 +38,7 @@ import {
   fetchSiteDaysApi,
   type LiveFeedItem,
   type LiveKind,
+  type ProjectDayItem,
 } from '@/lib/api'
 import { noticeOf } from '@/lib/live-reading'
 import { longDate } from '@/lib/site-day'
@@ -52,6 +53,8 @@ import { CountTo } from './ink'
 import { LIVE_MODULES, useCinematicGo } from './modules'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
+import { Finale } from './finale'
+import { ProjectSheet, ReportStrip, SHEET_MS } from './report'
 import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, LanguageMoment, answers as answersOf, cleanReply } from './moments'
 import { Spark, type SparkMood } from './spark'
 
@@ -542,6 +545,47 @@ export function CompanyLive({
   }, [feed.data, shown, current, play, replaying])
 
   // Each site's flagged lines as the page opens, so a mistake caught later shows as new.
+  // WEB-61: a project's report going out (its "sent" turning on in the polled site-days): its sheet builds on the
+  // stage from the day's sites, then folds into the PDF and drops into WhatsApp (the site Live's Finale).
+  const [sending, setSending] = React.useState<{ project: ProjectDayItem; from: DOMRect | null } | null>(null)
+  const sheetRef = React.useRef<HTMLDivElement>(null)
+  const sentBefore = React.useRef<Map<string, boolean> | null>(null)
+  const sendQueue = React.useRef<ProjectDayItem[]>([])
+  const nextSend = React.useCallback(() => {
+    if (greeting.current || playing.current) return
+    const project = sendQueue.current.shift()
+    if (!project) return
+    greeting.current = true // messages that come meanwhile wait for it
+    setSending({ project, from: null })
+    window.setTimeout(
+      () => setSending((s) => (s ? { ...s, from: sheetRef.current?.getBoundingClientRect() ?? new DOMRect(window.innerWidth / 2 - 300, 120, 600, 600) } : s)),
+      prefersReducedMotion() ? 600 : SHEET_MS,
+    )
+  }, [])
+  const sentDone = React.useCallback(() => {
+    setSending(null)
+    greeting.current = false
+    if (sendQueue.current.length) window.setTimeout(nextSend, 400)
+    else if (queue.current.length) void play()
+  }, [nextSend, play])
+  React.useEffect(() => {
+    const projects = days.data?.projects ?? []
+    if (!days.data || !isToday) return
+    if (sentBefore.current === null) {
+      sentBefore.current = new Map(projects.map((p) => [p.project_id, p.sent]))
+      return
+    }
+    for (const p of projects) {
+      if (p.sent && sentBefore.current.get(p.project_id) === false) sendQueue.current.push(p)
+      sentBefore.current.set(p.project_id, p.sent)
+    }
+    if (sendQueue.current.length && !sending) nextSend()
+  }, [days.data, isToday, nextSend, sending])
+  // A report due while a message plays goes out once it is done.
+  React.useEffect(() => {
+    if (!current && !hello && !sending && sendQueue.current.length) nextSend()
+  }, [current, hello, sending, nextSend])
+
   const flagSites = React.useMemo(() => (days.data?.items ?? []).slice(0, FLAG_SITES_MAX).map((s) => s.site_id).join(','), [days.data])
   React.useEffect(() => {
     if (!isToday || !flagSites) return
@@ -776,6 +820,12 @@ export function CompanyLive({
           </div>
         </header>
         <div className="h-px bg-foreground" />
+        <ReportStrip
+          projects={days.data?.projects ?? []}
+          sites={sites}
+          isToday={isToday}
+          onSite={(s) => openSite(s.site_id, s.project_id)}
+        />
 
         {telling && !presenting && (
           <div className="mt-6 border border-foreground px-4 py-4 animate-in fade-in slide-in-from-top-2 duration-300 motion-reduce:animate-none">
@@ -822,7 +872,20 @@ export function CompanyLive({
               aria-label="Mesiri"
               className={cn('order-1 min-w-0 lg:order-2', current?.alarm && 'relative z-40', hello && 'lg:col-span-2 lg:order-1 xl:col-span-1 xl:order-2')}
             >
-              {hello ? (
+              {sending ? (
+                <div className="sticky top-6 grid justify-items-center gap-4 border border-foreground/15 bg-background px-4 py-6 text-center sm:px-6">
+                  <Spark mood="send" size={presenting ? 120 : 90} />
+                  <div>
+                    <Label className="block">The day’s report</Label>
+                    <p className={cn('m-0 mt-1 font-medium', presenting ? 'text-[26px]' : 'text-[20px]')}>
+                      <Typed text={`${sending.project.project_name}: the day’s messages become the report.`} />
+                    </p>
+                  </div>
+                  <div className={cn('w-full', sending.from && 'invisible')}>
+                    <ProjectSheet ref={sheetRef} project={sending.project} sites={sites} company={company ?? null} date={date} />
+                  </div>
+                </div>
+              ) : hello ? (
                 <div className="sticky top-6 border-2 border-foreground bg-background px-4 py-5 sm:px-7 sm:py-6">
                   <MeetMesiri
                     to={hello.to}
@@ -1045,6 +1108,16 @@ export function CompanyLive({
         </div>
       </footer>
 
+      {sending?.from && (
+        <Finale
+          from={sending.from}
+          projectId={sending.project.project_id}
+          company={company ?? ''}
+          code={null}
+          site={sending.project.project_name}
+          onDone={sentDone}
+        />
+      )}
       {sitePanel && (
         <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true" aria-label="A site’s day">
           <button type="button" aria-label="Close" onClick={onCloseSite} className="absolute inset-0 cursor-default bg-foreground/30 animate-in fade-in duration-300" />
