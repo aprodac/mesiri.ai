@@ -486,12 +486,13 @@ sender's WhatsApp chat. Used by: entry, stock history and invoice
   "Moved to Block B" / "Moved from Block A". Never show the codes.
 - **No bulk actions.** Corrections are one at a time from an entry.
 
-### The Spark (WEB-53)
+### Mesiri's character (WEB-53)
 
-Mesiri's character on the company Live: a small glowing orb in the brand colour with two eyes and a
-yellow hard hat (`components/live/spark.tsx`, SVG and CSS, `spark-*` keyframes in `index.css`). Its
-moods follow what Mesiri does with a message: `idle` (breathes, blinks), `alert` (a message came),
-`listen` (voice note), `look` (photo, with a magnifying glass), `think`, `happy` (saved: a hop and
-sparkles), `worry` (not saved: a red hand sign), `send` (a report: a paper plane). Reduced motion
-keeps the faces and drops the movement. Later, the same character can be empty states, loading and
-onboarding; not done yet.
+Mesiri's character on the company Live: an orange hard hat over a line-drawn face (chosen 5 Nov from
+five options, then six variations of the hat: "C · With a face"). Flat: black line, one orange
+accent, no glow or gradients; fixed colours, so it reads as a sticker in dark mode too
+(`components/live/spark.tsx`, `spark-*` keyframes in `index.css`). Its moods follow what Mesiri does
+with a message: `idle` (blinks), `alert` (a message came), `listen` (voice note, sound waves), `look`
+(photo, a magnifying glass), `think` (thought dots), `happy` (saved: a hop and a green tick), `worry`
+(not saved: frown and a red "!"), `send` (a report: a paper plane). Reduced motion keeps the faces and
+drops the movement. Later, the same character can be empty states, loading and onboarding; not done yet.
