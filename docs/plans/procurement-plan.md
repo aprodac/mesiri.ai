@@ -1,7 +1,7 @@
 # Procurement and materials by category: plan for the builder client (Nov 2026)
 
-> **Status:** Phase 2 plan, written 5 Nov 2026, waiting for review. Not started. Tracker items
-> `PRC-00`..`PRC-20` go into [V1_TRACKER.md](V1_TRACKER.md) once the plan is agreed. Mockups (sample data): https://claude.ai/artifact/KF8avukxwaXK4Wr7Dq9BXR
+> **Status:** plan written 5 Nov 2026; tracker items `PRC-00`..`PRC-20` in [V1_TRACKER.md](V1_TRACKER.md).
+> **Built:** PRC-01 (categories) and PRC-03 (standard list), 5 Nov 2026 — see §4a. Mockups (sample data): https://claude.ai/artifact/KF8avukxwaXK4Wr7Dq9BXR
 >
 > **Source:** the sales meeting with a builder (onboarding through Riyas, ₹4,000/month plus onboarding fee,
 > 1–2 weeks to go live). The builder does whole projects, structure to finishing, with 4–5 engineers per site
@@ -93,6 +93,21 @@ A delivery's "billed" state is not stored; it is `material_receipts.invoice_id I
 received quantity is the sum of its receipts, never a copy. Filling in vendor links and categories for
 existing rows is a separate job that can be run again safely and fills only empty fields: nothing existing
 is overwritten.
+
+### 4a. As built: categories (PRC-01, PRC-03)
+
+- Two levels only. A main category has no parent; a sub-category's parent is a main category (the API refuses
+  a third level: sizes and types such as "2-way" or "20 mm" stay separate materials).
+- Names are unique per parent, ignoring case and spaces; "Pipes & fittings" can sit under Fire protection and
+  under Gas.
+- A material points at one category, main or sub (`materials_catalog.category_id`). Totals for a main category
+  include its sub-categories (the dashboard adds them up).
+- A category holding materials or sub-categories is switched off, never deleted; its materials keep it, and it is
+  no longer offered for new ones.
+- Placing existing materials (D5 default): by starter name ("PVC Pipe" → Plumbing & CP › Pipes) or by an exact old
+  group ("Masonry" → Structural › Masonry). Nothing else is guessed.
+- Migration 0503's index on `category_id` is named `ix_materials_catalog_category_id`: migration 0180 already owns
+  `ix_materials_catalog_category` (on the old text column).
 
 ---
 
