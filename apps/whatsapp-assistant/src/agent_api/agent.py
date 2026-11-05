@@ -698,7 +698,8 @@ class ApiAgent:
                         size_needed.append({"material_id": body["material_id"], "from_unit_id": body["unit_id"],
                                             "path": path, "body": dict(body), "key": line_key,
                                             "summary": str(arguments.get(CONFIRM_ARG) or "").strip()})
-                elif new_ref:  # WA-166: a line for a material waiting to be added, in a unit it will not be counted in
+                elif new_ref and not await adopt_line_unit(client, body, new_ref, waiting, new):
+                    # WA-166: a line for a material waiting to be added, in a unit it will not be counted in
                     size_hint = await settle_new_line_unit(client, body, new_ref, [*waiting, *new])
             if tool.is_write and "from_unit_id" in tool.body_fields:
                 problem = await settle_unit(client, body, "from_unit_id")
@@ -1456,6 +1457,37 @@ async def settle_new_material_unit(client: ApiClient, body: dict[str, Any]) -> t
     if body.get("default_unit_id"):
         return await settle_unit(client, body, "default_unit_id"), ""
     return "", ""
+
+
+#: [254]: units a delivery comes in that are never how a material is counted (a lorry load, a drum of a size nobody
+#: said): a new material's line in one of these keeps the material's natural unit and asks the size (WA-166).
+NOT_A_STOCK_UNIT = frozenset({"load", "trip", "truck", "lorry", "drum", "tin", "bucket", "bundle"})
+_COUNTED_IN = re.compile(r" · counted in [^·]*?(?= · |\s*$)")
+
+
+async def adopt_line_unit(client: ApiClient, body: dict[str, Any], ref: str, waiting: list[PendingWrite | None],
+                          new: list[PendingWrite]) -> bool:
+    """[254] (5 Nov, Adarsh: "10 bags metal" held "Add Metal · counted in Cubic Feet", and "I don't need cubic feet"
+    kept it in cft): a new material is counted in the unit of its own line (bags), not a unit nobody said. The held
+    add is changed in place (its unit and its card note, once). False when the line's unit is a delivery unit
+    (``NOT_A_STOCK_UNIT``: WA-166's "1 load TMT"), already the material's, or unknown: then the size is asked as before."""
+    name = alias_key(ref.removeprefix(NEW))
+    unit_id = str(body.get("unit_id") or "")
+    for entries in (new, waiting):
+        for i, e in enumerate(entries):
+            if e is None or e.tool != ADD_TOOL or alias_key(str(e.body.get("name") or "")) != name:
+                continue
+            if not is_uuid(unit_id) or str(e.body.get("default_unit_id") or "") == unit_id:
+                return False
+            unit = next((u for u in await _units(client) if str(u.get("id")) == unit_id), None)
+            if unit is None or str(unit.get("code") or "").casefold() in NOT_A_STOCK_UNIT:
+                return False
+            label = str(unit.get("display_name") or unit.get("code"))
+            head, mark, category = _COUNTED_IN.sub("", e.summary).rstrip().partition(CATEGORY_NOTE)
+            summary = f"{head.rstrip()} · counted in {label}" + (f"{mark}{category}" if mark else "")
+            entries[i] = replace(e, body={**e.body, "default_unit_id": unit_id}, summary=summary)
+            return True
+    return False
 
 
 async def settle_new_line_unit(client: ApiClient, body: dict[str, Any], ref: str, others: list[PendingWrite | None]) -> str:
