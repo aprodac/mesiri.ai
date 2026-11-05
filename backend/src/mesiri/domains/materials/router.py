@@ -431,6 +431,72 @@ async def delete_material_category(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Excel import (PRC-05): items with categories, vendors, opening stock
+# ---------------------------------------------------------------------------
+class MaterialImportFile(BaseModel):
+    #: The .xlsx file, base64 (the dashboard reads the file in the browser and sends it as JSON).
+    file_base64: str = Field(min_length=1)
+
+
+def _import_rows(auth_context: AuthorizationContext, body: MaterialImportFile) -> list:
+    import base64
+    import binascii
+
+    from mesiri.authorization.roles import may_set_unit_conversions
+    from mesiri.domains.materials.importer import ImportFileError, read_workbook
+
+    if not may_set_unit_conversions(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only an admin or a project manager can import materials.")
+    try:
+        data = base64.b64decode(body.file_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="The file could not be read. Choose it again.") from exc
+    try:
+        return read_workbook(data)
+    except ImportFileError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/import/template")
+async def material_import_template(auth_context: AuthorizationContext = Depends(get_auth_context)):
+    """The workbook to fill: Items, Vendors, Opening stock, and how to fill them."""
+    from fastapi.responses import Response
+
+    from mesiri.domains.materials.importer import template_bytes
+
+    return Response(
+        content=template_bytes(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="mesiri-materials-import.xlsx"'},
+    )
+
+
+@router.post("/import/preview")
+async def preview_material_import(
+    body: MaterialImportFile,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """What importing this workbook would do, row by row, with nothing saved."""
+    from mesiri.domains.materials.importer import preview
+
+    return await preview(conn, auth_context, _import_rows(auth_context, body))
+
+
+@router.post("/import")
+async def run_material_import(
+    body: MaterialImportFile,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Import the workbook: every row that can go in does, through the same rules as the dashboard's own buttons;
+    a refused row is listed with its reason. Safe to run again: rows already in Mesiri are left as they are."""
+    from mesiri.domains.materials.importer import run
+
+    return await run(conn, auth_context, _import_rows(auth_context, body))
+
+
 class UnitConversionSet(BaseModel):
     """How much ONE of the reported unit is in the material's Stock Unit ("1 bar = 10.67 kg")."""
 
@@ -1403,7 +1469,15 @@ async def create_inflow(
         replayed = await _claim_idempotency_key(conn, idempotency_key, "material_inflow_rest")
         if replayed is not None:
             return {**replayed, "status": "replayed"}
+    result = await record_inflow(conn, auth_context, body)
+    if idempotency_key:
+        await _complete_idempotency_key(conn, idempotency_key, result)
+    return result
 
+
+async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContext, body: MaterialInflowCreate) -> dict:
+    """One delivery (or opening stock, adjustment) with every rule of ``POST /materials/inflows``: the route and the
+    Excel import (PRC-05) both record through here. Raises ``HTTPException`` for a refused line."""
     if not is_valid_receipt_reason(body.movement_reason):
         raise HTTPException(
             status_code=422, detail=f"Invalid inflow movement_reason: {body.movement_reason}"
@@ -1487,10 +1561,7 @@ async def create_inflow(
             "occurred_date_source": "reported",
         },
     )
-    result = {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
-    if idempotency_key:
-        await _complete_idempotency_key(conn, idempotency_key, result)
-    return result
+    return {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
 
 
 @router.post("/outflows", status_code=201)

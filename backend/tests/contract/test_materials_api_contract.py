@@ -2034,3 +2034,117 @@ async def test_vendor_phone_and_gstin_are_checked_kept_and_cleared(client, admin
     assert kept.json()["gstin"] == "32ABCDE1234F1Z5" and kept.json()["address"] == "Edappally, Kochi"
     cleared = await client.patch(f"/finance/vendors/{vendor['id']}", json={"phone": None}, headers=_auth(token))
     assert cleared.json()["phone"] is None and cleared.json()["gstin"] == "32ABCDE1234F1Z5"
+
+
+# ---------------------------------------------------------------------------
+# PRC-05: Excel import of items, vendors and opening stock
+# ---------------------------------------------------------------------------
+def _workbook(items=(), vendors=(), opening=()) -> str:
+    import base64
+    import io
+
+    from openpyxl import Workbook
+
+    from mesiri.domains.materials.importer import COLUMNS
+
+    book = Workbook()
+    book.remove(book.active)
+    for sheet, rows in (("Items", items), ("Vendors", vendors), ("Opening stock", opening)):
+        page = book.create_sheet(sheet)
+        page.append(list(COLUMNS[sheet]))
+        for row in rows:
+            page.append(list(row))
+    out = io.BytesIO()
+    book.save(out)
+    return base64.b64encode(out.getvalue()).decode()
+
+
+def _results(report: dict) -> dict:
+    return {(r["sheet"], r["row"]): (r["result"], r["message"]) for r in report["rows"]}
+
+
+async def test_the_import_template_has_the_three_sheets(client, admin_ctx):
+    import io
+
+    from openpyxl import load_workbook
+
+    resp = await client.get("/materials/import/template", headers=_auth(admin_ctx["token"]))
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/vnd.openxmlformats")
+    book = load_workbook(io.BytesIO(resp.content))
+    assert book.sheetnames == ["How to fill", "Items", "Vendors", "Opening stock"]
+    assert [c.value for c in book["Items"][1]] == ["Main category", "Sub-category", "Item", "Unit", "Item code",
+                                                    "Other names"]
+
+
+async def test_import_preview_saves_nothing_and_the_import_saves_what_it_said(client, admin_ctx):
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    await _make_material(client, token, "Cement", bags_id)  # already there, no category yet
+    file = _workbook(
+        items=[
+            ("Electrical", "Switches & sockets", "2-way switch 6A 1-module", "nos", "SW-2W", "2 way switch"),
+            ("Electrical", None, "MCB 32A", "nos", None, None),
+            ("Structural", "Masonry", "Cement", "bags", None, "simant"),
+            (None, None, "Mystery", "furlongs", None, None),
+            (None, "Pipes", "PVC pipe 1 inch", "nos", None, None),
+        ],
+        vendors=[
+            ("KMS Agencies", "+91 98470 12345", "32abcde1234f1z5", "Kakkanad"),
+            ("Bad GST Co", None, "32ABC", None),
+        ],
+        opening=[
+            ("Test Project", "Test Site", "2-way switch 6A 1-module", 40, "01-11-2026"),
+            (None, "Test Site", "Cement", "120", None),
+            (None, "Test Site", "Unknown thing", 5, None),
+            (None, "Nowhere", "Cement", 5, None),
+        ],
+    )
+
+    preview = await client.post("/materials/import/preview", json={"file_base64": file}, headers=_auth(token))
+    assert preview.status_code == 200, preview.text
+    report = preview.json()
+    assert report["saved"] is False
+    assert report["counts"]["Items"] == {"added": 2, "placed": 1, "problem": 2}
+    assert report["counts"]["Vendors"] == {"added": 1, "problem": 1}
+    assert report["counts"]["Opening stock"] == {"added": 2, "problem": 2}
+    assert report["counts"]["Categories"] == {"added": 4}  # Electrical, Switches & sockets, Structural, Masonry
+    rows = _results(report)
+    assert rows[("Items", 5)][0] == "problem" and "furlongs" in rows[("Items", 5)][1]
+    assert "main category" in rows[("Items", 6)][1]
+    assert "15 characters" in rows[("Vendors", 3)][1]
+    assert "Items sheet" in rows[("Opening stock", 4)][1] and "Nowhere" in rows[("Opening stock", 5)][1]
+    names = {m["name"] for m in (await client.get("/materials", headers=_auth(token))).json()["items"]}
+    assert names == {"Cement"}  # the preview kept nothing
+    assert (await client.get("/materials/categories", headers=_auth(token))).json()["items"] == []
+
+    done = (await client.post("/materials/import", json={"file_base64": file}, headers=_auth(token))).json()
+    assert done["saved"] is True and done["counts"] == report["counts"]
+    mats = {m["name"]: m for m in (await client.get("/materials", params={"limit": 200}, headers=_auth(token))).json()["items"]}
+    assert set(mats) == {"Cement", "2-way switch 6A 1-module", "MCB 32A"}
+    assert mats["2-way switch 6A 1-module"]["sku"] == "SW-2W" and "2 way switch" in mats["2-way switch 6A 1-module"]["aliases"]
+    assert mats["Cement"]["category_id"] is not None and "simant" in mats["Cement"]["aliases"]
+    stock = {r["material_name"]: Decimal(r["current_stock"])
+             for r in (await client.get("/materials/inventory", headers=_auth(token))).json()}
+    assert stock == {"2-way switch 6A 1-module": 40, "Cement": 120}
+
+    again = (await client.post("/materials/import", json={"file_base64": file}, headers=_auth(token))).json()
+    assert again["counts"]["Items"] == {"existing": 3, "problem": 2}
+    assert again["counts"]["Vendors"] == {"existing": 1, "problem": 1}
+    assert again["counts"]["Opening stock"] == {"problem": 4}  # opening stock goes in once per site and item
+    assert again["counts"]["Categories"] == {"added": 0}
+
+
+async def test_import_is_for_admins_and_reads_only_excel(client, test_engine, test_org, admin_ctx):
+    engineer = await _make_user(test_engine, test_org, "SITE_ENGINEER")
+    file = _workbook(items=[(None, None, "Nails", "nos", None, None)])
+    resp = await client.post(
+        "/materials/import/preview", json={"file_base64": file},
+        headers=_auth(_token(engineer, test_org, "SITE_ENGINEER")),
+    )
+    assert resp.status_code == 403
+    import base64
+
+    bad = base64.b64encode(b"name,unit\nNails,nos\n").decode()
+    resp = await client.post("/materials/import/preview", json={"file_base64": bad}, headers=_auth(admin_ctx["token"]))
+    assert resp.status_code == 422 and "Excel" in resp.json()["detail"]
