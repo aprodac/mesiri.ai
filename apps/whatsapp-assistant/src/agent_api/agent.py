@@ -650,10 +650,13 @@ class ApiAgent:
                 # (a new material "സിമന്റ്" is then "Cement", already in the list, never a second one).
                 await translate_body(self._provider, tool.spec.parameters, body, correlation_id)
             body.update({k: (channel if v == TEXT_CHANNEL else v) for k, v in tool.fixed})
-            if tool.is_write and str(body.get("vendor_text") or "").strip():
-                # WA-201 (basic 5, no duplicates): "ravi trader" for the listed "Ravi Traders" is that vendor, not a new one.
-                if (listed := await known_vendor(client, str(body["vendor_text"]))) and listed != body["vendor_text"]:
-                    body["vendor_text"] = listed
+            for shop_field in ("vendor_text", "supplier"):
+                # WA-201 (basic 5, no duplicates): "ravi trader" for the listed "Ravi Traders" is that vendor, not a
+                # new one; PRC-04: a delivery's supplier the same way (the API links it to that vendor).
+                if not (tool.is_write and str(body.get(shop_field) or "").strip()):
+                    continue
+                if (listed := await known_vendor(client, str(body[shop_field]))) and listed != body[shop_field]:
+                    body[shop_field] = listed
             if tool.is_write and (sum_ := worked_out(own_words(text), body)) and not tries.get(f"{name}:sum"):
                 # WA-200 (basic 4, never change their data): "2 drum primer" held as 40 litres (2 x 20), the model's
                 # arithmetic. The quantity is the number they said, in their unit; the code converts. Once: a number

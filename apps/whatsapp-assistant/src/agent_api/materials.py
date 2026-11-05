@@ -246,9 +246,15 @@ async def settle_category(client: ApiClient, body: dict[str, Any], *, ask: bool 
 
 def name_key(text: str) -> str:
     """WA-201: how a vendor's name is matched: case, spaces and punctuation aside, each word singular ("Ravi
-    Traders." = "ravi trader")."""
+    Traders." = "ravi trader"; PRC-04: "KMS Agencies" = "kms agency", "Supplies" = "supply")."""
     words = _WORD.findall(alias_key(text))
-    return " ".join(w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words)
+    return " ".join(_singular(w) for w in words)
+
+
+def _singular(word: str) -> str:
+    if len(word) > 4 and word.endswith("ies"):
+        return word[:-3] + "y"
+    return word[:-1] if len(word) > 3 and word.endswith("s") else word
 
 
 async def known_vendor(client: ApiClient, said: str) -> str:
