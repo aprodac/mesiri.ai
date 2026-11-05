@@ -54,6 +54,7 @@ from runtime.team_notify import poke_watch_soon
 
 from .agent import (
     LANGUAGE_LINES,
+    SIZE_UNKNOWN,
     SOP,
     UNIT_UNSETTLED,
     ApiAgent,
@@ -63,6 +64,7 @@ from .agent import (
     _detail,
     _place_names,
     confirm,
+    held,
     last_reported,
     question_left_open,
     remember_saves,
@@ -456,6 +458,11 @@ class ApiWhatsApp:
         a day; it saves by itself when they answer), and the rest of the list stays as it was."""
         held = []
         for need in state.pop("size_needed", None) or []:
+            # WA-197: the line is on the list (held with its size asked): it leaves the list, held for the admin.
+            line = next((e for e in ready if e.idempotency_key == need.get("key")), None)
+            if line is not None:
+                ready = [e for e in ready if e is not line]
+                need = {**need, "path": line.path, "body": line.body, "summary": SIZE_UNKNOWN.sub("", line.summary)}
             try:
                 response = await client.call("POST", "/materials/size-requests", json={
                     "material_id": need["material_id"], "from_unit_id": need["from_unit_id"],
@@ -465,7 +472,7 @@ class ApiWhatsApp:
                 _log.warning("agent_api.size_hold_failed user=%s", ctx.user_id, exc_info=True)
                 continue
             if response.ok:
-                held.append(need["summary"])
+                held.append(str(need["summary"]).rstrip(". "))
         language = state.get("language") or "english"
         words = (_HELD.get(language, _HELD["english"]).format(lines="; ".join(held)) if held
                  else plain_refusal("", language))
@@ -798,7 +805,7 @@ class ApiWhatsApp:
                 text = f"{text}\n\n{_in(language, 'api.press_save', PRESS_SAVE)}"
         if options:
             rows = [ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])]
-            if pending and len(rows) < 3 and not state.get("size_needed"):
+            if pending and len(rows) < 3:  # WA-197: a size question too: the line is on the list, Save holds it
                 # [229]: one line waits for an answer, the others are held: Save stays on the same reply
                 # (last, so the option taps keep their numbers; WhatsApp allows 3 buttons).
                 rows.append(ListRow(id=f"{SAVE_PREFIX}{state['batch']}", title="Save"))
@@ -1143,14 +1150,22 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
         note = r.body.get("converted") if isinstance(r.body, dict) else None
         return f" ({note} in stock)" if note else ""
 
+    waiting = [r for r in results if held(r)]  # WA-197: held for the admin's size: never called saved
+    results = [r for r in results if not held(r)]
     lines = [f"✅ {r.pending.summary}{converted(r)}" if r.ok
              else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}" for r in results]
     if today:  # [228]: a link to each saved record's dashboard page, built from ids already returned
         urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) if r.ok else None
                 for r in results]
         lines = with_links(lines, urls, today=today)
-    head = "Saved." if all(r.ok for r in results) else "Not everything could be saved:"
-    return head + "\n" + "\n".join(lines)
+    head = ("Saved." if all(r.ok for r in results) else "Not everything could be saved:") if results else ""
+    text = (head + "\n" + "\n".join(lines)).strip()
+    if waiting:
+        lang = language if language in _HELD else "english"
+        later = _HELD[lang].format(lines="; ".join(SIZE_UNKNOWN.sub("", r.pending.summary).rstrip(". ")
+                                                     for r in waiting))
+        text = f"{text}\n\n{later}".strip()
+    return text
 
 
 async def _safe(awaitable: Awaitable[Any]) -> None:

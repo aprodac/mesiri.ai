@@ -56,10 +56,12 @@ async def test_the_size_question_has_a_dont_know_button_in_their_language() -> N
     h = Harness(Store(), FakeToolCallingProvider(["-"]))
     await _asked(h)
     reply = h.sent[-1]
-    assert [b.title for b in reply.buttons][-1] == "🤷 Ariyilla"
+    # WA-197: the line is on the list too, so Save stays under the question (it holds the line for the admin).
+    assert [b.title for b in reply.buttons] == ["🤷 Ariyilla", "Save"]
     state = await h.state()
     assert [n["summary"] for n in state["size_needed"]] == ["1 load msand Tower A"]
-    assert [p["summary"] for p in state["pending"]] == ["4 ചാക്ക് സിമന്റ് Tower A-ൽ എത്തിച്ചു."]
+    assert [p["summary"] for p in state["pending"]] == ["4 ചാക്ക് സിമന്റ് Tower A-ൽ എത്തിച്ചു.",
+                                                       "1 load msand Tower A (1 Loads = ? Bags)"]
 
 
 async def test_dont_know_holds_the_line_for_the_admin_keeps_the_rest_and_runs_no_model() -> None:

@@ -67,9 +67,12 @@ async def _save(store: Store, pending: list):  # noqa: ANN202
 async def test_a_site_engineers_size_converts_their_line_and_saves_without_a_refused_company_setting() -> None:
     store = Store()
     first = await _turn(store, [[LINE], "1 load = ethra bags?"], "1 load msand vannu", may_set_sizes=False)
-    assert first.pending == [] and "1 Loads എംസാന്റ് = how many Bags" in first.calls[0]["result"]["error"]
-    second = await _turn(store, [[_size(MSAND, LOAD, 60), LINE], "Ready."], "60 bags", may_set_sizes=False)
+    # WA-197: held with the size asked beside it; the answer converts the waiting line (never a second copy).
+    assert len(first.pending) == 1 and "1 Loads എംസാന്റ് = how many Bags" in first.calls[0]["result"]["note"]
+    second = await _turn(store, [[_size(MSAND, LOAD, 60)], "Ready."], "60 bags", ready=first.pending,
+                         may_set_sizes=False)
     assert second.sizes_said == {size_key(MSAND, LOAD): 60.0}
+    assert "converted" in second.calls[0]["result"]["status"]
     assert [e.tool for e in second.pending] == ["record_receipt"]  # no company setting that Save would refuse
     line = second.pending[0]
     assert line.body["unit_id"] == BAG and line.body["quantity"] == 60

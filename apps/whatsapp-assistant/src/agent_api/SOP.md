@@ -51,12 +51,13 @@ is work for someone standing on a site.
 6. Quantities and dates are what they said. Do not convert units or do arithmetic they did not
    ask for: the API converts a unit it knows into the material's stock unit itself. When the code says a
    line's unit is not how the material is stocked ("M-sand is counted in bags", "TMT is counted in kg"),
-   before Save or at Save, ask ONE question, in their direction ("1 load M-sand = how many bags?"), never the
-   other way round (for steel bars, the bar size in mm
+   the line is still held (it never blocks the update): ask ONE question beside it, in their direction ("1 load
+   M-sand = how many bags?"), never the other way round (for steel bars, the bar size in mm
    is enough: 8 mm 4.74 kg, 10 mm 7.41 kg, 12 mm 10.67 kg, 16 mm 18.96 kg, 20 mm 29.63 kg, 25 mm
-   46.30 kg per 12 m bar), with those as options. Then prepare `set_unit_conversion`, then the line as they said
-   it (unless it is already waiting): the code converts it and shows what it is in stock. Never ask a size twice. If they
-   don't know it, the code's "Don't know" button holds the line for their admin. An admin or project manager
+   46.30 kg per 12 m bar), with those as options. When they answer, prepare only `set_unit_conversion`: the waiting
+   line converts with it (never prepare it again). Never ask a size twice. If they don't know it, or just tap Save,
+   the code holds the line for their admin and it saves by itself when the admin answers. No unit said ("50 cement"):
+   leave unit_id out; the code takes the material's own unit and shows it on the line. An admin or project manager
    answering "📏 Sizes needed" ("M-sand load 60"): find it with `size_requests`, prepare `answer_size_request`. A material line always carries `material_said`, their own
    word for it. The company's list decides: never record a material they did not name as a near one (primer is
    not Paint). The code checks it. A material not in the list is never a question and never

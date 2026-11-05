@@ -207,23 +207,27 @@ SAID = "4 ചാക്ക് സിമന്റും 1 ലോഡ് എംസ�
 # -- the reported conversation ---------------------------------------------------------------------------------------
 
 
-async def test_the_load_of_msand_is_asked_about_before_anything_says_ready() -> None:
+async def test_the_load_of_msand_is_held_with_its_size_asked_beside_it() -> None:
+    # WA-197: never a blocker: the M-sand line is on the list (size unknown) and the size is asked in the same reply.
     store = Store()
     turn = await _turn(store, [[CEMENT_LINE, MSAND_LINE],
                                [("ask", {"question": "ഒരു ലോഡ് എംസാന്റ് എത്ര ചാക്ക് ആണ്?"})],
                                "സിമന്റ് തയ്യാർ. ഒരു ലോഡ് എംസാന്റ് എത്ര ചാക്ക് ആണ്?"], SAID)
-    assert [e.summary for e in turn.pending] == ["4 ചാക്ക് സിമന്റ് Tower A-ൽ എത്തിച്ചു."]
-    refused = turn.calls[1]["result"]["error"]
-    assert "counted in Bags" in refused and "set_unit_conversion" in refused and "Nothing is prepared" in refused
-    assert turn.question.endswith("ആണ്?")
+    assert [e.summary for e in turn.pending] == ["4 ചാക്ക് സിമന്റ് Tower A-ൽ എത്തിച്ചു.",
+                                                 "1 ലോഡ് എംസാൻഡ് Tower A-ൽ എത്തിച്ചു. (1 Loads = ? Bags)"]
+    note = turn.calls[1]["result"]["note"]
+    assert "counted in Bags" in note and "ONLY `set_unit_conversion`" in note and "tap Save" in note
+    assert turn.question.endswith("ആണ്?") and turn.size_needed[0]["key"] == turn.pending[1].idempotency_key
 
 
 async def test_the_answer_holds_the_size_and_the_load_and_one_save_records_60_bags() -> None:
     store = Store()
     first = await _turn(store, [[CEMENT_LINE, MSAND_LINE], "ഒരു ലോഡ് എത്ര ചാക്ക്?"], SAID)
-    second = await _turn(store, [[_conversion(MSAND, LOAD, 60), MSAND_LINE], "തയ്യാർ."], "60 ചാക്ക്",
-                         ready=first.pending)
-    assert [e.tool for e in second.pending] == ["record_receipt", "set_unit_conversion", "record_receipt"]
+    second = await _turn(store, [[_conversion(MSAND, LOAD, 60)], "തയ്യാർ."], "60 ചാക്ക്", ready=first.pending)
+    # WA-197: the waiting line converts with the size; it is never prepared a second time.
+    assert [e.tool for e in second.pending] == ["record_receipt", "record_receipt", "set_unit_conversion"]
+    assert second.pending[1].summary == "1 ലോഡ് എംസാൻഡ് Tower A-ൽ എത്തിച്ചു. (= 60 Bags)"
+    assert second.size_needed == []
     results = await _save(store, second.pending)
     assert all(r.ok for r in results), [(r.pending.summary, r.body) for r in results]
     assert sorted(store.received) == sorted([("Cement", 4.0), ("എംസാന്റ്", 60.0)])
@@ -232,14 +236,16 @@ async def test_the_answer_holds_the_size_and_the_load_and_one_save_records_60_ba
 # -- siblings ------------------------------------------------------------------------------------------------------
 
 
-async def test_sibling_a_correction_to_loads_is_checked_and_the_entry_is_not_changed() -> None:
+async def test_sibling_a_correction_to_loads_is_made_and_its_size_asked() -> None:
+    # WA-197: the correction goes through (it is what they said); the size is asked beside it, not instead of it.
     store = Store()
     first = await _turn(store, [[_receipt(MSAND, "msand", BAG, 40, "40 bags msand")], "Ready."], "40 bag msand vannu")
     second = await _turn(store, [[("change_ready_entry", {"number": 1, "changes": [{"field": "unit_id", "value": LOAD}],
                                                           "confirm_line": "1 load msand"})], "Ok."],
                          "alla, 1 load aanu", ready=first.pending)
-    assert "The entry was NOT changed" in second.calls[0]["result"]["error"]
-    assert second.pending[0].summary == "40 bags msand" and second.pending[0].body["unit_id"] == BAG
+    assert "ONLY `set_unit_conversion`" in second.calls[0]["result"]["size"]
+    assert second.pending[0].summary == "1 load msand (1 Loads = ? Bags)" and second.pending[0].body["unit_id"] == LOAD
+    assert second.size_needed[0]["key"] == second.pending[0].idempotency_key
 
 
 async def test_sibling_the_conversion_names_its_unit_in_words_and_saves_with_its_id() -> None:
@@ -326,17 +332,18 @@ def _tools(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(wa, "build_tools", lambda openapi: real(openapi, tuple(a for a in ALLOWED if a.name in TOOLS)))
 
 
-async def test_the_reported_save_saves_the_cement_and_asks_the_size_in_malayalam_without_a_save_button() -> None:
+async def test_the_reported_save_saves_the_cement_and_holds_the_msand_for_the_admin_in_malayalam() -> None:
+    # WA-197: Save is never stuck: the line with no size goes to the admin (it saves itself when they answer).
     store = Store()
     h = Harness(store, FakeToolCallingProvider(["Ok."]))
     await h.hold(CEMENT_LINE, MSAND_LINE)
     await h.service.handle(_message("Save", tap="apiag:save:b1"), CTX)
     reply = h.sent[-1]
     assert store.received == [("Cement", 4.0)]
-    assert "എത്ര" in reply.text and "How many" not in reply.text  # their language, not English
-    assert [b.title for b in reply.buttons] == ["Cancel"]  # no Save that cannot work
-    state = await h.state()
-    assert len(state["pending"]) == 1 and state["asked"]["question"]  # the line waits; the size is the open question
+    assert "മാറ്റിവെച്ചു: 1 ലോഡ് എംസാൻഡ് Tower A-ൽ എത്തിച്ചു. സൈസ്" in reply.text  # their language, one full stop
+    assert "Not everything" not in reply.text and not reply.buttons
+    assert (await h.state())["pending"] == []
+    assert [line["summary"] for line in store.size_requests[0]["held_lines"]] == [MSAND_LINE[1][CONFIRM_ARG]]
 
 
 async def test_sibling_a_save_with_another_refusal_drops_that_line_and_says_so() -> None:  # [233]
@@ -344,9 +351,9 @@ async def test_sibling_a_save_with_another_refusal_drops_that_line_and_says_so()
     h = Harness(store, FakeToolCallingProvider(["Ok."]))
     await h.hold(MSAND_LINE, _receipt(str(uuid.uuid4()), "x", BAG, 1, "1 bag of something gone"))
     await h.service.handle(_message("Save", tap="apiag:save:b1"), CTX)
-    # the other line is taken off; the size line waits for its answer, so only Cancel is offered
-    assert [b.title for b in h.sent[-1].buttons] == ["Cancel"]
-    assert len((await h.state())["pending"]) == 1
+    # the other line is taken off and said so; the M-sand line is held for the admin (WA-197)
+    assert "Not everything could be saved" in h.sent[-1].text and len(store.size_requests[0]["held_lines"]) == 1
+    assert (await h.state())["pending"] == []
 
 
 async def test_the_tapped_site_name_keeps_their_language() -> None:
