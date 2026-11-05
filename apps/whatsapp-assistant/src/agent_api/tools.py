@@ -253,7 +253,9 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
                 raise ToolBuildError(f"{item.method} {item.path} has its own field named {CONFIRM_ARG}")
             properties[CONFIRM_ARG] = {
                 "type": "string",
-                "description": "One line in the person's words naming this entry, shown when they confirm.",
+                "description": ("One short line naming this entry, shown when they confirm, in the reply language "
+                                "(Manglish / Hinglish: Latin letters only), with material, work and site words in "
+                                "English: \"30 bags cement, Green Villa\"."),
             }
             required.append(CONFIRM_ARG)
             if "material_id" in body_fields:

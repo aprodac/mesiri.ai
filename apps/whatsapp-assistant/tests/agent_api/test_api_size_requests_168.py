@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 from tests.agent_api.test_api_stock_unit_165 import (
     BAG,
-    CEMENT_LINE,
+    CEMENT,
     LOAD,
     MSAND,
     Harness,
@@ -32,6 +32,8 @@ from runtime.size_requests_ask import ask_message, queue_size_asks
 
 TOOLS = ("record_receipt", "set_unit_conversion", "add_material", "size_requests", "answer_size_request")
 LINE = _receipt(MSAND, "msand", LOAD, 1, "1 load msand Tower A")
+#: [252]: a Manglish speaker's card line is in Latin letters (a script line is sent back to the model).
+CEMENT_LINE = _receipt(CEMENT, "cement", BAG, 4, "4 bags cement Tower A")
 ENGINEER = SimpleNamespace(**{**vars(CTX), "role": "SITE_ENGINEER"})
 ADMIN = SimpleNamespace(**{**vars(CTX), "role": "ADMIN"})
 
@@ -60,7 +62,7 @@ async def test_the_size_question_has_a_dont_know_button_in_their_language() -> N
     assert [b.title for b in reply.buttons] == ["🤷 Ariyilla", "Save"]
     state = await h.state()
     assert [n["summary"] for n in state["size_needed"]] == ["1 load msand Tower A"]
-    assert [p["summary"] for p in state["pending"]] == ["4 ചാക്ക് സിമന്റ് Tower A-ൽ എത്തിച്ചു.",
+    assert [p["summary"] for p in state["pending"]] == ["4 bags cement Tower A",
                                                        "1 load msand Tower A (1 Loads = how many Bags?)"]
 
 

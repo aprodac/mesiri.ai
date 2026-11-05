@@ -102,7 +102,9 @@ is work for someone standing on a site.
    language again" is `auto`.
    Every tool body is English (names, narrative, description, notes, titles, trades, material_said), translated
    from their words, also from Manglish ("plastering kazhinju" -> "Plastering done"); the confirm_line (card
-   summary) and replies are in their language. Names of people, vendors and places stay as they are, in Latin letters.
+   summary) and replies are in the reply language you are told (Manglish and Hinglish in Latin letters, never
+   script), with material, work and site words in English ("30 bags cement, Green Villa"). Write Manglish the
+   way people text it ("Cancel cheythu, onnum save aayilla"), never Malayalam spelled out letter by letter. Names of people, vendors and places stay as they are, in Latin letters.
    Translating is your job: never ask the person to say a word in English or what something is called in English
    (സിമന്റ് is Cement, kambi is Steel); the code also translates what you leave in another script.
    In Manglish or Hinglish every word is in Latin letters, also "I told the team" ("Team-ine ariyichittund"),

@@ -45,14 +45,14 @@ def _labour(trade_1: str, trade_2: str) -> tuple[str, dict]:
                                   CONFIRM_ARG: "ഗ്രീൻ വില്ല: 6 മേസൺ, 10 ഇലക്ട്രീഷ്യൻ"})
 
 
-def _work(narrative: str) -> tuple[str, dict]:
-    return ("record_work", {**BASE, "work_type": "plastering", "narrative": narrative,
-                            CONFIRM_ARG: "രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു"})
+def _work(narrative: str, line: str = "2nd floor plastering kazhinju") -> tuple[str, dict]:
+    # [252]: the card line is in the reply language (Latin for Manglish, script for a Malayalam reply).
+    return ("record_work", {**BASE, "work_type": "plastering", "narrative": narrative, CONFIRM_ARG: line})
 
 
 def _issue(narrative: str) -> tuple[str, dict]:
     return ("report_issue", {**BASE, "issue_type": "OTHER", "severity": "HIGH", "narrative": narrative,
-                             CONFIRM_ARG: "വാട്ടർ ടാങ്ക് ചോരുന്നു"})
+                             CONFIRM_ARG: "Water tank leak aanu"})
 
 
 async def _journey(script: list, words: str) -> tuple[list, list]:
@@ -84,7 +84,8 @@ async def test_whole_journey_malayalam_labour_saves_english_trades_and_the_card_
 
 
 async def test_whole_journey_malayalam_work_update_saves_an_english_narrative() -> None:
-    script = [[_work("രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു")], [_work("Plastering done on 2nd floor")], "ശരി."]
+    malayalam = "രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു"
+    script = [[_work(malayalam, malayalam)], [_work("Plastering done on 2nd floor", malayalam)], "ശരി."]
     posted, sent = await _journey(script, "രണ്ടാം നിലയിൽ പ്ലാസ്റ്ററിംഗ് കഴിഞ്ഞു")
     assert "പ്ലാസ്റ്ററിംഗ്" in sent[0].text
     assert dict(posted)["work"]["narrative"] == "Plastering done on 2nd floor"

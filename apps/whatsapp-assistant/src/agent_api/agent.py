@@ -806,6 +806,15 @@ class ApiAgent:
                         "Nothing was prepared: call it again now with those fields translated to English yourself "
                         "(names of people and places as they are, in English letters); confirm_line stays in their "
                         "language. Never ask the person to say anything in English.")})
+                if (language in LATIN_LANGUAGES and SCRIPT.search(str(arguments.get(CONFIRM_ARG) or ""))
+                        and tries.get(f"{name}:line", 0) < 1):
+                    # [252] (5 Nov, Adarsh): card lines written in Malayalam script were turned into Latin letter by
+                    # letter ("simantu sairril labhichchu"). The line is written in Manglish by the model, once.
+                    tries[f"{name}:line"] = tries.get(f"{name}:line", 0) + 1
+                    return ToolOutcome(content={"error": (
+                        f"confirm_line must be in {reply_in}: Latin letters only, with material, work and site words in "
+                        "English (\"30 bags cement, Green Villa\"). Nothing was prepared: call it again now with "
+                        "confirm_line rewritten that way.")})
                 if name == "update_project" and body.get("description"):
                     body = await kept_description(client, path, body)
                 said_line = str(arguments.get(CONFIRM_ARG) or "").strip()
@@ -1496,6 +1505,9 @@ def moved_off_new(waiting: list[PendingWrite | None], before: str, after: str, a
         out["also"] += f" {name} is remembered as that material's name (on the list; saves with Save)."
     return out
 PROJECT_TOOL = "create_project"
+#: [252]: reply languages written in Latin letters; a card line in Malayalam or Devanagari script is sent back once.
+LATIN_LANGUAGES = frozenset({"manglish", "hinglish"})
+SCRIPT = re.compile(r"[\u0900-\u097f\u0d00-\u0d7f]")
 #: [257]: project entries whose card line the code draws from the body (no picture card shows their values).
 PROJECT_LINE_TOOLS = frozenset({PROJECT_TOOL, "update_project"})
 #: The project fields a card line names, in this order, with their label.
