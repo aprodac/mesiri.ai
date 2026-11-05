@@ -271,3 +271,24 @@ async def test_the_keeper_stops_when_the_reply_has_gone(monkeypatch) -> None:  #
     deps["sender"].send_button.side_effect = slow_reply
     await on_normalized(_journey_message(), {})
     assert deps["sender"].keep_typing.await_count == 3  # True, True, then False: stopped, never again
+
+
+# -- WA-214: every card type says TO SAVE before Save ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tool", sorted(__import__("agent_api.receipts", fromlist=["CARD_TYPES"]).CARD_TYPES))
+def test_every_card_type_says_to_save_before_save_and_saved_after(tool: str) -> None:
+    import datetime as dt
+
+    from tests.agent_api.test_api_receipts_132 import BODIES, _entry
+    from tests.agent_api.test_api_receipts_132 import CTX as CARD_CTX
+
+    from agent_api.receipts import _pair
+    from channel.receipt.builder import RecordReceiptBuilder
+    from channel.receipt.data import STATUS_DRAFT, STATUS_SAVED
+
+    pair = _pair(_entry(tool, BODIES[tool]).pending, "preview", CARD_CTX, ({}, {}), "cor_x")
+    assert pair is not None
+    now = dt.datetime.now(dt.UTC)
+    assert RecordReceiptBuilder._data(pair[0], pair[1], CARD_CTX, now, False).status == STATUS_DRAFT
+    assert RecordReceiptBuilder._data(pair[0], pair[1], CARD_CTX, now, True).status == STATUS_SAVED

@@ -247,6 +247,8 @@ _DRAFT_TYPES = frozenset(
         DraftActionType.RECORD_MATERIAL_USAGE,
         DraftActionType.TRANSFER_MATERIAL,
         DraftActionType.RECORD_SITE_ISSUE,
+        # WA-214: an expense waiting for Save said SAVED on its preview card (WA-210).
+        DraftActionType.RECORD_EXPENSE,
     }
 )
 
