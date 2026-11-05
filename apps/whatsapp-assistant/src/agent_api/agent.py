@@ -805,9 +805,16 @@ class ApiAgent:
                         "Nothing was prepared: call it again now with those fields translated to English yourself "
                         "(names of people and places as they are, in English letters); confirm_line stays in their "
                         "language. Never ask the person to say anything in English.")})
+                if name == "update_project" and body.get("description"):
+                    body = await kept_description(client, path, body)
+                said_line = str(arguments.get(CONFIRM_ARG) or "").strip()
+                if name in PROJECT_LINE_TOOLS:
+                    # [257]: a project line the model wrote named a contract value and payment terms the body never
+                    # carried; the card line is drawn from the fields that will be saved.
+                    said_line = project_line(name, body, places, path) or said_line
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
-                    summary=str(arguments.get(CONFIRM_ARG) or "").strip() + filled_unit + unit_note + site_note,
+                    summary=said_line + filled_unit + unit_note + site_note,
                     idempotency_key=line_key or new_idempotency_key(),
                 )
                 new.append(entry)
@@ -1474,6 +1481,51 @@ def moved_off_new(waiting: list[PendingWrite | None], before: str, after: str, a
         out["also"] += f" {name} is remembered as that material's name (on the list; saves with Save)."
     return out
 PROJECT_TOOL = "create_project"
+#: [257]: project entries whose card line the code draws from the body (no picture card shows their values).
+PROJECT_LINE_TOOLS = frozenset({PROJECT_TOOL, "update_project"})
+#: The project fields a card line names, in this order, with their label.
+_PROJECT_FIELDS = (("client", "client"), ("location", "location"), ("code", "code"), ("status", "status"),
+                   ("description", "details"))
+
+
+async def kept_description(client: ApiClient, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    """[257]: a project's details are added to, never replaced: the description already saved stays in front of
+    what this update brings (unless the new text already holds it). Unchanged when the project can't be read."""
+    try:
+        current = await client.call("GET", path)
+    except Exception:  # noqa: BLE001 -- the update goes as prepared
+        return body
+    old = str((current.body or {}).get("description") or "").strip() if current.ok and isinstance(
+        current.body, dict) else ""
+    new = str(body.get("description") or "").strip()
+    if not old or old.casefold() in new.casefold():
+        return body
+    return {**body, "description": f"{old.rstrip('. ')}. {new}"}
+
+
+def project_line(tool: str, body: dict[str, Any], places: Places | None, path: str = "") -> str:
+    """[257]: "New project *Supermarket Kerala*: client Supermarket; location Kerala; details ..." or
+    "*Supermarket Kerala*: client Day to Day Supermarket", from the body only: what Save will store, nothing else.
+    Empty when the body has nothing to show (the model's line then stays)."""
+    parts = []
+    for key, label in _PROJECT_FIELDS:
+        value = re.sub(r"\s+", " ", str(body.get(key) or "")).strip()
+        if value:
+            parts.append(f"{label} {value[:80] + '…' if len(value) > 80 else value}")
+    if tool == PROJECT_TOOL:
+        named = str(body.get("name") or "").strip()
+        return f"New project *{named}*" + (f": {'; '.join(parts)}" if parts else "") if named else ""
+    current = ""
+    project_id = str(body.get("project_id") or path.rstrip("/").rsplit("/", 1)[-1])
+    for pid, pname in (places.projects if places else ()):
+        if pid == project_id:
+            current = pname
+    renamed = str(body.get("name") or "").strip()
+    if renamed and renamed != current:
+        parts.insert(0, f"name {renamed}")
+    if not parts:
+        return ""
+    return f"*{current or 'Project'}*: {'; '.join(parts)}"
 
 
 def _project_exists(twins: list[str], language: str | None) -> str:

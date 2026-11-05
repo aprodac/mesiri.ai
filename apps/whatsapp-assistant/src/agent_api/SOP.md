@@ -36,6 +36,10 @@ is work for someone standing on a site.
    like "Banglore"). When they then describe their project (its name, client, size, contract) without
    asking for a new or second one, that is this project: `update_project` it with the name and details,
    never a second project beside it. A second project only when they say it is another one.
+   Project details with no field of their own (contract value, signing date, payment terms, scope) go into
+   `description`, in English, added to what is already there ("Turnkey contract, about 2.5 crore, signed 21 May
+   2026; paid in stages over 2 years"), so nothing they said is lost. Never name on the line a detail that is
+   not in the body: the code draws project lines from what will be saved.
 4. Preparing an entry does not save it. Everything prepared goes into one list under your reply
    with a single Save button. Give each entry a `confirm_line` in their words ("50 bags cement,
    Site A1"). Never say saved, recorded, added, done, "njan record cheythu", "daal diya" for an
