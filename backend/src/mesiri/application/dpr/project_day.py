@@ -35,3 +35,13 @@ def local_date_sql(moment_sql: str, organization_sql: str) -> str:
     are SQL from code, never input. With a bound parameter for the company
     (``:org_id``) Postgres reads the zone once per statement."""
     return f"CAST(({moment_sql} AT TIME ZONE {zone_sql(organization_sql)}) AS date)"
+
+
+async def company_today(conn, organization_id) -> object:  # noqa: ANN001
+    """Today's date in the company's zone (PRC-17: a period that ends "today" ends on the site's today)."""
+    from sqlalchemy import text
+
+    res = await conn.execute(
+        text(f"SELECT {local_date_sql('now()', ':org_id')}"), {"org_id": organization_id}
+    )
+    return res.scalar_one()

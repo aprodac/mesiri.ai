@@ -1848,3 +1848,79 @@ async def test_deliveries_and_use_name_their_category_and_filter_by_it(client, a
         assert by_name["Cement"]["category"] is None
         only = (await client.get(path, params={"category_id": electrical}, headers=_auth(token))).json()
         assert [i["material_name"] for i in only["items"]] == ["2-way switch"] and only["total"] == 1
+
+
+async def test_stock_for_a_period_adds_up_and_says_what_is_running_low(client, admin_ctx):
+    """PRC-17: "previous stock, used, balance" for a week. opening + received + adjusted - used == closing; a
+    correction cancels out; a material held but not moved is listed; one finished before the period is not."""
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    masonry = await _make_category(client, token, "Masonry")
+    today = datetime.date.today()
+    ids = {}
+    for name in ("Cement", "Sand", "Steel", "Old paint"):
+        resp = await client.post(
+            "/materials",
+            json={"name": name, "default_unit_id": bags_id, "category_id": masonry if name != "Steel" else None},
+            headers=_auth(token),
+        )
+        ids[name] = resp.json()["id"]
+
+    async def move(path: str, name: str, qty: str, days_ago: int, reason: str) -> str:
+        body = {
+            "project_id": str(admin_ctx["project_id"]),
+            "site_id": str(admin_ctx["site_id"]),
+            "material_id": ids[name],
+            "unit_id": bags_id,
+            "quantity": qty,
+            "movement_reason": reason,
+            "occurred_date": str(today - datetime.timedelta(days=days_ago)),
+        }
+        resp = await client.post(path, json=body, headers=_auth(token))
+        assert resp.status_code == 201, resp.text
+        return resp.json().get("id") or resp.json().get("receipt_id") or ""
+
+    await move("/materials/inflows", "Cement", "100", 10, "RECEIVED")
+    await move("/materials/outflows", "Cement", "30", 2, "CONSUMED")
+    await move("/materials/inflows", "Cement", "50", 1, "RECEIVED")
+    await move("/materials/outflows", "Cement", "60", 0, "CONSUMED")
+    await move("/materials/inflows", "Sand", "10", 1, "RECEIVED")
+    await move("/materials/outflows", "Sand", "8", 0, "CONSUMED")
+    await move("/materials/inflows", "Steel", "20", 20, "RECEIVED")
+    wrong = await move("/materials/inflows", "Steel", "5", 0, "RECEIVED")
+    await move("/materials/inflows", "Old paint", "5", 12, "RECEIVED")
+    await move("/materials/outflows", "Old paint", "5", 11, "CONSUMED")
+    resp = await client.post(
+        f"/materials/inflows/{wrong}/reverse", json={"reason_note": "not delivered"}, headers=_auth(token)
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.get(
+        "/materials/stock-summary",
+        params={"date_from": str(today - datetime.timedelta(days=6)), "date_to": str(today)},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200, resp.text
+    rows = {r["material_name"]: r for r in resp.json()}
+    assert "Old paint" not in rows  # finished before the week: nothing held, nothing moved
+    cement = rows["Cement"]
+    assert [Decimal(cement[k]) for k in ("opening", "received", "used", "closing")] == [100, 50, 90, 60]
+    assert Decimal(cement["adjusted"]) == 0 and cement["category"] == "Masonry"
+    assert cement["days_left"] == 4 and cement["running_low"] is False  # 60 at 90 a week
+    sand = rows["Sand"]
+    assert Decimal(sand["closing"]) == 2 and sand["running_low"] is True  # under 3 days at this week's use
+    steel = rows["Steel"]
+    assert Decimal(steel["opening"]) == Decimal(steel["closing"]) == 20  # held, not moved: still listed
+    assert Decimal(steel["received"]) == 0 and steel["days_left"] is None and steel["running_low"] is False
+    for r in rows.values():
+        assert Decimal(r["opening"]) + Decimal(r["received"]) + Decimal(r["adjusted"]) - Decimal(r["used"]) == Decimal(
+            r["closing"]
+        )
+
+    only = await client.get("/materials/stock-summary", params={"category_id": masonry}, headers=_auth(token))
+    assert {r["material_name"] for r in only.json()} == {"Cement", "Sand"}
+    bad = await client.get(
+        "/materials/stock-summary", params={"date_from": str(today), "date_to": str(today - datetime.timedelta(1))},
+        headers=_auth(token),
+    )
+    assert bad.status_code == 422

@@ -34,6 +34,7 @@ from mesiri.domains.materials.responses import (
     MaterialReceiptResponse,
     MaterialReceiptsListResponse,
     MaterialStockResponse,
+    MaterialStockSummaryResponse,
     MaterialUsageListResponse,
     MaterialUsageResponse,
     StandardCategoriesResponse,
@@ -1036,6 +1037,44 @@ async def list_inventory(
     repo = PostgresMaterialReadRepository(conn)
     return await repo.get_stock_levels(
         organization_id=auth_context.organization_id,
+        project_ids=project_ids,
+        site_id=site_id,
+        material_id=material_id,
+        category_id=category_id,
+    )
+
+
+@router.get("/stock-summary", response_model=list[MaterialStockSummaryResponse])
+async def stock_summary(
+    date_from: datetime.date | None = Query(default=None, description="First day; default: 6 days before date_to."),
+    date_to: datetime.date | None = Query(default=None, description="Last day; default: today (company date)."),
+    project_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    material_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = Query(
+        default=None, description="Only materials in this category; a main category includes its sub-categories."
+    ),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-17: stock for a period, per site and material: opening, received, used, adjusted, closing, days left at
+    the last week's use, and whether it is running low. Same project and site scope as /inventory."""
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied or _site_filter_denied(auth_context, project_id, site_id):
+        return []
+    if date_to is None:
+        from mesiri.application.dpr import project_day
+
+        date_to = await project_day.company_today(conn, auth_context.organization_id)
+    date_from = date_from or date_to - datetime.timedelta(days=6)
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from is after date_to")
+    if (date_to - date_from).days > 366:
+        raise HTTPException(status_code=422, detail="A period is at most a year.")
+    return await PostgresMaterialReadRepository(conn).get_stock_summary(
+        auth_context.organization_id,
+        date_from=date_from,
+        date_to=date_to,
         project_ids=project_ids,
         site_id=site_id,
         material_id=material_id,
