@@ -138,6 +138,11 @@ def test_what_can_mesiri_do_is_an_intro_answered():
     assert live_feed.classify(_row("m", [_turn(["explain_mesiri", "record_receipt"])]))["kind"] == "delivery"
 
 
+def test_a_cancel_names_what_it_threw_away():
+    what = live_feed.classify(_row("m", [_turn(cancelled=[{"tool": "record_receipt", "summary": "Cement 50 bags in"}, "junk"])]))
+    assert (what["kind"], what["summaries"]) == ("cancelled", ["Cement 50 bags in"])
+
+
 def test_unknown_trace_shapes_never_break_it():
     what = live_feed.classify(_row("m", [None, {"tools": None, "saved": "x", "pending": [None, ""]}]))  # type: ignore[list-item]
     assert what["kind"] == "chat"

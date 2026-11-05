@@ -166,6 +166,9 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
     pending = [p for t in turns for p in (t.get("pending") or []) if isinstance(p, str) and p]
     asked = next((t["asked"] for t in turns if isinstance(t.get("asked"), str) and t["asked"]), None)
     cancelled = any(t.get("cancelled") for t in turns)
+    # WEB-62: the entries a Cancel threw away ({tool, summary}), for the screen to cross out.
+    thrown = [str(c["summary"]) for t in turns for c in (t.get("cancelled") or [])
+              if isinstance(c, dict) and c.get("summary")]
 
     write = next((WRITE_KINDS[t] for t in tools if t in WRITE_KINDS), None)
     tapped_tool = next((r.get("tool") for r in tapped if r.get("tool") in WRITE_KINDS), None)
@@ -201,6 +204,8 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
         state = "heard"
 
     summaries = [str(r.get("summary")) for r in (saved or tapped) if r.get("summary")] or pending
+    if kind == "cancelled":
+        summaries = thrown
     money = kind in MONEY_KINDS or any(t in EXPENSE_TOOLS for t in tools) or (
         tapped_tool is not None and WRITE_KINDS.get(tapped_tool) in MONEY_KINDS
     )

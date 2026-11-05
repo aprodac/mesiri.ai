@@ -249,3 +249,126 @@ export function ChatMoment({ said, english, reply, presenting }: { said: string;
     </div>
   )
 }
+
+/** What a waiting card became: the sender's next Save or Cancel tap, within four hours (WEB-62). */
+export function outcomes(items: LiveFeedItem[]): Map<string, 'saved' | 'cancelled'> {
+  const out = new Map<string, 'saved' | 'cancelled'>()
+  const at = (m: LiveFeedItem) => (m.received_at ? new Date(m.received_at).getTime() : 0)
+  for (const m of items) {
+    if (m.state !== 'draft' || !m.sender_name) continue
+    const tap = items
+      .filter((x) => x.sender_name === m.sender_name && at(x) > at(m) && at(x) - at(m) <= 4 * 3600_000 && (x.kind === 'saved' || x.kind === 'cancelled'))
+      .sort((a, b) => at(a) - at(b))[0]
+    if (tap) out.set(m.id, tap.kind === 'saved' ? 'saved' : 'cancelled')
+  }
+  return out
+}
+
+/** The card the person sees on WhatsApp, and what became of it: waiting for ✅ Save, saved, cancelled, or taken back. */
+export function EntryCard({
+  lines,
+  site,
+  who,
+  as,
+  presenting,
+}: {
+  lines: string[]
+  site: string | null
+  who: string | null
+  as: 'draft' | 'saved' | 'cancelled' | 'undone'
+  presenting: boolean
+}) {
+  const shown = lines.length ? lines.slice(0, 6) : ['—']
+  const gone = as === 'cancelled' || as === 'undone'
+  const stamp = { draft: null, saved: 'Saved', cancelled: 'Cancelled', undone: 'Taken back' }[as]
+  const stampTone = as === 'saved' ? 'border-[var(--success)] text-[var(--success)]' : 'border-muted-foreground text-muted-foreground'
+  const end = 0.4 + shown.length * 0.3
+  return (
+    <div className="grid w-full max-w-[34rem] gap-2 text-left">
+      <div
+        className="relative overflow-hidden border-2 border-foreground bg-background"
+        style={
+          still()
+            ? undefined
+            : gone
+              ? { animation: `meet-pop 400ms ease-out both, live-drop-away 900ms ease-in ${end + 1.4}s forwards` }
+              : { animation: 'meet-pop 400ms ease-out both' }
+        }
+      >
+        <div className={cn('h-2.5', as === 'saved' ? 'bg-[var(--success)]' : 'bg-[repeating-linear-gradient(-45deg,#1a1d21_0_10px,#f5b301_10px_20px)]')} />
+        <div className="flex items-center justify-between px-4 pt-2.5">
+          <span
+            className={cn(
+              'px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em]',
+              as === 'saved' ? 'bg-[var(--success)] text-white' : gone ? 'bg-muted text-muted-foreground' : 'bg-foreground text-background',
+            )}
+          >
+            {as === 'saved' ? '✅ Saved' : as === 'cancelled' ? 'Cancelled' : as === 'undone' ? 'Taken back' : 'Draft · not saved'}
+          </span>
+          {site && <span className="text-xs text-muted-foreground">{site}</span>}
+        </div>
+        <ol className="m-0 grid list-none p-0 py-1">
+          {shown.map((l, i) => (
+            <li
+              key={i}
+              className="relative flex items-center gap-3 border-b border-dashed border-foreground/15 px-4 py-2 last:border-0"
+              style={at('meet-deal', 0.2 + i * 0.3)}
+            >
+              <span className="w-4 font-mono text-xs text-primary">{i + 1}</span>
+              <span className={cn('min-w-0 flex-1 font-medium transition-colors duration-500', presenting ? 'text-[19px]' : 'text-[16px]', gone && 'text-muted-foreground')}>
+                {l}
+              </span>
+              {gone && (
+                <span
+                  className="absolute left-10 right-4 top-1/2 h-[2px] origin-left bg-[var(--destructive)]"
+                  style={at('meet-strike', end + i * 0.25, 350)}
+                />
+              )}
+            </li>
+          ))}
+        </ol>
+        {as === 'draft' && (
+          <div className="grid grid-cols-3 gap-2 border-t border-foreground/15 px-4 py-2.5 text-center text-sm font-medium">
+            <span className="border-2 border-foreground py-1.5" style={still() ? undefined : { animation: 'live-wait 1.4s ease-in-out infinite' }}>
+              Save
+            </span>
+            <span className="border border-foreground/30 py-1.5 text-muted-foreground">✏️ Edit</span>
+            <span className="border border-foreground/30 py-1.5 text-muted-foreground">Cancel</span>
+          </div>
+        )}
+        {stamp && (
+          <span className="pointer-events-none absolute left-1/2 top-[45%] -translate-x-1/2">
+            <span
+              className={cn(
+                'block -rotate-6 whitespace-nowrap border-4 bg-background/85 px-3 py-0.5 font-black uppercase tracking-[0.06em]',
+                shown.length > 1 ? 'text-[28px]' : 'text-[18px]',
+                stampTone,
+              )}
+              style={at('meet-stamp', as === 'saved' ? end : end + shown.length * 0.25 + 0.2, 500)}
+            >
+              {stamp}
+            </span>
+          </span>
+        )}
+      </div>
+      <p className="m-0 flex items-center gap-2 justify-self-center text-sm text-muted-foreground" style={at('meet-rise', end)}>
+        {as === 'draft' ? (
+          <>
+            Waiting for {who ? `${who}’s` : 'their'} ✅ Save
+            <span className="flex gap-1" aria-hidden="true">
+              {[0, 1, 2].map((d) => (
+                <span key={d} className="size-1.5 rounded-full bg-muted-foreground" style={still() ? undefined : { animation: `spark-wave 1s ease-in-out ${d * 0.2}s infinite` }} />
+              ))}
+            </span>
+          </>
+        ) : as === 'saved' ? (
+          'One tap, and it’s in.'
+        ) : as === 'cancelled' ? (
+          'Cancelled. Nothing was saved.'
+        ) : (
+          'Taken back. The stock and the report follow.'
+        )}
+      </p>
+    </div>
+  )
+}

@@ -55,7 +55,7 @@ import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
 import { Finale } from './finale'
 import { ProjectSheet, ReportStrip, SHEET_MS } from './report'
-import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, LanguageMoment, answers as answersOf, cleanReply } from './moments'
+import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, EntryCard, LanguageMoment, answers as answersOf, cleanReply, outcomes } from './moments'
 import { Spark, type SparkMood } from './spark'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
@@ -181,6 +181,16 @@ function destOf(m: LiveFeedItem): Dest | null {
 }
 
 const isVoice = (m: LiveFeedItem) => /voice|audio/.test(m.type)
+/** WEB-62: the card a message's entries are on, and what became of them; null when it has no card. */
+function cardAs(m: LiveFeedItem): 'draft' | 'saved' | 'cancelled' | 'undone' | null {
+  if (isBill(m)) return null
+  if (m.kind === 'cancelled' && m.summaries.length) return 'cancelled'
+  if (m.kind === 'undo') return m.summaries.length ? 'undone' : null
+  if (!m.summaries.length) return null
+  if (m.state === 'draft') return 'draft'
+  if (m.state === 'saved') return 'saved'
+  return null
+}
 /** An expense with a bill photo or what Mesiri read from it: its own moment (moments.tsx). */
 const isBill = (m: LiveFeedItem) => (m.kind === 'expense' || m.saved_kind === 'expense') && !!(m.expense || (m.media_url && /image|photo/.test(m.type)))
 const isPhoto = (m: LiveFeedItem) => /image|photo/.test(m.type)
@@ -381,6 +391,8 @@ export function CompanyLive({
   const items = React.useMemo(() => feed.data ?? [], [feed.data])
   /** Which message answers which question Mesiri asked back. */
   const qa = React.useMemo(() => answersOf(items), [items])
+  /** What each waiting card became (Save or Cancel tapped later). */
+  const became = React.useMemo(() => outcomes(items), [items])
   const sites = React.useMemo(
     () => [...(days.data?.items ?? [])].sort((a, b) => (b.last_update_at ?? '').localeCompare(a.last_update_at ?? '')),
     [days.data],
@@ -518,7 +530,7 @@ export function CompanyLive({
       }
       // The sites' numbers (and a site just added) catch up as it lands.
       if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
-      await wait(alarm ? STEP_MS + 3_400 : isBill(item) || item.kind === 'language' || item.state === 'asked' || item.kind === 'chat' ? STEP_MS + 2_400 : STEP_MS + 1_200)
+      await wait(alarm ? STEP_MS + 3_400 : item.kind === 'cancelled' || item.kind === 'undo' ? STEP_MS + 3_800 : isBill(item) || item.kind === 'language' || item.state === 'asked' || item.kind === 'chat' || cardAs(item) ? STEP_MS + 2_600 : STEP_MS + 1_200)
     }
     setCurrent(null)
     playing.current = false
@@ -702,12 +714,13 @@ export function CompanyLive({
   }
   const company = branding.data?.company_name
   // The moment for what Mesiri is handling now (moments.tsx), if its kind has one.
-  const moment: 'bill' | 'language' | 'asked' | 'answer' | 'chat' | null = (() => {
+  const moment: 'bill' | 'language' | 'asked' | 'answer' | 'chat' | 'card' | null = (() => {
     if (!current || (current.alarm && current.step === 'done')) return null
     const m = current.item
     if (isBill(m)) return 'bill'
     if (m.kind === 'language' && (current.step === 'understood' || current.step === 'done')) return 'language'
     if (current.step === 'done' && m.state === 'asked' && m.asked) return 'asked'
+    if (current.step === 'done' && cardAs(m)) return 'card'
     if (current.step === 'done' && m.kind === 'question' && cleanReply(m.reply)) return 'answer'
     if (current.step === 'done' && (m.kind === 'chat' || m.kind === 'photo' || m.kind === 'intro') && m.text && cleanReply(m.reply)) return 'chat'
     return null
@@ -859,6 +872,7 @@ export function CompanyLive({
                   {stream.slice(0, 40).map((m) => (
                     <MessageCard key={m.id} m={m} active={current?.item.id === m.id} answers={qa.of.get(m.id) ?? null}
                       answered={qa.answered.has(m.id)}
+                      became={became.get(m.id) ?? null}
                       onSite={() => openSite(m.site_id, m.project_id)}
                       onDest={(d, el) => openDest(d, el, m)}
                     />
@@ -937,6 +951,18 @@ export function CompanyLive({
                           <AskedMoment question={current.item.asked ?? ''} who={current.item.sender_name?.split(/\s+/)[0] ?? null} presenting={presenting} />
                         </div>
                       )}
+                      {moment === 'card' && cardAs(current.item) && (
+                        <div className="mt-3 grid justify-items-center">
+                          <EntryCard
+                            key={current.item.id}
+                            lines={current.item.summaries}
+                            site={current.item.site_name}
+                            who={current.item.sender_name?.split(/\s+/)[0] ?? null}
+                            as={cardAs(current.item)!}
+                            presenting={presenting}
+                          />
+                        </div>
+                      )}
                       {moment === 'chat' && (
                         <div className="mt-3 grid justify-items-center">
                           <ChatMoment
@@ -952,7 +978,7 @@ export function CompanyLive({
                           <AnswerMoment reply={current.item.reply ?? ''} presenting={presenting} />
                         </div>
                       )}
-                      {(moment !== 'asked' && moment !== 'answer' && moment !== 'language' && moment !== 'chat') || current.step !== 'done' ? (
+                      {(moment !== 'asked' && moment !== 'answer' && moment !== 'language' && moment !== 'chat' && moment !== 'card') || current.step !== 'done' ? (
                       <p
                         key={`${current.item.id}-${current.step}`}
                         className={cn(
@@ -1208,6 +1234,7 @@ function MessageCard({
   active,
   answers,
   answered,
+  became,
   onSite,
   onDest,
 }: {
@@ -1217,13 +1244,15 @@ function MessageCard({
   answered: boolean
   /** Opens the message's site's day in the panel. */
   onSite: () => void
+  /** A waiting card's fate: Save or Cancel tapped later. */
+  became: 'saved' | 'cancelled' | null
   /** Opens the module that keeps what it said. */
   onDest: (d: Dest, el: HTMLElement) => void
 }) {
   const dest = destOf(m)
   const look = KINDS[m.saved_kind && m.kind === 'saved' ? m.saved_kind : m.kind]
   const Icon = look.icon
-  const chip = m.state === 'asked' ? (answered ? { text: 'Answered ✓', className: 'text-[var(--success)]' } : { text: 'Waiting for answer', className: 'text-[var(--draft)]' }) : STATE_CHIP[m.state]
+  const chip = became === 'saved' ? { text: 'Saved ✓', className: 'text-[var(--success)]' } : became === 'cancelled' ? { text: 'Cancelled', className: 'text-muted-foreground' } : m.state === 'asked' ? (answered ? { text: 'Answered ✓', className: 'text-[var(--success)]' } : { text: 'Waiting for answer', className: 'text-[var(--draft)]' }) : STATE_CHIP[m.state]
   const english = m.translated_text && m.translated_text !== m.text ? m.translated_text : null
   return (
     <li
