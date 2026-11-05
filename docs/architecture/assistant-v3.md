@@ -33,19 +33,19 @@ feature does not ship if it breaks one. Taken from the SOP, the code and the inb
 
 **How to hold them:** in code wherever code can decide; the SOP only backs it up. The ones that keep
 breaking are the ones resting on the model following a written rule ([235], [236] and [238] all came
-after [230] was marked done). "Rule only" below means no code check was found on 4 Nov 2026.
+after [230] was marked done).
 
 | # | Basic | Held by, 4 Nov 2026 | Open or recent |
 |---|---|---|---|
 | 1 | **Save in English, reply in their language.** Every saved field is English; the reply and card line stay in theirs | Being built | [243] |
 | 2 | **Lose nothing.** Every part of a message is saved or asked about | SOP rules 1 and 4, some code ([229]) | [237], [234], [232] |
-| 3 | **Say "saved" only when it saved.** Prepared is not saved | Rule only for the reply; the Save line is drawn by code | |
+| 3 | **Say "saved" only when it saved.** Prepared is not saved | Code (`reply_guard.py`, WA-193): the claim is cut from the model's words; "saved" with no tool gets one more try | |
 | 4 | **Never change their data.** Same number, same unit, no swapped material | Materials in code; quantities in a reply mostly rule | |
 | 5 | **Never create a duplicate.** Recognise what already exists | Repeat saves in code (idempotency key, "Already saved at"); an add for a listed material is not caught | [242] |
 | 6 | **Right site, right person, right day** | Code (`decide_site`, missing date filled with today) | |
 | 7 | **Work it out first.** At most one question, with buttons and a way out | SOP rules 2 and 3 | [232] |
 | 8 | **One reply language.** No mixing, in their script | Decided by code; the wording is the model's, with some code-side checks ([231]) | [239] |
-| 9 | **Never show internal things.** Ids, error messages, memory notes | Rule only for ids: nothing in code removes them | [242] ([226] fixed) |
+| 9 | **Never show internal things.** Ids, error messages, memory notes | Code (`reply_guard.py`, WA-193): ids and API-error sentences are cut; links keep theirs | [242] for the root cause ([226] fixed) |
 | 10 | **Never a dead end.** Always an answer or a next step; check the tools before "I can't" | SOP rule 10; outage handling in code | [227], [235], [236], [238], [204] |
 
 Already covered, so not on the list: **access**. The agent works through the dashboard's API as the
@@ -343,3 +343,4 @@ Tracked in [V1_TRACKER.md](../plans/V1_TRACKER.md):
 | WA-135 | Attendance-sheet photos; entries record photo / voice / text |
 | WA-169 | A chosen reply language is kept in the database and always wins |
 | WA-192 | The ten basics written down |
+| WA-193 | Basics 3 and 9 held by code (`reply_guard.py`) |

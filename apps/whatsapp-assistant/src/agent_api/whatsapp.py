@@ -71,6 +71,7 @@ from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory, tools_version
 from .record_links import record_link, with_links
+from .reply_guard import without_ids
 from .tools import build_tools
 from .units import is_stock_unit_refusal, plain_refusal, unit_rows
 
@@ -410,6 +411,7 @@ class ApiWhatsApp:
                        **({} if r.ok else {"reason": _detail(r.body)[:300]})} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
             **({"dropped_question": turn.dropped_question} if turn.dropped_question else {}),
+            **({"reply_fixed": turn.reply_fixed} if turn.reply_fixed else {}),
         }, started)
         state["language"] = _turn_language(text, state)  # WA-165: "Tower A" keeps it; WA-169: their choice wins
         if turn.sizes_said:
@@ -788,7 +790,7 @@ class ApiWhatsApp:
         text = without_save_prompt(text) or ("OK." if not pending else "")
         if pending:
             text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending])) or "OK."
-            listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
+            listed = "\n".join(f"{i}. {without_ids(e.summary)}" for i, e in enumerate(pending, 1))
             text = f"{text}\n\n*Ready to save:*\n{listed}".strip()
             if not options:
                 text = f"{text}\n\n{_in(language, 'api.press_save', PRESS_SAVE)}"

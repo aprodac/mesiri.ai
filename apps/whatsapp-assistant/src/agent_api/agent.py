@@ -33,8 +33,9 @@ from runtime.ai_outage import is_budget_error
 from .client import ApiClient, new_idempotency_key
 from .fill import NARRATIVE_REFUSAL, fill_body, missing_in_body
 from .materials import ADD_TOOL, NEW, pending_ref, settle_material
+from .reply_guard import claims_saved, without_ids, without_internals, without_saved_claims
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
-from .units import is_uuid, resolve_unit, unit_choices, unit_rows
+from .units import is_uuid, plain_refusal, resolve_unit, unit_choices, unit_rows
 
 SOP = (Path(__file__).with_name("SOP.md")).read_text(encoding="utf-8")
 
@@ -100,6 +101,8 @@ class ApiTurn:
     size_needed: list[dict[str, Any]] = field(default_factory=list)
     #: [229]: the model said something was ready (or to tap Save) but nothing is held, even after one more try.
     nothing_held: bool = False
+    #: WA-193: what the code took out of the model's words ("saved", "internals"), kept in the trace.
+    reply_fixed: list[str] = field(default_factory=list)
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -697,8 +700,23 @@ class ApiAgent:
                 code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
                     "kind": "missing_feature", "about": f"Mesiri told them the team was told; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-155)"}})
-        claimed_ready = nothing_done() and asks_to_tap_save(result.text or "")  # [229]
-        if not (result.text or "").strip() and not new and not asked and not saved and not acted and not exists:
+        fixed: list[str] = []  # WA-193
+        if not result.calls and nothing_done() and claims_saved(result.text):
+            # "Saved" with no tool called: nothing happened. One more try. Answering about an earlier record takes a
+            # look-up here, which is how the check below tells that apart from a false "saved".
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                role="user", text="(You called no tool, so nothing was saved in this turn. Do what my message asks now "
+                                  "with the tools. If you were telling me about an earlier record, look it up with a "
+                                  "tool and answer from that.)")])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+        false_saved = (claims_saved(result.text) and not any(r.ok for r in saved) and not told(result.calls)
+                       and bool(new or changed or saved or not result.calls))
+        if false_saved:  # WA-193: code decides; what is held stays held and the ready list says so
+            result = result.model_copy(update={"text": without_saved_claims(result.text or "")})
+            fixed.append("saved")
+        claimed_ready = nothing_done() and (false_saved or asks_to_tap_save(result.text or ""))  # [229]
+        if (not (result.text or "").strip() and not new and not asked and not saved and not acted and not exists
+                and not false_saved):
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
                                      ChatMessage(role="user", text="(answer my message now, in words)")])
@@ -723,8 +741,14 @@ class ApiAgent:
                 options = []
         if claimed_ready and not still and not new and not asked and not exists and not options:
             reply = ""  # [229]: "ready, tap Save" with nothing held: the code says what is true instead
-        return ApiTurn(reply=reply, pending=still + new, nothing_held=bool(claimed_ready and not reply), saved=saved, calls=calls,
-                       stop_reason=result.stop_reason, question=asked.get("question", ""), options=options,
+        clean = without_internals(reply)  # WA-193: last, so a line the code added is checked too
+        if clean != reply.strip():
+            fixed.append("internals")
+            reply = clean or (plain_refusal("", language) if not still and not new else "")
+        return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
+                       nothing_held=bool(claimed_ready and not reply and not still and not new),
+                       stop_reason=result.stop_reason, question=without_internals(asked.get("question", "")),
+                       options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed)
 
