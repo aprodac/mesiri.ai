@@ -33,92 +33,83 @@ interface AIConfig {
 // ──────────────────────────────────────────────────
 // Static capability definitions
 // ──────────────────────────────────────────────────
-// Gemini models offered for the WhatsApp assistant's brains (request 178). "Custom model..." takes any
-// other id (a newer preview, a Pro model): the id is passed to Gemini as typed.
-const GEMINI_AGENT_MODELS = [
+// Set 5 Nov 2026: only what Mesiri uses. Every capability runs on Gemini (the last 14 days of calls were all Gemini;
+// DeepSeek and the mock provider had none). Sarvam stays only as the voice-note fallback. The Gemini model list is
+// read live from Google (GET /admin/providers/gemini/models), so a new model shows up without a deploy; this list
+// is used until it loads or when it can't be read.
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+const BUILT_IN_GEMINI_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-2.5-pro',
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
-  'gemini-2.5-pro',
-  'gemini-3.5-flash-lite',
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
 ];
+
+const GEMINI = { value: 'gemini', label: 'Gemini' };
+const SARVAM = { value: 'sarvam', label: 'Sarvam' };
 
 const CAPABILITY_DEFS: {
   key: string;
   label: string;
+  hint: string;
   providers: { value: string; label: string }[];
-  models: Record<string, string[]>;
+  fallbackProviders: { value: string; label: string }[];
 }[] = [
   {
-    key: 'voice',
-    label: 'Voice / STT',
-    providers: [
-      { value: 'sarvam', label: 'Sarvam' },
-      { value: 'gemini', label: 'Gemini' },
-      { value: 'fake', label: 'Fake (Mock data)' },
-    ],
-    models: {
-      sarvam: ['saaras:v2.5'],
-      gemini: ['gemini-2.5-flash'],
-    },
+    key: 'api_agent',
+    label: 'WhatsApp assistant',
+    hint: 'Reads every message and prepares the entries (v3, all companies).',
+    providers: [GEMINI],
+    fallbackProviders: [GEMINI],
   },
   {
-    key: 'extraction',
-    label: 'Structured Extraction',
-    providers: [
-      { value: 'gemini', label: 'Gemini' },
-      { value: 'deepseek', label: 'DeepSeek' },
-      { value: 'fake', label: 'Fake (Mock data)' },
-    ],
-    models: {
-      gemini: ['gemini-2.5-flash'],
-      deepseek: ['deepseek-chat'],
-    },
+    key: 'agent',
+    label: 'Backup assistant',
+    hint: 'Answers a message when the assistant above fails.',
+    providers: [GEMINI],
+    fallbackProviders: [GEMINI],
+  },
+  {
+    key: 'voice',
+    label: 'Voice notes',
+    hint: 'Turns voice notes into text.',
+    providers: [GEMINI],
+    fallbackProviders: [GEMINI, SARVAM],
   },
   {
     key: 'vision',
-    label: 'Vision / Image Analysis',
-    providers: [
-      { value: 'gemini', label: 'Gemini' },
-      { value: 'fake', label: 'Fake (Mock data)' },
-    ],
-    models: {
-      gemini: ['gemini-2.5-flash'],
-    },
+    label: 'Photos & bills',
+    hint: 'Reads bills, attendance sheets and site photos.',
+    providers: [GEMINI],
+    fallbackProviders: [GEMINI],
   },
   {
     key: 'translation',
     label: 'Translation',
-    providers: [
-      { value: 'gemini', label: 'Gemini' },
-      { value: 'deepseek', label: 'DeepSeek' },
-      { value: 'fake', label: 'Fake (Mock data)' },
-    ],
-    models: {
-      gemini: ['gemini-2.5-flash'],
-      deepseek: ['deepseek-chat'],
-    },
+    hint: 'Puts words left in Malayalam or Manglish into English before saving.',
+    providers: [GEMINI],
+    fallbackProviders: [GEMINI],
   },
   {
-    key: 'agent',
-    label: "WhatsApp assistant (today's agent)",
-    providers: [{ value: 'gemini', label: 'Gemini' }],
-    models: { gemini: GEMINI_AGENT_MODELS },
-  },
-  {
-    key: 'api_agent',
-    label: "WhatsApp API agent (companies on mode 'api' only)",
-    providers: [{ value: 'gemini', label: 'Gemini' }],
-    models: { gemini: GEMINI_AGENT_MODELS },
+    key: 'extraction',
+    label: 'Reports',
+    hint: 'Builds the structured parts of reports and documents.',
+    providers: [GEMINI],
+    fallbackProviders: [GEMINI],
   },
 ];
 
-function defaultModelForProvider(cap: string, pid: string): string {
-  const def = CAPABILITY_DEFS.find((c) => c.key === cap);
-  if (!def) return '';
-  const list = def.models[pid];
-  return list?.[0] ?? '';
+const OTHER_MODELS: Record<string, string[]> = { sarvam: ['saaras:v2.5'] };
+
+function modelsFor(pid: string, geminiModels: string[]): string[] {
+  return pid === 'gemini' ? geminiModels : OTHER_MODELS[pid] ?? [];
+}
+
+function defaultModelForProvider(pid: string, geminiModels: string[]): string {
+  if (pid === 'gemini') return DEFAULT_GEMINI_MODEL;
+  return modelsFor(pid, geminiModels)[0] ?? '';
 }
 
 // ──────────────────────────────────────────────────
@@ -127,13 +118,17 @@ function defaultModelForProvider(cap: string, pid: string): string {
 interface CapabilityCardProps {
   capKey: string;
   label: string;
+  hint: string;
   providers: { value: string; label: string }[];
-  models: Record<string, string[]>;
+  fallbackProviders: { value: string; label: string }[];
+  geminiModels: string[];
   routing: CapabilityRouting;
   onRoutingChange: (key: string, routing: CapabilityRouting) => void;
 }
 
-function CapabilityCard({ capKey, label, providers, models, routing, onRoutingChange }: CapabilityCardProps) {
+function CapabilityCard({
+  capKey, label, hint, providers, fallbackProviders, geminiModels, routing, onRoutingChange,
+}: CapabilityCardProps) {
   const [isCustomPrimary, setIsCustomPrimary] = useState(false);
   const [isCustomFallback, setIsCustomFallback] = useState(false);
   const [customPrimaryModel, setCustomPrimaryModel] = useState('');
@@ -141,7 +136,7 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
 
   // Initialise custom-model state from loaded config
   useEffect(() => {
-    const knownModels = Object.values(models).flat();
+    const knownModels = [...geminiModels, ...Object.values(OTHER_MODELS).flat()];
     if (routing.model && routing.model !== 'fake' && !knownModels.includes(routing.model)) {
       setIsCustomPrimary(true);
       setCustomPrimaryModel(routing.model);
@@ -162,7 +157,7 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
     onRoutingChange(capKey, {
       ...routing,
       provider_id: pid,
-      model: defaultModelForProvider(capKey, pid),
+      model: defaultModelForProvider(pid, geminiModels),
     });
   };
 
@@ -180,7 +175,7 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
     onRoutingChange(capKey, {
       ...routing,
       fallback_provider_id: pid || null,
-      fallback_model: pid ? defaultModelForProvider(capKey, pid) : null,
+      fallback_model: pid ? defaultModelForProvider(pid, geminiModels) : null,
     });
   };
 
@@ -193,17 +188,22 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
     }
   };
 
-  const primaryModels = models[routing.provider_id] ?? [];
-  const fallbackModels = models[routing.fallback_provider_id ?? ''] ?? [];
-
-  // Fallback providers = all providers except the primary (and fake is fine as fallback)
-  const fallbackProviderOptions = providers.filter((p) => p.value !== routing.provider_id);
+  // A saved model the list doesn't have (an old one) is still shown, so the page never silently changes it.
+  const withSaved = (list: string[], saved: string | null) => (saved && !list.includes(saved) ? [saved, ...list] : list);
+  const primaryModels = withSaved(modelsFor(routing.provider_id, geminiModels), isCustomPrimary ? null : routing.model);
+  const fallbackModels = withSaved(
+    modelsFor(routing.fallback_provider_id ?? '', geminiModels),
+    isCustomFallback ? null : routing.fallback_model,
+  );
+  // A fallback can be another Gemini model: a different model often still answers when one is overloaded.
+  const fallbackProviderOptions = fallbackProviders;
 
   return (
     <div className="card" style={{ padding: 'var(--space-4)' }}>
-      <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: 'var(--space-3)', color: 'var(--neutral-800)' }}>
+      <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--neutral-800)' }}>
         {label}
       </div>
+      <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginBottom: 'var(--space-3)' }}>{hint}</div>
 
       {/* Primary */}
       <div style={{ marginBottom: 'var(--space-4)' }}>
@@ -216,7 +216,7 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
             {providers.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
-        {routing.provider_id !== 'fake' && (
+        {(
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>Model</label>
             <select
@@ -224,7 +224,9 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
               value={isCustomPrimary ? 'custom' : routing.model}
               onChange={(e) => handleModelChange(e.target.value)}
             >
-              {primaryModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              {primaryModels.map((m) => (
+                <option key={m} value={m}>{m === DEFAULT_GEMINI_MODEL ? `${m} (default)` : m}</option>
+              ))}
               <option value="custom">Custom model...</option>
             </select>
             {isCustomPrimary && (
@@ -232,7 +234,7 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
                 type="text"
                 className="form-input"
                 style={{ marginTop: 'var(--space-2)' }}
-                placeholder="e.g. gemini-1.5-pro"
+                placeholder="e.g. gemini-3.6-pro"
                 value={customPrimaryModel}
                 onChange={(e) => {
                   setCustomPrimaryModel(e.target.value);
@@ -264,7 +266,7 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
             {fallbackProviderOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
-        {routing.fallback_provider_id && routing.fallback_provider_id !== 'fake' && (
+        {routing.fallback_provider_id && (
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>Model</label>
             <select
@@ -280,7 +282,7 @@ function CapabilityCard({ capKey, label, providers, models, routing, onRoutingCh
                 type="text"
                 className="form-input"
                 style={{ marginTop: 'var(--space-2)' }}
-                placeholder="e.g. deepseek-reasoner"
+                placeholder="e.g. gemini-2.5-flash"
                 value={customFallbackModel}
                 onChange={(e) => {
                   setCustomFallbackModel(e.target.value);
@@ -304,18 +306,16 @@ export default function Providers() {
   const [checking, setChecking] = useState<Record<string, boolean>>({});
   const [results, setResults] = useState<Record<string, CheckResult>>({});
 
-  const [routing, setRouting] = useState<Record<string, CapabilityRouting>>({
-    voice: { provider_id: 'sarvam', model: 'saaras:v2.5', fallback_provider_id: null, fallback_model: null },
-    extraction: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
-    vision: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
-    translation: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
-    agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
-    api_agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
-  });
+  const [routing, setRouting] = useState<Record<string, CapabilityRouting>>(
+    Object.fromEntries(CAPABILITY_DEFS.map((c) => [c.key, {
+      provider_id: 'gemini', model: DEFAULT_GEMINI_MODEL, fallback_provider_id: null, fallback_model: null,
+    }])),
+  );
+  const [geminiModels, setGeminiModels] = useState<string[]>(BUILT_IN_GEMINI_MODELS);
+  const [modelSource, setModelSource] = useState<'live' | 'built-in'>('built-in');
 
   const [secretsInput, setSecretsInput] = useState<Record<string, { api_key: string; base_url: string }>>({
     gemini: { api_key: '', base_url: '' },
-    deepseek: { api_key: '', base_url: '' },
     sarvam: { api_key: '', base_url: '' },
   });
 
@@ -330,13 +330,21 @@ export default function Providers() {
         api.get<Provider[]>('/admin/providers'),
         api.get<AIConfig>('/admin/providers/config'),
       ]);
-      setProviders(providersRes.data);
+      // Only the providers Mesiri uses: Gemini, and Sarvam while it is the voice fallback.
+      setProviders(providersRes.data.filter((p) => p.id === 'gemini' || p.id === 'sarvam'));
+      api
+        .get<{ models: string[]; source: 'live' | 'built-in' }>('/admin/providers/gemini/models')
+        .then((res) => {
+          if (res.data.models?.length) setGeminiModels(res.data.models);
+          setModelSource(res.data.source);
+        })
+        .catch(() => setModelSource('built-in'));
 
       const { routing: dbRouting, secrets: dbSecrets } = configRes.data;
       setRouting(dbRouting as Record<string, CapabilityRouting>);
 
       const newSecrets = { ...secretsInput };
-      Object.keys(dbSecrets).forEach((pid) => {
+      Object.keys(dbSecrets).filter((pid) => pid in newSecrets).forEach((pid) => {
         newSecrets[pid] = {
           api_key: dbSecrets[pid].api_key || '',
           base_url: dbSecrets[pid].base_url || '',
@@ -394,7 +402,7 @@ export default function Providers() {
     <div className="animate-fade-in" style={{ maxWidth: '1100px', paddingBottom: 'var(--space-12)' }}>
       <header style={{ marginBottom: 'var(--space-6)' }}>
         <h1>AI Routing & Providers</h1>
-        <p className="subtitle">Route AI capabilities to specific providers and configure fallbacks.</p>
+        <p className="subtitle">Which Gemini model each part of Mesiri uses, and its fallback.</p>
       </header>
 
       {saveSuccess && (
@@ -445,13 +453,22 @@ export default function Providers() {
                 key={cap.key}
                 capKey={cap.key}
                 label={cap.label}
+                hint={cap.hint}
                 providers={cap.providers}
-                models={cap.models}
-                routing={routing[cap.key] ?? { provider_id: 'fake', model: '', fallback_provider_id: null, fallback_model: null }}
+                fallbackProviders={cap.fallbackProviders}
+                geminiModels={geminiModels}
+                routing={routing[cap.key] ?? {
+                  provider_id: 'gemini', model: DEFAULT_GEMINI_MODEL, fallback_provider_id: null, fallback_model: null,
+                }}
                 onRoutingChange={handleRoutingChange}
               />
             ))}
           </div>
+          <p style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: 'var(--space-3)' }}>
+            {modelSource === 'live'
+              ? `${geminiModels.length} Gemini models, read live from Google.`
+              : "Gemini models: built-in list (Google's list couldn't be read). Use \"Custom model...\" for any other."}
+          </p>
         </section>
 
         {/* SECTION 2: API KEYS */}
@@ -489,22 +506,6 @@ export default function Providers() {
                       })}
                     />
                   </div>
-
-                  {p.id === 'deepseek' && (
-                    <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-                      <label>API Base URL</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="https://api.deepseek.com"
-                        value={secretsInput.deepseek?.base_url || ''}
-                        onChange={(e) => setSecretsInput({
-                          ...secretsInput,
-                          deepseek: { ...secretsInput.deepseek, base_url: e.target.value }
-                        })}
-                      />
-                    </div>
-                  )}
 
                   <button
                     type="button"

@@ -25,6 +25,20 @@ from mesiri.infrastructure.postgres.repositories.ai_config import PostgresAIConf
 
 router = APIRouter(prefix="/admin/providers", tags=["admin"])
 
+#: Set 5 Nov 2026 (control panel): Gemini 3.5 Flash is the model every capability starts on.
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+#: Shown when Google's model list cannot be read (no key, network); the live list replaces it.
+KNOWN_GEMINI_MODELS: tuple[str, ...] = (
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+)
+#: Gemini models that cannot answer Mesiri's text, voice or photo calls (speech out, image out, live audio).
+_NOT_FOR_MESIRI = ("embedding", "tts", "image-generation", "-image", "live", "native-audio", "aqa")
+
 
 class CapabilityRouting(BaseModel):
     provider_id: str
@@ -160,15 +174,15 @@ async def get_ai_config(
 
     # Prepopulate default fallback routes if not defined in DB
     default_routes = {
-        "voice": {"provider_id": "sarvam", "model": "saaras:v2.5"},
-        "extraction": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
-        "vision": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
-        "translation": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
-        # The WhatsApp assistant's tool-calling brain (classic).
-        "agent": {"provider_id": "gemini", "model": settings.gemini.model},
-        # WA-119: the API agent (assistant_mode "api"); unset it uses "agent" (shown here as the
+        "voice": {"provider_id": "gemini", "model": DEFAULT_GEMINI_MODEL},
+        "extraction": {"provider_id": "gemini", "model": DEFAULT_GEMINI_MODEL},
+        "vision": {"provider_id": "gemini", "model": DEFAULT_GEMINI_MODEL},
+        "translation": {"provider_id": "gemini", "model": DEFAULT_GEMINI_MODEL},
+        # The classic assistant: answers when v3 fails (FallBackToClassic).
+        "agent": {"provider_id": "gemini", "model": DEFAULT_GEMINI_MODEL},
+        # WA-119: the API agent (v3, every company); unset it uses "agent" (shown here as the
         # model it would use). v2's own "agent_v2" route is gone with v2 (WA-134).
-        "api_agent": db_routes.get("agent") or {"provider_id": "gemini", "model": settings.gemini.model},
+        "api_agent": db_routes.get("agent") or {"provider_id": "gemini", "model": DEFAULT_GEMINI_MODEL},
     }
 
     resolved_routing = {}
@@ -285,6 +299,53 @@ async def update_ai_config(
             )
 
     return {"status": "ok"}
+
+
+def gemini_models_for_mesiri(listing: list[dict[str, Any]]) -> list[str]:
+    """The Gemini models in Google's list that can answer Mesiri's calls (generateContent; not embeddings, speech or
+    image output), newest name first, ids without the "models/" prefix."""
+    out = set()
+    for row in listing:
+        name = str(row.get("name") or "").removeprefix("models/")
+        methods = row.get("supportedGenerationMethods") or []
+        if name.startswith("gemini-") and "generateContent" in methods and not any(x in name for x in _NOT_FOR_MESIRI):
+            out.add(name)
+    return sorted(out, reverse=True)
+
+
+@router.get("/gemini/models")
+async def list_gemini_models(
+    conn: AsyncConnection = Depends(get_db_conn),
+    settings: Settings = Depends(get_settings),
+    _admin: dict = Depends(require_platform_admin),
+) -> dict:
+    """Every Gemini model the configured key can use, read live from Google (so a new model shows up without a
+    deploy), and the default. Unreadable: the built-in list (``source`` says which)."""
+    api_key = (await _get_active_secrets(conn, settings)).get("gemini", {}).get("api_key")
+    listing: list[dict[str, Any]] = []
+    if api_key:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                token = None
+                for _ in range(5):  # pages of 1000; Google lists well under that today
+                    resp = await client.get("https://generativelanguage.googleapis.com/v1beta/models",
+                                            params={"key": api_key, "pageSize": 1000,
+                                                    **({"pageToken": token} if token else {})})
+                    if resp.status_code != 200:
+                        break
+                    body = resp.json()
+                    listing += body.get("models") or []
+                    token = body.get("nextPageToken")
+                    if not token:
+                        break
+        except (httpx.HTTPError, ValueError):
+            listing = []
+    models = gemini_models_for_mesiri(listing)
+    source = "live" if models else "built-in"
+    models = models or list(KNOWN_GEMINI_MODELS)
+    if DEFAULT_GEMINI_MODEL not in models:
+        models.insert(0, DEFAULT_GEMINI_MODEL)
+    return {"models": models, "default": DEFAULT_GEMINI_MODEL, "source": source}
 
 
 async def _check_gemini(api_key: str | None) -> tuple[bool, str | None, float]:
