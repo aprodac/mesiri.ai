@@ -134,6 +134,9 @@ class ApiTurn:
     size_needed: list[dict[str, Any]] = field(default_factory=list)
     #: [229]: the model said something was ready (or to tap Save) but nothing is held, even after one more try.
     nothing_held: bool = False
+    #: [248]: lines (their card words) refused for their material and still not held after one more try: the reply
+    #: says plainly they are not on the card, never "ready".
+    not_held: list[str] = field(default_factory=list)
     #: WA-193: what the code took out of the model's words ("saved", "internals"), kept in the trace.
     reply_fixed: list[str] = field(default_factory=list)
     #: [243]: the reply language set this turn by the code ("auto" = cleared), "" when none was set.
@@ -608,6 +611,12 @@ class ApiAgent:
                 # [217]: a line for a material waiting in the list to be added names it new:<name>; Save fills the id.
                 adding = [str(e.body.get("name") or "") for e in [*waiting, *new] if e is not None and e.tool == ADD_TOOL]
                 new_ref = pending_ref(arguments.get("material_id"), adding) or pending_ref(arguments.get(MATERIAL_SAID), adding)
+                said = str(arguments.get(MATERIAL_SAID) or "").strip()
+                if not new_ref and adding and said and not pending_ref(said, adding):
+                    # [248] (5 Nov, New India: "20 wash basins" said as "വാഷ് ബേസിൻ" right after adding Wash Basin; the
+                    # model gave the line a made-up id, it was refused, and the 20 were lost): their word in English
+                    # names the material being added in this message, so the line goes on it.
+                    new_ref = pending_ref(await english(said), adding)
                 if new_ref:
                     arguments = {**arguments, "material_id": new_ref}
             if name == ADD_TOOL and not arguments.get("default_unit_id"):
@@ -695,10 +704,15 @@ class ApiAgent:
                 if problem:
                     unit_ask[:] = await unit_buttons(client)
                     return ToolOutcome(content={"error": problem})
+            if (name == ANSWER_SIZE_TOOL and (size := _decimal(body.get("one_unit_equals"))) is not None
+                    and not said_number(their_words, size)):
+                # [248]: an admin's size answer is their number, never one the model made up (it is for the company).
+                return ToolOutcome(content={"error": (
+                    f"{_amount(size)} is not a size they said. Nothing is prepared. Ask them for the size in one question.")})
             if name == CONVERSION_TOOL:
                 material_id = str(arguments.get("material_id") or "")
                 size = _decimal(body.get("one_unit_equals"))
-                check = await size_check(client, material_id, str(body.get("from_unit_id") or ""), size)
+                check = await size_check(client, material_id, str(body.get("from_unit_id") or ""), size, their_words)
                 if check.get("error"):
                     return ToolOutcome(content={"error": check["error"]})
                 if not may_set_sizes and is_uuid(material_id) and size is not None:
@@ -922,6 +936,17 @@ class ApiAgent:
                                    "part now, or ask about it in one question. Keep everything already prepared. If "
                                    "it is not an update (a phone number, a time), just answer.)"))])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+        lines_lost = not_held(result.calls, new) if not asked and not site_ask else []
+        if lines_lost and not lost and not again_asked:
+            # [248] (5 Nov, New India: three new materials on the card, their 20 + 20 + 30 + 1 load dropped, and the
+            # reply said all were ready): a line refused for its material and never held after. One more try.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                role="user", text=(f"(These lines are NOT on the card: {'; '.join(lines_lost)}. Their material was refused "
+                                   "(read the error of that call). Prepare each now as the error says: a material "
+                                   "being added in this message is material_id \"new:<its name>\". Keep everything "
+                                   "already prepared.)"))])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            lines_lost = not_held(result.calls, new)
         false_saved = (claims_saved(result.text) and not any(r.ok for r in saved) and not told(result.calls)
                        and bool(new or changed or saved or not result.calls))
         if false_saved:  # WA-193: code decides; what is held stays held and the ready list says so
@@ -961,6 +986,7 @@ class ApiAgent:
             reply = clean or (plain_refusal("", language) if not still and not new else "")
         return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
                        nothing_held=bool(claimed_ready and not reply and not still and not new),
+                       not_held=lines_lost,
                        stop_reason=result.stop_reason, question=without_internals(asked.get("question", "")),
                        options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
@@ -1053,6 +1079,15 @@ _IDS = re.compile(r"\b(?=[0-9a-f-]*[a-f])[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]
                   r"[0-9a-f]{12,}\b", re.IGNORECASE)
 
 
+def said_number(text: str, value: Any) -> bool:
+    """[248]: ``value`` is a number written in ``text`` (a size: "0.33", "2.83" are numbers here, never times)."""
+    try:
+        wanted = float(value)
+    except (TypeError, ValueError):
+        return False
+    return any(abs(float(n) - wanted) < 1e-9 for n in _NUMBER.findall(text or ""))
+
+
 def left_over(text: str, kept: str) -> list[str]:
     """WA-198: the numbers written in ``text`` (their message) that appear nowhere in ``kept`` (everything the turn
     prepared, asked, answered or looked up). Times, dates, ordinals, refs and phone numbers are not amounts."""
@@ -1068,6 +1103,32 @@ def own_words(text: str) -> str:
 
 #: How the code adds a photo's reading to the message (``whatsapp._photo_text``).
 PHOTO_SHOWS = "\nWhat the photo shows:"
+
+
+#: [248]: refusals of a line's MATERIAL (settle_material): the line is meant to come back prepared differently.
+_MATERIAL_REFUSALS = ("is not in the company's material list", "material_said is not in English",
+                      "say which material they named")
+
+
+def not_held(calls: list[Any], held: list[PendingWrite]) -> list[str]:
+    """[248]: the card words of write lines refused for their material in this turn that no held line of the same tool
+    took up after (same quantity, or the same card words). Other refusals (a question to ask, "already saved", a rate
+    that is not a quantity) are meant: not listed."""
+    out: list[str] = []
+    for call in calls:
+        content = call.outcome.content if getattr(call, "outcome", None) else None
+        error = str(content.get("error") or "") if isinstance(content, dict) else ""
+        if not any(r in error for r in _MATERIAL_REFUSALS):
+            continue
+        line = str(call.arguments.get(CONFIRM_ARG) or "").strip()
+        quantity = call.arguments.get("quantity")
+        taken = any(e.tool == call.name and (
+            (line and e.summary.startswith(line))
+            or (quantity is not None and str(e.body.get("quantity")) in (str(quantity), str(float(quantity))))
+        ) for e in held)
+        if line and not taken and line not in out:
+            out.append(line)
+    return out
 
 
 def kept_texts(calls: list[Any], held: list[PendingWrite], asked: dict[str, Any], reply: str | None) -> str:
@@ -1146,6 +1207,8 @@ async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "uni
 
 
 CONVERSION_TOOL = "set_unit_conversion"
+#: WA-168: an admin answering "📏 Sizes needed".
+ANSWER_SIZE_TOOL = "answer_size_request"
 #: WA-197: the note on a held line whose size is not known yet (" (1 Loads = how many Bags?)").
 SIZE_UNKNOWN = re.compile(r" \(1 [^()]* = how many [^()]*\?\)")
 #: WA-168: the button under a size question when nobody on site knows it (WhatsApp titles: 20 characters).
@@ -1254,12 +1317,18 @@ async def _units(client: ApiClient) -> list[dict[str, Any]]:
     return unit_rows(response.body) if response.ok else []
 
 
-async def size_check(client: ApiClient, material_id: str, from_unit_id: str, size: Decimal | None) -> dict[str, str]:
+async def size_check(client: ApiClient, material_id: str, from_unit_id: str, size: Decimal | None,
+                     said: str | None = None) -> dict[str, str]:
     """WA-166: a size ("1 load = 60 bags") before it is held. ``{"error": ...}`` for one that cannot be right (none
     given, the material is already counted in that unit, or fewer than one piece in a load of a counted material:
     Paraclette's "1 load holobricks = 0.33 nos"); else ``{"line": "📏 1 Loads എംസാന്റ് = 60 Bags"}``, the ready line
-    the code draws, so the person sees the size the company will use."""
-    from mesiri.domains.materials.unit_conversion import COUNT_UNITS
+    the code draws, so the person sees the size the company will use.
+
+    [248] (5 Nov, New India): "one load = one truck of M-sand" was saved as "1 load M-sand = 60 cum", a size nobody
+    said, for the whole company. ``said`` (their words, the conversation included): a size that is not a number in it
+    is never held. And a conversion the code already knows (1 ton = 1000 kg, 1 brass = 100 cft, a cement bag = 50 kg)
+    is never held or asked: the line converts by itself."""
+    from mesiri.domains.materials.unit_conversion import COUNT_UNITS, built_in_per_stock_unit
 
     if size is None:
         return {"error": "one_unit_equals must be the number they said: how many of the stock unit are in ONE of theirs."}
@@ -1275,9 +1344,16 @@ async def size_check(client: ApiClient, material_id: str, from_unit_id: str, siz
     material, unit, stock = found.get("material"), found.get("unit_name"), found.get("stock_unit_name")
     if found.get("unit") == found.get("stock_unit"):
         return {"error": f"{material} is already counted in {stock}: no size is needed. Prepare the line in {stock}."}
+    if built_in_per_stock_unit(str(found.get("unit") or ""), str(found.get("stock_unit") or ""), str(material or "")):
+        return {"error": (f"The code already converts {unit} to {stock} for {material} (a standard measure). Nothing "
+                          f"is prepared: never set or ask this size. Prepare the line in {unit}, as they said.")}
     if str(found.get("stock_unit") or "").lower() in COUNT_UNITS and size < 1:
         return {"error": (f"1 {unit} of {material} cannot be less than 1 {stock}: the size is the wrong way round. "
                           f"Nothing is prepared. Ask again, in their language: how many {stock} are in 1 {unit}?")}
+    if said is not None and not said_number(said, size):
+        return {"error": (f"{_amount(size)} is not a size they said: never make one up (it would be used for the whole "
+                          f"company). Nothing is prepared. Prepare the line in {unit} as they said, without "
+                          "`set_unit_conversion`: the code holds it and asks the size beside it.")}
     return {"line": f"📏 1 {unit} {material} = {_amount(size)} {stock}"}
 
 

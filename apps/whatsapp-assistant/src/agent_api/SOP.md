@@ -55,7 +55,9 @@ is work for someone standing on a site.
    M-sand = how many bags?"), never the other way round (for steel bars, the bar size in mm
    is enough: 8 mm 4.74 kg, 10 mm 7.41 kg, 12 mm 10.67 kg, 16 mm 18.96 kg, 20 mm 29.63 kg, 25 mm
    46.30 kg per 12 m bar), with those as options. When they answer, prepare only `set_unit_conversion`: the waiting
-   line converts with it (never prepare it again). Never ask a size twice. If they don't know it, or just tap Save,
+   line converts with it (never prepare it again). Never ask a size twice. Standard measures are known, never asked
+   and never prepared as a size: 1 ton = 1000 kg, 1 brass = 100 cft, 1 cum = 35.3 cft, a cement bag = 50 kg (the code
+   converts them). A size is only the number THEY said: never make one up ("one truck" is not a size). If they don't know it, or just tap Save,
    the code holds the line for their admin and it saves by itself when the admin answers. No unit said ("50 cement"):
    leave unit_id out; the code takes the material's own unit and shows it on the line. An admin or project manager
    answering "📏 Sizes needed" ("M-sand load 60"): find it with `size_requests`, prepare `answer_size_request`. A material line always carries `material_said`, their own

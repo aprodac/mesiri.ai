@@ -449,6 +449,10 @@ class ApiWhatsApp:
             return ReplySpec(text=without_ready_block(whatsapp_bold(words)) or "OK.")
         if turn.nothing_held:
             words = _in(state.get("language"), "api.nothing_held", NOTHING_HELD)  # [229]: nothing is held: say so
+        if turn.not_held:  # [248]: lines that are not on the card are said, never left to look "ready"
+            from runtime.agent.wording import say
+
+            words = f"{words}\n\n{say('api.not_held', state.get('language') or 'english', lines=' · '.join(turn.not_held))}"
         reply = self._reply(words, turn.pending, state, turn.options, state.get("language"))
         await self._save_state(ctx, state)
         return reply

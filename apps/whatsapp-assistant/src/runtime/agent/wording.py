@@ -427,6 +427,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "जो पंक्तियाँ सेव नहीं हुईं उन्हें सूची से हटा दिया। जो छूटा है उसके साथ फिर भेजिए।",
         "hinglish": "Jo lines save nahi hui unhe list se hata diya. Jo chhoota hai uske saath phir bhejiye.",
     },
+    "api.not_held": {
+        "english": "⚠️ Not on the list, nothing saved for: {lines}. Please send these again.",
+        "manglish": "⚠️ Ithu list-il illa, save aayittilla: {lines}. Ithu onnu koodi ayakkoo.",
+        "malayalam": "⚠️ ഇവ ലിസ്റ്റിൽ ഇല്ല, സേവ് ആയിട്ടില്ല: {lines}. ഇവ ഒന്നുകൂടി അയക്കൂ.",
+        "hindi": "⚠️ ये सूची में नहीं हैं, सेव नहीं हुए: {lines}. इन्हें फिर से भेजिए।",
+        "hinglish": "⚠️ Ye list mein nahi hain, save nahi hue: {lines}. Inhe phir se bhejiye.",
+    },
     "api.nothing_held": {
         "english": "I haven't got anything ready to save yet. Please send it again, with what's missing.",
         "manglish": "Save cheyyaan ippo onnum ready aayittilla. Illaathathu koode cherthu onnu koodi ayakkoo.",
