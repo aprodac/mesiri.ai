@@ -46,7 +46,7 @@ after [230] was marked done).
 | 7 | **Work it out first.** At most one question, with buttons and a way out | SOP rules 2 and 3; code since 5 Nov: an unknown material is held as new (WA-194), an unknown size or a missing unit never blocks a line (WA-197) | [232] |
 | 8 | **One reply language.** No mixing, in their script | Decided by code; the wording is the model's, with some code-side checks ([231]) | [239] |
 | 9 | **Never show internal things.** Ids, error messages, memory notes | Code (`reply_guard.py`, WA-193): ids and API-error sentences are cut; links keep theirs | [242] for the root cause ([226] fixed) |
-| 10 | **Never a dead end.** Always an answer or a next step; check the tools before "I can't" | SOP rule 10; outage handling in code | [227], [235], [236], [238], [204] |
+| 10 | **Never a dead end.** Always an answer or a next step; check the tools before "I can't" | SOP rule 10; outage handling in code; since 5 Nov a "can't" with no tool looked at gets the tools first, and is passed to the team by the code if it stays (WA-199) | [227], [235], [236], [238], [204] |
 
 Already covered, so not on the list: **access**. The agent works through the dashboard's API as the
 person, with their permissions. These basics cover v3 only: companies made before 4 Nov stay on
