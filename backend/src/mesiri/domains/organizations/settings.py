@@ -69,6 +69,9 @@ DRAFT_V2 = "draft_v2"
 # SA-30: a demo company (for showing Mesiri to prospects) that a platform admin can reset in one tap: it is deleted
 # and created again with the same people and fresh sample data. Only a company with this set to true can be reset.
 DEMO_COMPANY = "demo_company"
+# WA-246 (Ilan, 5 Nov 2026: "by default for all turn it off"): the "🎤 _what was heard_" line above a voice
+# note's reply (WA-209). Off unless switched on for the company; a person's own users.voice_transcript wins.
+VOICE_TRANSCRIPT = "voice_transcript"
 
 ASSISTANT_MODE = "assistant_mode"
 ASSISTANT_MODE_CLASSIC = "classic"
@@ -233,6 +236,14 @@ _SPECS: dict[str, SettingSpec] = {
             "message and writes its own reply; 'v2_materials' is the same mode under its old "
             "name), or 'api' (WA-119: one model with one SOP using the dashboard's own API as its "
             "tools; entries saved only on the person's confirmation). Changed by the Mesiri team only."
+        ),
+    ),
+    VOICE_TRANSCRIPT: SettingSpec(
+        key=VOICE_TRANSCRIPT,
+        default=False,
+        description=(
+            "true: a WhatsApp reply to a voice note starts with what Mesiri heard (\"🎤 ...\"), so a misheard "
+            "number is caught before Save. Off by default. A person's own switch (control panel, Users) wins."
         ),
     ),
     BRANDING: SettingSpec(
@@ -425,6 +436,10 @@ def validate(key: str, value: object) -> object:
         if not isinstance(value, bool):
             raise ValueError("demo_company must be true or false")
         return value
+    if key == VOICE_TRANSCRIPT:
+        if not isinstance(value, bool):
+            raise ValueError("voice_transcript must be true or false")
+        return value
     if key == ASSISTANT_MODE:
         mode = str(value).strip().lower() if isinstance(value, str) else ""
         if mode not in ASSISTANT_MODES:
@@ -441,6 +456,14 @@ def assistant_mode(stored: object) -> str:
     if mode in RETIRED_ASSISTANT_MODES:
         return RETIRED_ASSISTANT_MODES[mode]
     return mode if mode in ASSISTANT_MODES else ASSISTANT_MODE_CLASSIC
+
+
+def voice_transcript_shown(person: object, company: object) -> bool:
+    """WA-246: whether a voice note's reply starts with what was heard. The person's own choice (true/false) wins;
+    otherwise the company's switch; anything unset or unreadable is off."""
+    if isinstance(person, bool):
+        return person
+    return company is True
 
 
 def draft_v2_enabled(stored: object) -> bool:

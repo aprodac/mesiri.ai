@@ -76,11 +76,13 @@ const ROLE_LIST_SETTINGS = new Set(['whatsapp_material_create_roles']);
 
 // On/off switches. Same save-and-show-back pattern as the Modules card; the
 // backend enforces superadmin for draft_v2, this only exposes the control.
-const BOOLEAN_SETTINGS = new Set(['draft_v2', 'demo_company']);
+const BOOLEAN_SETTINGS = new Set(['draft_v2', 'demo_company', 'voice_transcript']);
 
 const BOOLEAN_CONFIRM: Record<string, string> = {
   demo_company:
     "A demo company for showing Mesiri to prospects. 'Reset demo' DELETES it and creates it again with the same people and fresh sample data. Only for a company made for demos.",
+  voice_transcript:
+    "On: a WhatsApp reply to a voice note starts with what Mesiri heard (🎤 ...). Off by default. A person's own switch (Users, Edit) wins over this.",
   draft_v2:
     "On for every company: WhatsApp updates are held as one card and saved on the Save tap. Turn off only to put this company back on the old flow.",
 };

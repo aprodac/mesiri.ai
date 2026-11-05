@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, date, datetime
+from typing import Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -91,6 +92,8 @@ users_table = sa.Table(
     sa.Column("status", sa.String),
     sa.Column("whatsapp_number", sa.String),
     sa.Column("access_policy", sa.JSON),
+    # WA-246: show what was heard above a voice note's reply; NULL follows the company (migration 0507).
+    sa.Column("voice_transcript", sa.Boolean),
     # SS-25: Find a person lists the people added most recently (the column's default fills it).
     sa.Column("created_at", sa.DateTime(timezone=True)),
 )
@@ -217,6 +220,8 @@ class OrgUserResponse(BaseModel):
     whatsapp_number: str | None = None
     access_mode: str = "custom_projects"
     project_access: list[ProjectAccessGrant] = []
+    #: WA-246: this person's own "show what was heard" switch; None follows the company's voice_transcript.
+    voice_transcript: bool | None = None
 
 
 class UserStatusUpdate(BaseModel):
@@ -442,6 +447,7 @@ async def _fetch_org_users(
         users_table.c.status,
         users_table.c.whatsapp_number,
         users_table.c.access_policy,
+        users_table.c.voice_transcript,
     ).where(users_table.c.organization_id == org_id)
 
     if user_id is not None:
@@ -521,6 +527,7 @@ async def _fetch_org_users(
                 whatsapp_number=row.whatsapp_number,
                 access_mode=mode,
                 project_access=grants,
+                voice_transcript=row.voice_transcript,
             )
         )
     return users
@@ -905,6 +912,8 @@ class OrgUserProfileUpdate(BaseModel):
     role: str | None = None
     whatsapp_number: str | None = None
     full_name: str | None = None
+    #: WA-246: "on" / "off" this person's "show what was heard" line, "company" follows the company's switch.
+    voice_transcript: Literal["company", "on", "off"] | None = None
 
 
 @router.put("/{org_id}/users/{user_id}/access", response_model=OrgUserResponse)
@@ -995,6 +1004,8 @@ async def update_organization_user_profile(
         if not name:
             raise HTTPException(status_code=400, detail="full_name cannot be empty")
         updates["full_name"] = name
+    if body.voice_transcript is not None:
+        updates["voice_transcript"] = {"on": True, "off": False}.get(body.voice_transcript)
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -1007,6 +1018,7 @@ async def update_organization_user_profile(
                 users_table.c.role,
                 users_table.c.whatsapp_number,
                 users_table.c.full_name,
+                users_table.c.voice_transcript,
             ).where(users_table.c.id == user_id, users_table.c.organization_id == org_id)
         )
         user_row = result.first()

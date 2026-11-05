@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum, String, func
+from sqlalchemy import Boolean, Column, DateTime, Enum, String, func
 from sqlalchemy.dialects.postgresql import JSON, UUID
 
 from .base import Base
@@ -31,6 +31,8 @@ class UserModel(Base):
     access_policy = Column(JSON, nullable=True)
     # Added by migration 0501 (WA-169): the language WhatsApp replies are always in; NULL = follow each message.
     reply_language = Column(String(20), nullable=True)
+    # WA-246: show what was heard above a voice note's reply; NULL follows the company's voice_transcript setting.
+    voice_transcript = Column(Boolean, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

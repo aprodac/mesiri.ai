@@ -32,3 +32,15 @@ def test_anything_but_a_boolean_is_refused(value):
 )
 def test_only_an_explicit_false_turns_it_off(stored, expected):
     assert settings.draft_v2_enabled(stored) is expected
+
+
+# WA-246 (Ilan, 5 Nov 2026): the "🎤 what was heard" line is a company switch, off by default; a person's own wins.
+def test_voice_transcript_is_off_by_default_and_a_true_or_false_switch() -> None:
+    from mesiri.domains.organizations import settings as s
+
+    assert s.default_for(s.VOICE_TRANSCRIPT) is False
+    assert s.validate(s.VOICE_TRANSCRIPT, True) is True
+    with pytest.raises(ValueError):
+        s.validate(s.VOICE_TRANSCRIPT, "on")
+    assert s.voice_transcript_shown(None, s.default_for(s.VOICE_TRANSCRIPT)) is False
+    assert s.voice_transcript_shown(False, True) is False and s.voice_transcript_shown(True, False) is True

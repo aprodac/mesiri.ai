@@ -323,6 +323,7 @@ async def test_update_organization_user_status(monkeypatch):
                     status="Inactive",
                     whatsapp_number="+1234567890",
                     access_policy=None,
+                    voice_transcript=None,  # WA-246: the row carries the column (migration 0507)
                 )
             ],  # fetch user rows
             [],  # fetch project rows
