@@ -45,6 +45,8 @@ async def test_every_message_of_the_company_with_what_it_did(conn) -> None:  # n
     )
 
     assert [r["text"] for r in rows] == ["50 bags cement came", "stock?", "hi"]
+    # Live plays Mesiri's hello on a person's first message ever, once.
+    assert [r["first_message"] for r in rows] == [True, False, False]
     first = rows[0]
     assert (first["site_name"], first["project_name"], first["sender_name"]) == ("Tower A", "Hospital", "Ravi Kumar")
     assert first["project_id"] == project and first["site_id"] == site

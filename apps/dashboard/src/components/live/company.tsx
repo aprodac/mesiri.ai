@@ -11,6 +11,7 @@ import {
   FileText,
   Flag,
   Hammer,
+  Hand,
   HardHat,
   HelpCircle,
   IndianRupee,
@@ -69,7 +70,9 @@ import { Spark, type SparkMood } from './spark'
 // line Mesiri flags appears with the message (more used than in stock, a
 // likely repeat), the page dims and the site shakes red: Mesiri caught a
 // mistake. A transfer flies from one site's card to the other; a site just
-// added pops in. Read-only, like the site Live.
+// added pops in. Mesiri says hello (tips its hat, says what it does in three
+// cards, each with a message to send) on a person's first message ever, at
+// the start of a replay, and on "Meet Mesiri". Read-only, like the site Live.
 
 const FEED_POLL_MS = 3_000
 const SITES_POLL_MS = 10_000
@@ -81,6 +84,8 @@ const QUEUE_MAX = 6
 const REPLAY_SPEED = 0.45
 /** Sites whose flagged lines are read as the page opens (to tell a mistake caught later). */
 const FLAG_SITES_MAX = 12
+/** How long Mesiri's hello stays up. */
+const HELLO_MS = 9_500
 
 interface KindLook {
   icon: LucideIcon
@@ -315,6 +320,10 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
   const [ringing, setRinging] = React.useState<Map<string, 'land' | 'alarm'>>(new Map())
   const [flights, setFlights] = React.useState<Flight[]>([])
   const [replaying, setReplaying] = React.useState(false)
+  /** Mesiri saying hello: to whom (null: everyone). */
+  const [hello, setHello] = React.useState<{ to: string | null } | null>(null)
+  /** Hello on screen: a message that comes meanwhile waits for it. */
+  const greeting = React.useRef(false)
   const queue = React.useRef<LiveFeedItem[]>([])
   const playing = React.useRef(false)
   const seeded = React.useRef(false)
@@ -364,8 +373,15 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
     playing.current = true
     const wait = (ms: number) => new Promise((r) => window.setTimeout(r, prefersReducedMotion() ? 0 : ms * speed.current))
     while (queue.current.length) {
+      while (greeting.current) await new Promise((r) => window.setTimeout(r, 300))
       const item = queue.current.shift()!
       const live = speed.current === 1
+      // Someone's first message ever: Mesiri says hello before it reads it.
+      if (live && item.first_message) {
+        setHello({ to: item.sender_name?.split(/\s+/)[0] ?? null })
+        await wait(HELLO_MS)
+        setHello(null)
+      }
       setShown((s) => new Set(s).add(item.id))
       setBeat((b) => b + 1)
       // Read the site's flags while Mesiri reads the message, so the answer is there by "done".
@@ -462,13 +478,25 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
   }, [days.data])
 
   /** Replay the day: every message again, in order, faster. */
-  const replay = () => {
-    if (!items.length) return
-    queue.current = [...items]
-    speed.current = REPLAY_SPEED
+  const replay = async () => {
+    if (!items.length || replaying) return
     setReplaying(true)
     setShown(new Set())
+    // A replay opens with Mesiri's hello, at its own pace.
+    if (!playing.current) await meet()
+    queue.current = [...items]
+    speed.current = REPLAY_SPEED
     void play()
+  }
+
+  /** Mesiri says hello on demand ("Meet Mesiri"), when nothing else is playing. */
+  const meet = async () => {
+    if (playing.current || greeting.current) return
+    greeting.current = true
+    setHello({ to: null })
+    await new Promise((r) => window.setTimeout(r, prefersReducedMotion() ? 3_000 : HELLO_MS))
+    setHello(null)
+    greeting.current = false
   }
 
   // Presenter mode: full screen, larger, the QR code to message Mesiri.
@@ -542,7 +570,15 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
             )}
             <button
               type="button"
-              onClick={replay}
+              onClick={() => void meet()}
+              disabled={!!hello || !!current}
+              className="flex items-center gap-2 border border-foreground px-4 py-2 text-sm font-medium hover:bg-foreground hover:text-background disabled:opacity-40"
+            >
+              <Hand className="size-4" /> Meet Mesiri
+            </button>
+            <button
+              type="button"
+              onClick={() => void replay()}
               disabled={!items.length || replaying}
               className="flex items-center gap-2 border border-foreground px-4 py-2 text-sm font-medium hover:bg-foreground hover:text-background disabled:opacity-40"
             >
@@ -597,14 +633,15 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
             {/* The Spark, handling one message at a time */}
             <section aria-label="Mesiri" className={cn('order-1 min-w-0 lg:order-2', current?.alarm && 'relative z-40')}>
               <div className="sticky top-6 grid bg-background justify-items-center gap-4 border border-foreground/15 px-4 py-5 text-center sm:gap-5 sm:px-6 sm:py-8">
-                <div ref={sparkRef}>
+                {hello && <Hello to={hello.to} site={sites[0]?.site_name ?? null} presenting={presenting} />}
+                <div ref={sparkRef} className={cn(hello && 'hidden')}>
                   <Spark
                     mood={current ? sparkMood(current.item, current.step, current.alarm) : 'idle'}
                     beat={beat}
                     size={presenting ? 220 : 170}
                   />
                 </div>
-                <div className="min-h-[5.5rem] max-w-[34rem] sm:min-h-[7.5rem]" aria-live="polite">
+                <div className={cn('min-h-[5.5rem] max-w-[34rem] sm:min-h-[7.5rem]', hello && 'hidden')} aria-live="polite">
                   {current ? (
                     <>
                       <Label className={cn('block', current.alarm && current.step === 'done' && 'text-[var(--destructive)]')}>
@@ -639,9 +676,9 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                     </>
                   )}
                 </div>
-                <Steps step={current?.step ?? null} />
-                <Did current={current} />
-                {presenting && qrLink && (
+                {!hello && <Steps step={current?.step ?? null} />}
+                {!hello && <Did current={current} />}
+                {presenting && qrLink && !hello && (
                   <div className="mt-2 flex items-center gap-5 border-t border-foreground/15 pt-6 text-left">
                     <QrCode value={qrLink} label={`QR code to message Mesiri at ${number}`} className="size-36 shrink-0" />
                     <div>
@@ -744,6 +781,55 @@ const STEP_LABEL: Record<Step, string> = {
   read: 'Mesiri',
   understood: 'Understood',
   done: 'Done',
+}
+
+/** What Mesiri does, in three cards, each with a message to send and where it goes. */
+const HELLO_CARDS = (site: string) => [
+  { head: 'Record', say: `Innu 8 mason, 4 helper ${site}-il`, then: 'Saved to Labour', icon: HardHat },
+  { head: 'Ask', say: `${site}-il cement ethra und?`, then: 'Answered from your records', icon: HelpCircle },
+  { head: 'Reports', say: 'Innathe report ayakku', then: 'The day’s report, as a PDF on WhatsApp', icon: FileText },
+]
+
+/** Mesiri says hello: it tips its hat, says who it is, and deals out what it does. */
+function Hello({ to, site, presenting }: { to: string | null; site: string | null; presenting: boolean }) {
+  const deal = (i: number) =>
+    prefersReducedMotion() ? undefined : { animation: `live-deal 600ms cubic-bezier(.2,.9,.3,1.2) ${1.6 + i * 1.1}s both` }
+  return (
+    <div className="grid w-full justify-items-center gap-5" aria-live="polite">
+      <Spark mood="hello" size={presenting ? 200 : 150} />
+      <div className="max-w-[34rem]">
+        <Label className="block">Meet Mesiri</Label>
+        <p className={cn('m-0 mt-2 font-semibold tracking-[-0.02em]', presenting ? 'text-[40px] leading-[1.15]' : 'text-[28px] leading-[1.2]')}>
+          <Typed text={`Hi${to ? ` ${to}` : ''}, I’m Mesiri.`} ms={45} />
+        </p>
+        <p className={cn('m-0 mt-2 text-muted-foreground', presenting ? 'text-xl' : 'text-base')}>
+          I keep your sites’ records from WhatsApp, so nobody has to type them twice.
+        </p>
+      </div>
+      <ol className="m-0 grid w-full list-none gap-3 p-0 text-left sm:grid-cols-3">
+        {HELLO_CARDS(site ?? 'Tower A').map((c, i) => {
+          const Icon = c.icon
+          return (
+            <li key={c.head} className="grid content-start gap-2 border border-foreground bg-background px-3 py-3" style={deal(i)}>
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Icon className="size-4 text-primary" aria-hidden="true" /> {c.head}
+              </span>
+              <span className="justify-self-start rounded-[10px] rounded-tl-none bg-[var(--success-soft)] px-2.5 py-1.5 text-[13px] leading-snug">
+                {c.say}
+              </span>
+              <span className="text-[12px] text-muted-foreground">→ {c.then}</span>
+            </li>
+          )
+        })}
+      </ol>
+      <p
+        className={cn('m-0 flex items-center gap-2 font-medium', presenting ? 'text-xl' : 'text-[15px]')}
+        style={prefersReducedMotion() ? undefined : { animation: 'live-deal 600ms ease-out 5.2s both' }}
+      >
+        <Mic className="size-4 text-primary" aria-hidden="true" /> Just send a voice note, in any language.
+      </p>
+    </div>
+  )
 }
 
 /** Heard → understood → done, lighting up as the Spark goes. */

@@ -2049,6 +2049,8 @@ export interface LiveFeedItem {
   saved_kind: LiveKind | null
   /** What Mesiri did along the way, in plain words ("Found the material", "Checked the stock"). */
   did: string[]
+  /** The person's first message to Mesiri ever: Live plays Mesiri's hello first. */
+  first_message: boolean
   /** A transfer's two sites, for the arc between them. */
   transfer: { from_site_id: string; to_site_id: string } | null
 }

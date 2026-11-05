@@ -254,6 +254,16 @@
   0%, 100% { transform: translate(0, 0); }
   50% { transform: translate(-4px, -3px); }
 }
+/* Mesiri tips its hard hat to say hello. */
+@keyframes spark-tip {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  35%, 60% { transform: translateY(-12px) rotate(-16deg); }
+}
+/* Mesiri's hello: each card is dealt onto the table. */
+@keyframes live-deal {
+  from { opacity: 0; transform: translateY(18px) rotate(-2deg); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes spark-plane {
   0% { transform: translate(0, 0); opacity: 1; }
   100% { transform: translate(60px, -50px); opacity: 0; }

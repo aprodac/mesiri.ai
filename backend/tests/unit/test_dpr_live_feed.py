@@ -36,7 +36,7 @@ def _row(id_, turns=(), type_="text", project=P1, site=S1, **kw):
     return {
         "id": id_, "type": type_, "text": f"msg {id_}", "translated_text": None, "reply": "ok",
         "media_object_key": None, "received_at": SINCE.isoformat(), "project_id": project, "site_id": site,
-        "site_name": "Tower A", "project_name": "Skyline", "sender_name": "Ravi", "source": "whatsapp",
+        "site_name": "Tower A", "project_name": "Skyline", "sender_name": "Ravi", "source": "whatsapp", "first_message": False,
         "turns": list(turns), **kw,
     }
 

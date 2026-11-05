@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 // report goes out. SVG and CSS only (the `spark-*` keyframes in index.css).
 // The colours are fixed, not themed: it reads as a sticker in dark mode too.
 
-export type SparkMood = 'idle' | 'alert' | 'listen' | 'think' | 'look' | 'happy' | 'worry' | 'send'
+export type SparkMood = 'idle' | 'alert' | 'listen' | 'think' | 'look' | 'happy' | 'worry' | 'send' | 'hello'
 
 const INK = '#1a1d21'
 const HAT = '#c2410c'
@@ -26,6 +26,7 @@ const MOUTHS: Record<SparkMood, string> = {
   happy: 'M42 81 Q50 90 58 81',
   worry: 'M44 86 Q50 81 56 86',
   send: 'M42 81 Q50 90 58 81',
+  hello: 'M42 81 Q50 90 58 81',
 }
 
 /** Where the eyes look, per mood (dx, dy). */
@@ -38,6 +39,7 @@ const GAZE: Record<SparkMood, [number, number]> = {
   happy: [0, 0],
   worry: [0, 1],
   send: [2, -1],
+  hello: [0, 0],
 }
 
 const MOOD_WORDS: Record<SparkMood, string> = {
@@ -49,6 +51,7 @@ const MOOD_WORDS: Record<SparkMood, string> = {
   happy: 'saved',
   worry: 'noticed something',
   send: 'sending the report',
+  hello: 'saying hello',
 }
 
 export function Spark({
@@ -70,10 +73,10 @@ export function Spark({
 }) {
   const still = quiet || prefersReducedMotion()
   const [dx, dy] = GAZE[mood]
-  const happy = mood === 'happy' || mood === 'send'
+  const happy = mood === 'happy' || mood === 'send' || mood === 'hello'
   const anim = (name: string | undefined) => (still ? undefined : name)
   const motion =
-    mood === 'happy'
+    mood === 'happy' || mood === 'hello'
       ? 'spark-hop 700ms cubic-bezier(.3,1.6,.5,1) 2'
       : mood === 'worry'
         ? 'live-shake 600ms ease-out'
@@ -105,10 +108,12 @@ export function Spark({
         {mood === 'worry' && <path d="M34 65 L44 68M66 65 L56 68" stroke={INK} strokeWidth="3" strokeLinecap="round" />}
         <path d={MOUTHS[mood]} stroke={INK} strokeWidth="3" fill={mood === 'alert' ? INK : 'none'} strokeLinecap="round" strokeLinejoin="round" />
 
-        {/* The hard hat. */}
-        <path d="M22 54 Q22 22 50 22 Q78 22 78 54Z" fill={HAT} />
-        <path d="M50 22V52" stroke={INK} strokeWidth="3" />
-        <rect x="14" y="52" width="72" height="8" rx="2" fill={INK} />
+        {/* The hard hat: tipped in greeting. */}
+        <g style={{ transformOrigin: '20px 56px', animation: anim(mood === 'hello' ? 'spark-tip 1.4s ease-in-out 2' : undefined) }}>
+          <path d="M22 54 Q22 22 50 22 Q78 22 78 54Z" fill={HAT} />
+          <path d="M50 22V52" stroke={INK} strokeWidth="3" />
+          <rect x="14" y="52" width="72" height="8" rx="2" fill={INK} />
+        </g>
       </g>
 
       <Prop mood={mood} still={still} />

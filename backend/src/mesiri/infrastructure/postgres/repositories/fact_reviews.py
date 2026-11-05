@@ -521,7 +521,11 @@ class PostgresFactReviewRepository:
                     # What Mesiri heard: a voice note's words are only in its turn's trace, not on the message.
                     " (SELECT jt.stage_payload::jsonb ->> 'text' FROM journey_traces jt "
                     "   WHERE jt.correlation_id = im.correlation_id AND jt.stage = 'agent_api_turn' "
-                    "   ORDER BY jt.created_at LIMIT 1) AS heard "
+                    "   ORDER BY jt.created_at LIMIT 1) AS heard, "
+                    # A person's first message to Mesiri ever (in this company): Live plays Mesiri's hello.
+                    " NOT EXISTS (SELECT 1 FROM inbound_messages before "
+                    "   WHERE before.organization_id = im.organization_id AND before.sender_wa_id = im.sender_wa_id "
+                    "   AND before.received_at < im.received_at) AS first_message "
                     " FROM inbound_messages im "
                     " LEFT JOIN sites s ON s.id = im.site_id "
                     " LEFT JOIN projects p ON p.id = COALESCE(im.project_id, s.project_id) "
@@ -554,6 +558,7 @@ class PostgresFactReviewRepository:
                 "project_name": r["project_name"],
                 "sender_name": r["sender_name"],
                 "source": r["source"] or "whatsapp",
+                "first_message": bool(r["first_message"]),
                 "turns": r["turns"] if isinstance(r["turns"], list) else json.loads(r["turns"] or "[]"),
             }
             for r in rows
