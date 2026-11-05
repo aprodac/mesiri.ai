@@ -85,7 +85,9 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("list_units", "GET", "/materials/units-of-measure", "Units of measure (bags, kg, pieces, tons, ...) and their ids."),
     Allowed(
         "stock_levels", "GET", "/materials/inventory",
-        "Current stock per site and material. Filter by project, site or material.",
+        "Current stock per site and material. Filter by project, site, material or category (category_id from "
+        "material_categories; a main category includes its sub-categories). Each row names its category and main "
+        "category.",
     ),
     Allowed("stock_check", "GET", "/materials/stock-check", "Current stock of one material at one site."),
     Allowed("list_receipts", "GET", "/materials/inflows", "Materials received: what, where, when, who recorded it."),

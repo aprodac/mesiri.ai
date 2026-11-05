@@ -95,6 +95,10 @@ class MaterialStockResponse(BaseModel):
     material_name: str
     #: PRC-01: the material's category (main or sub), for stock grouped by category.
     category_id: uuid.UUID | None = None
+    #: PRC-17a: "Electrical › Switches & sockets" (or just the main category); None when it has none.
+    category: str | None = None
+    #: The main category's name, for grouping a stock answer.
+    main_category: str | None = None
     unit: str
     total_received: Decimal
     total_used: Decimal
