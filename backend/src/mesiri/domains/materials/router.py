@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -741,10 +742,12 @@ async def create_material(
     # resolver, which is already lower()-based, pick between them arbitrarily).
     existing = await repo.get_by_name(auth_context.organization_id, name)
     if existing is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"A Material named '{existing['name']}' already exists. Use that one instead.",
-        )
+        # [246]: the existing material's id comes back beside the message (additive), so a caller that meant to add
+        # it (a WhatsApp card whose line names the new material) can put its line on the one already there.
+        return JSONResponse(status_code=409, content={
+            "detail": f"A Material named '{existing['name']}' already exists. Use that one instead.",
+            "existing_id": str(existing["id"]),
+        })
     if body.category_id is not None:
         await _require_category(conn, auth_context.organization_id, body.category_id)
     # Materials Catalog is org-scoped (no project_id/site_id), so it does not

@@ -217,13 +217,16 @@ async def test_create_material_and_org_isolation(client, test_engine, test_org, 
 
 async def test_duplicate_material_name_rejected(client, admin_ctx):
     bags_id = await _bags_unit_id(client, admin_ctx["token"])
-    await client.post(
+    first = await client.post(
         "/materials", json={"name": "Sand", "default_unit_id": bags_id}, headers=_auth(admin_ctx["token"])
     )
     resp = await client.post(
         "/materials", json={"name": "Sand", "default_unit_id": bags_id}, headers=_auth(admin_ctx["token"])
     )
     assert resp.status_code == 409
+    # [246]: the existing material's id comes back beside the message, which is unchanged.
+    assert resp.json()["existing_id"] == first.json()["id"]
+    assert resp.json()["detail"].startswith("A Material named 'Sand' already exists")
 
 
 async def test_create_material_with_unknown_unit_rejected(client, admin_ctx):

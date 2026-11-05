@@ -1411,6 +1411,8 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
     def converted(r: WriteResult) -> str:
         # WA-151: a line saved in another unit says what went into stock ("10 Numbers = 0.5 load").
         note = r.body.get("converted") if isinstance(r.body, dict) else None
+        if isinstance(r.body, dict) and r.body.get("already_listed"):
+            return " (already in your list)"  # [246]: added elsewhere first; its lines went on it
         return f" ({note} in stock)" if note else ""
 
     waiting = [r for r in results if held(r)]  # WA-197: held for the admin's size: never called saved

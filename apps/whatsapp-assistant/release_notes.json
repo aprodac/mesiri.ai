@@ -415,7 +415,11 @@
     {
       "id": "signup-voice-256",
       "date": "2026-11-05",
-      "for": [],
+      "for": [
+        "cor_baa79fc39659413e953ab0c7cdad8067",
+        "cor_2979c9f6848c49e393ff920faee38134",
+        "cor_604326f50d2c4cc18ac67e1b319fb7c8"
+      ],
       "message": "Sahal, setting up Mesiri now works by voice note too, and a long description of your project is kept as your project's details. Thanks for showing us: this works for everyone now."
     }
   ]

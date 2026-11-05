@@ -1699,9 +1699,19 @@ async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[s
                 continue
             entry = _with_material(entry, ref, material_id)
         done[i] = await _confirm_one(client, entry, names)
+        if entry.tool == ADD_TOOL and (existing := _already_there(done[i])):
+            # [246]: added elsewhere while the card waited (the dashboard, another message): the material is in the
+            # list, so the add counts as done and its lines go on the one already there, never refused with it.
+            done[i] = WriteResult(done[i].pending, 200, {"id": existing, "already_listed": True})
         if entry.tool == ADD_TOOL and done[i].ok and isinstance(done[i].body, dict) and done[i].body.get("id"):
             created[alias_key(str(entry.body.get("name") or ""))] = str(done[i].body["id"])
     return [done[i] for i in range(len(pending))]
+
+
+def _already_there(result: WriteResult) -> str:
+    """[246]: the id of the material an add found already listed (the API's 409 carries it), or ""."""
+    body = result.body if isinstance(result.body, dict) else {}
+    return str(body.get("existing_id") or "") if result.status == 409 else ""
 
 
 def _new_ref(entry: PendingWrite) -> str | None:
