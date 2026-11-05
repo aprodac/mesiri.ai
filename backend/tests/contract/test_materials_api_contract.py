@@ -49,6 +49,9 @@ async def clean_db(test_engine: AsyncEngine):
         await conn.execute(sa.text("UPDATE material_receipts SET reverses_movement_id = NULL"))
         await conn.execute(sa.text("DELETE FROM material_receipts"))
         await conn.execute(sa.text("DELETE FROM material_usage"))
+        # PRC-04: bills and the vendors deliveries now create.
+        await conn.execute(sa.text("DELETE FROM material_invoice_attachments"))
+        await conn.execute(sa.text("DELETE FROM material_invoices"))
         await conn.execute(sa.text("DELETE FROM materials_catalog"))
         await conn.execute(sa.text("DELETE FROM expense_payments"))
         await conn.execute(sa.text("DELETE FROM expense_attachments"))
@@ -56,6 +59,7 @@ async def clean_db(test_engine: AsyncEngine):
         await conn.execute(sa.text("DELETE FROM budgets"))
         await conn.execute(sa.text("DELETE FROM money_transactions"))
         await conn.execute(sa.text("DELETE FROM expenses"))
+        await conn.execute(sa.text("DELETE FROM vendors"))
         await conn.execute(sa.text("DELETE FROM money_accounts"))
         await conn.execute(sa.text("DELETE FROM expense_categories"))
         await conn.execute(sa.text("DELETE FROM sites"))
@@ -1927,3 +1931,106 @@ async def test_stock_for_a_period_adds_up_and_says_what_is_running_low(client, a
         headers=_auth(token),
     )
     assert bad.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# PRC-04: vendors on deliveries and bills; vendor contact details
+# ---------------------------------------------------------------------------
+async def test_a_delivery_is_linked_to_its_vendor_by_the_one_rule(client, test_engine, test_org, admin_ctx):
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    cement = await _make_material(client, token, "Cement", bags_id)
+    base = {
+        "project_id": str(admin_ctx["project_id"]),
+        "site_id": str(admin_ctx["site_id"]),
+        "material_id": cement,
+        "unit_id": bags_id,
+        "quantity": "10",
+        "occurred_date": str(datetime.date.today()),
+    }
+
+    async def deliver(**extra) -> dict:
+        resp = await client.post("/materials/inflows", json={**base, **extra}, headers=_auth(token))
+        assert resp.status_code == 201, resp.text
+        rid = resp.json().get("id") or resp.json().get("receipt_id")
+        return (await client.get(f"/materials/inflows/{rid}", headers=_auth(token))).json()
+
+    first = await deliver(supplier="Sree Traders")
+    again = await deliver(supplier="  sree traders ")
+    assert first["vendor_id"] and again["vendor_id"] == first["vendor_id"]  # one vendor, not two
+    assert again["supplier"] == "sree traders"  # what was said is kept
+    assert (await deliver())["vendor_id"] is None  # no shop named: none
+
+    picked = await deliver(vendor_id=first["vendor_id"], supplier="ignored")
+    assert picked["vendor_id"] == first["vendor_id"] and picked["supplier"] == "Sree Traders"
+
+    other_org = uuid.uuid4()
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO organizations (id, name, deployment_type, db_route, status, created_at, updated_at) "
+                "VALUES (:id, 'Other', 'local', 'default', 'active', now(), now())"
+            ),
+            {"id": other_org},
+        )
+        foreign = (
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO vendors (id, organization_id, name, status, created_by) "
+                    "VALUES (gen_random_uuid(), :org, 'Their Shop', 'active', :by) RETURNING id"
+                ),
+                {"org": other_org, "by": admin_ctx["user_id"]},
+            )
+        ).scalar_one()
+    resp = await client.post("/materials/inflows", json={**base, "vendor_id": str(foreign)}, headers=_auth(token))
+    assert resp.status_code == 404
+
+
+async def test_every_line_of_a_bill_carries_the_bills_vendor(client, admin_ctx):
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    cement = await _make_material(client, token, "Cement", bags_id)
+    sand = await _make_material(client, token, "Sand", bags_id)
+    body = {
+        "project_id": str(admin_ctx["project_id"]),
+        "site_id": str(admin_ctx["site_id"]),
+        "supplier_name": "KMS Agencies",
+        "create_expense": False,
+        "lines": [
+            {"material_id": cement, "unit_id": bags_id, "quantity": "50", "unit_cost": "385"},
+            {"material_id": sand, "unit_id": bags_id, "quantity": "20"},
+        ],
+    }
+    resp = await client.post("/materials/invoices", json=body, headers=_auth(token))
+    assert resp.status_code == 201, resp.text
+    items = (await client.get("/materials/inflows", headers=_auth(token))).json()["items"]
+    vendors = {i["vendor_id"] for i in items}
+    assert len(vendors) == 1 and None not in vendors
+    assert {i["supplier"] for i in items} == {"KMS Agencies"}
+
+
+async def test_vendor_phone_and_gstin_are_checked_kept_and_cleared(client, admin_ctx, monkeypatch):
+    from mesiri.domains.organizations import settings as org_settings
+
+    async def every_module(request, organization_id):  # noqa: ANN001, ANN202 -- the vendor list is in Finance
+        return list(org_settings.MODULES)
+
+    monkeypatch.setattr("mesiri.domains.shared.modules.read_enabled_modules", every_module)
+    token = admin_ctx["token"]
+    resp = await client.post(
+        "/finance/vendors",
+        json={"name": "Malabar Pipes", "phone": "+91 98470-12345", "gstin": " 32abcde1234f1z5 "},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    vendor = resp.json()
+    assert vendor["phone"] == "+919847012345" and vendor["gstin"] == "32ABCDE1234F1Z5"
+
+    bad = await client.patch(f"/finance/vendors/{vendor['id']}", json={"gstin": "32ABC"}, headers=_auth(token))
+    assert bad.status_code == 422 and "15 characters" in bad.json()["detail"]
+    kept = await client.patch(
+        f"/finance/vendors/{vendor['id']}", json={"address": "  Edappally,  Kochi "}, headers=_auth(token)
+    )
+    assert kept.json()["gstin"] == "32ABCDE1234F1Z5" and kept.json()["address"] == "Edappally, Kochi"
+    cleared = await client.patch(f"/finance/vendors/{vendor['id']}", json={"phone": None}, headers=_auth(token))
+    assert cleared.json()["phone"] is None and cleared.json()["gstin"] == "32ABCDE1234F1Z5"

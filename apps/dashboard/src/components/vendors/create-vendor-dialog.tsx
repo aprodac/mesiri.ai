@@ -33,6 +33,10 @@ export function CreateVendorDialog({
 }: CreateVendorDialogProps) {
   const [name, setName] = React.useState('')
   const [status, setStatus] = React.useState<'active' | 'inactive'>('active')
+  // PRC-04: contact details; GSTIN is checked by the API (15 characters).
+  const [phone, setPhone] = React.useState('')
+  const [gstin, setGstin] = React.useState('')
+  const [address, setAddress] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState('')
 
@@ -40,9 +44,15 @@ export function CreateVendorDialog({
     if (vendorToEdit) {
       setName(vendorToEdit.name || '')
       setStatus(vendorToEdit.status || 'active')
+      setPhone(vendorToEdit.phone || '')
+      setGstin(vendorToEdit.gstin || '')
+      setAddress(vendorToEdit.address || '')
     } else {
       setName('')
       setStatus('active')
+      setPhone('')
+      setGstin('')
+      setAddress('')
     }
     setError('')
   }, [vendorToEdit, open])
@@ -62,10 +72,16 @@ export function CreateVendorDialog({
         await updateVendorApi(vendorToEdit.id, {
           name: name.trim(),
           status,
+          phone: phone.trim() || null,
+          gstin: gstin.trim() || null,
+          address: address.trim() || null,
         })
       } else {
         await createVendorApi({
           name: name.trim(),
+          phone: phone.trim() || null,
+          gstin: gstin.trim() || null,
+          address: address.trim() || null,
         })
       }
       onSuccess()
@@ -106,6 +122,34 @@ export function CreateVendorDialog({
               className="h-9 text-xs"
               required
             />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vendor-phone" className="text-xs font-semibold">
+                Phone
+              </Label>
+              <Input id="vendor-phone" inputMode="tel" placeholder="98470 12345" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9 text-xs" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vendor-gstin" className="text-xs font-semibold">
+                GSTIN
+              </Label>
+              <Input
+                id="vendor-gstin"
+                placeholder="32ABCDE1234F1Z5"
+                value={gstin}
+                onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                maxLength={20}
+                className="h-9 text-xs uppercase"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="vendor-address" className="text-xs font-semibold">
+              Address
+            </Label>
+            <Input id="vendor-address" placeholder="Edappally, Kochi" value={address} onChange={(e) => setAddress(e.target.value)} className="h-9 text-xs" />
           </div>
 
           {vendorToEdit && (

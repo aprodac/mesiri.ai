@@ -27,6 +27,7 @@ _material_receipts = sa.Table(
     sa.Column("unit_cost", sa.Numeric),
     sa.Column("total_cost", sa.Numeric),
     sa.Column("supplier", sa.String),
+    sa.Column("vendor_id", sa.UUID(as_uuid=True)),
     sa.Column("occurred_date", sa.Date),
     sa.Column("occurred_time", sa.Time),
     sa.Column("correlation_id", sa.String),

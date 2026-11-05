@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
+from mesiri.domains.vendors.details import (
+    VendorDetailError,
+    clean_address,
+    clean_gstin,
+    clean_phone,
+)
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.vendors import PostgresVendorRepository
 
@@ -25,17 +31,49 @@ class VendorResponse(BaseModel):
     name: str
     code: str | None = None
     status: str
+    phone: str | None = None
+    gstin: str | None = None
+    address: str | None = None
     expense_count: int = 0
     total_amount_paid: Decimal = Decimal("0")
 
 
 class CreateVendorRequest(BaseModel):
     name: str
+    phone: str | None = None
+    gstin: str | None = None
+    address: str | None = None
 
 
 class UpdateVendorRequest(BaseModel):
     name: str | None = None
     status: str | None = None
+    #: PRC-04: sent as null or "", the detail is cleared; left out, it stays.
+    phone: str | None = None
+    gstin: str | None = None
+    address: str | None = None
+
+
+def _details(body: BaseModel) -> dict:
+    """The contact details the request sent, cleaned; a 422 with the person's message for a wrong one."""
+    cleaners = {"phone": clean_phone, "gstin": clean_gstin, "address": clean_address}
+    try:
+        return {k: cleaners[k](getattr(body, k)) for k in cleaners if k in body.model_fields_set}
+    except VendorDetailError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _response(vendor, **metrics) -> VendorResponse:  # noqa: ANN001
+    return VendorResponse(
+        id=vendor.id,
+        name=vendor.name,
+        code=vendor.code,
+        status=vendor.status,
+        phone=vendor.phone,
+        gstin=vendor.gstin,
+        address=vendor.address,
+        **metrics,
+    )
 
 
 @router.get("", response_model=list[VendorResponse])
@@ -47,14 +85,7 @@ async def list_vendors(
     repo = PostgresVendorRepository(conn)
     metrics = await repo.list_with_metrics(auth_context.organization_id)
     return [
-        VendorResponse(
-            id=m["vendor"].id,
-            name=m["vendor"].name,
-            code=m["vendor"].code,
-            status=m["vendor"].status,
-            expense_count=m["expense_count"],
-            total_amount_paid=m["total_amount"],
-        )
+        _response(m["vendor"], expense_count=m["expense_count"], total_amount_paid=m["total_amount"])
         for m in metrics
     ]
 
@@ -67,6 +98,7 @@ async def create_vendor(
 ):
     """Create a new vendor in the organization."""
     repo = PostgresVendorRepository(conn)
+    details = _details(body)
     existing = await repo.find_by_name_exact_active(auth_context.organization_id, body.name)
     if existing:
         raise HTTPException(status_code=409, detail="Vendor with this name already exists")
@@ -75,14 +107,11 @@ async def create_vendor(
         name=body.name.strip(),
         created_by=auth_context.user_id,
     )
-    return VendorResponse(
-        id=vendor.id,
-        name=vendor.name,
-        code=vendor.code,
-        status=vendor.status,
-        expense_count=0,
-        total_amount_paid=Decimal("0"),
-    )
+    if details:
+        vendor = await repo.update(
+            auth_context.organization_id, vendor.id, updated_by=auth_context.user_id, details=details
+        )
+    return _response(vendor, expense_count=0, total_amount_paid=Decimal("0"))
 
 
 @router.patch("/{vendor_id}", response_model=VendorResponse)
@@ -103,12 +132,7 @@ async def update_vendor(
         name=body.name,
         status=body.status,
         updated_by=auth_context.user_id,
+        details=_details(body),
     )
     assert updated is not None
-    return VendorResponse(
-        id=updated.id,
-        name=updated.name,
-        status=updated.status,
-        expense_count=0,
-        total_amount_paid=Decimal("0"),
-    )
+    return _response(updated, expense_count=0, total_amount_paid=Decimal("0"))

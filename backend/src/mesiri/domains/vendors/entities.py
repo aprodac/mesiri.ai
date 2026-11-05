@@ -25,3 +25,7 @@ class Vendor:
     name: str
     status: VendorStatus
     code: str | None = None
+    #: PRC-04: contact details.
+    phone: str | None = None
+    gstin: str | None = None
+    address: str | None = None

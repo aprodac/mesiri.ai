@@ -104,7 +104,9 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("list_usage", "GET", "/materials/outflows",
             "Materials used or issued: what, where, when, who recorded it, and each one's category. Filter by "
             "category as list_receipts."),
-    Allowed("record_receipt", "POST", "/materials/inflows", "Prepare a material receipt (material that arrived at a site)." + _WRITE),
+    # PRC-04: the supplier goes in words (the API links it to the vendor); vendor_id is the dashboard's picker.
+    Allowed("record_receipt", "POST", "/materials/inflows", "Prepare a material receipt (material that arrived at a site)." + _WRITE,
+            hide=("vendor_id",)),
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
     # Labour

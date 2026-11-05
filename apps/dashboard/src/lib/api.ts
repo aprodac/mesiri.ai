@@ -852,8 +852,18 @@ export interface VendorItem {
   id: string
   name: string
   status: 'active' | 'inactive'
+  // PRC-04: contact details.
+  phone?: string | null
+  gstin?: string | null
+  address?: string | null
   expense_count: number
   total_amount_paid: number
+}
+
+export interface VendorDetails {
+  phone?: string | null
+  gstin?: string | null
+  address?: string | null
 }
 
 export async function fetchVendorsApi(): Promise<VendorItem[]> {
@@ -861,14 +871,14 @@ export async function fetchVendorsApi(): Promise<VendorItem[]> {
   return res.data
 }
 
-export async function createVendorApi(payload: { name: string }): Promise<VendorItem> {
+export async function createVendorApi(payload: { name: string } & VendorDetails): Promise<VendorItem> {
   const res = await api.post('/finance/vendors', payload)
   return res.data
 }
 
 export async function updateVendorApi(
   vendorId: string,
-  payload: { name?: string; status?: 'active' | 'inactive' }
+  payload: { name?: string; status?: 'active' | 'inactive' } & VendorDetails
 ): Promise<VendorItem> {
   const res = await api.patch(`/finance/vendors/${vendorId}`, payload)
   return res.data
