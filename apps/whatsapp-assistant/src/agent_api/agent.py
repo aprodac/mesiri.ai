@@ -41,7 +41,13 @@ from .materials import (
     pending_ref,
     settle_material,
 )
-from .reply_guard import claims_saved, without_ids, without_internals, without_saved_claims
+from .reply_guard import (
+    claims_cannot,
+    claims_saved,
+    without_ids,
+    without_internals,
+    without_saved_claims,
+)
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
 from .units import (
     is_stock_unit_refusal,
@@ -809,6 +815,20 @@ class ApiAgent:
                                   "tool and answer from that.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
             again_asked = True
+        if not result.calls and not again_asked and claims_cannot(result.text) and not told(result.calls):
+            # WA-199 (basic 10, never a dead end): "I can't" from memory, with no tool looked at (the same refusal went
+            # out four times on 3 Nov, WA-196). One more try: the tools first; if none does it, the team builds it.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                role="user", text="(You said it can't be done, but you looked at no tool. Check your tools first: if one "
+                                  "does what I asked, do it now. If none does, call tell_the_team (missing_feature) and "
+                                  "tell me the way for now, or what you can do instead. Never just say no.)")])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            again_asked = True
+            if claims_cannot(result.text) and not told(result.calls):
+                # Still "can't", still not passed on: the code passes it on, so what they asked gets built.
+                code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
+                    "kind": "missing_feature", "about": f"Mesiri said it cannot do this; passed on by the code: {text[:300]}"},
+                    "result": {"status": "passed on by the code (WA-199)"}})
         lost = left_over(own_words(text), " ".join([
             kept_texts(result.calls, [e for e in waiting if e is not None] + new, asked, result.text),
             *_place_names(places)])) if (new or changed) and not again_asked else []  # "Tower 2" is a name

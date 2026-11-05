@@ -43,6 +43,26 @@ def _claims(sentence: str) -> bool:
     return bool(_SAVED.search(sentence)) and not _NOT_A_CLAIM.search(sentence)
 
 
+#: WA-199 (basic 10, never a dead end): the reply says Mesiri cannot do it. First person or Mesiri ("I can't",
+#: "Mesiri cannot", "I'm unable to"), the Manglish / Malayalam "it can't be done" ("pattilla", "kazhiyilla",
+#: "sadhikkilla"), and the Hindi "nahi kar sakta". Not a question ("can't find it?").
+_CANNOT = re.compile(
+    r"\b(?:i|we|mesiri)\s+(?:can\s*not|can't|can’t|am\s+unable|'m\s+unable|am\s+not\s+able|'m\s+not\s+able"
+    r"|do\s+not\s+have\s+(?:a\s+)?(?:way|tool|option)|don't\s+have\s+(?:a\s+)?(?:way|tool|option))\b"
+    r"|\bi[’']m\s+(?:unable|not\s+able)\b"
+    r"|\bnot\s+(?:possible|supported)\s+(?:here|in\s+whatsapp|through\s+whatsapp|for\s+me|yet)\b"
+    r"|\b(?:patt(?:illa|ula|unnilla)|kazhiyilla|kazhiyunnilla|sadhikkilla|saadhikkilla)\b"
+    r"|\bnahi[n]?\s+kar\s+(?:sakta|sakti|sakte|paunga|paungi)\b"
+    r"|പറ്റില്ല|പറ്റുന്നില്ല|കഴിയില്ല|സാധിക്കില്ല|नहीं\s+कर\s+(?:सकता|सकती|सकते|पाऊंगा|पाऊंगी)",
+    re.IGNORECASE,
+)
+
+
+def claims_cannot(text: str | None) -> bool:
+    """WA-199: the reply says, as a statement, that Mesiri cannot do what was asked."""
+    return any(_CANNOT.search(part) and not part.rstrip().endswith("?") for part in sentences(text or "") if part)
+
+
 def without_saved_claims(text: str) -> str:
     """``text`` without the claim: "50 bag cement vannu, save cheythu." keeps "50 bag cement vannu."."""
     kept = [_cut(part) if _claims(part) else part for part in sentences(text or "") if part]
