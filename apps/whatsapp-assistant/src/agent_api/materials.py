@@ -21,6 +21,7 @@ from typing import Any
 from mesiri.domains.materials.names import alias_key
 
 from .client import ApiClient
+from .fill import other_script
 
 ADD = "➕ Add "
 ADD_TOOL = "add_material"
@@ -88,6 +89,21 @@ def title(said: str) -> str:
     return " ".join(said.split())[:1].upper() + " ".join(said.split())[1:]
 
 
+async def already_listed(client: ApiClient, name: str) -> str:
+    """[243]: the company's material that ``name`` already is (its name or a taught alias, singular or plural), or "".
+    A new material is never a second "Cement"."""
+    if not name.strip():
+        return ""
+    try:
+        response = await client.call("GET", "/materials", params={"limit": 200, "is_active": True})
+    except Exception:  # noqa: BLE001 -- the list unreadable: the API's own checks decide
+        return ""
+    items = response.body.get("items") if response.ok and isinstance(response.body, dict) else None
+    row = next((r for r in items or [] if isinstance(r, dict) and r.get("id")
+                and any(_same(name, n) for n in _names(r))), None)
+    return f"{row['name']} (material_id {row['id']})" if row else ""
+
+
 async def settle_material(client: ApiClient, body: dict[str, Any], said: str, words: str,
                           taught: list[tuple[str, str]]) -> tuple[str, list[str]]:
     """Check ``body["material_id"]`` is the material they meant. ``taught``: (material_id, alias) pairs already
@@ -116,6 +132,11 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
     if hit is not None:  # the word is another material in the list: that one, never the near one
         body["material_id"] = str(hit["id"])
         return "", []
+    if other_script(said):
+        # [243]: "സിമന്റ്" is matched in English ("cement" -> the listed Cement), never offered as a new material.
+        return ("material_said is not in English. Nothing is prepared. Call it again now with material_said in English "
+                "(their word translated: സിമന്റ് = cement, മണൽ = sand, കമ്പി = steel); the code matches it to the "
+                "company's list.", [])
     near = nearest(said, rows, row)
     word = title(said)
     names = [str(r["name"]) for r in near]

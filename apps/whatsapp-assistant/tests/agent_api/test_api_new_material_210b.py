@@ -188,10 +188,11 @@ async def test_sibling_3_tin_putty_adds_putty_with_1_tin_1_litre_and_the_receipt
 
 async def test_adding_failed_the_dependent_lines_say_why_and_never_material_not_found() -> None:
     store = Store()
-    store.catalog.append({"id": str(uuid.uuid4()), "name": "Primer", "aliases": [], "default_unit_id": LITRE})
     turn = await _turn(store, [[_add("Primer"), _receipt("new:Primer", "primer", DRUM, 2, "2 drum Primer"),
                                 _conversion("new:Primer", DRUM, 20, "1 drum = 20 L")], "Ready."], "➕ Add Primer",
                        history=[ChatMessage(role="user", text="2 drum primer vannu")])
+    # Someone else added Primer between the card and the Save ([243]: one already listed is refused before it is held).
+    store.catalog.append({"id": str(uuid.uuid4()), "name": "Primer", "aliases": [], "default_unit_id": LITRE})
     results = await _save(store, turn.pending)
     assert [r.status for r in results] == [409, 424, 424]
     assert all("Material not found" not in str(r.body) for r in results)

@@ -31,8 +31,8 @@ from runtime.agent.reply_text import asks_to_tap_save
 from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
-from .fill import NARRATIVE_REFUSAL, fill_body, missing_in_body
-from .materials import ADD_TOOL, NEW, pending_ref, settle_material
+from .fill import NARRATIVE_REFUSAL, fill_body, missing_in_body, not_english
+from .materials import ADD_TOOL, NEW, already_listed, pending_ref, settle_material
 from .reply_guard import claims_saved, without_ids, without_internals, without_saved_claims
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
 from .units import is_uuid, plain_refusal, resolve_unit, unit_choices, unit_rows
@@ -103,6 +103,8 @@ class ApiTurn:
     nothing_held: bool = False
     #: WA-193: what the code took out of the model's words ("saved", "internals"), kept in the trace.
     reply_fixed: list[str] = field(default_factory=list)
+    #: [243]: the reply language set this turn by the code ("auto" = cleared), "" when none was set.
+    language_set: str = ""
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -291,6 +293,8 @@ def _path_site(path: str) -> str | None:
 
 SAVE_READY = "save_ready_entries"
 #: The language of the person's message (``runtime.agent.wording.language_of``) as told to the model.
+#: [243]: set at once by the code, never held on the card.
+LANGUAGE_TOOL = "set_reply_language"
 LANGUAGE_LINES = {
     "english": "English",
     "manglish": "Manglish (Malayalam words in Latin letters; never Malayalam script)",
@@ -405,6 +409,9 @@ class ApiAgent:
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
         tz = ZoneInfo(timezone or "Asia/Kolkata")
         their_words = " ".join([*(m.text or "" for m in history or [] if m.role == "user"), text])
+        tries: dict[str, int] = {}  # [243]: a body not in English is sent back once per tool, then asked about
+        reply_in = LANGUAGE_LINES.get(language or "", "their language")
+        language_set: list[str] = []
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
@@ -486,6 +493,16 @@ class ApiAgent:
             tool = self._tools.get(name)
             if tool is None:
                 return ToolOutcome(content={"error": f"no tool named {name}"})
+            if name == LANGUAGE_TOOL:
+                # [243]: a reply-language choice is not a record: the code sets it at once, never a Ready-to-save line.
+                response = await client.call(tool.method, tool.path, json={
+                    f: arguments[f] for f in tool.body_fields if f in arguments})
+                acted.append(name)
+                if response.ok:
+                    language_set[:] = [str(arguments.get("reply_language") or "")]
+                return ToolOutcome(content={"status": (
+                    "set now (not on the card, nothing to save); reply in that language from this reply on" if response.ok
+                    else f"not set: {_detail(response.body)}")})
             site_note = ""
             unit_note = ""  # WA-166: "(= 60 bags)" -- what a line in another unit is in stock, seen before Save
             size_hint = ""  # WA-166: a held line for a new material that needs its size asked in this turn
@@ -593,6 +610,11 @@ class ApiAgent:
                 if check.get("line"):
                     arguments = {**arguments, CONFIRM_ARG: check["line"]}  # drawn by the code, never the model's
             if name == ADD_TOOL:
+                if listed := await already_listed(client, str(body.get("name") or "")):
+                    # [243]: a material the company has is never added again; the line goes on the listed one.
+                    return ToolOutcome(content={"error": (
+                        f"{listed} is already in the company's list. Nothing was prepared. Do not add it: prepare the "
+                        "line itself on that material_id.")})
                 problem, counted = await settle_new_material_unit(client, body)
                 if problem:
                     unit_ask[:] = await unit_buttons(client)
@@ -627,6 +649,18 @@ class ApiAgent:
                 if gaps := missing_in_body(tool.spec.parameters, body):
                     return ToolOutcome(content={"error": f"missing: {', '.join(gaps)}. Nothing was prepared. Ask the "
                                                          "person for it in this reply (one question)."})
+                if foreign := not_english(tool.spec.parameters, body):
+                    # [243]: everything Mesiri saves is English (the model filled the body in the conversation's
+                    # language: "സിമന്റ്" became a new material). The card line and the reply stay in theirs.
+                    tries[name] = tries.get(name, 0) + 1
+                    if tries[name] > 1:
+                        return ToolOutcome(content={"error": (
+                            f"{', '.join(foreign)} still not in English. Nothing was prepared. Ask the person, in "
+                            f"{reply_in}, one plain question: what it is called in English.")})
+                    return ToolOutcome(content={"error": (
+                        f"write body fields in English; keep the reply in {reply_in}. Not English: {', '.join(foreign)}. "
+                        "Nothing was prepared: call it again now with those fields translated to English (names of "
+                        "people and places as they are, in English letters); confirm_line stays in their language.")})
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
                     summary=str(arguments.get(CONFIRM_ARG) or "").strip() + unit_note + site_note,
@@ -750,7 +784,7 @@ class ApiAgent:
                        stop_reason=result.stop_reason, question=without_internals(asked.get("question", "")),
                        options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
-                       size_needed=size_needed)
+                       size_needed=size_needed, language_set=next(iter(language_set), ""))
 
 
 _NUMBER = re.compile(r"(?<![\d.])\d+(?:\.\d+)?(?![\d.])")

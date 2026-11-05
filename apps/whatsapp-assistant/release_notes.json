@@ -335,6 +335,14 @@
         "cor_93a1fc7595224506a7a16ce6d35c1eb4"
       ],
       "message": "Work updates like 'plastering done on 2nd floor' now save with your words, and a line that can't be saved no longer comes back on the next card. Try: 'Green Villa: plastering done on 2nd floor'. Thanks, this works for everyone now."
+    },
+    {
+      "id": "english-records-243",
+      "date": "2026-11-04",
+      "for": [
+        "cor_bd6fd016803c42de953613cd600e15ab"
+      ],
+      "message": "Ilan, ippo Malayalam-il paranjaalum Mesiri ellaam English-il thanne save cheyyum: cement, sand, report ellaam list-umaayi match aakum. Oru voice note ayachu nokkoo. Thanks!"
     }
   ]
 }

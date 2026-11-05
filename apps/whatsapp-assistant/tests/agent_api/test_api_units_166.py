@@ -121,7 +121,9 @@ async def test_new_tmt_said_in_loads_is_counted_in_kg_and_the_load_size_is_asked
 
 
 async def test_new_msand_with_no_unit_given_is_counted_in_cubic_feet() -> None:
-    turn = await _turn(Store(), [[("add_material", {"name": "M-sand", CONFIRM_ARG: "➕ M-sand"})], "Ready."], "Add M-sand")
+    store = Store()
+    store.catalog[:] = [r for r in store.catalog if r["id"] != MSAND]  # [243]: a listed M-sand is never added again
+    turn = await _turn(store, [[("add_material", {"name": "M-sand", CONFIRM_ARG: "➕ M-sand"})], "Ready."], "Add M-sand")
     assert turn.pending[0].body["default_unit_id"] == CFT
 
 
