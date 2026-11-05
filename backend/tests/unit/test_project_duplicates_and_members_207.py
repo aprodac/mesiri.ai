@@ -29,7 +29,9 @@ class FakeConn:
             self.inserts += 1
             return SimpleNamespace()
         rows = self.results.pop(0) if self.results else []
-        return SimpleNamespace(fetchall=lambda: rows, first=lambda: rows[0] if rows else None)
+        first = rows[0] if rows else None
+        return SimpleNamespace(fetchall=lambda: rows, first=lambda: first, scalar=lambda: None,
+                               mappings=lambda: SimpleNamespace(first=lambda: first))
 
 
 def _projects(*names: str) -> list:

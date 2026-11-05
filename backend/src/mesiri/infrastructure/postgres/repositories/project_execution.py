@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 import sqlalchemy as sa
 
 from mesiri.application.projects.create_commands import CreateProjectCommand
+from mesiri.application.projects.defaults import new_project_settings
 from mesiri.application.projects.repository import CreateProjectExecutionRepository
 from mesiri.authorization.roles import is_org_wide
 from mesiri.infrastructure.postgres.workflow_instance import (
@@ -83,13 +84,15 @@ class PostgresCreateProjectExecutionRepository(CreateProjectExecutionRepository)
         created_by = uuid.UUID(cmd.created_by)
         project_id = uuid.uuid4()
 
+        company = await new_project_settings(conn, organization_id)  # [259]: never UTC / no report
         await conn.execute(
             sa.text(
                 "INSERT INTO projects "
                 "(id, organization_id, name, location, client, description, status, "
-                "progress, open_issues) "
+                "progress, open_issues, reporting_timezone, auto_generate_dpr, "
+                "reporting_cutoff_time, dpr_send_deadline) "
                 "VALUES (:id, :org_id, :name, :location, :client, :description, "
-                "'on_track', 0, 0)"
+                "'on_track', 0, 0, :zone, :auto_dpr, :cutoff, :deadline)"
             ),
             {
                 "id": project_id,
@@ -98,6 +101,10 @@ class PostgresCreateProjectExecutionRepository(CreateProjectExecutionRepository)
                 "location": cmd.location,
                 "client": cmd.client,
                 "description": cmd.description,
+                "zone": company.reporting_timezone,
+                "auto_dpr": company.auto_generate_dpr,
+                "cutoff": company.reporting_cutoff_time,
+                "deadline": company.dpr_send_deadline,
             },
         )
 
