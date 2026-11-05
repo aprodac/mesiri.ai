@@ -56,6 +56,7 @@ from .reply_guard import (
     claims_cannot,
     claims_saved,
     read_tools_for,
+    unbacked_figures,
     without_ids,
     without_internals,
     without_saved_claims,
@@ -919,6 +920,20 @@ class ApiAgent:
                 code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
                     "kind": "missing_feature", "about": f"Mesiri said it cannot do this; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-199)"}})
+        if not result.calls and not again_asked and nothing_done() and (
+                unbacked := unbacked_figures(result.text, text, f"{facts} {' '.join(e.summary for e in ready or [])}")):
+            # [260] (basic 2/3, honest answers): figures about what is recorded with nothing looked up. The conversation
+            # holds lines that were cancelled or never saved, so a figure must come from a tool or today's records.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                role="user", text=f"(You gave figures ({', '.join(unbacked[:3])}) without looking anything up. What is "
+                                  "recorded comes only from a tool or today's records above; the conversation can hold "
+                                  "lines that were cancelled or never saved. Look it up now"
+                                  + hint_reads(read_tools_for(f"{text} {result.text}", self._tools))
+                                  + " and answer from what it returns; if nothing is recorded, say so plainly. Figures that "
+                                  "are not about their records (an example message, general construction knowledge) "
+                                  "stay: then give the same answer.)")])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            again_asked = True
         looked = lambda calls: any(getattr(self._tools.get(c.name), "is_write", True) is False for c in calls)  # noqa: E731
         if told(result.calls) and not looked(result.calls) and not again_asked:
             # [247] (Ilan, 5 Nov): "how far is the project / what can Mesiri do" went to the team as a missing feature

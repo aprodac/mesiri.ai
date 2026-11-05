@@ -132,3 +132,21 @@ def read_tools_for(topic: str, tools: dict[str, object]) -> list[str]:
         if stems & {w[:5] for w in words if w not in _PLAIN}:
             found.append(name)
     return found
+
+
+_FIGURE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?(?![\w.]*\d)")
+
+
+def _figures(text: str) -> set[str]:
+    clean = _URL.sub(" ", text or "")
+    return {f.replace(",", ".").lstrip("0") or "0" for f in _FIGURE.findall(clean)}
+
+
+def unbacked_figures(reply: str | None, said: str, facts: str) -> list[str]:
+    """[260] (5 Nov: "how many workers are on site now?" got "10 helpers", read from a card they had cancelled, and
+    the next answer said no attendance today): the figures in a reply that are neither in what the person said nor
+    in the records the turn started from. Used only when no tool was called: a figure with no source came from the
+    conversation (lines that may have been cancelled or never saved) or was made up. Single digits are left out
+    (counting words, list numbers)."""
+    backed = _figures(said) | _figures(facts)
+    return [f for f in sorted(_figures(reply or "")) if len(f) > 1 and f not in backed]
