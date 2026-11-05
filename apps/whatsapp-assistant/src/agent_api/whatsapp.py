@@ -489,7 +489,7 @@ class ApiWhatsApp:
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx)) if turn.saved else ""
-        words = turn.reply or turn.question or saved_words
+        words = without_heard_echo(turn.reply or turn.question or saved_words)  # [258]: the code draws "🎤 ..." once
         if got_why:
             words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
         passed_on = any(c.get("tool") == TELL_THE_TEAM for c in calls)
@@ -1064,6 +1064,7 @@ def for_memory(sent: str) -> str:
     """What the conversation keeps of a reply (WA-130): the words, and the drawn list only as a
     short note. Kept whole, the model saw the list's format in the history and wrote it again
     itself (Paraclette 2 Nov 10:52: the list twice)."""
+    sent = without_heard_echo(sent)  # [258]: the model never sees the "🎤 heard" line, so it never writes one
     words = without_ready_block(sent)
     if words == sent.strip():
         return sent
@@ -1451,6 +1452,15 @@ def _channel(message: Any) -> str:
 
 #: WA-209: the transcript above a voice note's reply is cut here (a long note is still read in full).
 HEARD_MAX = 200
+
+
+_HEARD = re.compile(r"^[ \t]*🎤[^\n]*(?:\n|$)", re.MULTILINE)
+
+
+def without_heard_echo(text: str) -> str:
+    """[258] (5 Nov 13:07: the transcript shown twice): the text without a "🎤 _what was heard_" line. Only the code
+    draws that line (``heard_line``), once, on a voice note's reply; a copy the model wrote from the history goes."""
+    return re.sub(r"\n{3,}", "\n\n", _HEARD.sub("", text)).strip()
 
 
 def heard_line(said: str) -> str:
