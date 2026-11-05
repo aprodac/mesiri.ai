@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { exportCsv } from '@/lib/export'
 import {
   DollarSign,
   Plus,
@@ -358,16 +359,15 @@ export default function ExpensesPage() {
     }
   }
 
-  const handleBulkExport = () => {
-    const selectedRecords = expenses.filter((e) => selectedIds.includes(e.id))
-    alert(`Exporting ${selectedRecords.length} selected expenses to CSV...`)
-  }
+  // WEB-48: real exports (they used to only show "Exporting..." and download nothing).
+  const exportRows = (rows: typeof expenses, name: string) =>
+    exportCsv(
+      name,
+      ['Number', 'Date', 'Category', 'Vendor', 'Description', 'Amount', 'Payment', 'From'],
+      rows.map((e) => [e.expense_number, e.occurred_date, e.category_name, e.vendor_name, e.description, e.amount, e.payment_status, e.source]),
+    )
+  const handleBulkExport = () => exportRows(expenses.filter((e) => selectedIds.includes(e.id)), 'expenses-selected.csv')
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Projects)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -391,17 +391,8 @@ export default function ExpensesPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0 shadow-2xs">
-            <DollarSign className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Expense Management
-              <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                Finance Module
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
           </div>
         </div>
 
@@ -410,14 +401,15 @@ export default function ExpensesPage() {
             size="sm"
             variant="outline"
             className="h-8 gap-1.5 text-xs font-medium"
-            onClick={() => alert('Exporting Expense Report as CSV...')}
+            disabled={filteredExpenses.length === 0}
+            onClick={() => exportRows(filteredExpenses, 'expenses.csv')}
           >
             <Download className="size-3.5" />
             Export CSV
           </Button>
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+            className="h-8 gap-1.5 text-xs font-bold shadow-2xs"
             onClick={() => setRecordDialogOpen(true)}
           >
             <Plus className="size-4" />
@@ -427,41 +419,30 @@ export default function ExpensesPage() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Total Expenses"
-          value={<span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(metrics.totalSpent)}</span>}
-          trend="up"
-          trendValue="+12.4% MoM"
+          title="Total spent"
+          value={<span>{formatCurrency(metrics.totalSpent)}</span>}
           description="Total recorded spend"
-          icon={<Receipt className="text-emerald-500" />}
-          chartData={[12, 18, 15, 22, 30, 28, 35, 42]}
+          icon={<Receipt  />}
         />
         <KpiCard
-          title="Unpaid Balance"
-          value={<span className="text-rose-600 dark:text-rose-400">{formatCurrency(metrics.unpaidAmount)}</span>}
-          trend="down"
-          trendValue="Action Needed"
+          title="Unpaid"
+          value={<span>{formatCurrency(metrics.unpaidAmount)}</span>}
           description="Outstanding invoices"
-          icon={<AlertCircle className="text-rose-500" />}
-          chartData={[8, 14, 10, 18, 12, 20, 15, 12]}
+          icon={<AlertCircle  />}
         />
         <KpiCard
-          title="Settled Amount"
-          value={<span className="text-blue-600 dark:text-blue-400">{formatCurrency(metrics.paidAmount)}</span>}
-          trend="up"
-          trendValue="85.8% Settled"
+          title="Paid"
+          value={<span>{formatCurrency(metrics.paidAmount)}</span>}
           description="Paid disbursements"
-          icon={<CheckCircle2 className="text-blue-500" />}
-          chartData={[10, 15, 20, 25, 30, 38, 45]}
+          icon={<CheckCircle2  />}
         />
         <KpiCard
-          title="Channel Ingestion"
-          value={<span className="text-foreground">{metrics.count} Entries</span>}
-          trend="neutral"
-          trendValue={`WA: ${metrics.whatsappCount} | Web: ${metrics.webCount}`}
+          title="Recorded"
+          value={<span>{metrics.count} Entries</span>}
           description="WhatsApp & Web logs"
-          icon={<MessageSquare className="text-indigo-500" />}
+          icon={<MessageSquare  />}
         />
       </div>
 

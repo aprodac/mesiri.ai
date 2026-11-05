@@ -12,9 +12,7 @@ import {
   Grid,
   List,
   Tag,
-  PieChart,
 } from 'lucide-react'
-import { useScope } from '@/lib/ScopeContext'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -56,7 +54,6 @@ function formatCurrency(amount: number): string {
 import { useToast } from '@/components/ui/toast-notification'
 
 export default function CategoriesPage() {
-  const { scope } = useScope()
   const toast = useToast()
 
   const [categories, setCategories] = React.useState<CategoryItem[]>([])
@@ -138,28 +135,14 @@ export default function CategoriesPage() {
     }
   }
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Organization Expense Categories)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0 shadow-2xs">
-            <Tags className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Expense Categories
-              <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                Finance Module
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Expense categories</h1>
           </div>
         </div>
 
@@ -177,38 +160,24 @@ export default function CategoriesPage() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Active Categories"
-          value={<span className="text-emerald-600 dark:text-emerald-400">{metrics.activeCount} Active</span>}
-          trend="up"
-          trendValue={`${metrics.totalCount} Total`}
+          title="Active categories"
+          value={<span>{metrics.activeCount} Active</span>}
           description="Operational classification rules"
-          icon={<Tags className="text-emerald-500" />}
+          icon={<Tags  />}
         />
         <KpiCard
-          title="Total Categorized Spend"
-          value={<span className="text-blue-600 dark:text-blue-400">{formatCurrency(metrics.totalSpent)}</span>}
-          trend="up"
-          trendValue={`${metrics.totalRecords} Expenses`}
+          title="Spend"
+          value={<span>{formatCurrency(metrics.totalSpent)}</span>}
           description="Confirmed expense total"
-          icon={<DollarSign className="text-blue-500" />}
+          icon={<DollarSign  />}
         />
         <KpiCard
-          title="Top Category"
+          title="Top category"
           value={<span className="text-purple-600 dark:text-purple-400 truncate block max-w-[160px]">{metrics.topCategoryName}</span>}
-          trend="up"
-          trendValue={formatCurrency(metrics.topCategoryAmount)}
           description="Highest volume category"
-          icon={<TrendingUp className="text-purple-500" />}
-        />
-        <KpiCard
-          title="Classification Ratio"
-          value={<span className="text-amber-600 dark:text-amber-400">100% Mapped</span>}
-          trend="neutral"
-          trendValue="Auto-Bucket"
-          description="WhatsApp & Web auto-routed"
-          icon={<PieChart className="text-amber-500" />}
+          icon={<TrendingUp  />}
         />
       </div>
 

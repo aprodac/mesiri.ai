@@ -11,9 +11,7 @@ import {
   Eye,
   Grid,
   List,
-  UserCheck,
 } from 'lucide-react'
-import { useScope } from '@/lib/ScopeContext'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -55,7 +53,6 @@ function formatCurrency(amount: number): string {
 import { useToast } from '@/components/ui/toast-notification'
 
 export default function VendorsPage() {
-  const { scope } = useScope()
   const toast = useToast()
 
   const [vendors, setVendors] = React.useState<VendorItem[]>([])
@@ -134,34 +131,20 @@ export default function VendorsPage() {
     }
   }
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Organization Payees & Vendors)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-indigo-500/30 bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-2xs">
-            <Store className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Vendors & Payees
-              <Badge variant="outline" className="text-[10px] font-mono border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
-                Finance Module
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Vendors</h1>
           </div>
         </div>
 
         <Button
           size="sm"
-          className="h-9 px-3.5 text-xs font-semibold gap-1.5 shadow-2xs bg-indigo-600 hover:bg-indigo-700 text-white"
+          className="h-9 px-3.5 text-xs font-semibold gap-1.5 shadow-2xs"
           onClick={() => {
             setVendorToEdit(null)
             setCreateDialogOpen(true)
@@ -173,38 +156,24 @@ export default function VendorsPage() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Active Vendors & Payees"
-          value={<span className="text-indigo-600 dark:text-indigo-400">{metrics.activeCount} Active</span>}
-          trend="up"
-          trendValue={`${metrics.totalCount} Total`}
+          title="Active vendors"
+          value={<span>{metrics.activeCount} Active</span>}
           description="Verified suppliers & contractors"
-          icon={<Store className="text-indigo-500" />}
+          icon={<Store  />}
         />
         <KpiCard
-          title="Total Vendor Disbursements"
-          value={<span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(metrics.totalPaid)}</span>}
-          trend="up"
-          trendValue={`${metrics.totalRecords} Payments`}
+          title="Paid to vendors"
+          value={<span>{formatCurrency(metrics.totalPaid)}</span>}
           description="Total confirmed payouts"
-          icon={<DollarSign className="text-emerald-500" />}
+          icon={<DollarSign  />}
         />
         <KpiCard
-          title="Top Supplier by Volume"
-          value={<span className="text-purple-600 dark:text-purple-400 truncate block max-w-[160px]">{metrics.topVendorName}</span>}
-          trend="up"
-          trendValue={formatCurrency(metrics.topVendorAmount)}
+          title="Top vendor"
+          value={<span className="truncate block">{metrics.topVendorName}</span>}
           description="Highest disbursement payee"
-          icon={<TrendingUp className="text-purple-500" />}
-        />
-        <KpiCard
-          title="Auto-Discovery Ratio"
-          value={<span className="text-amber-600 dark:text-amber-400">WhatsApp Live</span>}
-          trend="neutral"
-          trendValue="Auto-Matched"
-          description="Spoken payees auto-created"
-          icon={<UserCheck className="text-amber-500" />}
+          icon={<TrendingUp  />}
         />
       </div>
 
@@ -269,7 +238,7 @@ export default function VendorsPage() {
           </p>
           <Button
             size="sm"
-            className="mt-2 text-xs font-semibold gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
+            className="mt-2 text-xs font-semibold gap-1.5"
             onClick={() => {
               setVendorToEdit(null)
               setCreateDialogOpen(true)

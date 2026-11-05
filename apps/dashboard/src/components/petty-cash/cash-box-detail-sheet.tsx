@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator'
 
 import { useNavigate } from 'react-router-dom'
 import * as React from 'react'
+import { exportCsv } from '@/lib/export'
 import { fetchVouchersApi } from '@/lib/api'
 
 interface CashBoxDetailSheetProps {
@@ -145,7 +146,14 @@ export function CashBoxDetailSheet({
                   size="sm"
                   variant="ghost"
                   className="h-6 text-[11px] text-muted-foreground gap-1"
-                  onClick={() => alert(`Exporting ledger statement for ${cashBox.name}...`)}
+                  disabled={vouchers.length === 0}
+                  onClick={() =>
+                    exportCsv(
+                      `${cashBox.name} cash book.csv`,
+                      ['Date', 'Kind', 'Amount', 'Description'],
+                      vouchers.map((tx: any) => [String(tx.occurred_date ?? tx.transaction_date ?? tx.created_at ?? '').slice(0, 10), tx.transaction_type ?? '', tx.amount ?? '', tx.description ?? tx.notes ?? '']),
+                    )
+                  }
                 >
                   <Download className="size-3" /> CSV Export
                 </Button>
@@ -258,21 +266,7 @@ export function CashBoxDetailSheet({
                       {cashBox.custodian_name}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span>WhatsApp Notifications:</span>
-                    <span className="font-semibold text-emerald-600">Active</span>
-                  </div>
                 </div>
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full h-8 text-xs gap-1.5 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 font-semibold"
-                  onClick={() => alert(`WhatsApp nudge sent to ${cashBox.custodian_name} for site float ${cashBox.name}!`)}
-                >
-                  <ShieldCheck className="size-3.5 text-emerald-500" />
-                  Send WhatsApp Float Nudge
-                </Button>
               </div>
             </TabsContent>
           </Tabs>

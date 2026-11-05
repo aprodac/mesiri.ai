@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { exportCsv } from '@/lib/export'
 import {
   Landmark,
   Plus,
@@ -284,9 +285,9 @@ export default function AccountsPage() {
   }
 
   const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Organization Accounts)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
+    if (scope.mode === 'portfolio') return 'all projects'
+    if (scope.mode === 'project') return `${scope.projectName}`
+    return `${scope.projectName} / ${scope.siteName}`
   }, [scope])
 
   const formatCurrency = (val: number) => {
@@ -317,17 +318,8 @@ export default function AccountsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-cyan-500/30 bg-cyan-500/10 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shrink-0 shadow-2xs">
-            <Landmark className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Financial Accounts & Liquidity
-              <Badge variant="outline" className="text-[10px] font-mono border-cyan-500/30 text-cyan-600 dark:text-cyan-400">
-                Treasury
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Accounts</h1>
           </div>
         </div>
 
@@ -343,7 +335,7 @@ export default function AccountsPage() {
           </Button>
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+            className="h-8 gap-1.5 text-xs font-bold shadow-2xs"
             onClick={() => setCreateDialogOpen(true)}
           >
             <Plus className="size-4" />
@@ -353,42 +345,32 @@ export default function AccountsPage() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Net Liquid Treasury"
-          value={<span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(metrics.netTreasury)}</span>}
-          trend="up"
-          trendValue="+8.2% MoM"
+          title="Cash and bank"
+          value={<span>{formatCurrency(metrics.netTreasury)}</span>}
           description="Combined active balance"
-          icon={<Landmark className="text-emerald-500" />}
-          chartData={[20, 28, 35, 40, 48, 52]}
+          icon={<Landmark  />}
         />
         <KpiCard
-          title="Bank Accounts Total"
-          value={<span className="text-blue-600 dark:text-blue-400">{formatCurrency(metrics.bankTotal)}</span>}
-          trend="up"
-          trendValue="Corporate Bank Float"
+          title="In bank"
+          value={<span>{formatCurrency(metrics.bankTotal)}</span>}
           description="Main operating funds"
-          icon={<Building2 className="text-blue-500" />}
-          chartData={[15, 22, 30, 38, 42]}
+          icon={<Building2  />}
         />
         <KpiCard
-          title="Petty Cash Float"
-          value={<span className="text-amber-600 dark:text-amber-400">{formatCurrency(metrics.pettyCashTotal)}</span>}
-          trend="neutral"
-          trendValue="Site Cash Boxes"
+          title="Petty cash"
+          value={<span>{formatCurrency(metrics.pettyCashTotal)}</span>}
           description="Field cash availability"
-          icon={<Wallet className="text-amber-500" />}
+          icon={<Wallet  />}
         />
         <KpiCard
-          title="Low Balance Alerts"
+          title="Low balance"
           value={
             <span className={metrics.lowBalanceCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}>
               {metrics.lowBalanceCount} Accounts
             </span>
           }
-          trend={metrics.lowBalanceCount > 0 ? 'down' : 'neutral'}
-          trendValue={metrics.lowBalanceCount > 0 ? 'Refill Needed' : 'Healthy'}
           description="Float threshold alerts (< ₹50k)"
           icon={<AlertTriangle className={metrics.lowBalanceCount > 0 ? 'text-rose-500' : 'text-muted-foreground'} />}
         />
@@ -712,7 +694,13 @@ export default function AccountsPage() {
           size="sm"
           variant="outline"
           className="h-7 text-xs gap-1.5 font-semibold"
-          onClick={() => alert(`Exporting ${selectedIds.length} accounts...`)}
+          onClick={() =>
+            exportCsv(
+              'accounts-selected.csv',
+              ['Account', 'Kind', 'Balance'],
+              accounts.filter((a) => selectedIds.includes(a.id)).map((a) => [a.name, a.account_type, a.current_balance]),
+            )
+          }
         >
           <Download className="size-3.5" />
           Export Selected

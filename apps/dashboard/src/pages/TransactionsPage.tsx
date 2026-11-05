@@ -10,7 +10,6 @@ import {
   Building2,
   Calendar,
 } from 'lucide-react'
-import { useScope } from '@/lib/ScopeContext'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -102,7 +101,6 @@ function getTransactionTypeBadge(type: string) {
 }
 
 export default function TransactionsPage() {
-  const { scope } = useScope()
   const toast = useToast()
 
   const [transactions, setTransactions] = React.useState<MoneyTransactionItem[]>([])
@@ -198,28 +196,14 @@ export default function TransactionsPage() {
     }
   }, [transactions])
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (Company-Wide Money Movement Ledger)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-blue-500/30 bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 shadow-2xs">
-            <ArrowLeftRight className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Money Transactions
-              <Badge variant="outline" className="text-[10px] font-mono border-blue-500/30 text-blue-600 dark:text-blue-400">
-                General Ledger
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
           </div>
         </div>
 
@@ -235,38 +219,30 @@ export default function TransactionsPage() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Total Ledger Volume"
-          value={<span className="text-foreground">{formatCurrency(metrics.totalVolume)}</span>}
-          trend="neutral"
-          trendValue={`${metrics.count} Records`}
+          title="Total moved"
+          value={<span>{formatCurrency(metrics.totalVolume)}</span>}
           description="Cumulative financial movement"
-          icon={<DollarSign className="text-blue-500" />}
+          icon={<DollarSign  />}
         />
         <KpiCard
-          title="Expense Payouts"
-          value={<span className="text-rose-600 dark:text-rose-400">{formatCurrency(metrics.totalExpensePayouts)}</span>}
-          trend="down"
-          trendValue="Money Out"
+          title="Expenses paid"
+          value={<span>{formatCurrency(metrics.totalExpensePayouts)}</span>}
           description="Confirmed vendor payouts"
-          icon={<ArrowUpRight className="text-rose-500" />}
+          icon={<ArrowUpRight  />}
         />
         <KpiCard
-          title="Account Transfers"
-          value={<span className="text-blue-600 dark:text-blue-400">{formatCurrency(metrics.totalTransfers)}</span>}
-          trend="neutral"
-          trendValue="Internal Top-ups"
+          title="Account transfers"
+          value={<span>{formatCurrency(metrics.totalTransfers)}</span>}
           description="Inter-account bank transfers"
-          icon={<ArrowLeftRight className="text-blue-500" />}
+          icon={<ArrowLeftRight  />}
         />
         <KpiCard
-          title="Petty Cash Vouchers"
-          value={<span className="text-amber-600 dark:text-amber-400">{formatCurrency(metrics.totalVouchers)}</span>}
-          trend="down"
-          trendValue="Site Cash"
+          title="Petty cash vouchers"
+          value={<span>{formatCurrency(metrics.totalVouchers)}</span>}
           description="Field vouchers paid in cash"
-          icon={<Receipt className="text-amber-500" />}
+          icon={<Receipt  />}
         />
       </div>
 

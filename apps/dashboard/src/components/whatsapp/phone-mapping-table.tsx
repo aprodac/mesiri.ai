@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Search, UserCheck, Smartphone, ShieldCheck, MoreVertical, RefreshCw, Send } from 'lucide-react'
+import { Search, Smartphone, ShieldCheck, Send } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,12 +11,6 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
 export interface WhatsAppCustodianItem {
   id: string
@@ -189,21 +183,6 @@ export function PhoneMappingTable() {
                   {item.last_active}
                 </TableCell>
                 <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-7">
-                        <MoreVertical className="size-4 text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="text-xs">
-                      <DropdownMenuItem onClick={() => alert(`Resending WhatsApp invite to ${item.name}...`)}>
-                        <RefreshCw className="size-3.5 mr-1.5 text-cyan-500" /> Resend Invite
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => alert(`Viewing active permissions for ${item.name}`)}>
-                        <UserCheck className="size-3.5 mr-1.5 text-emerald-500" /> View Permissions
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}

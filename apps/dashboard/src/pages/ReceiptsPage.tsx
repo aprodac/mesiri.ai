@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { Image as ImageIcon, Calendar, Store, Tag } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -53,11 +52,6 @@ export default function ReceiptsPage() {
     }
   }, [scope, datePreset])
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Projects)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -72,20 +66,8 @@ export default function ReceiptsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0 shadow-2xs">
-            <ImageIcon className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Receipts
-              <Badge
-                variant="outline"
-                className="text-[10px] font-mono border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-              >
-                Finance Module
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Receipts</h1>
           </div>
         </div>
 

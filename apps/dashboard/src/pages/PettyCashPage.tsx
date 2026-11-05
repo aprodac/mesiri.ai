@@ -7,8 +7,6 @@ import {
   Download,
   Building2,
   User,
-  MoreVertical,
-  Eye,
   Grid,
   List,
   ChevronLeft,
@@ -41,12 +39,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
 import { RecordVoucherDialog } from '@/components/petty-cash/record-voucher-dialog'
 import { ReplenishFloatDialog } from '@/components/petty-cash/replenish-float-dialog'
@@ -274,9 +266,9 @@ export default function PettyCashPage() {
   }
 
   const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Site Petty Cash Floats)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
+    if (scope.mode === 'portfolio') return 'all projects'
+    if (scope.mode === 'project') return `${scope.projectName}`
+    return `${scope.projectName} / ${scope.siteName}`
   }, [scope])
 
   const formatCurrency = (val: number) => {
@@ -292,17 +284,8 @@ export default function PettyCashPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0 shadow-2xs">
-            <Wallet className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Site Petty Cash & Field Floats
-              <Badge variant="outline" className="text-[10px] font-mono border-amber-500/30 text-amber-600 dark:text-amber-400">
-                Field Treasury
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Petty cash</h1>
           </div>
         </div>
 
@@ -318,7 +301,7 @@ export default function PettyCashPage() {
           </Button>
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-2xs"
+            className="h-8 gap-1.5 text-xs font-bold shadow-2xs"
             onClick={() => setRecordDialogOpen(true)}
           >
             <Plus className="size-4" />
@@ -328,44 +311,34 @@ export default function PettyCashPage() {
       </div>
 
       {/* Executive KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Active Field Float"
-          value={<span className="text-amber-600 dark:text-amber-400">{formatCurrency(metrics.activeFloat)}</span>}
-          trend="up"
-          trendValue="Live Balance"
+          title="Cash at sites"
+          value={<span>{formatCurrency(metrics.activeFloat)}</span>}
           description="Total active cash in hand"
-          icon={<Wallet className="text-amber-500" />}
-          chartData={[25, 30, 28, 35, 40, 42]}
+          icon={<Wallet  />}
         />
         <KpiCard
-          title="Monthly Cash Disbursed"
-          value={<span className="text-rose-600 dark:text-rose-400">{formatCurrency(metrics.monthlyDisbursed)}</span>}
-          trend="neutral"
-          trendValue="July 2026"
+          title="Paid out this month"
+          value={<span>{formatCurrency(metrics.monthlyDisbursed)}</span>}
           description="Vouchers paid this month"
-          icon={<Receipt className="text-rose-500" />}
-          chartData={[10, 18, 22, 35, 45]}
+          icon={<Receipt  />}
         />
         <KpiCard
-          title="Low Float Site Boxes"
+          title="Sites low on cash"
           value={
             <span className={metrics.lowBalanceCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}>
               {metrics.lowBalanceCount} Sites
             </span>
           }
-          trend={metrics.lowBalanceCount > 0 ? 'down' : 'neutral'}
-          trendValue={metrics.lowBalanceCount > 0 ? 'Refill Needed' : 'Healthy'}
           description="Float threshold alerts (< ₹50k)"
           icon={<AlertTriangle className={metrics.lowBalanceCount > 0 ? 'text-rose-500' : 'text-muted-foreground'} />}
         />
         <KpiCard
-          title="Pending Vouchers Audit"
-          value={<span className="text-purple-600 dark:text-purple-400">{metrics.pendingVouchersCount} Vouchers</span>}
-          trend="neutral"
-          trendValue="Physical Receipt Audit"
+          title="Vouchers to check"
+          value={<span>{metrics.pendingVouchersCount} Vouchers</span>}
           description="Pending audit verification"
-          icon={<Clock className="text-purple-500" />}
+          icon={<Clock  />}
         />
       </div>
 
@@ -608,18 +581,6 @@ export default function PettyCashPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="size-7">
-                              <MoreVertical className="size-4 text-muted-foreground" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="text-xs">
-                            <DropdownMenuItem onClick={() => alert(`Viewing voucher ${vch.voucher_number}`)}>
-                              <Eye className="size-3.5 mr-1.5" /> View Voucher
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   )

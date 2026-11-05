@@ -8,13 +8,11 @@ import {
   Receipt,
   Check,
 } from 'lucide-react'
-import { useScope } from '@/lib/ScopeContext'
 import { useToast } from '@/components/ui/toast-notification'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -37,7 +35,6 @@ const PAYMENT_METHODS_LIST = [
 ]
 
 export default function FinanceSettingsPage() {
-  const { scope } = useScope()
   const toast = useToast()
 
   const [saving, setSaving] = React.useState(false)
@@ -114,11 +111,6 @@ export default function FinanceSettingsPage() {
     }
   }
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (Organization-Wide Finance Policies)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   return (
     <div className="flex flex-col gap-5 w-full max-w-full relative pb-20">
@@ -129,13 +121,7 @@ export default function FinanceSettingsPage() {
             <Settings className="size-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Finance Settings
-              <Badge variant="outline" className="text-[10px] font-mono border-slate-500/30 text-slate-700 dark:text-slate-300">
-                Organization Policy
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Finance settings</h1>
           </div>
         </div>
       </div>
@@ -342,7 +328,7 @@ export default function FinanceSettingsPage() {
             type="submit"
             disabled={saving}
             size="sm"
-            className="h-8 text-xs font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+            className="h-8 text-xs font-semibold gap-1.5 shadow-2xs"
           >
             <Save className="size-3.5" />
             {saving ? 'Saving Preferences...' : 'Save Preferences'}

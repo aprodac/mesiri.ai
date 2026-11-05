@@ -14,7 +14,6 @@ import {
   Landmark,
   RefreshCw,
 } from 'lucide-react'
-import { useScope } from '@/lib/ScopeContext'
 import { useToast } from '@/components/ui/toast-notification'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { Button } from '@/components/ui/button'
@@ -59,7 +58,6 @@ const REPORT_TYPES = [
 ]
 
 export default function FinanceReportsPage() {
-  const { scope } = useScope()
   const toast = useToast()
 
   const [activeReport, setActiveReport] = React.useState('pnl')
@@ -132,11 +130,6 @@ export default function FinanceReportsPage() {
     window.print()
   }
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Organization Accounts)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   return (
     <div className="flex flex-col gap-5 w-full max-w-full relative pb-16">
@@ -147,13 +140,7 @@ export default function FinanceReportsPage() {
             <FileText className="size-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Finance Reports & Statements
-              <Badge variant="outline" className="text-[10px] font-mono border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
-                Audit Statement Generator
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Finance reports</h1>
           </div>
         </div>
 
@@ -179,7 +166,7 @@ export default function FinanceReportsPage() {
           </Button>
           <Button
             size="sm"
-            className="h-8 text-xs font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+            className="h-8 text-xs font-semibold gap-1.5 shadow-2xs"
             onClick={handleExportCSV}
           >
             <Download className="size-3.5" />
@@ -227,40 +214,34 @@ export default function FinanceReportsPage() {
       {/* Statement Header KPI Summary Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <KpiCard
-          title="Total Operating Revenues"
+          title="Total operating revenues"
           value={
-            <span className="text-emerald-600 dark:text-emerald-400">
+            <span>
               {formatCurrency(parseFloat(String(statement?.total_inflows || 0)))}
             </span>
           }
-          trend="up"
-          trendValue="Revenue Inflows"
           description="Total client payments & inflows"
-          icon={<TrendingUp className="text-emerald-500" />}
+          icon={<TrendingUp  />}
         />
         <KpiCard
-          title="Total Operational Disbursements"
+          title="Total operational disbursements"
           value={
-            <span className="text-foreground">
+            <span>
               {formatCurrency(parseFloat(String(statement?.total_outflows || 0)))}
             </span>
           }
-          trend="neutral"
-          trendValue={`${statement?.rows?.length || 0} Line Items`}
           description="Total confirmed expenditure"
-          icon={<TrendingDown className="text-blue-500" />}
+          icon={<TrendingDown  />}
         />
         <KpiCard
-          title="Net Operating Margin"
+          title="Net operating margin"
           value={
             <span className={parseFloat(String(statement?.net_margin || 0)) >= 0 ? 'text-emerald-600' : 'text-rose-600 dark:text-rose-400'}>
               {formatCurrency(parseFloat(String(statement?.net_margin || 0)))}
             </span>
           }
-          trend={parseFloat(String(statement?.net_margin || 0)) >= 0 ? 'up' : 'down'}
-          trendValue="Statement Balance"
           description="Revenues minus total expenses"
-          icon={<DollarSign className="text-indigo-500" />}
+          icon={<DollarSign  />}
         />
       </div>
 

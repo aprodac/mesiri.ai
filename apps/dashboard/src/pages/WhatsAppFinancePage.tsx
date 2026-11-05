@@ -1,6 +1,5 @@
 import * as React from 'react'
 import {
-  Bot,
   Zap,
   Smartphone,
   Terminal,
@@ -9,9 +8,7 @@ import {
   CreditCard,
   BellRing,
 } from 'lucide-react'
-import { useScope } from '@/lib/ScopeContext'
 import { KpiCard } from '@/components/ui/kpi-card'
-import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VpsHealthBar } from '@/components/whatsapp/vps-health-bar'
 import { WhatsAppPhoneMockup } from '@/components/whatsapp/whatsapp-phone-mockup'
@@ -28,7 +25,6 @@ import {
 } from '@/lib/api'
 
 export default function WhatsAppFinancePage() {
-  const { scope } = useScope()
   const [summary, setSummary] = React.useState<CompanySummary | null>(null)
 
   // Rule Toggles & Values
@@ -128,28 +124,14 @@ export default function WhatsAppFinancePage() {
     }
   }
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Organization WhatsApp Triggers)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0 shadow-2xs">
-            <Bot className="size-5" />
-          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              WhatsApp Assistant & Automations
-              <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                Finance Integration
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Finance on WhatsApp</h1>
           </div>
         </div>
       </div>
@@ -158,51 +140,36 @@ export default function WhatsAppFinancePage() {
       <VpsHealthBar onOpenSandbox={() => setSandboxOpen(true)} />
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Active Automations"
-          value={<span className="text-emerald-600 dark:text-emerald-400">4 Active Workflows</span>}
-          trend="up"
-          trendValue="VPS Active"
-          description="Expense, Petty Cash, Receipts"
-          icon={<Zap className="text-emerald-500" />}
-          chartData={[10, 15, 25, 30, 45, 50]}
-        />
-        <KpiCard
-          title="Registered Personnel"
+          title="Registered personnel"
           value={
-            <span className="text-blue-600 dark:text-blue-400">
+            <span>
               {summary ? `${summary.total_users} Members` : 'Live DB'}
             </span>
           }
-          trend="neutral"
-          trendValue="Site Personnel"
           description="Organization team members"
-          icon={<Smartphone className="text-blue-500" />}
+          icon={<Smartphone  />}
         />
         <KpiCard
-          title="Active Projects"
+          title="Active projects"
           value={
-            <span className="text-purple-600 dark:text-purple-400">
+            <span>
               {summary ? `${summary.total_projects} Projects` : 'Live DB'}
             </span>
           }
-          trend="up"
-          trendValue="Live Tracking"
           description="Managed project scopes"
-          icon={<CreditCard className="text-purple-500" />}
+          icon={<CreditCard  />}
         />
         <KpiCard
-          title="Active Sites"
+          title="Active sites"
           value={
-            <span className="text-amber-600 dark:text-amber-400">
+            <span>
               {summary ? `${summary.total_sites} Sites` : 'Live DB'}
             </span>
           }
-          trend="neutral"
-          trendValue="Site Locations"
           description="Active construction sites"
-          icon={<BellRing className="text-amber-500" />}
+          icon={<BellRing  />}
         />
       </div>
 

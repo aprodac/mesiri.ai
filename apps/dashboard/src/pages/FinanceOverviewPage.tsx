@@ -32,7 +32,6 @@ import {
 import { Link } from 'react-router-dom'
 import { useScope } from '@/lib/ScopeContext'
 import { KpiCard } from '@/components/ui/kpi-card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -134,11 +133,6 @@ export default function FinanceOverviewPage() {
     return total > 0 ? Math.round(total / 30) : 0
   }, [summary])
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (Executive CFO Financial Command Center)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
 
   return (
     <div className="flex flex-col gap-5 w-full max-w-full relative pb-12">
@@ -149,13 +143,7 @@ export default function FinanceOverviewPage() {
             <Activity className="size-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Finance Overview
-              <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                Executive Cockpit
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Finance</h1>
           </div>
         </div>
 
@@ -163,7 +151,7 @@ export default function FinanceOverviewPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            className="h-8 text-xs font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+            className="h-8 text-xs font-semibold gap-1.5 shadow-2xs"
             onClick={() => setRecordExpenseOpen(true)}
           >
             <Plus className="size-3.5" />
@@ -226,55 +214,47 @@ export default function FinanceOverviewPage() {
       )}
 
       {/* Top Executive KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          title="Total Cash & Bank Liquidity"
+          title="Total cash & bank liquidity"
           value={
-            <span className="text-emerald-600 dark:text-emerald-400">
+            <span>
               {formatCurrency(parseFloat(String(summary?.total_liquidity || 0)))}
             </span>
           }
-          trend="up"
-          trendValue={`${summary?.active_accounts_count || 0} Accounts`}
           description="Available cash across all balances"
-          icon={<Landmark className="text-emerald-500" />}
+          icon={<Landmark  />}
         />
         <KpiCard
-          title="Total Confirmed Expenses"
+          title="Total confirmed expenses"
           value={
-            <span className="text-foreground">
+            <span>
               {formatCurrency(parseFloat(String(summary?.total_expenses || 0)))}
             </span>
           }
-          trend="neutral"
-          trendValue={`${summary?.active_categories_count || 0} Categories`}
           description="Cumulative recorded disbursements"
-          icon={<DollarSign className="text-blue-500" />}
+          icon={<DollarSign  />}
         />
         <KpiCard
-          title="Unpaid Liabilities"
+          title="Unpaid liabilities"
           value={
-            <span className="text-amber-600 dark:text-amber-400">
+            <span>
               {formatCurrency(parseFloat(String(summary?.unpaid_expenses || 0)))}
             </span>
           }
-          trend="down"
-          trendValue={`${summary?.health_alerts?.unpaid_invoice_count || 0} Invoices`}
           description="Pending vendor payouts"
-          icon={<AlertTriangle className="text-amber-500" />}
+          icon={<AlertTriangle  />}
         />
         <KpiCard
-          title="Daily Average Run-Rate"
+          title="Daily average run-rate"
           value={
-            <span className="text-indigo-600 dark:text-indigo-400">
+            <span>
               {formatCurrency(dailyAverageSpend)}
               <span className="text-xs font-normal text-muted-foreground ml-1">/day</span>
             </span>
           }
-          trend="up"
-          trendValue="30-Day Rate"
           description="Average daily operational burn"
-          icon={<Zap className="text-indigo-500" />}
+          icon={<Zap  />}
         />
       </div>
 

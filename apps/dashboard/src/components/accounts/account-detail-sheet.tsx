@@ -29,6 +29,7 @@ interface AccountDetailSheetProps {
 }
 
 import * as React from 'react'
+import { exportCsv } from '@/lib/export'
 import { fetchAccountTransactionsApi } from '@/lib/api'
 
 export function AccountDetailSheet({
@@ -91,9 +92,14 @@ export function AccountDetailSheet({
     }
   }
 
-  const handleExportStatement = () => {
-    alert(`Exporting Account Statement for "${account.name}" as CSV...`)
-  }
+  // WEB-48: a real statement (it used to only show "Exporting...").
+  const exportTx = (rows: any[], name: string) =>
+    exportCsv(
+      name,
+      ['Date', 'Kind', 'Amount', 'Description'],
+      rows.map((tx) => [String(tx.occurred_date ?? tx.transaction_date ?? tx.created_at ?? '').slice(0, 10), tx.transaction_type ?? '', tx.amount ?? '', tx.description ?? tx.notes ?? '']),
+    )
+  const handleExportStatement = () => exportTx(transactions, `${account.name} statement.csv`)
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
