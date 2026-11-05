@@ -99,6 +99,34 @@ _material_categories = sa.Table(
 _category = _material_categories.alias("category")
 _parent_category = _material_categories.alias("parent_category")
 
+
+def _category_columns(material_id_col: sa.ColumnElement) -> list:
+    """PRC-17b: a row's category ("Main › Sub") and main category, looked up from its material."""
+    cat, parent = _material_categories.alias("row_category"), _material_categories.alias("row_parent_category")
+    source = _materials_catalog.join(cat, cat.c.id == _materials_catalog.c.category_id).outerjoin(
+        parent, parent.c.id == cat.c.parent_id
+    )
+    label = sa.case((parent.c.name.is_not(None), parent.c.name + " › " + cat.c.name), else_=cat.c.name)
+    where = _materials_catalog.c.id == material_id_col
+    return [
+        sa.select(label).select_from(source).where(where).scalar_subquery().label("category"),
+        sa.select(sa.func.coalesce(parent.c.name, cat.c.name)).select_from(source).where(where)
+        .scalar_subquery().label("main_category"),
+    ]
+
+
+def _in_category(material_id_col: sa.ColumnElement, category_id: uuid.UUID) -> sa.ColumnElement:
+    """Rows whose material sits in ``category_id``, a main category's sub-categories included."""
+    cat = _material_categories.alias("filter_category")
+    return sa.exists(
+        sa.select(sa.literal(1))
+        .select_from(_materials_catalog.join(cat, cat.c.id == _materials_catalog.c.category_id))
+        .where(
+            _materials_catalog.c.id == material_id_col,
+            sa.or_(cat.c.id == category_id, cat.c.parent_id == category_id),
+        )
+    )
+
 _material_aliases = sa.Table(
     "material_aliases",
     sa.MetaData(),
@@ -239,8 +267,10 @@ class PostgresMaterialReadRepository:
         date_to: datetime.date | None = None,
         limit: int = 50,
         offset: int = 0,
+        category_id: uuid.UUID | None = None,
     ) -> tuple[list[dict], int]:
-        """List material receipts (inflows) matching parameters, with total count."""
+        """List material receipts (inflows) matching parameters, with total count. Each row names its
+        material's category; ``category_id`` keeps one category, a main one with its sub-categories (PRC-17b)."""
         where_clauses = _receipt_where(
             organization_id,
             project_ids,
@@ -253,6 +283,8 @@ class PostgresMaterialReadRepository:
             date_from,
             date_to,
         )
+        if category_id is not None:
+            where_clauses.append(_in_category(_material_receipts.c.material_id, category_id))
 
         count_stmt = (
             sa.select(sa.func.count()).select_from(_material_receipts).where(*where_clauses)
@@ -271,7 +303,7 @@ class PostgresMaterialReadRepository:
         ).label("is_reversed")
 
         stmt = (
-            sa.select(_material_receipts, is_reversed)
+            sa.select(_material_receipts, is_reversed, *_category_columns(_material_receipts.c.material_id))
             .where(*where_clauses)
             .order_by(
                 _material_receipts.c.occurred_date.desc(), _material_receipts.c.created_at.desc()
@@ -306,8 +338,9 @@ class PostgresMaterialReadRepository:
         date_to: datetime.date | None = None,
         limit: int = 50,
         offset: int = 0,
+        category_id: uuid.UUID | None = None,
     ) -> tuple[list[dict], int]:
-        """List material usages (outflows) matching parameters, with total count."""
+        """List material usages (outflows) matching parameters, with total count; categories as list_receipts."""
         where_clauses = _usage_where(
             organization_id,
             project_ids,
@@ -320,12 +353,14 @@ class PostgresMaterialReadRepository:
             date_from,
             date_to,
         )
+        if category_id is not None:
+            where_clauses.append(_in_category(_material_usage.c.material_id, category_id))
 
         count_stmt = sa.select(sa.func.count()).select_from(_material_usage).where(*where_clauses)
         total = (await self.conn.execute(count_stmt)).scalar_one()
 
         stmt = (
-            sa.select(_material_usage)
+            sa.select(_material_usage, *_category_columns(_material_usage.c.material_id))
             .where(*where_clauses)
             .order_by(_material_usage.c.occurred_date.desc(), _material_usage.c.created_at.desc())
             .limit(limit)

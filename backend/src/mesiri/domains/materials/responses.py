@@ -13,6 +13,9 @@ class MaterialReceiptResponse(BaseModel):
     project_id: uuid.UUID
     site_id: uuid.UUID | None
     material_name: str
+    #: PRC-17b: the material's category ("Main › Sub") and main category, in lists; None when it has none.
+    category: str | None = None
+    main_category: str | None = None
     quantity: Decimal
     unit: str
     unit_cost: Decimal | None
@@ -57,6 +60,9 @@ class MaterialUsageResponse(BaseModel):
     project_id: uuid.UUID
     site_id: uuid.UUID | None
     material_name: str
+    #: PRC-17b: the material's category ("Main › Sub") and main category, in lists; None when it has none.
+    category: str | None = None
+    main_category: str | None = None
     quantity: Decimal
     unit: str
     work_item: str | None

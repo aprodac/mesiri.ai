@@ -893,6 +893,9 @@ async def list_inflows(
     recorded_by_user_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
+    category_id: uuid.UUID | None = Query(
+        default=None, description="Only materials in this category; a main category includes its sub-categories."
+    ),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     auth_context: AuthorizationContext = Depends(get_auth_context),
@@ -917,6 +920,7 @@ async def list_inflows(
         date_to=date_to,
         limit=limit,
         offset=offset,
+        category_id=category_id,
     )
     return {"items": items, "total": total}
 
@@ -956,6 +960,9 @@ async def list_outflows(
     recorded_by_user_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
+    category_id: uuid.UUID | None = Query(
+        default=None, description="Only materials in this category; a main category includes its sub-categories."
+    ),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     auth_context: AuthorizationContext = Depends(get_auth_context),
@@ -980,6 +987,7 @@ async def list_outflows(
         date_to=date_to,
         limit=limit,
         offset=offset,
+        category_id=category_id,
     )
     return {"items": items, "total": total}
 

@@ -71,8 +71,9 @@ is work for someone standing on a site.
    Material categories: "set up categories" is `add_standard_categories` (an admin or a project manager); "what
    categories do I have" is `material_categories`; "put wash basin in Sanitaryware" is `update_material` with
    category in words. Stock of a category ("electrical stock?", "plumbing items ethra und"): find it in
-   `material_categories`, then `stock_levels` with its `category_id`. A stock answer with several categories is
-   grouped by main category (a short *Electrical* line, then its materials). If they don't know it, or just tap Save,
+   `material_categories`, then `stock_levels` with its `category_id`; deliveries or use of a category ("what
+   electrical came this week?") the same way with `list_receipts` / `list_usage`. An answer with several
+   categories is grouped by main category (a short *Electrical* line, then its materials). If they don't know it, or just tap Save,
    the code holds the line for their admin and it saves by itself when the admin answers. No unit said ("50 cement"):
    leave unit_id out; the code takes the material's own unit and shows it on the line. An admin or project manager
    answering "📏 Sizes needed" ("M-sand load 60"): find it with `size_requests`, prepare `answer_size_request`. A material line always carries `material_said`, their own

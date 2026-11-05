@@ -1810,3 +1810,41 @@ async def test_stock_names_its_category_and_filters_by_main_category(client, adm
     assert {r["material_name"] for r in resp.json()} == {"2-way switch", "MCB 32A"}
     resp = await client.get("/materials/inventory", params={"category_id": switches}, headers=_auth(token))
     assert {r["material_name"] for r in resp.json()} == {"2-way switch"}
+
+
+async def test_deliveries_and_use_name_their_category_and_filter_by_it(client, admin_ctx):
+    """PRC-17b: "what electrical came this week?" -- the lists name each line's category and keep one category."""
+    token = admin_ctx["token"]
+    bags_id = await _bags_unit_id(client, token)
+    electrical = await _make_category(client, token, "Electrical")
+    switches = await _make_category(client, token, "Switches & sockets", electrical)
+    ids = {}
+    for name, cat in (("2-way switch", switches), ("Cement", None)):
+        resp = await client.post(
+            "/materials", json={"name": name, "default_unit_id": bags_id, "category_id": cat}, headers=_auth(token)
+        )
+        ids[name] = resp.json()["id"]
+        line = {
+            "project_id": str(admin_ctx["project_id"]),
+            "site_id": str(admin_ctx["site_id"]),
+            "material_id": ids[name],
+            "unit_id": bags_id,
+            "occurred_date": str(datetime.date.today()),
+        }
+        got = await client.post(
+            "/materials/inflows", json={**line, "quantity": "10", "movement_reason": "RECEIVED"}, headers=_auth(token)
+        )
+        assert got.status_code == 201, got.text
+        used = await client.post(
+            "/materials/outflows", json={**line, "quantity": "2", "movement_reason": "CONSUMED"}, headers=_auth(token)
+        )
+        assert used.status_code == 201, used.text
+
+    for path in ("/materials/inflows", "/materials/outflows"):
+        items = (await client.get(path, headers=_auth(token))).json()["items"]
+        by_name = {i["material_name"]: i for i in items}
+        assert by_name["2-way switch"]["category"] == "Electrical › Switches & sockets"
+        assert by_name["2-way switch"]["main_category"] == "Electrical"
+        assert by_name["Cement"]["category"] is None
+        only = (await client.get(path, params={"category_id": electrical}, headers=_auth(token))).json()
+        assert [i["material_name"] for i in only["items"]] == ["2-way switch"] and only["total"] == 1
