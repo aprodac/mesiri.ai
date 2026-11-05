@@ -201,6 +201,9 @@ export function GettingStartedCard() {
   }, [asked, hiddenUntil, showCard])
   const toast = useToast()
   const continueAsk = useMutation({ mutationFn: requestContinue })
+  // WEB-49: folded to the next step by default (it took the whole first screen on a phone); "All steps" opens the
+  // rest with their explanations.
+  const [expanded, setExpanded] = React.useState(asked)
 
   // Once the trial has ended the banner (trial-banner.tsx) takes over: the
   // dashboard is read-only, so none of these could be done anyway.
@@ -268,7 +271,7 @@ export function GettingStartedCard() {
         </button>
       </header>
       <ul className="flex flex-col divide-y">
-        {list.filter((item) => !item.done).map((item) => (
+        {list.filter((item) => !item.done).slice(0, expanded ? undefined : 1).map((item) => (
           <li key={item.key} className="flex items-start gap-3 py-2">
             <span
               className={cn(
@@ -284,13 +287,23 @@ export function GettingStartedCard() {
                 <p className={cn('text-sm font-medium', item.done && 'text-muted-foreground line-through')}>
                   {item.title}
                 </p>
-                {!item.done && <p className="text-xs text-muted-foreground">{item.detail}</p>}
+                {!item.done && expanded && <p className="text-xs text-muted-foreground">{item.detail}</p>}
               </div>
               {!item.done && item.action && <div className="text-sm shrink-0">{item.action}</div>}
             </div>
           </li>
         ))}
       </ul>
+      {list.length - doneCount > 1 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          className="self-start text-xs font-medium text-primary hover:underline"
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? 'Show only the next step' : `All ${list.length - doneCount} steps to do`}
+        </button>
+      )}
       {continueAsk.isError && <p className="text-sm text-destructive">{apiErrorMessage(continueAsk.error)}</p>}
     </section>
   )

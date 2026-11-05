@@ -75,7 +75,7 @@ function Options({
             onClick={() => onTap(o.id, o.title)}
             title={o.description ?? undefined}
             className={cn(
-              'border border-foreground px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.06em] transition-colors',
+              'rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
               chosen ? 'bg-foreground text-background' : 'hover:bg-foreground hover:text-background',
               turn.chose && !chosen && 'opacity-40',
               'disabled:cursor-default',
@@ -268,7 +268,7 @@ export function TellMesiri({ compact = false, className }: { compact?: boolean; 
       {!compact && (
         <header className="flex flex-wrap items-baseline justify-between gap-2 pb-2">
           <h2 className="text-[15px] font-semibold">Tell Mesiri</h2>
-          <Label className="normal-case tracking-normal">Speak or type today&apos;s work, in any language</Label>
+          <span className="text-xs text-muted-foreground">Speak or type today&apos;s work, in any language</span>
         </header>
       )}
 
@@ -301,7 +301,7 @@ export function TellMesiri({ compact = false, className }: { compact?: boolean; 
               <Square className="size-4 fill-current" />
             </button>
             <LiveBars levels={levels} />
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {duration(elapsed)} / {duration(MAX_SECONDS)}
             </span>
             <button
@@ -310,7 +310,7 @@ export function TellMesiri({ compact = false, className }: { compact?: boolean; 
                 recording.cancel()
                 setRecording(null)
               }}
-              className="border-b border-foreground font-mono text-[11px] uppercase tracking-[0.06em]"
+              className="text-xs font-medium text-muted-foreground underline underline-offset-2"
             >
               Cancel
             </button>

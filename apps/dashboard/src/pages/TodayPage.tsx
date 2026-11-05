@@ -105,9 +105,11 @@ function SiteRow({
   return (
     // WEB-37: the left stripe is the site's state -- green done, blue with
     // the engineer, amber details missing, none while nothing has come in.
+    // WEB-49: the whole row opens the site (the name link stretches over it); a button only when there is
+    // something to confirm.
     <li
       className={cn(
-        'flex flex-col gap-2 py-3 pl-3 sm:flex-row sm:items-center sm:gap-4',
+        'relative flex flex-col gap-1.5 py-2.5 pl-3 hover:bg-muted/30 sm:flex-row sm:items-center sm:gap-4',
         done ? ROW_ACCENT.good : site.status === 'needs_details' ? ROW_ACCENT.warn : quiet ? ROW_ACCENT.none : ROW_ACCENT.info,
       )}
     >
@@ -125,7 +127,7 @@ function SiteRow({
         </span>
         <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Link to={siteDayPath(site.site_id, date)} className="font-medium hover:underline">
+            <Link to={siteDayPath(site.site_id, date)} className="font-medium after:absolute after:inset-0 hover:underline">
               {site.site_name}
             </Link>
             <span className={cn(CHIP, status.className)}>{status.label}</span>
@@ -155,17 +157,21 @@ function SiteRow({
           ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 pl-8 sm:pl-0">
+      <div className="relative z-10 flex shrink-0 items-center gap-2 pl-8 empty:hidden sm:pl-0">
         {canMarkNoWork && (
           <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={busy} onClick={() => onNoWork(site)}>
             No work today
           </Button>
         )}
-        <Button asChild size="sm" variant={drafts > 0 ? 'default' : 'outline'} className="min-w-[96px]">
-          <Link to={siteDayPath(site.site_id, date)}>
-            {drafts > 0 ? 'Review' : 'Open'} <ChevronRight />
-          </Link>
-        </Button>
+        {drafts > 0 ? (
+          <Button asChild size="sm" className="min-w-[96px]">
+            <Link to={siteDayPath(site.site_id, date)}>
+              Review <ChevronRight />
+            </Link>
+          </Button>
+        ) : (
+          <ChevronRight className="hidden size-4 text-muted-foreground sm:block" aria-hidden="true" />
+        )}
       </div>
     </li>
   )
@@ -334,7 +340,6 @@ export default function TodayPage() {
       {isToday && <TimeSaved />}
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
-      {isToday && <TellMesiri className="rounded-xl border px-4 py-3" />}
 
       {daysQuery.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={refresh}>Try again</Button>}>
@@ -385,9 +390,9 @@ export default function TodayPage() {
                 icon: IcMapPin,
                 hint: totals.reported < sites.length ? `${sites.length - totals.reported} still to report` : sites.length ? 'All sites in' : undefined,
               },
-              { label: 'Workers', value: totals.workers || '—', icon: IcHardHat, hint: totals.workers ? 'on site today' : 'none reported yet' },
-              { label: 'Work items', value: totals.workItems || '—', icon: IcHammer, hint: totals.workItems ? 'reported today' : 'none reported yet' },
-              { label: 'Open issues', value: totals.openIssues || '—', tone: totals.openIssues > 0 ? 'warn' : 'good', icon: IcTriangleAlert, hint: totals.openIssues > 0 ? 'waiting on someone' : 'nothing stuck' },
+              { label: 'Workers', value: totals.workers || '—', icon: IcHardHat },
+              { label: 'Work items', value: totals.workItems || '—', icon: IcHammer },
+              { label: 'Open issues', value: totals.openIssues || '—', tone: totals.openIssues > 0 ? 'warn' : 'good', icon: IcTriangleAlert },
             ]}
           />
 
@@ -436,12 +441,18 @@ export default function TodayPage() {
                   </DprSection>
                 )
               })}
+              {isToday && <TellMesiri className="mt-4 rounded-xl border px-4 py-3" />}
             </div>
 
             <DprAside>
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold">Open issues</h2>
+                  <h2 className="text-sm font-semibold">
+                    Open issues
+                    {!issuesQuery.isError && !issuesQuery.isLoading && openIssues.length === 0 && (
+                      <span className="ml-2 font-normal text-muted-foreground">None</span>
+                    )}
+                  </h2>
                   <Link to="/issues" className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline">
                     All issues <ChevronRight className="size-3.5" />
                   </Link>
@@ -454,7 +465,7 @@ export default function TodayPage() {
                     </button>
                   </p>
                 ) : openIssues.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{issuesQuery.isLoading ? 'Loading…' : 'No open issues.'}</p>
+                  issuesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null
                 ) : (
                   <ul className="flex flex-col divide-y">
                     {openIssues.map((issue) => {
