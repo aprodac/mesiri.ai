@@ -1,4 +1,4 @@
-import type { ReviewItem } from './api'
+import type { ReviewItem, SiteDayDetail } from './api'
 
 // What the Live report shows of Mesiri reading a message (WEB-37): the
 // fields the AI took from it, as it stored them (extractions.extracted =
@@ -63,4 +63,16 @@ export function rowLines(item: ReviewItem): { main: string; sub: string | null }
   const main = item.title || item.detail || 'Update'
   const sub = item.title && item.detail && item.detail !== item.title ? item.detail : null
   return { main, sub }
+}
+
+/** What Mesiri noticed about a line (its review flags), in plain words; null when nothing. */
+export function noticeOf(item: ReviewItem, report: SiteDayDetail['report'] | undefined): string | null {
+  if (item.flags?.includes('beyond_stock')) {
+    const name = (item.title ?? '').toLowerCase()
+    const line = report?.materials.find((m) => (m.material_name ?? '').toLowerCase() === name)
+    const left = line?.closing != null ? ` The stock would be ${Number(line.closing)} ${line.unit ?? ''}.` : ''
+    return `More used than was in stock.${left} Check it before confirming.`
+  }
+  if (item.flags?.includes('possible_duplicate')) return 'This looks like a repeat of an earlier message. Check it before confirming.'
+  return null
 }

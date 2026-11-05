@@ -18,7 +18,7 @@ import { localIsoDate, longDate, siteDayPath } from '@/lib/site-day'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { cn, formatClock } from '@/lib/utils'
 import { inkDuration, SNAP_MS, THREAD_MS } from '@/lib/ink'
-import { keyValue, readingLines, rowLines } from '@/lib/live-reading'
+import { keyValue, noticeOf, readingLines, rowLines } from '@/lib/live-reading'
 import { MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
 import { Label, WordsIn } from '@/components/onboarding/conversation'
@@ -158,18 +158,6 @@ function kindLabel(type: string): string {
   if (type.includes('image') || type.includes('photo')) return 'Photo'
   if (type.includes('document')) return 'Document'
   return 'Message'
-}
-
-/** What Mesiri noticed about a line (its review flags), in plain words; null when nothing. */
-function noticeOf(item: ReviewItem, report: SiteDayDetail['report'] | undefined): string | null {
-  if (item.flags?.includes('beyond_stock')) {
-    const name = (item.title ?? '').toLowerCase()
-    const line = report?.materials.find((m) => (m.material_name ?? '').toLowerCase() === name)
-    const left = line?.closing != null ? ` The stock would be ${Number(line.closing)} ${line.unit ?? ''}.` : ''
-    return `More used than was in stock.${left} Check it before confirming.`
-  }
-  if (item.flags?.includes('possible_duplicate')) return 'This looks like a repeat of an earlier message. Check it before confirming.'
-  return null
 }
 
 const KINDS: Record<string, string> = { labour: 'Manpower', work: 'Work done', materials: 'Materials', issues: 'Issue' }

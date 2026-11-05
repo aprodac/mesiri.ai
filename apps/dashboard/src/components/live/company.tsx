@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -19,6 +19,7 @@ import {
   MessageCircle,
   Mic,
   Monitor,
+  Play,
   PackageMinus,
   PencilLine,
   Truck,
@@ -29,12 +30,14 @@ import {
 import {
   fetchBranding,
   fetchLiveFeedApi,
+  fetchSiteDayApi,
   fetchSetupProgress,
   fetchSiteDaysApi,
   type LiveFeedItem,
   type LiveKind,
   type SiteDayItem,
 } from '@/lib/api'
+import { noticeOf } from '@/lib/live-reading'
 import { longDate } from '@/lib/site-day'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { cn } from '@/lib/utils'
@@ -59,7 +62,14 @@ import { Spark, type SparkMood } from './spark'
 // site's own Live report (the day's report writing itself). Presenter mode
 // is the demo: full screen, larger, and a QR code that opens a WhatsApp
 // chat with Mesiri, so a phone in the room can send a message and everyone
-// watches it land. Read-only, like the site Live.
+// watches it land. Replay the day plays every message again, faster, for a
+// demo when nobody is sending. A voice note shows its waveform; a message in
+// another language turns into its English letter by letter; under the
+// steps, what Mesiri did ("Found the material → Checked the stock"). When a
+// line Mesiri flags appears with the message (more used than in stock, a
+// likely repeat), the page dims and the site shakes red: Mesiri caught a
+// mistake. A transfer flies from one site's card to the other; a site just
+// added pops in. Read-only, like the site Live.
 
 const FEED_POLL_MS = 3_000
 const SITES_POLL_MS = 10_000
@@ -67,6 +77,10 @@ const SITES_POLL_MS = 10_000
 const STEP_MS = 1_300
 /** At most this many new messages are played in turn; older ones just appear. */
 const QUEUE_MAX = 6
+/** Replay runs at this fraction of the live timing. */
+const REPLAY_SPEED = 0.45
+/** Sites whose flagged lines are read as the page opens (to tell a mistake caught later). */
+const FLAG_SITES_MAX = 12
 
 interface KindLook {
   icon: LucideIcon
@@ -127,8 +141,15 @@ function dayWindow(date: string): [Date, Date] {
 
 /** The steps the Spark goes through with one message, and what it says at each. */
 type Step = 'arrive' | 'read' | 'understood' | 'done'
+interface Current {
+  item: LiveFeedItem
+  step: Step
+  /** What Mesiri noticed (a line it flagged with this message), at "done". */
+  alarm: string | null
+}
 
-function sparkMood(m: LiveFeedItem, step: Step): SparkMood {
+function sparkMood(m: LiveFeedItem, step: Step, alarm: string | null): SparkMood {
+  if (step === 'done' && alarm) return 'worry'
   if (step === 'arrive') return 'alert'
   if (step === 'read') return isVoice(m) ? 'listen' : isPhoto(m) ? 'look' : 'think'
   if (step === 'understood') return 'think'
@@ -139,7 +160,8 @@ function sparkMood(m: LiveFeedItem, step: Step): SparkMood {
   return 'idle'
 }
 
-function sparkSays(m: LiveFeedItem, step: Step): string {
+function sparkSays(m: LiveFeedItem, step: Step, alarm: string | null): string {
+  if (step === 'done' && alarm) return `Wait: ${alarm}`
   const who = m.sender_name?.split(/\s+/)[0] ?? 'Someone'
   const where = m.site_name ?? m.project_name
   if (step === 'arrive') return `${who} sent a ${isVoice(m) ? 'voice note' : isPhoto(m) ? 'photo' : 'message'}${where ? ` from ${where}` : ''}`
@@ -183,11 +205,55 @@ function Typed({ text, ms = 18 }: { text: string; ms?: number }) {
   )
 }
 
-/** A light that flies from one element to another. */
+/** A voice note playing: bars that rise and fall. */
+function Waveform({ big }: { big: boolean }) {
+  const bars = [0.5, 0.9, 0.6, 1, 0.7, 0.4, 0.85, 0.55, 0.95, 0.6, 0.35, 0.75, 0.5, 0.9, 0.45]
+  return (
+    <span className={cn('flex items-center justify-center gap-[3px]', big ? 'h-14' : 'h-10')} aria-hidden="true">
+      {bars.map((h, i) => (
+        <span
+          key={i}
+          className="w-[4px] rounded-full bg-foreground"
+          style={{
+            height: `${h * 100}%`,
+            transformOrigin: 'center',
+            animation: prefersReducedMotion() ? undefined : `live-bar 900ms ease-in-out ${i * 70}ms infinite alternate`,
+          }}
+        />
+      ))}
+    </span>
+  )
+}
+
+/** The words as sent, then turning into their English letter by letter. */
+function Flip({ from, to }: { from: string; to: string }) {
+  const [n, setN] = React.useState(prefersReducedMotion() ? to.length : 0)
+  React.useEffect(() => {
+    if (prefersReducedMotion()) return
+    let timer = 0
+    const start = window.setTimeout(() => {
+      timer = window.setInterval(() => setN((k) => (k >= to.length ? k : k + 1)), Math.max(12, 900 / Math.max(1, to.length)))
+    }, 900)
+    return () => {
+      window.clearTimeout(start)
+      window.clearInterval(timer)
+    }
+  }, [to])
+  const done = n >= to.length
+  return (
+    <span>
+      <span>{to.slice(0, n)}</span>
+      {!done && <span className="text-muted-foreground">{from.slice(Math.round((n / to.length) * from.length))}</span>}
+    </span>
+  )
+}
+
+/** A dot that flies from one element to another. */
 interface Flight {
   key: number
   from: DOMRect
   to: DOMRect
+  delay?: number
 }
 function Flyer({ flight, onDone }: { flight: Flight; onDone: () => void }) {
   const ref = React.useRef<HTMLSpanElement>(null)
@@ -204,7 +270,7 @@ function Flyer({ flight, onDone }: { flight: Flight; onDone: () => void }) {
         { transform: `translate(${(fx + tx) / 2}px, ${Math.min(fy, ty) - 80}px) scale(1)`, opacity: 1, offset: 0.5 },
         { transform: `translate(${tx}px, ${ty}px) scale(0.6)`, opacity: 0.2 },
       ],
-      { duration: 900, easing: 'cubic-bezier(.5,0,.3,1)' },
+      { duration: 900, delay: flight.delay ?? 0, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'backwards' },
     )
     anim.onfinish = onDone
     return () => anim.cancel()
@@ -213,7 +279,7 @@ function Flyer({ flight, onDone }: { flight: Flight; onDone: () => void }) {
     <span
       ref={ref}
       aria-hidden="true"
-      className="pointer-events-none fixed left-0 top-0 z-50 -ml-2 -mt-2 size-4 rounded-full bg-primary shadow-[0_0_24px_8px_color-mix(in_srgb,var(--primary)_60%,transparent)]"
+      className="pointer-events-none fixed left-0 top-0 z-50 -ml-2 -mt-2 size-4 rounded-full border-2 border-foreground bg-primary"
     />
   )
 }
@@ -241,50 +307,111 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
     [days.data],
   )
 
-  // Which messages are on screen, and the one the Spark is handling.
+  // Which messages are on screen, and the one Mesiri is handling.
+  const queryClient = useQueryClient()
   const [shown, setShown] = React.useState<Set<string>>(new Set())
-  const [current, setCurrent] = React.useState<{ item: LiveFeedItem; step: Step } | null>(null)
+  const [current, setCurrent] = React.useState<Current | null>(null)
   const [beat, setBeat] = React.useState(0)
-  const [ringing, setRinging] = React.useState<Set<string>>(new Set())
+  const [ringing, setRinging] = React.useState<Map<string, 'land' | 'alarm'>>(new Map())
   const [flights, setFlights] = React.useState<Flight[]>([])
+  const [replaying, setReplaying] = React.useState(false)
   const queue = React.useRef<LiveFeedItem[]>([])
   const playing = React.useRef(false)
   const seeded = React.useRef(false)
+  /** Replay plays faster. */
+  const speed = React.useRef(1)
   const sparkRef = React.useRef<HTMLDivElement>(null)
   const siteRefs = React.useRef(new Map<string, HTMLElement>())
+  /** Each site's lines Mesiri has flagged, as last read: a new one is a mistake just caught. */
+  const flagged = React.useRef(new Map<string, Set<string>>())
+
+  const readFlags = React.useCallback(
+    async (siteId: string): Promise<{ keys: Set<string>; notices: Map<string, string> } | null> => {
+      try {
+        const day = await queryClient.fetchQuery({
+          queryKey: ['live-site-day', siteId, date],
+          queryFn: () => fetchSiteDayApi(siteId, date),
+          staleTime: 0,
+        })
+        const notices = new Map<string, string>()
+        for (const item of day.items ?? []) {
+          const notice = noticeOf(item, day.report_with_drafts ?? day.report)
+          if (notice) notices.set(`${item.fact_type}:${item.id}`, `${item.title ? `${item.title}: ` : ''}${notice}`)
+        }
+        return { keys: new Set(notices.keys()), notices }
+      } catch {
+        return null
+      }
+    },
+    [queryClient, date],
+  )
+
+  const ring = React.useCallback((site: string, how: 'land' | 'alarm', after: number) => {
+    window.setTimeout(() => setRinging((r) => new Map(r).set(site, how)), after)
+    window.setTimeout(
+      () =>
+        setRinging((r) => {
+          const next = new Map(r)
+          next.delete(site)
+          return next
+        }),
+      after + (how === 'alarm' ? 3_200 : 1_600),
+    )
+  }, [])
 
   const play = React.useCallback(async () => {
     if (playing.current) return
     playing.current = true
-    const wait = (ms: number) => new Promise((r) => window.setTimeout(r, prefersReducedMotion() ? 0 : ms))
+    const wait = (ms: number) => new Promise((r) => window.setTimeout(r, prefersReducedMotion() ? 0 : ms * speed.current))
     while (queue.current.length) {
       const item = queue.current.shift()!
+      const live = speed.current === 1
       setShown((s) => new Set(s).add(item.id))
       setBeat((b) => b + 1)
-      for (const step of ['arrive', 'read', 'understood', 'done'] as Step[]) {
-        setCurrent({ item, step })
-        if (step === 'done' && item.site_id) {
-          const from = sparkRef.current?.getBoundingClientRect()
-          const to = siteRefs.current.get(item.site_id)?.getBoundingClientRect()
-          if (from && to && !prefersReducedMotion()) setFlights((f) => [...f, { key: Date.now(), from, to }])
-          const site = item.site_id
-          window.setTimeout(() => setRinging((r) => new Set(r).add(site)), 850)
-          window.setTimeout(
-            () =>
-              setRinging((r) => {
-                const next = new Set(r)
-                next.delete(site)
-                return next
-              }),
-            2_400,
-          )
-        }
-        await wait(step === 'understood' ? STEP_MS + 600 : step === 'done' ? STEP_MS + 1_200 : STEP_MS)
+      // Read the site's flags while Mesiri reads the message, so the answer is there by "done".
+      const flags = live && item.site_id && flagged.current.has(item.site_id) ? readFlags(item.site_id) : null
+      const flips = !!(item.translated_text && item.text && item.translated_text !== item.text)
+      for (const step of ['arrive', 'read', 'understood'] as Step[]) {
+        setCurrent({ item, step, alarm: null })
+        await wait(step === 'understood' ? STEP_MS + (flips ? 2_200 : 600) : step === 'read' && isVoice(item) ? STEP_MS + 900 : STEP_MS)
       }
+      // A line of this site newly flagged: Mesiri caught a mistake.
+      let alarm: string | null = null
+      if (flags && item.site_id) {
+        const read = await flags
+        if (read) {
+          const before = flagged.current.get(item.site_id) ?? new Set()
+          const fresh = [...read.keys].find((k) => !before.has(k))
+          alarm = fresh ? read.notices.get(fresh) ?? null : null
+          flagged.current.set(item.site_id, read.keys)
+        }
+      }
+      setCurrent({ item, step: 'done', alarm })
+      const from = sparkRef.current?.getBoundingClientRect()
+      const fly = (a: DOMRect | undefined, b: DOMRect | undefined, delay = 0) => {
+        if (a && b && !prefersReducedMotion()) setFlights((f) => [...f, { key: Math.random(), from: a, to: b, delay }])
+      }
+      const transfer = item.transfer
+      if (transfer && siteRefs.current.has(transfer.from_site_id) && siteRefs.current.has(transfer.to_site_id)) {
+        // Materials move from one site to the other: three lights along the arc between them.
+        const a = siteRefs.current.get(transfer.from_site_id)?.getBoundingClientRect()
+        const b = siteRefs.current.get(transfer.to_site_id)?.getBoundingClientRect()
+        for (const delay of [0, 160, 320]) fly(a, b, delay)
+        ring(transfer.from_site_id, 'land', 0)
+        ring(transfer.to_site_id, 'land', 900)
+      } else if (item.site_id) {
+        fly(from, siteRefs.current.get(item.site_id)?.getBoundingClientRect())
+        ring(item.site_id, alarm ? 'alarm' : 'land', 850)
+      }
+      // The sites' numbers (and a site just added) catch up as it lands.
+      if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
+      await wait(alarm ? STEP_MS + 3_400 : STEP_MS + 1_200)
     }
     setCurrent(null)
     playing.current = false
-  }, [])
+    speed.current = 1
+    setReplaying(false)
+  }, [readFlags, ring, queryClient, date])
 
   // The first read just shows the day; later reads play what is new.
   React.useEffect(() => {
@@ -294,6 +421,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
       setShown(new Set(feed.data.map((m) => m.id)))
       return
     }
+    if (replaying) return
     const known = new Set([...shown, ...queue.current.map((m) => m.id), current?.item.id])
     const fresh = feed.data.filter((m) => !known.has(m.id))
     if (!fresh.length) return
@@ -301,7 +429,47 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
     if (late.length) setShown((s) => new Set([...s, ...late.map((m) => m.id)]))
     queue.current.push(...fresh.slice(-QUEUE_MAX))
     void play()
-  }, [feed.data, shown, current, play])
+  }, [feed.data, shown, current, play, replaying])
+
+  // Each site's flagged lines as the page opens, so a mistake caught later shows as new.
+  const flagSites = React.useMemo(() => (days.data?.items ?? []).slice(0, FLAG_SITES_MAX).map((s) => s.site_id).join(','), [days.data])
+  React.useEffect(() => {
+    if (!isToday || !flagSites) return
+    for (const siteId of flagSites.split(',')) {
+      if (flagged.current.has(siteId)) continue
+      flagged.current.set(siteId, new Set())
+      void readFlags(siteId).then((read) => {
+        if (read) flagged.current.set(siteId, read.keys)
+      })
+    }
+  }, [flagSites, isToday, readFlags])
+
+  // A site that appears after the page opened (Mesiri just added it) pops in.
+  const knownSites = React.useRef<Set<string> | null>(null)
+  const [newSites, setNewSites] = React.useState<Set<string>>(new Set())
+  React.useEffect(() => {
+    const ids = (days.data?.items ?? []).map((s) => s.site_id)
+    if (!days.data) return
+    if (knownSites.current === null) {
+      knownSites.current = new Set(ids)
+      return
+    }
+    const added = ids.filter((id) => !knownSites.current!.has(id))
+    if (!added.length) return
+    for (const id of added) knownSites.current.add(id)
+    setNewSites((s) => new Set([...s, ...added]))
+    window.setTimeout(() => setNewSites((s) => new Set([...s].filter((id) => !added.includes(id)))), 8_000)
+  }, [days.data])
+
+  /** Replay the day: every message again, in order, faster. */
+  const replay = () => {
+    if (!items.length) return
+    queue.current = [...items]
+    speed.current = REPLAY_SPEED
+    setReplaying(true)
+    setShown(new Set())
+    void play()
+  }
 
   // Presenter mode: full screen, larger, the QR code to message Mesiri.
   const [presenting, setPresenting] = React.useState(false)
@@ -374,6 +542,14 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
             )}
             <button
               type="button"
+              onClick={replay}
+              disabled={!items.length || replaying}
+              className="flex items-center gap-2 border border-foreground px-4 py-2 text-sm font-medium hover:bg-foreground hover:text-background disabled:opacity-40"
+            >
+              <Play className="size-4" /> {replaying ? 'Replaying…' : 'Replay the day'}
+            </button>
+            <button
+              type="button"
               onClick={() => void present(!presenting)}
               className="flex items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
             >
@@ -419,11 +595,11 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
             </section>
 
             {/* The Spark, handling one message at a time */}
-            <section aria-label="Mesiri" className="order-1 min-w-0 lg:order-2">
-              <div className="sticky top-6 grid justify-items-center gap-4 border border-foreground/15 px-4 py-5 text-center sm:gap-5 sm:px-6 sm:py-8">
+            <section aria-label="Mesiri" className={cn('order-1 min-w-0 lg:order-2', current?.alarm && 'relative z-40')}>
+              <div className="sticky top-6 grid bg-background justify-items-center gap-4 border border-foreground/15 px-4 py-5 text-center sm:gap-5 sm:px-6 sm:py-8">
                 <div ref={sparkRef}>
                   <Spark
-                    mood={current ? sparkMood(current.item, current.step) : 'idle'}
+                    mood={current ? sparkMood(current.item, current.step, current.alarm) : 'idle'}
                     beat={beat}
                     size={presenting ? 220 : 170}
                   />
@@ -431,16 +607,27 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                 <div className="min-h-[5.5rem] max-w-[34rem] sm:min-h-[7.5rem]" aria-live="polite">
                   {current ? (
                     <>
-                      <Label className="block">{STEP_LABEL[current.step]}</Label>
+                      <Label className={cn('block', current.alarm && current.step === 'done' && 'text-[var(--destructive)]')}>
+                        {current.alarm && current.step === 'done' ? 'Mesiri noticed' : STEP_LABEL[current.step]}
+                      </Label>
+                      {current.step === 'read' && isVoice(current.item) && (
+                        <div className="mt-3">
+                          <Waveform big={presenting} />
+                        </div>
+                      )}
                       <p
                         key={`${current.item.id}-${current.step}`}
                         className={cn(
                           'm-0 mt-2 font-medium tracking-[-0.01em]',
                           presenting ? 'text-[30px] leading-[1.25]' : 'text-[22px] leading-[1.3]',
-                          current.step === 'done' && current.item.state === 'failed' && 'text-[var(--destructive)]',
+                          current.step === 'done' && (current.item.state === 'failed' || current.alarm) && 'text-[var(--destructive)]',
                         )}
                       >
-                        <Typed text={sparkSays(current.item, current.step)} />
+                        {current.step === 'understood' && current.item.text && current.item.translated_text && current.item.translated_text !== current.item.text ? (
+                          <Flip from={current.item.text} to={current.item.translated_text} />
+                        ) : (
+                          <Typed text={sparkSays(current.item, current.step, current.alarm)} />
+                        )}
                       </p>
                     </>
                   ) : (
@@ -453,6 +640,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                   )}
                 </div>
                 <Steps step={current?.step ?? null} />
+                <Did current={current} />
                 {presenting && qrLink && (
                   <div className="mt-2 flex items-center gap-5 border-t border-foreground/15 pt-6 text-left">
                     <QrCode value={qrLink} label={`QR code to message Mesiri at ${number}`} className="size-36 shrink-0" />
@@ -483,9 +671,27 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                         else siteRefs.current.delete(s.site_id)
                       }}
                       onClick={(e) => openSite(s, e.currentTarget)}
-                      className="grid w-full gap-2 border border-foreground/20 bg-background px-4 py-3 text-left transition-colors hover:border-foreground"
-                      style={ringing.has(s.site_id) && !prefersReducedMotion() ? { animation: 'live-land 1.4s ease-out' } : undefined}
+                      className={cn(
+                        'relative grid w-full gap-2 border bg-background px-4 py-3 text-left transition-colors hover:border-foreground',
+                        ringing.get(s.site_id) === 'alarm' ? 'z-40 border-[var(--destructive)]' : newSites.has(s.site_id) ? 'border-primary' : 'border-foreground/20',
+                      )}
+                      style={
+                        prefersReducedMotion()
+                          ? undefined
+                          : ringing.get(s.site_id) === 'alarm'
+                            ? { animation: 'live-shake 600ms ease-out 2' }
+                            : ringing.has(s.site_id)
+                              ? { animation: 'live-land 1.4s ease-out' }
+                              : newSites.has(s.site_id)
+                                ? { animation: 'live-pop 900ms cubic-bezier(.3,1.5,.5,1) both' }
+                                : undefined
+                      }
                     >
+                      {newSites.has(s.site_id) && (
+                        <span className="absolute -top-2.5 right-3 bg-primary px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-primary-foreground">
+                          New site
+                        </span>
+                      )}
                       <span className="flex items-baseline justify-between gap-3">
                         <span className="truncate text-[15px] font-semibold">{s.site_name}</span>
                         <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
@@ -519,6 +725,12 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
         </div>
       </footer>
 
+      {current?.alarm && current.step === 'done' && (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-30 bg-foreground/35 animate-in fade-in duration-300 motion-reduce:animate-none"
+        />
+      )}
       {flights.map((f) => (
         <Flyer key={f.key} flight={f} onDone={() => setFlights((all) => all.filter((x) => x.key !== f.key))} />
       ))}
@@ -547,6 +759,26 @@ function Steps({ step }: { step: Step | null }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+/** What Mesiri did along the way, lighting up one by one. */
+function Did({ current }: { current: Current | null }) {
+  const did = current && current.step !== 'arrive' ? current.item.did : []
+  const at = current?.step === 'read' ? 1 : current?.step === 'understood' ? Math.ceil(did.length / 2) + 1 : did.length
+  if (!did.length) return <div className="h-5" aria-hidden="true" />
+  return (
+    <p className="m-0 flex min-h-5 flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[13px]" aria-live="polite">
+      {did.map((d, i) => (
+        <span
+          key={d}
+          className={cn('transition-[color,opacity] duration-500', i < at ? 'text-foreground opacity-100' : 'text-muted-foreground opacity-40')}
+        >
+          {i > 0 && <span className="mr-2 text-muted-foreground">→</span>}
+          {d}
+        </span>
+      ))}
+    </p>
   )
 }
 
@@ -620,6 +852,12 @@ function MessageCard({ m, active }: { m: LiveFeedItem; active: boolean }) {
         </p>
       )}
       {english && <p className="m-0 text-sm italic text-muted-foreground">“{short(english, 220)}”</p>}
+      {m.reply && (
+        <div className="flex items-start gap-2 border-l-2 border-foreground/20 pl-3">
+          <Spark mood="idle" quiet size={22} className="mt-0.5 shrink-0" label="Mesiri's reply" />
+          <p className="m-0 text-sm leading-snug text-muted-foreground">{short(m.reply, 200)}</p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           {m.source === 'dashboard' ? 'Mesiri web' : <><WhatsAppIcon className="size-3" /> WhatsApp</>}

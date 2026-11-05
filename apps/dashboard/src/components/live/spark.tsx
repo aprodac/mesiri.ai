@@ -57,6 +57,7 @@ export function Spark({
   size = 120,
   className,
   label = 'Mesiri',
+  quiet = false,
 }: {
   mood?: SparkMood
   /** Bump it to make it perk up once (a message arrived). */
@@ -64,8 +65,10 @@ export function Spark({
   size?: number
   className?: string
   label?: string
+  /** Drawn still, with no shadow (a small one beside a reply). */
+  quiet?: boolean
 }) {
-  const still = prefersReducedMotion()
+  const still = quiet || prefersReducedMotion()
   const [dx, dy] = GAZE[mood]
   const happy = mood === 'happy' || mood === 'send'
   const anim = (name: string | undefined) => (still ? undefined : name)
@@ -79,7 +82,7 @@ export function Spark({
   return (
     <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={`${label}: ${MOOD_WORDS[mood]}`} className={cn('overflow-visible', className)}>
       {/* A shadow on the ground: shrinks as it hops. */}
-      <ellipse cx="50" cy="98" rx="20" ry="2.5" fill={INK} opacity="0.12" />
+      {!quiet && <ellipse cx="50" cy="98" rx="20" ry="2.5" fill={INK} opacity="0.12" />}
 
       <g key={`${mood}-${beat}`} style={{ transformOrigin: '50px 96px', animation: anim(motion) }}>
         {/* The face. */}

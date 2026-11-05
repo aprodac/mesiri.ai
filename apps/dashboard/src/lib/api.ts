@@ -2047,6 +2047,10 @@ export interface LiveFeedItem {
   summaries: string[]
   asked: string | null
   saved_kind: LiveKind | null
+  /** What Mesiri did along the way, in plain words ("Found the material", "Checked the stock"). */
+  did: string[]
+  /** A transfer's two sites, for the arc between them. */
+  transfer: { from_site_id: string; to_site_id: string } | null
 }
 
 export async function fetchLiveFeedApi(since: Date, until: Date): Promise<LiveFeedItem[]> {
