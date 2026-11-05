@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, CircleSlash2, FileSpreadsheet, FolderTree, MoreHorizontal, Pencil, Plus, Search, ShieldAlert, Trash2 } from 'lucide-react'
+import { CheckCircle2, CircleSlash2, FileSpreadsheet, Filter, FolderTree, MoreHorizontal, Pencil, Plus, Ruler, Search, ShieldAlert, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Callout } from '@/components/dpr-page'
+import { FilterSelect } from '@/components/filter-select'
 import { CHIP } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import {
@@ -43,7 +44,9 @@ const NO_CATEGORY = 'none'
 // PRC-01: grouped by the company's category tree (main › sub) instead of the
 // free-text group; materials with no category are listed last, each with a
 // picker to place it, and the old group shown as a hint.
-export function CatalogueView() {
+// WEB-50: Materials > Items. The view switch, search and a category filter on one toolbar row; Categories, Sizes and
+// the import open in place instead of being separate tabs.
+export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; sizes?: React.ReactNode } = {}) {
   const queryClient = useQueryClient()
 
   const [editingMaterial, setEditingMaterial] = React.useState<MaterialCatalog | null>(null)
@@ -52,6 +55,8 @@ export function CatalogueView() {
   const [categoryId, setCategoryId] = React.useState(NO_CATEGORY)
   const [panelOpen, setPanelOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
+  const [sizesOpen, setSizesOpen] = React.useState(false)
+  const [onlyCategory, setOnlyCategory] = React.useState('all')
   const [sku, setSku] = React.useState('')
   const [error, setError] = React.useState('')
 
@@ -201,10 +206,10 @@ export function CatalogueView() {
           ...subs.map((s) => ({ key: s.id, title: s.name as string | null, list: inCategory(s.id) })),
         ].filter((g) => g.list.length > 0),
       }))
-      .filter((sec) => sec.groups.length > 0)
+      .filter((sec) => sec.groups.length > 0 && (onlyCategory === 'all' || sec.key === onlyCategory))
     const loose = shown.filter((m) => !m.category_id || !paths.has(m.category_id)).sort(byName)
-    return { placed, loose }
-  }, [catalog, search, paths, tree])
+    return { placed, loose: onlyCategory === 'all' || onlyCategory === 'none' ? loose : [] }
+  }, [catalog, search, paths, tree, onlyCategory])
   const nothingShown = sections.placed.length === 0 && sections.loose.length === 0
 
   const editing = editingMaterial !== null
@@ -261,25 +266,48 @@ export function CatalogueView() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input placeholder="Search materials…" aria-label="Search materials" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
+        {leading}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-2 size-4 text-muted-foreground" />
+            <Input placeholder="Search items" aria-label="Search items" value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 w-[160px] pl-8" />
+          </div>
+          <FilterSelect
+            label="Category"
+            value={onlyCategory}
+            onChange={setOnlyCategory}
+            icon={Filter}
+            className="w-[160px]"
+            options={[
+              { value: 'all', label: 'All categories' },
+              ...tree.map(({ main }) => ({ value: main.id, label: main.name })),
+              { value: 'none', label: 'No category' },
+            ]}
+          />
         </div>
-        <span className="text-sm text-muted-foreground">{catalog ? `${catalog.items.length} materials` : 'Loading…'}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">{catalog ? `${catalog.items.length} items` : 'Loading…'}</span>
         <div className="ml-auto flex flex-wrap gap-2">
-          <Button size="sm" variant={panelOpen ? 'secondary' : 'outline'} className="gap-1.5" onClick={() => setPanelOpen((o) => !o)}>
+          {!showForm && (
+            <Button size="sm" className="gap-1.5" onClick={() => setFormOpen(true)}>
+              <Plus className="size-3.5" /> Add item
+            </Button>
+          )}
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportOpen(true)}>
+            <FileSpreadsheet className="size-3.5" /> Import
+          </Button>
+          <Button size="sm" variant={panelOpen ? 'secondary' : 'outline'} aria-pressed={panelOpen} className="gap-1.5" onClick={() => setPanelOpen((o) => !o)}>
             <FolderTree className="size-3.5" /> Categories
           </Button>
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportOpen(true)}>
-            <FileSpreadsheet className="size-3.5" /> Import from Excel
-          </Button>
-          {!showForm && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setFormOpen(true)}>
-              <Plus className="size-3.5" /> Add material
+          {sizes && (
+            <Button size="sm" variant={sizesOpen ? 'secondary' : 'outline'} aria-pressed={sizesOpen} className="gap-1.5" onClick={() => setSizesOpen((o) => !o)}>
+              <Ruler className="size-3.5" /> Sizes
             </Button>
           )}
         </div>
       </div>
+      {sizesOpen && sizes}
 
       {(panelOpen || (categoryList && categories.length === 0)) && <CategoriesPanel categories={categories} />}
       {categoryList && categories.length > 0 && categoryList.uncategorised > 0 && (

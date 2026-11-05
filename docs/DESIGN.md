@@ -351,8 +351,9 @@ pass the same.
 | Projects & Sites, a project, Team, a person, Company | Yes (WEB-28): one page each, sections instead of tabs |
 | Site log (Work, Photos, Everything), WhatsApp (Conversations, All messages, Automations) | Yes (WEB-33, WEB-35): Conversations and Automations redone; All messages keeps its older look |
 | Labour (one page: Attendance, Workers) | Yes (WEB-22) |
-| Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30, invoice sheet WEB-35) |
-| Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
+| Materials (Stock, Movements, Items, sheets) | Yes (WEB-50: three views, filters as dropdowns; WEB-29, WEB-30, invoice sheet WEB-35) |
+| Finance | Partly: no made-up figures, plain titles, compact stat cards (WEB-48); page layout and the 12 pages to 4 still to do (WEB-51) |
+| Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
 ### Site report and Labour ledger cues (WEB-41)

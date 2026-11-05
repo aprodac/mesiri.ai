@@ -1,13 +1,11 @@
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ArrowLeftRight, Boxes, PackageMinus, PackagePlus } from 'lucide-react'
+import { ArrowLeftRight, PackageMinus, PackagePlus } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import { useAuth } from '@/lib/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { PageHeader, Segmented } from '@/components/dpr-page'
 import { LedgerView } from '@/components/materials/ledger-view'
-import { InventoryView } from '@/components/materials/inventory-view'
 import { CatalogueView } from '@/components/materials/catalogue-view'
 import { SizesView } from '@/components/materials/sizes-view'
 import { CategoryView } from '@/components/materials/category-view'
@@ -18,86 +16,69 @@ import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
 
-// WEB-30: two views. The Ledger -- everything that came in and went out, as
-// one table (In green, Out red), narrowed by material, site, dates -- and
-// the Catalogue. What each site holds now opens from "Stock now".
+// WEB-50 (Ilan, 5 Nov: "too many tabs"): three views, each with its filters as dropdowns on one toolbar row.
+//   Stock      -- what each site holds, by category, for a period; running low (the default).
+//   Movements  -- everything that came in and went out (the ledger, WEB-30).
+//   Items      -- the list of items, their categories, sizes and the Excel import (admin, owner, project manager).
+// "Stock now" (a side panel showing the same stock again) is gone: Stock is it. Old links still land on the
+// right view (?view=ledger / inventory / catalogue / sizes / inflows ...).
 
-type MaterialsView = 'ledger' | 'categories' | 'catalogue' | 'sizes'
+type MaterialsView = 'stock' | 'movements' | 'items'
+
+function viewFor(requested: string, canManage: boolean): MaterialsView {
+  if (['ledger', 'movements', 'inflows', 'outflows', 'transfers', 'purchases'].includes(requested)) return 'movements'
+  if (['items', 'catalogue', 'sizes'].includes(requested) && canManage) return 'items'
+  return 'stock'
+}
 
 export default function MaterialsPage() {
   const { scope } = useScope()
   const { me } = useAuth()
   const readOnly = useReadOnly()
   usePageTitle('Materials')
-  const isAdmin = me?.role === 'ADMIN'
-  // WA-168: Sizes (how much one load / drum is) -- admins and project managers, as the API allows.
-  const canSize = isAdmin || me?.role === 'PROJECT_MANAGER' || me?.role === 'OWNER'
-  const [requested, setView] = useUrlState<string>('view', 'ledger')
-  // PRC-17d: By category for everyone; the Catalogue (categories, import) for the company-setup roles, the same as
-  // Sizes and the import API (admin, owner, project manager). Every other (older) view is the ledger.
-  const view: MaterialsView =
-    requested === 'categories'
-      ? 'categories'
-      : requested === 'catalogue' && canSize
-        ? 'catalogue'
-        : requested === 'sizes' && canSize
-          ? 'sizes'
-          : 'ledger'
-  const [stockOpen, setStockOpen] = React.useState(false)
+  // The company-setup roles (Sizes and the import API allow the same): admin, owner, project manager.
+  const canManage = me?.role === 'ADMIN' || me?.role === 'PROJECT_MANAGER' || me?.role === 'OWNER'
+  const [requested, setView] = useUrlState<string>('view', 'stock')
+  const view = viewFor(requested, canManage)
 
-  // Older links (?view=inflows / outflows / inventory …) open the ledger,
-  // filtered the way they meant.
+  // Older links (?view=inflows / outflows / purchases ...) open Movements, filtered the way they meant.
   const [, setParams] = useSearchParams()
   React.useEffect(() => {
-    if (!['inflows', 'outflows', 'inventory', 'transfers', 'purchases'].includes(requested)) return
+    if (!['inflows', 'outflows', 'transfers', 'purchases'].includes(requested)) return
     setParams(
       (prev) => {
-        prev.delete('view')
+        prev.set('view', 'movements')
         if (requested === 'inflows' || requested === 'purchases') prev.set('dir', 'in')
         if (requested === 'outflows') prev.set('dir', 'out')
         return prev
       },
       { replace: true },
     )
-    if (requested === 'inventory') setStockOpen(true)
   }, [requested, setParams])
 
   const [dialog, setDialog] = React.useState<'in' | 'out' | 'transfer' | null>(null)
   const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
   const siteId = scope.mode === 'site' ? scope.siteId : null
-  const scopeLabel = scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
-  // ADMIN/PROJECT_MANAGER-only reasons (stock corrections) are gated inside
-  // the record dialogs themselves.
+  // ADMIN/PROJECT_MANAGER-only reasons (stock corrections) are gated inside the record dialogs themselves.
   const canRecord = !!me && me.role !== 'FINANCE' && !readOnly
 
   const switcher = (
-    <>
-      <Segmented<MaterialsView>
-        label="View"
-        value={view}
-        onChange={setView}
-        options={[
-          { value: 'ledger', label: 'Ledger' },
-          { value: 'categories', label: 'By category' },
-          ...(canSize
-            ? [
-                { value: 'catalogue' as const, label: 'Catalogue' },
-                { value: 'sizes' as const, label: 'Sizes' },
-              ]
-            : []),
-        ]}
-      />
-      <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setStockOpen(true)}>
-        <Boxes className="size-3.5" /> Stock now
-      </Button>
-    </>
+    <Segmented<MaterialsView>
+      label="View"
+      value={view}
+      onChange={setView}
+      options={[
+        { value: 'stock', label: 'Stock' },
+        { value: 'movements', label: 'Movements' },
+        ...(canManage ? [{ value: 'items' as const, label: 'Items' }] : []),
+      ]}
+    />
   )
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Materials"
-        subtitle={`Everything that came in and went out · ${scopeLabel}`}
         actions={
           canRecord && (
             <>
@@ -117,39 +98,9 @@ export default function MaterialsPage() {
         }
       />
 
-      {/* WEB-40: the view switch and Stock now open the ledger's filter row,
-          so the top of the page is one line of controls. */}
-      {view === 'ledger' && <LedgerView projectId={projectId} siteId={siteId} leading={switcher} />}
-      {view === 'categories' && (
-        <>
-          <div className="flex flex-wrap items-center gap-2">{switcher}</div>
-          <CategoryView projectId={projectId} siteId={siteId} />
-        </>
-      )}
-      {view === 'catalogue' && (
-        <>
-          <div className="flex flex-wrap items-center gap-2">{switcher}</div>
-          <CatalogueView />
-        </>
-      )}
-      {view === 'sizes' && (
-        <>
-          <div className="flex flex-wrap items-center gap-2">{switcher}</div>
-          <SizesView />
-        </>
-      )}
-
-      <Sheet open={stockOpen} onOpenChange={setStockOpen}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-          <SheetHeader>
-            <SheetTitle>Stock now</SheetTitle>
-            <SheetDescription>What each site holds. Tap a material for its stock book.</SheetDescription>
-          </SheetHeader>
-          <div className="px-4 pb-6">
-            <InventoryView projectId={projectId} siteId={siteId} />
-          </div>
-        </SheetContent>
-      </Sheet>
+      {view === 'stock' && <CategoryView projectId={projectId} siteId={siteId} leading={switcher} />}
+      {view === 'movements' && <LedgerView projectId={projectId} siteId={siteId} leading={switcher} />}
+      {view === 'items' && <CatalogueView leading={switcher} sizes={<SizesView />} />}
 
       <RecordInflowDialog open={dialog === 'in'} onOpenChange={(o) => setDialog(o ? 'in' : null)} scope={scope} />
       <RecordOutflowDialog open={dialog === 'out'} onOpenChange={(o) => setDialog(o ? 'out' : null)} scope={scope} />
