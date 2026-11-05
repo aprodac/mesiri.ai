@@ -50,7 +50,7 @@ import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { CountTo } from './ink'
 import { useCinematicGo } from './modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
-import { AnswerMoment, AskedMoment, BillMoment, LanguageMoment, answers as answersOf } from './moments'
+import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, LanguageMoment, answers as answersOf, cleanReply } from './moments'
 import { Spark, type SparkMood } from './spark'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
@@ -175,7 +175,7 @@ function sparkSays(m: LiveFeedItem, step: Step, alarm: string | null): string {
   if (step === 'read') return isVoice(m) ? 'Listening…' : isPhoto(m) ? 'Looking at the photo…' : 'Reading…'
   if (step === 'understood' && isBill(m)) return `A bill${m.expense?.vendor ? ` from ${m.expense.vendor}` : ''}`
   if (step === 'understood') return m.translated_text || m.text || (isPhoto(m) ? 'A photo from site' : '…')
-  if (isBill(m) && m.reply) return short(m.reply, 160)
+  if (isBill(m) && m.reply) return short(cleanReply(m.reply), 160)
   const goes = KINDS[m.saved_kind ?? m.kind].goes
   const what = m.summaries.join(' · ')
   switch (m.state) {
@@ -188,9 +188,9 @@ function sparkSays(m: LiveFeedItem, step: Step, alarm: string | null): string {
     case 'failed':
       return 'That could not be saved. I told them why.'
     case 'answered':
-      return short(m.reply, 160) || 'Answered'
+      return short(cleanReply(m.reply), 160) || 'Answered'
     default:
-      return short(m.reply, 160) || 'Got it'
+      return short(cleanReply(m.reply), 160) || 'Got it'
   }
 }
 
@@ -442,7 +442,7 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
       }
       // The sites' numbers (and a site just added) catch up as it lands.
       if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
-      await wait(alarm ? STEP_MS + 3_400 : isBill(item) || item.kind === 'language' || item.state === 'asked' ? STEP_MS + 2_400 : STEP_MS + 1_200)
+      await wait(alarm ? STEP_MS + 3_400 : isBill(item) || item.kind === 'language' || item.state === 'asked' || item.kind === 'chat' ? STEP_MS + 2_400 : STEP_MS + 1_200)
     }
     setCurrent(null)
     playing.current = false
@@ -585,13 +585,14 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
   }
   const company = branding.data?.company_name
   // The moment for what Mesiri is handling now (moments.tsx), if its kind has one.
-  const moment: 'bill' | 'language' | 'asked' | 'answer' | null = (() => {
+  const moment: 'bill' | 'language' | 'asked' | 'answer' | 'chat' | null = (() => {
     if (!current || (current.alarm && current.step === 'done')) return null
     const m = current.item
     if (isBill(m)) return 'bill'
     if (m.kind === 'language' && (current.step === 'understood' || current.step === 'done')) return 'language'
     if (current.step === 'done' && m.state === 'asked' && m.asked) return 'asked'
-    if (current.step === 'done' && m.kind === 'question' && m.reply) return 'answer'
+    if (current.step === 'done' && m.kind === 'question' && cleanReply(m.reply)) return 'answer'
+    if (current.step === 'done' && (m.kind === 'chat' || m.kind === 'photo') && m.text && cleanReply(m.reply)) return 'chat'
     return null
   })()
   const answers = current ? qa.of.get(current.item.id) ?? null : null
@@ -758,12 +759,22 @@ export function CompanyLive({ date, isToday }: { date: string; isToday: boolean 
                           <AskedMoment question={current.item.asked ?? ''} who={current.item.sender_name?.split(/\s+/)[0] ?? null} presenting={presenting} />
                         </div>
                       )}
+                      {moment === 'chat' && (
+                        <div className="mt-3 grid justify-items-center">
+                          <ChatMoment
+                            said={current.item.text ?? ''}
+                            english={current.item.translated_text && current.item.translated_text !== current.item.text ? current.item.translated_text : null}
+                            reply={cleanReply(current.item.reply)}
+                            presenting={presenting}
+                          />
+                        </div>
+                      )}
                       {moment === 'answer' && (
                         <div className="mt-3 grid justify-items-center">
                           <AnswerMoment reply={current.item.reply ?? ''} presenting={presenting} />
                         </div>
                       )}
-                      {(moment !== 'asked' && moment !== 'answer' && moment !== 'language') || current.step !== 'done' ? (
+                      {(moment !== 'asked' && moment !== 'answer' && moment !== 'language' && moment !== 'chat') || current.step !== 'done' ? (
                       <p
                         key={`${current.item.id}-${current.step}`}
                         className={cn(
@@ -1011,10 +1022,10 @@ function MessageCard({ m, active, answers, answered }: { m: LiveFeedItem; active
       {answers && <p className="m-0 text-[12px] text-muted-foreground">↳ Answer to Mesiri: “{short(answers, 80)}”</p>}
       {english && <p className="m-0 text-sm italic text-muted-foreground">“{short(english, 220)}”</p>}
       {m.state === 'asked' && m.asked && <p className="m-0 text-[13px] font-medium">Mesiri asked: {short(m.asked, 140)}</p>}
-      {m.reply && m.reply !== m.asked && (
+      {cleanReply(m.reply) && m.reply !== m.asked && (
         <div className="flex items-start gap-2 border-l-2 border-foreground/20 pl-3">
           <Spark mood="idle" quiet size={22} className="mt-0.5 shrink-0" label="Mesiri's reply" />
-          <p className="m-0 text-sm leading-snug text-muted-foreground">{short(m.reply, 200)}</p>
+          <p className="m-0 text-sm leading-snug text-muted-foreground">{short(cleanReply(m.reply), 200)}</p>
         </div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">

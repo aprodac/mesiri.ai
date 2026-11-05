@@ -151,7 +151,7 @@ export function AskedMoment({ question, who, presenting }: { question: string; w
 
 /** A question answered: the reply as a card, its first number counting up. */
 export function AnswerMoment({ reply, presenting }: { reply: string; presenting: boolean }) {
-  const text = reply.replace(/^🎤\s*_[^_]*_\s*/u, '').trim()
+  const text = cleanReply(reply)
   const match = text.match(/(\d[\d,]*(?:\.\d+)?)/)
   const n = match ? Number(match[1].replace(/,/g, '')) : null
   const before = match ? text.slice(0, match.index) : text
@@ -203,4 +203,49 @@ export function answers(items: LiveFeedItem[]): { of: Map<string, string>; answe
     }
   }
   return { of, answered }
+}
+
+/** Mesiri's reply as a person reads it on Live: without the "🎤 _what was heard_" line WhatsApp shows first (Live shows
+ * the words already) and without a note the code keeps for the model that a reply once carried by mistake. */
+export function cleanReply(reply: string | null | undefined): string {
+  return (reply ?? '')
+    .replace(/^🎤\s*_[^_]*_\s*/u, '')
+    .replace(/\(said by an older version of Mesiri[^)]*\)\s*/gi, '')
+    .trim()
+}
+
+/** An everyday message ("Hello സുഖമാണോ", "ok thanks"): the two of them talking, the reply typing in. */
+export function ChatMoment({ said, english, reply, presenting }: { said: string; english: string | null; reply: string; presenting: boolean }) {
+  const [n, setN] = React.useState(still() ? reply.length : 0)
+  React.useEffect(() => {
+    if (still()) return
+    let timer = 0
+    const start = window.setTimeout(() => {
+      timer = window.setInterval(() => setN((k) => (k >= reply.length ? k : k + 2)), 18)
+    }, 700)
+    return () => {
+      window.clearTimeout(start)
+      window.clearInterval(timer)
+    }
+  }, [reply])
+  const size = presenting ? 'text-[22px]' : 'text-[18px]'
+  return (
+    <div className="grid w-full max-w-[36rem] gap-3 text-left">
+      <div className={cn('max-w-[85%] justify-self-end rounded-[12px] rounded-tr-none bg-[#d9fdd3] px-4 py-2.5 text-[#111]', size)} style={at('meet-pop', 0)}>
+        {said}
+        {english && <span className="mt-1 block text-[0.8em] italic text-[#111]/60">“{english}”</span>}
+      </div>
+      <div className={cn('max-w-[90%] justify-self-start rounded-[12px] rounded-tl-none border border-foreground/20 bg-background px-4 py-2.5', size)} style={at('meet-pop', 0.5)}>
+        <span className="mb-0.5 block font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Mesiri</span>
+        {reply.slice(0, n)}
+        {n < reply.length && (
+          <span className="ml-1 inline-flex gap-0.5 align-middle" aria-hidden="true">
+            {[0, 1, 2].map((d) => (
+              <span key={d} className="size-1.5 rounded-full bg-muted-foreground" style={still() ? undefined : { animation: `spark-wave 900ms ease-in-out ${d * 0.15}s infinite` }} />
+            ))}
+          </span>
+        )}
+      </div>
+    </div>
+  )
 }
