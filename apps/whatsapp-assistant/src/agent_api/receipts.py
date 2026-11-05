@@ -19,8 +19,9 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 
-from .agent import WriteResult
+from .agent import PendingWrite, WriteResult
 from .client import ApiClient
+from .materials import NEW
 from .units import unit_rows
 
 _log = logging.getLogger(__name__)
@@ -38,6 +39,35 @@ CARD_TYPES: dict[str, DraftActionType] = {
 _MATERIAL_TOOLS = {"record_receipt", "record_usage", "record_transfer"}
 
 
+def has_card(entry: PendingWrite) -> bool:
+    """WA-210: the entry is drawn on the card (receipt, usage, transfer, expense, attendance, work, issue)."""
+    return entry.tool in CARD_TYPES
+
+
+async def preview_card(builder: Any, entries: list[PendingWrite], ctx: Any, client: ApiClient,
+                       correlation_id: str | None) -> bytes | None:
+    """WA-210 (Ilan, 5 Nov: "before saving itself you get the image card, and you save after that"): the TO SAVE
+    card of the ready list, sent as the header of the Save / Edit / Cancel message. Not translated (the record is
+    kept in English, [243], and a translation call would sit on the reply path). None when no entry has a card,
+    there is no builder, or drawing failed: the list then goes out as text, as before."""
+    if builder is None:
+        return None
+    carded = [e for e in entries if has_card(e)]
+    if not carded:
+        return None
+    try:
+        names = await _names(client) if any(e.tool in _MATERIAL_TOOLS for e in carded) else ({}, {})
+        pairs = [pair for e in carded if (pair := _pair(e, PREVIEW_ROW, ctx, names, correlation_id)) is not None]
+        return await builder.build_combined(pairs, ctx, kept=False, localize=False) if pairs else None
+    except Exception:  # noqa: BLE001 -- the list still goes out as text
+        _log.exception("agent_api.preview_card_failed user=%s", getattr(ctx, "user_id", None))
+        return None
+
+
+#: WA-210: the preview card's row id: nothing is saved yet, so the card's reference reads "...-PREV".
+PREVIEW_ROW = "preview"
+
+
 async def saved_card(builder: Any, results: list[WriteResult], ctx: Any, client: ApiClient,
                      correlation_id: str | None) -> bytes | None:
     """The PNG of what was saved, or None (nothing with a card, no builder, or it failed)."""
@@ -48,7 +78,7 @@ async def saved_card(builder: Any, results: list[WriteResult], ctx: Any, client:
         return None
     try:
         names = await _names(client) if any(r.pending.tool in _MATERIAL_TOOLS for r in saved) else ({}, {})
-        pairs = [pair for r in saved if (pair := _pair(r, ctx, names, correlation_id)) is not None]
+        pairs = [pair for r in saved if (pair := _saved_pair(r, ctx, names, correlation_id)) is not None]
         return await builder.build_combined(pairs, ctx, kept=True) if pairs else None
     except Exception:  # noqa: BLE001 -- the card is a picture of what is already saved
         _log.exception("agent_api.saved_card_failed user=%s", getattr(ctx, "user_id", None))
@@ -63,21 +93,32 @@ async def _names(client: ApiClient) -> tuple[dict[str, str], dict[str, str]]:
             {str(u.get("id")): str(u.get("code")) for u in (unit_rows(units.body) if units.ok else [])})
 
 
-def _pair(result: WriteResult, ctx: Any, names: tuple[dict, dict], correlation_id: str | None
-          ) -> tuple[ConfirmedActionV2, ExecutionResult] | None:
-    body = result.pending.body
+def _saved_pair(result: WriteResult, ctx: Any, names: tuple[dict, dict], correlation_id: str | None
+                ) -> tuple[ConfirmedActionV2, ExecutionResult] | None:
     row_id = None
     if isinstance(result.body, dict):
         row_id = result.body.get("id") or result.body.get("transfer_id")
-    if not row_id:
-        return None
+    return _pair(result.pending, str(row_id), ctx, names, correlation_id) if row_id else None
+
+
+def _material_name(material_id: Any, names: dict[str, str]) -> str:
+    """The material's name; a material waiting to be added in the same list (``new:<name>``) by that name."""
+    value = str(material_id or "")
+    if value.startswith(NEW):
+        return value[len(NEW):].strip() or "Material"
+    return names.get(value, "Material")
+
+
+def _pair(entry: PendingWrite, row_id: str, ctx: Any, names: tuple[dict, dict], correlation_id: str | None
+          ) -> tuple[ConfirmedActionV2, ExecutionResult] | None:
+    body = entry.body
     material, unit = names
     sites = {str(s.id): s.name for s in (getattr(ctx, "sites", None) or [])}
-    tool = result.pending.tool
+    tool = entry.tool
     fields: dict[str, Any]
     site_id = body.get("site_id") or body.get("from_site_id")
     if tool in _MATERIAL_TOOLS:
-        fields = {"material_name": material.get(str(body.get("material_id")), "Material"),
+        fields = {"material_name": _material_name(body.get("material_id"), material),
                   "quantity": body.get("quantity"), "unit": unit.get(str(body.get("unit_id")), "")}
         if tool == "record_receipt":
             fields |= {"supplier": body.get("supplier"), "movement_reason": body.get("movement_reason") or "RECEIVED"}
@@ -101,7 +142,7 @@ def _pair(result: WriteResult, ctx: Any, names: tuple[dict, dict], correlation_i
     else:  # report_issue
         fields = {"issue_type": body.get("issue_type"), "severity": body.get("severity"),
                   "narrative": body.get("narrative") or body.get("title") or body.get("summary") or body.get("description") or ""}
-    key = result.pending.idempotency_key
+    key = entry.idempotency_key
     draft = DraftActionV2(
         draft_id=f"api-{uuid.uuid4().hex[:12]}", correlation_id=correlation_id or key, workflow_instance_id=key,
         action_type=CARD_TYPES[tool], organization_id=str(ctx.organization_id), user_id=str(ctx.user_id),

@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from channel.replies import (
@@ -113,6 +114,9 @@ RECEIPT_TIMEOUT_S = 4.0
 # See _fire_processing_ack below. text/interactive deliberately absent --
 # they already reply in under ~2s (measured), where an ack would just add noise.
 _PROCESSING_ACK_MODALITIES = frozenset({InputModality.IMAGE, InputModality.DOCUMENT, InputModality.VOICE})
+#: WA-210: "typing..." is shown again this often after the ✅ (WhatsApp drops it after ~25 s), for at most this long.
+TYPING_REFRESH_S = 20.0
+TYPING_MAX_S = 90.0
 
 
 def build_message_handlers(
@@ -275,6 +279,8 @@ def build_message_handlers(
     _saved_messages: set[str] = set()
     _conversational: set[str] = set()
     _acknowledged: set[str] = set()
+    #: WA-210: the "typing..." keeper of each message given the ✅, cancelled when its journey ends.
+    _typing: dict[str, asyncio.Task[None]] = {}
 
     async def _run_journey(message, raw_payload, retry_of_id=None) -> None:  # type: ignore[no-untyped-def]
         with tenant_scope(None):  # BE-03: bound once the sender is known
@@ -378,6 +384,8 @@ def build_message_handlers(
             _saved_messages.discard(message.correlation_id)
             _conversational.discard(message.correlation_id)
             _acknowledged.discard(message.correlation_id)
+            if (typing_task := _typing.pop(message.correlation_id, None)) is not None:
+                typing_task.cancel()
             _agent_parked.discard(message.correlation_id)
             # Emitted in `finally` so every path is covered by one write --
             # this block has a dozen early returns (unregistered sender,
@@ -416,7 +424,9 @@ def build_message_handlers(
         _api_agent.append(ApiWhatsApp(
             provider=agent_provider, database=material_db, redis=redis_client,
             send=lambda spec, wa: send_reply_spec(
-                spec, wa, send_text=sender.send_text, send_list=sender.send_list, send_button=sender.send_button
+                spec, wa, send_text=sender.send_text, send_list=sender.send_list, send_button=sender.send_button,
+                # WA-210: a preview card whose header send fails still reaches them, as its own image.
+                send_image=getattr(sender, "send_image", None),
             ),
             transcribe=pipeline.transcribe_voice, message_logger=message_logger, trace_logger=trace_logger,
             # WA-124: bill photos read by the vision step; today + two days of memory in the day store.
@@ -510,10 +520,32 @@ def build_message_handlers(
         react = getattr(sender, "send_reaction", None)
         if react is None:
             return
+        since = time.monotonic()
         try:
             await react(wa_id, message.message_id, "✅")
         except Exception:  # noqa: BLE001 -- never blocks the reply
             _log.warning("reaction.failed wa_id=%s", wa_id)
+            return
+        # WA-210: the reaction ends WhatsApp's "typing..."; it comes back at once and stays until the reply.
+        keep = getattr(sender, "keep_typing", None)
+        if keep is not None and not forward_batch.is_capturing() and message.correlation_id not in _typing:
+            task = asyncio.create_task(_keep_typing(keep, wa_id, message.message_id, since))
+            _typing[message.correlation_id] = task
+            task.add_done_callback(lambda _t, cid=message.correlation_id: _typing.pop(cid, None))
+
+    async def _keep_typing(keep, wa_id: str, message_id: str, since: float) -> None:  # type: ignore[no-untyped-def]
+        """WA-210: "typing..." after the ✅, refreshed every TYPING_REFRESH_S until a reply goes (``keep`` then
+        returns False) or TYPING_MAX_S passes. Cancelled when the journey ends."""
+        started = time.monotonic()
+        try:
+            while time.monotonic() - started < TYPING_MAX_S:
+                if not await keep(wa_id, message_id, since):
+                    return
+                await asyncio.sleep(TYPING_REFRESH_S)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 -- a typing hint never affects the reply
+            _log.warning("typing.keep_failed wa_id=%s", wa_id, exc_info=True)
 
     async def _in_sender_language(spec, user_id: str):  # type: ignore[no-untyped-def]
         """``spec`` with its fixed wording and button titles in the language

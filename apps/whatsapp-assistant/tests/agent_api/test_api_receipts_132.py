@@ -56,12 +56,19 @@ def _stand_in_tools(monkeypatch):
 
 
 class Cards:
-    """Stands in for RecordReceiptBuilder: keeps what it was asked to draw."""
+    """Stands in for RecordReceiptBuilder: keeps what it was asked to draw. ``preview=False``: the TO SAVE
+    preview (WA-210) can't be drawn, so the list goes out as text and the SAVED card follows the Save, as before."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, preview: bool = False) -> None:
         self.asked: list = []
+        self.previews: list = []
+        self._preview = preview
 
-    async def build_combined(self, saved: list, actor: Any, *, kept: bool = False) -> bytes:
+    async def build_combined(self, saved: list, actor: Any, *, kept: bool = False, localize: bool = True
+                             ) -> bytes | None:
+        if not kept:
+            self.previews.append((saved, localize))
+            return b"PREVIEW" if self._preview else None
         self.asked.append((saved, kept))
         return b"PNG"
 
@@ -160,7 +167,7 @@ BODIES = {
 
 @pytest.mark.parametrize("tool", sorted(CARD_TYPES))
 def test_every_v3_record_type_builds_the_real_card_data(tool: str) -> None:
-    pair = _pair(_entry(tool, BODIES[tool]), CTX, ({CEMENT: "Cement"}, {BAG: "bag"}), "cor_x")
+    pair = _pair(_entry(tool, BODIES[tool]).pending, "row-1", CTX, ({CEMENT: "Cement"}, {BAG: "bag"}), "cor_x")
     assert pair is not None
     data = RecordReceiptBuilder._data(pair[0], pair[1], CTX, dt.datetime.now(dt.UTC), True)
     assert data is not None

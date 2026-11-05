@@ -72,6 +72,7 @@ from .agent import (
 from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory, tools_version
+from .receipts import has_card, preview_card
 from .record_links import record_link, with_links
 from .reply_guard import without_ids
 from .tools import build_tools
@@ -103,6 +104,8 @@ CANCEL_PREFIX = "apiag:cancel:"
 #: ("apiag:editline:<batch>:<number>").
 EDIT_PREFIX = "apiag:edit:"
 EDIT_LINE_PREFIX = "apiag:editline:"
+#: WA-210: "🗑️ Remove" one line of a ready list ("apiag:remove:<batch>:<number>"), offered with its Edit question.
+REMOVE_PREFIX = "apiag:remove:"
 OPTION_PREFIX = "apiag:opt:"
 #: WA-168: an admin's one tap confirming a size proposed for the company ("apiag:size:<request id>").
 SIZE_PREFIX = "apiag:size:"
@@ -121,6 +124,9 @@ _REASON_TITLES = {
 MAX_STEPS = 10
 #: The SAVED card is drawn within this many seconds, or left out (as classic's RECEIPT_TIMEOUT_S).
 RECEIPT_SECONDS = 4.0
+#: WA-210: the TO SAVE preview card is drawn within this many seconds, or the list goes out as text (it sits on the
+#: reply path, so it gets less time than the SAVED card, which went after the reply).
+PREVIEW_SECONDS = 3.0
 #: Today's recorded entries given to the model up front (WA-127).
 TODAY_ENTRIES = 40
 #: The materials and units of a company, read once per this many seconds.
@@ -154,6 +160,12 @@ EDIT_TITLE = "✏️ Edit"
 EDIT_WHICH = "Which line do you want to change?"
 EDIT_PICK = "Choose the line"
 EDIT_ASK = "What should *{item}* be? Send the right figure, typed or as a voice note."
+#: WA-210: delete one line from the ready list (the Edit question offers it).
+REMOVE_TITLE = "🗑️ Remove"
+REMOVED = "Removed *{item}*."
+REMOVED_ALL = "Removed *{item}*. Nothing is waiting to save now."
+#: WA-210: after a Save of a list shown on the preview card, all saved: the card already showed every line.
+SAVED_SHORT = "✅ Saved."
 COULD_NOT_READ = "I couldn't read that photo. Please send it again, or type what it is."
 NOT_NOW = "I couldn't work on that just now. Please send it again in a minute."
 NOTHING_WAITING = "There is nothing waiting to save."
@@ -179,6 +191,16 @@ _OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", BUDGET_REPLY: "outage.budget", G
 
 NOTHING_HELD = "I haven't got anything ready to save yet. Please send it again, with what's missing."
 PRESS_SAVE = "Tap *Save* to record these."
+READY_HEADING = "*Ready to save:*"
+
+
+def _in_with(language: str | None, key: str, english: str, **values: str) -> str:
+    """``_in`` for a line with blanks ({item}), filled in."""
+    if not language or language == "english":
+        return english.format(**values)
+    from runtime.agent.wording import say
+
+    return say(key, language, **values)
 
 
 def _in(language: str | None, key: str, english: str) -> str:
@@ -207,6 +229,8 @@ class ApiWhatsApp:
         #: TM-28: messages that passed a request on; poked after they are answered.
         self._requested: set[str] = set()
         self._just_saved: dict[str, list[WriteResult]] = {}
+        #: WA-210: Save taps whose list was on a preview card: no SAVED card after them.
+        self._previewed_saves: dict[str, bool] = {}
         self._send_document = send_document
         self._send = send
         self._transcribe = transcribe
@@ -260,6 +284,9 @@ class ApiWhatsApp:
         elif tap.startswith((EDIT_PREFIX, EDIT_LINE_PREFIX)):
             said = "(tapped Edit)"
             reply = await self._on_edit(tap, ctx)
+        elif tap.startswith(REMOVE_PREFIX):
+            said = "(tapped Remove)"
+            reply = await self._on_remove(tap, ctx)
         elif tap.startswith(SIZE_PREFIX):
             said = "(tapped to confirm a size)"
             reply = await self._on_size_tap(tap[len(SIZE_PREFIX):], ctx)
@@ -287,6 +314,9 @@ class ApiWhatsApp:
                     self._requested.add(message.correlation_id)
         else:
             return False
+        # WA-210: a ready list goes out on its TO SAVE card (the header of the Save / Edit / Cancel message).
+        reply = await self._with_preview(reply, ctx, message.correlation_id)
+        _lap("v3_preview")
         if message.modality is InputModality.VOICE and said:
             # WA-209 (4 Nov: "5 chaak" heard as 30, unseen until Save): what was heard comes first, so a misheard
             # number is caught on the list, where Edit fixes it.
@@ -312,6 +342,8 @@ class ApiWhatsApp:
         """WA-132: the green SAVED card of what this message saved (a Save tap, or "save it"), as
         classic sends it after the "Saved" line. Never raises."""
         results = self._just_saved.pop(message.correlation_id, None)
+        if self._previewed_saves.pop(message.correlation_id, False):
+            return  # WA-210: they saw the list on its preview card before Save; a second card adds nothing
         if not results or self._receipts is None or self._send_image is None:
             return
         from .receipts import saved_card
@@ -772,9 +804,15 @@ class ApiWhatsApp:
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
         # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
         left, dropped = _refused_to_keep(results, state)  # [233]: a refused line is never carried on unchanged
+        previewed = state.pop("previewed", None) == batch
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
-        text = _saved_text(results, state.get("language"), today=_today(ctx))
+        if previewed and results and all(r.ok and not held(r) for r in results):
+            # WA-210: every line was on the preview card and all of them saved: "✅ Saved." and the links, no list.
+            self._previewed_saves[correlation_id] = True
+            text = _saved_short(results, state.get("language"), today=_today(ctx))
+        else:
+            text = _saved_text(results, state.get("language"), today=_today(ctx))
         if dropped:
             text += "\n\n" + _in(state.get("language"), "api.refused_dropped", REFUSED_DROPPED)
         sizes = [r for r in results if not r.ok and is_stock_unit_refusal(_detail(r.body))]
@@ -816,8 +854,64 @@ class ApiWhatsApp:
             ask = say("api.edit_ask", language, item=item)
         else:
             ask = EDIT_ASK.format(item=item)
-        return ReplySpec(text=ask,
-                         buttons=(ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel"),))
+        return ReplySpec(text=ask, buttons=(ListRow(id=f"{REMOVE_PREFIX}{batch}:{line}", title=REMOVE_TITLE),
+                                            ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
+
+    async def _on_remove(self, tap: str, ctx: Any) -> ReplySpec:
+        """WA-210: "🗑️ Remove" under an Edit question: that one line comes off the ready list; the rest stays,
+        on a new card with its own buttons."""
+        state = await self._state(ctx)
+        batch, _, number = tap[len(REMOVE_PREFIX):].partition(":")
+        if not state.get("pending") or state.get("batch") != batch or not number.isdigit():
+            return ReplySpec(text=NOTHING_WAITING)
+        entries = [PendingWrite.from_json(e) for e in state["pending"]]
+        line = int(number)
+        if not 1 <= line <= len(entries):
+            return ReplySpec(text=NOTHING_WAITING)
+        gone = entries.pop(line - 1)
+        state.pop("editing", None)
+        language = state.get("language")
+        item = without_ids(gone.summary)
+        if not entries:
+            state["pending"], state["batch"] = [], None
+            state.pop("pending_at", None)
+            await self._save_state(ctx, state)
+            return ReplySpec(text=_in_with(language, "api.removed_all", REMOVED_ALL, item=item))
+        reply = self._reply(_in_with(language, "api.removed", REMOVED, item=item), entries, state, [], language)
+        await self._save_state(ctx, state)
+        return reply
+
+    async def _with_preview(self, reply: ReplySpec, ctx: Any, correlation_id: str | None) -> ReplySpec:
+        """WA-210: the reply that carries the ready list's Save button gets the list's TO SAVE card as its header
+        image, and its text loses the lines the card shows (and the "tap Save" line: the button is under the
+        card). Lines with no card (a material being added, a size, a project) stay as text. Drawn within
+        PREVIEW_SECONDS; when it can't be, the reply goes out exactly as before. Never raises."""
+        if self._receipts is None or reply.header_image is not None or not reply.buttons:
+            return reply
+        try:
+            state = await self._state(ctx)
+            batch = state.get("batch")
+            if not batch or not state.get("pending") or not any(
+                    b.id == f"{SAVE_PREFIX}{batch}" for b in reply.buttons):
+                return reply
+            entries = [PendingWrite.from_json(e) for e in state["pending"]]
+            if not any(has_card(e) for e in entries):
+                return reply
+            client = ApiClient(_actor(ctx), app=self._app)
+            try:
+                image = await asyncio.wait_for(
+                    preview_card(self._receipts, entries, ctx, client, correlation_id), timeout=PREVIEW_SECONDS)
+            finally:
+                await client.close()
+            if not image:
+                return reply
+            state["previewed"] = batch
+            await self._save_state(ctx, state)
+            return dataclasses.replace(reply, header_image=image,
+                                       text=without_carded_lines(reply.text, entries, state.get("language")))
+        except Exception:  # noqa: BLE001 -- the list goes out as text
+            _log.warning("agent_api.preview_not_sent user=%s", getattr(ctx, "user_id", None), exc_info=True)
+            return reply
 
     async def _on_why(self, code: str, message: Any, ctx: Any) -> ReplySpec:
         """WA-146: the reason for a Cancel, as feedback to the team bot (the shape its watch reads)."""
@@ -864,7 +958,7 @@ class ApiWhatsApp:
         if pending:
             text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending])) or "OK."
             listed = "\n".join(f"{i}. {without_ids(e.summary)}" for i, e in enumerate(pending, 1))
-            text = f"{text}\n\n*Ready to save:*\n{listed}".strip()
+            text = f"{text}\n\n{READY_HEADING}\n{listed}".strip()
             if not options:
                 text = f"{text}\n\n{_in(language, 'api.press_save', PRESS_SAVE)}"
         if options:
@@ -909,7 +1003,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing", "previewed")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -1217,6 +1311,39 @@ def _save_buttons(text: str, batch: str) -> ReplySpec:
     return ReplySpec(text=text, buttons=(ListRow(id=f"{SAVE_PREFIX}{batch}", title="Save"),
                                           ListRow(id=f"{EDIT_PREFIX}{batch}", title=EDIT_TITLE),
                                           ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
+
+
+def without_carded_lines(text: str, entries: list[PendingWrite], language: str | None) -> str:
+    """WA-210: the reply text once the preview card shows the list: the lines the card draws come out, the
+    others stay (as bullets), the "Ready to save:" heading goes when no line is left under it, and the
+    "tap Save" line goes (the button is under the card)."""
+    listed = {f"{i}. {without_ids(e.summary)}": has_card(e) for i, e in enumerate(entries, 1)}
+    press = _in(language, "api.press_save", PRESS_SAVE)
+    out: list[str] = []
+    for line in text.split("\n"):
+        if line in listed:
+            if not listed[line]:
+                out.append("• " + line.split(". ", 1)[1])
+            continue
+        if line.strip() == press:
+            continue
+        out.append(line)
+    kept: list[str] = []
+    for i, line in enumerate(out):
+        if line.strip() == READY_HEADING:
+            following = next((x for x in out[i + 1:] if x.strip()), "")
+            if not following.startswith("• "):
+                continue
+        kept.append(line)
+    words = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    return words or "OK."
+
+
+def _saved_short(results: list[WriteResult], language: str | None, *, today: str) -> str:
+    """WA-210: everything on the preview card saved: one line, then the record links (no repeat of the list)."""
+    urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) for r in results]
+    links = [line for line in with_links([""] * len(results), urls, today=today) if line]
+    return "\n".join([_in(language, "api.saved_short", SAVED_SHORT), *links])
 
 
 #: WA-208: an Edit answered within this long changes the line; later it is an ordinary message.

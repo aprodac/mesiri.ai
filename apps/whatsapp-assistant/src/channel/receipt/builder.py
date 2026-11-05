@@ -50,12 +50,14 @@ class RecordReceiptBuilder:
         return await self.build_combined([(confirmed, execution)], actor, kept=saved)
 
     async def build_combined(
-        self, saved: list[tuple[ConfirmedActionV2, ExecutionResult]], actor, *, kept: bool = False
+        self, saved: list[tuple[ConfirmedActionV2, ExecutionResult]], actor, *, kept: bool = False,
+        localize: bool = True,
     ) -> bytes | None:
         """One card for one or several records saved from the same message:
         a single record gets its full card, several get a row each. ``kept``:
         the sender already tapped Save, so the card says SAVED, not TO SAVE
-        (request 115)."""
+        (request 115). ``localize=False``: the card's free text stays as recorded
+        (WA-210's preview: no translation call on the reply path)."""
         parts: list[ReceiptData] = []
         now = datetime.now(UTC)
         for confirmed, execution in saved:
@@ -73,7 +75,8 @@ class RecordReceiptBuilder:
                 )
         if not parts:
             return None
-        parts = await self._localized(parts, actor)
+        if localize:
+            parts = await self._localized(parts, actor)
         try:
             return await self._renderer.render_png(render_html(combine_receipts(parts)))
         except Exception:

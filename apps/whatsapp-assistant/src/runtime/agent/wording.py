@@ -436,6 +436,28 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "धन्यवाद 👍",
         "hinglish": "Thanks 👍",
     },
+    # WA-210: the preview card's Remove, and the short "Saved" after a list shown on the card.
+    "api.removed": {
+        "english": "Removed *{item}*.",
+        "manglish": "*{item}* maatti.",
+        "malayalam": "*{item}* നീക്കി.",
+        "hindi": "*{item}* हटा दिया।",
+        "hinglish": "*{item}* hata diya.",
+    },
+    "api.removed_all": {
+        "english": "Removed *{item}*. Nothing is waiting to save now.",
+        "manglish": "*{item}* maatti. Ini save cheyyaan onnum illa.",
+        "malayalam": "*{item}* നീക്കി. ഇനി സേവ് ചെയ്യാൻ ഒന്നുമില്ല.",
+        "hindi": "*{item}* हटा दिया। अब सेव करने को कुछ नहीं है।",
+        "hinglish": "*{item}* hata diya. Ab save karne ko kuch nahi hai.",
+    },
+    "api.saved_short": {
+        "english": "✅ Saved.",
+        "manglish": "✅ Save aayi.",
+        "malayalam": "✅ സേവ് ആയി.",
+        "hindi": "✅ सेव हो गया।",
+        "hinglish": "✅ Save ho gaya.",
+    },
     "api.press_save": {
         "english": "Tap *Save* to record these.",
         "manglish": "Ithokke record cheyyaan *Save* amarthuka.",

@@ -180,7 +180,7 @@ _BODY = """
   {% endfor %}
 
   {% if data.more %}
-  <div class="more">+{{ data.more }} more &mdash; all saved</div>
+  <div class="more">+{{ data.more }} more{% if 'TO SAVE' not in data.status %} &mdash; all saved{% endif %}</div>
   {% endif %}
 
   <div class="foot">

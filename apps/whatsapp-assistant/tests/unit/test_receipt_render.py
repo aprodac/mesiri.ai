@@ -4,6 +4,7 @@ Chromium renders of every receipt type (skipped where Chromium isn't installed).
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import struct
 
 import pytest
@@ -54,8 +55,12 @@ def test_correction_strikes_the_old_value():
 
 
 def test_more_line_only_when_rows_were_left_out():
-    assert "more &mdash; all saved" not in render_html(multi(10))
-    assert "+3 more &mdash; all saved" in render_html(multi(12))
+    assert "more" not in render_html(multi(10)).split('class="foot"')[0].split("</style>")[-1]
+    # WA-210: a TO SAVE card never says "all saved" (nothing is saved yet); a saved one still does.
+    draft = render_html(multi(12))
+    assert "+3 more</div>" in draft and "all saved" not in draft
+    saved = render_html(dataclasses.replace(multi(12), status="12 SAVED"))
+    assert "+3 more &mdash; all saved" in saved
 
 
 def test_the_old_design_is_gone():

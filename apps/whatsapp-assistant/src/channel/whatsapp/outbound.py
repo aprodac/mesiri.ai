@@ -67,6 +67,9 @@ class WhatsAppSender:
         self._phone_number_id = phone_number_id
         self._api_version = api_version
         self._graph_base_url = graph_base_url.rstrip("/")
+        #: WA-210: when each recipient last got a message from us (a reaction is not one). WhatsApp hides
+        #: "typing..." at our next message, so ``keep_typing`` shows it again only while no reply has gone.
+        self._replied_at: dict[str, float] = {}
         #: B-7: uploads started ahead of the send (prepare_image), by content.
         self._prepared: dict[str, asyncio.Future[str | None]] = {}
 
@@ -111,6 +114,16 @@ class WhatsAppSender:
             )
             return False
         return True
+
+    async def keep_typing(self, to_wa_id: str, message_id: str, since: float) -> bool:
+        """WA-210 (Ilan, 5 Nov: "typing" showed, then the ✅ on a voice note, then nothing until the reply
+        appeared all at once): show "typing..." on ``message_id`` again, unless a message already went to
+        ``to_wa_id`` after ``since`` (``time.monotonic()``): then the reply is out and typing must not come
+        back. The ✅ reaction ends WhatsApp's indicator, and it lasts ~25 s; the journey calls this after the
+        reaction and every ~20 s until the reply. False when nothing was shown."""
+        if not message_id or self._replied_at.get(to_wa_id, 0.0) >= since:
+            return False
+        return await self.mark_as_read(message_id)
 
     async def send_text(self, to_wa_id: str, body: str) -> bool:
         """Send a plain text message. Returns True on success."""
@@ -517,6 +530,10 @@ class WhatsAppSender:
         logger.info(
             "whatsapp.sent type=%s to=%s send_ms=%s", message_fields["type"], to_wa_id, elapsed_ms
         )
+        if message_fields.get("type") != "reaction":
+            if len(self._replied_at) > 10_000:  # one entry per person; never grows without end
+                self._replied_at.clear()
+            self._replied_at[to_wa_id] = time.monotonic()
         # Meta returns {"messages": [{"id": "wamid...."}], ...} on success.
         # A malformed/missing id degrades to None (still "sent", just not
         # reply-trackable) rather than raising -- the send itself succeeded.

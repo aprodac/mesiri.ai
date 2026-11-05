@@ -218,7 +218,11 @@ async def test_a_company_on_api_mode_gets_the_api_agent(monkeypatch) -> None:
     on_normalized, deps, harness = _journey(monkeypatch, "api", two_receipts_model())
     await on_normalized(_message(), {})
     sent = deps["sender"].send_button.await_args.kwargs
-    assert "*Ready to save:*" in sent["body"]
+    # WA-210: the ready list is the TO SAVE card on the Save message; the text no longer repeats its lines.
+    if sent.get("header_image") is not None:
+        assert "*Ready to save:*" not in sent["body"]
+    else:  # no card builder in this journey: the list goes out as text, as before
+        assert "*Ready to save:*" in sent["body"]
     assert [b.title for b in sent["buttons"]] == ["Save", "✏️ Edit", "Cancel"]
     deps["memory_coordinator"].record_turn.assert_not_awaited()  # the classic turn never ran
 

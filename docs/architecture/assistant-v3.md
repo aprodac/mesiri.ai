@@ -48,10 +48,11 @@ WhatsApp message (text, voice note, photo, button tap)
         one model + SOP.md + 43 tools = the dashboard's API routes (+ web_link, ask, feedback)
             GET  -> runs at once (answers questions)
             POST / PATCH -> prepared, NOT saved: goes into the ready list
-        reply = the model's words + the ready list (drawn by code) + ONE Save button
+        reply = the TO SAVE card of the ready list (picture, drawn by code) + one short line
+                + Save / Edit / Cancel (WA-210; lines with no card stay as text)
    -> person taps Save (or says "save it")
         -> the entries go to the API as that person (same checks as the dashboard)
-        -> "Saved" line, then the green SAVED card
+        -> "✅ Saved." + links (previewed list) / "Saved" lines + the green SAVED card (no preview)
 ```
 
 ## The basics (WA-192)
@@ -167,14 +168,20 @@ Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
 1. A write tool prepares an entry (`PendingWrite`: route, body, confirm line, idempotency key) and
    tells the model "ready, NOT saved". The SOP forbids "saved / recorded / njan record cheythu"
    until it is.
-2. The reply shows the model's words, then **Ready to save:** with the entries, and one **Save /
-   Cancel** button row. A question asked with `ask` shows its options as buttons instead.
+2. The reply is **one message: the TO SAVE card** of the entries (`receipts.preview_card`, the same
+   `RecordReceiptBuilder` with `kept=False`, not translated, within `PREVIEW_SECONDS` = 3 s) as the
+   header image, the model's one short line, and **Save / ✏️ Edit / Cancel** (WA-208, WA-210). The
+   text no longer lists what the card shows; entries with no card (a material being added, a size, a
+   project) stay under **Ready to save:**. No builder, or the card can't be drawn in time: the text
+   list, as before. Edit asks the line's right figure and offers **🗑️ Remove** (that line only). A
+   question asked with `ask` shows its options as buttons (Save last).
 3. **Save** (or "save it" in words) sends each entry to the API as the person, with its
    idempotency key (a repeated tap records once). The API's own checks decide; a refused entry
    stays in the list with a plain reason in their language, the saved ones go.
-4. The **"Saved" line, then the green SAVED card** (`receipts.py` -> the same
-   `RecordReceiptBuilder` classic uses; within 4 s, never blocking the Save). Material in /
-   used / transfer, expense, labour, work done and issues have a card.
+4. After Save of a list shown on its card and all saved: **"✅ Saved."** and the record links, no
+   second card (WA-210). Otherwise (no preview, or a line refused) the **"Saved" lines, then the
+   green SAVED card** (`receipts.py`; within 4 s, never blocking the Save). Material in / used /
+   transfer, expense, labour, work done and issues have a card.
 5. Units: a unit the model names ("bags", "chaakku", "nos", "rod") is turned into the active
    unit id in code (`units.py`, the shared `runtime.unit_words` table), when prepared and when
    saved; an unknown unit gets unit buttons before Save.
@@ -319,7 +326,7 @@ back on `v2`. Code rollback: revert.
 | `agent_api/day_store.py` | The Postgres day store (ADK session service; moved from v2 by WA-134) |
 | `agent_api/feedback.py` | `tell_the_team`: feedback to the team bot (moved from v2 by WA-134) |
 | `agent_api/units.py` | Unit words -> unit ids |
-| `agent_api/receipts.py` | Saved entries -> the SAVED card |
+| `agent_api/receipts.py` | Ready entries -> the TO SAVE preview card (WA-210); saved entries -> the SAVED card |
 | `agent_api/call.py` | WhatsApp calls (read-only) |
 | `runtime/message_journey.py` | Routes a company on `api` to v3 after the sender checks |
 | `scripts/api_agent_chat.py` | Try v3 from a terminal (dashboard login + Gemini key) |
@@ -366,6 +373,7 @@ Tracked in [V1_TRACKER.md](../plans/V1_TRACKER.md):
 | WA-129 [204] | Outages queued, other errors fall back to v2, greetings by code |
 | WA-131 [203] | `send_dpr` only when asked, one turn |
 | WA-132 | The SAVED card after a Save |
+| WA-210 | The TO SAVE card before Save (one message with Save / Edit / Cancel), Remove one line, "typing..." kept after the ✅ |
 | WA-118 | Calls (read-only) |
 | WA-134 | **v3 locked** (Alan and Ilan, 2 Nov); v2 removed, failures fall back to classic |
 | WA-135 | Attendance-sheet photos; entries record photo / voice / text |
