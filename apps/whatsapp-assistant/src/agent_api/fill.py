@@ -102,7 +102,8 @@ TRANSLATE_SECONDS = 6.0
 _PATH = re.compile(r"([^.\[\]]+)(?:\[(\d+)\])?")
 
 
-async def to_english(provider: Any, texts: list[str], correlation_id: str | None = None) -> dict[str, str]:
+async def to_english(provider: Any, texts: list[str], correlation_id: str | None = None, *,
+                     latin: bool = False) -> dict[str, str]:
     """[248]: Mesiri translates a word or a field into English itself; the person is never asked to.
 
     5 Nov (New India, a new owner's first voice note): the model left "സിമൻ്റ്" in Malayalam twice and Mesiri asked
@@ -110,9 +111,11 @@ async def to_english(provider: Any, texts: list[str], correlation_id: str | None
     model's body is still in another script (one short call per distinct text, in parallel), through the provider's
     own translation route (``translate_to_english``, the control panel's "translation" row). Returns {text: English}
     for the texts it could translate; one it could not (no route, a failure, a timeout, still not Latin) is left out.
+    ``latin``: also words in Latin letters (Manglish "kambi"), for a material word that is not in the company's list;
+    a translation that only gives the word back is left out.
     """
     translate = getattr(provider, "translate_to_english", None)
-    wanted = [t for t in dict.fromkeys(texts) if isinstance(t, str) and other_script(t)]
+    wanted = [t for t in dict.fromkeys(texts) if isinstance(t, str) and t.strip() and (latin or other_script(t))]
     if translate is None or not wanted:
         return {}
 
@@ -122,7 +125,7 @@ async def to_english(provider: Any, texts: list[str], correlation_id: str | None
         except Exception:  # noqa: BLE001 -- a failed translation leaves the field as it is; never the person's job
             return ""
         out = " ".join(str(getattr(result, "translated_text", "") or "").split()).strip(" .\"'")
-        return "" if not out or other_script(out) else out
+        return "" if not out or other_script(out) or out.casefold() == text.strip().casefold() else out
 
     done = await asyncio.gather(*(one(t) for t in wanted))
     return {t: e for t, e in zip(wanted, done, strict=True) if e}

@@ -153,14 +153,26 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
         return ("material_said is not in English. Nothing is prepared. Call it again now with material_said in English "
                 "(translate their word yourself: സിമന്റ് = cement, മണൽ = sand, കമ്പി = steel); the code matches it to "
                 "the company's list. Never ask the person to say it in English.", [])
-    near = nearest(said, rows, row)
+    if english is not None and (translated := await english(said)) and not other_script(translated):
+        # [248] class: a word in Latin letters that is not English (Manglish "kambi", "manal") is translated by Mesiri
+        # too, then matched; not in the list either way: the new material takes its English name, never the Manglish.
+        # Only a material whose own name or alias it is ("manal" -> "Sand"); never part of a name (a translation is a
+        # guess: "kambi" may come back "wire", which is not the listed Binding Wire for sure).
+        if (hit := next((r for r in rows if any(_same(translated, n) for n in _names(r))), None)) is not None:
+            body["material_id"] = str(hit["id"])
+            return "", []
+        said_english = translated
+    else:
+        said_english = said
+    near = nearest(said_english, rows, row)
     word = title(said)
     names = [str(r["name"]) for r in near]
     # WA-194: a material not in the list never blocks the update ("should never become a blocker"). It is held
     # as a new material WITH its line, so one Save adds it to the catalogue and records the line; a person who meant
     # another one says so and the line moves there (``change_ready_entry``; the code drops the new material).
     return (f"{word!r} is not in the company's material list (nearest: {', '.join(names)}). Never record it as another "
-            f"material, and do NOT ask: in this same turn prepare `add_material` with its English name (translate "
+            f"material, and do NOT ask: in this same turn prepare `add_material` with its English name "
+            f"({title(said_english)!r} unless you know the trade's own English name better; translate "
             f"Manglish/Malayalam to the English trade name: manal = Sand, kambi = Steel, chokk = Chalk; never the "
             f"Manglish word, never Malayalam script), default_unit_id the unit they said (unless it is plainly counted "
             f"in another unit), AND the line itself with material_id \"{NEW}<that English name>\" and material_said "

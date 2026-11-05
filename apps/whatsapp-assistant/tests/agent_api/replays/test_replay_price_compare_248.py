@@ -127,10 +127,12 @@ EXPECT = {
 
 async def test_replay_price_compare_248() -> None:
     turn, _api = await replay(RECORDED)
-    # The same calls again: the code no longer refuses the Malayalam word (the model's Cement pick stands when no
-    # translation route is there), so the three lines would be held. Not preparing them is the SOP's job (live test).
+    # The same calls again: the Malayalam word is no longer refused (the model's Cement pick stands when no translation
+    # route is there), and the two lines whose rate was said but whose "1 bag" was not are sent back (made_up). Only
+    # the 20 bags they said could be held; not preparing anything for a question is the SOP's job (live test).
     assert [c["tool"] for c in turn.calls] == ['record_receipt', 'record_receipt', 'record_receipt']
-    assert len(turn.pending) == 3 and "English" not in turn.reply
+    assert [e.body["quantity"] for e in turn.pending] == [20] and "English" not in turn.reply
+    assert all("is not in their words" in str(c["result"]) for c in turn.calls[1:])
 
 
 @pytest.mark.live

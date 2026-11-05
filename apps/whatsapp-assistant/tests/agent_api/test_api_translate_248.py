@@ -95,7 +95,7 @@ async def test_sibling_a_translated_word_for_another_material_is_never_recorded_
     # "പ്രൈമർ" translates to Primer; the model picked Paint: never saved as Paint ([210] still holds).
     paint = "7f1c0a9e-0000-4000-8000-000000000001"
     model = Translating([[_receipt("പ്രൈമർ", paint)], "ശരി."])
-    turn, saved, _ = await _run(model, "2 drum പ്രൈമർ വന്നു",
+    turn, saved, _ = await _run(model, "20 drum പ്രൈമർ വന്നു",
                                 catalog=[{"id": paint, "name": "Paint", "aliases": []}])
     assert ("receipt", paint, 20.0) not in saved
     assert "Primer" in str(turn.calls[0]["result"])  # held as a new material in English, never Malayalam

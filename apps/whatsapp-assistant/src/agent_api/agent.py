@@ -443,7 +443,7 @@ class ApiAgent:
 
         async def english(word: str) -> str:
             """[248]: Mesiri's own English for a word the person said ("സിമൻ്റ്" -> "Cement"), or ""."""
-            return (await to_english(self._provider, [word], correlation_id)).get(word, "")
+            return (await to_english(self._provider, [word], correlation_id, latin=True)).get(word, "")
         reply_in = LANGUAGE_LINES.get(language or "", "their language")
         language_set: list[str] = []
 
@@ -636,6 +636,12 @@ class ApiAgent:
                 # they did mean (a total they worked out themselves) goes through when it comes back the same.
                 tries[f"{name}:sum"] = 1
                 return ToolOutcome(content={"error": sum_})
+            said_key = f"{name}:said:{body.get('material_id')}:{body.get('quantity')}:{body.get('unit_cost')}"
+            if tool.is_write and (invented := made_up(their_words, body)) and not tries.get(said_key):
+                # [248]: a quantity nobody said is never held (a rate read as "1 bag"). Once per line, like WA-200: the
+                # same line sent again (they said it as a word) goes through.
+                tries[said_key] = 1
+                return ToolOutcome(content={"error": invented})
             if tool.is_write and (clash := number_clash(text, body, [e.body for e in new])):
                 # [229]: "20 bag cement, aaru mason" became 20 masons: a number said once cannot count two things.
                 return ToolOutcome(content={"error": clash})
@@ -971,6 +977,26 @@ def worked_out(text: str, body: dict[str, Any]) -> str:
                     "unit and shows it on the line. If a size is part of it (\"20 litre drum\"), prepare "
                     "`set_unit_conversion` for it too.")
     return ""
+
+
+def made_up(text: str, body: dict[str, Any]) -> str:
+    """[248] (5 Nov, a voice note giving three suppliers' rates: "310 a bag" became a receipt of 1 bag): a line whose
+    rate is a number in their words but whose quantity is not. That is a rate read as a quantity. Only lines that carry
+    a rate (``unit_cost``): a quantity carried from earlier, converted or corrected is never checked here (WA-200 and
+    [229] own those). Returns what to tell the model, or "". Sent back once: a number they said in words ("oru" /
+    ഒരു = 1) goes through when it comes back the same."""
+    said = {float(n) for n in _NUMBER.findall(_NOT_AN_AMOUNT.sub(" ", text or ""))}
+    try:
+        rate = float(body.get("unit_cost"))  # type: ignore[arg-type]
+        quantity = float(body.get("quantity"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return ""
+    if rate not in said or quantity in said:
+        return ""
+    return (f"{rate:g} is a rate they said, but the quantity {quantity:g} is not in their words. Nothing was prepared. "
+            "If they said the quantity as a word (oru/ഒരു = 1, aaru/ആറ് = 6), prepare it again unchanged. If not, "
+            "never make it up: a message that gives rates and asks something (which is better, is this rate ok) is a "
+            "question: answer it and prepare nothing; else ask for the quantity in your one question.")
 
 
 def number_clash(text: str, body: dict[str, Any], others: list[dict[str, Any]]) -> str:

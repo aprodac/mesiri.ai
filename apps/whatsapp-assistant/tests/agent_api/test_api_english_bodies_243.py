@@ -137,6 +137,7 @@ class _Inflow(BaseModel):
     unit_id: uuid.UUID
     quantity: float
     occurred_date: str
+    unit_cost: float | None = None
 
 
 class _New(BaseModel):
