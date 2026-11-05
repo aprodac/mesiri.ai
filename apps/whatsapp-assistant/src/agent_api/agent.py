@@ -47,6 +47,7 @@ from .materials import (
     known_vendor,
     material_name,
     pending_ref,
+    settle_category,
     settle_material,
 )
 from .reply_guard import (
@@ -719,6 +720,8 @@ class ApiAgent:
                     return ToolOutcome(content={"error": problem})
                 if counted:
                     unit_note = f" · counted in {counted}"
+                if label := await settle_category(client, body):  # PRC-02: shown on the Save card
+                    unit_note += f" · 📂 {label}"
             if name == MEMBER_TOOL:
                 problem, buttons = await settle_member(client, path, body)
                 if problem:

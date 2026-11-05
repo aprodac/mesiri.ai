@@ -151,10 +151,12 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare taking back a material transfer saved by mistake." + _WRITE),
     Allowed("undo_expense", "POST", "/expenses/{expense_id}/reverse",
             "Prepare taking back an expense saved by mistake (find it with list_expenses)." + _WRITE),
-    # PRC-01: `category_id` stays hidden until PRC-02 lets the code pick the category; a guessed id
-    # would fail the save.
+    # PRC-02: the code picks `category_id` (the API's suggest rule, then the model's `category` in words); a guessed
+    # id would fail the save, so it stays hidden.
     Allowed("add_material", "POST", "/materials",
-            "Prepare adding a material to the company's list (name, default unit, other names it is called)." + _WRITE,
+            "Prepare adding a material to the company's list (name, default unit, other names it is called, and "
+            "category: its trade category in English as 'Main > Sub', e.g. 'Plumbing & CP > Pipes', 'Electrical > "
+            "Wires & cables', 'Structural > Steel'; the code places it in the company's own list)." + _WRITE,
             hide=("category_id",)),
     Allowed("update_material", "PATCH", "/materials/{material_id}",
             "Prepare changing a material in the list: its name, default unit, or the other names it is called "

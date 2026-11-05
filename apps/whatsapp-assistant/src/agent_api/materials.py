@@ -181,6 +181,29 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
             f"is {' or '.join(names)} they can just say so. No buttons, no question.", [])
 
 
+async def settle_category(client: ApiClient, body: dict[str, Any]) -> str:
+    """PRC-02: put a new material in the company's category before it is held: its name read against the standard list
+    first, then the model's ``category`` in words ("Plumbing & CP > Pipes"), through the API (``GET
+    /materials/categories/suggest``, the dashboard's own rule). Returns "Main › Sub" for the card, or "" (no
+    category fits, the company has none, or the route is unreadable: the material is added without one, as before)."""
+    name = str(body.get("name") or "").strip()
+    if not name:
+        return ""
+    params = {"name": name}
+    if hint := str(body.get("category") or "").strip():
+        params["hint"] = hint
+    try:
+        response = await client.call("GET", "/materials/categories/suggest", params=params)
+    except Exception:  # noqa: BLE001 -- no suggestion: added without a category, as before PRC-02
+        return ""
+    found = response.body if response.ok and isinstance(response.body, dict) else {}
+    if not found.get("category_id"):
+        return ""
+    body["category_id"] = str(found["category_id"])
+    body.pop("category", None)  # the old free-text group is only a hint for a material with no category
+    return str(found.get("label") or "")
+
+
 def name_key(text: str) -> str:
     """WA-201: how a vendor's name is matched: case, spaces and punctuation aside, each word singular ("Ravi
     Traders." = "ravi trader")."""

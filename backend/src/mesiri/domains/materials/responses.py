@@ -173,6 +173,16 @@ class MaterialCategoryListResponse(BaseModel):
     uncategorised: int
 
 
+class CategorySuggestionResponse(BaseModel):
+    """PRC-02: the category a new material would go in, or none."""
+
+    category_id: uuid.UUID | None = None
+    #: "Main › Sub", or the main category's name; empty when none.
+    label: str = ""
+    #: "rule" (its name fits the standard list), "hint" (the caller's words named one), or "" (none).
+    source: str = ""
+
+
 class StandardCategoriesResponse(BaseModel):
     categories_added: int
     materials_placed: int

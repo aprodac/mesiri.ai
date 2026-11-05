@@ -25,6 +25,7 @@ from mesiri.domains.materials.invoices import (
 from mesiri.domains.materials.names import MaterialNameError, require_latin_name
 from mesiri.domains.materials.posting import post_material_movement
 from mesiri.domains.materials.responses import (
+    CategorySuggestionResponse,
     MaterialCatalogListResponse,
     MaterialCatalogResponse,
     MaterialCategoryListResponse,
@@ -315,6 +316,32 @@ async def list_material_categories(
     repo = _category_repo(conn)
     items = await repo.list_all(auth_context.organization_id)
     return {"items": items, "uncategorised": await repo.count_uncategorised(auth_context.organization_id)}
+
+
+@router.get("/categories/suggest", response_model=CategorySuggestionResponse)
+async def suggest_material_category(
+    name: str = Query(min_length=1, max_length=200, description="The new material's name"),
+    hint: str | None = Query(default=None, max_length=200, description="A category in words: 'Plumbing & CP > Pipes'"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-02: where a new material goes. Its name read against the standard list first (fixed rules), then the
+    caller's ``hint``; only one of the company's own switched-on categories, never a new one. None found: none."""
+    from mesiri.domains.materials.categories import (
+        category_label,
+        find_category,
+        read_hint,
+        suggest_path,
+    )
+
+    categories = await _category_repo(conn).list_all(auth_context.organization_id)
+    path = suggest_path(name)
+    found, source = (find_category(categories, path), "rule") if path else (None, "")
+    if found is None and hint:
+        found, source = read_hint(categories, hint), "hint"
+    if found is None:
+        return {"category_id": None, "label": "", "source": ""}
+    return {"category_id": found["id"], "label": category_label(categories, found), "source": source}
 
 
 @router.post("/categories", response_model=MaterialCategoryResponse, status_code=201)

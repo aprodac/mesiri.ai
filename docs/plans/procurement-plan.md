@@ -109,6 +109,17 @@ is overwritten.
 - Migration 0503's index on `category_id` is named `ix_materials_catalog_category_id`: migration 0180 already owns
   `ix_materials_catalog_category` (on the old text column).
 
+### 4b. As built: category for new items (PRC-02)
+
+- `suggest_path(name)` (`domains/materials/categories.py`): a starter material's name inside the new name places it
+  (longest first: "Binding Wire" is Steel); else a word that belongs to exactly ONE category ("MCB" -> Electrical ›
+  DB & MCBs). A word shared by several categories ("pipe", "fitting") places nothing.
+- Then the caller's hint in words ("Plumbing & CP > Pipes"): main › sub, or a name only one category has.
+- Only the company's own switched-on categories; a sub the company removed falls back to its main; never creates one.
+- WhatsApp (v3): `add_material` passes `category` in words; the code calls the route, sets `category_id` and shows
+  "📂 Main › Sub" on the Save card. `category_id` stays hidden from the model. No fit: added without one, as before.
+- Not built: prefilling the dashboard's picker with the suggestion; moving a material to another category from WhatsApp.
+
 ---
 
 ## 5. API work (each route used by the dashboard and, where useful, the assistant)
@@ -116,6 +127,7 @@ is overwritten.
 | Route | Module | Notes |
 |---|---|---|
 | `GET/POST/PATCH /materials/categories` | Materials | Tree; rename; deactivate (never delete if used) |
+| `GET /materials/categories/suggest?name&hint` | Materials | PRC-02 (built): a new material's category, the name against the standard list first, then a hint in words; only the company's own switched-on categories |
 | `PATCH /materials/{id}` gains `category_id`, `reorder_level` | Materials | |
 | `GET /materials/inventory?group=category` | Materials | Totals per category, project, company |
 | `GET /materials/stock-summary?from&to&site&category` | Materials | Opening, received, used, closing, from the ledger |
