@@ -214,7 +214,7 @@ async def test_the_load_of_msand_is_held_with_its_size_asked_beside_it() -> None
                                [("ask", {"question": "ഒരു ലോഡ് എംസാന്റ് എത്ര ചാക്ക് ആണ്?"})],
                                "സിമന്റ് തയ്യാർ. ഒരു ലോഡ് എംസാന്റ് എത്ര ചാക്ക് ആണ്?"], SAID)
     assert [e.summary for e in turn.pending] == ["4 ചാക്ക് സിമന്റ് Tower A-ൽ എത്തിച്ചു.",
-                                                 "1 ലോഡ് എംസാൻഡ് Tower A-ൽ എത്തിച്ചു. (1 Loads = ? Bags)"]
+                                                 "1 ലോഡ് എംസാൻഡ് Tower A-ൽ എത്തിച്ചു. (1 Loads = how many Bags?)"]
     note = turn.calls[1]["result"]["note"]
     assert "counted in Bags" in note and "ONLY `set_unit_conversion`" in note and "tap Save" in note
     assert turn.question.endswith("ആണ്?") and turn.size_needed[0]["key"] == turn.pending[1].idempotency_key
@@ -244,7 +244,7 @@ async def test_sibling_a_correction_to_loads_is_made_and_its_size_asked() -> Non
                                                           "confirm_line": "1 load msand"})], "Ok."],
                          "alla, 1 load aanu", ready=first.pending)
     assert "ONLY `set_unit_conversion`" in second.calls[0]["result"]["size"]
-    assert second.pending[0].summary == "1 load msand (1 Loads = ? Bags)" and second.pending[0].body["unit_id"] == LOAD
+    assert second.pending[0].summary == "1 load msand (1 Loads = how many Bags?)" and second.pending[0].body["unit_id"] == LOAD
     assert second.size_needed[0]["key"] == second.pending[0].idempotency_key
 
 

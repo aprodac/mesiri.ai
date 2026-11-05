@@ -433,7 +433,7 @@ class ApiAgent:
             return [n for n in (int(x) for x in numbers) if 1 <= n <= len(waiting) and waiting[n - 1] is not None]
 
         async def resized(material_id: str, unit_id: str) -> int:
-            """WA-197: a size was just given: each line held with that size unknown (" (1 load = ? bags)") is checked
+            """WA-197: a size was just given: each line held with that size unknown (" (1 Loads = how many Bags?)") is checked
             again, so it shows (and saves) what it is in stock. Never a second copy of the line. Returns how many."""
             count = 0
             for rows in (waiting, new):
@@ -1004,8 +1004,8 @@ async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "uni
 
 
 CONVERSION_TOOL = "set_unit_conversion"
-#: WA-197: the note on a held line whose size is not known yet (" (1 load = ? bags)").
-SIZE_UNKNOWN = re.compile(r" \(1 [^()]* = \? [^()]*\)")
+#: WA-197: the note on a held line whose size is not known yet (" (1 Loads = how many Bags?)").
+SIZE_UNKNOWN = re.compile(r" \(1 [^()]* = how many [^()]*\?\)")
 #: WA-168: the button under a size question when nobody on site knows it (WhatsApp titles: 20 characters).
 DONT_KNOW = {"english": "🤷 Don't know", "manglish": "🤷 Ariyilla", "malayalam": "🤷 അറിയില്ല",
              "hinglish": "🤷 Pata nahi", "hindi": "🤷 पता नहीं"}
@@ -1045,7 +1045,7 @@ async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: lis
       -- the note goes on the ready line, so a wrong size is seen before Save;
     - the person told their own size before (``sizes``: they may not set one for the company): the code converts
       the line itself into the stock unit, their words kept in its notes: ("", note);
-    - no size is known: WA-197, the line is still held (never a blocker), with " (1 load = ? bags)" on it, and this
+    - no size is known: WA-197, the line is still held (never a blocker), with " (1 Loads = how many Bags?)" on it, and this
       is what to tell the model: ask the size once; Save without an answer holds the line for the admin;
     - the API cannot tell: ("", ""), and its own check decides at Save."""
     material_id, unit_id = str(body.get("material_id") or ""), str(body.get("unit_id") or "")
@@ -1085,7 +1085,7 @@ async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: lis
             f"instructions as options), and say that if they don't know they can just tap Save and their admin is "
             f"asked. When they answer, prepare ONLY `set_unit_conversion` (material_id {material_id}, from_unit_id "
             f"{unit_id}, one_unit_equals their number): this line is already waiting and saves converted; never "
-            f"prepare it again."), f" (1 {said} = ? {stock})"
+            f"prepare it again."), f" (1 {said} = how many {stock}?)"
 
 
 async def stock_unit(client: ApiClient, material_id: str, others: list[PendingWrite | None]) -> tuple[str, str] | None:

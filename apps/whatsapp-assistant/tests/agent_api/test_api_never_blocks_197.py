@@ -1,6 +1,6 @@
 """WA-197 (Ilan, 5 Nov: "should never become a blocker", the class of WA-194): a line whose size nobody knows ("1
 load M-sand" when the company counts M-sand in bags) used to stop at a question: the line was not on the list and Save
-was not offered until someone answered. Now it is held with " (1 Loads = ? Bags)" and the size asked beside it; an
+was not offered until someone answered. Now it is held with " (1 Loads = how many Bags?)" and the size asked beside it; an
 answer converts the waiting line, and a Save with no answer holds it for the admin (WA-168's size request), which
 saves it by itself when they answer. Never called saved while it waits.
 """
@@ -71,6 +71,7 @@ async def test_whatsapp_the_size_question_keeps_save_and_the_whole_list() -> Non
     await h.service.handle(_message(SAID), CTX)
     reply = h.sent[-1]
     assert [b.title for b in reply.buttons][-1] == "Save"
+    assert "(1 Loads = how many Bags?)" in reply.text  # the note reaches the card as written (the id cleaner keeps it)
     assert len((await h.state())["pending"]) == 2
 
 
@@ -91,4 +92,4 @@ async def test_guard_a_unit_they_said_is_never_replaced() -> None:
     store = Store()
     turn = await _turn(store, [[_receipt(CEMENT, "cement", KG, 50, "50 kg cement")], "?"], "50 kg cement")
     assert [e.body["unit_id"] for e in turn.pending] == [KG]  # held in kg, its size asked; never turned into bags
-    assert turn.pending[0].summary == "50 kg cement (1 Kilograms = ? Bags)"
+    assert turn.pending[0].summary == "50 kg cement (1 Kilograms = how many Bags?)"
