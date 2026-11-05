@@ -26,13 +26,14 @@ from agent_api.agent import (
     check_note,
     confirm,
 )
-from agent_api.client import ApiClient
+from agent_api.client import Actor, ApiClient
 from agent_api.reply_guard import without_apology
 from agent_api.tools import ALLOWED, CONFIRM_ARG, build_tools
 from agent_api.whatsapp import ApiWhatsApp
 from mesiri.domains.shared.auth import get_current_user
 from mesiri_ai.fakes import FakeToolCallingProvider
 
+ADMIN = Actor(user_id=ACTOR.user_id, organization_id=ACTOR.organization_id, role="ADMIN", name="Sahal")
 KERALA = str(uuid.uuid4())  # "Supermarket Kerala": made on WhatsApp, no site
 PLACES = Places(projects=((PROJECT, "Banglore"), (KERALA, "Supermarket Kerala")),
                 sites=((SITE, "Banglore", PROJECT),))
@@ -99,7 +100,7 @@ _ISSUE = ("report_issue", {"project_id": KERALA, "title": "Drawings not received
 async def test_a_report_to_a_project_with_no_site_goes_on_it_and_save_adds_its_site() -> None:
     seen: list[tuple[str, str, dict]] = []
     app = _api(seen)
-    client = ApiClient(ACTOR, app=app)
+    client = ApiClient(ADMIN, app=app)
     try:
         turn = await ApiAgent(FakeToolCallingProvider([[_ISSUE], "Ready."]), _tools(app)).run(
             client, "Supermarket Kerala: drawings not received", places=PLACES)
@@ -113,6 +114,19 @@ async def test_a_report_to_a_project_with_no_site_goes_on_it_and_save_adds_its_s
     assert ("POST", f"/projects/{KERALA}/sites", {"name": "Supermarket Kerala"}) in seen
     [issue] = [b for m, p, b in seen if p == "/progress/issues"]
     assert issue["site_id"] != f"{SITE_OF}{KERALA}" and uuid.UUID(issue["site_id"])
+
+
+async def test_a_supervisor_is_told_only_an_admin_adds_the_site_and_offered_the_other_sites() -> None:
+    seen: list[tuple[str, str, dict]] = []
+    app = _api(seen)
+    client = ApiClient(ACTOR, app=app)  # a site supervisor: the API refuses them a new site
+    try:
+        turn = await ApiAgent(FakeToolCallingProvider([[_ISSUE], "Ready."]), _tools(app)).run(
+            client, "Supermarket Kerala: drawings not received", places=PLACES)
+    finally:
+        await client.close()
+    assert turn.pending == [] and turn.options == ["Banglore"]
+    assert "only an admin can add one" in turn.calls[0]["result"]["error"]
 
 
 async def test_guard_a_project_with_a_site_is_unchanged() -> None:
@@ -200,6 +214,10 @@ def test_only_bare_apologies_for_a_slip_are_dropped() -> None:
     assert without_apology("My bad! Sorry, I missed that date.\n\nThe contract was signed on 21 May 2026.") == (
         "The contract was signed on 21 May 2026.")
     assert without_apology("Apologies for the confusion. Ready: client Day 2 Day.") == "Ready: client Day 2 Day."
+    assert without_apology("Kshamikkanam, date miss aayi. Contract 21 May 2026-il sign cheythu.") == (
+        "Contract 21 May 2026-il sign cheythu.")
+    assert without_apology("Maaf kijiye, bhool gaya. 6 mistri ready hai.") == "6 mistri ready hai."
+    assert without_apology("ക്ഷമിക്കണം, ഞാൻ ശ്രദ്ധിച്ചില്ല. ശരി.") == "ശരി."
     # guards: an apology that carries an action or a real limit stays
     for kept in ("Sorry, I couldn't hear the voice note. Please say it again.",
                  "Sorry, I missed the 6 masons. Added them.",

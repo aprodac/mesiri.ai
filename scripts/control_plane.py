@@ -54,7 +54,10 @@ def q_messages(hours: int, company: str | None, limit: int) -> str:
 SELECT to_char(m.received_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon HH24:MI') AS at_ist,
        o.name AS company, right(coalesce(m.sender_wa_id, ''), 4) AS sender,
        m.message_type AS kind, m.processing_status AS status, m.error_code,
-       left(m.body_text, 120) AS text, left(m.assistant_reply, 120) AS reply,
+       left(coalesce(m.body_text, (SELECT '🎤 ' || (jt.stage_payload::jsonb->>'text') FROM journey_traces jt
+            WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_api_turn'
+              AND m.message_type IN ('voice', 'audio') ORDER BY jt.created_at LIMIT 1)), 120) AS text,
+       left(m.assistant_reply, 120) AS reply,
        m.correlation_id
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 WHERE {where}

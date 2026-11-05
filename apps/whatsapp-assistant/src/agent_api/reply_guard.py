@@ -84,10 +84,14 @@ def _cut(sentence: str) -> str:
 
 #: [265]: a sentence that is only an apology for a slip ("My bad!", "Sorry, I missed that date.", "Apologies for the
 #: oversight."): what a corrective retry from the code drew out of the model, about a mistake the person never saw.
+_SORRY = (r"(?:my\s+bad|oops|(?:so\s+)?sorry|apologies|i\s+apologi[sz]e|my\s+apologies|my\s+mistake"
+          r"|kshamikk?anam|kshamikkuka|maaf\s*(?:kijiye|karna|karo)|ക്ഷമിക്കണം|ക്ഷമിക്കുക|माफ़?\s*(?:कीजिए|करना|करें))")
+_SLIP = (r"(?:missed|forgot|overlooked|oversight|mistake|confusion|got\s+(?:that|it)\s+wrong"
+         r"|miss\s*(?:cheythu|aayi|ayi|aaypoyi)|vittu\s*poyi|shradhichilla|bhool\s*gay[aei]|chhoot\s*gay[aei]|galti"
+         r"|വിട്ടുപോയി|ശ്രദ്ധിച്ചില്ല|മിസ്സ്?\s*ആയി|തെറ്റ്|भूल\s*गय|छूट\s*गय|गलती)")
 _BARE_APOLOGY = re.compile(
-    r"^\s*(?:(?:my\s+bad|oops|sorry|apologies|my\s+apologies|my\s+mistake)[\s!.,]*)+$"
-    r"|^\s*(?:my\s+bad|oops|(?:so\s+)?sorry|apologies|i\s+apologi[sz]e|my\s+apologies|my\s+mistake)\b[^0-9\n:]{0,40}"
-    r"\b(?:missed|forgot|overlooked|oversight|mistake|confusion|got\s+(?:that|it)\s+wrong)\b[^0-9\n:]{0,25}[.!]?\s*$",
+    rf"^\s*(?:{_SORRY}[\s!.,।]*)+$"
+    rf"|^\s*{_SORRY}[^0-9\n:]{{0,40}}{_SLIP}[^0-9\n:]{{0,25}}[.!।]?\s*$",
     re.IGNORECASE,
 )
 

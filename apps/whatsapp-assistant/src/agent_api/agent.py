@@ -322,6 +322,13 @@ def place_of_project(place: Place | list[str], tool: ApiTool) -> bool:
             and ("site_id" in tool.required or tool.path_params == ("site_id",)))
 
 
+def may_add_site(client: ApiClient) -> bool:
+    """Whether Save may add a site for this sender: an admin (the API's rule); unknown (a login token) is let through
+    and the API decides."""
+    role = getattr(client, "role", None)
+    return role is None or str(role).upper() == "ADMIN"
+
+
 async def site_for_project(client: ApiClient, project_id: str, name: str = "") -> str | None:
     """[265]: the project's site; when it has none, its first one, named as the project (what sign-up does). The
     API's own checks decide (access, a duplicate name); None when no site could be had."""
@@ -648,6 +655,16 @@ class ApiAgent:
                 # [213]: the code decides where a report goes, never the model (it took the project just created).
                 working = working_place(places, [e for e in waiting if e is not None] + new)
                 place = decide_site(text, places, arguments.get("site_id"), arguments.get("project_id"), working)  # type: ignore[arg-type]
+                if place_of_project(place, tool) and not may_add_site(client):
+                    # [265]: only an admin adds a site (the API's rule): a supervisor gets the choice now, never a
+                    # Save that fails.
+                    others = [n for _, n, _ in places.sites] if places else []
+                    site_ask[:] = site_options(others)
+                    return ToolOutcome(content={"error": (
+                        f"{place.name} has no site yet, and only an admin can add one. Nothing was prepared. Tell the "
+                        "person that in one short line (their admin adds the site, on the dashboard or by asking Mesiri)"
+                        + (", and ask with `ask` whether it goes to one of these instead: " + ", ".join(site_ask)
+                           if site_ask else "") + ".")})
                 if place_of_project(place, tool):
                     # [265] (5 Nov, Sahal: "Supermarket Kerala" made on WhatsApp had no site, so picking it only asked
                     # "which site?" again): the line goes on the project; Save gives it its site first.
