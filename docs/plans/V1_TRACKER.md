@@ -407,6 +407,36 @@ later. Every path must use the same company-creation step as the superadmin wiza
 
 ---
 
+## PRC — Procurement and materials by category (builder client, 5 Nov 2026)
+
+Plan: [procurement-plan.md](procurement-plan.md). Decisions D1–D6 in the plan; each row uses the plan's default until answered.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PRC-00 | Multi-site stock answer works ([202]) before this client starts | — | Must | — | todo | — | [202] is owned by another session; verify on a two-site company once fixed |
+| PRC-01 | **Material categories:** main category → sub-category tree per company, `category_id` on materials, categories routes, catalogue grouped by the tree, stock grouped by category | M | Must | — | in progress | Claude (session 5 Nov, procurement) | Migration 0503 (additive). Old text `category` kept, not rewritten |
+| PRC-02 | Category for new items: suggested from the name, shown on the Save card | S | Must | PRC-01 | todo | — | |
+| PRC-03 | Builder's standard category list (Structural, Electrical, Plumbing & CP, Fire protection, Gas, Lift, Finishing) for every new company, and one tap for existing ones; old text categories that match are linked (D5) | S | Must | PRC-01 | in progress | Claude (session 5 Nov, procurement) | |
+| PRC-04 | Vendors: phone, GSTIN; `vendor_id` on deliveries; link old supplier names; vendor picker | M | Must | — | todo | — | |
+| PRC-05 | Excel import: items with categories, vendors, opening stock (preview, then commit) | M | Must | PRC-01, PRC-04 | todo | — | |
+| PRC-06 | Material orders and order lines: tables, routes, numbering, edit, cancel | L | Must | PRC-04 | todo | — | |
+| PRC-07 | Duplicate-order check and confirmation; the first orderer is told | S | Must | PRC-06 | todo | — | D2 |
+| PRC-08 | Delivery against the order: suggested open line, part deliveries, "not this order" | M | Must | PRC-06 | todo | — | |
+| PRC-09 | v3 tools + SOP for orders and "who ordered", three languages | M | Must | PRC-06..08 | todo | — | |
+| PRC-10 | Orders page on the dashboard | M | Must | PRC-06 | todo | — | |
+| PRC-11 | Not-billed and no-order lists; bill reminder; bill matched to deliveries; mismatch flag | M | Must | PRC-08 | todo | — | |
+| PRC-12 | Who may order, confirm duplicates, see rates and bills | S | Must | PRC-06 | blocked | — | Needs Alan's approval: permissions (D1) |
+| PRC-13 | Meta templates: bill reminder, duplicate notice, period report | S | Must | PRC-11 | todo | — | Ops task |
+| PRC-14 | Rate history route, per stock unit, GST shown the same way | M | Must | PRC-04 | todo | — | |
+| PRC-15 | Rate on the order card | S | Should | PRC-14, PRC-09 | todo | — | |
+| PRC-16 | Rates page; vendor page shows last rates | M | Must | PRC-14 | todo | — | |
+| PRC-17 | Stock for a period (opening, received, used, closing) per category and site, WhatsApp and dashboard; running low | M | Must | PRC-01 | todo | — | |
+| PRC-18 | Direct vs petty cash in every total | S | Must | — | todo | — | D3 |
+| PRC-19 | Weekly / monthly report: PDF, Excel, dashboard page | L | Must | PRC-17, PRC-18 | todo | — | |
+| PRC-20 | Scheduled period report on WhatsApp (`MONTHLY`, `SEND_PERIOD_REPORT`) | S | Should | PRC-19 | todo | — | |
+
+---
+
 ## TM — AI teammate (reusable, `teammate/`)
 
 Claude Code as a team member: listens to the team and customer WhatsApp groups, keeps an inbox any Claude Code session can search, later builds approved items and asks for sign-off in the group. Self-contained folder so other projects can reuse it.
