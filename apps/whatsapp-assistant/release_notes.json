@@ -355,6 +355,15 @@
         "cor_92ebb989afb4436e84b3f3b6988c10ce"
       ],
       "message": "Ningal paranja prashnam shariyaakki: list-il ulla Cement, M Sand pole ulla materials ini puthiyathaayi add cheyyilla, delivery list-ile material-il thanne save aakum. 'List-il illa' ennulla chodyavum ini varilla. Try: '50 bag cement vannu'. Thanks, ningal kaaranam ithu ellarkkum shariyaayi."
+    },
+    {
+      "id": "overview-questions-247",
+      "date": "2026-11-05",
+      "for": [
+        "cor_83168ef0a5374d4481ea007e20d86798",
+        "cor_bee2ae4a859f4f3d838519ff7c573196"
+      ],
+      "message": "Ilan, ippo 'Asus garden project ethra aayi?' ennu chodichaal Mesiri ithuvare record cheytha pani, open issues ellaam paranju tharum; 'Mesiri-kku enthokke cheyyaam?' ennu chodichaalum. Onnu chodichu nokkoo. Thanks!"
     }
   ]
 }
