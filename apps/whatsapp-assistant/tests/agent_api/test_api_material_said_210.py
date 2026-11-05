@@ -99,7 +99,9 @@ async def test_the_reported_message_primer_is_never_saved_as_paint() -> None:
     assert turn.pending == [] and saved == []
     error = turn.calls[0]["result"]["error"]
     assert "Primer" in error and "Never record it as another material" in error
-    assert turn.options[0] == "Paint" and turn.options[-1] == "➕ Add Primer"
+    # WA-194: no question, no buttons: the model holds the new material and the line in this same turn.
+    assert "do NOT ask" in error and "new:" in error and "Paint" in error
+    assert turn.options == []
 
 
 async def test_the_reported_message_without_material_said_is_checked_on_their_words() -> None:
@@ -117,12 +119,12 @@ async def test_choosing_paint_remembers_primer_and_prepares_the_line() -> None:
 
 async def test_sibling_binding_wire_is_not_tmt() -> None:
     turn, _ = await _run([[_receipt(TMT, "binding wire", "10 kg binding wire")], "?"], "10 kg binding wire vannu")
-    assert turn.pending == [] and "➕ Add Binding wire" in turn.options
+    assert turn.pending == [] and "Binding wire" in turn.calls[0]["result"]["error"] and turn.options == []
 
 
 async def test_sibling_p_sand_is_not_m_sand() -> None:
     turn, _ = await _run([[_receipt(MSAND, "P-sand", "1 load P-sand")], "?"], "1 load P-sand vannu")
-    assert turn.pending == [] and turn.options[0] == "M-Sand"
+    assert turn.pending == [] and "nearest: M-Sand" in turn.calls[0]["result"]["error"]
 
 
 async def test_sibling_43_grade_cement_is_not_opc_53() -> None:

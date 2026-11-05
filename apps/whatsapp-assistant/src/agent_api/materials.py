@@ -6,8 +6,8 @@ word the person used (``material_said``, or their own words when the model left 
 
 - the material's name or a name the company taught it (``material_aliases``) -> the line goes through, no question;
 - the word is part of exactly one material's name ("cement" -> "Cement OPC 53") -> the same;
-- anything else is only a suggestion: nothing is prepared, and the person gets buttons (the nearest two and
-  "➕ Add <word>"). Their choice is remembered as an alias (``add_material_alias``), so it never asks twice.
+- anything else is a new material (WA-194): the model holds ``add_material`` (English name) and the line in the
+  same turn, with no question; one Save adds both. "It's Paint" moves the line and teaches the alias.
 - [217]: "Add" holds the new material AND its line (and a container's size) in one list; the line names the
   material ``new:<name>`` until Save creates it.
 """
@@ -140,13 +140,14 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
     near = nearest(said, rows, row)
     word = title(said)
     names = [str(r["name"]) for r in near]
-    buttons = [n[:20] for n in names] + [f"{ADD}{word}"[:20]]
-    return (f"{word!r} is not in the company's material list, and it is not {' or '.join(names)}. Nothing is "
-            f"prepared. Never record it as another material. Ask with `ask`, in their language: \"{word} isn't in "
-            f"your list. Same as {' or '.join(names)}, or add {word}?\" with options {buttons}. When they pick a "
-            f"material: prepare `add_material_alias` (that material_id, alias {said!r}) and the line on that "
-            f"material with material_said {said!r}. When they pick Add, in that same turn: prepare `add_material` "
-            f"named {word} (in English, its stock unit), AND the line itself with material_id \"{NEW}{word}\" and "
-            f"material_said {said!r}, in the unit they said. If that unit is a container (drum, tin, load, trip, "
-            f"bundle) of unknown size, ask its size; then prepare `set_unit_conversion` with material_id "
-            f"\"{NEW}{word}\". Everything saves in one Save, the new material first.", buttons)
+    # WA-194: a material not in the list never blocks the update ("should never become a blocker"). It is held
+    # as a new material WITH its line, so one Save adds it to the catalogue and records the line; a person who meant
+    # another one says so and the line moves there (``change_ready_entry``; the code drops the new material).
+    return (f"{word!r} is not in the company's material list (nearest: {', '.join(names)}). Never record it as another "
+            f"material, and do NOT ask: in this same turn prepare `add_material` with its English name (translate "
+            f"Manglish/Malayalam to the English trade name: manal = Sand, kambi = Steel, chokk = Chalk; never the "
+            f"Manglish word, never Malayalam script), default_unit_id the unit they said (unless it is plainly counted "
+            f"in another unit), AND the line itself with material_id \"{NEW}<that English name>\" and material_said "
+            f"{said!r}, in the unit they said. Everything saves in one Save, the new material first. Your reply says "
+            f"in ONE line, in their language, that it is new and Save adds it to their material list, and that if it "
+            f"is {' or '.join(names)} they can just say so. No buttons, no question.", [])

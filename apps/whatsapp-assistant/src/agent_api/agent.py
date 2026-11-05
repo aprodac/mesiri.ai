@@ -454,7 +454,9 @@ class ApiAgent:
             waiting[n - 1] = PendingWrite(tool=entry.tool, method=entry.method, path=entry.path, params=entry.params,
                                           body=body, summary=summary, idempotency_key=new_idempotency_key())
             changed.append(n)
-            return {"status": "changed in the ready list, NOT saved", "entry": n, "now": summary}
+            moved = moved_off_new(waiting, str(entry.body.get("material_id") or ""), str(body.get("material_id") or ""),
+                                  self._tools.get(ALIAS_TOOL))
+            return {"status": "changed in the ready list, NOT saved", "entry": n, "now": summary, **moved}
 
         async def handler(name: str, arguments: dict) -> ToolOutcome:
             if name == TELL_THE_TEAM:
@@ -1039,6 +1041,32 @@ async def settle_new_line_unit(client: ApiClient, body: dict[str, Any], ref: str
 
 MEMBER_TOOL = "add_project_member"
 ALIAS_TOOL = "add_material_alias"
+
+
+def moved_off_new(waiting: list[PendingWrite | None], before: str, after: str, alias_tool: Any) -> dict[str, Any]:
+    """WA-194: a line for a material waiting to be added (``new:<name>``) was moved to one in the list ("it's
+    Paint"). With no line left on it, the new material and its settings leave the ready list (never a stray catalogue
+    entry), and the word is remembered as that material's name (an ``add_material_alias`` entry), so it is matched
+    next time. Returns what to tell the model."""
+    if not before.startswith(NEW) or after == before or after.startswith(NEW):
+        return {}
+    if any(e is not None and str(e.body.get("material_id") or "") == before for e in waiting):
+        return {}
+    name = before.removeprefix(NEW)
+    dropped = [i for i, e in enumerate(waiting) if e is not None and (
+        (e.tool == ADD_TOOL and alias_key(str(e.body.get("name") or "")) == alias_key(name))
+        or f"/materials/{before}/" in e.path)]
+    for i in dropped:
+        waiting[i] = None
+    out: dict[str, Any] = {"also": f"{name} is no longer added as a new material (nothing else used it)."}
+    if alias_tool is not None and is_uuid(after) and not any(
+            e is not None and e.tool == ALIAS_TOOL and e.path.split("/")[2] == after for e in waiting):
+        waiting.append(PendingWrite(
+            tool=ALIAS_TOOL, method=alias_tool.method, path=alias_tool.path.replace("{material_id}", after),
+            params={}, body={"alias": name}, summary=f"🏷️ {name} = the same material from now on",
+            idempotency_key=new_idempotency_key()))
+        out["also"] += f" {name} is remembered as that material's name (on the list; saves with Save)."
+    return out
 PROJECT_TOOL = "create_project"
 
 

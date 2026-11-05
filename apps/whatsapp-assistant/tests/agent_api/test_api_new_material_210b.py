@@ -149,19 +149,16 @@ async def _save(store: Store, pending: list):  # noqa: ANN202
 
 async def test_the_reported_conversation_adds_primer_sets_the_drum_and_receives_40_litres() -> None:
     store = Store()
-    # 1. "2 drum primer vannu": the model picks Paint and asks in words, no options -> the code's buttons.
-    first = await _turn(store, [[_receipt(PAINT, "primer", DRUM, 2, "2 drum Paint")],
-                                [("ask", {"question": "Primer listil illa. Paint ennu parayamo, atho Primer add cheyyano?"})],
-                                "Primer listil illa."], "2 drum primer vannu")
-    assert first.pending == []
-    assert first.options[0] == "Paint" and first.options[-1] == "➕ Add Primer"
-    # 2. The tap "➕ Add Primer": the new material AND the receipt are held in the same turn.
-    history = [ChatMessage(role="user", text="2 drum primer vannu"), ChatMessage(role="model", text="Primer listil illa.")]
-    second = await _turn(store, [[_add("Primer"), _receipt("new:Primer", "primer", DRUM, 2, "📥 2 drum Primer · Green Villa")],
-                                 "Drum ethra litres?"], "➕ Add Primer", history=history)
+    # 1. "2 drum primer vannu": the model picks Paint; the code refuses it and says to add Primer, no question.
+    # WA-194: the model holds the new material AND the receipt in the same turn: never a blocker.
+    second = await _turn(store, [[_receipt(PAINT, "primer", DRUM, 2, "2 drum Paint")],
+                                 [_add("Primer"), _receipt("new:Primer", "primer", DRUM, 2, "📥 2 drum Primer · Green Villa")],
+                                 "Primer is new: Save adds it to your list."], "2 drum primer vannu")
+    assert second.options == []
     assert [e.tool for e in second.pending] == ["add_material", "record_receipt"]
     assert second.pending[1].body["material_id"] == "new:Primer"
-    assert "new:Primer" in second.calls[0]["result"]["note"]
+    assert "new:Primer" in second.calls[1]["result"]["note"]
+    history = [ChatMessage(role="user", text="2 drum primer vannu"), ChatMessage(role="model", text="Primer is new.")]
     # 3. "20 litre": the size, for the material by its name.
     third = await _turn(store, [[_conversion("Primer", DRUM, 20, "1 drum = 20 L")], "Ready."], "20 litre",
                         ready=second.pending, history=history)
