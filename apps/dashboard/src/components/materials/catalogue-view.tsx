@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, CircleSlash2, FolderTree, MoreHorizontal, Pencil, Plus, Search, ShieldAlert, Trash2 } from 'lucide-react'
+import { CheckCircle2, CircleSlash2, FileSpreadsheet, FolderTree, MoreHorizontal, Pencil, Plus, Search, ShieldAlert, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import {
   type MaterialCatalog,
 } from '@/lib/materials'
 import { CategoriesPanel } from './categories-panel'
+import { ImportDialog } from './import-dialog'
 
 // Radix Select can't hold an empty value; this stands for "no category".
 const NO_CATEGORY = 'none'
@@ -50,6 +51,7 @@ export function CatalogueView() {
   const [unitId, setUnitId] = React.useState('')
   const [categoryId, setCategoryId] = React.useState(NO_CATEGORY)
   const [panelOpen, setPanelOpen] = React.useState(false)
+  const [importOpen, setImportOpen] = React.useState(false)
   const [sku, setSku] = React.useState('')
   const [error, setError] = React.useState('')
 
@@ -268,6 +270,9 @@ export function CatalogueView() {
           <Button size="sm" variant={panelOpen ? 'secondary' : 'outline'} className="gap-1.5" onClick={() => setPanelOpen((o) => !o)}>
             <FolderTree className="size-3.5" /> Categories
           </Button>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportOpen(true)}>
+            <FileSpreadsheet className="size-3.5" /> Import from Excel
+          </Button>
           {!showForm && (
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setFormOpen(true)}>
               <Plus className="size-3.5" /> Add material
@@ -374,6 +379,8 @@ export function CatalogueView() {
           )}
         </>
       )}
+
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
         <DialogContent className="sm:max-w-md">

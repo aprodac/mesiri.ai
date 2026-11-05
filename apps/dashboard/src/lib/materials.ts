@@ -847,3 +847,41 @@ export async function answerSizeRequest(id: string, oneUnitEquals: number): Prom
 export async function dismissSizeRequest(id: string): Promise<void> {
   await api.post(`/materials/size-requests/${id}/dismiss`)
 }
+
+// ---------------------------------------------------------------------
+// Excel import (PRC-05): items with categories, vendors, opening stock
+// ---------------------------------------------------------------------
+
+export type ImportSheet = 'Items' | 'Vendors' | 'Opening stock'
+export type ImportResult = 'added' | 'existing' | 'placed' | 'updated' | 'problem'
+
+export interface ImportReport {
+  // false for a preview: nothing was saved.
+  saved: boolean
+  counts: Record<ImportSheet | 'Categories', Partial<Record<ImportResult, number>>>
+  problems: number
+  rows: { sheet: ImportSheet; row: number; name: string; result: ImportResult; message: string }[]
+}
+
+export async function downloadImportTemplate(): Promise<Blob> {
+  const res = await api.get('/materials/import/template', { responseType: 'blob' })
+  return res.data as Blob
+}
+
+async function fileBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(binary)
+}
+
+// What the import would do, row by row; nothing is saved.
+export async function previewImport(file: File): Promise<ImportReport> {
+  const res = await api.post<ImportReport>('/materials/import/preview', { file_base64: await fileBase64(file) })
+  return res.data
+}
+
+export async function runImport(file: File): Promise<ImportReport> {
+  const res = await api.post<ImportReport>('/materials/import', { file_base64: await fileBase64(file) })
+  return res.data
+}
