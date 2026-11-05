@@ -35,6 +35,7 @@ RECORD_PAGES: dict[str, str | None] = {
     "update_material": "materials",
     "add_material_alias": "materials",
     "set_unit_conversion": "materials",
+    "add_standard_categories": "materials",
     "answer_size_request": "materials",
     "add_expense_category": "expense_categories",
     "create_project": "project",

@@ -704,6 +704,11 @@ class ApiAgent:
                 if problem:
                     unit_ask[:] = await unit_buttons(client)
                     return ToolOutcome(content={"error": problem})
+            if name == STANDARD_CATEGORIES_TOOL and not may_set_sizes:
+                # PRC-02c: the company's category list is set up by an admin or a project manager (as on the dashboard).
+                return ToolOutcome(content={"error": (
+                    "Only an admin or a project manager sets up the company's categories. Nothing was prepared. Say so "
+                    "in one line and that their admin can send 'set up categories'.")})
             if (name == ANSWER_SIZE_TOOL and (size := _decimal(body.get("one_unit_equals"))) is not None
                     and not said_number(their_words, size)):
                 # [248]: an admin's size answer is their number, never one the model made up (it is for the company).
@@ -810,6 +815,9 @@ class ApiAgent:
                 if name == CONVERSION_TOOL and await resized(str(arguments.get("material_id") or ""),
                                                              str(body.get("from_unit_id") or "")):
                     note += " The waiting line now converts with this size: do not prepare it again."
+                if name == CONVERSION_TOOL and (old := await saved_with_old_size(
+                        client, str(arguments.get("material_id") or ""), str(body.get("from_unit_id") or ""))):
+                    note += old
                 if name == ADD_TOOL and body.get("name"):
                     note += (f" Lines for it (what came, a unit size) name it material_id \"{NEW}{body['name']}\": "
                              "prepare them now, in this turn; they save after it.")
@@ -1207,6 +1215,8 @@ async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "uni
 
 
 CONVERSION_TOOL = "set_unit_conversion"
+#: PRC-02c: the builder's standard category list, applied from WhatsApp (an admin or a project manager).
+STANDARD_CATEGORIES_TOOL = "add_standard_categories"
 #: WA-168: an admin answering "📏 Sizes needed".
 ANSWER_SIZE_TOOL = "answer_size_request"
 #: WA-197: the note on a held line whose size is not known yet (" (1 Loads = how many Bags?)").
@@ -1315,6 +1325,39 @@ async def _units(client: ApiClient) -> list[dict[str, Any]]:
     except Exception:  # noqa: BLE001
         return []
     return unit_rows(response.body) if response.ok else []
+
+
+async def saved_with_old_size(client: ApiClient, material_id: str, from_unit_id: str, days: int = 30) -> str:
+    """[248] (5 Nov, New India: "1 load M-sand = 60 cum" saved, then to be corrected): a new size changes lines saved
+    from now on, never the ones already saved with the old size ("60 cum, reported as 1 Loads"). Those receipts (last
+    ``days`` days, not taken back) are named for the model, which offers to redo them with the new size in the same
+    Save. "" when there are none (or they cannot be read)."""
+    if not (is_uuid(material_id) and is_uuid(from_unit_id)):
+        return ""
+    try:
+        check = await client.call("GET", f"/materials/{material_id}/unit-check", params={"unit_id": from_unit_id})
+        unit = str(check.body.get("unit_name") or "") if check.ok and isinstance(check.body, dict) else ""
+        since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+        found = await client.call("GET", "/materials/inflows",
+                                  params={"material_id": material_id, "date_from": since, "limit": 100})
+    except Exception:  # noqa: BLE001 -- nothing named; the size itself is unchanged
+        return ""
+    items = found.body.get("items") if found.ok and isinstance(found.body, dict) else None
+    reported = re.compile(rf"reported as\s+([\d.]+)\s+{re.escape(unit)}\b", re.IGNORECASE) if unit else None
+    old = []
+    for row in items or []:
+        if not isinstance(row, dict) or row.get("is_reversed") or row.get("reverses_movement_id"):
+            continue
+        said = reported.search(str(row.get("notes") or "")) if reported else None
+        if said:
+            old.append(f"receipt_id {row.get('id')}: {row.get('occurred_date')}, {_amount(_decimal(row.get('quantity')))} "
+                       f"{row.get('unit')} saved for {said.group(1)} {unit} (supplier {row.get('supplier') or '-'})")
+    if not old:
+        return ""
+    return (" Already SAVED with the old size (this size does not change them): " + "; ".join(old) + ". In ONE line "
+            "of your reply, in their language, say these were saved with the old size and ask whether to redo them; "
+            "when they say yes, prepare `undo_receipt` for each and `record_receipt` again with the quantity in "
+            f"{unit} as they reported it (same site, date and supplier), all in one Save.")
 
 
 async def size_check(client: ApiClient, material_id: str, from_unit_id: str, size: Decimal | None,

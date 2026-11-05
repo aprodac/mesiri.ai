@@ -164,6 +164,14 @@ ALLOWED: tuple[Allowed, ...] = (
             "(aliases, e.g. 'kambi' for steel), or its category in words ('Plumbing & CP > Pipes'; the code moves it "
             "to the company's own category)." + _WRITE,
             hide=("category_id",)),
+    # PRC-02c: a company that signed up on WhatsApp sets up and sees its material categories there too.
+    Allowed("material_categories", "GET", "/materials/categories",
+            "The company's material categories (main and sub-categories) and how many materials are in each, and how "
+            "many materials have none."),
+    Allowed("add_standard_categories", "POST", "/materials/categories/standard",
+            "Prepare adding the builder's standard material categories (Structural, Electrical, Plumbing & CP, Fire "
+            "protection, Gas, Lift, Finishing, with their sub-categories) and placing the materials that fit them. "
+            "Safe to repeat; never moves a material already placed. Only for an admin or project manager." + _WRITE),
     Allowed("set_unit_conversion", "PUT", "/materials/{material_id}/unit-conversions",
             "Prepare setting, for the whole company, how much ONE of the unit they count in is in the material's "
             "stock unit (1 bar of TMT 12mm = 10.67 kg; 1 load of sand = 3 m3). Use when a line was refused because "
