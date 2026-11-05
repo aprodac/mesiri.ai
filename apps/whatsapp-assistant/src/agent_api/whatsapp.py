@@ -397,7 +397,16 @@ class ApiWhatsApp:
             if is_outage_error(exc):
                 await self._outage(message, ctx, "", exc)
             return ""
-        return (transcript or translated or "").strip()
+        words = (transcript or translated or "").strip()
+        english = (translated or "").strip()
+        if words:
+            # WEB-58 (5 Nov: 0 of 53 voice notes had their words or English kept): the speech step already gives both
+            # (one call); they go on the message, as classic kept them, for the dashboard's Live and message log. In the
+            # background: nothing waits for it, and a failed write is only logged.
+            _in_background(self._log_store.update_body_text(
+                correlation_id=message.correlation_id, body_text=words,
+                translated_text=english if english and english.casefold() != words.casefold() else None))
+        return words
 
     async def _speech_hint(self, ctx: Any) -> str:
         """[258] (5 Nov, Adarsh: Manglish voice notes heard as "for lab as itra lab as work you end"): the speaker's
@@ -1547,6 +1556,17 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
                                                      for r in waiting))
         text = f"{text}\n\n{later}".strip()
     return text
+
+
+#: Writes nothing waits for (WEB-58), held until they finish so none is dropped half-way.
+_BACKGROUND: set[asyncio.Task[None]] = set()
+
+
+def _in_background(awaitable: Awaitable[Any]) -> None:
+    """Runs a write the reply does not wait for; a failure is logged, never raised."""
+    task = asyncio.get_running_loop().create_task(_safe(awaitable))
+    _BACKGROUND.add(task)
+    task.add_done_callback(_BACKGROUND.discard)
 
 
 async def _safe(awaitable: Awaitable[Any]) -> None:

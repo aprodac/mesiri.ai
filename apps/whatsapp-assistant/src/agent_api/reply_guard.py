@@ -109,6 +109,9 @@ _ID = re.compile(rf"[(\[]?\s*(?:\b\w*\s?id\b\s*[:=]?\s*)?[`'\"]?\b{_UUID}\b[`'\"
 _TRACE_ID = re.compile(r"\bcor_[0-9a-f]{8,}\b", re.IGNORECASE)
 #: agent_api.materials.NEW: the code's mark for a material being added.
 _NEW_MARK = re.compile(r"\bnew:(?=\S)")
+#: agent_api.memory.OLDER_NOTE: the code's note on a reply from an older Mesiri in the history. The model copied it into
+#: a reply on 5 Nov ("🎤 _Hello sukhamaano_ (said by an older version of Mesiri, with fewer tools: …) Hello Ilan!").
+_OLDER_NOTE = re.compile(r"\(said by an older version of Mesiri[^)]*\)\s*", re.IGNORECASE)
 #: What only an API error or the code contains. "422" alone is not here: it can be a real number on a site.
 _API_ERROR = re.compile(
     r"\b[a-z]+_id\b|\bHTTP\s*\d{3}\b|\b(?:400|401|403|404|409|422|424|500|502|503)\s+(?:error|bad|not found|forbidden"
@@ -122,7 +125,7 @@ def without_ids(text: str) -> str:
     """``text`` without ids and code marks; a link stays whole."""
     pieces = _URL.split(text or "")
     for i in range(0, len(pieces), 2):  # the odd pieces are the links
-        piece = _NEW_MARK.sub("", _TRACE_ID.sub("", _ID.sub("", pieces[i])))
+        piece = _OLDER_NOTE.sub("", _NEW_MARK.sub("", _TRACE_ID.sub("", _ID.sub("", pieces[i]))))
         piece = re.sub(r"[ \t]+([.,;:!?])", r"\1", piece)
         pieces[i] = re.sub(r"[ \t]{2,}", " ", piece)
     return "".join(pieces).strip()
