@@ -26,6 +26,7 @@ import {
   type InflowReason,
 } from '@/lib/materials'
 import type { AppScope } from '@/lib/scope-types'
+import { fetchVendorsApi } from '@/lib/api'
 import { Combobox } from '@/components/ui/combobox'
 
 function todayIso(): string {
@@ -52,6 +53,19 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
   const [reason, setReason] = React.useState<InflowReason>('RECEIVED')
   const [occurredDate, setOccurredDate] = React.useState(todayIso())
   const [supplier, setSupplier] = React.useState('')
+  // PRC-04: the company's vendors suggested as they type; a listed name links that vendor, a new one is added.
+  // The list is the Finance module's: without it (403) the field is plain text, as before.
+  const { data: vendors } = useQuery({
+    queryKey: ['finance', 'vendors', 'names'],
+    queryFn: fetchVendorsApi,
+    enabled: open,
+    retry: false,
+    staleTime: 60_000,
+  })
+  const vendorNames = React.useMemo(
+    () => (vendors ?? []).filter((v) => v.status === 'active').map((v) => v.name),
+    [vendors],
+  )
   const [unitCost, setUnitCost] = React.useState('')
   // Tracked separately from unitCost so an edited total is not overwritten by
   // the quantity x rate calculation -- real invoices carry discounts, freight
@@ -341,7 +355,19 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
 
           <div className="grid gap-1.5">
             <Label htmlFor="supplier">Supplier</Label>
-            <Input id="supplier" value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Optional" />
+            <Input
+              id="supplier"
+              list="supplier-vendors"
+              autoComplete="off"
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              placeholder="Optional · pick a vendor or type a new one"
+            />
+            <datalist id="supplier-vendors">
+              {vendorNames.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
