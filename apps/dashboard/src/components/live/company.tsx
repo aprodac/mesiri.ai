@@ -27,6 +27,8 @@ import {
   Sparkles,
   Truck,
   Undo2,
+  Volume2,
+  VolumeX,
   X,
   XCircle,
 } from 'lucide-react'
@@ -55,7 +57,8 @@ import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
 import { Finale } from './finale'
 import { ProjectSheet, ReportStrip, SHEET_MS } from './report'
-import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, EntryCard, LanguageMoment, answers as answersOf, cleanReply, outcomes } from './moments'
+import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, EntryCard, LanguageMoment, answers as answersOf, cleanReply, languageLine, outcomes } from './moments'
+import { useVoice } from '@/lib/voice'
 import { Spark, type SparkMood } from './spark'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
@@ -181,6 +184,29 @@ function destOf(m: LiveFeedItem): Dest | null {
 }
 
 const isVoice = (m: LiveFeedItem) => /voice|audio/.test(m.type)
+/** WEB-63: what Mesiri says out loud when it is done with a message; null to stay quiet. Short: a moment's line. */
+function spokenLine(m: LiveFeedItem, alarm: string | null): string | null {
+  const first = m.sender_name?.split(/\s+/)[0]
+  const lines = m.summaries.slice(0, 3).join(', ')
+  if (alarm) return `Wait. ${alarm}`
+  if (m.kind === 'intro') return null // the show speaks for itself
+  if (isBill(m)) {
+    const amount = Number(m.expense?.amount)
+    const what = [m.expense?.vendor ? `A bill from ${m.expense.vendor}` : 'A bill', Number.isFinite(amount) ? `${amount.toLocaleString('en-IN')} rupees` : null]
+    return `${what.filter(Boolean).join(': ')}.${m.state === 'draft' ? ' Tap save.' : ''}`
+  }
+  if (m.kind === 'language') return languageLine(m.language)
+  if (m.state === 'asked' && m.asked) return cleanReply(m.asked)
+  if (m.state === 'failed') return 'That could not be saved.'
+  const card = cardAs(m)
+  if (card === 'draft') return `${first ? `${first}, ` : ''}${lines}. Ready. Tap save.`
+  if (card === 'saved') return `Saved. ${lines}.`
+  if (card === 'cancelled') return 'Cancelled. Nothing was saved.'
+  if (card === 'undone') return `Taken back. ${m.summaries[0] ?? ''}`
+  if (m.kind === 'question' || m.kind === 'chat') return short(cleanReply(m.reply), 220) || null
+  return null
+}
+
 /** WEB-62: the card a message's entries are on, and what became of them; null when it has no card. */
 function cardAs(m: LiveFeedItem): 'draft' | 'saved' | 'cancelled' | 'undone' | null {
   if (isBill(m)) return null
@@ -372,6 +398,9 @@ export function CompanyLive({
 }) {
   const [, setParams] = useSearchParams()
   const moduleEnabled = useModuleEnabled()
+  /** WEB-63: Mesiri's voice: on in presenter mode, Mute turns it off. */
+  const voice = useVoice()
+  const say = voice.say
   const [since, until] = React.useMemo(() => dayWindow(date), [date])
   const feed = useQuery({
     queryKey: ['live-feed', date],
@@ -517,6 +546,7 @@ export function CompanyLive({
         }
       }
       setCurrent({ item, step: 'done', alarm })
+      if (live) say(spokenLine(item, alarm))
       const from = sparkRef.current?.getBoundingClientRect()
       const fly = (a: DOMRect | undefined, b: DOMRect | undefined, delay = 0) => {
         if (a && b && !prefersReducedMotion()) setFlights((f) => [...f, { key: Math.random(), from: a, to: b, delay }])
@@ -536,7 +566,7 @@ export function CompanyLive({
     playing.current = false
     speed.current = 1
     setReplaying(false)
-  }, [readFlags, ring, queryClient, date, showMeet])
+  }, [readFlags, ring, queryClient, date, showMeet, say])
 
   // The first read just shows the day; later reads play what is new.
   React.useEffect(() => {
@@ -569,11 +599,15 @@ export function CompanyLive({
     if (!project) return
     greeting.current = true // messages that come meanwhile wait for it
     setSending({ project, from: null })
+    say(`${project.project_name}: the day’s messages become the report.`)
     window.setTimeout(
-      () => setSending((s) => (s ? { ...s, from: sheetRef.current?.getBoundingClientRect() ?? new DOMRect(window.innerWidth / 2 - 300, 120, 600, 600) } : s)),
+      () => {
+        say(`Today’s report for ${project.project_name} is out.`)
+        setSending((s) => (s ? { ...s, from: sheetRef.current?.getBoundingClientRect() ?? new DOMRect(window.innerWidth / 2 - 300, 120, 600, 600) } : s))
+      },
       prefersReducedMotion() ? 600 : SHEET_MS,
     )
-  }, [])
+  }, [say])
   const sentDone = React.useCallback(() => {
     setSending(null)
     greeting.current = false
@@ -650,6 +684,7 @@ export function CompanyLive({
   const [telling, setTelling] = React.useState(false)
   const present = async (on: boolean) => {
     setPresenting(on)
+    voice.setOn(on) // presenter mode talks; leaving it is quiet again
     try {
       if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen?.()
       if (!on && document.fullscreenElement) await document.exitFullscreen?.()
@@ -661,9 +696,17 @@ export function CompanyLive({
     const left = () => {
       if (!document.fullscreenElement) setPresenting(false)
     }
+    const mute = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key.toLowerCase() === 'm' && !e.metaKey && !e.ctrlKey && !(t && /input|textarea|select/i.test(t.tagName))) voice.setOn(!voice.on)
+    }
+    window.addEventListener('keydown', mute)
     document.addEventListener('fullscreenchange', left)
-    return () => document.removeEventListener('fullscreenchange', left)
-  }, [])
+    return () => {
+      document.removeEventListener('fullscreenchange', left)
+      window.removeEventListener('keydown', mute)
+    }
+  }, [voice])
 
   const number = setup.data?.whatsapp_number ?? null
   const qrLink = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Mesiri')}` : null
@@ -819,6 +862,20 @@ export function CompanyLive({
             </button>
             <button
               type="button"
+              onClick={() => voice.setOn(!voice.on)}
+              aria-pressed={voice.on}
+              title={voice.unavailable ? 'Mesiri’s voice is not available right now' : voice.on ? 'Mute Mesiri (M)' : 'Let Mesiri talk (M)'}
+              className={cn(
+                'flex items-center gap-2 border px-3 py-2 text-sm font-medium',
+                voice.on ? 'border-foreground bg-foreground text-background' : 'border-foreground hover:bg-foreground hover:text-background',
+                voice.unavailable && voice.on && 'border-[var(--destructive)] bg-background text-[var(--destructive)]',
+              )}
+            >
+              {voice.on ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+              {voice.on ? (voice.unavailable ? 'No voice' : 'Mute') : 'Sound'}
+            </button>
+            <button
+              type="button"
               onClick={() => void present(!presenting)}
               className="flex items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
             >
@@ -908,6 +965,7 @@ export function CompanyLive({
                     number={number}
                     presenting={presenting}
                     onScene={onScene}
+                    onSay={say}
                     onDone={() => helloDone.current?.()}
                   />
                 </div>

@@ -100,6 +100,11 @@ const LANGUAGES: Record<string, { name: string; line: string }> = {
   auto: { name: 'Your language', line: 'I’ll reply in whatever language you write in.' },
 }
 
+/** The line a language change says, in the language chosen (WEB-63: Live speaks it). */
+export function languageLine(language: string | null): string {
+  return (LANGUAGES[language ?? ''] ?? LANGUAGES.auto).line
+}
+
 /** A language change: "Hello" in every language, landing on the one chosen. */
 export function LanguageMoment({ language, presenting }: { language: string | null; presenting: boolean }) {
   const chosen = LANGUAGES[language ?? ''] ?? LANGUAGES.auto
