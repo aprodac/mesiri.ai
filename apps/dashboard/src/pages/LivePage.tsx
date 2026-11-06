@@ -582,7 +582,12 @@ function DayProgress({
 
 export default function LivePage() {
   const [params, setParams] = useSearchParams()
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  // WEB-64: Live left open past midnight moves to the new day (it read 5 Nov all night, and missed 6 Nov's messages).
+  const [today, setToday] = React.useState(() => localIsoDate(new Date()))
+  React.useEffect(() => {
+    const t = window.setInterval(() => setToday(localIsoDate(new Date())), 60_000)
+    return () => window.clearInterval(t)
+  }, [])
   const date = params.get('date') || today
   // WEB-59: one Live, the company's. A site's own report writing itself opens over it in a panel (?site=…, so old
   // links open the company Live with that site's panel open); closing the panel takes ?site off the address.
@@ -601,6 +606,7 @@ export default function LivePage() {
   )
   return (
     <CompanyLive
+      key={date}
       date={date}
       isToday={date === today}
       sitePanel={params.get('site') ? <SiteLive onClose={closeSite} /> : null}

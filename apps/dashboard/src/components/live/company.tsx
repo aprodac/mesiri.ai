@@ -459,6 +459,8 @@ export function CompanyLive({
   const queue = React.useRef<LiveFeedItem[]>([])
   const playing = React.useRef(false)
   const seeded = React.useRef(false)
+  /** What was already there when Live opened: counted, not shown, never played (until Replay the day). */
+  const before = React.useRef(new Set<string>())
   /** Replay plays faster. */
   const speed = React.useRef(1)
   const sparkRef = React.useRef<HTMLDivElement>(null)
@@ -572,12 +574,13 @@ export function CompanyLive({
   React.useEffect(() => {
     if (!feed.data) return
     if (!seeded.current) {
+      // WEB-64: Live starts empty: what came before it opened is known, not shown (Replay the day shows it).
       seeded.current = true
-      setShown(new Set(feed.data.map((m) => m.id)))
+      before.current = new Set(feed.data.map((m) => m.id))
       return
     }
     if (replaying) return
-    const known = new Set([...shown, ...queue.current.map((m) => m.id), current?.item.id])
+    const known = new Set([...before.current, ...shown, ...queue.current.map((m) => m.id), current?.item.id])
     const fresh = feed.data.filter((m) => !known.has(m.id))
     if (!fresh.length) return
     const late = fresh.slice(0, Math.max(0, fresh.length - QUEUE_MAX))
@@ -750,8 +753,9 @@ export function CompanyLive({
   )
   const totals = {
     workers: sites.reduce((n, s) => n + (s.workers || 0), 0),
-    messages: items.filter((m) => shown.has(m.id)).length,
-    saved: items.filter((m) => shown.has(m.id) && m.state === 'saved').length,
+    // The whole day's, whatever the stream shows.
+    messages: items.length,
+    saved: items.filter((m) => m.state === 'saved').length,
     issues: sites.reduce((n, s) => n + (s.open_issues || 0), 0),
     reported: sites.filter((s) => s.last_update_at).length,
   }
@@ -797,7 +801,7 @@ export function CompanyLive({
   // What each module got today: entries saved there, and the last one.
   const destCounts = new Map<DestKey, { n: number; last: string | null }>()
   for (const m of items) {
-    if (!shown.has(m.id)) continue
+    if (!shown.has(m.id) && !before.current.has(m.id)) continue
     const d = destOf(m)
     if (!d) continue
     const was = destCounts.get(d.key) ?? { n: 0, last: null }
@@ -917,12 +921,22 @@ export function CompanyLive({
           >
             {/* The messages, newest first */}
             <section aria-label="Messages" className="order-2 min-w-0 lg:order-1">
-              <Label>Messages · {totals.messages} today</Label>
+              <Label>{shown.size || samples.length ? `Messages · ${totals.messages} today` : 'Messages · from now'}</Label>
               {feed.isLoading ? (
                 <p className="mt-4 text-sm text-muted-foreground">Loading…</p>
               ) : stream.length === 0 ? (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Nothing yet today. Send Mesiri a message on WhatsApp and watch it arrive here.
+                <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                  Listening. New messages show here as they arrive: send Mesiri one on WhatsApp.
+                  {items.length > 0 && (
+                    <>
+                      {' '}
+                      {items.length} earlier today:{' '}
+                      <button type="button" onClick={() => void replay()} className="border-b border-current font-medium text-foreground">
+                        Replay the day
+                      </button>{' '}
+                      to see them.
+                    </>
+                  )}
                 </p>
               ) : (
                 <ol className="m-0 mt-4 grid list-none gap-3 p-0" aria-live="polite">
