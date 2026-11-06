@@ -139,6 +139,12 @@ ALLOWED: tuple[Allowed, ...] = (
         "Vendor and category as text, as they said or as the bill shows." + _WRITE,
         hide=("source", "source_message_id", "correlation_id", "media_object_key"), fixed=(("source", "whatsapp"),),
     ),
+    Allowed(
+        "add_bill_photo", "POST", "/expenses/{expense_id}/attachments",
+        "Prepare adding this message's bill photo to an expense already saved (its expense_id from the facts or "
+        "list_expenses); the photo is attached by itself." + _WRITE,
+        hide=("data_base64", "content_type", "media_object_key"),
+    ),
     # Site day: weather and conditions, the DPR
     Allowed("site_day", "GET", "/dpr/site-days/{site_id}", "One site's day: conditions (weather, hours lost), plan, what is reported."),
     Allowed(

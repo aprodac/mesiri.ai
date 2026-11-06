@@ -11,8 +11,9 @@ ownership model differs from that path).
 
 Attachment reads (`/attachments`, `/{expense_id}/attachments`) serve
 receipt photos captured via the WhatsApp image-purpose picker (Finance
-Module Slice 6b) — write access stays WhatsApp-only, the dashboard never
-uploads a receipt itself, only views ones already captured. `media_object_key`
+Module Slice 6b). Since 5 Nov 2026 (WEB-60) a bill is also added to a saved
+expense with `POST /{expense_id}/attachments`: a file from the dashboard, or a
+WhatsApp photo that came after the expense was saved. `media_object_key`
 is never returned as-is; every attachment is resolved to a short-lived
 presigned URL via `ObjectStoragePort.generate_presigned_url()` so the
 dashboard never needs to know about R2/bucket keys directly.
@@ -39,6 +40,7 @@ from mesiri.application.finance.reverse_resolution import PostgresReverseTargetR
 from mesiri.application.vendors.resolution import PostgresVendorResolver
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
+from mesiri.domains.expenses.bill_file import bill_key, decode_bill
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import assert_downloadable_url
@@ -194,20 +196,10 @@ async def record_expense(
         media_object_key=body.media_object_key,
     )
 
-    if body.media_object_key:
-        # Only a file this company's own WhatsApp received: a key names no company, so
-        # without this a caller could attach (and then read) another company's photo.
-        owned = (
-            await conn.execute(
-                text(
-                    "SELECT 1 FROM inbound_messages "
-                    "WHERE organization_id = :org AND media_object_key = :key LIMIT 1"
-                ),
-                {"org": auth_context.organization_id, "key": body.media_object_key},
-            )
-        ).first()
-        if owned is None:
-            raise HTTPException(status_code=404, detail="Photo not found")
+    if body.media_object_key and not await _photo_is_ours(
+        conn, auth_context.organization_id, body.media_object_key
+    ):
+        raise HTTPException(status_code=404, detail="Photo not found")
 
     # Resolvers wired in (previously absent on the REST path -- a request
     # with no category_id and no matching category_text would have hit
@@ -631,13 +623,20 @@ async def list_expense_attachments(
     if expense is None or not _in_scope(expense.project_id, scope):
         raise HTTPException(status_code=404, detail="Expense not found")
 
+    return await _attachment_responses(conn, object_storage, auth_context.organization_id, expense_id)
+
+
+async def _attachment_responses(
+    conn: AsyncConnection, object_storage: ObjectStoragePort, organization_id: uuid.UUID, expense_id: uuid.UUID
+) -> list[ExpenseAttachmentResponse]:
     attachment_repo = PostgresExpenseAttachmentRepository(conn)
-    attachments = await attachment_repo.list_for_expense(auth_context.organization_id, expense_id)
+    attachments = await attachment_repo.list_for_expense(organization_id, expense_id)
     return [
         ExpenseAttachmentResponse(
             id=a.id,
             expense_id=a.expense_id,
             attachment_type=a.attachment_type,
+            created_at=getattr(a, "created_at", None),
             url=assert_downloadable_url(
                 await object_storage.generate_presigned_url(
                     a.media_object_key, expires_in_seconds=_ATTACHMENT_URL_TTL_SECONDS
@@ -646,6 +645,81 @@ async def list_expense_attachments(
         )
         for a in attachments
     ]
+
+
+async def _photo_is_ours(conn: AsyncConnection, organization_id: uuid.UUID, key: str) -> bool:
+    """Only a file this company's own WhatsApp received: a key names no company, so
+    without this a caller could attach (and then read) another company's photo."""
+    owned = (
+        await conn.execute(
+            text(
+                "SELECT 1 FROM inbound_messages "
+                "WHERE organization_id = :org AND media_object_key = :key LIMIT 1"
+            ),
+            {"org": organization_id, "key": key},
+        )
+    ).first()
+    return owned is not None
+
+
+class AddBill(BaseModel):
+    """A bill for an expense already saved: a file from the dashboard (``data_base64`` +
+    ``content_type``: a photo or a PDF, 700 KB or under), or a photo this company's
+    WhatsApp received (``media_object_key``). Exactly one of the two."""
+
+    data_base64: str | None = None
+    content_type: str | None = None
+    media_object_key: str | None = None
+
+
+@router.post(
+    "/{expense_id}/attachments", response_model=list[ExpenseAttachmentResponse], status_code=201
+)
+async def add_expense_bill(
+    expense_id: uuid.UUID,
+    body: AddBill,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+    object_storage: ObjectStoragePort = Depends(get_object_storage),
+):
+    """Add a bill photo (or PDF) to an expense; returns the expense's bills.
+
+    Whoever may record an expense on its project may add its bill: the same rule as
+    recording one with a photo (``_authorize_write``). Bills are evidence, so one is
+    added, never replaced; the same WhatsApp photo twice is kept once.
+    """
+    if bool(body.data_base64) == bool(body.media_object_key):
+        raise HTTPException(status_code=422, detail="Send either a file or a WhatsApp photo.")
+    expense = await PostgresExpenseRepository(conn).get_by_id(auth_context.organization_id, expense_id)
+    if expense is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    _authorize_write(auth_context, expense.project_id, expense.site_id)
+    if body.media_object_key:
+        key = body.media_object_key
+        if not await _photo_is_ours(conn, auth_context.organization_id, key):
+            raise HTTPException(status_code=404, detail="Photo not found")
+        already = (
+            await conn.execute(
+                text("SELECT 1 FROM expense_attachments WHERE expense_id = :e AND media_object_key = :k LIMIT 1"),
+                {"e": expense_id, "k": key},
+            )
+        ).first()
+    else:
+        try:
+            data, extension, content_type = decode_bill(body.data_base64 or "", body.content_type or "")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        key = bill_key(auth_context.organization_id, expense_id, extension)
+        await object_storage.put_object(key, data, content_type=content_type)
+        already = None
+    if already is None:
+        await PostgresExpenseAttachmentRepository(conn).create(
+            expense_id=expense_id,
+            media_object_key=key,
+            attachment_type="receipt",
+            created_by=auth_context.user_id,
+        )
+    return await _attachment_responses(conn, object_storage, auth_context.organization_id, expense_id)
 
 
 @router.post("/{expense_id}/reverse")

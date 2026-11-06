@@ -156,17 +156,19 @@ export default function ExpensesPage() {
   }
   const detail: ExpenseDetailData | null = opened && {
     id: opened.id,
+    number: opened.number,
     amount: opened.amount,
     category_name: opened.category,
-    category_id: opened.category_id,
-    vendor_name: opened.vendor ?? undefined,
-    project_name: opened.project ?? undefined,
-    site_name: opened.site ?? undefined,
-    recorded_date: opened.date,
-    status: opened.reversed ? 'reversed' : opened.payment,
-    receipt_url: photos.data?.[opened.id],
-    description: opened.description ?? undefined,
-    correlation_id: opened.correlation_id ?? undefined,
+    category_id: opened.category_id || undefined,
+    vendor_name: opened.vendor,
+    project_name: opened.project,
+    site_name: opened.site,
+    date: opened.date,
+    payment_label: PAYMENT[opened.payment].label,
+    payment_class: PAYMENT[opened.payment].className,
+    source: opened.source,
+    reversed: opened.reversed,
+    description: opened.description,
   }
 
   const exportRows = (rows: Expense[]) =>
@@ -344,7 +346,19 @@ export default function ExpensesPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
                               <DropdownMenuItem onClick={() => open(e)}>Open</DropdownMenuItem>
-                              {photos.data?.[e.id] && <DropdownMenuItem onClick={() => setPhotoUrl(photos.data![e.id])}>Bill photo</DropdownMenuItem>}
+                              {photos.data?.[e.id] ? (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    const url = photos.data![e.id]
+                                    if (/\.pdf(\?|$)/i.test(url)) window.open(url, '_blank', 'noreferrer')
+                                    else setPhotoUrl(url)
+                                  }}
+                                >
+                                  Bill
+                                </DropdownMenuItem>
+                              ) : (
+                                !e.reversed && !readOnly && <DropdownMenuItem onClick={() => open(e)}>Add bill</DropdownMenuItem>
+                              )}
                               {!e.reversed && !readOnly && (
                                 <>
                                   <DropdownMenuSeparator />
@@ -381,6 +395,7 @@ export default function ExpensesPage() {
         open={!!detail}
         onOpenChange={(o) => !o && close()}
         expense={detail}
+        readOnly={readOnly}
         onOpenVendor={() => {
           if (opened?.vendor) setQ(opened.vendor)
           close()
@@ -389,7 +404,6 @@ export default function ExpensesPage() {
           setCategory(id)
           close()
         }}
-        onOpenAccount={(id) => navigate(`/finance/money?account=${id}`)}
       />
 
       <Dialog open={taking !== null} onOpenChange={(o) => !o && setTaking(null)}>
@@ -417,7 +431,7 @@ export default function ExpensesPage() {
       <Dialog open={photoUrl !== null} onOpenChange={(o) => !o && setPhotoUrl(null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold">Bill photo</DialogTitle>
+            <DialogTitle className="text-base font-semibold">Bill</DialogTitle>
           </DialogHeader>
           {photoUrl && <img src={photoUrl} alt="Bill photo" className="max-h-[70vh] w-full rounded-md object-contain" />}
         </DialogContent>

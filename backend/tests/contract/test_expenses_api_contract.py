@@ -301,3 +301,120 @@ async def test_the_list_names_the_vendor_project_site_and_number(client, admin_c
     row = next(r for r in rows if r["id"] == resp.json()["id"])
     assert row["vendor_name"] == "KMS Agencies" and row["vendor_id"]
     assert row["project_name"] and row["expense_number"]
+
+
+# WEB-60 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense"): a bill is added to a
+# saved expense, from the dashboard (a file) or from WhatsApp (a photo that came after the save).
+_JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
+
+
+@pytest.fixture
+def storage(client):
+    from mesiri.infrastructure.objectstorage.dependency import get_object_storage
+    from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage
+
+    class Store(FakeObjectStorage):
+        async def generate_presigned_url(self, key, *, expires_in_seconds=900, method="GET"):
+            return f"https://files.test/{key}"
+
+    store = Store()
+    client._transport.app.dependency_overrides[get_object_storage] = lambda: store
+    return store
+
+
+async def _expense(client, ctx) -> str:
+    resp = await client.post(
+        "/expenses", json=_body(ctx), headers={**_auth(ctx["token"]), "Idempotency-Key": str(uuid.uuid4())}
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+async def _inbound_photo(test_engine, org_id, key: str) -> None:
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO inbound_messages (id, correlation_id, sender_wa_id, message_type, raw_payload, "
+                "normalized_message, dedup_key, raw_payload_captured, processing_status, organization_id, "
+                "received_at, media_object_key) VALUES (:id, :c, '15555550199', 'image', '{}', '{}', :d, true, "
+                "'completed', :org, now(), :key)"
+            ),
+            {"id": uuid.uuid4(), "c": f"c-{uuid.uuid4().hex}", "d": f"d-{uuid.uuid4().hex}", "org": org_id, "key": key},
+        )
+
+
+async def test_a_bill_file_from_the_dashboard_is_kept_and_listed(client, test_org, admin_ctx, storage):
+    import base64
+
+    expense_id = await _expense(client, admin_ctx)
+    resp = await client.post(
+        f"/expenses/{expense_id}/attachments",
+        json={"data_base64": base64.b64encode(_JPEG).decode(), "content_type": "image/jpeg"},
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert resp.status_code == 201, resp.text
+    assert len(resp.json()) == 1 and resp.json()[0]["attachment_type"] == "receipt"
+    listed = (await client.get(f"/expenses/{expense_id}/attachments", headers=_auth(admin_ctx["token"]))).json()
+    assert len(listed) == 1
+    gallery = (await client.get("/expenses/attachments", headers=_auth(admin_ctx["token"]))).json()
+    assert any(g["expense_id"] == expense_id for g in gallery)
+    (key,) = list(storage._store)
+    assert key.startswith(f"org/{test_org}/expenses/{expense_id}/bill-") and storage._store[key][1] == "image/jpeg"
+
+
+async def test_a_file_that_is_not_a_bill_is_refused(client, admin_ctx, storage):
+    import base64
+
+    expense_id = await _expense(client, admin_ctx)
+    for body in (
+        {"data_base64": base64.b64encode(b"<svg/>").decode(), "content_type": "image/svg+xml"},
+        {"data_base64": base64.b64encode(b"not a jpeg").decode(), "content_type": "image/jpeg"},
+        {"data_base64": base64.b64encode(b"\xff\xd8\xff" + b"0" * (701 * 1024)).decode(), "content_type": "image/jpeg"},
+        {},
+    ):
+        resp = await client.post(f"/expenses/{expense_id}/attachments", json=body, headers=_auth(admin_ctx["token"]))
+        assert resp.status_code == 422, resp.text
+    listed = (await client.get(f"/expenses/{expense_id}/attachments", headers=_auth(admin_ctx["token"]))).json()
+    assert listed == []
+
+
+async def test_a_whatsapp_photo_after_the_save_is_added_once(client, test_engine, test_org, admin_ctx, storage):
+    expense_id = await _expense(client, admin_ctx)
+    key = f"org/{test_org}/whatsapp/bill-{uuid.uuid4().hex}.jpg"
+    await _inbound_photo(test_engine, test_org, key)
+    for _ in range(2):
+        resp = await client.post(
+            f"/expenses/{expense_id}/attachments", json={"media_object_key": key}, headers=_auth(admin_ctx["token"])
+        )
+        assert resp.status_code == 201, resp.text
+    assert len(resp.json()) == 1
+
+
+async def test_another_companys_photo_is_never_attached(client, test_engine, admin_ctx, storage):
+    expense_id = await _expense(client, admin_ctx)
+    resp = await client.post(
+        f"/expenses/{expense_id}/attachments",
+        json={"media_object_key": f"org/{uuid.uuid4()}/whatsapp/x.jpg"},
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert resp.status_code == 404
+
+
+async def test_a_bill_needs_access_to_the_expenses_project(client, test_engine, test_org, admin_ctx, storage):
+    import base64
+
+    expense_id = await _expense(client, admin_ctx)
+    other_project = await _make_project(test_engine, test_org)
+    user_id = await _make_user(test_engine, test_org, "site_engineer")
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE users SET access_policy = CAST(:policy AS jsonb) WHERE id = :id"),
+            {"id": user_id,
+             "policy": f'{{"mode": "custom_projects", "projects": [{{"project_id": "{other_project}", "site_ids": null}}]}}'},
+        )
+    resp = await client.post(
+        f"/expenses/{expense_id}/attachments",
+        json={"data_base64": base64.b64encode(_JPEG).decode(), "content_type": "image/jpeg"},
+        headers=_auth(_token(user_id, test_org, "site_engineer")),
+    )
+    assert resp.status_code == 403
