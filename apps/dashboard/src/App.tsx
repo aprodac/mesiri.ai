@@ -17,6 +17,7 @@ import LabourPage from '@/pages/LabourPage'
 import SiteLogPage from '@/pages/SiteLogPage'
 import Projects from '@/pages/Projects'
 import ProjectDetails from '@/pages/ProjectDetails'
+import ProjectBoqPage from '@/pages/ProjectBoqPage'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
 import ExpensesPage from '@/pages/ExpensesPage'
@@ -96,6 +97,7 @@ export default function App() {
           {/* Setup */}
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
+          <Route path="projects/:id/boq" element={<ProjectBoqPage />} />
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="company" element={<CompanyDetails />} />
