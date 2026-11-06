@@ -1,6 +1,6 @@
 # Cost control: budget vs actual, every day (GM meeting, 6 Nov 2026)
 
-> **Status:** plan written 6 Nov 2026, **nothing built**. Tracker section **CC** in
+> **Status:** plan written 6 Nov 2026. **Built:** CC-02 (BOQ), 6 Nov 2026, see section 4a. Tracker section **CC** in
 > [V1_TRACKER.md](V1_TRACKER.md). Builds on [procurement-plan.md](procurement-plan.md) (PRC) and on the
 > never-wired planning tables from [drawings-to-progress-plan.md](drawings-to-progress-plan.md).
 > Decisions D-CC1..D-CC7 (section 9) have a proposed default; rows that need one are marked.
@@ -89,6 +89,34 @@ dates, `manual_completion_pct`) and `work_package_planned_items` (`work_type`, `
 | `expense_categories.kind` (`MATERIAL`/`LABOUR`/`SUBCONTRACT`/`EQUIPMENT`/`OVERHEAD`/`OTHER`, nullable) | CC-01 | Lets receipts and attendance land in the right cost centre without new tables |
 
 No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 0484).
+
+### 4a. As built: BOQ (CC-02, 6 Nov 2026)
+
+- **Migration 0508** (additive): on `work_package_planned_items`, `organization_id` (filled from the
+  section, then NOT NULL, row-level security as 0484), `boq_code`, `client_rate`, `labour_rate`,
+  `material_rate`, `subcontract_rate` (numeric, >= 0, nullable), `sort_order`; `sort_order` on
+  `work_packages`. Downgrade drops exactly these.
+- **Words used:** a BOQ *section* is a `work_packages` row; a BOQ *line* is a
+  `work_package_planned_items` row; `work_type` holds the line's wording ("Internal plastering 12 mm").
+- **Money** (`domains/progress/boq.py`, pure): contract value = quantity x client rate; budget cost =
+  quantity x (labour + material + subcontract); margin = the difference. A rate left empty is "not
+  priced", never zero; totals add the priced lines and count the unpriced ones; the project margin only
+  shows when every line has both. Sent as exact strings ("756000.00").
+- **Revisions (ADR-D5):** a new planned quantity keeps the old row as history and adds `revision_no + 1`;
+  every other field changes in place. Only the current revision is shown or editable.
+- **Routes** (`domains/progress/boq_router.py`, module `dpr`): `GET /projects/{id}/boq`;
+  `POST/PATCH/DELETE .../sections[/{id}]`; `POST .../sections/{id}/lines`; `PATCH/DELETE .../lines/{id}`.
+  409 for the same work and unit twice in a section, or a section code used twice; 409 when removing a
+  section that has logged activities; 422 for an unknown unit (units resolved by the shared alias table:
+  "sq ft", "m3", "cum").
+- **Who:** read and write by the roles that see the company's spending (`may_view_expenses`: owner,
+  admin, finance, project manager), within their projects; 403 for site engineers. D-CC4 (who else sees
+  rates) is still open; this is the most restrictive default.
+- **Dashboard:** `/projects/:id/boq` (`ProjectBoqPage`): totals (contract value, budget cost, margin),
+  one table per section with section totals, add/edit/remove dialogs, a plain-language explainer; a
+  "BOQ and budget" summary on the project page for the same roles. No sidebar change (D-CC5 open).
+- **Not built yet:** Excel import (CC-13), cost centre per line (CC-01), material norms (CC-03), work
+  done against lines (CC-04), WhatsApp access (later, through v3 `ALLOWED`).
 
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
