@@ -157,7 +157,9 @@ async def test_the_reported_conversation_adds_primer_sets_the_drum_and_receives_
     assert second.options == []
     assert [e.tool for e in second.pending] == ["add_material", "record_receipt"]
     assert second.pending[1].body["material_id"] == "new:Primer"
-    assert "new:Primer" in second.calls[1]["result"]["note"]
+    # [268]: the code prepares Primer and the line itself on the first call; the model's own add_material adds nothing.
+    assert "also prepared adding Primer" in second.calls[0]["result"]["note"]
+    assert "already on the card" in second.calls[1]["result"]["status"]
     history = [ChatMessage(role="user", text="2 drum primer vannu"), ChatMessage(role="model", text="Primer is new.")]
     # 3. "20 litre": the size, for the material by its name.
     third = await _turn(store, [[_conversion("Primer", DRUM, 20, "1 drum = 20 L")], "Ready."], "20 litre",

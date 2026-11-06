@@ -69,16 +69,17 @@ async def test_a_translation_matches_a_whole_name_only_never_part_of_one() -> No
     catalog = [{"id": WIRE, "name": "Binding Wire", "aliases": []}]
     turn, saved, _ = await _run(Translating([[_line("kambi", WIRE, 70)], "Sheri."], {"kambi": "Wire"}),
                                 "70 kambi vannu", catalog=catalog)
-    assert saved == []
-    told = turn.calls[0]["result"]["error"]
-    assert "'Wire'" in told and "not in the company's material list" in told  # the English name offered, no guess
+    # [268]: not listed: the code adds it under its English name and records the line on it (never Binding Wire).
+    assert saved[0] == ("material", "Wire")
+    assert saved[1][0] == "receipt" and saved[1][1] != WIRE and saved[1][2] == 70.0
+    assert "also prepared adding Wire" in turn.calls[0]["result"]["note"]
 
 
 async def test_guard_an_english_word_that_translates_to_itself_costs_no_match_change() -> None:
     catalog = [{"id": CEMENT, "name": "Cement", "aliases": []}]
     model = Translating([[_line("primer", CEMENT, 2)], "Ok."], {})
     turn, saved, _ = await _run(model, "2 drum primer came", catalog=catalog)
-    assert saved == [] and "'Primer' is not in the company's material list" in turn.calls[0]["result"]["error"]
+    assert saved[0] == ("material", "Primer") and saved[1][1] != CEMENT  # [268]: added, never the near Cement
 
 
 # -- 3. structural questions -----------------------------------------------------------------------------------

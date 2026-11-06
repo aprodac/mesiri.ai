@@ -143,7 +143,8 @@ async def already_listed(client: ApiClient, name: str) -> str:
 
 async def settle_material(client: ApiClient, body: dict[str, Any], said: str, words: str,
                           taught: list[tuple[str, str]],
-                          english: Callable[[str], Awaitable[str]] | None = None) -> tuple[str, list[str]]:
+                          english: Callable[[str], Awaitable[str]] | None = None,
+                          found: dict[str, Any] | None = None) -> tuple[str, list[str]]:
     """Check ``body["material_id"]`` is the material they meant. ``taught``: (material_id, alias) pairs already
     prepared this conversation (the person just chose). ``english``: Mesiri's own translation of a word ([248]).
     Returns ("", []) when it is, else what to tell the model and the buttons. The list unreadable: ("", []), and the
@@ -209,6 +210,9 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
     near = nearest(said_english, rows, row)
     word = title(said)
     names = [str(r["name"]) for r in near]
+    if found is not None:
+        # [268]: what the code needs to prepare the new material and its line itself (``found``: name, nearest).
+        found.update({"new_name": title(said_english), "near": names})
     # WA-194: a material not in the list never blocks the update ("should never become a blocker"). It is held
     # as a new material WITH its line, so one Save adds it to the catalogue and records the line; a person who meant
     # another one says so and the line moves there (``change_ready_entry``; the code drops the new material).

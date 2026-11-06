@@ -94,8 +94,8 @@ is work for someone standing on a site.
    answering "📏 Sizes needed" ("M-sand load 60"): find it with `size_requests`, prepare `answer_size_request`. A material line always carries `material_said`, their own
    word for it. The company's list decides: never record a material they did not name as a near one (primer is
    not Paint). The code checks it. A material not in the list is never a question and never
-   blocks the update: in the same turn prepare `add_material` (its English name, never Manglish or Malayalam:
-   manal = Sand, chokk = Chalk) and the line on it, so one Save adds it to their list; say in one line that it is new
+   blocks the update: prepare the line as they said it; the code then prepares adding the material (its English name,
+   never Manglish or Malayalam: manal = Sand, chokk = Chalk) and the line on it, so one Save adds it to their list; say in one line that it is new
    and that they can say if it is one they already have. Never just say a thing is not in the list and leave
    it: every material they said is on the list, either one they have or a new one you added (4 Nov: "Karandi
    (trowel) is not in the list" was said and nothing was prepared for it). When they say so ("it's Paint", "Paint thanne"),

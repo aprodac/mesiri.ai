@@ -616,6 +616,34 @@ class ApiAgent:
             return {"status": "changed in the ready list, NOT saved", "entry": n, "now": summary, **moved,
                     **({"size": size_note.strip()} if size_note else {})}
 
+        async def new_material_with_line(name: str, arguments: dict, found: dict[str, Any]) -> ToolOutcome | None:
+            """[268]: a line for a material not in the list: the new material and the line, both on the card (one Save
+            adds the material, then records the line). None when either cannot be prepared (the model is told instead)."""
+            material = str(found["new_name"])
+            tries[f"{ADD_TOOL}:category"] = 1  # its category comes from its name, or none: never a question
+            unit_id = str(arguments.get("unit_id") or "")
+            codes = {str(u.get("id")): str(u.get("code") or "").lower() for u in await _units(client)}
+            from mesiri.domains.materials.unit_conversion import natural_stock_unit
+
+            # Counted in the unit they said, unless that is a delivery's unit (a drum, a load) and its kind has its own.
+            delivery = codes.get(unit_id) in NOT_A_STOCK_UNIT and natural_stock_unit(material) is not None
+            counted = {"default_unit_id": unit_id} if is_uuid(unit_id) and not delivery else {}
+            added = await handler(ADD_TOOL, {"name": material, CONFIRM_ARG: f"New material: {material}", **counted})
+            content = added.content if isinstance(added.content, dict) else {}
+            if content.get("error") or not new or new[-1].tool != ADD_TOOL:
+                return None
+            adding = new[-1]
+            line = await handler(name, {**arguments, "material_id": f"{NEW}{material}"})
+            content = line.content if isinstance(line.content, dict) else {}
+            if content.get("error"):
+                new.remove(adding)  # never a material added with no line for it
+                return line
+            near = " or ".join(found.get("near") or [])
+            return ToolOutcome(content={**content, "note": str(content.get("note") or "") + (
+                f" The code also prepared adding {material} to their material list (it saves first, with this line): "
+                "do not call add_material for it. Say in ONE line, in their language, that it is new and Save adds it"
+                + (f", and that if it is {near} they can just say so" if near else "") + ".")})
+
         async def handler(name: str, arguments: dict) -> ToolOutcome:
             if name == TELL_THE_TEAM:
                 # TM-18 / WA-126: the same feedback tool as v2. It writes nothing: the call is in the
@@ -788,8 +816,16 @@ class ApiAgent:
                 # [210]: the id must be the material they named (or a name the company taught it), never a near one.
                 taught = [(e.path.split("/")[2], str(e.body.get("alias") or "")) for e in [*waiting, *new]
                           if e is not None and e.tool == ALIAS_TOOL]
+                found: dict[str, Any] = {}
                 problem, buttons = await settle_material(
-                    client, body, str(arguments.get(MATERIAL_SAID) or ""), their_words, taught, english)
+                    client, body, str(arguments.get(MATERIAL_SAID) or ""), their_words, taught, english, found)
+                if problem and found.get("new_name"):
+                    # [268] (6 Nov, Ilan: "20 TMT Steel bars vannu", twice, and nothing came of it): a material not in the
+                    # list was the model's job in three calls (the line, add_material, the line again), and add_material
+                    # asked it for a category: it gave up and nothing was prepared. The code prepares both now, in this
+                    # call: the new material (its category found from its name, never asked) and the line on it.
+                    if (outcome := await new_material_with_line(name, arguments, found)) is not None:
+                        return outcome
                 if problem:
                     unit_ask[:] = buttons
                     return ToolOutcome(content={"error": problem})
@@ -860,6 +896,12 @@ class ApiAgent:
                 if check.get("line"):
                     arguments = {**arguments, CONFIRM_ARG: check["line"]}  # drawn by the code, never the model's
             if name == ADD_TOOL:
+                if pending_ref(body.get("name"), [str(e.body.get("name") or "") for e in [*waiting, *new]
+                                                  if e is not None and e.tool == ADD_TOOL]):
+                    # [268]: the code prepared it already (with the line that named it): never a second one on the card.
+                    return ToolOutcome(content={"status": (
+                        f"{body.get('name')} is already on the card to be added; nothing more to prepare for it. Its "
+                        f"lines name it material_id \"{NEW}{body.get('name')}\".")})
                 if (listed := await already_listed(client, str(body.get("name") or ""))) and " or " in listed:
                     # [254]: "Metal" is the listed aggregate of either size: one question, never a new material.
                     unit_ask[:] = [n.split(" (material_id")[0] for n in listed.split(" or ")][:3]
