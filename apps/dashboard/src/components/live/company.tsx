@@ -373,6 +373,9 @@ interface Flight {
 }
 function Flyer({ flight, onDone }: { flight: Flight; onDone: () => void }) {
   const ref = React.useRef<HTMLSpanElement>(null)
+  // onDone is a fresh function each render: a ref, so a re-render never restarts the flight.
+  const done = React.useRef(onDone)
+  done.current = onDone
   React.useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
@@ -388,9 +391,9 @@ function Flyer({ flight, onDone }: { flight: Flight; onDone: () => void }) {
       ],
       { duration: 900, delay: flight.delay ?? 0, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'backwards' },
     )
-    anim.onfinish = onDone
+    anim.onfinish = () => done.current()
     return () => anim.cancel()
-  }, [flight, onDone])
+  }, [flight])
   return (
     <span
       ref={ref}
@@ -847,6 +850,23 @@ export function CompanyLive({
     })
   }
   const newSiteNames = sites.filter((s) => newSites.has(s.site_id)).map((s) => s.site_name)
+  // The day's totals sit fixed at the bottom and grow (presenter mode's bigger numbers, wrapping
+  // on a narrower screen): the page keeps that much room under its content, and the sticky stage
+  // stops above it, so nothing hides behind the bar.
+  const footRef = React.useRef<HTMLElement>(null)
+  const pageRef = React.useRef<HTMLDivElement>(null)
+  const [footH, setFootH] = React.useState(72)
+  React.useLayoutEffect(() => {
+    const el = footRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setFootH(Math.ceil(el.getBoundingClientRect().height)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // The show starts at the top of its card: scrolled down a long message list, it would open off screen.
+  React.useEffect(() => {
+    if (hello) pageRef.current?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' })
+  }, [hello])
   React.useEffect(() => {
     if (!sitePanel) return
     const onKey = (e: KeyboardEvent) => {
@@ -857,7 +877,11 @@ export function CompanyLive({
   }, [sitePanel, onCloseSite])
 
   return (
-    <div className={cn('min-h-svh bg-background px-4 pb-6 sm:px-8 sm:pb-24 lg:px-12', presenting && 'text-[1.12rem]')}>
+    <div
+      ref={pageRef}
+      className={cn('min-h-svh bg-background px-4 pb-6 sm:px-8 sm:pb-[calc(var(--live-foot)+2rem)] lg:px-12', presenting && 'text-[1.12rem]')}
+      style={{ '--live-foot': `${footH}px` } as React.CSSProperties}
+    >
       <div className="mx-auto max-w-[1600px]">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-6 pb-4">
           <div className="flex items-baseline gap-4">
@@ -1014,7 +1038,7 @@ export function CompanyLive({
               className={cn('order-1 min-w-0 lg:order-2', current?.alarm && 'relative z-40', hello && 'lg:col-span-2 lg:order-1 xl:col-span-1 xl:order-2')}
             >
               {sending ? (
-                <div className="sticky top-6 grid justify-items-center gap-4 border border-foreground/15 bg-background px-4 py-6 text-center sm:px-6">
+                <div className="sticky top-6 grid max-h-[calc(100svh-var(--live-foot)-3rem)] justify-items-center gap-4 overflow-y-auto border border-foreground/15 bg-background px-4 py-6 text-center sm:px-6">
                   <Spark mood="send" size={presenting ? 120 : 90} />
                   <div>
                     <Label className="block">The day’s report</Label>
@@ -1027,7 +1051,7 @@ export function CompanyLive({
                   </div>
                 </div>
               ) : hello ? (
-                <div className="sticky top-6 border-2 border-foreground bg-background px-4 py-5 sm:px-7 sm:py-6">
+                <div className="border-2 border-foreground bg-background px-4 py-5 sm:px-7 sm:py-6">
                   <MeetMesiri
                     to={hello.to}
                     short={hello.short}
@@ -1040,7 +1064,7 @@ export function CompanyLive({
                   />
                 </div>
               ) : (
-              <div className="sticky top-6 grid bg-background justify-items-center gap-4 border border-foreground/15 px-4 py-5 text-center sm:gap-5 sm:px-6 sm:py-8">
+              <div className="sticky top-6 grid max-h-[calc(100svh-var(--live-foot)-3rem)] justify-items-center gap-4 overflow-y-auto border border-foreground/15 bg-background px-4 py-5 text-center sm:gap-5 sm:px-6 sm:py-8">
                 <div ref={sparkRef}>
                   <Spark
                     mood={current ? sparkMood(current.item, current.step, current.alarm) : working.length ? (isVoice(working[0]) ? 'listen' : isPhoto(working[0]) ? 'look' : 'think') : 'idle'}
@@ -1257,6 +1281,7 @@ export function CompanyLive({
 
       {/* The company's day, counting up */}
       <footer
+        ref={footRef}
         className={cn(
           '-mx-4 mt-10 border-t border-foreground bg-background/95 backdrop-blur transition-transform duration-500 sm:fixed sm:inset-x-0 sm:bottom-0 sm:z-40 sm:mx-0 sm:mt-0',
           hello && 'sm:translate-y-full',
@@ -1394,7 +1419,7 @@ function MessageCard({
   return (
     <li
       className={cn(
-        'grid gap-2 border px-4 py-3 transition-[border-color,background-color] duration-500',
+        'grid min-w-0 gap-2 border px-4 py-3 [overflow-wrap:anywhere] transition-[border-color,background-color] duration-500',
         active ? 'border-primary bg-[color-mix(in_srgb,var(--primary)_6%,transparent)]' : 'border-foreground/15',
         m.source === 'sample' && 'border-dashed border-foreground/40',
       )}

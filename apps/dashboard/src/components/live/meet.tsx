@@ -97,7 +97,7 @@ const Kicker = ({ children }: { children: React.ReactNode }) => (
   </p>
 )
 const Big = ({ children, s = 0.2, className }: { children: React.ReactNode; s?: number; className?: string }) => (
-  <h2 className={cn('m-0 text-[32px] font-bold leading-[1.04] tracking-[-0.035em] sm:text-[46px]', className)} style={at('meet-rise', s, 700)}>
+  <h2 className={cn('m-0 text-[32px] font-bold leading-[1.04] tracking-[-0.035em] @xl:text-[46px]', className)} style={at('meet-rise', s, 700)}>
     {children}
   </h2>
 )
@@ -105,7 +105,7 @@ const Big = ({ children, s = 0.2, className }: { children: React.ReactNode; s?: 
 const Bubble = ({ me, children, s, className }: { me?: boolean; children: React.ReactNode; s: number; className?: string }) => (
   <div
     className={cn(
-      'max-w-[92%] rounded-[12px] px-3.5 py-2.5 text-[16px] leading-snug sm:text-[18px]',
+      'max-w-[92%] rounded-[12px] px-3.5 py-2.5 text-[16px] leading-snug @xl:text-[18px]',
       me ? 'justify-self-end rounded-tr-none bg-[#d9fdd3] text-[#111]' : 'justify-self-start rounded-tl-none border border-foreground/15 bg-background',
       className,
     )}
@@ -125,19 +125,19 @@ function TitleScene({ to }: { to: string | null }) {
     { n: 4, unit: '', what: 'languages: Malayalam, Manglish, Hinglish, English' },
   ]
   return (
-    <div className="grid gap-8">
+    <div className="grid grid-cols-1 gap-8">
       <div>
         <Kicker>Meet Mesiri{to ? ` · for ${to}` : ''}</Kicker>
       </div>
-      <Big s={1.3} className="sm:text-[68px]">
+      <Big s={1.3} className="@xl:text-[68px]">
         Your site
         <br />
         reports itself.
       </Big>
-      <ul className="m-0 grid list-none grid-cols-2 gap-x-6 gap-y-5 p-0 sm:grid-cols-4">
+      <ul className="m-0 grid list-none grid-cols-2 gap-x-6 gap-y-5 p-0 @xl:grid-cols-4">
         {stats.map((st, i) => (
           <li key={st.what} className="border-t-2 border-foreground pt-3" style={at('meet-rise', 2.3 + i * 0.3)}>
-            <span className="text-[44px] font-bold leading-none tracking-[-0.04em] text-primary sm:text-[54px]">
+            <span className="text-[44px] font-bold leading-none tracking-[-0.04em] text-primary @xl:text-[54px]">
               <Count to={st.n} delay={2.4 + i * 0.3} ms={700} />
               {st.unit && <span className="ml-1 text-[24px]">{st.unit}</span>}
             </span>
@@ -160,19 +160,19 @@ const CARD_LINES: { icon: LucideIcon; tone: string; title: string; sub: string; 
 function CardScene({ site }: { site: string }) {
   const said = 'Innu Ravi contractor-nte 12 mason, 5 helper. Cement 150 chaakku vannu, Malabar Traders. Second floor slab shuttering start cheythu. Mixer breakdown aayi, 2 hour poyi.'
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <div>
         <Kicker>One voice note</Kicker>
         <Big>Five updates. One tap.</Big>
       </div>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-        <div className="grid gap-3">
+      <div className="grid grid-cols-1 items-start gap-6 @3xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <div className="grid grid-cols-1 gap-3">
           <Bubble me s={0.6}>
             <span className="flex items-center gap-3 text-[#0f5132]">
               <Mic className="size-5" /> <Bars /> <span className="font-mono text-xs">0:21</span>
             </span>
           </Bubble>
-          <p className="m-0 border-l-4 border-primary pl-4 text-[17px] italic leading-relaxed sm:text-[19px]" style={at('meet-rise', 1.6)}>
+          <p className="m-0 border-l-4 border-primary pl-4 text-[17px] italic leading-relaxed @xl:text-[19px]" style={at('meet-rise', 1.6)}>
             “<Typed text={said} ms={16} delay={1.8} />”
           </p>
         </div>
@@ -183,7 +183,7 @@ function CardScene({ site }: { site: string }) {
               <span className="relative">
                 <span className="bg-foreground px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] text-background">Draft · not saved</span>
                 <span
-                  className="absolute inset-0 grid place-items-center bg-[var(--success)] font-mono text-[11px] uppercase tracking-[0.08em] text-white"
+                  className="absolute inset-0 grid grid-cols-1 place-items-center bg-[var(--success)] font-mono text-[11px] uppercase tracking-[0.08em] text-white"
                   style={at('meet-fade', 8.3, 300)}
                 >
                   ✅ Saved
@@ -192,13 +192,13 @@ function CardScene({ site }: { site: string }) {
               <span className="text-xs text-muted-foreground">Today · 9:05 AM</span>
             </div>
             <p className="m-0 px-4 pt-1 text-[22px] font-bold tracking-[-0.02em]">{site}</p>
-            <ol className="m-0 grid list-none gap-0 p-0 px-4 py-2">
+            <ol className="m-0 grid grid-cols-1 list-none gap-0 p-0 px-4 py-2">
               {CARD_LINES.map((l, i) => {
                 const Icon = l.icon
                 return (
                   <li key={i} className="flex items-center gap-3 border-b border-dashed border-foreground/15 py-2.5 last:border-0" style={at('meet-deal', 4.8 + i * 0.4)}>
                     <span className="w-4 font-mono text-xs text-primary">{i + 1}</span>
-                    <span className={cn('grid size-8 shrink-0 place-items-center rounded-md', l.tone)}>
+                    <span className={cn('grid grid-cols-1 size-8 shrink-0 place-items-center rounded-md', l.tone)}>
                       <Icon className="size-4" />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -258,7 +258,7 @@ function LanguagesScene() {
     { tag: 'English', text: 'Today 12 masons and 5 helpers came, Ravi contractor’s team.' },
   ]
   return (
-    <div className="grid gap-8">
+    <div className="grid grid-cols-1 gap-8">
       <div>
         <Kicker>Any language</Kicker>
         <Big>
@@ -268,7 +268,7 @@ function LanguagesScene() {
         </Big>
       </div>
       <div className="relative">
-        <ul className="m-0 grid list-none gap-3 p-0 sm:grid-cols-4">
+        <ul className="m-0 grid grid-cols-1 list-none gap-3 p-0 @xl:grid-cols-4">
           {ways.map((w, i) => (
             <li key={w.tag} style={still() ? undefined : { animation: `meet-pop 450ms cubic-bezier(.2,.9,.3,1) ${0.6 + i * 0.35}s both, meet-converge 700ms ease-in 3.6s forwards` }}>
               <div className="h-full rounded-[12px] bg-[#d9fdd3] px-3.5 py-3 text-[#111]">
@@ -278,10 +278,10 @@ function LanguagesScene() {
             </li>
           ))}
         </ul>
-        <div className="absolute inset-0 grid place-items-center" style={at('meet-pop', 4.1, 600)}>
+        <div className="absolute inset-0 grid grid-cols-1 place-items-center" style={at('meet-pop', 4.1, 600)}>
           <div className="border-2 border-foreground bg-background px-5 py-4 text-center">
             <p className="m-0 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">All four become the same report line</p>
-            <p className="m-0 mt-1 text-[22px] font-bold tracking-[-0.02em] sm:text-[30px]">Manpower · Ravi contractor · Mason 12 · Helper 5</p>
+            <p className="m-0 mt-1 text-[22px] font-bold tracking-[-0.02em] @xl:text-[30px]">Manpower · Ravi contractor · Mason 12 · Helper 5</p>
           </div>
         </div>
       </div>
@@ -300,14 +300,14 @@ function WordsScene() {
     ['മണൽ', 'manal', 'sand'],
   ]
   return (
-    <div className="grid gap-8">
+    <div className="grid grid-cols-1 gap-8">
       <div>
         <Kicker>Site words</Kicker>
         <Big>It understands how sites talk.</Big>
       </div>
-      <ul className="m-0 grid list-none grid-cols-2 gap-px bg-foreground p-px p-0 sm:grid-cols-4 lg:grid-cols-7">
+      <ul className="m-0 grid list-none grid-cols-2 gap-px bg-foreground p-px p-0 @xl:grid-cols-4 @3xl:grid-cols-7">
         {words.map(([ml, roman, en], i) => (
-          <li key={ml} className="relative grid min-h-36 content-start gap-1 bg-background px-4 py-4" style={at('meet-deal', 0.5 + i * 0.15)}>
+          <li key={ml} className="relative grid grid-cols-1 min-h-36 content-start gap-1 bg-background px-4 py-4" style={at('meet-deal', 0.5 + i * 0.15)}>
             <span className="text-[30px] font-bold leading-tight">{ml}</span>
             <span className="text-sm text-muted-foreground">{roman}</span>
             <span className="mt-2 text-[22px] font-bold text-primary" style={at('meet-flip', 2 + i * 0.3, 500)}>
@@ -325,17 +325,17 @@ function WordsScene() {
 
 function AskScene({ site }: { site: string }) {
   return (
-    <div className="grid gap-8">
+    <div className="grid grid-cols-1 gap-8">
       <div>
         <Kicker>Ask anything</Kicker>
         <Big>Ask on WhatsApp. Get the number.</Big>
       </div>
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-8 @3xl:grid-cols-2">
         {[
           { q: 'സിമന്റ് എത്ര ചാക്ക് ബാക്കിയുണ്ട്?', a: `${site}-ൽ ഇപ്പോൾ`, n: 210, unit: 'ചാക്ക് Cement ഉണ്ട്.', fill: 0.62, s: 0.6 },
           { q: 'Block B-il kambi ethra und?', a: 'Block B-il ippol', n: 2100, unit: 'kg Steel und.', fill: 0.84, s: 3.4 },
         ].map((x) => (
-          <div key={x.q} className="grid gap-3">
+          <div key={x.q} className="grid grid-cols-1 gap-3">
             <Bubble me s={x.s}>
               {x.q}
             </Bubble>
@@ -363,13 +363,13 @@ function AskScene({ site }: { site: string }) {
 
 function CatchesScene() {
   return (
-    <div className="grid gap-8">
+    <div className="grid grid-cols-1 gap-8">
       <div>
         <Kicker>Nothing lost</Kicker>
         <Big>It catches what people miss.</Big>
       </div>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="grid content-start gap-3 border-t-2 border-foreground pt-4" style={at('meet-rise', 0.5)}>
+      <div className="grid grid-cols-1 gap-6 @3xl:grid-cols-3">
+        <div className="grid grid-cols-1 content-start gap-3 border-t-2 border-foreground pt-4" style={at('meet-rise', 0.5)}>
           <p className="m-0 font-semibold">A correction, in their words</p>
           <Bubble me s={0.9}>
             cement 12 alla, 14 chaakku
@@ -386,7 +386,7 @@ function CatchesScene() {
             chaakku aakki.
           </Bubble>
         </div>
-        <div className="grid content-start gap-3 border-t-2 border-foreground pt-4" style={at('meet-rise', 0.9)}>
+        <div className="grid grid-cols-1 content-start gap-3 border-t-2 border-foreground pt-4" style={at('meet-rise', 0.9)}>
           <p className="m-0 font-semibold">The attendance sheet, read</p>
           <div className="relative h-28 justify-self-end overflow-hidden rounded-[10px] border border-foreground/20 bg-muted px-4 py-3" style={{ width: '70%', ...(at('meet-pop', 1.3, 450) ?? {}) }}>
             {Array.from({ length: 6 }, (_, i) => (
@@ -401,7 +401,7 @@ function CatchesScene() {
             lines ready from the sheet.
           </Bubble>
         </div>
-        <div className="grid content-start gap-3 border-t-2 border-foreground pt-4" style={at('meet-rise', 1.3)}>
+        <div className="grid grid-cols-1 content-start gap-3 border-t-2 border-foreground pt-4" style={at('meet-rise', 1.3)}>
           <p className="m-0 font-semibold">A new size, asked once</p>
           <Bubble me s={1.7}>
             M-sand 1 lod vannu
@@ -437,11 +437,11 @@ function ReportScene({ site }: { site: string }) {
     ['Materials', [['Cement (OPC 53) · in 150 · used 40', '210 bags'], ['TMT steel 12 mm', '3,400 kg']]],
   ]
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] lg:items-center">
-      <div className="grid gap-5">
+    <div className="grid grid-cols-1 gap-8 @3xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] @3xl:items-center">
+      <div className="grid grid-cols-1 gap-5">
         <Kicker>Every evening</Kicker>
         <p className="m-0 font-bold leading-none tracking-[-0.05em]" style={at('meet-rise', 0.2)}>
-          <span className="relative inline-block overflow-hidden text-[64px] sm:text-[88px]">
+          <span className="relative inline-block overflow-hidden text-[64px] @xl:text-[88px]">
             <span className="block" style={still() ? { visibility: 'hidden' } : { animation: 'meet-out 400ms ease-in 1.2s both' }}>
               8:59
             </span>
@@ -483,7 +483,7 @@ function ReportScene({ site }: { site: string }) {
             </span>
             <FileText className="size-5 text-muted-foreground" />
           </div>
-          <div className="grid grid-cols-3 gap-y-3 py-3 sm:grid-cols-6">
+          <div className="grid grid-cols-3 gap-y-3 py-3 @xl:grid-cols-6">
             {kpis.map(([n, w, red], i) => (
               <span key={w} style={at('meet-rise', 2.9 + i * 0.12)}>
                 <span className={cn('block text-[26px] font-bold leading-none tabular-nums', red && 'text-[var(--destructive)]')}>
@@ -502,7 +502,7 @@ function ReportScene({ site }: { site: string }) {
               </p>
             ))}
           </div>
-          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+          <div className="mt-2 grid grid-cols-1 gap-2 @xl:grid-cols-3">
             {sections.map(([head, rows], i) => (
               <div key={head} style={at('meet-rise', 4.8 + i * 0.35)}>
                 <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{head}</span>
@@ -517,10 +517,10 @@ function ReportScene({ site }: { site: string }) {
           </div>
         </div>
         {/* …and it goes out on WhatsApp, as a PDF. */}
-        <div className="absolute inset-x-0 top-1/3 grid justify-items-center gap-3" style={still() ? { display: 'none' } : { animation: 'meet-pop 500ms ease-out 8.1s both' }}>
+        <div className="absolute inset-x-0 top-1/3 grid grid-cols-1 justify-items-center gap-3" style={still() ? { display: 'none' } : { animation: 'meet-pop 500ms ease-out 8.1s both' }}>
           <div className="w-[300px] rounded-[12px] rounded-tl-none border border-foreground/15 bg-background p-3">
             <div className="flex items-center gap-3 bg-muted px-3 py-3">
-              <span className="grid h-11 w-9 place-items-center bg-[var(--destructive)] text-[10px] font-bold text-white">PDF</span>
+              <span className="grid grid-cols-1 h-11 w-9 place-items-center bg-[var(--destructive)] text-[10px] font-bold text-white">PDF</span>
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold">DPR · {site} · today.pdf</span>
                 <span className="text-xs text-muted-foreground">1 page · 240 KB</span>
@@ -569,13 +569,13 @@ function OwnerScene({ site }: { site: string }) {
     </div>
   )
   return (
-    <div className="grid gap-8">
+    <div className="grid grid-cols-1 gap-8">
       <div>
         <Kicker>Any time, for the owner</Kicker>
         <Big>Ask for it as an image. Forward it.</Big>
       </div>
-      <div className="grid gap-8 lg:grid-cols-2">
-        <div className="grid content-start gap-3">
+      <div className="grid grid-cols-1 gap-8 @3xl:grid-cols-2">
+        <div className="grid grid-cols-1 content-start gap-3">
           <Bubble me s={0.5}>
             {site} stock list image aayi ayakku
           </Bubble>
@@ -599,7 +599,7 @@ function OwnerScene({ site }: { site: string }) {
             </p>
           </Sheet>
         </div>
-        <div className="grid content-start gap-3">
+        <div className="grid grid-cols-1 content-start gap-3">
           <Bubble me s={3.6}>
             Project cost category wise venam, image
           </Bubble>
@@ -628,9 +628,9 @@ function OwnerScene({ site }: { site: string }) {
 
 function CloseScene({ number, link }: { number: string | null; link: string | null }) {
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-center">
-      <div className="grid gap-6">
-        <Big s={0.4} className="sm:text-[56px]">
+    <div className="grid grid-cols-1 gap-8 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] @3xl:items-center">
+      <div className="grid grid-cols-1 gap-6">
+        <Big s={0.4} className="@xl:text-[56px]">
           Just send a voice note.
           <br />
           <span className="text-primary">In any language.</span>
@@ -640,7 +640,7 @@ function CloseScene({ number, link }: { number: string | null; link: string | nu
         </p>
       </div>
       {link && (
-        <div className="grid justify-items-start gap-3 border-2 border-foreground p-5" style={at('meet-pop', 2.2, 500)}>
+        <div className="grid grid-cols-1 justify-items-start gap-3 border-2 border-foreground p-5" style={at('meet-pop', 2.2, 500)}>
           <QrCode value={link} label={`QR code to message Mesiri at ${number}`} className="size-40" />
           <p className="m-0 flex items-center gap-2 text-lg font-semibold">
             <WhatsAppIcon className="size-5" /> Try it now
@@ -733,10 +733,15 @@ export function MeetMesiri({
   const link = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Mesiri')}` : null
   const narration = NARRATION[key]
 
+  // Live re-renders about once a second (the feed, the clock) and passes a fresh
+  // onDone each time: kept in a ref, so a new prop never restarts the scene's
+  // timer and the show moves on by itself.
+  const done = React.useRef(onDone)
+  done.current = onDone
   const next = React.useCallback(() => {
-    if (i + 1 >= scenes.length) onDone()
+    if (i + 1 >= scenes.length) done.current()
     else setI(i + 1)
-  }, [i, scenes.length, onDone])
+  }, [i, scenes.length])
   const back = React.useCallback(() => setI((n) => Math.max(0, n - 1)), [])
 
   React.useEffect(() => {
@@ -751,16 +756,16 @@ export function MeetMesiri({
   }, [key, next])
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onDone()
+      if (e.key === 'Escape') done.current()
       if (e.key === 'ArrowRight') next()
       if (e.key === 'ArrowLeft') back()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [next, back, onDone])
+  }, [next, back])
 
   return (
-    <div aria-label="Meet Mesiri" className="grid w-full gap-5 text-left">
+    <div aria-label="Meet Mesiri" className="grid grid-cols-1 w-full gap-5 text-left">
       <div className="flex items-center gap-3">
         <ol className="m-0 flex flex-1 list-none gap-1.5 p-0" aria-hidden="true">
           {scenes.map((sc, n) => (
@@ -782,7 +787,7 @@ export function MeetMesiri({
         <button type="button" onClick={next} className="border border-foreground px-3 py-1 text-sm font-medium hover:bg-foreground hover:text-background">
           Next →
         </button>
-        <button type="button" onClick={onDone} aria-label="Close" className="grid size-8 place-items-center border border-foreground hover:bg-foreground hover:text-background">
+        <button type="button" onClick={() => done.current()} aria-label="Close" className="grid grid-cols-1 size-8 place-items-center border border-foreground hover:bg-foreground hover:text-background">
           <X className="size-4" />
         </button>
       </div>
@@ -798,7 +803,9 @@ export function MeetMesiri({
           </p>
         </div>
       </div>
-      <div key={key} className="min-h-[420px]">
+      {/* The scenes lay out by the stage's own width, not the screen's: on Live the stage is one
+          column of three, so a screen-wide breakpoint put two columns in too little room. */}
+      <div key={key} className="@container min-h-[420px]">
         {key === 'title' && <TitleScene to={to} />}
         {key === 'card' && <CardScene site={place} />}
         {key === 'languages' && <LanguagesScene />}
