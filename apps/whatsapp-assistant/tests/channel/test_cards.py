@@ -544,7 +544,6 @@ from backend.ports import ActorIdentity, ProjectSummary  # noqa: E402
 from channel.cards import build_welcome_card, welcome_html  # noqa: E402
 from channel.cards.welcome import EXAMPLES, FOOTER  # noqa: E402
 from mesiri.infrastructure.redis.client import FakeRedis  # noqa: E402
-from mesiri_contracts.assistant.draft_action import DraftActionType  # noqa: E402
 from runtime import contact_share_journey as cs  # noqa: E402
 
 
@@ -589,10 +588,9 @@ def _admin():
 
 
 async def _joined(monkeypatch, *, renderer, send_image):
-    async def fake_plan(**kw):
-        return ReplySpec(text="confirm")
+    """WEB-71: Approve, then the role tap; one project, so they are in."""
+    from mesiri.application.identity.add_by_number import AddedToProject
 
-    monkeypatch.setattr(cs, "start_member_create_plan", fake_plan)
     texts = []
 
     async def send_text(to, body):
@@ -603,16 +601,20 @@ async def _joined(monkeypatch, *, renderer, send_image):
         send_text=send_text, send_image=send_image, card_renderer=renderer,
     )
 
-    async def nobody(phone):
+    async def add(actor, phone, name, role, project_id):
+        return AddedToProject(uuid.uuid4(), name, True, False)
+
+    async def note(actor, pending, **step):
         return None
 
-    share._find_user = nobody  # type: ignore[method-assign]
+    share._add = add  # type: ignore[method-assign]
+    share._note_join_step = note  # type: ignore[method-assign]
     actor = _admin()
     await share.start_join(actor, name="Ravi Kumar", phone="919876500001", business_number="15550001111")
-    to_owner = await share.invite_after_member_added(
-        action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Ravi Kumar", actor=actor
+    done = await share.handle_project_tap(
+        SimpleNamespace(metadata={"interactive_reply_id": "contact_role:SITE_ENGINEER"}), actor
     )
-    return to_owner, texts
+    return [done.text], texts
 
 
 async def test_the_joiner_gets_the_welcome_card_with_the_joined_text_as_caption(monkeypatch):
@@ -627,7 +629,7 @@ async def test_the_joiner_gets_the_welcome_card_with_the_joined_text_as_caption(
     [(to, png, caption, filename)] = images
     assert (to, png, filename) == ("919876500001", PNG, "welcome.png")
     assert caption.startswith("✅ You're in, Ravi! *Acme Builders* added you to *Green Villa*")
-    assert to_owner == ["✅ *Ravi Kumar* can now report on *Green Villa*. I've told them they're in."]
+    assert to_owner == ["✅ *Ravi Kumar* is in: Site Engineer on *Green Villa*. I've told them."]
 
 
 @pytest.mark.parametrize("why", ["render", "upload"])
@@ -640,7 +642,7 @@ async def test_the_joined_text_goes_alone_when_the_card_cannot(monkeypatch, why)
     )
     [(to, body)] = texts
     assert to == "919876500001" and body.startswith("✅ You're in, Ravi! *Acme Builders* added you")
-    assert to_owner[0].startswith("✅ *Ravi Kumar* can now report")
+    assert to_owner[0].startswith("✅ *Ravi Kumar* is in")
 
 
 async def test_without_a_renderer_the_joiner_text_is_unchanged(monkeypatch):

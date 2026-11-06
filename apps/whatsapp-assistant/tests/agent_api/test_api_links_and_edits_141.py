@@ -72,8 +72,9 @@ def test_the_new_routes_are_on_the_list_and_writes_wait_for_save() -> None:
 
 
 def test_guard_nothing_that_grants_access_is_on_the_list() -> None:
-    # [207]: the one owner-approved exception, adding a person already in the company to a project (POST only).
-    approved = {("POST", "/projects/{project_id}/members")}
+    # [207]: the owner-approved exceptions, adding a person to a project (POST only): someone already in the
+    # company, and (WEB-71, Ilan 6 Nov) someone new by name and WhatsApp number.
+    approved = {("POST", "/projects/{project_id}/members"), ("POST", "/projects/{project_id}/members/by-number")}
     paths = {a.path for a in ALLOWED if (a.method, a.path) not in approved}
     assert not any(p.startswith("/users") or p.endswith("/members") or "/members/" in p for p in paths)
     assert not any(a.method == "DELETE" for a in ALLOWED)

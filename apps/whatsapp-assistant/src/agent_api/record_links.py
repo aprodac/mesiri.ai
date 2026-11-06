@@ -43,6 +43,7 @@ RECORD_PAGES: dict[str, str | None] = {
     "add_site": "project",
     "update_site": "project",
     "add_project_member": "project",
+    "add_person": "project",  # WEB-71
     # Taking back an entry or a language setting: nothing to open.
     "undo_receipt": None,
     "undo_usage": None,
