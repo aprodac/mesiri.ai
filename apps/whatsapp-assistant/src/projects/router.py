@@ -1041,6 +1041,75 @@ async def add_project_member(
     )
 
 
+class ProjectMemberByNumber(BaseModel):
+    fullName: str
+    whatsappNumber: str
+    role: str = "SITE_ENGINEER"
+
+
+@router.post("/{project_id}/members/by-number", response_model=ProjectMemberResponse, status_code=201)
+async def add_project_member_by_number(
+    project_id: uuid.UUID,
+    body: ProjectMemberByNumber,
+    payload: dict = Depends(get_current_user),
+):
+    """WEB-71: put someone on this project by their name and WhatsApp number, adding them to the company first
+    when it doesn't have them yet (the assistant's "add Ravi 98765 43210 as site engineer", typed or said). The
+    same who-may-add and which-role rules as adding someone already in the company; the person is made and put
+    on the project by the backend's one add-by-number step (application/identity/add_by_number.py)."""
+    from mesiri.application.identity.add_by_number import MemberNotAdded, add_to_project_by_number
+    from mesiri.authorization.roles import may_grant_role
+
+    org_id = payload.get("org")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User has no organization")
+    role = (body.role or "").strip().upper()
+    if role not in _MEMBER_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of {', '.join(sorted(_MEMBER_ROLES))}")
+    if not may_grant_role(payload.get("role"), role):
+        raise HTTPException(status_code=403, detail=f"Only an admin can add someone as {role}")
+    name = " ".join((body.fullName or "").split())
+    if not name:
+        raise HTTPException(status_code=422, detail="Their name is needed")
+
+    engine = get_engine()
+    async with engine.begin() as conn:
+        if not await _may_manage_members(conn, payload, project_id):
+            raise HTTPException(status_code=403, detail="Only an admin or this project's manager can add people to it")
+        found = await conn.execute(
+            sa.select(projects_table.c.id).where(
+                projects_table.c.id == project_id,
+                projects_table.c.organization_id == org_id,
+            )
+        )
+        if found.first() is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            added = await add_to_project_by_number(
+                conn,
+                organization_id=org_id,
+                project_id=project_id,
+                created_by=payload.get("sub") or "",
+                created_by_role=payload.get("role") or "",
+                full_name=name,
+                whatsapp_number=body.whatsappNumber,
+                role=role,
+            )
+        except MemberNotAdded as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if added.already_on_project:
+            raise HTTPException(status_code=409, detail=f"{added.full_name} is already on this project")
+        user_row = (await conn.execute(sa.select(users_table).where(users_table.c.id == added.user_id))).first()
+
+    return ProjectMemberResponse(
+        userId=added.user_id,
+        email=(user_row.email if user_row else None) or "",
+        fullName=added.full_name,
+        role=role,
+        status=(user_row.status if user_row else None) or "active",
+    )
+
+
 @router.delete("/{project_id}/members/{user_id}", status_code=204)
 async def remove_project_member(
     project_id: uuid.UUID,

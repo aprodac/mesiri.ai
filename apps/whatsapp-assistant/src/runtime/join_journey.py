@@ -4,14 +4,16 @@
                                         a link that opens "JOIN ACME-4821"
                   "new join code"    -> a new code; the old one stops working
     newcomer:     "JOIN ACME-4821"   -> each admin is asked [Approve] [Reject]
-    admin:        Approve            -> the same steps as sharing a contact
-                                        (SS-13): project, then add them
+    admin:        Approve            -> the same two taps as sharing a contact
+                                        (SS-13): their role, then the project;
+                                        then they are in, and told so
                   Reject             -> the newcomer is told
 
 **A code adds nobody by itself.** Only an admin's Approve starts adding the
-person, and that goes through the existing CREATE_USER / ADD_PROJECT_MEMBER
-workflows with their own confirmations (runtime/contact_share_journey.py),
-so nothing here writes users or memberships. A number already on Mesiri is
+person: the role and project taps that follow (runtime/contact_share_journey.py)
+put them on the project through the backend's one add-by-number step, so
+nothing here writes users or memberships. The company's Live screen shows
+the QR code that sends the code, and each request's steps as they happen. A number already on Mesiri is
 a registered sender and never reaches this journey; one in another company
 is refused by those steps (BE-04).
 
@@ -85,8 +87,8 @@ REJECTED_NOTICE = "*{company}* didn't approve your request to join. If that's a 
 
 # To an admin
 APPROVAL_REQUEST = (
-    "👤 *{name}* (+{phone}) wants to join *{company}* on Mesiri with your join code. "
-    "Approve them?"
+    "👤 *{name}* (+{phone}) is trying to join *{company}* on Mesiri. Let them in?\n\n"
+    "Approve, then pick their role and project."
 )
 NOT_ALLOWED_TO_DECIDE = "Only your company's admin can approve people who ask to join."
 ALREADY_DECIDED = "That request was already {outcome}."
@@ -369,6 +371,7 @@ class JoinJourney:
             name=name,
             phone=phone,
             business_number=_digits((message.metadata or {}).get("display_phone_number")),
+            request_id=request_id,
         )
 
     # -- internals ------------------------------------------------------------

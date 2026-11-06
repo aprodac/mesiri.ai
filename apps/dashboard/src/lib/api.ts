@@ -2331,3 +2331,28 @@ export async function sendVoiceToMesiri(audio: Blob): Promise<AssistantResponse>
   return res.data
 }
 
+
+/** WEB-71: someone who asked to join with the company's code (the Live QR), or was added by number, today. */
+export interface JoiningPerson {
+  key: string
+  name: string
+  phone_tail: string
+  source: 'code' | 'added'
+  step: 'asked' | 'approved' | 'role' | 'joined' | 'rejected'
+  role: string | null
+  project: string | null
+  at: string | null
+}
+
+export interface Joining {
+  /** The company's join code; the QR code sends `join_text` ("JOIN ACME-4821"). */
+  code: string
+  join_text: string
+  people: JoiningPerson[]
+}
+
+/** WEB-71: the join code and who is joining (admins only: anyone else gets 403 and Live keeps "Hi Mesiri"). */
+export async function fetchJoining(): Promise<Joining> {
+  const res = await api.get<Joining>('/company/joining')
+  return res.data
+}

@@ -171,6 +171,102 @@ async def decide_request(
     return request, decided
 
 
+async def note_step(
+    conn: AsyncConnection,
+    organization_id: uuid.UUID,
+    *,
+    request_id: str,
+    role: str | None = None,
+    project: str | None = None,
+    joined_at: dt.datetime | None = None,
+) -> None:
+    """Record an approved request's next step (rules.note_step)."""
+    stored = await _requests_for_update(conn, organization_id)
+    requests, changed = rules.note_step(
+        stored, request_id=request_id, role=role, project=project, joined_at=joined_at
+    )
+    if changed:
+        await _save_requests(conn, organization_id, requests)
+
+
+async def joining_now(
+    conn: AsyncConnection, organization_id: uuid.UUID, *, now: dt.datetime, hours: int = 24
+) -> list[dict]:
+    """Who asked to join, or was added by number, in the last `hours`, oldest
+    first, for the company's Live screen: {"key", "name", "phone_tail",
+    "source" ("code" | "added"), "step" ("asked" | "approved" | "role" |
+    "joined" | "rejected"), "role", "project", "at"}. A request whose
+    number is now in the company counts as joined, whatever was noted."""
+    stored = await PostgresOrganizationSettingsRepository(conn).get(
+        organization_id, settings_spec.JOIN_REQUESTS
+    )
+    since = now - dt.timedelta(hours=hours)
+    users = (
+        await conn.execute(
+            sa.text(
+                "SELECT u.id, u.full_name, u.whatsapp_number, u.created_at, "
+                "regexp_replace(coalesce(u.whatsapp_number, ''), '\\D', '', 'g') AS digits, "
+                "(SELECT pm.role::text FROM project_members pm WHERE pm.user_id = u.id "
+                " ORDER BY pm.created_at DESC NULLS LAST LIMIT 1) AS member_role, "
+                "(SELECT p.name FROM project_members pm JOIN projects p ON p.id = pm.project_id "
+                " WHERE pm.user_id = u.id ORDER BY pm.created_at DESC NULLS LAST LIMIT 1) AS project "
+                "FROM users u JOIN organizations o ON o.id = u.organization_id "
+                "WHERE u.organization_id = :org AND u.whatsapp_number IS NOT NULL "
+                "AND u.created_at >= :since "
+                # The owner made with the company at sign-up didn't join it.
+                "AND u.created_at > o.created_at + interval '5 minutes' "
+                "ORDER BY u.created_at"
+            ),
+            {"org": organization_id, "since": since},
+        )
+    ).mappings().all()
+    by_digits = {r["digits"]: r for r in users if r["digits"]}
+    people: list[dict] = []
+    seen: set[str] = set()
+    for request in rules.recent(stored, now=now, hours=hours):
+        phone = str(request.get("phone") or "")
+        seen.add(phone)
+        user = by_digits.get(phone)
+        status = request.get("status")
+        if user is not None or status == rules.JOINED:
+            step = "joined"
+        elif status == rules.REJECTED:
+            step = "rejected"
+        elif status == rules.APPROVED:
+            step = "role" if request.get("role") else "approved"
+        else:
+            step = "asked"
+        people.append(
+            {
+                "key": f"r-{request.get('id')}",
+                "name": request.get("name") or "",
+                "phone_tail": phone[-4:],
+                "source": "code",
+                "step": step,
+                "role": (user and user["member_role"]) or request.get("role"),
+                "project": (user and user["project"]) or request.get("project"),
+                "at": request.get("requested_at"),
+            }
+        )
+    for user in users:
+        if user["digits"] in seen or not user["project"]:
+            continue
+        people.append(
+            {
+                "key": f"u-{user['id']}",
+                "name": user["full_name"] or "",
+                "phone_tail": user["digits"][-4:],
+                "source": "added",
+                "step": "joined",
+                "role": user["member_role"],
+                "project": user["project"],
+                "at": user["created_at"].isoformat() if user["created_at"] else None,
+            }
+        )
+    people.sort(key=lambda p: str(p["at"] or ""))
+    return people
+
+
 async def approvers(conn: AsyncConnection, organization_id: uuid.UUID) -> list[Approver]:
     """The company's active admins with a WhatsApp number: who is asked."""
     rows = (

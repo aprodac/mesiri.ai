@@ -265,6 +265,37 @@ async def get_company_settings(
     }
 
 
+@router.get("/joining")
+async def get_joining(
+    admin: dict = Depends(require_admin),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The company's join code (made on first ask) and who joined, or asked
+    to, in the last 24 hours, with each one's step: what the company's Live
+    screen shows while people scan its QR code in a meeting. The code is
+    what the QR code sends ("JOIN ACME-4821"); it adds nobody by itself, an
+    admin approves each request on WhatsApp."""
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    from mesiri.application.organizations import team_join
+    from mesiri.domains.organizations import team_join as join_rules
+
+    org_id = admin.get("org")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Token missing org claim")
+    organization_id = uuid.UUID(org_id)
+    now = _dt.now(UTC)
+    sub = admin.get("sub")
+    try:
+        updated_by = uuid.UUID(str(sub)) if sub else None
+    except ValueError:
+        updated_by = None
+    code = await team_join.join_code(conn, organization_id, now=now, updated_by=updated_by)
+    people = await team_join.joining_now(conn, organization_id, now=now)
+    return {"code": code, "join_text": join_rules.join_text(code), "people": people}
+
+
 class OrganizationSettingUpdate(BaseModel):
     key: str
     value: object

@@ -248,10 +248,19 @@ trials only), days data is kept after a trial expires, and the self-serve signup
 - **Asking:** someone not on Mesiri sends the code. Their name comes from their WhatsApp
   profile, or is asked. Every active admin of the company gets "X wants to join"
   [Approve] [Reject]. This runs before signup, so it works with self-serve signup off.
-- **Deciding (admins only):** Approve goes on through the SS-13 contact-share steps
-  (project, then CREATE_USER and ADD_PROJECT_MEMBER with their confirmations), so
-  nothing new writes users. Once they're on the project, the person is told directly.
-  Reject tells them they weren't approved.
+- **Deciding (admins only):** "X is trying to join *Acme*. Let them in?" [Approve]
+  [Reject]. Since WEB-71 (6 Nov) Approve asks their **role** (buttons), then the
+  **project** (a list; one project is picked by itself), and they are in: the taps are
+  the confirmation, no Confirm cards after them. They go onto the project through the
+  backend's one add-by-number step (`application/identity/add_by_number.py`
+  `add_to_project_by_number`, which uses CreateUserHandler and AddProjectMemberHandler
+  with their role and one-number rules). The person gets the Welcome card; the admin
+  gets "✅ X is in: Site Engineer on Skyline". Reject tells them they weren't approved.
+- **Live (WEB-71):** in presenter mode the company Live's QR code sends *JOIN <code>*
+  (`GET /company/joining`, admins only; anyone else still gets "Hi Mesiri"), and a
+  "Joining today" panel shows each person moving Asked → Approved → Role → Project → In,
+  plus people added by number. Each step is noted on the request (`role`, `project`,
+  status `joined`).
 - **Guardrails:** a code adds nobody without an admin's Approve. A number gets 5 wrong
   codes a day. Asking again while a request is open sends no second alert. A company
   holds at most 20 open requests. Requests expire after 7 days. An ended trial or a
@@ -266,6 +275,13 @@ trials only), days data is kept after a trial expires, and the self-serve signup
   the same last-message lookup the notification sender uses.
 
 ## Team by shared contact (SS-13, built 15 Oct)
+
+> **Since WEB-71 (6 Nov):** a shared card is the same two taps (role, project) and the
+> person is added at once through `add_to_project_by_number`, then the owner gets the
+> invite to forward. The CREATE_USER / ADD_PROJECT_MEMBER confirmations described below
+> still serve a typed add on classic. On v3, "add Ravi 98765 43210" (typed or a voice
+> note) is the `add_person` tool (`POST /projects/{id}/members/by-number`): role and
+> project are asked when not said, Save adds them, and the invite to forward follows.
 
 - **Code:** `apps/whatsapp-assistant/src/runtime/contact_share_journey.py`. Shared
   contact cards are read in `ingress/normalization.py` into

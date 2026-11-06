@@ -103,4 +103,5 @@ async def test_sibling_a_name_two_people_share_gets_buttons() -> None:
 async def test_guard_someone_not_in_the_company_is_never_created() -> None:
     turn, added = await _run(ADMIN, [(ANU, "Anu")], [[_call("Rahul")], "Rahul isn't in the company yet."], "add Rahul")
     assert turn.pending == [] and added == []
-    assert "dashboard" in turn.calls[0]["result"]["error"]
+    # WEB-71: a new person goes through add_person, with their number (asked for when not said).
+    assert "add_person" in turn.calls[0]["result"]["error"]

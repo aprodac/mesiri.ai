@@ -34,6 +34,7 @@ import {
 } from 'lucide-react'
 import {
   fetchBranding,
+  fetchJoining,
   fetchLiveFeedApi,
   fetchLiveStampApi,
   fetchSiteDayApi,
@@ -50,13 +51,13 @@ import { cn } from '@/lib/utils'
 import { MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
 import { Label } from '@/components/onboarding/conversation'
-import { QrCode } from '@/components/onboarding/qr-code'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { CountTo } from './ink'
 import { LIVE_MODULES, useCinematicGo } from './modules'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
 import { Finale } from './finale'
+import { Joining, joiningLine } from './joining'
 import { ProjectSheet, ReportStrip, SHEET_MS } from './report'
 import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, EntryCard, LanguageMoment, answers as answersOf, cleanReply, languageLine, outcomes } from './moments'
 import { useVoice } from '@/lib/voice'
@@ -90,6 +91,8 @@ const STAMP_POLL_MS = 1_000
 /** A backstop read of the feed, in case a change slipped past the stamp. */
 const FEED_POLL_MS = 15_000
 const SITES_POLL_MS = 10_000
+/** WEB-71: who is joining; a few seconds, so an Approve tap shows while the room watches. */
+const JOINING_POLL_MS = 3_000
 /** How long each step of the Spark's handling shows. */
 const STEP_MS = 1_300
 /** At most this many new messages are played in turn; older ones just appear. */
@@ -448,6 +451,13 @@ export function CompanyLive({
   })
   const branding = useQuery({ queryKey: ['company-branding'], queryFn: fetchBranding, retry: false, staleTime: 10 * 60_000 })
   const setup = useQuery({ queryKey: ['setup-progress'], queryFn: fetchSetupProgress, retry: false, staleTime: 10 * 60_000 })
+  // WEB-71: the join code the QR code sends, and who is joining (admins only: anyone else keeps "Hi Mesiri").
+  const joining = useQuery({
+    queryKey: ['live-joining'],
+    queryFn: fetchJoining,
+    refetchInterval: isToday ? JOINING_POLL_MS : false,
+    retry: false,
+  })
   const cinematic = useCinematicGo()
 
   const items = React.useMemo(() => feed.data ?? [], [feed.data])
@@ -746,7 +756,35 @@ export function CompanyLive({
   }, [voice])
 
   const number = setup.data?.whatsapp_number ?? null
-  const qrLink = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Mesiri')}` : null
+  // WEB-71: in a meeting the QR code is how people join this company: it sends the join code, and the admin lets
+  // them in on WhatsApp. Without the code (not an admin) it stays "Hi Mesiri".
+  const qrText = joining.data?.join_text ?? 'Hi Mesiri'
+  const qrLink = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent(qrText)}` : null
+
+  // Who just moved on a step: their card animates, and Mesiri says it (presenter mode talks).
+  const joinSteps = React.useRef<Map<string, string> | null>(null)
+  const [joinFresh, setJoinFresh] = React.useState<Map<string, 'new' | 'step' | 'in'>>(new Map())
+  React.useEffect(() => {
+    const people = joining.data?.people
+    if (!people) return
+    if (joinSteps.current === null) {
+      joinSteps.current = new Map(people.map((p) => [p.key, p.step]))
+      return
+    }
+    const changed = new Map<string, 'new' | 'step' | 'in'>()
+    for (const p of people) {
+      const before = joinSteps.current.get(p.key) as typeof p.step | undefined
+      if (before === p.step) continue
+      changed.set(p.key, before === undefined && p.step !== 'joined' ? 'new' : p.step === 'joined' ? 'in' : 'step')
+      joinSteps.current.set(p.key, p.step)
+      const line = joiningLine(p, before)
+      if (line) say(line)
+    }
+    if (!changed.size) return
+    setJoinFresh((m) => new Map([...m, ...changed]))
+    const keys = [...changed.keys()]
+    window.setTimeout(() => setJoinFresh((m) => new Map([...m].filter(([k]) => !keys.includes(k)))), 4_000)
+  }, [joining.data, say])
 
   const stream = [...samples].reverse().concat(items.filter((m) => shown.has(m.id)).reverse())
   const sampleSite = sites[0]?.site_name ?? 'Villa 3'
@@ -1057,6 +1095,7 @@ export function CompanyLive({
                     short={hello.short}
                     site={sites[0]?.site_name ?? null}
                     number={number}
+                    qrText={qrText}
                     presenting={presenting}
                     onScene={onScene}
                     onSay={say}
@@ -1177,19 +1216,16 @@ export function CompanyLive({
                     Open in {destOf(current.item)!.name} <ArrowRight className="size-3.5" />
                   </button>
                 )}
-                {presenting && qrLink && (
-                  <div className="mt-2 flex items-center gap-5 border-t border-foreground/15 pt-6 text-left">
-                    <QrCode value={qrLink} label={`QR code to message Mesiri at ${number}`} className="size-36 shrink-0" />
-                    <div>
-                      <p className="m-0 flex items-center gap-2 text-xl font-semibold">
-                        <WhatsAppIcon className="size-5" /> Send Mesiri a message
-                      </p>
-                      <p className="m-0 mt-1 text-base text-muted-foreground">
-                        Scan, send anything about site, and watch it land here. {number}
-                      </p>
-                      <p className="m-0 mt-1 text-sm text-muted-foreground">Only numbers on this company's team are filed.</p>
-                    </div>
-                  </div>
+                {isToday && (presenting || (joining.data?.people.length ?? 0) > 0) && (
+                  <Joining
+                    people={joining.data?.people ?? []}
+                    fresh={joinFresh}
+                    qrLink={qrLink}
+                    number={number}
+                    code={joining.data?.code ?? null}
+                    company={branding.data?.company_name ?? 'the team'}
+                    presenting={presenting}
+                  />
                 )}
               </div>
               )}

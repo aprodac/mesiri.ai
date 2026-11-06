@@ -91,3 +91,35 @@ def test_an_expired_request_cannot_be_approved() -> None:
         stored, request_id=request["id"], approve=True, by="admin-1", now=later
     )
     assert not decided and same["status"] == rules.OPEN
+
+
+# -- WEB-71: an approved request's steps, for the company's Live screen -----------
+
+
+def _approved():
+    requests, request, _ = rules.add_request([], phone="919800000001", name="Ravi", now=NOW)
+    requests, _, _ = rules.decide(requests, request_id=request["id"], approve=True, by="admin", now=NOW)
+    return requests, request["id"]
+
+
+def test_steps_are_noted_on_an_approved_request() -> None:
+    requests, rid = _approved()
+    requests, changed = rules.note_step(requests, request_id=rid, role="SITE_ENGINEER")
+    assert changed and requests[-1]["role"] == "SITE_ENGINEER" and requests[-1]["status"] == rules.APPROVED
+    later = NOW + dt.timedelta(minutes=1)
+    requests, changed = rules.note_step(requests, request_id=rid, project="Skyline", joined_at=later)
+    assert changed
+    assert requests[-1]["status"] == rules.JOINED
+    assert requests[-1]["project"] == "Skyline" and requests[-1]["joined_at"] == later.isoformat()
+
+
+def test_an_open_or_unknown_request_takes_no_steps() -> None:
+    requests, request, _ = rules.add_request([], phone="919800000001", name="Ravi", now=NOW)
+    assert rules.note_step(requests, request_id=request["id"], role="ADMIN")[1] is False
+    assert rules.note_step(requests, request_id="nope", role="ADMIN")[1] is False
+
+
+def test_recent_is_the_last_day_only() -> None:
+    old, _, _ = rules.add_request([], phone="919800000001", name="Old", now=NOW - dt.timedelta(hours=30))
+    both, _, _ = rules.add_request(old, phone="919800000002", name="New", now=NOW)
+    assert [r["name"] for r in rules.recent(both, now=NOW)] == ["New"]

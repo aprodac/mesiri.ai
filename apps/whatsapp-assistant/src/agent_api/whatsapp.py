@@ -57,6 +57,7 @@ from . import bill_photo
 from .agent import (
     DONT_KNOW,
     LANGUAGE_LINES,
+    PERSON_TOOL,
     SAVE_AS_SAID,
     SIZE_UNKNOWN,
     SIZE_WAY_OUT,
@@ -363,6 +364,10 @@ class ApiWhatsApp:
         _lap("v3_send")
         await self._send_saved_card(message, ctx)  # after the "Saved" line: the reply never waits for it
         _lap("v3_saved_card")
+        for invite in person_invites(self._just_saved.get(message.correlation_id) or [], ctx, message):
+            # WEB-71: someone added by number never messaged Mesiri, so WhatsApp won't let Mesiri write first: the
+            # owner gets the message to forward, on its own so it forwards cleanly.
+            await _safe(self._send(ReplySpec(text=invite), message.sender.wa_id))
         await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=reply.text))
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
         _lap("v3_log")
@@ -1531,6 +1536,34 @@ def _refused_to_keep(results: list[WriteResult], state: dict) -> tuple[list[Pend
             dropped = True
     state["retried"] = sorted(once)[-20:] if keep else []
     return keep, dropped
+
+
+#: WEB-71: the line before the invite, and the invite to forward to someone added by number.
+PERSON_ADDED = "✅ *{name}* is on *{project}*. Forward the next message to them so they can start:"
+PERSON_INVITE = ("Hi {first}, {company} uses Mesiri for daily site reports on WhatsApp. "
+                 "Tap this link and send *Hi* to start: https://wa.me/{number}?text=Hi")
+PERSON_INVITE_NO_LINK = ("Hi {first}, {company} uses Mesiri for daily site reports on WhatsApp. "
+                         "Save this number and send *Hi* to it to start.")
+
+
+def person_invites(results: list[WriteResult], ctx: Any, message: Any) -> list[str]:
+    """WEB-71: for each person a Save just added by number (`add_person`), the line and the invite to forward."""
+    number = "".join(ch for ch in str((getattr(message, "metadata", None) or {}).get("display_phone_number") or "")
+                     if ch.isdigit())
+    company = getattr(ctx, "org_name", None) or "Your company"
+    projects = {str(p.id): p.name for p in getattr(ctx, "projects", None) or []}
+    out: list[str] = []
+    for r in results:
+        if not r.ok or r.pending.tool != PERSON_TOOL:
+            continue
+        name = str((r.body or {}).get("fullName") if isinstance(r.body, dict) else "") or str(
+            r.pending.body.get("fullName") or "")
+        project_id = r.pending.path.split("/")[2] if r.pending.path.count("/") >= 2 else ""
+        first = (name.split() or ["there"])[0]
+        out.append(PERSON_ADDED.format(name=name or "They", project=projects.get(project_id, "the project")))
+        out.append(PERSON_INVITE.format(first=first, company=company, number=number) if number
+                   else PERSON_INVITE_NO_LINK.format(first=first, company=company))
+    return out
 
 
 def only_sends(entries: list[PendingWrite]) -> bool:

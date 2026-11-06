@@ -892,6 +892,14 @@ class ApiAgent:
                     return ToolOutcome(content={"error": problem})
                 if label:
                     unit_note += f"{CATEGORY_NOTE}{label}"
+            if name == PERSON_TOOL:
+                # WEB-71: role words as said ("supervisor", "engineer") are classic's own role words.
+                from workflows.role_words import normalize_role
+
+                if str(client.role or "").upper() not in ("ADMIN", "PROJECT_MANAGER"):
+                    return ToolOutcome(content={"error": "refused: Only an admin or this project's manager can add "
+                                                         "people to it. Tell them plainly; do not prepare it."})
+                body["role"] = normalize_role(body.get("role"))
             if name == MEMBER_TOOL:
                 problem, buttons = await settle_member(client, path, body)
                 if problem:
@@ -1766,6 +1774,8 @@ async def settle_new_line_unit(client: ApiClient, body: dict[str, Any], ref: str
 
 
 MEMBER_TOOL = "add_project_member"
+#: WEB-71: someone new, by name and WhatsApp number.
+PERSON_TOOL = "add_person"
 ALIAS_TOOL = "add_material_alias"
 
 
@@ -1947,8 +1957,9 @@ async def settle_member(client: ApiClient, path: str, body: dict[str, Any]) -> t
         names = [c.display_name for c in outcome.candidates]
         return (f"{said!r} could be: {', '.join(names)}. Ask which one with `ask`, those names as options; "
                 "nothing is prepared yet.", [n[:20] for n in names[:3]])
-    return (f"no one called {said!r} is in the company. People join the company on the web dashboard (Team) "
-            "first; say so plainly. Do not prepare it.", [])
+    return (f"no one called {said!r} is in the company. If they gave a WhatsApp number, prepare `add_person` "
+            "with the name, that number, the role and the project instead; else ask for their number in one short "
+            "question. Do not prepare add_project_member.", [])
 
 
 UNIT_UNSETTLED = "unit_id is not a valid active unit"

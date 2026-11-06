@@ -1,49 +1,47 @@
-"""Add a teammate by sharing their WhatsApp contact (SS-13).
+"""Add a teammate by sharing their WhatsApp contact (SS-13), or let in
+someone who asked to join with the company's code (SS-05).
 
-An owner or project manager shares a contact card; Mesiri adds that person
-to a project through the SAME workflows a typed "add Rajesh, 98765..., as
-site engineer" uses -- nothing here writes users or memberships itself:
+Two taps, then they are in: what they will do (WA-67: Site Engineer,
+Project Manager, or -- for an admin -- Admin, the roles the sender may
+give), then the project (a list when there are several; one project is
+picked by itself). The taps ARE the confirmation: the person goes onto the
+project at once through the backend's one add-by-number step
+(mesiri.application.identity.add_by_number.add_to_project_by_number), the
+same step the dashboard and the v3 assistant's ``add_person`` use:
 
-    new number            CREATE_USER -> ADD_PROJECT_MEMBER, as one Plan
-                          (start_member_create_plan, the entity-resolution
-                          chain), name and number taken from the card
-    already in this org   ADD_PROJECT_MEMBER alone
+    new number            made in the company, then put on the project
+    already in this org   put on the project
     in another company    refused (one number = one person, BE-04)
 
-Each workflow keeps its own confirmation, so the person is never added
-without a tap. First what they will do (WA-67, audit SET-06: every card used
-to become a Site Engineer): Site Engineer, Project Manager, or -- for an
-admin -- Admin, the roles the sender may give. Several projects: a list
-picker next. One contact per share: the Plan store holds one plan per user.
+Someone who asked to join messaged Mesiri moments ago, so WhatsApp lets us
+tell them directly (the Welcome card). A shared contact never messaged us:
+WhatsApp allows free-form messages only within 24 h of the person's own
+last message, so the owner gets a message to forward instead, with a wa.me
+link to Mesiri's number. Each step of a join request (role, project,
+joined) is noted on the request, for the company's Live screen.
 
-Once ADD_PROJECT_MEMBER succeeds, the owner gets a message to forward to the
-new person with a wa.me link to Mesiri's number. Mesiri can't message them
-first: WhatsApp allows free-form messages only within 24 h of the person's
-own last message, and the invite template isn't approved yet (SS-12). When
-they tap and say Hi, they're already a user, and the existing first-message
-intro (channel/replies.py's render_greeting_menu) welcomes them.
+Typed adds on classic ("add Rajesh 98... as engineer") still go through the
+CREATE_USER / ADD_PROJECT_MEMBER workflows and end with the same invite
+(``invite_after_member_added``).
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
-import sqlalchemy as sa
-
 from channel.replies import ListRow, ReplySpec
 from mesiri.application.dpr.recipients import RecipientError, normalize_phone
+from mesiri.application.identity.add_by_number import (
+    AddedToProject,
+    MemberNotAdded,
+    add_to_project_by_number,
+)
 from mesiri.authorization.roles import may_grant_role
-from mesiri.infrastructure.postgres.tenant import unscoped
-from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
 from mesiri_contracts.assistant.draft_action import DraftActionType
-from mesiri_contracts.assistant.planner_decision import PlannerDecisionType, WorkflowKey
-from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
-from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
-from runtime.inbound_journey.reply import render_workflow_run_reply_spec
-from runtime.member_create_plan import start_member_create_plan
 
 if TYPE_CHECKING:
     from backend.ports import ActorIdentity
@@ -56,7 +54,7 @@ _log = logging.getLogger("mesiri.contact_share")
 PROJECT_TAP_PREFIX = "contact_project:"
 ROLE_TAP_PREFIX = "contact_role:"
 _MANAGER_ROLES = frozenset({"ADMIN", "PROJECT_MANAGER"})
-#: Someone approved through the join code (SS-05) starts as this.
+#: The role a typed add (classic) gives when none was said.
 _NEW_MEMBER_ROLE = "SITE_ENGINEER"
 #: The role question's buttons, in order (WhatsApp shows at most three).
 _ROLE_CHOICES = (
@@ -75,10 +73,13 @@ OTHER_COMPANY = (
     "That number is already used by someone in another company on Mesiri, so I can't add it here."
 )
 MORE_THAN_ONE = "\n\n(I'll add *{name}* first. Share the others one at a time after this.)"
-PICK_PROJECT = "Which project should *{name}* report on?"
+PICK_PROJECT = "Which project should *{name}* ({role}) work on?"
 PICK_ROLE = "What will *{name}* do?"
+APPROVED_PICK_ROLE = "👍 Approved. What will *{name}* do?"
 EXPIRED = "That choice has expired. Share the contact again."
-FAILED = "Sorry, I couldn't start adding them. Please try again."
+FAILED = "Sorry, I couldn't add them. Please try again."
+NOT_ADDED = "I couldn't add *{name}*: {reason}."
+ALREADY_ON = "*{name}* is already on *{project}*."
 ADDED = (
     "✅ *{name}* can now report on *{project}*. Forward the next message to them so they can start:"
 )
@@ -86,9 +87,9 @@ INVITE = (
     "Hi {first}, {company} uses Mesiri for daily site reports on WhatsApp. "
     "Tap this link and send *Hi* to start: https://wa.me/{number}?text=Hi"
 )
-ADDED_JOINER = "✅ *{name}* can now report on *{project}*. I've told them they're in."
+ADDED_JOINER = "✅ *{name}* is in: {role} on *{project}*. I've told them."
 JOINED = (
-    "✅ You're in, {first}! *{company}* added you to *{project}* on Mesiri.\n\n"
+    "✅ You're in, {first}! *{company}* added you to *{project}* on Mesiri as {role}.\n\n"
     "Send today's work here, the way you'd tell your office, e.g. *10 masons, plastering "
     "3rd floor*. Text, voice notes and photos all work."
 )
@@ -103,14 +104,11 @@ class _RedisLike(Protocol):
     async def get_json(self, key: str) -> Any | None: ...
 
 
-_users = sa.Table(
-    "users",
-    sa.MetaData(),
-    sa.Column("id", sa.UUID(as_uuid=True)),
-    sa.Column("organization_id", sa.UUID(as_uuid=True)),
-    sa.Column("full_name", sa.String),
-    sa.Column("whatsapp_number", sa.String),
-)
+_ROLE_TITLES = dict(_ROLE_CHOICES) | {"FINANCE": "Finance"}
+
+
+def _role_title(role: object) -> str:
+    return _ROLE_TITLES.get(str(role or "").upper(), "Site Engineer")
 
 
 def _key(user_id: str, what: str) -> str:
@@ -150,7 +148,7 @@ class ContactShareJourney:
     # -- entry points ---------------------------------------------------------
 
     async def handle_contacts(self, message: Any, actor: ActorIdentity) -> ReplySpec:
-        """A shared contact card from a registered sender."""
+        """A shared contact card from a registered sender: what will they do?"""
         if str(actor.role or "").upper() not in _MANAGER_ROLES:
             return ReplySpec(text=NOT_ALLOWED)
         people = list((message.metadata or {}).get("shared_contacts") or [])
@@ -163,20 +161,48 @@ class ContactShareJourney:
             return ReplySpec(text=NO_NUMBER)
         name = " ".join(str(person.get("name") or "").split())
         note = MORE_THAN_ONE.format(name=name or "the first one") if len(people) > 1 else ""
-
+        if not actor.projects:
+            return ReplySpec(text=NO_PROJECT)
         pending = {
             "name": name,
             "phone": phone,
             "business_number": _digits((message.metadata or {}).get("display_phone_number")),
             "note": note,
+            "owner_wa": _digits(getattr(getattr(message, "sender", None), "wa_id", "")),
         }
+        return await self._ask_role(actor, pending, PICK_ROLE.format(name=name or "they"))
+
+    async def start_join(
+        self,
+        actor: ActorIdentity,
+        *,
+        name: str,
+        phone: str,
+        business_number: str,
+        request_id: str | None = None,
+    ) -> ReplySpec:
+        """SS-05: an admin approved someone who asked to join with the
+        company's code. The same two taps as a shared contact (role, then
+        project); once they're on the project they are told directly (they
+        messaged Mesiri moments ago, so WhatsApp lets us)."""
         if not actor.projects:
             return ReplySpec(text=NO_PROJECT)
+        pending = {
+            "name": name,
+            "phone": phone,
+            "business_number": business_number,
+            "note": "",
+            "join_phone": phone,
+            "join_request_id": request_id,
+        }
+        return await self._ask_role(actor, pending, APPROVED_PICK_ROLE.format(name=name or "them"))
+
+    async def _ask_role(self, actor: ActorIdentity, pending: dict, question: str) -> ReplySpec:
         await self._redis.set_json(
             _key(actor.user_id, "pending"), pending, ttl_seconds=_PENDING_TTL_SECONDS
         )
         return ReplySpec(
-            text=PICK_ROLE.format(name=name or "they"),
+            text=question + (pending.get("note") or ""),
             buttons=tuple(
                 ListRow(id=f"{ROLE_TAP_PREFIX}{code}", title=title)
                 for code, title in _ROLE_CHOICES
@@ -184,29 +210,9 @@ class ContactShareJourney:
             ),
         )
 
-    async def start_join(
-        self, actor: ActorIdentity, *, name: str, phone: str, business_number: str
-    ) -> ReplySpec:
-        """SS-05: an admin approved someone who asked to join with the
-        company's code. The same steps as sharing their contact; once they're
-        on the project they are told directly (they messaged Mesiri moments
-        ago, so WhatsApp lets us), instead of the owner forwarding an invite."""
-        return await self._begin(
-            actor,
-            {
-                "name": name,
-                "phone": phone,
-                "business_number": business_number,
-                "note": "",
-                "join_phone": phone,
-                "role": _NEW_MEMBER_ROLE,
-            },
-        )
-
     async def _begin(self, actor: ActorIdentity, pending: dict) -> ReplySpec:
-        """Pick the project (a list when there are several), then start."""
+        """Pick the project (a list when there are several), then add."""
         name = pending.get("name") or ""
-        note = pending.get("note") or ""
         projects = list(actor.projects or [])
         if not projects:
             return ReplySpec(text=NO_PROJECT)
@@ -215,12 +221,12 @@ class ContactShareJourney:
                 _key(actor.user_id, "pending"), pending, ttl_seconds=_PENDING_TTL_SECONDS
             )
             return ReplySpec(
-                text=PICK_PROJECT.format(name=name or "them") + note,
+                text=PICK_PROJECT.format(name=name or "them", role=_role_title(pending.get("role"))),
                 list_button_label="Choose project",
-                list_rows=[
-                    ListRow(id=f"{PROJECT_TAP_PREFIX}{p.id}", title=p.name)
+                list_rows=tuple(
+                    ListRow(id=f"{PROJECT_TAP_PREFIX}{p.id}", title=p.name[:24])
                     for p in projects[:_LIST_MAX]
-                ],
+                ),
             )
         return await self._start(actor, pending, projects[0].id, projects[0].name)
 
@@ -236,7 +242,7 @@ class ContactShareJourney:
         await self._redis.set_json(_key(actor.user_id, "pending"), None, ttl_seconds=60)
         project_id = tap[len(PROJECT_TAP_PREFIX) :]
         project = next((p for p in actor.projects or [] if str(p.id) == project_id), None)
-        if not isinstance(pending, dict) or project is None:
+        if not isinstance(pending, dict) or "role" not in pending or project is None:
             return ReplySpec(text=EXPIRED)
         return await self._start(actor, pending, project.id, project.name)
 
@@ -249,7 +255,10 @@ class ContactShareJourney:
         await self._redis.set_json(_key(actor.user_id, "pending"), None, ttl_seconds=60)
         if not may_grant_role(actor.role, role):
             return ReplySpec(text=NOT_ALLOWED)
-        return await self._begin(actor, {**pending, "role": role})
+        pending = {**pending, "role": role}
+        if pending.get("join_request_id"):
+            await self._note_join_step(actor, pending, role=role)
+        return await self._begin(actor, pending)
 
     async def invite_after_member_added(
         self,
@@ -292,9 +301,9 @@ class ContactShareJourney:
         join_phone = invite.get("join_phone")
         if join_phone and self._send_text is not None:
             # SS-05: they asked to join, so tell them directly.
-            joined = JOINED.format(first=first, company=company, project=project)
+            role = str(invite.get("role") or _NEW_MEMBER_ROLE)
+            joined = JOINED.format(first=first, company=company, project=project, role=_role_title(role))
             try:
-                role = str(invite.get("role") or _NEW_MEMBER_ROLE)
                 if not await self._send_welcome_card(str(join_phone), joined, first, actor, company, role):
                     await self._send_text(str(join_phone), joined)
                 return [ADDED_JOINER.format(name=name, project=project)]
@@ -350,102 +359,96 @@ class ContactShareJourney:
     async def _start(
         self, actor: ActorIdentity, pending: dict, project_id: str, project_name: str
     ) -> ReplySpec:
-        phone = pending["phone"]
-        existing = await self._find_user(phone)
-        if existing is not None and str(existing.organization_id) != str(actor.organization_id):
-            return ReplySpec(text=OTHER_COMPANY)
-
-        name = existing.full_name if existing is not None else pending.get("name") or ""
+        """Put them on the project now (the role and project taps were the
+        confirmation), then tell whoever needs telling."""
+        name = str(pending.get("name") or "")
         role = str(pending.get("role") or _NEW_MEMBER_ROLE)
-        await self._redis.set_json(
-            _key(actor.user_id, "invite"),
-            {
-                "name": name,
-                "role": role,
-                "project_name": project_name,
-                "business_number": pending.get("business_number"),
-                "join_phone": pending.get("join_phone"),
-            },
-            ttl_seconds=_INVITE_TTL_SECONDS,
-        )
-        original = self._add_member_event(actor, project_id, name, role)
         try:
-            if existing is not None:
-                spec = await self._start_add_member(actor, original)
-            else:
-                spec = await start_member_create_plan(
-                    name_hint=name,
-                    original_event=original,
-                    actor=actor,
-                    plan_store=self._plan_store,
-                    workflow_runtime=self._runtime,
-                    whatsapp_number=phone,
+            added = await self._add(actor, pending["phone"], name, role, project_id)
+        except MemberNotAdded as exc:
+            reason = str(exc).rstrip(".")
+            if "another company" in reason:
+                return ReplySpec(text=OTHER_COMPANY)
+            return ReplySpec(text=NOT_ADDED.format(name=name or "them", reason=reason[:1].lower() + reason[1:]))
+        except Exception:  # noqa: BLE001
+            _log.exception("contact_share.add_failed user=%s", actor.user_id)
+            return ReplySpec(text=FAILED)
+        _log.info(
+            "contact_share.added user=%s created=%s already=%s join=%s",
+            actor.user_id,
+            added.created,
+            added.already_on_project,
+            bool(pending.get("join_phone")),
+        )
+        who = added.full_name or name
+        if pending.get("join_request_id"):
+            await self._note_join_step(actor, pending, project=project_name, joined=True)
+        if added.already_on_project:
+            return ReplySpec(text=ALREADY_ON.format(name=who, project=project_name))
+        first = _first_name(who)
+        company = actor.org_name or "Your company"
+        join_phone = pending.get("join_phone")
+        if join_phone and self._send_text is not None:
+            joined = JOINED.format(first=first, company=company, project=project_name, role=_role_title(role))
+            try:
+                if not await self._send_welcome_card(str(join_phone), joined, first, actor, company, role):
+                    await self._send_text(str(join_phone), joined)
+                return ReplySpec(text=ADDED_JOINER.format(name=who, role=_role_title(role), project=project_name))
+            except Exception:  # noqa: BLE001 -- fall back to the invite to forward
+                _log.warning("contact_share.joiner_not_told user=%s", actor.user_id)
+        number = pending.get("business_number")
+        invite_text = (
+            INVITE.format(first=first, company=company, number=number)
+            if number
+            else INVITE_NO_LINK.format(first=first, company=company)
+        )
+        owner = pending.get("owner_wa")
+        if owner and self._send_text is not None:
+            # The line first, then the invite on its own, so it forwards cleanly.
+            try:
+                await self._send_text(str(owner), ADDED.format(name=who, project=project_name))
+                return ReplySpec(text=invite_text)
+            except Exception:  # noqa: BLE001 -- both in one message instead
+                _log.warning("contact_share.added_line_failed user=%s", actor.user_id)
+        return ReplySpec(text=ADDED.format(name=who, project=project_name) + "\n\n" + invite_text)
+
+    async def _add(
+        self, actor: ActorIdentity, phone: str, name: str, role: str, project_id: str
+    ) -> AddedToProject:
+        async with self._db.transaction() as conn:
+            return await add_to_project_by_number(
+                conn,
+                organization_id=str(actor.organization_id),
+                project_id=str(project_id),
+                created_by=str(actor.user_id).removeprefix("ctx_user_"),
+                created_by_role=str(actor.role or ""),
+                full_name=name or "Team member",
+                whatsapp_number=phone,
+                role=role,
+            )
+
+    async def _note_join_step(
+        self,
+        actor: ActorIdentity,
+        pending: dict,
+        *,
+        role: str | None = None,
+        project: str | None = None,
+        joined: bool = False,
+    ) -> None:
+        """For the Live screen: the join request's role, project, joined.
+        Best effort: the person is added whether or not this is noted."""
+        from mesiri.application.organizations import team_join
+
+        try:
+            async with self._db.transaction() as conn:
+                await team_join.note_step(
+                    conn,
+                    uuid.UUID(str(actor.organization_id)),
+                    request_id=str(pending.get("join_request_id")),
+                    role=role,
+                    project=project,
+                    joined_at=dt.datetime.now(dt.UTC) if joined else None,
                 )
         except Exception:  # noqa: BLE001
-            _log.exception("contact_share.start_failed user=%s", actor.user_id)
-            spec = None
-        if spec is None:
-            return ReplySpec(text=FAILED)
-        note = pending.get("note") or ""
-        if note:
-            spec = ReplySpec(
-                text=spec.text + note,
-                list_button_label=spec.list_button_label,
-                list_rows=spec.list_rows,
-                buttons=spec.buttons,
-            )
-        _log.info("contact_share.started user=%s existing=%s", actor.user_id, existing is not None)
-        return spec
-
-    async def _find_user(self, phone: str) -> Any | None:
-        async with self._db.transaction() as conn:
-            # Every company: a number held elsewhere is refused (BE-03 unscoped).
-            async with unscoped(conn):
-                row = (
-                    await conn.execute(
-                        sa.select(_users.c.id, _users.c.organization_id, _users.c.full_name).where(
-                            sa.func.regexp_replace(_users.c.whatsapp_number, r"\D", "", "g") == phone
-                        )
-                    )
-                ).first()
-        return row
-
-    @staticmethod
-    def _add_member_event(
-        actor: ActorIdentity, project_id: str, name: str, role: str = _NEW_MEMBER_ROLE
-    ) -> CanonicalEventV2:
-        corr = f"contact_share_{uuid.uuid4().hex[:12]}"
-        return CanonicalEventV2(
-            event_id=corr,
-            correlation_id=corr,
-            source_message_id=corr,
-            event_type=CanonicalEventType.ADD_PROJECT_MEMBER_REQUESTED,
-            completeness=IntentCompleteness.ACTIONABLE,
-            organization_id=str(actor.organization_id),
-            user_id=str(actor.user_id),
-            project_id=str(project_id),
-            fields={
-                "member_name": name,
-                "role": role,
-                "created_by_role": actor.role,
-            },
-        )
-
-    async def _start_add_member(
-        self, actor: ActorIdentity, event: CanonicalEventV2
-    ) -> ReplySpec | None:
-        decision = PlannerDecisionV2(
-            correlation_id=event.correlation_id,
-            source_message_id=event.source_message_id,
-            decision_type=PlannerDecisionType.START_WORKFLOW,
-            workflow_key=WorkflowKey.ADD_PROJECT_MEMBER,
-            reason=CanonicalEventType.ADD_PROJECT_MEMBER_REQUESTED,
-            organization_id=event.organization_id,
-            user_id=event.user_id,
-            project_id=event.project_id,
-        )
-        await self._runtime.abandon_optional_question(str(actor.user_id))
-        run = await self._runtime.start(decision, event)
-        if not run.pending_prompt:
-            return None
-        return render_workflow_run_reply_spec(run)
+            _log.warning("contact_share.join_step_not_noted user=%s", actor.user_id, exc_info=True)

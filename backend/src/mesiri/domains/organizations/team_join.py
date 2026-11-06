@@ -14,7 +14,10 @@ Stored per company in `organization_settings`:
     join_requests  [JoinRequest-shaped dicts, newest last]
 
 A request is {"id", "phone" (digits), "name", "requested_at", "status"
-("open" | "approved" | "rejected"), "decided_at", "decided_by"}.
+("open" | "approved" | "rejected" | "joined"), "decided_at", "decided_by"},
+and once approved the steps the admin took on WhatsApp: "role" (the role
+they picked), "project" (the project's name) and "joined_at" (status
+"joined"), which the company's Live screen shows as they happen.
 """
 
 from __future__ import annotations
@@ -28,6 +31,8 @@ from typing import Any
 OPEN = "open"
 APPROVED = "approved"
 REJECTED = "rejected"
+#: Approved, and now on a project.
+JOINED = "joined"
 
 #: Open requests a company can hold at once: a leaked code can't flood the
 #: admins' WhatsApp.
@@ -139,6 +144,46 @@ def decide(
         )
         return requests, request, True
     return requests, None, False
+
+
+def note_step(
+    stored: object,
+    *,
+    request_id: str,
+    role: str | None = None,
+    project: str | None = None,
+    joined_at: dt.datetime | None = None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """(the new list, whether it changed): an approved request's next step,
+    the role picked, then the project and the moment they were added
+    (status JOINED). An open, rejected or unknown request is left alone."""
+    requests = _requests(stored)
+    for request in requests:
+        if request.get("id") != request_id:
+            continue
+        if request.get("status") not in (APPROVED, JOINED):
+            return requests, False
+        if role:
+            request["role"] = role
+        if project:
+            request["project"] = project
+        if joined_at is not None:
+            request.update(status=JOINED, joined_at=joined_at.isoformat())
+        return requests, True
+    return requests, False
+
+
+def recent(stored: object, *, now: dt.datetime, hours: int = 24) -> list[dict[str, Any]]:
+    """Requests made in the last `hours`, oldest first: the Live screen's."""
+    out = []
+    for request in _requests(stored):
+        try:
+            at = dt.datetime.fromisoformat(str(request.get("requested_at")))
+        except ValueError:
+            continue
+        if now - at < dt.timedelta(hours=hours):
+            out.append(request)
+    return out
 
 
 class TooManyRequests(Exception):

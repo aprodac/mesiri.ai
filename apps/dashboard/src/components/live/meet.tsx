@@ -626,7 +626,7 @@ function OwnerScene({ site }: { site: string }) {
   )
 }
 
-function CloseScene({ number, link }: { number: string | null; link: string | null }) {
+function CloseScene({ number, link, joining }: { number: string | null; link: string | null; joining?: boolean }) {
   return (
     <div className="grid grid-cols-1 gap-8 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] @3xl:items-center">
       <div className="grid grid-cols-1 gap-6">
@@ -643,7 +643,7 @@ function CloseScene({ number, link }: { number: string | null; link: string | nu
         <div className="grid grid-cols-1 justify-items-start gap-3 border-2 border-foreground p-5" style={at('meet-pop', 2.2, 500)}>
           <QrCode value={link} label={`QR code to message Mesiri at ${number}`} className="size-40" />
           <p className="m-0 flex items-center gap-2 text-lg font-semibold">
-            <WhatsAppIcon className="size-5" /> Try it now
+            <WhatsAppIcon className="size-5" /> {joining ? 'Scan to join the team' : 'Try it now'}
           </p>
           <p className="m-0 text-sm text-muted-foreground">{number}</p>
         </div>
@@ -709,6 +709,7 @@ export function MeetMesiri({
   to,
   site,
   number,
+  qrText = 'Hi Mesiri',
   short = false,
   presenting = false,
   onScene,
@@ -718,6 +719,8 @@ export function MeetMesiri({
   to: string | null
   site: string | null
   number: string | null
+  /** WEB-71: what the QR code sends: the company's join code on its Live, so scanning joins the team. */
+  qrText?: string
   short?: boolean
   presenting?: boolean
   /** A scene starts (Live adds its sample messages to the stream). */
@@ -730,7 +733,7 @@ export function MeetMesiri({
   const [i, setI] = React.useState(0)
   const key = scenes[i]
   const place = site ?? 'Villa 3'
-  const link = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Mesiri')}` : null
+  const link = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent(qrText)}` : null
   const narration = NARRATION[key]
 
   // Live re-renders about once a second (the feed, the clock) and passes a fresh
@@ -814,7 +817,7 @@ export function MeetMesiri({
         {key === 'catches' && <CatchesScene />}
         {key === 'report' && <ReportScene site={place} />}
         {key === 'owner' && <OwnerScene site={place} />}
-        {key === 'close' && <CloseScene number={number} link={link} />}
+        {key === 'close' && <CloseScene number={number} link={link} joining={qrText !== 'Hi Mesiri'} />}
       </div>
       <p className="m-0 flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
         <Check className="size-3" /> Sample conversation · ← → to move · Esc to close

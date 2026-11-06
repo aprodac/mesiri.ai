@@ -10,10 +10,10 @@ import pytest
 
 from backend.ports import ActorIdentity, ProjectSummary
 from channel.replies import ReplySpec
+from mesiri.application.identity.add_by_number import AddedToProject
 from mesiri.application.organizations.team_join import Approver, Company
 from mesiri.domains.organizations import team_join as rules
 from mesiri.infrastructure.redis.client import FakeRedis
-from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.enums import InputModality
 from runtime import contact_share_journey as cs
 from runtime import join_journey as jj
@@ -112,7 +112,7 @@ def world(monkeypatch):
         monkeypatch.setattr(jj.team_join, name, fn)
 
     class _ContactShare:
-        async def start_join(self, actor, *, name, phone, business_number):
+        async def start_join(self, actor, *, name, phone, business_number, request_id=None):
             state["joins"].append((name, phone, business_number))
             return ReplySpec(text="*Confirm this action?* create user")
 
@@ -136,7 +136,7 @@ async def test_a_join_message_asks_the_admins(world) -> None:
     assert reply.startswith("Thanks Ravi! I've asked *Acme Builders*")
     [(to, body, buttons)] = world.sender.buttons
     assert to == "919876500099"
-    assert "*Ravi Kumar* (+919876500001) wants to join *Acme Builders*" in body
+    assert "*Ravi Kumar* (+919876500001) is trying to join *Acme Builders*" in body
     assert [b.title for b in buttons] == ["Approve", "Reject"]
     assert buttons[0].id == f"{jj.APPROVE_PREFIX}{_ref(world)}"
 
@@ -243,11 +243,8 @@ async def test_a_site_engineer_cannot_share_the_code(world) -> None:
 # -- once added -------------------------------------------------------------------
 
 
-async def test_the_newcomer_is_told_directly_once_added(monkeypatch) -> None:
-    async def fake_plan(**kwargs):
-        return ReplySpec(text="*Confirm this action?* create user")
-
-    monkeypatch.setattr(cs, "start_member_create_plan", fake_plan)
+async def test_the_newcomer_is_told_directly_once_added() -> None:
+    """Approve, role, project: they are in and told, with no Confirm card."""
     sent: list[tuple[str, str]] = []
 
     async def send_text(to, body):
@@ -257,18 +254,19 @@ async def test_the_newcomer_is_told_directly_once_added(monkeypatch) -> None:
         redis=FakeRedis(), db=None, plan_store=None, workflow_runtime=None, send_text=send_text
     )
 
-    async def nobody(phone):
+    async def add(actor, phone, name, role, project_id):
+        return AddedToProject(uuid.uuid4(), name, True, False)
+
+    async def note(actor, pending, **step):
         return None
 
-    share._find_user = nobody  # type: ignore[method-assign]
+    share._add = add  # type: ignore[method-assign]
+    share._note_join_step = note  # type: ignore[method-assign]
     actor = _actor()
-    await share.start_join(actor, name="Ravi Kumar", phone=NEWCOMER, business_number="15550001111")
+    await share.start_join(actor, name="Ravi Kumar", phone=NEWCOMER, business_number="15550001111", request_id="r1")
+    to_owner = await share.handle_project_tap(_message(tap="contact_role:SITE_ENGINEER"), actor)
 
-    to_owner = await share.invite_after_member_added(
-        action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Ravi Kumar", actor=actor
-    )
-
-    assert to_owner == ["✅ *Ravi Kumar* can now report on *Green Villa*. I've told them they're in."]
+    assert to_owner.text == "✅ *Ravi Kumar* is in: Site Engineer on *Green Villa*. I've told them."
     [(to, body)] = sent
     assert to == NEWCOMER
     assert body.startswith("✅ You're in, Ravi! *Acme Builders* added you to *Green Villa*")

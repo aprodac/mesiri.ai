@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 
 from backend.ports import ActorIdentity, ProjectSummary
-from channel.replies import ReplySpec
 from ingress.normalization import MessageNormalizer
+from mesiri.application.identity.add_by_number import AddedToProject, MemberNotAdded
 from mesiri.infrastructure.redis.client import FakeRedis
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from runtime import contact_share_journey as cs
@@ -33,6 +33,7 @@ def _actor(role="ADMIN", projects=(P1,)) -> ActorIdentity:
 
 def _card(*people, business="15550001111"):
     return SimpleNamespace(
+        sender=SimpleNamespace(wa_id="15550009999"),
         metadata={
             "raw_type": "contacts",
             "display_phone_number": business,
@@ -54,25 +55,27 @@ async def _share(j, card, actor, role="SITE_ENGINEER"):
 
 
 @pytest.fixture
-def journey(monkeypatch):
-    calls: dict = {"create_plan": [], "add_member": [], "existing": None}
+def journey():
+    calls: dict = {"add": [], "notes": [], "sent": [], "refuse": None, "already": False, "created": True}
 
-    async def fake_plan(**kwargs):
-        calls["create_plan"].append(kwargs)
-        return ReplySpec(text="*Confirm this action?* create user")
+    async def send_text(to, body):
+        calls["sent"].append((to, body))
 
-    monkeypatch.setattr(cs, "start_member_create_plan", fake_plan)
-    j = cs.ContactShareJourney(redis=FakeRedis(), db=None, plan_store=None, workflow_runtime=None)
+    j = cs.ContactShareJourney(
+        redis=FakeRedis(), db=None, plan_store=None, workflow_runtime=None, send_text=send_text
+    )
 
-    async def fake_find(phone):
-        return calls["existing"]
+    async def fake_add(actor, phone, name, role, project_id):
+        calls["add"].append({"phone": phone, "name": name, "role": role, "project_id": project_id})
+        if calls["refuse"]:
+            raise MemberNotAdded(calls["refuse"])
+        return AddedToProject(uuid.uuid4(), name, calls["created"], calls["already"])
 
-    async def fake_add(actor, event):
-        calls["add_member"].append(event)
-        return ReplySpec(text="*Confirm this action?* add member")
+    async def fake_note(actor, pending, **step):
+        calls["notes"].append((pending.get("join_request_id"), step))
 
-    j._find_user = fake_find  # type: ignore[method-assign]
-    j._start_add_member = fake_add  # type: ignore[method-assign]
+    j._add = fake_add  # type: ignore[method-assign]
+    j._note_join_step = fake_note  # type: ignore[method-assign]
     return SimpleNamespace(j=j, calls=calls)
 
 
@@ -104,37 +107,40 @@ def test_normalizer_keeps_name_and_whatsapp_id() -> None:
 # -- starting the add -------------------------------------------------------------
 
 
-async def test_new_number_starts_the_create_user_chain(journey) -> None:
+async def test_role_then_one_project_adds_them_at_once(journey) -> None:
+    """Two taps are the confirmation: no Confirm card after them."""
     actor = _actor()
     reply = await _share(journey.j, _card(("Biju Site", "98765 11122")), actor)
 
-    assert "create user" in reply.text
-    call = journey.calls["create_plan"][0]
-    assert call["name_hint"] == "Biju Site"
-    assert call["whatsapp_number"] == "919876511122"
-    event = call["original_event"]
-    assert event.project_id == P1.id
-    assert event.fields["role"] == "SITE_ENGINEER"
-    assert event.fields["member_name"] == "Biju Site"
-
-
-async def test_existing_teammate_is_just_added_to_the_project(journey) -> None:
-    journey.calls["existing"] = SimpleNamespace(
-        id=uuid.uuid4(), organization_id=ORG, full_name="Biju S"
-    )
-    reply = await _share(journey.j, _card(("Biju", "919876511122")), _actor())
-    assert "add member" in reply.text
-    assert journey.calls["create_plan"] == []
-    assert journey.calls["add_member"][0].fields["member_name"] == "Biju S"
+    assert journey.calls["add"] == [
+        {"phone": "919876511122", "name": "Biju Site", "role": "SITE_ENGINEER", "project_id": P1.id}
+    ]
+    # The line to the owner first, then the invite on its own to forward.
+    assert journey.calls["sent"] == [
+        ("15550009999", "✅ *Biju Site* can now report on *Green Villa*. Forward the next message to them so they can start:")
+    ]
+    assert reply.text.startswith("Hi Biju, Suresh Builders uses Mesiri")
+    assert "https://wa.me/15550001111?text=Hi" in reply.text
+    assert not reply.buttons
 
 
 async def test_number_in_another_company_is_refused(journey) -> None:
-    journey.calls["existing"] = SimpleNamespace(
-        id=uuid.uuid4(), organization_id=str(uuid.uuid4()), full_name="X"
-    )
+    journey.calls["refuse"] = "That number is already used by someone in another company on Mesiri"
     reply = await _share(journey.j, _card(("Biju", "919876511122")), _actor())
     assert reply.text == cs.OTHER_COMPANY
-    assert journey.calls["create_plan"] == [] and journey.calls["add_member"] == []
+
+
+async def test_other_refusals_are_said_plainly(journey) -> None:
+    journey.calls["refuse"] = "Only an admin can give someone the admin or finance role"
+    reply = await _share(journey.j, _card(("Biju", "919876511122")), _actor())
+    assert reply.text == "I couldn't add *Biju*: only an admin can give someone the admin or finance role."
+
+
+async def test_already_on_the_project_says_so(journey) -> None:
+    journey.calls["already"] = True
+    reply = await _share(journey.j, _card(("Biju", "919876511122")), _actor())
+    assert reply.text == "*Biju* is already on *Green Villa*."
+    assert journey.calls["sent"] == []
 
 
 @pytest.mark.parametrize("role", ["SITE_ENGINEER", "FINANCE", ""])
@@ -150,22 +156,25 @@ async def test_bad_number_and_no_project(journey) -> None:
 
 
 async def test_several_contacts_adds_the_first_and_says_so(journey) -> None:
-    reply = await _share(journey.j, _card(("Biju", "9876511122"), ("Anil", "9876533344")), _actor())
-    assert "Share the others one at a time" in reply.text
-    assert journey.calls["create_plan"][0]["whatsapp_number"] == "919876511122"
+    actor = _actor()
+    asked = await journey.j.handle_contacts(_card(("Biju", "9876511122"), ("Anil", "9876533344")), actor)
+    assert "Share the others one at a time" in asked.text
+    await journey.j.handle_project_tap(_tap("contact_role:SITE_ENGINEER"), actor)
+    assert journey.calls["add"][0]["phone"] == "919876511122"
 
 
 async def test_several_projects_asks_which_then_starts(journey) -> None:
     actor = _actor(projects=(P1, P2))
     picker = await _share(journey.j, _card(("Biju", "9876511122")), actor)
+    assert picker.text == "Which project should *Biju* (Site Engineer) work on?"
     assert [r.id for r in picker.list_rows] == [
         f"contact_project:{P1.id}",
         f"contact_project:{P2.id}",
     ]
-    assert journey.calls["create_plan"] == []
+    assert journey.calls["add"] == []
 
     await journey.j.handle_project_tap(_tap(f"contact_project:{P2.id}"), actor)
-    assert journey.calls["create_plan"][0]["original_event"].project_id == P2.id
+    assert journey.calls["add"][0]["project_id"] == P2.id
 
     # The pick is used once.
     again = await journey.j.handle_project_tap(_tap(f"contact_project:{P2.id}"), actor)
@@ -180,7 +189,7 @@ async def test_the_role_question_offers_what_the_sender_may_give(journey) -> Non
         "contact_role:PROJECT_MANAGER",
         "contact_role:ADMIN",
     ]
-    assert journey.calls["create_plan"] == []
+    assert journey.calls["add"] == []
     pm = _actor(role="PROJECT_MANAGER")
     pm_q = await journey.j.handle_contacts(_card(("Biju", "9876511122")), pm)
     assert [b.title for b in pm_q.buttons] == ["Site Engineer", "Project Manager"]
@@ -188,14 +197,14 @@ async def test_the_role_question_offers_what_the_sender_may_give(journey) -> Non
 
 async def test_the_chosen_role_is_what_the_person_gets(journey) -> None:
     await _share(journey.j, _card(("Biju", "9876511122")), _actor(), role="PROJECT_MANAGER")
-    assert journey.calls["create_plan"][0]["original_event"].fields["role"] == "PROJECT_MANAGER"
+    assert journey.calls["add"][0]["role"] == "PROJECT_MANAGER"
 
 
 async def test_a_pm_cannot_tap_their_way_to_admin(journey) -> None:
     pm = _actor(role="PROJECT_MANAGER")
     reply = await _share(journey.j, _card(("Biju", "9876511122")), pm, role="ADMIN")
     assert reply.text == cs.NOT_ALLOWED
-    assert journey.calls["create_plan"] == []
+    assert journey.calls["add"] == []
 
 
 async def test_a_late_role_tap_is_expired(journey) -> None:
@@ -210,50 +219,54 @@ async def test_other_taps_are_not_ours(journey) -> None:
 # -- the invite ------------------------------------------------------------------
 
 
-async def test_invite_after_the_member_is_added(journey) -> None:
-    actor = _actor()
-    await _share(journey.j, _card(("Biju Site", "9876511122")), actor)
-
-    texts = await journey.j.invite_after_member_added(
-        action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="biju  site", actor=actor
-    )
-    assert "can now report on *Green Villa*" in texts[0]
-    assert "Hi biju, Suresh Builders uses Mesiri" in texts[1]
-    assert "https://wa.me/15550001111?text=Hi" in texts[1]
-
-    # Sent once.
-    assert (
-        await journey.j.invite_after_member_added(
-            action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Biju Site", actor=actor
-        )
-        == []
-    )
-
-
-async def test_no_invite_for_other_confirmations_or_people(journey) -> None:
-    actor = _actor()
-    await _share(journey.j, _card(("Biju Site", "9876511122")), actor)
-    assert (
-        await journey.j.invite_after_member_added(
-            action_type=DraftActionType.CREATE_USER, member_name="Biju Site", actor=actor
-        )
-        == []
-    )
-    assert (
-        await journey.j.invite_after_member_added(
-            action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Someone Else", actor=actor
-        )
-        == []
-    )
-
-
 async def test_invite_without_business_number_has_no_link(journey) -> None:
-    actor = _actor()
-    await _share(journey.j, _card(("Biju", "9876511122"), business=None), actor)
-    texts = await journey.j.invite_after_member_added(
-        action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Biju", actor=actor
+    reply = await _share(journey.j, _card(("Biju", "9876511122"), business=None), _actor())
+    assert "wa.me" not in reply.text and "Save this number" in reply.text
+
+
+async def test_no_invite_for_other_confirmations(journey) -> None:
+    assert (
+        await journey.j.invite_after_member_added(
+            action_type=DraftActionType.CREATE_USER, member_name="Biju Site", actor=_actor(), project_id=P1.id
+        )
+        == []
     )
-    assert "wa.me" not in texts[1] and "Save this number" in texts[1]
+
+
+# -- someone who asked to join (SS-05) ----------------------------------------------
+
+
+async def test_an_approved_joiner_is_asked_role_then_told_they_are_in(journey) -> None:
+    actor = _actor(projects=(P1, P2))
+    asked = await journey.j.start_join(
+        actor, name="Ravi Kumar", phone="919811122233", business_number="15550001111", request_id="r1"
+    )
+    assert asked.text == "👍 Approved. What will *Ravi Kumar* do?"
+    assert [b.title for b in asked.buttons] == ["Site Engineer", "Project Manager", "Admin"]
+
+    picker = await journey.j.handle_project_tap(_tap("contact_role:PROJECT_MANAGER"), actor)
+    assert picker.text == "Which project should *Ravi Kumar* (Project Manager) work on?"
+    done = await journey.j.handle_project_tap(_tap(f"contact_project:{P2.id}"), actor)
+
+    assert journey.calls["add"][0] == {
+        "phone": "919811122233", "name": "Ravi Kumar", "role": "PROJECT_MANAGER", "project_id": P2.id,
+    }
+    assert done.text == "✅ *Ravi Kumar* is in: Project Manager on *Lake View*. I've told them."
+    [(to, body)] = journey.calls["sent"]
+    assert to == "919811122233"
+    assert body.startswith("✅ You're in, Ravi! *Suresh Builders* added you to *Lake View* on Mesiri as Project Manager.")
+    # Each step is noted on the request, for the Live screen.
+    assert journey.calls["notes"] == [
+        ("r1", {"role": "PROJECT_MANAGER"}),
+        ("r1", {"project": "Lake View", "joined": True}),
+    ]
+
+
+async def test_a_joiner_with_no_project_to_go_to(journey) -> None:
+    reply = await journey.j.start_join(
+        _actor(projects=()), name="Ravi", phone="919811122233", business_number="", request_id="r1"
+    )
+    assert reply.text == cs.NO_PROJECT
 
 
 async def test_typed_add_gets_the_same_invite_as_a_shared_contact(journey) -> None:

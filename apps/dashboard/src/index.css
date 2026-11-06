@@ -291,6 +291,13 @@
   to { opacity: 1; transform: none; }
 }
 
+/* WEB-71: someone just joined the team on Live: a small burst from their avatar. */
+@keyframes join-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--jx), var(--jy)) scale(1) rotate(160deg); }
+}
+
 /* "Meet Mesiri" (WEB-56): the show's moves. Flat: no glow, no blur. */
 @keyframes meet-rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @keyframes meet-pop { 0% { opacity: 0; transform: scale(0.85); } 70% { opacity: 1; transform: scale(1.03); } 100% { opacity: 1; transform: none; } }
