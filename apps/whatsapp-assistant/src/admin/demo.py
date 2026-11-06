@@ -1,8 +1,9 @@
 """SA-30: reset a demo company in one tap (asked 2 Nov 2026: "a demo company you can reset in one tap").
 
 For showing Mesiri to contractors in the field: the demo company is deleted and created again, with the same
-people (same names, numbers, roles, the owner's password) and fresh sample data of the last three days, so every
-demo starts from the same clean, believable state.
+people (same names, numbers, roles, the owner's password) and fresh sample data of the last two weeks (SA-36: two
+projects, four sites, a worker register, vendors, deliveries and use, attendance, work, expenses, weather, a transfer
+and issues), so every demo starts from the same clean, believable state.
 
 Safe by construction:
 - only a company whose ``demo_company`` setting is true (set by the Mesiri team only) can be reset;
@@ -135,22 +136,82 @@ def _is_json(value: str) -> bool:
     return True
 
 
-def _units(body: Any) -> dict[str, str]:
-    from agent_api.units import unit_rows
-
-    return {str(u.get("code") or "").lower(): str(u.get("id")) for u in unit_rows(body)}
+#: How far back the sample records go (SA-36: "the data is less, add more"). Sundays are off, except today.
+DEMO_DAYS = 14
+#: A second project, so the demo shows a company with more than one job.
+DEMO_PROJECT_2 = "Lake View Apartments"
+DEMO_SITES_2 = ("Tower A", "Tower B")
+#: Shops and suppliers, by name only (no phone or GSTIN: made-up ones could be a real business's).
+DEMO_VENDORS = (
+    ("Sri Hardwares", "MG Road, Thrissur"), ("Kerala Steels", "Industrial Estate, Kalamassery"),
+    ("Malabar Cements Agency", "Palakkad"), ("Periyar Sand & Aggregates", "Aluva"), ("Thrissur Blocks", "Ollur"),
+    ("Hi-Tech Electricals", "Ernakulam"), ("City Plywood", "Perumbavoor"),
+)
+#: The worker register: name, trade, daily wage, the site they work at (index into the four sites).
+DEMO_WORKERS = (
+    ("Ravi", "mason", 1100, 0), ("Suresh", "mason", 1100, 0), ("Manoj", "mason", 1050, 1), ("Biju", "mason", 1100, 2),
+    ("Shibu", "mason", 1050, 2), ("Joseph", "carpenter", 1000, 0), ("Thomas", "carpenter", 1000, 2),
+    ("Rajesh", "bar bender", 1000, 2), ("Dinesh", "bar bender", 950, 3), ("Prakash", "electrician", 1200, 0),
+    ("Satheesh", "plumber", 1150, 1), ("Sunil", "helper", 750, 0), ("Vinod", "helper", 750, 1), ("Shaji", "helper", 700, 2),
+    ("Babu", "helper", 700, 3),
+)
+#: Per site: the work done, oldest first (each entry runs for a few days), with a quantity per day.
+#: (work_type, narrative, unit, quantity per day)
+DEMO_WORK = (
+    (("Block work", "First floor block work, east and north walls", "sqm", 18), ("Lintel concreting", "First floor lintel and sunshade cast", "cum", 2.5),
+     ("Plastering", "Ground floor internal plastering", "sqm", 40), ("Electrical conduits", "First floor conduit and box fixing", "nos", 22)),
+    (("Excavation", "Footing excavation for the annex", "cum", 14), ("PCC", "PCC below footings", "cum", 3),
+     ("Footing concreting", "Footings F1 to F6 cast", "cum", 5), ("Plinth beam", "Plinth beam shuttering and steel", "rmt", 24)),
+    (("Column casting", "Third floor columns cast", "cum", 4), ("Slab shuttering", "Third floor slab shuttering", "sqm", 60),
+     ("Slab reinforcement", "Third floor slab steel tying", "kg", 900), ("Slab concreting", "Third floor slab poured, 48 cum RMC", "cum", 16)),
+    (("Excavation", "Basement excavation, grid A to D", "cum", 40), ("Raft reinforcement", "Raft bottom mesh tying", "kg", 1400),
+     ("Raft concreting", "Raft pour, first half", "cum", 30), ("Retaining wall", "Retaining wall shuttering, north side", "sqm", 35)),
+)
+#: Per site, daily use: (material, how much a day). Deliveries keep each site stocked; Main block's cement runs low.
+DEMO_USE = (
+    (("cement", 22), ("m sand", 1.5), ("solid blocks", 260), ("p sand", 1.2)),
+    (("cement", 12), ("m sand", 1), ("aggregate 20mm", 2), ("steel", 120)),
+    (("cement", 30), ("steel", 650), ("aggregate 20mm", 3), ("m sand", 2), ("binding wire", 9)),
+    (("cement", 18), ("steel", 900), ("aggregate 20mm", 2.5), ("binding wire", 12)),
+)
+#: Material: (supplier, delivery size, rate per unit).
+DEMO_SUPPLY = {
+    "cement": ("Malabar Cements Agency", 100, 410), "m sand": ("Periyar Sand & Aggregates", 6, 1650),
+    "p sand": ("Periyar Sand & Aggregates", 4, 1900), "aggregate 20mm": ("Periyar Sand & Aggregates", 10, 1450),
+    "solid blocks": ("Thrissur Blocks", 1500, 42), "steel": ("Kerala Steels", 4000, 68), "binding wire": ("Kerala Steels", 50, 85),
+}
+#: The day's small spends per site: (vendor, category, amount, what for). One a day, in turn.
+DEMO_SPENDS = (
+    ("Sri Hardwares", "Hardware", 1840, "Nails, binding wire, cover blocks"), ("Tea stall", "Food", 650, "Tea and snacks for the crew"),
+    ("Indian Oil", "Fuel", 2300, "Diesel for the mixer and pump"), ("Auto stand", "Transport", 900, "Shifting cement bags from the road"),
+    ("Sri Hardwares", "Hardware", 1250, "Shuttering oil and hand tools"), ("Hi-Tech Electricals", "Electrical", 3400, "Conduit pipes and boxes"),
+    ("City Plywood", "Shuttering", 5600, "Plywood sheets for shuttering"), ("Tea stall", "Food", 720, "Tea and snacks for the crew"),
+)
+#: (site index, type, severity, narrative, what happens to it: open / acknowledge / resolve + note). The API dates an
+#: issue when it is reported, so these all show as reported on the reset day.
+DEMO_ISSUES = (
+    (2, "DRAWING_PENDING", "HIGH", "Third floor slab steel drawing not received from the structural consultant",
+     ("resolve", "Revised drawing received on WhatsApp, work restarted")),
+    (0, "EQUIPMENT_BREAKDOWN", "MEDIUM", "Concrete mixer motor burnt, lintel work stopped", ("resolve", "Motor rewound, mixer back on site")),
+    (3, "OTHER", "MEDIUM", "Rain flooded the excavation pit; pumping out water", ("resolve", "Water pumped out, sides shored")),
+    (1, "LABOUR_SHORTAGE", "MEDIUM", "Only 2 masons came, footing work slow", ("acknowledge", None)),
+    (2, "INSPECTION_WAITING", "HIGH", "Waiting for engineer's inspection before slab pour", ("open", None)),
+    (0, "MATERIAL_SHORTAGE", "HIGH", "Cement may run short by Friday; next load not confirmed", ("open", None)),
+)
+#: The day it rained: (days back, hours lost).
+DEMO_RAIN = (6, 3.0)
 
 
 async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[dict[str, int], list[str]]:
-    """Sample records of the last three days through the API, as the demo's owner. Never raises."""
+    """Two weeks of sample records on two projects through the API, as the demo's owner. Never raises.
+
+    The records are fixed (no randomness), so every reset shows the same story, dated to the last two weeks."""
     seeded: dict[str, int] = {}
     failed: list[str] = []
-    project = str(info["project_id"])
-    sites = [str(s) for s in info["site_ids"]]
 
-    async def post(kind: str, path: str, body: dict[str, Any]) -> dict | None:
+    async def call(kind: str, method: str, path: str, body: dict[str, Any] | None = None, params: dict | None = None) -> dict | None:
         try:
-            res = await client.call("POST", path, json=body, idempotency_key=f"demo-{uuid.uuid4()}")
+            res = await client.call(method, path, json=body, params=params, idempotency_key=f"demo-{uuid.uuid4()}")
         except Exception as exc:  # noqa: BLE001
             failed.append(f"{kind}: {type(exc).__name__}")
             return None
@@ -160,49 +221,125 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
         seeded[kind] = seeded.get(kind, 0) + 1
         return res.body if isinstance(res.body, dict) else {}
 
-    for other in info["others"]:
-        await post("member", f"/projects/{project}/members", {"userId": str(other["id"]), "role": other["role"] if other["role"] != "ADMIN" else "SITE_ENGINEER"})
+    async def post(kind: str, path: str, body: dict[str, Any]) -> dict | None:
+        return await call(kind, "POST", path, body)
+
+    # The second project, its sites, and everyone on both projects.
+    projects = [str(info["project_id"])]
+    sites = [(projects[0], str(s)) for s in info["site_ids"]]
+    second = await post("project", "/projects", {"name": DEMO_PROJECT_2, "location": "Kakkanad, Kochi", "client": "Lake View Builders"})
+    if second and second.get("id"):
+        projects.append(str(second["id"]))
+        for name in DEMO_SITES_2:
+            site = await post("site", f"/projects/{projects[1]}/sites", {"name": name})
+            if site and site.get("id"):
+                sites.append((projects[1], str(site["id"])))
+    for project in projects:
+        for other in info["others"]:
+            await post("member", f"/projects/{project}/members",
+                       {"userId": str(other["id"]), "role": other["role"] if other["role"] != "ADMIN" else "SITE_ENGINEER"})
+
+    for name, address in DEMO_VENDORS:
+        await post("vendor", "/finance/vendors", {"name": name, "address": address})
+    workers: list[tuple[dict, str, str, int, int]] = []  # (worker, name, trade, wage, site index)
+    for name, trade, wage, at in DEMO_WORKERS:
+        made = await post("worker", "/labour/workers", {"name": name, "trade": trade, "default_daily_wage": wage})
+        if at < len(sites):
+            workers.append((made or {}, name, trade, wage, at))
 
     materials = await client.call("GET", "/materials", params={"limit": 200, "is_active": True})
-    units = await client.call("GET", "/materials/units-of-measure")
-    unit_id = _units(units.body if units.ok else {})
     by_name = {str(m.get("name") or "").lower(): m for m in ((materials.body or {}).get("items") or [] if materials.ok else [])}
 
-    def material(*names: str) -> dict | None:
-        for n in names:
-            for key, m in by_name.items():
-                if n in key:
-                    return m
-        return None
+    def material(name: str) -> tuple[str, str] | None:
+        m = by_name.get(name)
+        return (str(m["id"]), str(m["default_unit_id"])) if m and m.get("default_unit_id") else None
 
-    def unit_for(m: dict, *codes: str) -> str | None:
-        return str(m.get("default_unit_id")) if m.get("default_unit_id") else next((unit_id[c] for c in codes if c in unit_id), None)
+    days = [today - dt.timedelta(days=back) for back in range(DEMO_DAYS - 1, -1, -1)]
+    days = [d for d in days if d.weekday() != 6 or d == today]
+    stock: dict[tuple[int, str], float] = {}
 
-    cement, steel, sand = material("cement"), material("steel", "tmt"), material("m sand", "sand")
-    for back, site in ((2, sites[0]), (1, sites[0]), (0, sites[-1])):
-        day = (today - dt.timedelta(days=back)).isoformat()
-        if cement and unit_for(cement, "bag", "bags"):
-            await post("material received", "/materials/inflows", {"project_id": project, "site_id": site, "material_id": cement["id"],
-                       "unit_id": unit_for(cement, "bag", "bags"), "quantity": 50, "occurred_date": day, "supplier": "Sri Hardwares"})
-            await post("material used", "/materials/outflows", {"project_id": project, "site_id": site, "material_id": cement["id"],
-                       "unit_id": unit_for(cement, "bag", "bags"), "quantity": 18 + back * 3, "occurred_date": day, "work_item": "Slab"})
-        if back == 2 and steel and unit_for(steel, "kg", "ton"):
-            await post("material received", "/materials/inflows", {"project_id": project, "site_id": site, "material_id": steel["id"],
-                       "unit_id": unit_for(steel, "kg", "ton"), "quantity": 1200, "occurred_date": day, "supplier": "Kerala Steels"})
-        if back == 1 and sand and unit_for(sand, "cft", "load", "ton"):
-            await post("material received", "/materials/inflows", {"project_id": project, "site_id": site, "material_id": sand["id"],
-                       "unit_id": unit_for(sand, "cft", "load", "ton"), "quantity": 2, "occurred_date": day})
-        await post("attendance", "/labour/attendance", {"project_id": project, "site_id": site, "occurred_date": day, "recorded_via": "whatsapp_text",
-                   "lines": [{"worker_name": "Ravi", "trade": "mason", "headcount": 1}, {"worker_name": "Suresh", "trade": "mason", "headcount": 1},
-                             {"trade": "helper", "headcount": 6 - back}, {"trade": "carpenter", "headcount": 2}]})
-        await post("work done", "/progress/activities", {"project_id": project, "site_id": site, "activity_date": day, "source": "whatsapp_text",
-                   "work_type": ("Column casting", "Slab shuttering", "Block work")[2 - back],
-                   "narrative": ("Ground floor columns cast", "First floor slab shuttering 60% done", "Block work, east wall")[2 - back]})
-        await post("expense", "/expenses", {"project_id": project, "site_id": site, "amount": (1840, 650, 2300)[2 - back], "occurred_date": day,
-                   "vendor_text": ("Sri Hardwares", "Tea stall", "Diesel")[2 - back], "category_text": ("Hardware", "Food", "Fuel")[2 - back],
-                   "source": "whatsapp"})
-    await post("issue", "/progress/issues", {"project_id": project, "site_id": sites[0], "issue_type": "MATERIAL_SHORTAGE", "severity": "MEDIUM",
-               "narrative": "Cement may run short by Friday; next load not confirmed"})
+    async def receive(at: int, name: str, day: dt.date, quantity: float | None = None) -> None:
+        found = material(name)
+        if not found:
+            return
+        vendor, size, rate = DEMO_SUPPLY[name]
+        quantity = quantity or size
+        project, site = sites[at]
+        if await post("material received", "/materials/inflows", {
+                "project_id": project, "site_id": site, "material_id": found[0], "unit_id": found[1], "quantity": quantity,
+                "occurred_date": day.isoformat(), "supplier": vendor, "unit_cost": rate, "total_cost": round(quantity * rate, 2)}):
+            stock[(at, name)] = stock.get((at, name), 0) + quantity
+
+    for index, day in enumerate(days):
+        back = (today - day).days
+        iso = day.isoformat()
+        for at, (project, site) in enumerate(sites):
+            rained = back == DEMO_RAIN[0] and at in (0, 3)
+            # Deliveries: everything a site uses arrives on the first day, then again when it runs low. Main block's
+            # cement is not topped up in the last days, so the demo shows "running low".
+            for name, per_day in DEMO_USE[at]:
+                low = stock.get((at, name), 0) < per_day * 3
+                if index == 0 or (low and not (at == 0 and name == "cement" and back <= 4)):
+                    await receive(at, name, day)
+            # Use.
+            for name, per_day in DEMO_USE[at]:
+                found = material(name)
+                use = round(per_day * (0.5 if rained else 1) * (1 + ((index + at) % 3 - 1) * 0.1), 2)
+                if not found or stock.get((at, name), 0) < use:
+                    continue
+                work_type = DEMO_WORK[at][min(index * len(DEMO_WORK[at]) // len(days), len(DEMO_WORK[at]) - 1)][0]
+                if await post("material used", "/materials/outflows", {
+                        "project_id": project, "site_id": site, "material_id": found[0], "unit_id": found[1], "quantity": use,
+                        "occurred_date": iso, "work_item": work_type}):
+                    stock[(at, name)] -= use
+            # Labour: the site's named workers (one is off now and then) and a helper gang from a labour contractor.
+            lines: list[dict[str, Any]] = []
+            for n, (made, name, trade, wage, home) in enumerate(workers):
+                if home != at:
+                    continue
+                status = "absent" if (index + n) % 9 == 0 else "half_day" if rained or (index + n) % 11 == 0 else "present"
+                line = {"worker_name": name, "trade": trade, "headcount": 1, "daily_wage": wage, "attendance_status": status}
+                if made.get("id"):
+                    line["worker_id"] = str(made["id"])
+                lines.append(line)
+            lines.append({"trade": "helper", "headcount": 4 + (index + at) % 4, "contractor": "Bengal crew (Rahim)", "daily_wage": 700})
+            await post("attendance", "/labour/attendance", {"project_id": project, "site_id": site, "occurred_date": iso,
+                                                            "recorded_via": "whatsapp_text", "lines": lines})
+            # Work done: the stage this site is at, with the day's quantity.
+            work_type, narrative, unit, qty = DEMO_WORK[at][min(index * len(DEMO_WORK[at]) // len(days), len(DEMO_WORK[at]) - 1)]
+            qty = round(qty * (0.5 if rained else 1), 2)
+            await post("work done", "/progress/activities", {
+                "project_id": project, "site_id": site, "activity_date": iso, "source": "whatsapp_text", "work_type": work_type,
+                "narrative": narrative, "quantities": [{"quantity": qty, "unit": unit, "work_type": work_type}]})
+            # The day's spend.
+            vendor, category, amount, what = DEMO_SPENDS[(index * len(sites) + at) % len(DEMO_SPENDS)]
+            await post("expense", "/expenses", {"project_id": project, "site_id": site, "amount": amount, "occurred_date": iso,
+                                                "vendor_text": vendor, "category_text": category, "description": what, "source": "whatsapp"})
+            # Weather.
+            conditions: dict[str, Any] = {"weather": "rainy" if rained else ("cloudy" if index % 4 == 3 else "sunny")}
+            if rained:
+                conditions["hours_lost"] = DEMO_RAIN[1]
+            if back == 0:
+                conditions["tomorrow_plan"] = DEMO_WORK[at][-1][1]
+            await call("site conditions", "PATCH", f"/dpr/site-days/{site}/conditions", conditions, params={"date": iso})
+        # A transfer between the villa's two sites, a few days ago.
+        if back == 4 and len(sites) > 1 and material("cement") and stock.get((1, "cement"), 0) >= 20:
+            found = material("cement")
+            if await post("transfer", "/materials/transfers", {
+                    "from_site_id": sites[1][1], "to_site_id": sites[0][1], "material_id": found[0], "unit_id": found[1],
+                    "quantity": 20, "occurred_date": iso, "notes": "Main block short of cement for plastering"}):
+                stock[(1, "cement")] -= 20
+                stock[(0, "cement")] = stock.get((0, "cement"), 0) + 20
+
+    # Issues, some already handled.
+    for at, kind, severity, narrative, (then, note) in DEMO_ISSUES:
+        if at >= len(sites):
+            continue
+        issue = await post("issue", "/progress/issues", {"project_id": sites[at][0], "site_id": sites[at][1], "issue_type": kind,
+                                                         "severity": severity, "narrative": narrative})
+        if issue and issue.get("id") and then != "open":
+            body = {"resolution_notes": note} if then == "resolve" else {}
+            await post(f"issue {then}d", f"/progress/issues/{issue['id']}/{then}", body)
     return seeded, failed
 
 

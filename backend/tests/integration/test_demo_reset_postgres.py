@@ -72,8 +72,12 @@ async def test_the_demo_comes_back_with_its_people_settings_and_fresh_records(wo
 
     assert result.organization_id != old_id and result.people == 2
     assert result.failed == [], result.failed
-    assert result.seeded.get("attendance") == 3 and result.seeded.get("work done") == 3 and result.seeded.get("issue") == 1
-    assert result.seeded.get("expense") == 3 and result.seeded.get("member") == 1
+    # SA-36: two weeks on two projects (2 Nov 2026 is a Monday: 12 working days, 4 sites).
+    assert result.seeded.get("project") == 1 and result.seeded.get("site") == 2 and result.seeded.get("member") == 2
+    assert result.seeded.get("attendance") == 48 and result.seeded.get("work done") == 48 and result.seeded.get("expense") == 48
+    assert result.seeded.get("site conditions") == 48 and result.seeded.get("worker") == 15 and result.seeded.get("vendor") == 7
+    assert result.seeded.get("material received", 0) >= 40 and result.seeded.get("material used", 0) >= 150
+    assert result.seeded.get("transfer") == 1 and result.seeded.get("issue") == 6 and result.seeded.get("issue resolved") == 3
     # A demo full of records (attendance with workers, expenses ...) resets again: the delete step clears the links
     # Postgres's cascades meet in the wrong order.
     again = await reset_demo(engine, database, result.organization_id, actor=actor, today=dt.date(2026, 11, 3))
@@ -93,7 +97,12 @@ async def test_the_demo_comes_back_with_its_people_settings_and_fresh_records(wo
         assert "join_code" not in settings or settings["join_code"] != "OLD-1234"  # progress starts fresh
         sites = (await conn.execute(text("SELECT s.name FROM sites s JOIN projects p ON p.id = s.project_id WHERE p.organization_id = :o ORDER BY s.name"),
                                     {"o": result.organization_id})).scalars().all()
-        assert sites == ["Annex", "Main block"]
+        assert sites == ["Annex", "Main block", "Tower A", "Tower B"]
+        # Every delivery came before its use: no site's stock of anything goes below zero.
+        negative = (await conn.execute(text(
+            "SELECT count(*) FROM (SELECT site_id, material_id, sum(CASE WHEN movement_type = 'RECEIPT' THEN quantity ELSE -quantity END) AS q "
+            "FROM material_movements WHERE organization_id = :o GROUP BY 1, 2) s WHERE q < 0"), {"o": result.organization_id})).scalar()
+        assert negative == 0
         audit = (await conn.execute(text("SELECT count(*) FROM admin_audit_log WHERE organization_id = :o AND action = 'company.demo_reset'"),
                                     {"o": result.organization_id})).scalar()
         assert audit == 1

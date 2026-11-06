@@ -212,7 +212,7 @@ export default function OrganizationDetail() {
   const isDemo = orgSettings?.settings?.demo_company === true;
   const resetDemo = () => {
     if (!org) return;
-    if (!window.confirm(`Reset the demo "${org.name}"?\n\nIts records are DELETED and it is created again with the same people and fresh sample data of the last 3 days.`)) return;
+    if (!window.confirm(`Reset the demo "${org.name}"?\n\nIts records are DELETED and it is created again with the same people and fresh sample data of the last 2 weeks (two projects, four sites).`)) return;
     setResettingDemo(true);
     setError(null);
     api
