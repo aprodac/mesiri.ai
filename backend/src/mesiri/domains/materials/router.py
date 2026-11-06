@@ -753,7 +753,8 @@ async def check_material_unit(
     """3 Nov 2026 (WA-165, Paraclette: "1 load M-sand" was prepared, then refused at Save because M-sand is stocked
     in bags): can a quantity in ``unit_id`` be recorded for this material? Yes when it is the Stock Unit or a
     conversion into it is known (the same decision saving makes). Read-only, so the question comes before Save."""
-    material = await PostgresMaterialCatalogRepository(conn).get_by_id(auth_context.organization_id, material_id)
+    catalog = PostgresMaterialCatalogRepository(conn)
+    material = await catalog.get_by_id(auth_context.organization_id, material_id)
     if material is None:
         raise HTTPException(status_code=404, detail="Material not found")
     units = UnitsOfMeasureRepository(conn)
@@ -765,6 +766,8 @@ async def check_material_unit(
         "material": material["name"], "unit": unit["code"], "unit_name": unit["display_name"],
         "stock_unit": (stock or unit)["code"], "stock_unit_name": (stock or unit)["display_name"],
         "stock_unit_id": str((stock or unit)["id"]),
+        # [232]: no stock records yet = its Stock Unit can still be changed (the WhatsApp "save as ..." way out).
+        "has_movements": await catalog.has_movements(material_id),
     }
     if stock is None or str(stock["id"]) == str(unit["id"]):
         return {**answer, "fits": True, "one_unit_equals": "1"}

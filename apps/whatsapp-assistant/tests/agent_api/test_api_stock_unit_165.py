@@ -74,6 +74,7 @@ class Store:
         self.notes: list[str | None] = []
         self.checks = 0
         self.size_requests: list[dict] = []  # WA-168
+        self.unmoved: set[str] = set()  # [232]: materials with no stock records yet (their Stock Unit can change)
 
     def row(self, material_id: str) -> dict:
         found = next((r for r in self.catalog if r["id"] == material_id), None)
@@ -106,7 +107,7 @@ class Store:
             stock = UNITS[row["default_unit_id"]]
             return {"material": row["name"], "unit": UNITS[unit_id][0], "unit_name": UNITS[unit_id][1],
                     "stock_unit": stock[0], "stock_unit_name": stock[1], "stock_unit_id": row["default_unit_id"],
-                    "fits": per is not None,
+                    "fits": per is not None, "has_movements": material_id not in self.unmoved,
                     "one_unit_equals": None if per is None else str(per)}
 
         @app.get("/materials/size-requests")
@@ -140,6 +141,16 @@ class Store:
                 self.received.append((self.row(line["body"]["material_id"])["name"], line["body"]["quantity"] * per))
             return {"message": f"1 load = {body['one_unit_equals']}, for the whole company. "
                                f"{len(request['held_lines'])} of {len(request['held_lines'])} waiting lines saved."}
+
+        @app.patch("/materials/{material_id}")
+        async def update(material_id: str, body: dict, jwt: dict = Depends(get_current_user)):
+            row = self.row(material_id)
+            if body.get("default_unit_id") and body["default_unit_id"] != row["default_unit_id"]:
+                if material_id not in self.unmoved:  # the backend's own rule (materials/router.py)
+                    raise HTTPException(status_code=409, detail="Stock Unit cannot change: this material already has "
+                                                                "recorded movements")
+                row["default_unit_id"] = body["default_unit_id"]
+            return row
 
         @app.post("/materials", status_code=201)
         async def add(body: NewMaterial, jwt: dict = Depends(get_current_user)):
@@ -216,8 +227,10 @@ async def test_the_load_of_msand_is_held_with_its_size_asked_beside_it() -> None
     assert [e.summary for e in turn.pending] == ["4 ചാക്ക് സിമന്റ് Tower A-ൽ എത്തിച്ചു.",
                                                  "1 ലോഡ് എംസാൻഡ് Tower A-ൽ എത്തിച്ചു. (1 Loads = how many Bags?)"]
     note = turn.calls[1]["result"]["note"]
-    assert "counted in Bags" in note and "ONLY `set_unit_conversion`" in note and "tap Save" in note
-    assert turn.question.endswith("ആണ്?") and turn.size_needed[0]["key"] == turn.pending[1].idempotency_key
+    assert "counted in Bags" in note and "CODE asks the one question" in note  # [232]: the code asks, the model does not
+    # [232]: the question is the code's (bigger unit first), in the person's language; the model's own is replaced
+    assert turn.question == "1 Loads എംസാന്റ് = how many Bags?"
+    assert turn.size_needed[0]["key"] == turn.pending[1].idempotency_key
 
 
 async def test_the_answer_holds_the_size_and_the_load_and_one_save_records_60_bags() -> None:
@@ -243,7 +256,7 @@ async def test_sibling_a_correction_to_loads_is_made_and_its_size_asked() -> Non
     second = await _turn(store, [[("change_ready_entry", {"number": 1, "changes": [{"field": "unit_id", "value": LOAD}],
                                                           "confirm_line": "1 load msand"})], "Ok."],
                          "alla, 1 load aanu", ready=first.pending)
-    assert "ONLY `set_unit_conversion`" in second.calls[0]["result"]["size"]
+    assert "CODE asks the one question" in second.calls[0]["result"]["size"]
     assert second.pending[0].summary == "1 load msand (1 Loads = how many Bags?)" and second.pending[0].body["unit_id"] == LOAD
     assert second.size_needed[0]["key"] == second.pending[0].idempotency_key
 

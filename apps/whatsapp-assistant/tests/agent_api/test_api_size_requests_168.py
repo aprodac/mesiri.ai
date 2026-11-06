@@ -85,7 +85,7 @@ async def test_anything_else_lets_the_size_question_go() -> None:
     h = Harness(store, FakeToolCallingProvider(["-"]))
     await _asked(h)
     h.service._agent._provider = FakeToolCallingProvider(["Ok."])
-    await h.service.handle(_message("steel ethra undu?"), ENGINEER)
+    await h.service.handle(_message("steel ethra undu ennu onnu parayamo"), ENGINEER)  # [232]: a long, number-less request
     assert "size_needed" not in await h.state() and store.size_requests == []
 
 

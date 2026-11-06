@@ -34,6 +34,9 @@ def _repos(monkeypatch: pytest.MonkeyPatch) -> dict:
         async def get_by_id(self, org: uuid.UUID, material_id: uuid.UUID) -> dict | None:
             return MATERIALS.get(material_id) if org == ORG else None
 
+        async def has_movements(self, material_id: uuid.UUID) -> bool:
+            return material_id == STEEL
+
     class Units:
         def __init__(self, conn: object) -> None: ...
 
@@ -81,3 +84,9 @@ async def test_guard_another_companys_material_is_not_found() -> None:
         await materials_router.check_material_unit(
             MSAND, BAG, auth_context=SimpleNamespace(organization_id=uuid.uuid4()), conn=object())
     assert err.value.status_code == 404
+
+
+async def test_it_says_whether_the_material_has_stock_records_so_its_unit_can_still_change() -> None:
+    # [232]: no records yet (M-sand here) = the Stock Unit can still change; the WhatsApp "save as ..." way out.
+    assert (await _check(MSAND, LOAD))["has_movements"] is False
+    assert (await _check(STEEL, KG))["has_movements"] is True

@@ -27,6 +27,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
+from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -54,14 +55,20 @@ from runtime.team_notify import poke_watch_soon
 
 from . import bill_photo
 from .agent import (
+    DONT_KNOW,
     LANGUAGE_LINES,
+    SAVE_AS_SAID,
     SIZE_UNKNOWN,
+    SIZE_WAY_OUT,
     SOP,
+    TELL_SIZE,
     UNIT_UNSETTLED,
+    UPDATE_MATERIAL_TOOL,
     ApiAgent,
     PendingWrite,
     Places,
     WriteResult,
+    _amount,
     _detail,
     _place_names,
     confirm,
@@ -69,6 +76,7 @@ from .agent import (
     last_reported,
     question_left_open,
     remember_saves,
+    size_question,
 )
 from .app import build_api_app
 from .client import Actor, ApiClient
@@ -468,9 +476,20 @@ class ApiWhatsApp:
             if state.get("pending") and state.get("pending_at") and time.time() - float(state["pending_at"]) > PENDING_MAX_AGE_S:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending") or []])
-            if state.get("size_needed") and is_dont_know(text):
+            needs = list(state.get("size_needed") or [])
+            if needs and is_dont_know(text):
+                # [232]: nobody knows: a material with no stock yet can be counted in the unit they said (a way out for
+                # the admin too); else the line is held (for the admin, or until the admin themself sets the size).
+                if any(n.get("no_stock") for n in needs):
+                    return await self._size_way_out(ctx, state, ready, next(n for n in needs if n.get("no_stock")))
                 return await self._hold_for_size(ctx, client, state, ready)  # WA-168: no model turn
-            state.pop("size_needed", None)  # anything else: the size question is let go
+            choices = state.get("size_choices") or {}
+            if needs and choices and text.strip() == choices.get("unit"):
+                return await self._save_in_said_unit(ctx, state, ready, next(
+                    (n for n in needs if n.get("key") == choices.get("key")), needs[0]))
+            if needs and choices and text.strip() == choices.get("tell"):
+                return await self._ask_size_again(ctx, state, ready, needs[0])
+            state.pop("size_choices", None)
             last = next((m.text for m in reversed(history) if m.role == "model"), "")
             if calls := command_call(text, message, last):
                 # 2 Nov (Ilan, Paraclette: "mesiri fix it" came back with the same "Ready to save" list, twice): the
@@ -500,6 +519,7 @@ class ApiWhatsApp:
                 places=places,  # [213]: the code decides the site of a report
                 open_question=state.get("asked"),  # [219]: a message that doesn't answer it drops it
                 sizes=sizes, may_set_sizes=_may_set_sizes(ctx),  # WA-166: who may set a size for the company
+                size_open=needs,  # [232]: a number answers the open size question, however long the message
             )
             try:
                 turn = await self._agent.run(client, **run)
@@ -556,6 +576,8 @@ class ApiWhatsApp:
             await self._remember_sizes(ctx, turn.sizes_said)
         if turn.size_needed:
             state["size_needed"] = turn.size_needed  # WA-168: "Don't know" next holds them for the admin
+        else:
+            state.pop("size_needed", None)  # [232]: the size question is answered, let go, or its line is gone
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
         state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
@@ -563,7 +585,7 @@ class ApiWhatsApp:
         state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
-        saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx)) if turn.saved else ""
+        saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx), admin=_may_set_sizes(ctx)) if turn.saved else ""
         words = without_heard_echo(turn.reply or turn.question or saved_words)  # [258]: the code draws "🎤 ..." once
         if got_why:
             words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
@@ -592,6 +614,67 @@ class ApiWhatsApp:
         await self._save_state(ctx, state)
         return reply
 
+    async def _size_way_out(self, ctx: Any, state: dict, ready: list[PendingWrite], need: dict) -> ReplySpec:
+        """[232]: "don't know" for a material with no stock records yet: no dead end, two taps (no model turn): tell the
+        size, or save the line in the unit they said (the material is then counted in it). Never a made-up size."""
+        language = state.get("language") or "english"
+        quantity = _amount(Decimal(str(need.get("quantity") or 0))) if need.get("quantity") else ""
+        unit = str(need.get("said_unit") or "")
+        save_title = SAVE_AS_SAID.get(language, SAVE_AS_SAID["english"]).format(q=quantity, u=unit).replace("  ", " ")
+        if len(save_title) > 20:
+            save_title = SAVE_AS_SAID["english"].format(q="", u=unit).replace("  ", " ")[:20]
+        tell_title = TELL_SIZE.get(language, TELL_SIZE["english"])
+        state["size_choices"] = {"tell": tell_title, "unit": save_title, "key": need.get("key")}
+        words = SIZE_WAY_OUT.get(language, SIZE_WAY_OUT["english"]).format(q=quantity, u=unit).replace("  ", " ")
+        reply = self._reply(words, ready, state, [tell_title, save_title], language)
+        state["asked"] = {"question": words, "options": [tell_title, save_title]}
+        await self._save_state(ctx, state)
+        return reply
+
+    async def _ask_size_again(self, ctx: Any, state: dict, ready: list[PendingWrite], need: dict) -> ReplySpec:
+        """[232]: "Tell the size" tapped: the one question again (code-drawn, bigger unit first), the line still waiting."""
+        language = state.get("language") or "english"
+        question = size_question(need, language)
+        dont_know = DONT_KNOW.get(language, DONT_KNOW["english"])
+        state.pop("size_choices", None)
+        reply = self._reply(question, ready, state, [dont_know], language)
+        state["asked"] = {"question": question, "options": [dont_know]}
+        await self._save_state(ctx, state)
+        return reply
+
+    async def _save_in_said_unit(self, ctx: Any, state: dict, ready: list[PendingWrite], need: dict) -> ReplySpec:
+        """[232]: "Save as 30 nos": the material has no stock records, so its Stock Unit becomes the unit they said (the
+        existing material update, saved with the card, before the line), and the line is held in that unit as said:
+        no size is needed."""
+        language = state.get("language") or "english"
+        line = next((e for e in ready if e.idempotency_key == need.get("key")), None)
+        state.pop("size_needed", None)
+        state.pop("size_choices", None)
+        if line is None:
+            reply = self._reply(plain_refusal("", language), ready, state, [], language)
+            await self._save_state(ctx, state)
+            return reply
+        unit_id = str(line.body.get("unit_id") or "")
+        material = str(need.get("material") or "")
+        update = PendingWrite(
+            tool=UPDATE_MATERIAL_TOOL, method="PATCH", path=f"/materials/{need['material_id']}", params={},
+            body={"default_unit_id": unit_id},
+            summary=f"📏 {material} is counted in {need.get('said_unit') or 'this unit'} from now (no stock recorded yet)",
+            idempotency_key=uuid.uuid4().hex)
+        fixed = dataclasses.replace(line, summary=SIZE_UNKNOWN.sub("", line.summary))
+        rest = [fixed if e is line else e for e in ready]
+        pending = [update, *rest]
+        words = {"english": "Done: it will be saved as it is, counted in {u}.",
+                 "manglish": "Sheri: ithu {u}-il thanne save aakum.",
+                 "malayalam": "ശരി: ഇത് {u}-ൽ തന്നെ സേവ് ആകും.",
+                 "hinglish": "Theek hai: yeh {u} mein hi save hoga.",
+                 "hindi": "ठीक है: यह {u} में ही सेव होगा।"}.get(language, "Done: it will be saved as it is, counted in {u}.").format(
+            u=need.get("said_unit") or "")
+        state["asked"] = None
+        reply = self._reply(words, pending, state, [], language)
+        await self._save_state(ctx, state)
+        return reply
+
     async def _hold_for_size(self, ctx: Any, client: ApiClient, state: dict, ready: list[PendingWrite]) -> ReplySpec:
         """WA-168: nobody on site knows the size: each line that needs one is held for the company's admin (asked once
         a day; it saves by itself when they answer), and the rest of the list stays as it was."""
@@ -613,7 +696,8 @@ class ApiWhatsApp:
             if response.ok:
                 held.append(str(need["summary"]).rstrip(". "))
         language = state.get("language") or "english"
-        words = (_HELD.get(language, _HELD["english"]).format(lines="; ".join(held)) if held
+        table = _HELD_SELF if _may_set_sizes(ctx) else _HELD
+        words = (table.get(language, table["english"]).format(lines="; ".join(held)) if held
                  else plain_refusal("", language))
         reply = self._reply(words, ready, state, [], state.get("language"))
         await self._save_state(ctx, state)
@@ -944,7 +1028,7 @@ class ApiWhatsApp:
             self._previewed_saves[correlation_id] = True
             text = _saved_short(results, state.get("language"), today=_today(ctx))
         else:
-            text = _saved_text(results, state.get("language"), today=_today(ctx))
+            text = _saved_text(results, state.get("language"), today=_today(ctx), admin=_may_set_sizes(ctx))
         if dropped:
             text += "\n\n" + _in(state.get("language"), "api.refused_dropped", REFUSED_DROPPED)
         sizes = [r for r in results if not r.ok and is_stock_unit_refusal(_detail(r.body))]
@@ -1136,7 +1220,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing", "previewed", "kept", "photo", "unbilled")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -1395,10 +1479,19 @@ _HELD = {
 }
 
 
+#: [232] (6 Nov, Adarsh, the company's admin: "Size admin-nodu chodichittundu", asked of himself): when the person IS
+#: the one who sets sizes, nobody else is asked; the line waits until they set it.
+_HELD_SELF = {
+    "english": "👍 Held: {lines}. It stays held until you set the size (send it, e.g. '1 load = 60 bags'); then it saves by itself.",
+    "manglish": "👍 Maatti vechu: {lines}. Nee size set cheyyunnathu vare ithu maatti vekkum (ayakkuka, ex: '1 load = 60 bags'); appol thaane save aakum.",
+    "malayalam": "👍 മാറ്റിവെച്ചു: {lines}. നിങ്ങൾ സൈസ് സെറ്റ് ചെയ്യുന്നത് വരെ ഇത് മാറ്റിവെക്കും (അയക്കൂ, ഉദാ: '1 load = 60 bags'); അപ്പോൾ തനിയെ സേവ് ആകും.",
+    "hinglish": "👍 Rok ke rakha: {lines}. Jab tak aap size set nahi karte tab tak ruka rahega (bhejiye, jaise '1 load = 60 bags'); phir apne aap save ho jayega.",
+    "hindi": "👍 रोक के रखा: {lines}। जब तक आप साइज़ सेट नहीं करते, यह रुका रहेगा (भेजिए, जैसे '1 load = 60 bags'); फिर अपने आप सेव हो जाएगा।",
+}
+
+
 def is_dont_know(text: str) -> bool:
     """WA-168: "Don't know" tapped or typed, in any of the button's languages."""
-    from .agent import DONT_KNOW
-
     said = re.sub(r"[^\w\s]", "", (text or "").casefold()).strip()
     return any(said == re.sub(r"[^\w\s]", "", t.casefold()).strip() for t in DONT_KNOW.values())
 
@@ -1543,7 +1636,8 @@ def _row_title(number: int, summary: str) -> str:
     return title if len(title) <= 24 else title[:23].rstrip() + "…"
 
 
-def _saved_text(results: list[WriteResult], language: str | None = None, *, today: str | None = None) -> str:
+def _saved_text(results: list[WriteResult], language: str | None = None, *, today: str | None = None,
+                admin: bool = False) -> str:
     def converted(r: WriteResult) -> str:
         # WA-151: a line saved in another unit says what went into stock ("10 Numbers = 0.5 load").
         note = r.body.get("converted") if isinstance(r.body, dict) else None
@@ -1565,7 +1659,7 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
     text = (head + "\n" + "\n".join(lines)).strip()
     if waiting:
         lang = language if language in _HELD else "english"
-        later = _HELD[lang].format(lines="; ".join(SIZE_UNKNOWN.sub("", r.pending.summary).rstrip(". ")
+        later = (_HELD_SELF if admin else _HELD)[lang].format(lines="; ".join(SIZE_UNKNOWN.sub("", r.pending.summary).rstrip(". ")
                                                      for r in waiting))
         text = f"{text}\n\n{later}".strip()
     return text

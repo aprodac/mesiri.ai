@@ -486,7 +486,8 @@ class ApiAgent:
                   channel: str = TEXT_CHANNEL, recent_saves: list[dict[str, Any]] | None = None,
                   repeat_ok: list[str] | None = None, places: Places | None = None,
                   open_question: dict[str, Any] | None = None, sizes: dict[str, Any] | None = None,
-                  may_set_sizes: bool = True, language_chosen: bool = False) -> ApiTurn:
+                  may_set_sizes: bool = True, language_chosen: bool = False,
+                  size_open: list[dict[str, Any]] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -514,7 +515,13 @@ class ApiAgent:
         exists: list[str] = []  # [219]: what the code says about a project that already exists
         sizes_said: dict[str, float] = {}  # WA-166: sizes told this turn by someone who may not set the company's
         size_needed: list[dict[str, Any]] = []  # WA-168: lines waiting for a size nobody gave yet
-        dropped = "" if answers_question(text, open_question) else str(
+        # [232]: a size question is open (code-drawn, bigger unit first): a number in the reply answers it, however long
+        # the message (a voice note), decided here by its kind; the line waiting for it is never dropped.
+        open_sizes = [n for n in (size_open or []) if any(
+            e is not None and e.idempotency_key == n.get("key") and SIZE_UNKNOWN.search(e.summary) for e in waiting)]
+        taken_need = next((n for n in open_sizes if answers_size(text, n)), None)
+        code_lines: dict[tuple[str, str], str] = {}  # [232]: (material, from unit) -> the line the code drew
+        dropped = "" if taken_need is not None or answers_question(text, open_question) else str(
             (open_question or {}).get("question") or " / ".join((open_question or {}).get("options") or []))
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
         tz = ZoneInfo(timezone or "Asia/Kolkata")
@@ -587,8 +594,9 @@ class ApiAgent:
                     category_note = f"{CATEGORY_NOTE}{label}" if label else ""
             if "unit_id" in body and {"unit_id", "unit", "material_id", "quantity"} & set(changes):
                 # WA-165: a corrected unit, material or quantity is checked against the stock unit like a new line.
+                sized: dict[str, Any] = {}
                 problem, unit_note = await settle_stock_unit(
-                    client, body, [*waiting, *new], {**(sizes or {}), **sizes_said}, sender_name)
+                    client, body, [*waiting, *new], {**(sizes or {}), **sizes_said}, sender_name, sized)
                 if problem:  # WA-197: the change goes through; the size is asked beside it
                     size_note = problem
             summary = (str(arguments.get("confirm_line") or "").strip() + unit_note) or entry.summary
@@ -600,7 +608,7 @@ class ApiAgent:
             if size_note:
                 size_needed[:] = [x for x in size_needed if x["key"] != entry.idempotency_key]
                 size_needed.append({"material_id": body["material_id"], "from_unit_id": body["unit_id"],
-                                    "path": entry.path, "body": dict(body), "key": key, "summary": summary})
+                                    "path": entry.path, "body": dict(body), "key": key, "summary": summary, **sized})
             changed.append(n)
             before, after = str(entry.body.get("material_id") or ""), str(body.get("material_id") or "")
             moved = moved_off_new(waiting, before, after, self._tools.get(ALIAS_TOOL),
@@ -628,8 +636,14 @@ class ApiAgent:
                 return ToolOutcome(content={"status": "the options are shown as buttons under your reply"})
             if name == SAVE_READY and waiting:
                 numbers = chosen(arguments)
-                results = await confirm(client, [waiting[n - 1] for n in numbers], _place_names(places))  # type: ignore[misc]
-                saved.extend(results)
+                # [232]: a size prepared in this same message ("oru load-il 200 bar, save cheythoo") saves with the lines it
+                # converts, before them (Save puts settings first), never after: the line would be held for no size.
+                sizes_now = [e for e in new if e.tool == CONVERSION_TOOL]
+                everything = await confirm(client, [*sizes_now, *(waiting[n - 1] for n in numbers)],  # type: ignore[misc]
+                                           _place_names(places))
+                results = everything[len(sizes_now):]
+                saved.extend(everything)
+                new[:] = [e for e in new if e not in sizes_now]
                 for n in numbers:
                     waiting[n - 1] = None
                 return ToolOutcome(content={"results": [
@@ -786,8 +800,9 @@ class ApiAgent:
                     return ToolOutcome(content={"error": problem})
                 unit_ask.clear()
                 if body.get("material_id") and not new_ref:  # WA-165: a unit the material cannot be saved in
+                    sized = {}
                     problem, unit_note = await settle_stock_unit(
-                        client, body, [*waiting, *new], {**(sizes or {}), **sizes_said}, sender_name)
+                        client, body, [*waiting, *new], {**(sizes or {}), **sizes_said}, sender_name, sized)
                     if problem:
                         # WA-197: never a blocker: the line is held with its size asked beside it; "Don't know" or a
                         # Save with no answer holds it for the admin (WA-168), and it saves itself when they answer.
@@ -796,7 +811,8 @@ class ApiAgent:
                         size_needed[:] = [n for n in size_needed if n["summary"] != str(arguments.get(CONFIRM_ARG) or "")]
                         size_needed.append({"material_id": body["material_id"], "from_unit_id": body["unit_id"],
                                             "path": path, "body": dict(body), "key": line_key,
-                                            "summary": str(arguments.get(CONFIRM_ARG) or "").strip()})
+                                            "summary": str(arguments.get(CONFIRM_ARG) or "").strip(),
+                                            "material_said": str(arguments.get(MATERIAL_SAID) or ""), **sized})
                 elif new_ref and not await adopt_line_unit(client, body, new_ref, waiting, new):
                     # WA-166: a line for a material waiting to be added, in a unit it will not be counted in
                     size_hint = await settle_new_line_unit(client, body, new_ref, [*waiting, *new])
@@ -818,7 +834,9 @@ class ApiAgent:
             if name == CONVERSION_TOOL:
                 material_id = str(arguments.get("material_id") or "")
                 size = _decimal(body.get("one_unit_equals"))
-                check = await size_check(client, material_id, str(body.get("from_unit_id") or ""), size, their_words)
+                sized_line = code_lines.get((material_id, str(body.get("from_unit_id") or "")))
+                check = {"line": sized_line} if sized_line else await size_check(
+                    client, material_id, str(body.get("from_unit_id") or ""), size, their_words)
                 if check.get("error"):
                     return ToolOutcome(content={"error": check["error"]})
                 if not may_set_sizes and is_uuid(material_id) and size is not None:
@@ -1013,6 +1031,22 @@ class ApiAgent:
                 system, msgs, specs, handler, max_steps=self._max_steps, timeout_seconds=self._timeout,
                 correlation_id=correlation_id, **extra)
 
+        if taken_need is not None:
+            count = size_answer(text, taken_need)
+            assert count is not None
+            stock_bigger = bool(taken_need.get("stock_bigger"))
+            # "1 load = 200 nos": when the stock unit is the load, the size stored is how many LOADS one no is (1/200).
+            stored = (Decimal(1) / count).quantize(Decimal("0.0000001")) if stock_bigger else count
+            line = f"📏 1 {taken_need['big']} {taken_need['material']} = {_amount(count)} {taken_need['small']}"
+            code_lines[(str(taken_need["material_id"]), str(taken_need["from_unit_id"]))] = line
+            outcome = await handler(CONVERSION_TOOL, {
+                "material_id": taken_need["material_id"], "from_unit_id": taken_need["from_unit_id"],
+                "one_unit_equals": float(stored), CONFIRM_ARG: line})
+            if "error" not in (outcome.content if isinstance(outcome.content, dict) else {}):
+                acted.append("size")
+                system += (f"\n\nThe CODE already took the size from this message ({line}) and the waiting line converts with "
+                           "it. Do not prepare `set_unit_conversion`, do not ask the size again, do not repeat the line. "
+                           "Do what the rest of the message asks (if it says to save, call save_ready_entries).")
         again_asked = False  # WA-198: one corrective retry per turn at most (reply time)
         try:
             result = await ask_model(messages)
@@ -1135,11 +1169,24 @@ class ApiAgent:
         still = [e for e in waiting if e is not None]
         # [217]: a question asked with no options still gets the buttons the code built (the near-match ones).
         options = asked.get("options", []) or unit_ask or site_ask
+        reply = without_apology((result.text or "").strip())  # [265]: never "My bad!" for a slip they never saw
+        # [232]: a size still unknown for a held line: the code draws the ONE question (bigger unit first) and its tap;
+        # the model's own wording of it (maybe backwards) is replaced, and the line stays on the card meanwhile.
+        live = {e.idempotency_key for e in [*waiting, *new] if e is not None and SIZE_UNKNOWN.search(e.summary)}
+        size_needed[:] = [n for n in size_needed if n["key"] in live]
+        size_needed.extend(n for n in open_sizes if not dropped and n["key"] in live
+                           and all(n["key"] != m["key"] for m in size_needed))
         if size_needed:  # WA-168: one tap when nobody on site knows the size
             dont_know = DONT_KNOW.get(language or "", DONT_KNOW["english"])
+            ask_line = size_question(size_needed[0], language)
+            head = reply.splitlines()
+            while head and (not head[-1].strip() or head[-1].rstrip("* _").endswith("?")):
+                head.pop()  # the model's own question about the size is replaced, never asked twice
+            reply = "\n".join([*head, "", ask_line]).strip()
+            asked["question"] = ask_line
             # WA-197: the line is on the list, so Save comes third (WhatsApp shows 3 buttons): one size option at most.
-            options = [o for o in options if o != dont_know][:1] + [dont_know]
-        reply = without_apology((result.text or "").strip())  # [265]: never "My bad!" for a slip they never saw
+            kept = [] if size_needed[0].get("stock_bigger") else [o for o in options if o != dont_know][:1]
+            options = kept + [dont_know]
         if account_asked and account_asked[0].split(" (")[0] not in reply:
             # WEB-68: the account question is always in the reply, with its buttons under it.
             reply = "\n\n".join(p for p in (reply, account_asked[0]) if p)
@@ -1394,6 +1441,81 @@ DONT_KNOW = {"english": "🤷 Don't know", "manglish": "🤷 Ariyilla", "malayal
              "hinglish": "🤷 Pata nahi", "hindi": "🤷 पता नहीं"}
 
 
+#: [232]: units that hold many of a smaller one: a size is always asked "1 <bigger> = how many <smaller>?". Decided here,
+#: never by the model ("30 bars = how many loads?" is a fraction nobody can answer).
+BIG_UNITS = frozenset({"load", "truck", "trip", "drum", "bundle", "bucket", "tin", "box", "roll", "pack", "carton"})
+#: [232]: the size question, drawn by the code, in the person's language ({big}, {small}, {material}).
+SIZE_ASK = {
+    "english": "1 {big} {material} = how many {small}?",
+    "manglish": "1 {big} {material}-il ethra {small} undu?",
+    "malayalam": "1 {big} {material}-ൽ എത്ര {small} ഉണ്ട്?",
+    "hinglish": "1 {big} {material} mein kitne {small} hain?",
+    "hindi": "1 {big} {material} में कितने {small} हैं?",
+}
+#: [232]: the two taps under it when nobody knows the size (WhatsApp titles: 20 characters).
+TELL_SIZE = {"english": "Tell the size", "manglish": "Size parayam", "malayalam": "സൈസ് പറയാം",
+             "hinglish": "Size bataunga", "hindi": "साइज़ बताता हूँ"}
+SAVE_AS_SAID = {"english": "Save as {q} {u}", "manglish": "{q} {u} aayi save", "malayalam": "{q} {u} ആയി സേവ്",
+                "hinglish": "{q} {u} mein save", "hindi": "{q} {u} में सेव"}
+#: [232]: the reply to "don't know" when the line can be saved in the unit they said.
+SIZE_WAY_OUT = {
+    "english": "No problem. Tell me the size when you know it, or save it as {q} {u} (this material has no stock yet, so it will be counted in {u}).",
+    "manglish": "Sheri. Size ariyumbol paranjaal mathi, allenkil {q} {u} aayi save cheyyam (ee materialinu stock illa, athukond {u}-il count cheyyum).",
+    "malayalam": "ശരി. സൈസ് അറിയുമ്പോൾ പറഞ്ഞാൽ മതി, അല്ലെങ്കിൽ {q} {u} ആയി സേവ് ചെയ്യാം (ഈ മെറ്റീരിയലിന് സ്റ്റോക്ക് ഇല്ല, അതിനാൽ {u}-ൽ കണക്കാക്കും).",
+    "hinglish": "Theek hai. Size pata chale tab bata dena, ya {q} {u} mein save kar do (is material ka stock nahi hai, to {u} mein ginenge).",
+    "hindi": "ठीक है। साइज़ पता चले तब बता दीजिए, या {q} {u} में सेव कर दीजिए (इस सामान का स्टॉक नहीं है, इसलिए {u} में गिना जाएगा)।",
+}
+_NUMBERS_IN = re.compile(r"\d+(?:\.\d+)?")
+_RANGE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|–|to|മുതൽ)\s*(\d+(?:\.\d+)?)")
+
+
+def size_sides(found: dict[str, Any]) -> dict[str, Any]:
+    """[232]: which of the said unit and the material's stock unit is the bigger one (``big`` / ``small`` are their
+    names; ``stock_bigger``: the stock unit is the bigger). Neither is a container: the said unit is asked about, as
+    before ("1 Kilograms = how many Bags?")."""
+    said_code, stock_code = str(found.get("unit") or "").lower(), str(found.get("stock_unit") or "").lower()
+    stock_bigger = stock_code in BIG_UNITS and said_code not in BIG_UNITS
+    said, stock = str(found.get("unit_name") or ""), str(found.get("stock_unit_name") or "")
+    return {"big": stock if stock_bigger else said, "small": said if stock_bigger else stock,
+            "stock_bigger": stock_bigger, "material": str(found.get("material") or ""),
+            "said_unit": str(found.get("unit") or ""), "no_stock": not found.get("has_movements", True)}
+
+
+def size_question(need: dict[str, Any], language: str | None) -> str:
+    """[232]: the one size question for a held line, bigger unit first."""
+    return SIZE_ASK.get(language or "", SIZE_ASK["english"]).format(
+        big=need.get("big") or "", small=need.get("small") or "", material=need.get("material") or "").replace("  ", " ")
+
+
+def size_answer(text: str, need: dict[str, Any]) -> Decimal | None:
+    """[232]: the number of the smaller unit in ONE of the bigger, from a reply to the open size question, decided by the
+    code ("200", "1 load 200 bar", "200 bars oru load", a long voice reply). A range ("180-200") is its middle. None
+    when the reply has no number, or says several different ones (the model then asks again)."""
+    said = text.casefold()
+    if (m := _RANGE.search(said)) is not None:
+        low, high = Decimal(m.group(1)), Decimal(m.group(2))
+        return (low + high) / 2 if 0 < low <= high else None
+    found = [Decimal(n) for n in _NUMBERS_IN.findall(said)]
+    if len(found) > 1:  # the "1" of "1 load 200 bars" is the question's own
+        found = [n for n in found if n != 1] or found[:1]
+    distinct = set(found)
+    return next(iter(distinct)) if len(distinct) == 1 and next(iter(distinct)) > 0 else None
+
+
+def answers_size(text: str, need: dict[str, Any], their_unit_words: str = "") -> bool:
+    """[232]: whether this message answers the open size question and not a new request ([219] still drops a question
+    for an unrelated one): it has the number, and is short, or names the units / the material the question named."""
+    if size_answer(text, need) is None:
+        return False
+    said = " ".join(text.casefold().split())
+    if len(said.split()) <= SHORT_ANSWER_WORDS:
+        return True
+    words = {w.casefold().strip("-") for w in re.findall(r"[\w']+", " ".join(
+        [str(need.get(k) or "") for k in ("big", "small", "said_unit", "material", "material_said")] + [their_unit_words]))}
+    words = {w.rstrip("s") for w in words if len(w) > 1}
+    return any(w in said for w in words if w)
+
+
 def _size_waiting(entry: PendingWrite | None, material_id: str, unit_id: str) -> Decimal | None:
     """The size in a waiting ``set_unit_conversion`` for this material from this unit (it saves first, so the line
     converts at Save), else None."""
@@ -1420,7 +1542,8 @@ def _amount(value: Decimal) -> str:
 
 
 async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: list[PendingWrite | None],
-                            sizes: dict[str, Any] | None = None, who: str = "") -> tuple[str, str]:
+                            sizes: dict[str, Any] | None = None, who: str = "",
+                            info: dict[str, Any] | None = None) -> tuple[str, str]:
     """WA-165 / WA-166: a line in a unit its material is not counted in. The API says whether that unit can be
     recorded (``GET /materials/{id}/unit-check``, the decision saving makes). Returns ``(problem, note)``:
 
@@ -1462,13 +1585,14 @@ async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: lis
         body["unit_id"] = str(found["stock_unit_id"])
         body["notes"] = f"{body['notes'].strip()} ({reported})" if str(body.get("notes") or "").strip() else reported
         return "", f" (= {_amount(quantity * own)} {stock})" if quantity else ""
-    return (f" It is held, but {material} is counted in {stock} in their stock and how many {stock} one {said} is "
-            f"is not known yet. Ask ONE question with `ask` now, in their language, in their direction: \"1 {said} "
-            f"{material} = how many {stock}?\" (for steel bars, the bar size is enough: use the sizes in your "
-            f"instructions as options), and say that if they don't know they can just tap Save and their admin is "
-            f"asked. When they answer, prepare ONLY `set_unit_conversion` (material_id {material_id}, from_unit_id "
-            f"{unit_id}, one_unit_equals their number): this line is already waiting and saves converted; never "
-            f"prepare it again."), f" (1 {said} = how many {stock}?)"
+    sides = size_sides(found)  # [232]: asked bigger unit first, decided here, never by the model
+    if info is not None:
+        info.update(sides, stock_unit_id=str(found.get("stock_unit_id") or ""), quantity=float(quantity or 0))
+    big, small = sides["big"], sides["small"]
+    return (f" It is held, but {material} is counted in {stock} in their stock and the size of {said} against {stock} "
+            f"is not known yet. The CODE asks the one question itself (\"1 {big} {material} = how many {small}?\", "
+            f"bigger unit first) and shows the buttons: do NOT ask it, and do not prepare `set_unit_conversion` (the code "
+            f"takes their number). Just answer the rest of the message."), f" (1 {big} = how many {small}?)"
 
 
 async def stock_unit(client: ApiClient, material_id: str, others: list[PendingWrite | None]) -> tuple[str, str] | None:
@@ -1829,7 +1953,7 @@ async def settle_member(client: ApiClient, path: str, body: dict[str, Any]) -> t
 
 UNIT_UNSETTLED = "unit_id is not a valid active unit"
 #: Writes that change how other entries are read; saved first in one Save (after a new material, [217]).
-SETTINGS_FIRST = frozenset({"set_unit_conversion", ALIAS_TOOL})
+SETTINGS_FIRST = frozenset({"set_unit_conversion", ALIAS_TOOL, UPDATE_MATERIAL_TOOL})
 #: The name of the Save button, as every reply about a ready list says it (any language).
 SAVE_WORD = "save"
 #: WA-155: a reply that says the team (or "our team", in Malayalam / Hindi script too) was told / will look at it.
