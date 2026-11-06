@@ -28,6 +28,7 @@ from mesiri.application.finance.transfer_commands import TransferMoneyCommand
 from mesiri.application.finance.transfer_handler import TransferMoneyHandler
 from mesiri.application.finance.transfer_resolution import PostgresTransferAccountResolver
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.domains.finance.bank_details import BankDetailError, clean_bank_name, clean_ifsc, last4
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -75,6 +76,10 @@ class MoneyAccountResponse(BaseModel):
     owner_user_id: uuid.UUID | None = None
     custodian_name: str | None = None
     opening_balance_date: datetime.date | None = None
+    #: WEB-66: a bank account's bank, IFSC and the last 4 digits of its number (the full number is never kept).
+    bank_name: str | None = None
+    ifsc_code: str | None = None
+    account_last4: str | None = None
 
 
 class MoneyTransactionResponse(BaseModel):
@@ -211,7 +216,13 @@ class CreateAccountRequest(BaseModel):
     opening_balance_date: datetime.date | None = None
     project_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
+    #: WEB-66: the person who holds the account (a petty cash box's holder, a bank account's signatory).
     owner_user_id: uuid.UUID | None = None
+    bank_name: str | None = None
+    ifsc_code: str | None = None
+    #: The last 4 digits; ``account_number`` (what older dashboards send) is kept only as its last 4.
+    account_last4: str | None = None
+    account_number: str | None = None
 
 
 class TransferMoneyRequest(BaseModel):
@@ -289,6 +300,7 @@ async def get_finance_summary(
     # 6. Petty Cash Accounts Summary
     petty_accounts = [acc for acc in accounts if acc.account_type in ("cash", "employee_advance")]
     petty_summary = []
+    holders = await _holder_names(conn, auth_context.organization_id, petty_accounts)
     for acc in petty_accounts:
         try:
             bal = await acc_repo.get_balance(auth_context.organization_id, acc.id)
@@ -298,7 +310,7 @@ async def get_finance_summary(
             PettyCashSummaryItem(
                 id=acc.id,
                 name=acc.name,
-                custodian_name=str(acc.owner_user_id)[:8] if acc.owner_user_id else "Finance Custodian",
+                custodian_name=holders.get(acc.owner_user_id, "") if acc.owner_user_id else "",
                 current_balance=Decimal(bal),
                 opening_balance=acc.opening_balance,
             )
@@ -608,6 +620,86 @@ async def generate_financial_report_statement(
     )
 
 
+async def _holder_names(
+    conn: AsyncConnection, organization_id: uuid.UUID, accounts: list
+) -> dict[uuid.UUID, str]:
+    """The holders' names, read in this company only (the lookup did not check the company before WEB-66)."""
+    user_ids = {acc.owner_user_id for acc in accounts if acc.owner_user_id}
+    if not user_ids:
+        return {}
+    rows = await conn.execute(
+        sa.select(_users.c.id, _users.c.full_name).where(
+            _users.c.id.in_(user_ids), _users.c.organization_id == organization_id
+        )
+    )
+    return {r.id: r.full_name for r in rows if r.full_name}
+
+
+async def _account_response(
+    conn: AsyncConnection, repo: PostgresMoneyAccountRepository, organization_id: uuid.UUID, acc, names=None
+) -> MoneyAccountResponse:
+    try:
+        balance = await repo.get_balance(organization_id, acc.id)
+    except Exception:
+        balance = acc.opening_balance
+    if names is None:
+        names = await _holder_names(conn, organization_id, [acc])
+    return MoneyAccountResponse(
+        id=acc.id,
+        organization_id=acc.organization_id,
+        name=acc.name,
+        account_type=acc.account_type,
+        currency=acc.currency,
+        opening_balance=acc.opening_balance,
+        current_balance=balance,
+        status=acc.status,
+        code=acc.code,
+        project_id=acc.project_id,
+        site_id=acc.site_id,
+        owner_user_id=acc.owner_user_id,
+        custodian_name=names.get(acc.owner_user_id) if acc.owner_user_id else None,
+        opening_balance_date=acc.opening_balance_date,
+        bank_name=acc.bank_name,
+        ifsc_code=acc.ifsc_code,
+        account_last4=acc.account_last4,
+    )
+
+
+async def _check_holder(conn: AsyncConnection, organization_id: uuid.UUID, user_id: uuid.UUID | None) -> None:
+    """WEB-66: an account is held by an active person of this company, never someone of another one."""
+    if user_id is None:
+        return
+    found = (
+        await conn.execute(
+            sa.select(_users.c.id).where(
+                _users.c.id == user_id,
+                _users.c.organization_id == organization_id,
+                _users.c.status == "active",
+            )
+        )
+    ).first()
+    if found is None:
+        raise HTTPException(status_code=422, detail="That person is not an active member of this company.")
+
+
+def _bank_changes(body: BaseModel) -> dict[str, str | None]:
+    """The bank details given in ``body``, cleaned (an empty one clears it)."""
+    given = body.model_fields_set
+    changes: dict[str, str | None] = {}
+    try:
+        if "bank_name" in given:
+            changes["bank_name"] = clean_bank_name(body.bank_name)
+        if "ifsc_code" in given:
+            changes["ifsc_code"] = clean_ifsc(body.ifsc_code)
+        if "account_last4" in given:
+            changes["account_last4"] = last4(body.account_last4)
+        elif "account_number" in given:
+            changes["account_last4"] = last4(body.account_number)
+    except BankDetailError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return changes
+
+
 @router.get("/accounts", response_model=list[MoneyAccountResponse])
 async def list_accounts(
     account_type: str | None = None,
@@ -622,38 +714,8 @@ async def list_accounts(
         account_type=account_type,
         status=status,
     )
-    user_ids = {acc.owner_user_id for acc in accounts if acc.owner_user_id}
-    custodian_names: dict[uuid.UUID, str] = {}
-    if user_ids:
-        users_stmt = sa.select(_users.c.id, _users.c.full_name).where(_users.c.id.in_(user_ids))
-        users_res = await conn.execute(users_stmt)
-        for urow in users_res.mappings():
-            custodian_names[urow["id"]] = urow["full_name"]
-
-    result = []
-    for acc in accounts:
-        try:
-            balance = await repo.get_balance(auth_context.organization_id, acc.id)
-        except Exception:
-            balance = acc.opening_balance
-        result.append(
-            MoneyAccountResponse(
-                id=acc.id,
-                organization_id=acc.organization_id,
-                name=acc.name,
-                account_type=acc.account_type,
-                currency=acc.currency,
-                opening_balance=acc.opening_balance,
-                current_balance=balance,
-                status=acc.status,
-                project_id=acc.project_id,
-                site_id=acc.site_id,
-                owner_user_id=acc.owner_user_id,
-                custodian_name=custodian_names.get(acc.owner_user_id) if acc.owner_user_id else None,
-                opening_balance_date=acc.opening_balance_date,
-            )
-        )
-    return result
+    names = await _holder_names(conn, auth_context.organization_id, accounts)
+    return [await _account_response(conn, repo, auth_context.organization_id, acc, names) for acc in accounts]
 
 
 @router.get("/accounts/{account_id}", response_model=MoneyAccountResponse)
@@ -666,24 +728,7 @@ async def get_account(
     acc = await repo.get_by_id(auth_context.organization_id, account_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="Account not found")
-    try:
-        balance = await repo.get_balance(auth_context.organization_id, acc.id)
-    except Exception:
-        balance = acc.opening_balance
-    return MoneyAccountResponse(
-        id=acc.id,
-        organization_id=acc.organization_id,
-        name=acc.name,
-        account_type=acc.account_type,
-        currency=acc.currency,
-        opening_balance=acc.opening_balance,
-        current_balance=balance,
-        status=acc.status,
-        project_id=acc.project_id,
-        site_id=acc.site_id,
-        owner_user_id=acc.owner_user_id,
-        opening_balance_date=acc.opening_balance_date,
-    )
+    return await _account_response(conn, repo, auth_context.organization_id, acc)
 
 
 @router.post("/accounts", response_model=MoneyAccountResponse, status_code=201)
@@ -692,6 +737,8 @@ async def create_account(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    await _check_holder(conn, auth_context.organization_id, body.owner_user_id)
+    bank = _bank_changes(body)
     repo = PostgresMoneyAccountRepository(conn)
     acc = await repo.create(
         organization_id=auth_context.organization_id,
@@ -704,21 +751,9 @@ async def create_account(
         project_id=body.project_id,
         site_id=body.site_id,
         owner_user_id=body.owner_user_id,
+        **bank,
     )
-    return MoneyAccountResponse(
-        id=acc.id,
-        organization_id=acc.organization_id,
-        name=acc.name,
-        account_type=acc.account_type,
-        currency=acc.currency,
-        opening_balance=acc.opening_balance,
-        current_balance=acc.opening_balance,
-        status=acc.status,
-        project_id=acc.project_id,
-        site_id=acc.site_id,
-        owner_user_id=acc.owner_user_id,
-        opening_balance_date=acc.opening_balance_date,
-    )
+    return await _account_response(conn, repo, auth_context.organization_id, acc)
 
 
 @router.get("/accounts/{account_id}/transactions", response_model=list[MoneyTransactionResponse])
@@ -914,7 +949,14 @@ async def reverse_transfer(
 
 
 class UpdateAccountRequest(BaseModel):
-    name: str
+    """Only the fields sent change; ``owner_user_id: null`` takes the holder off (WEB-66)."""
+
+    name: str | None = None
+    owner_user_id: uuid.UUID | None = None
+    bank_name: str | None = None
+    ifsc_code: str | None = None
+    account_last4: str | None = None
+    account_number: str | None = None
 
 
 @router.patch("/accounts/{account_id}", response_model=MoneyAccountResponse)
@@ -924,48 +966,31 @@ async def update_account(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """Rename a money account.
+    """Rename a money account, change who holds it, or its bank details (WEB-66).
 
-    The only account-admin action REST ever exposed a route for was
-    create/deactivate -- `PostgresMoneyAccountRepository.rename()` has
-    existed since the WhatsApp `account_admin` workflow was built (see
-    infrastructure/postgres/repositories/account_admin_execution.py), but
-    with no REST route calling it, a dashboard user could never rename an
-    account at all. Same direct-repo-call shape as create_account/
-    deactivate_account above -- account admin has no draft/confirm step on
-    either side, so there is no Command/Handler to route through here.
+    Same rule for who may call it as before (create / rename / close have no role check of their own; see the
+    tracker's WEB-66 note). The holder is checked to be an active person of this company.
     """
     repo = PostgresMoneyAccountRepository(conn)
-    acc = await repo.get_by_id(auth_context.organization_id, account_id)
+    org = auth_context.organization_id
+    acc = await repo.get_by_id(org, account_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    new_name = body.name.strip()
-    if not new_name:
-        raise HTTPException(status_code=422, detail="name must not be empty")
+    changes = _bank_changes(body)
+    if "owner_user_id" in body.model_fields_set:
+        await _check_holder(conn, org, body.owner_user_id)
+        changes["owner_user_id"] = body.owner_user_id
+    if "name" in body.model_fields_set:
+        new_name = (body.name or "").strip()
+        if not new_name:
+            raise HTTPException(status_code=422, detail="name must not be empty")
+        await repo.rename(org, account_id, new_name, updated_by=auth_context.user_id)
+    await repo.update_details(org, account_id, changes, updated_by=auth_context.user_id)
 
-    await repo.rename(auth_context.organization_id, account_id, new_name, updated_by=auth_context.user_id)
-
-    updated = await repo.get_by_id(auth_context.organization_id, account_id)
+    updated = await repo.get_by_id(org, account_id)
     assert updated is not None
-    try:
-        balance = await repo.get_balance(auth_context.organization_id, updated.id)
-    except Exception:
-        balance = updated.opening_balance
-    return MoneyAccountResponse(
-        id=updated.id,
-        organization_id=updated.organization_id,
-        name=updated.name,
-        account_type=updated.account_type,
-        currency=updated.currency,
-        opening_balance=updated.opening_balance,
-        current_balance=balance,
-        status=updated.status,
-        project_id=updated.project_id,
-        site_id=updated.site_id,
-        owner_user_id=updated.owner_user_id,
-        opening_balance_date=updated.opening_balance_date,
-    )
+    return await _account_response(conn, repo, org, updated)
 
 
 @router.delete("/accounts/{account_id}")

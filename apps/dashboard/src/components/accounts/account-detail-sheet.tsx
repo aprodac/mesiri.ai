@@ -1,312 +1,184 @@
-import { useNavigate } from 'react-router-dom'
-import {
-  Landmark,
-  Wallet,
-  CreditCard,
-  Building2,
-  User,
-  ShieldCheck,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Download,
-  AlertTriangle,
-} from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-} from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Separator } from '@/components/ui/separator'
-
-interface AccountDetailSheetProps {
-  account: any | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onDepositClick?: (account: any) => void
-  onTransferClick?: (account: any) => void
-}
-
 import * as React from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowDownLeft, ArrowUpRight, Download, Pencil } from 'lucide-react'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { CHIP } from '@/lib/site-day'
+import { cn } from '@/lib/utils'
 import { exportCsv } from '@/lib/export'
 import { fetchAccountTransactionsApi } from '@/lib/api'
 
-export function AccountDetailSheet({
-  account,
-  open,
-  onOpenChange,
-  onDepositClick,
-}: AccountDetailSheetProps) {
+// WEB-66: one money account: its balance, its bank details (bank, IFSC, last 4 digits), who holds it, where it is,
+// and its money in and out with a statement to download. The old panel showed a made-up "Created 2026-07-01", a
+// fixed ₹50,000 low line, and opened every transaction as an expense.
+
+export interface AccountSheetData {
+  id: string
+  name: string
+  account_type: string
+  current_balance: number
+  currency: string
+  holder?: string | null
+  where?: string | null
+  bank_name?: string | null
+  ifsc_code?: string | null
+  account_last4?: string | null
+  status: string
+}
+
+interface AccountDetailSheetProps {
+  account: AccountSheetData | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onEdit?: () => void
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  bank: 'Bank account',
+  cash: 'Petty cash',
+  employee_advance: 'Cash advance',
+  other: 'Other',
+}
+const TX_LABEL: Record<string, string> = {
+  expense_payment: 'Expense paid',
+  transfer: 'Transfer',
+  fund_received: 'Money in',
+  reversal: 'Reversed',
+}
+const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-right font-medium">{children}</span>
+    </div>
+  )
+}
+
+export function AccountDetailSheet({ account, open, onOpenChange, onEdit }: AccountDetailSheetProps) {
   const navigate = useNavigate()
-  const [transactions, setTransactions] = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(false)
-
-  React.useEffect(() => {
-    let active = true
-    async function loadTx() {
-      if (!account?.id) return
-      setLoading(true)
-      try {
-        const list = await fetchAccountTransactionsApi(account.id)
-        if (active && Array.isArray(list)) setTransactions(list)
-      } catch (err) {
-        console.warn('Failed to load account transactions:', err)
-        if (active) setTransactions([])
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    if (open) loadTx()
-    return () => {
-      active = false
-    }
-  }, [open, account?.id])
-
+  const tx = useQuery({
+    queryKey: ['finance', 'account-transactions', account?.id],
+    queryFn: () => fetchAccountTransactionsApi(account!.id),
+    enabled: open && !!account?.id,
+  })
   if (!account) return null
-
-  const isLowBalance = account.current_balance < 50000
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: account.currency || 'INR',
-      maximumFractionDigits: 2,
-    }).format(val || 0)
-  }
-
-  const getAccountTypeIcon = (type: string) => {
-    switch (type) {
-      case 'bank':
-      case 'bank_account':
-        return <Landmark className="size-4 text-emerald-500" />
-      case 'cash':
-        return <Wallet className="size-4 text-amber-500" />
-      case 'employee_advance':
-      case 'petty_cash':
-        return <Wallet className="size-4 text-purple-500" />
-      case 'corporate_card':
-        return <CreditCard className="size-4 text-indigo-500" />
-      default:
-        return <Landmark className="size-4 text-cyan-500" />
-    }
-  }
-
-  // WEB-48: a real statement (it used to only show "Exporting...").
-  const exportTx = (rows: any[], name: string) =>
-    exportCsv(
-      name,
-      ['Date', 'Kind', 'Amount', 'Description'],
-      rows.map((tx) => [String(tx.occurred_date ?? tx.transaction_date ?? tx.created_at ?? '').slice(0, 10), tx.transaction_type ?? '', tx.amount ?? '', tx.description ?? tx.notes ?? '']),
-    )
-  const handleExportStatement = () => exportTx(transactions, `${account.name} statement.csv`)
+  const rows: any[] = Array.isArray(tx.data) ? tx.data : []
+  const isBank = account.account_type === 'bank'
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-[480px] w-full p-0 flex flex-col gap-0 overflow-y-auto">
-        {/* Header Banner */}
-        <div className="p-5 border-b bg-muted/30 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-md bg-background border shadow-2xs">
-                {getAccountTypeIcon(account.account_type)}
-              </div>
-              <span className="font-semibold text-sm text-foreground">{account.name}</span>
-            </div>
+      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <SheetHeader className="border-b p-4 text-left">
+          <SheetTitle className="flex flex-wrap items-center gap-2 text-base font-semibold">
+            {account.name}
+            {account.status === 'inactive' && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Closed</span>}
+          </SheetTitle>
+          <SheetDescription className={cn('text-2xl font-semibold tabular-nums text-foreground', account.current_balance < 0 && 'text-destructive')}>
+            {rupees(account.current_balance)}
+          </SheetDescription>
+        </SheetHeader>
 
-            <div className="flex items-center gap-1.5">
-              {isLowBalance && (
-                <Badge className="bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/20 text-[10px] gap-1">
-                  <AlertTriangle className="size-3" /> Low Balance
-                </Badge>
-              )}
-              <Badge
-                className={
-                  account.status === 'active'
-                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold'
-                    : 'bg-muted text-muted-foreground font-semibold'
-                }
-              >
-                {account.status === 'active' ? 'Active' : 'Inactive'}
-              </Badge>
-            </div>
-          </div>
-
-          <div className="flex items-end justify-between">
-            <div>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-                Current Available Balance
-              </span>
-              <div className="text-2xl font-bold font-mono text-foreground tracking-tight">
-                {formatCurrency(account.current_balance)}
-              </div>
-              {account.account_number_masked && (
-                <p className="text-xs font-mono text-muted-foreground mt-0.5">
-                  {account.account_number_masked}
-                </p>
+        <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4 text-sm">
+          <section>
+            <div className="flex items-center justify-between gap-2 pb-1">
+              <h3 className="font-semibold">{TYPE_LABEL[account.account_type] ?? 'Account'}</h3>
+              {onEdit && (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={onEdit}>
+                  <Pencil className="size-3.5" /> Edit
+                </Button>
               )}
             </div>
+            <div className="divide-y border-t">
+              {isBank && <Row label="Bank">{account.bank_name || '—'}</Row>}
+              {isBank && <Row label="IFSC">{account.ifsc_code || '—'}</Row>}
+              {isBank && <Row label="Account number">{account.account_last4 ? `•••• ${account.account_last4}` : '—'}</Row>}
+              <Row label={isBank ? 'Looked after by' : 'Held by'}>{account.holder || 'Nobody'}</Row>
+              {account.where && <Row label="Where">{account.where}</Row>}
+            </div>
+          </section>
 
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-xs font-medium"
-              onClick={handleExportStatement}
-            >
-              <Download className="size-3.5" />
-              Statement
-            </Button>
-          </div>
-        </div>
-
-        {/* Content Tabs */}
-        <div className="p-5 flex-1 flex flex-col gap-4">
-          <Tabs defaultValue="transactions" className="w-full">
-            <TabsList className="w-full grid grid-cols-2 h-9">
-              <TabsTrigger value="transactions" className="text-xs">
-                Ledger Activity
-              </TabsTrigger>
-              <TabsTrigger value="overview" className="text-xs">
-                Scope & Custodian
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Ledger Transactions Tab */}
-            <TabsContent value="transactions" className="pt-3 flex flex-col gap-2.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Recent Transactions
-                </span>
-                {onDepositClick && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-[11px] text-emerald-600 font-semibold hover:bg-emerald-500/10"
-                    onClick={() => onDepositClick(account)}
-                  >
-                    + Add Funds
-                  </Button>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                {loading ? (
-                  <div className="text-center py-6 text-muted-foreground text-xs">Loading ledger activity...</div>
-                ) : transactions.length === 0 ? (
-                  <div className="text-center py-6 border rounded-lg bg-card/40 text-muted-foreground text-xs">
-                    No transactions recorded for this account yet.
-                  </div>
-                ) : (
-                  transactions.map((tx) => {
-                    const isInbound = tx.to_account_id === account.id || tx.transaction_type === 'fund_received'
-                    const targetExpenseId = tx.source_id || tx.id
-                    return (
-                      <div
-                        key={tx.id}
-                        onClick={() => {
-                          onOpenChange(false)
-                          navigate(`/finance/expenses/${targetExpenseId}`)
-                        }}
-                        className="flex items-center justify-between p-2.5 rounded-lg border bg-card/60 hover:bg-muted/40 hover:border-emerald-500/50 cursor-pointer transition-all group"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className={`size-7 rounded-full flex items-center justify-center shrink-0 ${
-                              isInbound
-                                ? 'bg-emerald-500/10 text-emerald-600'
-                                : 'bg-rose-500/10 text-rose-600'
-                            }`}
-                          >
-                            {isInbound ? (
-                              <ArrowDownLeft className="size-3.5" />
-                            ) : (
-                              <ArrowUpRight className="size-3.5" />
-                            )}
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-foreground group-hover:text-emerald-600 transition-colors truncate">
-                              {tx.description || `${tx.transaction_type.replace('_', ' ').toUpperCase()}`}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {tx.occurred_date} • {tx.source_type || tx.transaction_type}
-                            </span>
-                          </div>
-                        </div>
-                        <div
-                          className={`font-mono font-bold text-xs shrink-0 ${
-                            isInbound ? 'text-emerald-600' : 'text-foreground'
-                          }`}
-                        >
-                          {isInbound ? '+' : '-'}{formatCurrency(parseFloat(tx.amount))}
-                        </div>
-                      </div>
+          <section className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-semibold">Money in and out</h3>
+              {rows.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1.5"
+                  onClick={() =>
+                    exportCsv(
+                      `${account.name} statement.csv`,
+                      ['Date', 'Kind', 'In', 'Out', 'Note'],
+                      rows.map((t) => {
+                        const inbound = String(t.to_account_id) === account.id
+                        return [String(t.occurred_date ?? '').slice(0, 10), TX_LABEL[t.transaction_type] ?? t.transaction_type, inbound ? t.amount : '', inbound ? '' : t.amount, t.description ?? '']
+                      }),
                     )
-                  })
-                )}
-              </div>
-            </TabsContent>
-
-            {/* Overview & Scope Tab */}
-            <TabsContent value="overview" className="pt-3 flex flex-col gap-3 text-xs">
-              <div className="grid grid-cols-2 gap-3 p-3 rounded-lg border bg-card/60">
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-0.5">
-                    Account Type
-                  </span>
-                  <div className="font-medium text-foreground uppercase">{account.account_type.replace('_', ' ')}</div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-0.5">
-                    Opening Balance
-                  </span>
-                  <div className="font-medium font-mono text-foreground">{formatCurrency(account.opening_balance)}</div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-0.5">
-                    Project Scope
-                  </span>
-                  <div className="font-medium flex items-center gap-1.5 text-foreground truncate">
-                    <Building2 className="size-3.5 text-amber-500" />
-                    {account.project_name || 'Org Wide'}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block mb-0.5">
-                    Site Location
-                  </span>
-                  <div className="font-medium flex items-center gap-1.5 text-foreground truncate">
-                    <Building2 className="size-3.5 text-indigo-500" />
-                    {account.site_name || 'All Sites'}
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="flex flex-col gap-2">
-                <h4 className="font-semibold text-foreground text-xs flex items-center gap-1.5">
-                  <ShieldCheck className="size-4 text-emerald-500" />
-                  Custodian & Audit Info
-                </h4>
-                <div className="flex flex-col gap-1.5 text-muted-foreground bg-muted/20 p-2.5 rounded border text-[11px]">
-                  <div className="flex justify-between">
-                    <span>Account Custodian:</span>
-                    <span className="font-semibold text-foreground flex items-center gap-1">
-                      <User className="size-3 text-muted-foreground" />
-                      {account.custodian_name}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Created Date:</span>
-                    <span className="font-semibold text-foreground">{account.created_at || '2026-07-01'}</span>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+                  }
+                >
+                  <Download className="size-3.5" /> Statement
+                </Button>
+              )}
+            </div>
+            {tx.isLoading ? (
+              <Skeleton className="h-24 rounded-lg" />
+            ) : tx.isError ? (
+              <p className="text-muted-foreground">
+                The money in and out could not be loaded.{' '}
+                <button type="button" className="underline" onClick={() => tx.refetch()}>
+                  Try again
+                </button>
+              </p>
+            ) : rows.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-4 text-center text-muted-foreground">Nothing in or out yet.</p>
+            ) : (
+              <ul className="divide-y rounded-lg border">
+                {rows.map((t) => {
+                  const inbound = String(t.to_account_id) === account.id
+                  const expense = t.transaction_type === 'expense_payment' && t.source_id
+                  const body = (
+                    <>
+                      <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-full', inbound ? 'bg-success-soft text-success' : 'bg-muted text-muted-foreground')}>
+                        {inbound ? <ArrowDownLeft className="size-3.5" /> : <ArrowUpRight className="size-3.5" />}
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate font-medium">{t.description || TX_LABEL[t.transaction_type] || t.transaction_type}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {[TX_LABEL[t.transaction_type], t.occurred_date].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                      <span className={cn('shrink-0 font-semibold tabular-nums', inbound && 'text-success')}>
+                        {inbound ? '+' : '−'}
+                        {rupees(Number(t.amount) || 0)}
+                      </span>
+                    </>
+                  )
+                  return (
+                    <li key={t.id}>
+                      {expense ? (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/30"
+                          onClick={() => {
+                            onOpenChange(false)
+                            navigate(`/finance/expenses?id=${t.source_id}&period=all`)
+                          }}
+                        >
+                          {body}
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2.5 px-3 py-2">{body}</div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
         </div>
       </SheetContent>
     </Sheet>

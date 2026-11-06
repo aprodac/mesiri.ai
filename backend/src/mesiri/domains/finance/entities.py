@@ -49,6 +49,10 @@ class MoneyAccount:
     project_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
     owner_user_id: uuid.UUID | None = None
+    #: WEB-66: a bank account's bank, IFSC and the account number's last 4 digits (never the full number).
+    bank_name: str | None = None
+    ifsc_code: str | None = None
+    account_last4: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

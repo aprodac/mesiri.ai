@@ -9,8 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Callout, PageHeader, Segmented, StatStrip } from '@/components/dpr-page'
 import { FilterSelect, PeriodSelect } from '@/components/filter-select'
 import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet'
-import { CreateAccountDialog } from '@/components/accounts/create-account-dialog'
-import { RenameAccountDialog } from '@/components/accounts/rename-account-dialog'
+import { AccountDialog } from '@/components/accounts/account-dialog'
 import { TransferMoneyDialog } from '@/components/accounts/transfer-money-dialog'
 import { CashBoxDetailSheet } from '@/components/petty-cash/cash-box-detail-sheet'
 import { RecordVoucherDialog } from '@/components/petty-cash/record-voucher-dialog'
@@ -44,6 +43,10 @@ interface Account {
   opening: number
   currency: string
   custodian: string | null
+  owner_user_id: string | null
+  bank_name: string | null
+  ifsc_code: string | null
+  account_last4: string | null
   project_id?: string
   site_id?: string
   status: string
@@ -79,9 +82,9 @@ export default function MoneyPage() {
   const [period, setPeriod] = useUrlState<Period>('period', '30d')
   const [from, setFrom] = useUrlState<string>('from', '')
   const [to, setTo] = useUrlState<string>('to', '')
-  const [dialog, setDialog] = React.useState<'create' | 'transfer' | 'topup' | 'voucher' | null>(null)
+  const [dialog, setDialog] = React.useState<'transfer' | 'topup' | 'voucher' | null>(null)
   const [opened, setOpened] = React.useState<Account | null>(null)
-  const [renaming, setRenaming] = React.useState<Account | null>(null)
+  const [editing, setEditing] = React.useState<Account | null | undefined>(undefined) // null: a new account
   const [closing, setClosing] = React.useState<Account | null>(null)
   const [undoing, setUndoing] = React.useState<any | null>(null)
 
@@ -101,6 +104,10 @@ export default function MoneyPage() {
         opening: Number(a.opening_balance) || 0,
         currency: a.currency || 'INR',
         custodian: a.custodian_name ?? null,
+        owner_user_id: a.owner_user_id ? String(a.owner_user_id) : null,
+        bank_name: a.bank_name ?? null,
+        ifsc_code: a.ifsc_code ?? null,
+        account_last4: a.account_last4 ?? null,
         project_id: a.project_id ? String(a.project_id) : undefined,
         site_id: a.site_id ? String(a.site_id) : undefined,
         status: a.status,
@@ -161,13 +168,17 @@ export default function MoneyPage() {
     name: a.name,
     account_type: a.type,
     current_balance: a.balance,
-    opening_balance: a.opening,
     currency: a.currency,
-    custodian_name: a.custodian ?? undefined,
-    project_name: a.site_id ? siteNames.get(a.site_id)?.project : undefined,
-    site_name: a.site_id ? siteNames.get(a.site_id)?.name : undefined,
+    holder: a.custodian,
+    where: where(a),
+    bank_name: a.bank_name,
+    ifsc_code: a.ifsc_code,
+    account_last4: a.account_last4,
     status: a.status,
   })
+  // WEB-66: a bank account's row says which bank and which number; every row says who holds it.
+  const bankLine = (a: Account) =>
+    a.kind === 'bank' ? [a.bank_name, a.account_last4 ? `•••• ${a.account_last4}` : null].filter(Boolean).join(' ') || null : null
 
   const header = (
     <PageHeader
@@ -178,7 +189,7 @@ export default function MoneyPage() {
             <Button size="sm" variant="outline" className="gap-1.5" disabled={active.length < 2} onClick={() => setDialog('transfer')}>
               <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Transfer</span>
             </Button>
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog('create')}>
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setEditing(null)}>
               <Plus className="size-4" /> Add account
             </Button>
           </>
@@ -210,8 +221,8 @@ export default function MoneyPage() {
                 {low && <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Low</span>}
                 {a.status === 'inactive' && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Closed</span>}
               </span>
-              {(a.custodian || where(a)) && (
-                <span className="text-xs text-muted-foreground">{[a.custodian, where(a)].filter(Boolean).join(' · ')}</span>
+              {(bankLine(a) || a.custodian || where(a)) && (
+                <span className="text-xs text-muted-foreground">{[bankLine(a), a.custodian, where(a)].filter(Boolean).join(' · ')}</span>
               )}
             </button>
             <span className="flex shrink-0 items-center gap-1">
@@ -235,7 +246,7 @@ export default function MoneyPage() {
                     </DropdownMenuItem>
                     {a.kind === 'petty' && <DropdownMenuItem onClick={() => setDialog('topup')}>Top up</DropdownMenuItem>}
                     {a.kind === 'petty' && <DropdownMenuItem onClick={() => setDialog('voucher')}>Record a voucher</DropdownMenuItem>}
-                    <DropdownMenuItem onClick={() => setRenaming(a)}>Rename</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEditing(a)}>Edit</DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setClosing(a)}>
                       Close account
@@ -284,7 +295,7 @@ export default function MoneyPage() {
               <p className="text-sm font-medium">No accounts yet</p>
               <p className="max-w-sm text-sm text-muted-foreground">Add the company's bank account and each site's petty cash to see what is spent from where.</p>
               {!readOnly && (
-                <Button size="sm" onClick={() => setDialog('create')}>
+                <Button size="sm" onClick={() => setEditing(null)}>
                   Add account
                 </Button>
               )}
@@ -425,7 +436,13 @@ export default function MoneyPage() {
         </>
       )}
 
-      <CreateAccountDialog open={dialog === 'create'} onOpenChange={(o) => setDialog(o ? 'create' : null)} scope={scope} onAccountCreated={refresh} />
+      <AccountDialog
+        open={editing !== undefined}
+        onOpenChange={(o) => !o && setEditing(undefined)}
+        scope={scope}
+        account={editing ? { id: editing.id, name: editing.name, type: editing.type, owner_user_id: editing.owner_user_id, bank_name: editing.bank_name, ifsc_code: editing.ifsc_code, account_last4: editing.account_last4 } : null}
+        onSaved={refresh}
+      />
       <TransferMoneyDialog
         open={dialog === 'transfer'}
         onOpenChange={(o) => setDialog(o ? 'transfer' : null)}
@@ -440,16 +457,6 @@ export default function MoneyPage() {
         onReplenishCompleted={refresh}
       />
       <RecordVoucherDialog open={dialog === 'voucher'} onOpenChange={(o) => setDialog(o ? 'voucher' : null)} cashBoxes={pettyBoxes} onVoucherCreated={refresh} />
-      <RenameAccountDialog
-        open={renaming !== null}
-        onOpenChange={(o) => !o && setRenaming(null)}
-        accountId={renaming?.id ?? null}
-        currentName={renaming?.name ?? ''}
-        onRenamed={() => {
-          setRenaming(null)
-          refresh()
-        }}
-      />
       {opened?.kind === 'petty' ? (
         <CashBoxDetailSheet
           cashBox={pettyBoxes.find((b) => b.id === opened.id) ?? null}
@@ -462,7 +469,14 @@ export default function MoneyPage() {
           account={opened ? sheetAccount(opened) : null}
           open={opened !== null}
           onOpenChange={(o) => !o && setOpened(null)}
-          onTransferClick={() => setDialog('transfer')}
+          onEdit={
+            readOnly
+              ? undefined
+              : () => {
+                  setEditing(opened)
+                  setOpened(null)
+                }
+          }
         />
       )}
 
