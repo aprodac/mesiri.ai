@@ -45,6 +45,8 @@ async def test_every_message_of_the_company_with_what_it_did(conn) -> None:  # n
     )
 
     assert [r["text"] for r in rows] == ["50 bags cement came", "stock?", "hi"]
+    # WEB-65: the test messages carry no status (the default), and are long done: handled.
+    assert all(r["handled"] for r in rows)
     # Live plays Mesiri's hello on a person's first message ever, once.
     assert [r["first_message"] for r in rows] == [True, False, False]
     first = rows[0]
@@ -109,3 +111,24 @@ async def test_a_voice_note_shows_the_words_mesiri_heard(conn) -> None:  # noqa:
     )
 
     assert [r["text"] for r in rows] == ["ഇന്ന് 50 ചാക്ക് സിമന്റ് വന്നു", "hi"]
+
+
+async def test_a_message_mesiri_is_still_working_on_is_not_handled(conn) -> None:  # noqa: F811
+    """WEB-65: a message just in, still 'pending', is not handled yet; Live waits for it."""
+    from sqlalchemy import text
+
+    created = await create_company(
+        conn,
+        NewCompany(name="Busy Builders", owner_name="Ravi", owner_phone="+" + SENDER,
+                   project_name="Hospital", site_names=("Tower A",), auto_dpr=False),
+        now=NOW,
+    )
+    org = created.organization_id
+    correlation = await _message(conn, org, text_="bill", reply=None, tools=[])
+    now = dt.datetime.now(dt.UTC)
+    await conn.execute(text("UPDATE inbound_messages SET processing_status = 'pending', received_at = :at WHERE correlation_id = :c"),
+                       {"c": correlation, "at": now})
+    rows = await PostgresFactReviewRepository(conn).live_feed(
+        organization_id=org, since=now - dt.timedelta(hours=1), until=now + dt.timedelta(hours=1)
+    )
+    assert [r["handled"] for r in rows] == [False]

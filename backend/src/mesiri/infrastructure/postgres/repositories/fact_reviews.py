@@ -496,7 +496,7 @@ class PostgresFactReviewRepository:
                 text(
                     "SELECT * FROM ("
                     " SELECT im.id, im.message_type, im.body_text, im.body_text_en, im.assistant_reply, "
-                    " im.media_object_key, im.received_at, COALESCE(im.project_id, s.project_id) AS project_id, im.site_id, s.name AS site_name, p.name AS project_name, "
+                    " im.media_object_key, im.received_at, im.processing_status, COALESCE(im.project_id, s.project_id) AS project_id, im.site_id, s.name AS site_name, p.name AS project_name, "
                     " su.full_name AS sender_name, "
                     " COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source, "
                     " (SELECT jsonb_agg(jsonb_build_object("
@@ -559,6 +559,13 @@ class PostgresFactReviewRepository:
                 "sender_name": r["sender_name"],
                 "source": r["source"] or "whatsapp",
                 "first_message": bool(r["first_message"]),
+                # WEB-65: Mesiri is done with it (replied, or failed). A photo took 27 s on 6 Nov: Live played it the
+                # moment it arrived, as a plain photo, and never again once it was an expense. A message stuck
+                # 'pending' for over two minutes counts as handled, so Live never waits on it for ever.
+                "handled": r["processing_status"] != "pending" or (
+                    r["received_at"] is not None
+                    and (datetime.datetime.now(datetime.UTC) - r["received_at"]).total_seconds() > 120
+                ),
                 "turns": r["turns"] if isinstance(r["turns"], list) else json.loads(r["turns"] or "[]"),
             }
             for r in rows
