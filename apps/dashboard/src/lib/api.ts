@@ -916,7 +916,7 @@ export async function fetchExpenseAttachmentsApi(expenseId: string): Promise<Exp
   return res.data
 }
 
-/** WEB-60: add a bill (a photo or a PDF, see lib/bill-upload.ts) to a saved expense; returns all its bills. */
+/** WEB-65: add a bill (a photo or a PDF, see lib/bill-upload.ts) to a saved expense; returns all its bills. */
 export async function addExpenseBillApi(
   expenseId: string,
   file: { content_type: string; data_base64: string },
@@ -2032,7 +2032,7 @@ export async function fetchSiteQuestionsApi(siteId: string, since: Date, until: 
 /** What a message to Mesiri was (WEB-53); the backend's `live_feed.KIND_LABELS` says each one's name. */
 export type LiveKind =
   | 'attendance' | 'work' | 'correction' | 'delivery' | 'usage' | 'transfer' | 'expense' | 'issue' | 'issue_closed'
-  | 'undo' | 'setup' | 'catalogue' | 'language' | 'report' | 'question' | 'saved' | 'cancelled' | 'photo' | 'chat'
+  | 'undo' | 'setup' | 'catalogue' | 'language' | 'report' | 'question' | 'intro' | 'saved' | 'cancelled' | 'photo' | 'chat'
 
 /** One message on the company Live, and what Mesiri did with it. */
 export interface LiveFeedItem {
@@ -2051,7 +2051,8 @@ export interface LiveFeedItem {
   media_url: string | null
   kind: LiveKind
   label: string
-  /** saved, draft (waiting for ✅ Save), asked (Mesiri asked back), answered, failed, or heard. */
+  /** saved, draft (waiting for ✅ Save), asked (Mesiri asked back), answered, failed, or heard. 'intro' (WEB-60): the
+   * person asked what Mesiri can do. */
   state: 'saved' | 'draft' | 'asked' | 'answered' | 'failed' | 'heard'
   summaries: string[]
   asked: string | null

@@ -416,6 +416,13 @@ _ASK_TOOL = ToolSpec(name=ASK, description=(
     "properties": {"question": {"type": "string"},
                    "options": {"type": "array", "items": {"type": "string"}, "description": "2-3 short choices"}},
 })
+#: WEB-60 (5 Nov: "Mesiri enthokke cheyyan pattum?" left no sign of what it was): the question about what Mesiri can do
+#: is marked by this call, which writes nothing; the dashboard's Live plays Mesiri's introduction for it. One extra step,
+#: on this question only (SOP rule 11).
+EXPLAIN = "explain_mesiri"
+_EXPLAIN_TOOL = ToolSpec(name=EXPLAIN, description=(
+    "Call this first, once, when the person asks what Mesiri can do, how it helps, or how it works. It writes "
+    "nothing. Then answer from the What Mesiri does block."), parameters={"type": "object", "properties": {}})
 DROP_READY = "drop_ready_entries"
 #: 2 Nov ([205], Paraclette: a project renamed by voice vanished from the list): a correction to a waiting entry
 #: is ONE step the code applies in place. Drop-then-prepare let the model stop halfway and still say "ready".
@@ -609,6 +616,9 @@ class ApiAgent:
                 if "url" in built:
                     links.append(built["url"])
                 return ToolOutcome(content=built)
+            if name == EXPLAIN:
+                return ToolOutcome(content={"status": "answer from the What Mesiri does block, in their language, "
+                                                      "at most 6 short lines with an example message each"})
             if name == ASK:
                 asked["question"] = str(arguments.get("question") or "").strip()
                 asked["options"] = [str(o).strip()[:20] for o in (arguments.get("options") or []) if str(o).strip()][:3]
@@ -753,7 +763,7 @@ class ApiAgent:
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
             if name == BILL_TOOL and not photo_key:
-                # WEB-60: a bill is added only from a photo they sent; never from words alone.
+                # WEB-65: a bill is added only from a photo they sent; never from words alone.
                 return ToolOutcome(content={"error": (
                     "There is no photo in this message, so no bill was added. Ask them in one line to send the "
                     "bill photo.")})
@@ -956,7 +966,7 @@ class ApiAgent:
                 content = content[:READ_LIMIT] + " ...(cut)"
             return ToolOutcome(content={"status": response.status, "result": content})
 
-        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, *feedback_specs(), web_link_spec()] + (
+        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, _EXPLAIN_TOOL, *feedback_specs(), web_link_spec()] + (
             list(_READY_TOOLS) if waiting else [])
         specs += [spec for spec, _ in (actions or {}).values()]
         system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
@@ -1351,7 +1361,7 @@ async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "uni
 CONVERSION_TOOL = "set_unit_conversion"
 #: PRC-02c: the builder's standard category list, applied from WhatsApp (an admin or a project manager).
 STANDARD_CATEGORIES_TOOL = "add_standard_categories"
-#: WEB-60: adds this message's bill photo to a saved expense (bill_photo.py).
+#: WEB-65: adds this message's bill photo to a saved expense (bill_photo.py).
 BILL_TOOL = "add_bill_photo"
 #: WA-168: an admin answering "📏 Sizes needed".
 ANSWER_SIZE_TOOL = "answer_size_request"

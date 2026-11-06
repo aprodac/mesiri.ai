@@ -10,7 +10,7 @@ import { BILL_ACCEPT, billFile } from '@/lib/bill-upload'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { addExpenseBillApi, fetchExpenseAttachmentsApi } from '@/lib/api'
 
-// WEB-60 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense if image is there"): one
+// WEB-65 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense if image is there"): one
 // expense, with every bill on it (WhatsApp photos, a delivery's invoice, ones added here) and "Add bill" for a photo
 // or a PDF. The old panel showed one photo and filled empty fields with made-up names ("Main Bank Account",
 // "Finance Custodian", "General Operations"); only what the expense really has is shown.

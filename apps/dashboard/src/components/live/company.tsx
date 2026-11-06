@@ -24,8 +24,11 @@ import {
   Play,
   PackageMinus,
   PencilLine,
+  Sparkles,
   Truck,
   Undo2,
+  Volume2,
+  VolumeX,
   X,
   XCircle,
 } from 'lucide-react'
@@ -37,6 +40,7 @@ import {
   fetchSiteDaysApi,
   type LiveFeedItem,
   type LiveKind,
+  type ProjectDayItem,
 } from '@/lib/api'
 import { noticeOf } from '@/lib/live-reading'
 import { longDate } from '@/lib/site-day'
@@ -51,7 +55,10 @@ import { CountTo } from './ink'
 import { LIVE_MODULES, useCinematicGo } from './modules'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
-import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, LanguageMoment, answers as answersOf, cleanReply } from './moments'
+import { Finale } from './finale'
+import { ProjectSheet, ReportStrip, SHEET_MS } from './report'
+import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, EntryCard, LanguageMoment, answers as answersOf, cleanReply, languageLine, outcomes } from './moments'
+import { useVoice } from '@/lib/voice'
 import { Spark, type SparkMood } from './spark'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
@@ -111,6 +118,7 @@ const KINDS: Record<LiveKind, KindLook> = {
   language: { icon: Languages, goes: null, tone: 'info' },
   report: { icon: FileText, goes: 'Reports', tone: 'info' },
   question: { icon: HelpCircle, goes: null, tone: 'info' },
+  intro: { icon: Sparkles, goes: null, tone: 'info' },
   saved: { icon: CheckCheck, goes: null, tone: 'work' },
   cancelled: { icon: XCircle, goes: null, tone: 'plain' },
   photo: { icon: Camera, goes: null, tone: 'plain' },
@@ -176,6 +184,39 @@ function destOf(m: LiveFeedItem): Dest | null {
 }
 
 const isVoice = (m: LiveFeedItem) => /voice|audio/.test(m.type)
+/** WEB-63: what Mesiri says out loud when it is done with a message; null to stay quiet. Short: a moment's line. */
+function spokenLine(m: LiveFeedItem, alarm: string | null): string | null {
+  const first = m.sender_name?.split(/\s+/)[0]
+  const lines = m.summaries.slice(0, 3).join(', ')
+  if (alarm) return `Wait. ${alarm}`
+  if (m.kind === 'intro') return null // the show speaks for itself
+  if (isBill(m)) {
+    const amount = Number(m.expense?.amount)
+    const what = [m.expense?.vendor ? `A bill from ${m.expense.vendor}` : 'A bill', Number.isFinite(amount) ? `${amount.toLocaleString('en-IN')} rupees` : null]
+    return `${what.filter(Boolean).join(': ')}.${m.state === 'draft' ? ' Tap save.' : ''}`
+  }
+  if (m.kind === 'language') return languageLine(m.language)
+  if (m.state === 'asked' && m.asked) return cleanReply(m.asked)
+  if (m.state === 'failed') return 'That could not be saved.'
+  const card = cardAs(m)
+  if (card === 'draft') return `${first ? `${first}, ` : ''}${lines}. Ready. Tap save.`
+  if (card === 'saved') return `Saved. ${lines}.`
+  if (card === 'cancelled') return 'Cancelled. Nothing was saved.'
+  if (card === 'undone') return `Taken back. ${m.summaries[0] ?? ''}`
+  if (m.kind === 'question' || m.kind === 'chat') return short(cleanReply(m.reply), 220) || null
+  return null
+}
+
+/** WEB-62: the card a message's entries are on, and what became of them; null when it has no card. */
+function cardAs(m: LiveFeedItem): 'draft' | 'saved' | 'cancelled' | 'undone' | null {
+  if (isBill(m)) return null
+  if (m.kind === 'cancelled' && m.summaries.length) return 'cancelled'
+  if (m.kind === 'undo') return m.summaries.length ? 'undone' : null
+  if (!m.summaries.length) return null
+  if (m.state === 'draft') return 'draft'
+  if (m.state === 'saved') return 'saved'
+  return null
+}
 /** An expense with a bill photo or what Mesiri read from it: its own moment (moments.tsx). */
 const isBill = (m: LiveFeedItem) => (m.kind === 'expense' || m.saved_kind === 'expense') && !!(m.expense || (m.media_url && /image|photo/.test(m.type)))
 const isPhoto = (m: LiveFeedItem) => /image|photo/.test(m.type)
@@ -357,6 +398,9 @@ export function CompanyLive({
 }) {
   const [, setParams] = useSearchParams()
   const moduleEnabled = useModuleEnabled()
+  /** WEB-63: Mesiri's voice: on in presenter mode, Mute turns it off. */
+  const voice = useVoice()
+  const say = voice.say
   const [since, until] = React.useMemo(() => dayWindow(date), [date])
   const feed = useQuery({
     queryKey: ['live-feed', date],
@@ -376,6 +420,8 @@ export function CompanyLive({
   const items = React.useMemo(() => feed.data ?? [], [feed.data])
   /** Which message answers which question Mesiri asked back. */
   const qa = React.useMemo(() => answersOf(items), [items])
+  /** What each waiting card became (Save or Cancel tapped later). */
+  const became = React.useMemo(() => outcomes(items), [items])
   const sites = React.useMemo(
     () => [...(days.data?.items ?? [])].sort((a, b) => (b.last_update_at ?? '').localeCompare(a.last_update_at ?? '')),
     [days.data],
@@ -413,6 +459,8 @@ export function CompanyLive({
   const queue = React.useRef<LiveFeedItem[]>([])
   const playing = React.useRef(false)
   const seeded = React.useRef(false)
+  /** What was already there when Live opened: counted, not shown, never played (until Replay the day). */
+  const before = React.useRef(new Set<string>())
   /** Replay plays faster. */
   const speed = React.useRef(1)
   const sparkRef = React.useRef<HTMLDivElement>(null)
@@ -462,6 +510,19 @@ export function CompanyLive({
       while (greeting.current) await new Promise((r) => window.setTimeout(r, 300))
       const item = queue.current.shift()!
       const live = speed.current === 1
+      // WEB-60: they asked what Mesiri can do: the message comes in, then Mesiri's whole introduction plays for them,
+      // then its own answer, as a conversation.
+      if (live && item.kind === 'intro') {
+        setShown((s) => new Set(s).add(item.id))
+        setBeat((b) => b + 1)
+        setCurrent({ item, step: 'arrive', alarm: null })
+        await wait(STEP_MS)
+        setCurrent(null)
+        await showMeet(item.sender_name?.split(/\s+/)[0] ?? null, false)
+        setCurrent({ item, step: 'done', alarm: null })
+        await wait(STEP_MS + 3_000)
+        continue
+      }
       // Someone's first message ever: Mesiri says hello before it reads it.
       if (live && item.first_message) {
         await showMeet(item.sender_name?.split(/\s+/)[0] ?? null, true)
@@ -487,6 +548,7 @@ export function CompanyLive({
         }
       }
       setCurrent({ item, step: 'done', alarm })
+      if (live) say(spokenLine(item, alarm))
       const from = sparkRef.current?.getBoundingClientRect()
       const fly = (a: DOMRect | undefined, b: DOMRect | undefined, delay = 0) => {
         if (a && b && !prefersReducedMotion()) setFlights((f) => [...f, { key: Math.random(), from: a, to: b, delay }])
@@ -500,24 +562,25 @@ export function CompanyLive({
       }
       // The sites' numbers (and a site just added) catch up as it lands.
       if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
-      await wait(alarm ? STEP_MS + 3_400 : isBill(item) || item.kind === 'language' || item.state === 'asked' || item.kind === 'chat' ? STEP_MS + 2_400 : STEP_MS + 1_200)
+      await wait(alarm ? STEP_MS + 3_400 : item.kind === 'cancelled' || item.kind === 'undo' ? STEP_MS + 3_800 : isBill(item) || item.kind === 'language' || item.state === 'asked' || item.kind === 'chat' || cardAs(item) ? STEP_MS + 2_600 : STEP_MS + 1_200)
     }
     setCurrent(null)
     playing.current = false
     speed.current = 1
     setReplaying(false)
-  }, [readFlags, ring, queryClient, date, showMeet])
+  }, [readFlags, ring, queryClient, date, showMeet, say])
 
   // The first read just shows the day; later reads play what is new.
   React.useEffect(() => {
     if (!feed.data) return
     if (!seeded.current) {
+      // WEB-64: Live starts empty: what came before it opened is known, not shown (Replay the day shows it).
       seeded.current = true
-      setShown(new Set(feed.data.map((m) => m.id)))
+      before.current = new Set(feed.data.map((m) => m.id))
       return
     }
     if (replaying) return
-    const known = new Set([...shown, ...queue.current.map((m) => m.id), current?.item.id])
+    const known = new Set([...before.current, ...shown, ...queue.current.map((m) => m.id), current?.item.id])
     const fresh = feed.data.filter((m) => !known.has(m.id))
     if (!fresh.length) return
     const late = fresh.slice(0, Math.max(0, fresh.length - QUEUE_MAX))
@@ -527,6 +590,51 @@ export function CompanyLive({
   }, [feed.data, shown, current, play, replaying])
 
   // Each site's flagged lines as the page opens, so a mistake caught later shows as new.
+  // WEB-61: a project's report going out (its "sent" turning on in the polled site-days): its sheet builds on the
+  // stage from the day's sites, then folds into the PDF and drops into WhatsApp (the site Live's Finale).
+  const [sending, setSending] = React.useState<{ project: ProjectDayItem; from: DOMRect | null } | null>(null)
+  const sheetRef = React.useRef<HTMLDivElement>(null)
+  const sentBefore = React.useRef<Map<string, boolean> | null>(null)
+  const sendQueue = React.useRef<ProjectDayItem[]>([])
+  const nextSend = React.useCallback(() => {
+    if (greeting.current || playing.current) return
+    const project = sendQueue.current.shift()
+    if (!project) return
+    greeting.current = true // messages that come meanwhile wait for it
+    setSending({ project, from: null })
+    say(`${project.project_name}: the day’s messages become the report.`)
+    window.setTimeout(
+      () => {
+        say(`Today’s report for ${project.project_name} is out.`)
+        setSending((s) => (s ? { ...s, from: sheetRef.current?.getBoundingClientRect() ?? new DOMRect(window.innerWidth / 2 - 300, 120, 600, 600) } : s))
+      },
+      prefersReducedMotion() ? 600 : SHEET_MS,
+    )
+  }, [say])
+  const sentDone = React.useCallback(() => {
+    setSending(null)
+    greeting.current = false
+    if (sendQueue.current.length) window.setTimeout(nextSend, 400)
+    else if (queue.current.length) void play()
+  }, [nextSend, play])
+  React.useEffect(() => {
+    const projects = days.data?.projects ?? []
+    if (!days.data || !isToday) return
+    if (sentBefore.current === null) {
+      sentBefore.current = new Map(projects.map((p) => [p.project_id, p.sent]))
+      return
+    }
+    for (const p of projects) {
+      if (p.sent && sentBefore.current.get(p.project_id) === false) sendQueue.current.push(p)
+      sentBefore.current.set(p.project_id, p.sent)
+    }
+    if (sendQueue.current.length && !sending) nextSend()
+  }, [days.data, isToday, nextSend, sending])
+  // A report due while a message plays goes out once it is done.
+  React.useEffect(() => {
+    if (!current && !hello && !sending && sendQueue.current.length) nextSend()
+  }, [current, hello, sending, nextSend])
+
   const flagSites = React.useMemo(() => (days.data?.items ?? []).slice(0, FLAG_SITES_MAX).map((s) => s.site_id).join(','), [days.data])
   React.useEffect(() => {
     if (!isToday || !flagSites) return
@@ -579,6 +687,7 @@ export function CompanyLive({
   const [telling, setTelling] = React.useState(false)
   const present = async (on: boolean) => {
     setPresenting(on)
+    voice.setOn(on) // presenter mode talks; leaving it is quiet again
     try {
       if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen?.()
       if (!on && document.fullscreenElement) await document.exitFullscreen?.()
@@ -590,9 +699,17 @@ export function CompanyLive({
     const left = () => {
       if (!document.fullscreenElement) setPresenting(false)
     }
+    const mute = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key.toLowerCase() === 'm' && !e.metaKey && !e.ctrlKey && !(t && /input|textarea|select/i.test(t.tagName))) voice.setOn(!voice.on)
+    }
+    window.addEventListener('keydown', mute)
     document.addEventListener('fullscreenchange', left)
-    return () => document.removeEventListener('fullscreenchange', left)
-  }, [])
+    return () => {
+      document.removeEventListener('fullscreenchange', left)
+      window.removeEventListener('keydown', mute)
+    }
+  }, [voice])
 
   const number = setup.data?.whatsapp_number ?? null
   const qrLink = number ? `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent('Hi Mesiri')}` : null
@@ -636,21 +753,23 @@ export function CompanyLive({
   )
   const totals = {
     workers: sites.reduce((n, s) => n + (s.workers || 0), 0),
-    messages: items.filter((m) => shown.has(m.id)).length,
-    saved: items.filter((m) => shown.has(m.id) && m.state === 'saved').length,
+    // The whole day's, whatever the stream shows.
+    messages: items.length,
+    saved: items.filter((m) => m.state === 'saved').length,
     issues: sites.reduce((n, s) => n + (s.open_issues || 0), 0),
     reported: sites.filter((s) => s.last_update_at).length,
   }
   const company = branding.data?.company_name
   // The moment for what Mesiri is handling now (moments.tsx), if its kind has one.
-  const moment: 'bill' | 'language' | 'asked' | 'answer' | 'chat' | null = (() => {
+  const moment: 'bill' | 'language' | 'asked' | 'answer' | 'chat' | 'card' | null = (() => {
     if (!current || (current.alarm && current.step === 'done')) return null
     const m = current.item
     if (isBill(m)) return 'bill'
     if (m.kind === 'language' && (current.step === 'understood' || current.step === 'done')) return 'language'
     if (current.step === 'done' && m.state === 'asked' && m.asked) return 'asked'
+    if (current.step === 'done' && cardAs(m)) return 'card'
     if (current.step === 'done' && m.kind === 'question' && cleanReply(m.reply)) return 'answer'
-    if (current.step === 'done' && (m.kind === 'chat' || m.kind === 'photo') && m.text && cleanReply(m.reply)) return 'chat'
+    if (current.step === 'done' && (m.kind === 'chat' || m.kind === 'photo' || m.kind === 'intro') && m.text && cleanReply(m.reply)) return 'chat'
     return null
   })()
   const answers = current ? qa.of.get(current.item.id) ?? null : null
@@ -682,7 +801,7 @@ export function CompanyLive({
   // What each module got today: entries saved there, and the last one.
   const destCounts = new Map<DestKey, { n: number; last: string | null }>()
   for (const m of items) {
-    if (!shown.has(m.id)) continue
+    if (!shown.has(m.id) && !before.current.has(m.id)) continue
     const d = destOf(m)
     if (!d) continue
     const was = destCounts.get(d.key) ?? { n: 0, last: null }
@@ -747,6 +866,20 @@ export function CompanyLive({
             </button>
             <button
               type="button"
+              onClick={() => voice.setOn(!voice.on)}
+              aria-pressed={voice.on}
+              title={voice.unavailable ? 'Mesiri’s voice is not available right now' : voice.on ? 'Mute Mesiri (M)' : 'Let Mesiri talk (M)'}
+              className={cn(
+                'flex items-center gap-2 border px-3 py-2 text-sm font-medium',
+                voice.on ? 'border-foreground bg-foreground text-background' : 'border-foreground hover:bg-foreground hover:text-background',
+                voice.unavailable && voice.on && 'border-[var(--destructive)] bg-background text-[var(--destructive)]',
+              )}
+            >
+              {voice.on ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+              {voice.on ? (voice.unavailable ? 'No voice' : 'Mute') : 'Sound'}
+            </button>
+            <button
+              type="button"
               onClick={() => void present(!presenting)}
               className="flex items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
             >
@@ -761,6 +894,12 @@ export function CompanyLive({
           </div>
         </header>
         <div className="h-px bg-foreground" />
+        <ReportStrip
+          projects={days.data?.projects ?? []}
+          sites={sites}
+          isToday={isToday}
+          onSite={(s) => openSite(s.site_id, s.project_id)}
+        />
 
         {telling && !presenting && (
           <div className="mt-6 border border-foreground px-4 py-4 animate-in fade-in slide-in-from-top-2 duration-300 motion-reduce:animate-none">
@@ -782,18 +921,29 @@ export function CompanyLive({
           >
             {/* The messages, newest first */}
             <section aria-label="Messages" className="order-2 min-w-0 lg:order-1">
-              <Label>Messages · {totals.messages} today</Label>
+              <Label>{shown.size || samples.length ? `Messages · ${totals.messages} today` : 'Messages · from now'}</Label>
               {feed.isLoading ? (
                 <p className="mt-4 text-sm text-muted-foreground">Loading…</p>
               ) : stream.length === 0 ? (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Nothing yet today. Send Mesiri a message on WhatsApp and watch it arrive here.
+                <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                  Listening. New messages show here as they arrive: send Mesiri one on WhatsApp.
+                  {items.length > 0 && (
+                    <>
+                      {' '}
+                      {items.length} earlier today:{' '}
+                      <button type="button" onClick={() => void replay()} className="border-b border-current font-medium text-foreground">
+                        Replay the day
+                      </button>{' '}
+                      to see them.
+                    </>
+                  )}
                 </p>
               ) : (
                 <ol className="m-0 mt-4 grid list-none gap-3 p-0" aria-live="polite">
                   {stream.slice(0, 40).map((m) => (
                     <MessageCard key={m.id} m={m} active={current?.item.id === m.id} answers={qa.of.get(m.id) ?? null}
                       answered={qa.answered.has(m.id)}
+                      became={became.get(m.id) ?? null}
                       onSite={() => openSite(m.site_id, m.project_id)}
                       onDest={(d, el) => openDest(d, el, m)}
                     />
@@ -807,7 +957,20 @@ export function CompanyLive({
               aria-label="Mesiri"
               className={cn('order-1 min-w-0 lg:order-2', current?.alarm && 'relative z-40', hello && 'lg:col-span-2 lg:order-1 xl:col-span-1 xl:order-2')}
             >
-              {hello ? (
+              {sending ? (
+                <div className="sticky top-6 grid justify-items-center gap-4 border border-foreground/15 bg-background px-4 py-6 text-center sm:px-6">
+                  <Spark mood="send" size={presenting ? 120 : 90} />
+                  <div>
+                    <Label className="block">The day’s report</Label>
+                    <p className={cn('m-0 mt-1 font-medium', presenting ? 'text-[26px]' : 'text-[20px]')}>
+                      <Typed text={`${sending.project.project_name}: the day’s messages become the report.`} />
+                    </p>
+                  </div>
+                  <div className={cn('w-full', sending.from && 'invisible')}>
+                    <ProjectSheet ref={sheetRef} project={sending.project} sites={sites} company={company ?? null} date={date} />
+                  </div>
+                </div>
+              ) : hello ? (
                 <div className="sticky top-6 border-2 border-foreground bg-background px-4 py-5 sm:px-7 sm:py-6">
                   <MeetMesiri
                     to={hello.to}
@@ -816,6 +979,7 @@ export function CompanyLive({
                     number={number}
                     presenting={presenting}
                     onScene={onScene}
+                    onSay={say}
                     onDone={() => helloDone.current?.()}
                   />
                 </div>
@@ -859,6 +1023,18 @@ export function CompanyLive({
                           <AskedMoment question={current.item.asked ?? ''} who={current.item.sender_name?.split(/\s+/)[0] ?? null} presenting={presenting} />
                         </div>
                       )}
+                      {moment === 'card' && cardAs(current.item) && (
+                        <div className="mt-3 grid justify-items-center">
+                          <EntryCard
+                            key={current.item.id}
+                            lines={current.item.summaries}
+                            site={current.item.site_name}
+                            who={current.item.sender_name?.split(/\s+/)[0] ?? null}
+                            as={cardAs(current.item)!}
+                            presenting={presenting}
+                          />
+                        </div>
+                      )}
                       {moment === 'chat' && (
                         <div className="mt-3 grid justify-items-center">
                           <ChatMoment
@@ -874,7 +1050,7 @@ export function CompanyLive({
                           <AnswerMoment reply={current.item.reply ?? ''} presenting={presenting} />
                         </div>
                       )}
-                      {(moment !== 'asked' && moment !== 'answer' && moment !== 'language' && moment !== 'chat') || current.step !== 'done' ? (
+                      {(moment !== 'asked' && moment !== 'answer' && moment !== 'language' && moment !== 'chat' && moment !== 'card') || current.step !== 'done' ? (
                       <p
                         key={`${current.item.id}-${current.step}`}
                         className={cn(
@@ -998,7 +1174,7 @@ export function CompanyLive({
                     const s = sites.find((x) => x.site_id === e.target.value)
                     if (s) openSite(s.site_id, s.project_id)
                   }}
-                  className="h-9 border border-foreground/30 bg-background px-2 text-sm"
+                  className="h-9 w-full min-w-0 border border-foreground/30 bg-background px-2 text-sm"
                 >
                   <option value="">Open a site… ({totals.reported} of {sites.length} heard from)</option>
                   {sites.map((s) => (
@@ -1030,6 +1206,16 @@ export function CompanyLive({
         </div>
       </footer>
 
+      {sending?.from && (
+        <Finale
+          from={sending.from}
+          projectId={sending.project.project_id}
+          company={company ?? ''}
+          code={null}
+          site={sending.project.project_name}
+          onDone={sentDone}
+        />
+      )}
       {sitePanel && (
         <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true" aria-label="A site’s day">
           <button type="button" aria-label="Close" onClick={onCloseSite} className="absolute inset-0 cursor-default bg-foreground/30 animate-in fade-in duration-300" />
@@ -1120,6 +1306,7 @@ function MessageCard({
   active,
   answers,
   answered,
+  became,
   onSite,
   onDest,
 }: {
@@ -1129,13 +1316,15 @@ function MessageCard({
   answered: boolean
   /** Opens the message's site's day in the panel. */
   onSite: () => void
+  /** A waiting card's fate: Save or Cancel tapped later. */
+  became: 'saved' | 'cancelled' | null
   /** Opens the module that keeps what it said. */
   onDest: (d: Dest, el: HTMLElement) => void
 }) {
   const dest = destOf(m)
   const look = KINDS[m.saved_kind && m.kind === 'saved' ? m.saved_kind : m.kind]
   const Icon = look.icon
-  const chip = m.state === 'asked' ? (answered ? { text: 'Answered ✓', className: 'text-[var(--success)]' } : { text: 'Waiting for answer', className: 'text-[var(--draft)]' }) : STATE_CHIP[m.state]
+  const chip = became === 'saved' ? { text: 'Saved ✓', className: 'text-[var(--success)]' } : became === 'cancelled' ? { text: 'Cancelled', className: 'text-muted-foreground' } : m.state === 'asked' ? (answered ? { text: 'Answered ✓', className: 'text-[var(--success)]' } : { text: 'Waiting for answer', className: 'text-[var(--draft)]' }) : STATE_CHIP[m.state]
   const english = m.translated_text && m.translated_text !== m.text ? m.translated_text : null
   return (
     <li

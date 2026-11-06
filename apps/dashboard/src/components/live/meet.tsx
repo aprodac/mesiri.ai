@@ -712,6 +712,7 @@ export function MeetMesiri({
   short = false,
   presenting = false,
   onScene,
+  onSay,
   onDone,
 }: {
   to: string | null
@@ -721,6 +722,8 @@ export function MeetMesiri({
   presenting?: boolean
   /** A scene starts (Live adds its sample messages to the stream). */
   onScene?: (scene: SceneKey) => void
+  /** Mesiri's line for the scene, to be spoken (WEB-63). */
+  onSay?: (line: string) => void
   onDone: () => void
 }) {
   const scenes = short ? SHORT : FULL
@@ -739,6 +742,9 @@ export function MeetMesiri({
   React.useEffect(() => {
     onScene?.(key)
   }, [key, onScene])
+  React.useEffect(() => {
+    onSay?.(NARRATION[key].say(to))
+  }, [key, to, onSay])
   React.useEffect(() => {
     const t = window.setTimeout(next, still() ? 4_000 : SCENE_MS[key])
     return () => window.clearTimeout(t)

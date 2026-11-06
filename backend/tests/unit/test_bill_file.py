@@ -1,4 +1,4 @@
-"""WEB-60: a bill file added to an expense from the dashboard: a photo or a PDF, what it says it is, 700 KB or under."""
+"""WEB-65: a bill file added to an expense from the dashboard: a photo or a PDF, what it says it is, 700 KB or under."""
 
 import base64
 import uuid

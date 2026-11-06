@@ -310,6 +310,10 @@
 @keyframes meet-send { to { opacity: 0; transform: translate(40%, -30%) scale(0.35) rotate(-8deg); } }
 @keyframes meet-plane { 0% { opacity: 0; transform: translate(-80px, 40px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(260px, -220px) rotate(-10deg); } }
 
+/* WEB-62: a waiting card's Save button, asking for the tap; a cancelled card dropping away. */
+@keyframes live-wait { 0%, 100% { box-shadow: 0 0 0 0 var(--primary); } 50% { box-shadow: 0 0 0 3px var(--primary); } }
+@keyframes live-drop-away { to { opacity: 0; transform: translateY(60px) rotate(4deg); } }
+
 /* Mesiri noticing a mistake in the Live report: the line shudders once. */
 @keyframes live-shake {
   0%, 100% { transform: translateX(0); }

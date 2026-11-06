@@ -54,6 +54,9 @@ WRITE_KINDS: dict[str, str] = {
 #: hidden from roles that may not see spending (the router's SEC-01 rule).
 EXPENSE_TOOLS: frozenset[str] = frozenset({"list_expenses", "money_accounts", "list_vendors", "query_expenses"})
 
+#: WEB-60: the assistant's mark that the person asked what Mesiri can do (it writes nothing); Live plays the introduction.
+INTRO_TOOLS: frozenset[str] = frozenset({"explain_mesiri"})
+
 #: The kinds that carry the company's spending (SEC-01).
 MONEY_KINDS: frozenset[str] = frozenset({"expense"})
 
@@ -84,6 +87,7 @@ KIND_LABELS: dict[str, str] = {
     "language": "Language",
     "report": "Report",
     "question": "Question",
+    "intro": "About Mesiri",
     "saved": "Saved",
     "cancelled": "Cancelled",
     "photo": "Photo",
@@ -162,6 +166,9 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
     pending = [p for t in turns for p in (t.get("pending") or []) if isinstance(p, str) and p]
     asked = next((t["asked"] for t in turns if isinstance(t.get("asked"), str) and t["asked"]), None)
     cancelled = any(t.get("cancelled") for t in turns)
+    # WEB-62: the entries a Cancel threw away ({tool, summary}), for the screen to cross out.
+    thrown = [str(c["summary"]) for t in turns for c in (t.get("cancelled") or [])
+              if isinstance(c, dict) and c.get("summary")]
 
     write = next((WRITE_KINDS[t] for t in tools if t in WRITE_KINDS), None)
     tapped_tool = next((r.get("tool") for r in tapped if r.get("tool") in WRITE_KINDS), None)
@@ -174,6 +181,8 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
         kind = "saved"
     elif cancelled:
         kind = "cancelled"
+    elif any(t in INTRO_TOOLS for t in tools):
+        kind = "intro"
     elif tools:
         kind = "question"
     elif is_photo:
@@ -189,12 +198,14 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
         state = "draft"
     elif asked:
         state = "asked"
-    elif kind == "question":
+    elif kind in ("question", "intro"):
         state = "answered"
     else:
         state = "heard"
 
     summaries = [str(r.get("summary")) for r in (saved or tapped) if r.get("summary")] or pending
+    if kind == "cancelled":
+        summaries = thrown
     money = kind in MONEY_KINDS or any(t in EXPENSE_TOOLS for t in tools) or (
         tapped_tool is not None and WRITE_KINDS.get(tapped_tool) in MONEY_KINDS
     )

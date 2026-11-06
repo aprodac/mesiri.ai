@@ -1,4 +1,4 @@
-"""WEB-60 (Ilan, 5 Nov 2026: "make sure sent expense bill and all is there saved for an expense if image is there"):
+"""WEB-65 (Ilan, 5 Nov 2026: "make sure sent expense bill and all is there saved for an expense if image is there"):
 the bill photo stays with its expense whichever order the messages come in (``agent_api/bill_photo.py``).
 
 Reported class: the photo key reached only a write made in the photo's own turn.

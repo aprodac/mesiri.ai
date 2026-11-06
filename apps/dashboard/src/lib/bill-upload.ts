@@ -1,4 +1,4 @@
-// WEB-60: a bill added to an expense from the dashboard. The server takes a photo (JPEG, PNG, WebP) or a PDF up to
+// WEB-65: a bill added to an expense from the dashboard. The server takes a photo (JPEG, PNG, WebP) or a PDF up to
 // 700 KB (backend/src/mesiri/domains/expenses/bill_file.py: base64 in JSON under nginx's 1 MB body). A phone photo is
 // several MB, so a photo is shrunk here to a JPEG first, still easy to read; a PDF is sent as it is.
 

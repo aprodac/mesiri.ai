@@ -303,7 +303,7 @@ async def test_the_list_names_the_vendor_project_site_and_number(client, admin_c
     assert row["project_name"] and row["expense_number"]
 
 
-# WEB-60 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense"): a bill is added to a
+# WEB-65 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense"): a bill is added to a
 # saved expense, from the dashboard (a file) or from WhatsApp (a photo that came after the save).
 _JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
 

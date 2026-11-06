@@ -61,6 +61,7 @@ def _row(id_, turns=(), type_="text", project=P1, site=S1, **kw):
         (["send_dpr"], "report"),
         (["record_expense"], "expense"),
         (["stock_levels"], "question"),
+        (["explain_mesiri"], "intro"),
     ],
 )
 def test_each_tool_says_what_the_message_was(tools, kind):
@@ -128,6 +129,18 @@ def test_a_bill_photo_says_what_mesiri_read_from_it():
 def test_a_language_change_names_the_language():
     what = live_feed.classify(_row("m", [_turn(["set_reply_language"], writes=[{"tool": "set_reply_language", "args": {"reply_language": "malayalam"}}])]))
     assert (what["kind"], what["language"]) == ("language", "malayalam")
+
+
+def test_what_can_mesiri_do_is_an_intro_answered():
+    what = live_feed.classify(_row("m", [_turn(["explain_mesiri"])], type_="voice"))
+    assert (what["kind"], what["state"], what["label"]) == ("intro", "answered", "About Mesiri")
+    # The guard: an entry made in the same turn stays the entry.
+    assert live_feed.classify(_row("m", [_turn(["explain_mesiri", "record_receipt"])]))["kind"] == "delivery"
+
+
+def test_a_cancel_names_what_it_threw_away():
+    what = live_feed.classify(_row("m", [_turn(cancelled=[{"tool": "record_receipt", "summary": "Cement 50 bags in"}, "junk"])]))
+    assert (what["kind"], what["summaries"]) == ("cancelled", ["Cement 50 bags in"])
 
 
 def test_unknown_trace_shapes_never_break_it():

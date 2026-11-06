@@ -11,7 +11,7 @@ ownership model differs from that path).
 
 Attachment reads (`/attachments`, `/{expense_id}/attachments`) serve
 receipt photos captured via the WhatsApp image-purpose picker (Finance
-Module Slice 6b). Since 5 Nov 2026 (WEB-60) a bill is also added to a saved
+Module Slice 6b). Since 5 Nov 2026 (WEB-65) a bill is also added to a saved
 expense with `POST /{expense_id}/attachments`: a file from the dashboard, or a
 WhatsApp photo that came after the expense was saved. `media_object_key`
 is never returned as-is; every attachment is resolved to a short-lived
