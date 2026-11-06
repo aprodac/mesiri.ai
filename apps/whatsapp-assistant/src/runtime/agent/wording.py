@@ -494,6 +494,14 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "✅ सेव हो गया।",
         "hinglish": "✅ Save ho gaya.",
     },
+    # [267]: a button tapped on a card that was already saved.
+    "api.already_saved": {
+        "english": "✅ Already saved.",
+        "manglish": "✅ Ithu munpe save aayittund.",
+        "malayalam": "✅ ഇത് നേരത്തെ സേവ് ആയിട്ടുണ്ട്.",
+        "hindi": "✅ यह पहले ही सेव हो चुका है।",
+        "hinglish": "✅ Yeh pehle hi save ho chuka hai.",
+    },
     # [221]: an answer that comes after an AI pause says which message it answers.
     "api.late_answer": {
         "english": "⏱️ Your {kind} from {time}:",

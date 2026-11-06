@@ -147,6 +147,15 @@ class ReceiptRenderer:
             await self._release_page(page, healthy=False)
             raise
 
+    async def warm(self) -> None:
+        """[267]: start the browser and its page pool now, off the reply path. Lazily, the first card after a deploy
+        paid for the Chromium launch (~3 s) and the TO SAVE card missed its 3-second budget: the person got the list as
+        text, with no card (6 Nov, twice). Called once at worker start, in the background. Never raises."""
+        try:
+            await self._ensure_pool()
+        except Exception:  # noqa: BLE001 -- the first render tries again
+            logger.warning("receipt.warm_failed", exc_info=True)
+
     async def close(self) -> None:
         if self._page_pool is not None:
             while not self._page_pool.empty():

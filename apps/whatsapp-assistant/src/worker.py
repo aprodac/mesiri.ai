@@ -11,6 +11,7 @@ Run locally with:  arq worker.WorkerSettings
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -66,10 +67,16 @@ async def startup(ctx: dict) -> None:
 
     ctx["http_client"] = http_client
     ctx["container"] = container
+    # [267]: the card browser starts now, in the background, so the first TO SAVE card after a deploy is drawn in
+    # time (lazily, its ~3 s launch sat on that reply and the list went out as text).
+    ctx["renderer_warm"] = asyncio.create_task(container.receipt_renderer.warm())
     logger.info("whatsapp.worker_started")
 
 
 async def shutdown(ctx: dict) -> None:
+    warming = ctx.get("renderer_warm")
+    if warming is not None and not warming.done():
+        warming.cancel()
     container = ctx.get("container")
     if container is not None:
         await container.material_db.disconnect()

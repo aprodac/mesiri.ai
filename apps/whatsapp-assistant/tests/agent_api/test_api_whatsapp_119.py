@@ -28,6 +28,7 @@ from mesiri.infrastructure.redis.client import FakeRedis
 from mesiri_ai.fakes import FakeToolCallingProvider
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
+from runtime.agent.wording import say
 from runtime.ai_outage import FallBackToClassic
 
 CTX = SimpleNamespace(user_id=USER, organization_id=ORG, role="SITE_SUPERVISOR", full_name="Ravi",
@@ -112,9 +113,10 @@ async def test_save_sends_them_to_the_api_once() -> None:
     assert await h.service.handle(_message("Save", tap=save), CTX)
     assert h.posts() == 2
     assert h.sent[-1].text.startswith("Saved.") and "✅ 50 TMT bars, Green Villa" in h.sent[-1].text
-    # The same button again: nothing waits, nothing is sent.
+    # The same button again: nothing is sent twice; [267]: it says it is already saved, never "nothing waiting".
     await h.service.handle(_message("Save", tap=save), CTX)
-    assert h.posts() == 2 and h.sent[-1].text == wa.NOTHING_WAITING
+    assert h.posts() == 2 and wa.NOTHING_WAITING not in h.sent[-1].text
+    assert h.sent[-1].text.startswith(say("api.already_saved", "manglish"))
 
 
 async def test_a_refused_entry_says_the_apis_reason_and_is_taken_off_the_list() -> None:  # [233]: never carried on

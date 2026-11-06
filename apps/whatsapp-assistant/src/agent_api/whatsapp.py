@@ -110,6 +110,9 @@ def _lap(name: str) -> None:
 MODE = "api"
 EVENT_SOURCE = "agent_api"
 STATE_TTL_SECONDS = 24 * 3600
+#: [267]: a message answered here is marked by its WhatsApp id for this long. A worker restart (a deploy) re-runs a job
+#: that was cut off after its reply went out; the re-run finds the mark and stays quiet, so one tap is answered once.
+ANSWERED_TTL_SECONDS = 6 * 3600
 #: WA-166: a person's own sizes outlive the day's state; renewed whenever they tell another.
 SIZES_TTL_SECONDS = 180 * 24 * 3600
 SAVE_PREFIX = "apiag:save:"
@@ -183,6 +186,9 @@ SAVED_SHORT = "✅ Saved."
 COULD_NOT_READ = "I couldn't read that photo. Please send it again, or type what it is."
 NOT_NOW = "I couldn't work on that just now. Please send it again in a minute."
 NOTHING_WAITING = "There is nothing waiting to save."
+#: [267]: a button on a card that was already saved (the same tap run again after a restart, or a second tap):
+#: what happened, with the record links, never "nothing waiting to save" (it read as "it saved without me").
+ALREADY_SAVED = "✅ Already saved."
 CANCELLED = "Cancelled. Nothing was saved."
 #: WA-169: the chosen-language read never holds a reply up longer than this (it runs beside the facts).
 CHOSEN_LANGUAGE_TIMEOUT_S = 0.8
@@ -291,6 +297,12 @@ class ApiWhatsApp:
 
     async def _handle(self, message: Any, ctx: Any) -> bool:
         tap = str((message.metadata or {}).get("interactive_reply_id") or "")
+        if (retry_attempt.get() or 1) > 1 and not _REPLAYING.get() and await self._was_answered(message):
+            # [267] (6 Nov 13:10, Ilan: Save tapped once during a deploy; it saved and "Saved" went out, the worker was
+            # restarted before the job ended, and the re-run answered the same tap "There is nothing waiting to save").
+            _log.info("agent_api.rerun_already_answered message_id=%s", getattr(message, "message_id", None))
+            await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
+            return True
         if not tap and not _REPLAYING.get() and (retry_attempt.get() or 1) == 1:
             await self._answer_kept(ctx, message.correlation_id)
         said = (message.text or "").strip()
@@ -361,6 +373,7 @@ class ApiWhatsApp:
                                         + reply.text)
         reply = latin_reply(reply, await self._reply_language(ctx))
         await self._send(reply, message.sender.wa_id)
+        await self._mark_answered(message)  # [267]: a re-run of this job (a restart) never answers it again
         _lap("v3_send")
         await self._send_saved_card(message, ctx)  # after the "Saved" line: the reply never waits for it
         _lap("v3_saved_card")
@@ -379,6 +392,30 @@ class ApiWhatsApp:
             await self._memory.remember(ctx, said, for_memory(reply.text))  # after the send: never on the wait
             _lap("v3_memory_write")
         return True
+
+    @staticmethod
+    def _answered_key(message: Any) -> str | None:
+        message_id = str(getattr(message, "message_id", "") or "")
+        return f"agent_api_answered:{message_id}" if message_id else None
+
+    async def _was_answered(self, message: Any) -> bool:
+        """[267]: this WhatsApp message was already answered by an earlier run of its job."""
+        key = self._answered_key(message)
+        if key is None:
+            return False
+        try:
+            return bool(await self._redis.get_json(key))
+        except Exception:  # noqa: BLE001 -- unreadable: run it (a tap's batch check still stops a second save)
+            return False
+
+    async def _mark_answered(self, message: Any) -> None:
+        key = self._answered_key(message)
+        if key is None:
+            return
+        try:
+            await self._redis.set_json(key, {"at": time.time()}, ttl_seconds=ANSWERED_TTL_SECONDS)
+        except Exception:  # noqa: BLE001 -- the reply already went out
+            _log.warning("agent_api.answered_unmarked message_id=%s", key, exc_info=True)
 
     async def _send_saved_card(self, message: Any, ctx: Any) -> None:
         """WA-132: the green SAVED card of what this message saved (a Save tap, or "save it"), as
@@ -1001,7 +1038,7 @@ class ApiWhatsApp:
         state = await self._state(ctx)
         batch = tap.split(":", 2)[2]
         if not state.get("pending") or state.get("batch") != batch:
-            return ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         entries = _without_stale_sends(entries)
         if tap.startswith(CANCEL_PREFIX):
@@ -1018,6 +1055,10 @@ class ApiWhatsApp:
         finally:
             await client.close()
         self._just_saved[correlation_id] = results
+        if any(r.ok and not held(r) for r in results):
+            # [267]: a later tap on this card (or this tap run again) is told it is saved, with the links.
+            state["saved_batch"] = {"batch": batch, "links": saved_links(
+                [r for r in results if r.ok and not held(r)], today=_today(ctx)), "at": time.time()}
         state["recent_saves"] = remember_saves(state.get("recent_saves"), results, time.time())  # WA-154
         bill_photo.remember_unbilled(state, results, time.time())  # WEB-65 case 3
         state["working_site"] = last_reported(results, state.get("working_site"), _today(ctx))  # [213]
@@ -1052,7 +1093,7 @@ class ApiWhatsApp:
         state = await self._state(ctx)
         batch, _, number = tap.split(":", 2)[2].partition(":")
         if not state.get("pending") or state.get("batch") != batch:
-            return ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         language = state.get("language")
         if not number and len(entries) > 1:
@@ -1084,7 +1125,7 @@ class ApiWhatsApp:
         state = await self._state(ctx)
         batch, _, number = tap[len(REMOVE_PREFIX):].partition(":")
         if not state.get("pending") or state.get("batch") != batch or not number.isdigit():
-            return ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         line = int(number)
         if not 1 <= line <= len(entries):
@@ -1225,7 +1266,8 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled",
+                                                               "saved_batch")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -1599,11 +1641,26 @@ def without_listed_lines(text: str, entries: list[PendingWrite], language: str |
 
 def _saved_short(results: list[WriteResult], language: str | None, *, today: str) -> str:
     """WA-210: everything on the preview card saved: one line, then the record links (no repeat of the list)."""
-    urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) for r in results]
-    links = [line for line in with_links([""] * len(results), urls, today=today) if line]
+    links = [line for line in saved_links(results, today=today).split("\n") if line]
     sent = [sent_line(r, language) for r in results if r.pending.tool in SEND_TOOLS]
     saved = [] if len(sent) == len(results) else [_in(language, "api.saved_short", SAVED_SHORT)]
     return "\n".join([*saved, *sent, *links])
+
+
+def saved_links(results: list[WriteResult], *, today: str) -> str:
+    """[267]: the record links of what a Save saved, one per line (as under "✅ Saved.")."""
+    urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) for r in results]
+    return "\n".join(line for line in with_links([""] * len(results), urls, today=today) if line)
+
+
+def already_saved(state: dict, batch: str) -> ReplySpec | None:
+    """[267]: a Save / Cancel / Edit tap on a card whose lines were already saved: "✅ Already saved." and their links.
+    None when that card was not saved (it was cancelled, or replaced by a newer card)."""
+    done = state.get("saved_batch") or {}
+    if not batch or done.get("batch") != batch:
+        return None
+    links = str(done.get("links") or "")
+    return ReplySpec(text=_in(state.get("language"), "api.already_saved", ALREADY_SAVED) + (f"\n{links}" if links else ""))
 
 
 def sent_line(result: WriteResult, language: str | None) -> str:
