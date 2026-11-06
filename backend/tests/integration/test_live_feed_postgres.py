@@ -132,3 +132,25 @@ async def test_a_message_mesiri_is_still_working_on_is_not_handled(conn) -> None
         organization_id=org, since=now - dt.timedelta(hours=1), until=now + dt.timedelta(hours=1)
     )
     assert [r["handled"] for r in rows] == [False]
+
+
+async def test_the_stamp_changes_when_a_message_comes_and_when_mesiri_is_done(conn) -> None:  # noqa: F811
+    """WEB-69: Live asks for the stamp every second and reads the feed only when it changed."""
+    from sqlalchemy import text
+
+    created = await create_company(
+        conn,
+        NewCompany(name="Stamp Builders", owner_name="Ravi", owner_phone="+" + SENDER,
+                   project_name="Hospital", site_names=("Tower A",), auto_dpr=False),
+        now=NOW,
+    )
+    org = created.organization_id
+    repo = PostgresFactReviewRepository(conn)
+    window = {"organization_id": org, "since": NOW - dt.timedelta(hours=1), "until": NOW + dt.timedelta(hours=1)}
+    empty = await repo.live_stamp(**window)
+    correlation = await _message(conn, org, text_="cement vannu", reply=None, tools=[])
+    came = await repo.live_stamp(**window)
+    await conn.execute(text("UPDATE inbound_messages SET assistant_reply = 'Ready', processing_status = 'completed' "
+                            "WHERE correlation_id = :c"), {"c": correlation})
+    done = await repo.live_stamp(**window)
+    assert len({empty, came, done}) == 3

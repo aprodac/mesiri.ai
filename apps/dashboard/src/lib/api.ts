@@ -2071,6 +2071,14 @@ export interface LiveFeedItem {
   language: string | null
 }
 
+/** WEB-69: changes the moment the company's messages do; Live asks every second, then reads the feed. */
+export async function fetchLiveStampApi(since: Date, until: Date): Promise<string> {
+  const res = await api.get<{ stamp: string }>('/dpr/live/stamp', {
+    params: { since: since.toISOString(), until: until.toISOString() },
+  })
+  return res.data.stamp
+}
+
 export async function fetchLiveFeedApi(since: Date, until: Date): Promise<LiveFeedItem[]> {
   const res = await api.get<{ items: LiveFeedItem[] }>('/dpr/live/feed', {
     params: { since: since.toISOString(), until: until.toISOString() },

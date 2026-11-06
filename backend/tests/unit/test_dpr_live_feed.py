@@ -160,6 +160,21 @@ class _Feed:
         return [dict(r) for r in _Feed.rows]
 
 
+async def test_the_stamp_is_one_day_at_a_time_and_says_nothing_else(monkeypatch):
+    class _Stamp:
+        def __init__(self, conn):
+            pass
+
+        async def live_stamp(self, **kw):
+            return "3:2026-11-06T00:31:55+00:00:1:2"
+
+    monkeypatch.setattr(dpr_router, "PostgresFactReviewRepository", _Stamp)
+    ctx = _ctx("SITE_ENGINEER", ProjectAccessScope(mode="custom_projects", project_ids={P1}))
+    assert await dpr_router.live_feed_stamp(SINCE, UNTIL, auth_context=ctx, conn=None) == {"stamp": "3:2026-11-06T00:31:55+00:00:1:2"}
+    with pytest.raises(HTTPException):
+        await dpr_router.live_feed_stamp(SINCE, SINCE + datetime.timedelta(days=3), auth_context=ctx, conn=None)
+
+
 class _Storage:
     async def generate_presigned_url(self, key, expires_in_seconds):
         return f"https://media.example/{key}"

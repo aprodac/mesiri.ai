@@ -35,6 +35,7 @@ import {
 import {
   fetchBranding,
   fetchLiveFeedApi,
+  fetchLiveStampApi,
   fetchSiteDayApi,
   fetchSetupProgress,
   fetchSiteDaysApi,
@@ -84,7 +85,10 @@ import { Spark, type SparkMood } from './spark'
 // full on the button, short on a person's first message ever and at the start
 // of a replay. Read-only, like the site Live.
 
-const FEED_POLL_MS = 3_000
+/** WEB-69: how often Live asks whether anything changed (a tiny count); the feed is read only when it did. */
+const STAMP_POLL_MS = 1_000
+/** A backstop read of the feed, in case a change slipped past the stamp. */
+const FEED_POLL_MS = 15_000
 const SITES_POLL_MS = 10_000
 /** How long each step of the Spark's handling shows. */
 const STEP_MS = 1_300
@@ -420,6 +424,20 @@ export function CompanyLive({
     refetchInterval: isToday ? FEED_POLL_MS : false,
     retry: false,
   })
+  // A message came in, or Mesiri finished one: read the feed now, not on the next round.
+  const stamp = useQuery({
+    queryKey: ['live-stamp', date],
+    queryFn: () => fetchLiveStampApi(since, until),
+    refetchInterval: isToday ? STAMP_POLL_MS : false,
+    retry: false,
+  })
+  const lastStamp = React.useRef<string | undefined>(undefined)
+  React.useEffect(() => {
+    if (!stamp.data || stamp.data === lastStamp.current) return
+    const first = lastStamp.current === undefined
+    lastStamp.current = stamp.data
+    if (!first) void feed.refetch()
+  }, [stamp.data, feed])
   const days = useQuery({
     queryKey: ['live-site-days', date, null],
     queryFn: () => fetchSiteDaysApi(date),

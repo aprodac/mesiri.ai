@@ -476,6 +476,25 @@ class PostgresFactReviewRepository:
             for r in rows
         ]
 
+    async def live_stamp(
+        self, *, organization_id: uuid.UUID, since: datetime.datetime, until: datetime.datetime
+    ) -> str:
+        """What changes when the company Live feed would change (WEB-69): how many messages, the newest, how many
+        Mesiri is still on, and how many have a reply. One indexed count, cheap enough to ask every second."""
+        row = (
+            await self._conn.execute(
+                text(
+                    "SELECT count(*) AS n, max(received_at) AS newest, "
+                    "count(*) FILTER (WHERE processing_status = 'pending') AS working, "
+                    "count(assistant_reply) AS replied FROM inbound_messages "
+                    "WHERE organization_id = :org AND received_at >= :since AND received_at < :until"
+                ),
+                {"org": organization_id, "since": since, "until": until},
+            )
+        ).mappings().one()
+        newest = row["newest"].isoformat() if row["newest"] else "-"
+        return f"{row['n']}:{newest}:{row['working']}:{row['replied']}"
+
     async def live_feed(
         self,
         *,

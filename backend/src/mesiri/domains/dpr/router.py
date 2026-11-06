@@ -499,6 +499,23 @@ async def list_live_feed(
     return {"items": items}
 
 
+@router.get("/live/stamp")
+async def live_feed_stamp(
+    since: datetime.datetime,
+    until: datetime.datetime,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WEB-69: a stamp that changes the moment the company's messages do (one came in, Mesiri finished one). Live asks
+    every second and reads the feed only when it changed. It says nothing about any message, so no scope rule."""
+    if until <= since or until - since > datetime.timedelta(days=2):
+        raise HTTPException(status_code=422, detail="Ask for one day at a time")
+    stamp = await PostgresFactReviewRepository(conn).live_stamp(
+        organization_id=auth_context.organization_id, since=since, until=until
+    )
+    return {"stamp": stamp}
+
+
 #: WEB-63: Mesiri's voice on Live. A line is at most this long (a moment's line, never a whole reply).
 VOICE_MAX_CHARS = 300
 #: Lines already spoken, kept in this process: the same line ("Saved", the Meet Mesiri narration) costs nothing again.
