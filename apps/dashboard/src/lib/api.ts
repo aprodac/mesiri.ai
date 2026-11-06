@@ -2070,6 +2070,8 @@ export interface LiveFeedItem {
   saved_kind: LiveKind | null
   /** What Mesiri did along the way, in plain words ("Found the material", "Checked the stock"). */
   did: string[]
+  /** Mesiri is done with it (replied, or failed). Live plays a message only then (WEB-65). */
+  handled: boolean
   /** The person's first message to Mesiri ever: Live plays Mesiri's hello first. */
   first_message: boolean
   /** A transfer's two sites, for the arc between them. */

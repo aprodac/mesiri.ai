@@ -207,6 +207,16 @@ function spokenLine(m: LiveFeedItem, alarm: string | null): string | null {
   return null
 }
 
+/** WEB-65: what Mesiri is doing with a message it is still working on. */
+function workingLine(m: LiveFeedItem): string {
+  const who = m.sender_name?.split(/\s+/)[0] ?? 'Someone'
+  const where = m.site_name ? ` from ${m.site_name}` : ''
+  if (isVoice(m)) return `Listening to ${who}’s voice note${where}…`
+  if (isPhoto(m)) return `Reading ${who}’s photo${where}…`
+  if (m.type === 'interactive') return `${who} tapped a button…`
+  return `Reading ${who}’s message${where}…`
+}
+
 /** WEB-62: the card a message's entries are on, and what became of them; null when it has no card. */
 function cardAs(m: LiveFeedItem): 'draft' | 'saved' | 'cancelled' | 'undone' | null {
   if (isBill(m)) return null
@@ -266,6 +276,8 @@ function sparkSays(m: LiveFeedItem, step: Step, alarm: string | null): string {
   if (step === 'read') return isVoice(m) ? 'Listening…' : isPhoto(m) ? 'Looking at the photo…' : 'Reading…'
   if (step === 'understood' && isBill(m)) return `A bill${m.expense?.vendor ? ` from ${m.expense.vendor}` : ''}`
   if (step === 'understood') return m.translated_text || m.text || (isPhoto(m) ? 'A photo from site' : '…')
+  // The bill's own line (the reply can be a bare "Tap Save to record these.").
+  if (isBill(m) && m.summaries[0]) return m.state === 'saved' ? `Saved: ${m.summaries[0]}` : `${m.summaries[0]}. Waiting for ✅ Save.`
   if (isBill(m) && m.reply) return short(cleanReply(m.reply), 160)
   const goes = KINDS[m.saved_kind ?? m.kind].goes
   const what = m.summaries.join(' · ')
@@ -581,7 +593,8 @@ export function CompanyLive({
     }
     if (replaying) return
     const known = new Set([...before.current, ...shown, ...queue.current.map((m) => m.id), current?.item.id])
-    const fresh = feed.data.filter((m) => !known.has(m.id))
+    // WEB-65: only what Mesiri is done with: played before, a photo was only a photo (its expense came 27 s later).
+    const fresh = feed.data.filter((m) => !known.has(m.id) && m.handled !== false)
     if (!fresh.length) return
     const late = fresh.slice(0, Math.max(0, fresh.length - QUEUE_MAX))
     if (late.length) setShown((s) => new Set([...s, ...late.map((m) => m.id)]))
@@ -743,6 +756,7 @@ export function CompanyLive({
           did: [],
           transfer: null,
           first_message: false,
+          handled: true,
           expense: null,
           language: null,
         }),
@@ -760,6 +774,10 @@ export function CompanyLive({
     reported: sites.filter((s) => s.last_update_at).length,
   }
   const company = branding.data?.company_name
+  // WEB-65: messages Mesiri is still working on (just in, no reply yet): shown as being worked on, played once done.
+  const working = isToday
+    ? items.filter((m) => m.handled === false && !before.current.has(m.id) && !shown.has(m.id) && current?.item.id !== m.id)
+    : []
   // The moment for what Mesiri is handling now (moments.tsx), if its kind has one.
   const moment: 'bill' | 'language' | 'asked' | 'answer' | 'chat' | 'card' | null = (() => {
     if (!current || (current.alarm && current.step === 'done')) return null
@@ -924,7 +942,7 @@ export function CompanyLive({
               <Label>{shown.size || samples.length ? `Messages · ${totals.messages} today` : 'Messages · from now'}</Label>
               {feed.isLoading ? (
                 <p className="mt-4 text-sm text-muted-foreground">Loading…</p>
-              ) : stream.length === 0 ? (
+              ) : stream.length === 0 && !working.length ? (
                 <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
                   Listening. New messages show here as they arrive: send Mesiri one on WhatsApp.
                   {items.length > 0 && (
@@ -940,6 +958,26 @@ export function CompanyLive({
                 </p>
               ) : (
                 <ol className="m-0 mt-4 grid list-none gap-3 p-0" aria-live="polite">
+                  {working.map((m) => (
+                    <li
+                      key={`w-${m.id}`}
+                      className="grid gap-1 border border-dashed border-primary px-4 py-3"
+                      style={prefersReducedMotion() ? undefined : { animation: 'live-in 400ms ease-out' }}
+                    >
+                      <span className="flex items-center justify-between gap-2 text-sm">
+                        <b>{m.sender_name ?? 'Someone'}</b>
+                        <span className="font-mono text-[11px] text-muted-foreground">{clock(m.received_at)}</span>
+                      </span>
+                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                        {workingLine(m)}
+                        <span className="flex gap-1" aria-hidden="true">
+                          {[0, 1, 2].map((d) => (
+                            <span key={d} className="size-1.5 rounded-full bg-primary" style={prefersReducedMotion() ? undefined : { animation: `spark-wave 1s ease-in-out ${d * 0.2}s infinite` }} />
+                          ))}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
                   {stream.slice(0, 40).map((m) => (
                     <MessageCard key={m.id} m={m} active={current?.item.id === m.id} answers={qa.of.get(m.id) ?? null}
                       answered={qa.answered.has(m.id)}
@@ -987,7 +1025,7 @@ export function CompanyLive({
               <div className="sticky top-6 grid bg-background justify-items-center gap-4 border border-foreground/15 px-4 py-5 text-center sm:gap-5 sm:px-6 sm:py-8">
                 <div ref={sparkRef}>
                   <Spark
-                    mood={current ? sparkMood(current.item, current.step, current.alarm) : 'idle'}
+                    mood={current ? sparkMood(current.item, current.step, current.alarm) : working.length ? (isVoice(working[0]) ? 'listen' : isPhoto(working[0]) ? 'look' : 'think') : 'idle'}
                     beat={beat}
                     size={moment ? (presenting ? 140 : 110) : presenting ? 220 : 170}
                   />
@@ -1068,12 +1106,21 @@ export function CompanyLive({
                       ) : null}
                     </>
                   ) : (
+                    working.length ? (
+                      <>
+                        <Label className="block">Mesiri · on it</Label>
+                        <p className={cn('m-0 mt-2 font-medium', presenting ? 'text-[26px]' : 'text-[20px]')}>
+                          <Typed key={working[0].id} text={workingLine(working[0])} />
+                        </p>
+                      </>
+                    ) : (
                     <>
                       <Label className="block">Mesiri · listening</Label>
                       <p className={cn('m-0 mt-2 text-muted-foreground', presenting ? 'text-[26px]' : 'text-lg')}>
                         Waiting for the next message from site…
                       </p>
                     </>
+                    )
                   )}
                 </div>
                 <Steps step={current?.step ?? null} />
