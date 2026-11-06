@@ -1,309 +1,192 @@
-import { useNavigate } from 'react-router-dom'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+import * as React from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FileText, ImagePlus, Receipt, TriangleAlert } from 'lucide-react'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import {
-  Receipt,
-  User,
-  Tag,
-  Store,
-  Landmark,
-  MessageSquare,
-  ExternalLink,
-  ChevronLeft,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Hash,
-} from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
+import { CHIP } from '@/lib/site-day'
+import { cn } from '@/lib/utils'
+import { BILL_ACCEPT, billFile } from '@/lib/bill-upload'
+import { apiErrorMessage } from '@/lib/logo-upload'
+import { addExpenseBillApi, fetchExpenseAttachmentsApi } from '@/lib/api'
+
+// WEB-65 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense if image is there"): one
+// expense, with every bill on it (WhatsApp photos, a delivery's invoice, ones added here) and "Add bill" for a photo
+// or a PDF. The old panel showed one photo and filled empty fields with made-up names ("Main Bank Account",
+// "Finance Custodian", "General Operations"); only what the expense really has is shown.
 
 export interface ExpenseDetailData {
   id: string
+  number?: string | null
   amount: number
   category_name?: string
   category_id?: string
-  vendor_name?: string
-  vendor_id?: string
-  account_name?: string
-  account_id?: string
-  custodian_name?: string
-  custodian_user_id?: string
-  project_name?: string
-  site_name?: string
-  recorded_date?: string
-  payment_method?: string
-  status?: string
-  receipt_url?: string
-  description?: string
-  correlation_id?: string
-  whatsapp_sender?: string
-  raw_message_text?: string
+  vendor_name?: string | null
+  project_name?: string | null
+  site_name?: string | null
+  date: string
+  payment_label: string
+  payment_class: string
+  source: 'whatsapp' | 'web'
+  reversed: boolean
+  description?: string | null
 }
 
 interface ExpenseDetailSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   expense: ExpenseDetailData | null
-  onOpenAccount?: (accountId: string) => void
-  onOpenVendor?: (vendorId: string) => void
+  readOnly?: boolean
+  onOpenVendor?: () => void
   onOpenCategory?: (categoryId: string) => void
-  onOpenCustodian?: (custodianIdOrName: string) => void
-  onOpenWhatsAppTrace?: (correlationId: string) => void
-  onBack?: () => void
-  hasHistoryBack?: boolean
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount)
+const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
+const isPdf = (url: string) => /\.pdf(\?|$)/i.test(url.split('#')[0])
+const day = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-right font-medium">{children}</span>
+    </div>
+  )
 }
 
-export function ExpenseDetailSheet({
-  open,
-  onOpenChange,
-  expense,
-  onOpenAccount,
-  onOpenVendor,
-  onOpenCategory,
-  onOpenCustodian,
-  onOpenWhatsAppTrace,
-  onBack,
-  hasHistoryBack,
-}: ExpenseDetailSheetProps) {
-  const navigate = useNavigate()
+export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOpenVendor, onOpenCategory }: ExpenseDetailSheetProps) {
+  const queryClient = useQueryClient()
+  const input = React.useRef<HTMLInputElement>(null)
+  const id = expense?.id
+  const bills = useQuery({
+    queryKey: ['finance', 'expense-bills', id],
+    queryFn: () => fetchExpenseAttachmentsApi(id!),
+    enabled: open && !!id,
+  })
+  const add = useMutation({
+    mutationFn: async (file: File) => addExpenseBillApi(id!, await billFile(file)),
+    onSuccess: (rows) => {
+      queryClient.setQueryData(['finance', 'expense-bills', id], rows)
+      queryClient.invalidateQueries({ queryKey: ['finance', 'expense-photos'] })
+    },
+  })
+  React.useEffect(() => add.reset(), [id]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!expense) return null
-
-  const isConfirmed = expense.status === 'confirmed' || expense.status === 'approved' || !expense.status
-  const isVoided = expense.status === 'voided' || expense.status === 'reversed'
+  const canAdd = !readOnly && !expense.reversed
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-md w-full p-0 flex flex-col gap-0 bg-background overflow-hidden border-l">
-        {/* Drawer Header */}
-        <SheetHeader className="p-4 border-b bg-muted/30">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              {hasHistoryBack && onBack && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-7 text-muted-foreground hover:text-foreground"
-                  onClick={onBack}
-                  title="Back to previous detail"
-                >
-                  <ChevronLeft className="size-4" />
-                </Button>
-              )}
-              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                <Receipt className="size-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <SheetTitle className="text-sm font-bold text-foreground">
-                    Expense #{expense.id.slice(0, 8)}
-                  </SheetTitle>
-                  {isConfirmed ? (
-                    <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px]">
-                      <CheckCircle2 className="size-3 mr-1" />
-                      Confirmed
-                    </Badge>
-                  ) : isVoided ? (
-                    <Badge variant="destructive" className="text-[10px]">
-                      <XCircle className="size-3 mr-1" />
-                      Voided
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px]">
-                      <AlertCircle className="size-3 mr-1" />
-                      {expense.status}
-                    </Badge>
-                  )}
-                </div>
-                <SheetDescription className="text-[11px] text-muted-foreground">
-                  Recorded on {expense.recorded_date || 'Today'}
-                </SheetDescription>
-              </div>
-            </div>
-
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] font-semibold gap-1 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
-              onClick={() => {
-                onOpenChange(false)
-                navigate(`/finance/expenses/${expense.id}`)
-              }}
-            >
-              Open Page →
-            </Button>
-          </div>
+      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <SheetHeader className="border-b p-4 text-left">
+          <SheetTitle className="flex flex-wrap items-center gap-2 text-2xl font-semibold tabular-nums">
+            {rupees(expense.amount)}
+            {expense.reversed ? (
+              <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Taken back</span>
+            ) : (
+              <span className={cn(CHIP, expense.payment_class)}>{expense.payment_label}</span>
+            )}
+          </SheetTitle>
+          <SheetDescription>
+            {[expense.vendor_name || expense.category_name, day(expense.date), expense.number].filter(Boolean).join(' · ')}
+          </SheetDescription>
         </SheetHeader>
 
-        {/* Amount Banner */}
-        <div className="px-5 py-4 bg-muted/20 border-b flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">
-              Expense Amount
-            </span>
-            <span className="text-2xl font-black font-mono tracking-tight text-foreground">
-              {formatCurrency(expense.amount)}
-            </span>
-          </div>
-          <Badge variant="outline" className="font-mono text-xs capitalize bg-background">
-            {expense.payment_method || 'UPI / Bank'}
-          </Badge>
-        </div>
-
-        {/* Body Content */}
-        <div className="p-5 flex-1 overflow-y-auto flex flex-col gap-4 text-xs">
-          {/* Attached Receipt Image */}
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
-              <Receipt className="size-3.5 text-emerald-500" />
-              Attached Receipt Document
-            </span>
-            {expense.receipt_url ? (
-              <div className="relative group rounded-lg overflow-hidden border bg-muted/40 max-h-48 flex items-center justify-center">
-                <img
-                  src={expense.receipt_url}
-                  alt="Expense Receipt"
-                  className="object-cover w-full h-full max-h-48 transition-transform group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <a
-                    href={expense.receipt_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-2 rounded-full bg-white text-black hover:bg-white/90 shadow-md"
-                  >
-                    <ExternalLink className="size-4" />
-                  </a>
-                </div>
-              </div>
-            ) : (
-              <Card className="p-4 border-dashed text-center text-muted-foreground flex flex-col items-center gap-1 bg-muted/10">
-                <Receipt className="size-6 text-muted-foreground/40" />
-                <span className="text-[11px] font-medium">No receipt photo attached</span>
-              </Card>
-            )}
-          </div>
-
-          {/* Connected Entities Links */}
-          <div className="grid grid-cols-2 gap-2.5">
-            {/* Category */}
-            <div className="p-2.5 rounded-lg border bg-card flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Tag className="size-3 text-indigo-500" />
-                Category
-              </span>
-              <button
-                type="button"
-                onClick={() => expense.category_id && onOpenCategory?.(expense.category_id)}
-                className="font-bold text-xs text-foreground hover:text-indigo-600 text-left transition-colors truncate"
-              >
-                {expense.category_name || 'General Operations'}
-              </button>
-            </div>
-
-            {/* Vendor */}
-            <div className="p-2.5 rounded-lg border bg-card flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Store className="size-3 text-emerald-500" />
-                Vendor / Payee
-              </span>
-              <button
-                type="button"
-                onClick={() => expense.vendor_id && onOpenVendor?.(expense.vendor_id)}
-                className="font-bold text-xs text-foreground hover:text-emerald-600 text-left transition-colors truncate"
-              >
-                {expense.vendor_name || 'Direct Disbursement'}
-              </button>
-            </div>
-
-            {/* Paid Account */}
-            <div className="p-2.5 rounded-lg border bg-card flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Landmark className="size-3 text-blue-500" />
-                Paid Account
-              </span>
-              <button
-                type="button"
-                onClick={() => expense.account_id && onOpenAccount?.(expense.account_id)}
-                className="font-bold text-xs text-foreground hover:text-blue-600 text-left transition-colors truncate"
-              >
-                {expense.account_name || 'Main Bank Account'}
-              </button>
-            </div>
-
-            {/* Custodian */}
-            <div className="p-2.5 rounded-lg border bg-card flex flex-col gap-1">
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <User className="size-3 text-amber-500" />
-                Custodian / User
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  (expense.custodian_user_id || expense.custodian_name) &&
-                  onOpenCustodian?.(expense.custodian_user_id || expense.custodian_name || '')
-                }
-                className="font-bold text-xs text-foreground hover:text-amber-600 text-left transition-colors truncate"
-              >
-                {expense.custodian_name || 'Finance Custodian'}
-              </button>
-            </div>
-          </div>
-
-          {/* Description */}
-          {expense.description && (
-            <div className="p-3 rounded-lg border bg-muted/20 space-y-1">
-              <span className="text-[10px] font-semibold text-muted-foreground block">Description / Notes</span>
-              <p className="text-xs text-foreground">{expense.description}</p>
-            </div>
-          )}
-
-          {/* WhatsApp Channel Audit Trace */}
-          {(expense.correlation_id || expense.whatsapp_sender) && (
-            <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                  <MessageSquare className="size-3.5 text-emerald-500" />
-                  WhatsApp Origin Audit Trace
-                </span>
-                {expense.correlation_id && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-[10px] font-mono gap-1 text-emerald-600 hover:bg-emerald-500/10 px-2"
-                    onClick={() => onOpenWhatsAppTrace?.(expense.correlation_id!)}
-                  >
-                    <Hash className="size-3" />
-                    {expense.correlation_id.slice(0, 10)}...
+        <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4 text-sm">
+          <section className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 font-semibold">
+                <Receipt className="size-4 text-muted-foreground" aria-hidden="true" /> Bill
+              </h3>
+              {canAdd && (
+                <>
+                  <input
+                    ref={input}
+                    type="file"
+                    accept={BILL_ACCEPT}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (file) add.mutate(file)
+                    }}
+                  />
+                  <Button size="sm" variant="outline" className="gap-1.5" disabled={add.isPending} onClick={() => input.current?.click()}>
+                    <ImagePlus className="size-3.5" /> {add.isPending ? 'Adding…' : 'Add bill'}
                   </Button>
-                )}
-              </div>
-              {expense.whatsapp_sender && (
-                <div className="text-[11px] text-muted-foreground">
-                  Sender Phone: <span className="font-mono font-semibold text-foreground">{expense.whatsapp_sender}</span>
-                </div>
-              )}
-              {expense.raw_message_text && (
-                <div className="p-2 rounded bg-background border text-[11px] italic font-mono text-muted-foreground">
-                  "{expense.raw_message_text}"
-                </div>
+                </>
               )}
             </div>
-          )}
+            {add.isError && (
+              <p className="flex items-center gap-1.5 text-destructive">
+                <TriangleAlert className="size-3.5 shrink-0" /> {apiErrorMessage(add.error)}
+              </p>
+            )}
+            {bills.isLoading ? (
+              <Skeleton className="h-40 rounded-lg" />
+            ) : bills.isError ? (
+              <p className="text-muted-foreground">
+                The bill could not be loaded.{' '}
+                <button type="button" className="underline" onClick={() => bills.refetch()}>
+                  Try again
+                </button>
+              </p>
+            ) : (bills.data ?? []).length === 0 ? (
+              <p className="rounded-lg border border-dashed p-4 text-center text-muted-foreground">
+                No bill yet.{canAdd ? ' Add a photo or a PDF, or send the photo on WhatsApp.' : ''}
+              </p>
+            ) : (
+              <ul className="grid grid-cols-2 gap-2">
+                {bills.data!.map((b, i) => (
+                  <li key={b.id}>
+                    <a
+                      href={b.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-40 items-center justify-center overflow-hidden rounded-lg border bg-muted/40 hover:border-foreground/30"
+                      aria-label={`Open bill ${i + 1}`}
+                    >
+                      {isPdf(b.url) ? (
+                        <span className="flex flex-col items-center gap-1 text-muted-foreground">
+                          <FileText className="size-8" aria-hidden="true" /> PDF
+                        </span>
+                      ) : (
+                        <img src={b.url} alt={`Bill ${i + 1}`} className="h-full w-full object-cover object-top" loading="lazy" />
+                      )}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="divide-y border-t">
+            <Row label="Category">
+              {expense.category_id && onOpenCategory ? (
+                <button type="button" className="underline-offset-2 hover:underline" onClick={() => onOpenCategory(expense.category_id!)}>
+                  {expense.category_name}
+                </button>
+              ) : (
+                expense.category_name || '—'
+              )}
+            </Row>
+            <Row label="Vendor">
+              {expense.vendor_name ? (
+                onOpenVendor ? (
+                  <button type="button" className="underline-offset-2 hover:underline" onClick={onOpenVendor}>
+                    {expense.vendor_name}
+                  </button>
+                ) : (
+                  expense.vendor_name
+                )
+              ) : (
+                '—'
+              )}
+            </Row>
+            <Row label="Where">{[expense.project_name, expense.site_name].filter(Boolean).join(' · ') || '—'}</Row>
+            <Row label="From">{expense.source === 'whatsapp' ? 'WhatsApp' : 'Dashboard'}</Row>
+            {expense.description && <Row label="Note">{expense.description}</Row>}
+          </section>
         </div>
       </SheetContent>
     </Sheet>

@@ -52,6 +52,7 @@ from runtime.ai_outage import (
 from runtime.release_notes import request_ref
 from runtime.team_notify import poke_watch_soon
 
+from . import bill_photo
 from .agent import (
     LANGUAGE_LINES,
     SIZE_UNKNOWN,
@@ -476,6 +477,11 @@ class ApiWhatsApp:
                 # explicit command is the whole message, so the code answers it at once (no model turn) and asks
                 # how it should be instead; the waiting list is kept as it is, not drawn again.
                 return await self._feedback_only(message, ctx, state, calls, text, started)
+            # WEB-65: a bill photo stays with its expense whichever message the expense is made in (bill_photo.py).
+            photo_now = photo_key
+            photo_key = photo_key or bill_photo.carried(state, time.time())
+            if photo_now and (unbilled := bill_photo.unbilled_fact(state, time.time())):
+                facts = f"{facts}\n\n{unbilled}"
             places = _places(ctx, state.get("working_site"))
             # WA-208: after Edit, this message is the right figure for one line: the model is told which, and the
             # code makes sure that line is the one changed (below).
@@ -514,6 +520,11 @@ class ApiWhatsApp:
             await client.close()
         if editing:
             turn = dataclasses.replace(turn, pending=edited_list(ready, turn.pending, editing["number"]))
+        if photo_key and not bill_photo.photo_on([*turn.pending, *(r.pending for r in turn.saved)], photo_key):
+            if (billed := bill_photo.on_waiting_expense(turn.pending, photo_key)) is not None:
+                turn = dataclasses.replace(turn, pending=billed)  # WEB-65 case 2: the expense waiting on the card
+            elif photo_now and (turn.question or turn.options):
+                state["photo"] = {"key": photo_key, "at": time.time()}  # case 1: the answer makes the expense
         calls = [{**c, "args": c.get("arguments")} for c in turn.calls]
         unchanged = not turn.saved and [e.summary for e in turn.pending] == [e.summary for e in ready]
         awaiting = state.pop("awaiting_why", None)
@@ -548,6 +559,7 @@ class ApiWhatsApp:
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
         state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
+        bill_photo.remember_unbilled(state, turn.saved, time.time())  # WEB-65 case 3
         state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
@@ -918,6 +930,7 @@ class ApiWhatsApp:
             await client.close()
         self._just_saved[correlation_id] = results
         state["recent_saves"] = remember_saves(state.get("recent_saves"), results, time.time())  # WA-154
+        bill_photo.remember_unbilled(state, results, time.time())  # WEB-65 case 3
         state["working_site"] = last_reported(results, state.get("working_site"), _today(ctx))  # [213]
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
@@ -1123,7 +1136,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing", "previewed", "kept")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried", "editing", "previewed", "kept", "photo", "unbilled")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001

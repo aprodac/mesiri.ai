@@ -48,6 +48,7 @@ RECORD_PAGES: dict[str, str | None] = {
     "undo_usage": None,
     "undo_transfer": None,
     "undo_expense": None,
+    "add_bill_photo": None,  # WEB-65: the bill goes on an expense already linked when it was saved
     "set_reply_language": None,
 }
 

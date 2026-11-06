@@ -762,6 +762,11 @@ class ApiAgent:
                 return ToolOutcome(content={"error": clash})
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
+            if name == BILL_TOOL and not photo_key:
+                # WEB-65: a bill is added only from a photo they sent; never from words alone.
+                return ToolOutcome(content={"error": (
+                    "There is no photo in this message, so no bill was added. Ask them in one line to send the "
+                    "bill photo.")})
             if tool.is_write and "material_id" in tool.body_fields and body.get("material_id") and not new_ref:
                 # [210]: the id must be the material they named (or a name the company taught it), never a near one.
                 taught = [(e.path.split("/")[2], str(e.body.get("alias") or "")) for e in [*waiting, *new]
@@ -1356,6 +1361,8 @@ async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "uni
 CONVERSION_TOOL = "set_unit_conversion"
 #: PRC-02c: the builder's standard category list, applied from WhatsApp (an admin or a project manager).
 STANDARD_CATEGORIES_TOOL = "add_standard_categories"
+#: WEB-65: adds this message's bill photo to a saved expense (bill_photo.py).
+BILL_TOOL = "add_bill_photo"
 #: WA-168: an admin answering "📏 Sizes needed".
 ANSWER_SIZE_TOOL = "answer_size_request"
 #: WA-197: the note on a held line whose size is not known yet (" (1 Loads = how many Bags?)").

@@ -916,6 +916,15 @@ export async function fetchExpenseAttachmentsApi(expenseId: string): Promise<Exp
   return res.data
 }
 
+/** WEB-65: add a bill (a photo or a PDF, see lib/bill-upload.ts) to a saved expense; returns all its bills. */
+export async function addExpenseBillApi(
+  expenseId: string,
+  file: { content_type: string; data_base64: string },
+): Promise<ExpenseAttachmentApiItem[]> {
+  const res = await api.post(`/expenses/${expenseId}/attachments`, file)
+  return res.data
+}
+
 export interface ExpenseAttachmentGalleryApiItem extends ExpenseAttachmentApiItem {
   amount: number
   description: string | null
