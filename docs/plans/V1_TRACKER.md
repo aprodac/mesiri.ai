@@ -471,6 +471,32 @@ Plan: [procurement-plan.md](procurement-plan.md). Decisions D1–D6 in the plan;
 
 ---
 
+## CC — Cost control: budget vs actual, every day (GM meeting, 6 Nov 2026)
+
+Plan: [cost-control-plan.md](cost-control-plan.md). The client values a DPR alone at a clerk's overtime; he pays for green/red per work item against the budget. Procurement asks from the same meeting are the PRC rows above, re-prioritised in the plan's §7. Decisions D-CC1..D-CC7 in the plan; each row uses the plan's default until answered.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CC-00 | Get the client's inputs: BOQ/estimate for the new site, rate card, CA's cost-centre list, supplier register sample, MEP estimate | — | Must | — | blocked | — | Ops / sales task: needs the team to ask the client after the MD meeting |
+| CC-01 | **Cost centres:** `expense_categories.kind`; one cost read model per project over expenses, material receipts/usage (valued) and attendance (headcount × wage); `GET /projects/{id}/cost-ledger` | M | Must | — | todo | — | D-CC1, D-CC3 defaults; no new ledger table |
+| CC-02 | **BOQ on the existing planning tables (0420):** unit, client/labour/material/subcontract rate, BOQ code, cost centre on `work_package_planned_items`; BOQ routes; dashboard BOQ editor | M | Must | — | todo | — | Additive migration |
+| CC-03 | **Material norms per BOQ unit** (`boq_material_norms`, wastage %) | S | Must | CC-02 | todo | — | e.g. 1 m³ M20 → cement bags, M-sand cft, metal cft |
+| CC-04 | **Measured quantities count against a BOQ line** (`activity_quantities.planned_item_id`); BOQ progress route (planned / done / remaining qty and budget); v3 `record_activity` takes the item in words | M | Must | CC-02 | todo | — | Ask once with buttons when unclear |
+| CC-05 | **Labour → BOQ item** (`labour_attendance_lines.planned_item_id`); allocation rule D-CC2 | M | Must | CC-02 | todo | — | Labour module change (allowed since 3 Nov), stated in report; Workforce/Payroll untouched |
+| CC-06 | **Subcontract / piece work:** expense with BOQ item and measured quantity, checked against the agreed rate ("₹15,000 concrete team: was the work done?") | S | Must | CC-02, CC-01 | todo | — | |
+| CC-07 | **Daily variance:** earned (qty × budget rate) vs actual, labour and material separately, green/amber/red, reasons; `GET /sites/{id}/cost/daily`, `GET /projects/{id}/cost/variance` | M | Must | CC-01, CC-04, CC-05 | todo | — | Who sees it: D-CC4 (needs Alan, permissions); build for Owner/Admin/Finance/PM first |
+| CC-08 | **Material reconciliation + consumption register:** required (BOQ × norm) vs received vs consumed vs on hand per project; shortage forecast; `material_usage.planned_item_id` | M | Must | CC-03 | todo | — | Extends PRC-17 |
+| CC-09 | **Supplier ledger:** opening balance, deliveries, payments, advances, running balance, net payable; `GET /vendors/{id}/ledger`, `GET /vendors/payables`; Payables page | M | Must | CC-01 | todo | — | D-CC3 default; rates visible per D-CC4 |
+| CC-10 | **Vendor payments and advances** from dashboard and WhatsApp ("paid Malabar 20,000 advance"), on expenses + payments | S | Must | CC-09 | todo | — | |
+| CC-11 | **Evening cost card on WhatsApp** to GM/MD: per site work done, cost, earned, green/red, top reasons; v3 `ALLOWED` lines + SOP | M | Must | CC-07 | todo | — | Three languages; Meta template if sent outside 24 h (ops) |
+| CC-12 | **Dashboard: Project cost and Today screens** built around the GM's questions; registers become drill-downs | L | Must | CC-07 | blocked | — | Needs a decision: navigation restructure (D-CC5, shared layout) |
+| CC-13 | **Project setup import:** BOQ, norms, cost centres, suppliers with opening balances from Excel (preview, then commit) | M | Must | CC-02, CC-03, PRC-05 | todo | — | Extends PRC-05's importer |
+| CC-14 | **Closeout report:** BOQ planned vs done, budget vs actual by cost centre, material reconciliation, supplier balances | M | Should | CC-07, CC-08, CC-09 | todo | — | |
+| CC-15 | **Visual quality pass** on the five main screens (compare with market tools) | M | Should | CC-12 | blocked | — | Needs a decision with CC-12 (D-CC5) |
+| CC-16 | **Dedicated hosting option** for clients who ask (own instance, DB, backups) | M | Later | — | blocked | — | Ops task and pricing decision (D-CC7) |
+
+---
+
 ## TM — AI teammate (reusable, `teammate/`)
 
 Claude Code as a team member: listens to the team and customer WhatsApp groups, keeps an inbox any Claude Code session can search, later builds approved items and asks for sign-off in the group. Self-contained folder so other projects can reuse it.

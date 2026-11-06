@@ -1,6 +1,7 @@
 # Procurement and materials by category: plan for the builder client (Nov 2026)
 
 > **Status:** plan written 5 Nov 2026; tracker items `PRC-00`..`PRC-20` in [V1_TRACKER.md](V1_TRACKER.md).
+> **Cost control (6 Nov 2026):** a second builder (GM meeting) asked for these and for budget vs actual; see [cost-control-plan.md](cost-control-plan.md) (tracker CC) for the build order across both.
 > **Built:** PRC-01 (categories) and PRC-03 (standard list), 5 Nov 2026 — see §4a. Mockups (sample data): https://claude.ai/artifact/KF8avukxwaXK4Wr7Dq9BXR
 >
 > **Source:** the sales meeting with a builder (onboarding through Riyas, ₹4,000/month plus onboarding fee,
