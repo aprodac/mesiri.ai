@@ -113,6 +113,11 @@ _NEW_MARK = re.compile(r"\bnew:(?=\S)")
 #: a reply on 5 Nov ("🎤 _Hello sukhamaano_ (said by an older version of Mesiri, with fewer tools: …) Hello Ilan!").
 _OLDER_NOTE = re.compile(r"\(said by an older version of Mesiri[^)]*\)\s*", re.IGNORECASE)
 #: What only an API error or the code contains. "422" alone is not here: it can be a real number on a site.
+#: [271] (6 Nov, Ilan got "(ignored, not an answer to "1 Bags M Sand-il ethra Cubic Meters undu?")"): the code's own
+#: notes to the model, echoed back, never reach the person.
+_CODE_NOTE = re.compile(r"\(\s*ignored\b[^)]*\)|\bNOT an answer to (?:your|my) last question\b|\bnot an answer to [\"“']",
+                        re.IGNORECASE)
+_CODE_NOTE_WHOLE = re.compile(r"\(\s*ignored\b[^\n]*\)", re.IGNORECASE)
 _API_ERROR = re.compile(
     r"\b[a-z]+_id\b|\bHTTP\s*\d{3}\b|\b(?:400|401|403|404|409|422|424|500|502|503)\s+(?:error|bad|not found|forbidden"
     r"|conflict|unprocessable|internal)|\bTraceback\b|\bvalidation error\b|\bUnprocessable\b|\bInternal Server Error\b"
@@ -134,7 +139,9 @@ def without_ids(text: str) -> str:
 def without_internals(text: str, tool_names: frozenset[str] | set[str] = frozenset()) -> str:
     """``text`` without ids, without any sentence that is an API error, and without tool names ([249]: "(record\\_receipt)"
     in a "what can Mesiri do" answer): the person cannot act on any of them."""
-    kept = [part for part in sentences(text or "") if part and not _API_ERROR.search(_URL.sub("", part))]
+    text = _CODE_NOTE_WHOLE.sub("", text or "")
+    kept = [part for part in sentences(text)
+            if part and not _API_ERROR.search(_URL.sub("", part)) and not _CODE_NOTE.search(part)]
     return without_tool_names(without_ids("".join(kept)), tool_names)
 
 

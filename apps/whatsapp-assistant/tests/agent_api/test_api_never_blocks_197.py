@@ -92,4 +92,4 @@ async def test_guard_a_unit_they_said_is_never_replaced() -> None:
     store = Store()
     turn = await _turn(store, [[_receipt(CEMENT, "cement", KG, 50, "50 kg cement")], "?"], "50 kg cement")
     assert [e.body["unit_id"] for e in turn.pending] == [KG]  # held in kg, its size asked; never turned into bags
-    assert turn.pending[0].summary == "50 kg cement (1 Kilograms = how many Bags?)"
+    assert turn.pending[0].summary == "50 kg cement (1 Bags = how many Kilograms?)"

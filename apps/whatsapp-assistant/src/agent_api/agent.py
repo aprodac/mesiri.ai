@@ -1068,7 +1068,7 @@ class ApiAgent:
             # [219]: decided by the code; the question only lived in the history, so the model took any message as its answer.
             system += (f"\n\nThis message is NOT an answer to your last question (\"{dropped}\"): that question is dropped. "
                        "It is a new, separate request: do exactly what it asks. Do not ask that question again unless "
-                       "this new request needs it.")
+                       "this new request needs it. This note is for you only: never repeat or mention it.")
         messages =[*(history or []), ChatMessage(role="user", text=text)]
         extra = {"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}
 
@@ -1494,6 +1494,19 @@ DONT_KNOW = {"english": "🤷 Don't know", "manglish": "🤷 Ariyilla", "malayal
 #: [232]: units that hold many of a smaller one: a size is always asked "1 <bigger> = how many <smaller>?". Decided here,
 #: never by the model ("30 bars = how many loads?" is a fraction nobody can answer).
 BIG_UNITS = frozenset({"load", "truck", "trip", "drum", "bundle", "bucket", "tin", "box", "roll", "pack", "carton"})
+#: [271] (6 Nov, Ilan: "1 Bags M Sand = how many Cubic Meters?", a fraction nobody knows): roughly how big a unit is, so
+#: the size is asked about the bigger one ("1 Cubic Meters M Sand = how many Bags?"). Same rank: the unit they said.
+UNIT_RANK = {**{u: 1 for u in ("kg", "g", "gm", "ltr", "l", "litre", "litres", "nos", "no", "pieces", "piece", "pcs",
+                               "sqft", "cft", "rft", "ft", "m", "rm", "sqm", "percent")},
+             **{u: 2 for u in ("bag", "bags", "chaakku")},
+             **{u: 3 for u in ("cum", "m3", "mt", "ton", "tons", "tonne", "quintal")},
+             **{u: 4 for u in ("brass", "boxes", "rolls", "packs", "cartons", "bundles", "drums", "loads", "tins")},
+             **dict.fromkeys(BIG_UNITS, 4)}
+
+
+def unit_rank(code: str) -> int:
+    """[271]: how big a unit is (1 small measure .. 4 a load); 0 when not known."""
+    return UNIT_RANK.get(code.strip().lower(), 0)
 #: [232]: the size question, drawn by the code, in the person's language ({big}, {small}, {material}).
 SIZE_ASK = {
     "english": "1 {big} {material} = how many {small}?",
@@ -1522,9 +1535,10 @@ _RANGE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|–|to|മുതൽ)\s*(\d+(?:\.\d+
 def size_sides(found: dict[str, Any]) -> dict[str, Any]:
     """[232]: which of the said unit and the material's stock unit is the bigger one (``big`` / ``small`` are their
     names; ``stock_bigger``: the stock unit is the bigger). Neither is a container: the said unit is asked about, as
-    before ("1 Kilograms = how many Bags?")."""
+    before ("1 Nos = how many Kilograms?"); [271]: otherwise by size rank (cubic metre > bag > kg)."""
     said_code, stock_code = str(found.get("unit") or "").lower(), str(found.get("stock_unit") or "").lower()
-    stock_bigger = stock_code in BIG_UNITS and said_code not in BIG_UNITS
+    stock_bigger = unit_rank(stock_code) > unit_rank(said_code) > 0 or (
+        stock_code in BIG_UNITS and said_code not in BIG_UNITS)
     said, stock = str(found.get("unit_name") or ""), str(found.get("stock_unit_name") or "")
     return {"big": stock if stock_bigger else said, "small": said if stock_bigger else stock,
             "stock_bigger": stock_bigger, "material": str(found.get("material") or ""),

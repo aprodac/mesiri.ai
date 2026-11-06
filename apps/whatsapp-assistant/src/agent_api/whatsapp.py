@@ -721,6 +721,7 @@ class ApiWhatsApp:
         """WA-168: nobody on site knows the size: each line that needs one is held for the company's admin (asked once
         a day; it saves by itself when they answer), and the rest of the list stays as it was."""
         held = []
+        examples: list[str] = []
         for need in state.pop("size_needed", None) or []:
             # WA-197: the line is on the list (held with its size asked): it leaves the list, held for the admin.
             line = next((e for e in ready if e.idempotency_key == need.get("key")), None)
@@ -737,9 +738,12 @@ class ApiWhatsApp:
                 continue
             if response.ok:
                 held.append(str(need["summary"]).rstrip(". "))
+                if need.get("big") and need.get("small"):
+                    examples.append(f"1 {need['big']} = … {need['small']}")  # [271]: the line's own question
         language = state.get("language") or "english"
         table = _HELD_SELF if _may_set_sizes(ctx) else _HELD
-        words = (table.get(language, table["english"]).format(lines="; ".join(held)) if held
+        words = (table.get(language, table["english"]).format(
+            lines="; ".join(held), example=(examples or ["1 load = … bags"])[0]) if held
                  else plain_refusal("", language))
         reply = self._reply(words, ready, state, [], state.get("language"))
         await self._save_state(ctx, state)
@@ -1529,12 +1533,24 @@ _HELD = {
 #: [232] (6 Nov, Adarsh, the company's admin: "Size admin-nodu chodichittundu", asked of himself): when the person IS
 #: the one who sets sizes, nobody else is asked; the line waits until they set it.
 _HELD_SELF = {
-    "english": "👍 Held: {lines}. It stays held until you set the size (send it, e.g. '1 load = 60 bags'); then it saves by itself.",
-    "manglish": "👍 Maatti vechu: {lines}. Nee size set cheyyunnathu vare ithu maatti vekkum (ayakkuka, ex: '1 load = 60 bags'); appol thaane save aakum.",
-    "malayalam": "👍 മാറ്റിവെച്ചു: {lines}. നിങ്ങൾ സൈസ് സെറ്റ് ചെയ്യുന്നത് വരെ ഇത് മാറ്റിവെക്കും (അയക്കൂ, ഉദാ: '1 load = 60 bags'); അപ്പോൾ തനിയെ സേവ് ആകും.",
-    "hinglish": "👍 Rok ke rakha: {lines}. Jab tak aap size set nahi karte tab tak ruka rahega (bhejiye, jaise '1 load = 60 bags'); phir apne aap save ho jayega.",
-    "hindi": "👍 रोक के रखा: {lines}। जब तक आप साइज़ सेट नहीं करते, यह रुका रहेगा (भेजिए, जैसे '1 load = 60 bags'); फिर अपने आप सेव हो जाएगा।",
+    "english": "👍 Held: {lines}. It stays held until you set the size (send it, e.g. '{example}'); then it saves by itself.",
+    "manglish": "👍 Maatti vechu: {lines}. Nee size set cheyyunnathu vare ithu maatti vekkum (ayakkuka, ex: '{example}'); appol thaane save aakum.",
+    "malayalam": "👍 മാറ്റിവെച്ചു: {lines}. നിങ്ങൾ സൈസ് സെറ്റ് ചെയ്യുന്നത് വരെ ഇത് മാറ്റിവെക്കും (അയക്കൂ, ഉദാ: '{example}'); അപ്പോൾ തനിയെ സേവ് ആകും.",
+    "hinglish": "👍 Rok ke rakha: {lines}. Jab tak aap size set nahi karte tab tak ruka rahega (bhejiye, jaise '{example}'); phir apne aap save ho jayega.",
+    "hindi": "👍 रोक के रखा: {lines}। जब तक आप साइज़ सेट नहीं करते, यह रुका रहेगा (भेजिए, जैसे '{example}'); फिर अपने आप सेव हो जाएगा।",
 }
+
+
+_SIZE_SIDES = re.compile(r"\(1 ([^()]*?) = how many ([^()]*?)\?\)")
+
+
+def size_example(waiting: list[WriteResult]) -> str:
+    """[271] (6 Nov: Ilan was told "send it, e.g. '1 load = 60 bags'" for M Sand in bags against cubic metres, sent
+    "1 load = 50 bags", and nothing settled): the example is the held line's own question, its units, no number."""
+    for r in waiting:
+        if found := _SIZE_SIDES.search(r.pending.summary):
+            return f"1 {found.group(1)} = … {found.group(2)}"
+    return "1 load = … bags"
 
 
 def is_dont_know(text: str) -> bool:
@@ -1750,7 +1766,7 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
     if waiting:
         lang = language if language in _HELD else "english"
         later = (_HELD_SELF if admin else _HELD)[lang].format(lines="; ".join(SIZE_UNKNOWN.sub("", r.pending.summary).rstrip(". ")
-                                                     for r in waiting))
+                                                     for r in waiting), example=size_example(waiting))
         text = f"{text}\n\n{later}".strip()
     return text
 

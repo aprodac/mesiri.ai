@@ -99,7 +99,8 @@ def test_which_unit_is_bigger_is_decided_by_the_code() -> None:
 
     assert sides("nos", "load") == ("Load", "Nos") and sides("l", "drum") == ("Drum", "L")
     assert sides("load", "bags") == ("Load", "Bags") and sides("truck", "bags") == ("Truck", "Bags")
-    assert sides("kg", "bags") == ("Kg", "Bags")  # neither is a container: the unit said is asked about, as before
+    assert sides("kg", "bags") == ("Bags", "Kg")  # [271]: a bag is bigger than a kilo ("1 bag = 50 kg", never 0.02)
+    assert sides("nos", "kg") == ("Nos", "Kg")  # same size rank: the unit said is asked about, as before
 
 
 @pytest.mark.parametrize("reply", ["200", "1 load 200 bar", "200 bars oru load", "oru load-il ekadesham 200 bar undakum"])
