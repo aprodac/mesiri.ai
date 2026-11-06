@@ -65,6 +65,8 @@ class ApiClient:
             raise ValueError("ApiClient needs exactly one of actor or token")
         #: [265]: the sender's role as the login stores it ("ADMIN", ...); None with a login token.
         self.role: str | None = actor.role if actor is not None else None
+        #: WEB-68: who is asking (the accounts they hold); None with a login token.
+        self.user_id: str | None = actor.user_id if actor is not None else None
         transport = httpx.ASGITransport(app=app) if app is not None else None
         bearer = token if token is not None else token_for(actor)  # type: ignore[arg-type]
         self._http = httpx.AsyncClient(

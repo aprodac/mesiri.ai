@@ -31,6 +31,7 @@ from runtime.agent.reply_text import asks_to_tap_save
 from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
+from .expense_account import BUTTONS, EXPENSE_TOOL, account_question, paying_accounts
 from .fill import (
     NARRATIVE_REFUSAL,
     fill_body,
@@ -501,6 +502,8 @@ class ApiAgent:
         new: list[PendingWrite] = []
         saved: list[WriteResult] = []
         asked: dict[str, Any] = {}
+        #: WEB-68: the account question the code asked this turn (it is put in the reply if the model left it out).
+        account_asked: list[str] = []
         acted: list[str] = []
         unit_ask: list[str] = []  # buttons for a unit (or a person, [207]) nobody could settle; cleared once settled
         links: list[str] = []  # WA-141: dashboard links built this turn
@@ -935,6 +938,22 @@ class ApiAgent:
                 if name == "update_project" and body.get("description"):
                     body = await kept_description(client, path, body)
                 said_line = str(arguments.get(CONFIRM_ARG) or "").strip()
+                account_note = ""
+                if name == EXPENSE_TOOL and not body.get("account_id"):
+                    # WEB-68: which account paid it, decided by the code (expense_account.py).
+                    choices = await paying_accounts(client, getattr(client, "user_id", None), body.get("project_id"))
+                    if len(choices) == 1:
+                        body = {**body, "account_id": choices[0]["id"]}
+                        said_line = f"{said_line} · {choices[0]['name']}".strip(" ·")
+                    elif len(choices) > 1 and not asked.get("question"):
+                        question = account_question(language, choices)
+                        asked["question"] = question
+                        asked["options"] = [c["name"][:20] for c in choices[:BUTTONS]]
+                        account_asked.append(question)
+                        account_note = (" The code asks which account paid it (buttons under your reply): "
+                                        + "; ".join(f"{c['name']} = account_id {c['id']}" for c in choices)
+                                        + ". Put that question in your reply. When they answer, change_ready_entry "
+                                          "this entry: field account_id, the id of the account they named.")
                 if name in PROJECT_LINE_TOOLS:
                     # [257]: a project line the model wrote named a contract value and payment terms the body never
                     # carried; the card line is drawn from the fields that will be saved.
@@ -959,7 +978,7 @@ class ApiAgent:
                 if name == ADD_TOOL and body.get("name"):
                     note += (f" Lines for it (what came, a unit size) name it material_id \"{NEW}{body['name']}\": "
                              "prepare them now, in this turn; they save after it.")
-                return ToolOutcome(content={"status": "ready, NOT saved", "note": note + size_hint})
+                return ToolOutcome(content={"status": "ready, NOT saved", "note": note + size_hint + account_note})
             response = await client.call(tool.method, path, params=params)
             content = json.dumps(response.body, default=str, ensure_ascii=False)
             if len(content) > READ_LIMIT:
@@ -1121,6 +1140,9 @@ class ApiAgent:
             # WA-197: the line is on the list, so Save comes third (WhatsApp shows 3 buttons): one size option at most.
             options = [o for o in options if o != dont_know][:1] + [dont_know]
         reply = without_apology((result.text or "").strip())  # [265]: never "My bad!" for a slip they never saw
+        if account_asked and account_asked[0].split(" (")[0] not in reply:
+            # WEB-68: the account question is always in the reply, with its buttons under it.
+            reply = "\n\n".join(p for p in (reply, account_asked[0]) if p)
         missing = [u for u in dict.fromkeys(links) if u not in reply]
         if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
             reply = "\n".join([reply, *missing]).strip()
