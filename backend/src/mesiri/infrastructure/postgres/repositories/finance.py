@@ -19,6 +19,9 @@ _money_accounts = sa.Table(
     sa.Column("owner_user_id", sa.UUID(as_uuid=True)),
     sa.Column("name", sa.String),
     sa.Column("code", sa.String),
+    sa.Column("bank_name", sa.String),
+    sa.Column("ifsc", sa.String),
+    sa.Column("account_number_last4", sa.String),
     sa.Column("account_type", sa.String),
     sa.Column("currency", sa.String),
     sa.Column("opening_balance", sa.Numeric),
@@ -64,6 +67,9 @@ def _row_to_account(row) -> MoneyAccount:
         project_id=row.project_id,
         site_id=row.site_id,
         owner_user_id=row.owner_user_id,
+        bank_name=getattr(row, "bank_name", None),
+        ifsc_code=getattr(row, "ifsc", None),
+        account_last4=getattr(row, "account_number_last4", None),
     )
 
 
@@ -130,6 +136,9 @@ class PostgresMoneyAccountRepository:
         project_id: uuid.UUID | None = None,
         site_id: uuid.UUID | None = None,
         owner_user_id: uuid.UUID | None = None,
+        bank_name: str | None = None,
+        ifsc_code: str | None = None,
+        account_last4: str | None = None,
     ) -> MoneyAccount:
         # Compute next sequential ACC-001 code for this organization
         seq_res = (
@@ -159,6 +168,9 @@ class PostgresMoneyAccountRepository:
                 owner_user_id=owner_user_id,
                 name=name,
                 code=account_code,
+                bank_name=bank_name,
+                ifsc=ifsc_code,
+                account_number_last4=account_last4,
                 account_type=account_type,
                 currency=currency,
                 opening_balance=opening_balance,
@@ -193,6 +205,25 @@ class PostgresMoneyAccountRepository:
                 _money_accounts.c.organization_id == organization_id,
             )
             .values(name=new_name, updated_by=updated_by, updated_at=sa.func.now())
+        )
+
+    async def update_details(
+        self, organization_id: uuid.UUID, account_id: uuid.UUID, changes: dict, *, updated_by: uuid.UUID
+    ) -> None:
+        """WEB-66: the holder (``owner_user_id``) and bank details; only the keys given change."""
+        # The columns are migration 0080's (``ifsc``, ``account_number_last4``); the API names them as the form does.
+        column = {"owner_user_id": "owner_user_id", "bank_name": "bank_name", "ifsc_code": "ifsc",
+                  "account_last4": "account_number_last4"}
+        values = {column[k]: v for k, v in changes.items() if k in column}
+        if not values:
+            return
+        await self.conn.execute(
+            sa.update(_money_accounts)
+            .where(
+                _money_accounts.c.id == account_id,
+                _money_accounts.c.organization_id == organization_id,
+            )
+            .values(**values, updated_by=updated_by, updated_at=sa.func.now())
         )
 
     async def deactivate(

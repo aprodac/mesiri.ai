@@ -954,10 +954,21 @@ export interface CreateAccountApiPayload {
   account_number?: string
   bank_name?: string
   ifsc_code?: string
+  /** WEB-66: the last 4 digits of the account number (the full number is never kept). */
+  account_last4?: string
   custodian_name?: string
   owner_user_id?: string
   project_id?: string
   site_id?: string
+}
+
+/** WEB-66: only the fields sent change; `owner_user_id: null` takes the holder off, '' clears a bank detail. */
+export interface UpdateAccountApiPayload {
+  name?: string
+  owner_user_id?: string | null
+  bank_name?: string
+  ifsc_code?: string
+  account_last4?: string
 }
 
 export async function createAccountApi(payload: CreateAccountApiPayload) {
@@ -970,8 +981,8 @@ export async function deleteAccountApi(accountId: string) {
   return res.data
 }
 
-export async function renameAccountApi(accountId: string, name: string) {
-  const res = await api.patch(`/finance/accounts/${accountId}`, { name })
+export async function updateAccountApi(accountId: string, payload: UpdateAccountApiPayload) {
+  const res = await api.patch(`/finance/accounts/${accountId}`, payload)
   return res.data
 }
 
