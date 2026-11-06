@@ -38,6 +38,15 @@ async def test_sibling_english_question_is_marked_the_same() -> None:
     assert _tools(turn) == [EXPLAIN]
 
 
+async def test_show_me_what_you_can_do_is_the_same_question() -> None:
+    """6 Nov 00:30 (Ilan): "ഹലോ നിനക്ക് ചെയ്യാൻ പറ്റുന്നതൊക്കെ ഒന്ന് കാണിക്ക്" got a link to the day's summary. Rule 11 now
+    names "show me what you can do" (a demonstration, never a link or the day's summary)."""
+    assert "show me what you can do" in SOP and "never a link or a summary of the day" in SOP
+    model = Runs([[EXPLAIN_CALL], "I record attendance, materials, work and issues from your messages."])
+    turn, api = await _turn(model, "ഹലോ നിനക്ക് ചെയ്യാൻ പറ്റുന്നതൊക്കെ ഒന്ന് കാണിക്ക്")
+    assert _tools(turn) == [EXPLAIN] and api.seen == []
+
+
 async def test_the_tool_is_offered_and_the_sop_says_when() -> None:
     seen: list[list[str]] = []
 
