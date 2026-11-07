@@ -133,3 +133,34 @@ async def test_unit_check_says_before_save_whether_a_proposed_size_is_plausible(
     plain = await materials_router.check_material_unit(m_sand, load, one_unit_equals=None, auth_context=auth,
                                                        conn=conn)
     assert "plausible" not in plain  # guard: without a size the answer is as before
+
+
+async def test_a_size_said_in_cft_saves_converted_by_the_unit_facts(conn) -> None:
+    """MK-02c: the bill says "150 cft"; M-sand is stocked in m³. The code converts (150 / 35.3147), never the model."""
+    created, auth = await _company(conn, "9876500095")
+    m_sand = await _material(conn, created.organization_id, "M Sand", "cum")
+    load = await _id(conn, "SELECT id FROM units_of_measure WHERE code = 'load'")
+    cft = await _id(conn, "SELECT id FROM units_of_measure WHERE code = 'cft'")
+    checked = await materials_router.check_material_unit(m_sand, load, one_unit_equals=Decimal(150), size_unit_id=cft,
+                                                         auth_context=auth, conn=conn)
+    assert checked["plausible"] is True and checked["one_unit_equals_in_stock"] == "4.248"
+    assert checked["size_unit_name"]
+    result = await materials_router.set_unit_conversion(
+        m_sand, materials_router.UnitConversionSet(from_unit_id=load, one_unit_equals=Decimal(150), size_unit_id=cft),
+        auth_context=auth, conn=conn)
+    assert result["one_unit_equals"].startswith("4.247") and "150 as said" in result["message"]
+    per = (await conn.execute(text("SELECT per_stock_unit FROM material_unit_conversions WHERE material_id = :m"),
+                              {"m": m_sand})).scalar_one()
+    assert abs(Decimal(1) / per - Decimal("4.2475")) < Decimal("0.001")
+
+
+async def test_a_size_in_a_unit_with_no_standard_measure_is_asked_in_the_stock_unit(conn) -> None:
+    created, auth = await _company(conn, "9876500096")
+    m_sand = await _material(conn, created.organization_id, "M Sand", "cum")
+    load = await _id(conn, "SELECT id FROM units_of_measure WHERE code = 'load'")
+    bags = await _id(conn, "SELECT id FROM units_of_measure WHERE code = 'bags'")
+    with pytest.raises(HTTPException) as refused:
+        await materials_router.set_unit_conversion(
+            m_sand, materials_router.UnitConversionSet(from_unit_id=load, one_unit_equals=Decimal(60), size_unit_id=bags),
+            auth_context=auth, conn=conn)
+    assert refused.value.status_code == 422 and "by a standard measure" in refused.value.detail
