@@ -174,6 +174,44 @@ The first step of the process (request → order → delivery/GRN → bill → p
   GRN details (challan photo, rejected quantity); sending the PO to the supplier (PDF / WhatsApp); bills matched to
   orders (PRC-11).
 
+### 4e. Gaps found in the request ↔ order review (7 Nov 2026)
+
+Checked against the code after PRC-22 and PRC-06/07/08/10 went live. Each has a tracker row (PRC-23 to PRC-29) or
+points at the one it belongs to.
+
+**A. Wrong numbers or stuck states (PRC-23, fix first)**
+1. A request's "already ordered" counts other requests marked ordered, not open purchase order lines: cement ordered
+   without a request still shows "to buy". On order must come from open PO lines (what is still to come).
+2. A delivery recorded in Materials or on WhatsApp is not linked to an open order for the same site and material:
+   the order and its request stay "to come" while the stock already arrived (a second order can follow). Ask
+   "is this PO-0003?" and fill the line (the rest of PRC-08).
+3. Closing an order short leaves its request "ordered" forever: it should wait again for the rest, or be received.
+4. Cancelling an order puts its request back to waiting without telling the engineer.
+5. A request's manual "Mark received" still works when an order is linked, and can disagree with it.
+
+**B. The link is not visible or flexible enough**
+6. A request does not show its order(s) ("PO-0003 · 150 of 160 came") or link to them (PRC-23).
+7. A request cannot be split between suppliers: its lines cannot be taken off the filled-in order (PRC-24).
+8. Several requests cannot go into one order (PRC-24).
+9. The duplicate checks do not see each other: a new request does not say "already on order", a new order does
+   not say "Arun asked for this" (PRC-23).
+
+**C. Missing pieces people will expect**
+10. The office is not told of a new request (a WhatsApp request only shows on the dashboard) (PRC-25).
+11. No reminder for a request waiting too long or an order that is late (PRC-25).
+12. The supplier never gets the order: no PDF, no WhatsApp to the vendor's number (PRC-26).
+13. More delivered than ordered is accepted with a small "extra" only; it should be asked (PRC-23).
+14. Requests and orders on WhatsApp ("order 200 cement from Malabar", "what is still to come?") (PRC-09).
+15. Materials › Stock has no "on order" column, and "running low" ignores what is coming (PRC-27).
+16. Finance cannot place orders; only admin, owner and project manager (PRC-12, Alan's decision D1).
+17. Changes to an order (date moved, supplier changed) are not in its history (PRC-28).
+
+**D. Planned, listed so nothing is forgotten**
+GRN details (challan photo, rejected quantity) (PRC-29), bills matched to orders (PRC-11), rate history and GST
+(PRC-14/16), payables, order approval above an amount (D4), PO numbering by financial year (PO/25-26/0001).
+
+**Order of work:** PRC-23 (A, 6, 9, 13), then PRC-24, PRC-25, then PRC-09.
+
 ---
 
 ## 5. API work (each route used by the dashboard and, where useful, the assistant)
