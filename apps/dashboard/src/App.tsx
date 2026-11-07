@@ -27,6 +27,7 @@ import RequestsPage from '@/pages/RequestsPage'
 import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage'
 import PurchaseOrderDocumentPage from './pages/PurchaseOrderDocumentPage'
 import GoodsReceiptsPage from './pages/GoodsReceiptsPage'
+import RatesPage from './pages/RatesPage'
 import ExpensesPage from '@/pages/ExpensesPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
 import FinanceSettingsPage from '@/pages/FinanceSettingsPage'
@@ -108,6 +109,7 @@ export default function App() {
           <Route path="procurement/orders" element={mat(<PurchaseOrdersPage />)} />
           {/* PRC-29: goods received notes. */}
           <Route path="procurement/grn" element={mat(<GoodsReceiptsPage />)} />
+          <Route path="procurement/rates" element={mat(<RatesPage />)} />
 
           {/* Setup */}
           <Route path="projects" element={<Projects />} />

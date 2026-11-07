@@ -474,6 +474,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Purchase orders router not loaded: %s", exc)
 
+    # PRC-29 goods received notes, PRC-14 rates, CC-02 BOQ: added to backend/http/app.py only, so production (this
+    # app) answered 404 (found 7 Nov). tests/unit/test_production_app_router_mounting.py holds the two apps together.
+    for module, label in (
+        ("mesiri.domains.procurement.grn_router", "Goods received"),
+        ("mesiri.domains.procurement.rates_router", "Rates"),
+        ("mesiri.domains.progress.boq_router", "BOQ"),
+    ):
+        try:
+            import importlib
+
+            app.include_router(importlib.import_module(module).router)
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning("%s router not loaded: %s", label, exc)
+
     # Timeline routes
     try:
         from mesiri.domains.timeline.router import router as timeline_router

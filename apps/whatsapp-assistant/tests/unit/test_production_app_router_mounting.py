@@ -117,3 +117,40 @@ def test_a_domain_router_failing_to_import_does_not_crash_the_whole_app():
 def test_site_whatsapp_group_route_is_mounted():
     """WA-87: the site page's WhatsApp group button."""
     assert "/projects/{project_id}/sites/{site_id}/whatsapp-group" in _production_app_paths()
+
+
+def test_goods_received_rates_and_boq_routes_are_mounted():
+    """Occurrences seven and eight, found 7 Nov 2026 while adding Rates (PRC-14): Procurement > GRN (PRC-29) and
+    the BOQ (CC-02) were mounted only in backend/src/mesiri/http/app.py, so both pages 404'd in production."""
+    paths = _production_app_paths()
+    for expected in (
+        "/procurement/grns",
+        "/procurement/rates",
+        "/procurement/rates/{material_id}",
+        "/projects/{project_id}/boq",
+    ):
+        assert expected in paths, f"{expected} not mounted on the production app"
+
+
+# Backend-app routers that production serves with its own modules (same paths), so not mounted from mesiri here.
+_REPLACED_IN_PRODUCTION = {
+    "mesiri.domains.admin.router",  # admin.router (control panel)
+    "mesiri.domains.identity.router",  # auth.router (/auth/me, login)
+    "mesiri.domains.projects.router",  # this app's projects routes
+    "mesiri.domains.users.router",  # this app's users routes
+    "mesiri.domains.escalations.router",  # not used by the dashboard
+}
+
+
+def test_every_router_the_backend_app_mounts_is_mounted_here_too():
+    """The class, not the next instance: each earlier test named the paths of the router just fixed, so a new
+    router added to backend/src/mesiri/http/app.py alone still slipped through. Read from both files' source."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[4]
+    module = re.compile(r"mesiri\.domains\.[a-z_.]*router[a-z_]*")
+    backend = set(module.findall((root / "backend/src/mesiri/http/app.py").read_text(encoding="utf-8")))
+    here = set(module.findall((root / "apps/whatsapp-assistant/src/runtime/lifecycle.py").read_text(encoding="utf-8")))
+    missing = backend - here - _REPLACED_IN_PRODUCTION
+    assert not missing, f"Mounted in backend/http/app.py but not in runtime/lifecycle.py (404 in production): {sorted(missing)}"

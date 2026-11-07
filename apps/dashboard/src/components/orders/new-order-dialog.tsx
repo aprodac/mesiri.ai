@@ -29,7 +29,9 @@ export interface OrderPrefill {
   request_ref?: string
   /** PRC-24: the request it comes from; other waiting requests at the same site can be added to the same order. */
   request_id?: string
-  lines: { material_id: string; quantity: string; request_line_id?: string }[]
+  lines: { material_id: string; quantity: string; request_line_id?: string; rate?: string }[]
+  /** PRC-14: "Order from the cheapest supplier" on the Rates page. */
+  vendor_name?: string
 }
 
 type Line = { key: number; materialId: string; quantity: string; rate: string; requestLineId?: string; requestRef?: string }
@@ -73,9 +75,9 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
     setLines(editing
       ? editing.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, rate: l.rate ? String(Number(l.rate)) : '', requestLineId: l.request?.line_id, requestRef: l.request?.ref }))
       : prefill?.lines.length
-        ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, rate: '', requestLineId: l.request_line_id, requestRef: prefill.request_ref }))
+        ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, rate: l.rate ?? '', requestLineId: l.request_line_id, requestRef: prefill.request_ref }))
         : [{ key: 1, materialId: '', quantity: '', rate: '' }])
-    setSupplier(editing?.vendor_name ?? '')
+    setSupplier(editing?.vendor_name ?? prefill?.vendor_name ?? '')
     setWhen(editing ? 'pick' : 'tomorrow')
     setPicked(editing?.expected_date ?? '')
     setNotes(editing ? editing.notes ?? '' : prefill?.request_ref ? `For ${prefill.request_ref}` : '')
@@ -228,7 +230,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
                 </div>
               )
             })}
-            {prefill && !editing && (
+            {prefill?.lines.some((l) => l.request_line_id) && !editing && (
               <p className="text-xs text-muted-foreground">Order part of it here: lower a quantity or take an item off, and the rest stays to buy for another supplier.</p>
             )}
             {alsoWaiting.length > 0 && (

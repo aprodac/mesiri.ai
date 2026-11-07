@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { fetchExpensesApi, type VendorItem } from '@/lib/api'
 import { Link } from 'react-router-dom'
+import { VendorRates } from '@/components/rates/vendor-rates'
 
 interface VendorDetailSheetProps {
   vendor: VendorItem | null
@@ -127,6 +128,9 @@ export function VendorDetailSheet({
             </div>
           </div>
         </div>
+
+        {/* PRC-16: what this supplier charged, item by item, against the cheapest */}
+        <VendorRates vendorId={vendor.id} onNavigate={() => onOpenChange(false)} />
 
         {/* Search & Expense List */}
         <div className="p-4 flex-1 flex flex-col gap-3 overflow-hidden">
