@@ -64,3 +64,32 @@ def test_guard_the_note_is_built_one_way_for_both() -> None:
     # a text list that is also passed is noted once
     sent = "Ok.\n\n*Ready to save:*\n1. 50 bags cement"
     assert wa.for_memory(sent, ["50 bags cement"]) == wa.for_memory(sent)
+
+
+# PRC-32 (7 Nov 23:06, 23:08: "What is still to come?" / "is PO-0001 late?" -> "I could not get the purchase orders
+# right now. Please try again in a minute." with no tool called). One real outage at 19:01; the sentence was then copied
+# from the conversation seven times, each copy feeding the next. A "could not / cannot" reply is remembered marked.
+
+OUTAGE = "I could not get the purchase orders right now. Please try again in a minute."
+
+
+def test_a_could_not_reply_is_remembered_as_a_passing_problem() -> None:
+    kept = wa.for_memory(OUTAGE)
+    assert kept.startswith(wa.PASSING_NOTE) and kept.endswith(OUTAGE)
+    issues = "I could not check for open issues right now, so please try again in a minute if it is still open."
+    assert wa.for_memory(issues).startswith(wa.PASSING_NOTE)
+
+
+async def test_the_conversation_reads_the_mark_back() -> None:
+    from mesiri_ai.fakes import FakeToolCallingProvider
+
+    service, _ = _service(FakeToolCallingProvider([OUTAGE]), Cards(), [])
+    await service.handle(_message("What is still to come?"), CTX)
+    (kept,) = await _remembered(service)
+    assert kept.startswith(wa.PASSING_NOTE)
+
+
+def test_guard_ordinary_answers_and_other_peoples_could_not_are_kept_word_for_word() -> None:
+    for said in ("asus aanu Green Villa-yile Steel order cheythathu.", "The supplier could not come today.",
+                 "Could you send the bill photo?"):
+        assert wa.for_memory(said) == said
