@@ -12,6 +12,7 @@
 
 | Date | Decision | Who | Details |
 |---|---|---|---|
+| 7 Nov 2026 | **The project DPR no longer waits for the engineer's approval:** each site's saved entries are in it whether or not the site day was confirmed; a confirmed day still gives its frozen version, and a site with nothing saved is still "not reported". Replaces ADR-D9/P8's "only approved site versions" rule. | Ilan (in session) | BE-53 |
 | 7 Nov 2026 | **Both ways, never locked in:** every step (request, quote, order, sending it to the supplier, delivery, bill) works fully in Mesiri **and** when it was done outside (a phone call to the vendor, a paper PO or quote, a WhatsApp to the shop). Done outside, telling Mesiri afterwards takes one tap or one line, and nothing in Mesiri waits on or refuses a step because it skipped Mesiri. Mesiri never claims it sent or did what a person did outside. | Owner, in session | [procurement-plan.md](plans/procurement-plan.md) §4g |
 | 3 Nov 2026 | **Labour and Attendance need no approval** from now on: plans that change them build like any other (autobuild and Claude Code sessions); the change is said plainly in the report. Still held for an owner: Payroll, Workforce, migrations that change existing data, secrets/tokens, tenant isolation, login, CI/deploy files and the bot itself. | Alan and Ilan (relayed in session) | CLAUDE.md, `teammate/brain/src/autobuild.js` |
 | 3 Nov 2026 | Alan and Ilan **approved the plans waiting for an owner** on 3 Nov: [218], [221], [222], [223], [224]. | Alan and Ilan (relayed in session) | request log |

@@ -467,6 +467,42 @@ def build_review_items(
     return items
 
 
+def has_saved_entries(payload: dict[str, Any] | None) -> bool:
+    """True when a SITE payload holds anything saved that day: work, labour,
+    materials, the day's own issues or photos. Issues carried from earlier
+    days don't count, or every site with an old open issue would read as
+    reported."""
+    if not payload:
+        return False
+    return bool(
+        payload.get("activity_count")
+        or (payload.get("labour") or {}).get("headcount")
+        or payload.get("materials")
+        or payload.get("issues")
+        or payload.get("evidence_count")
+    )
+
+
+def site_payload_for_rollup(
+    status: str | None,
+    frozen_payload: dict[str, Any] | None,
+    live_payload: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """What one site contributes to the PROJECT DPR (Ilan, 7 Nov 2026: the
+    project DPR no longer waits for the engineer's approval).
+
+    A site day already confirmed or sent (APPROVED/PUBLISHED) gives its
+    frozen version, as before. Any other site gives its live saved entries,
+    so a site that only recorded materials (or only labour) is in the report
+    instead of reading "No work, 0 workers". A site with nothing saved is
+    still NOT_REPORTED (`None`)."""
+    from mesiri.application.dpr import site_day
+
+    if status in site_day.FROZEN and frozen_payload is not None:
+        return frozen_payload
+    return live_payload if has_saved_entries(live_payload) else None
+
+
 def build_project_report_payload(
     *,
     project_name: str | None,
@@ -474,14 +510,13 @@ def build_project_report_payload(
     site_payloads: list[tuple[str | None, dict[str, Any] | None]],
 ) -> dict[str, Any]:
     """Compose the PROJECT-level payload (ADR-D9/P8) from each active site's
-    own already-approved SITE-level payload -- never independently
-    re-derived from raw activities/issues, so a project report can never
-    show something its own site reports didn't already sign off on.
+    SITE-level payload (`site_payload_for_rollup`: the frozen version of a
+    confirmed day, otherwise the day's live saved entries; 7 Nov 2026).
 
     `site_payloads` is `(site_name, payload)` pairs, one per active site
     under the project: `payload` is `build_site_report_payload`'s own
-    output when that site has an APPROVED/PUBLISHED version by cutoff, or
-    `None` when it doesn't -- recorded as NOT_REPORTED (P8), which does not
+    output, or `None` when the site saved nothing that day -- recorded as
+    NOT_REPORTED (P8), which does not
     block the project rollup from publishing; a missing site report is the
     single most informative line on the page, not something the rest of
     the project's reporting should wait on.

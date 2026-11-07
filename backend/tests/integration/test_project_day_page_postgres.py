@@ -148,12 +148,14 @@ async def test_before_sending_the_page_previews_the_rollup_and_writes_nothing(co
     assert day["project"]["project_name"] == "Green Towers"
     assert day["project"]["sent"] is False
     by_site = {s["site_name"]: s for s in day["report"]["sites"]}
-    # Only the confirmed site is in the DPR; the other is "not reported".
+    # 7 Nov 2026: the unconfirmed site is in the DPR too, from its saved
+    # entries (it used to be "not reported" until the engineer confirmed it).
     assert by_site["Block A"]["reported"] is True
     assert by_site["Block A"]["headcount"] == 8
-    assert by_site["Block B"]["reported"] is False
-    assert day["report"]["labour"]["headcount"] == 8
-    assert (day["report"]["reported_site_count"], day["report"]["total_site_count"]) == (1, 2)
+    assert by_site["Block B"]["reported"] is True
+    assert by_site["Block B"]["headcount"] == 3
+    assert day["report"]["labour"]["headcount"] == 8 + 3
+    assert (day["report"]["reported_site_count"], day["report"]["total_site_count"]) == (2, 2)
     # Every site's live day is listed, confirmed or not.
     live = {s["site_name"]: s for s in day["sites"]}
     assert live["Block A"]["status"] == "approved"
@@ -186,7 +188,8 @@ async def test_once_sent_the_page_shows_the_dpr_as_it_went_out(conn) -> None:
     assert day["project"]["sent"] is True
     assert day["project"]["project_report_status"] == "published"
     assert day["report"]["level"] == "PROJECT"
-    assert day["report"]["labour"]["headcount"] == 8
+    # Block A confirmed (8) + Block B's saved but unconfirmed 3 (7 Nov 2026).
+    assert day["report"]["labour"]["headcount"] == 8 + 3
     # Only what went out: the cutoff's unapproved draft (version 1) is left off.
     assert [v["version_no"] for v in day["versions"]] == [2]
     assert day["versions"][0]["is_current"] is True
@@ -273,8 +276,8 @@ async def test_history_lists_each_report_once_with_its_figures(conn) -> None:
 
 async def test_a_labour_only_site_confirmed_is_in_the_project_dpr(conn) -> None:
     """Block B sent only labour, so the cutoff built it no version. Confirming
-    it must freeze one, or the project DPR shows it "Not reported" and leaves
-    its 3 workers out."""
+    it must freeze one, so the sent DPR keeps the confirmed figures (before
+    7 Nov the project DPR also showed it "Not reported" without one)."""
     created, sites = await _project(conn, "9876500055")
     repo = PostgresDprRepository(conn)
     block_b = await repo.find_site_report(

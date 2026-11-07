@@ -1075,13 +1075,13 @@ class PostgresDprRepository:
         preview: bool = False,
     ) -> tuple[dict[str, Any], list[tuple[uuid.UUID, uuid.UUID | None]]]:
         """Compose one PROJECT-level DPR payload from each of its active
-        sites' own APPROVED/PUBLISHED SITE-level version (ADR-D9/P8) --
-        never independently re-derived from raw activities/issues, so a
-        project report can never show something its own site reports
-        didn't already sign off on. A site with no approved version by the
-        time this runs is recorded NOT_REPORTED (via `payload=None` in the
-        pair below) -- the project rollup still composes and publishes,
-        per P8.
+        sites (ADR-D9/P8). A site day already APPROVED/PUBLISHED gives its
+        frozen SITE version; any other site gives its live saved entries,
+        so the project DPR no longer waits for the engineer's approval
+        (Ilan, 7 Nov 2026: a materials-only day went out as "No work, 0
+        workers"). A site with nothing saved is recorded NOT_REPORTED (via
+        `payload=None` in the pair below); its source row keeps
+        `site_version_id = None`. See `assembly.site_payload_for_rollup`.
 
         Also ensures a SITE-level `daily_reports` row exists for every
         active site under the project (creating an empty DRAFT one for a
@@ -1132,7 +1132,16 @@ class PostgresDprRepository:
                     report_date=report_date,
                 )
                 if found is None:
-                    site_payloads.append((site_row["name"], None))
+                    # No report row yet: the live entries decide, as on send.
+                    from mesiri.application.dpr.assembly import site_payload_for_rollup
+
+                    live = await self.assemble_site_report_payload(
+                        organization_id=organization_id,
+                        project_id=project_id,
+                        site_id=site_row["id"],
+                        report_date=report_date,
+                    )
+                    site_payloads.append((site_row["name"], site_payload_for_rollup(None, None, live)))
                     continue
                 site_daily_report_id = found["id"]
             else:
@@ -1149,13 +1158,14 @@ class PostgresDprRepository:
                 )
             ).mappings().first()
 
-            payload: dict[str, Any] | None = None
+            from mesiri.application.dpr import site_day
+            from mesiri.application.dpr.assembly import site_payload_for_rollup
+
+            status = report_row["status"] if report_row is not None else None
+            frozen_payload: dict[str, Any] | None = None
+            live_payload: dict[str, Any] | None = None
             site_version_id: uuid.UUID | None = None
-            if (
-                report_row is not None
-                and report_row["status"] in ("APPROVED", "PUBLISHED")
-                and report_row["current_version_id"] is not None
-            ):
+            if status in site_day.FROZEN and report_row["current_version_id"] is not None:
                 version_row = (
                     await self._conn.execute(
                         text("SELECT payload FROM daily_report_versions WHERE id = :id"),
@@ -1166,9 +1176,18 @@ class PostgresDprRepository:
                     import json
 
                     raw_payload = version_row["payload"]
-                    payload = raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload)
+                    frozen_payload = raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload)
                     site_version_id = report_row["current_version_id"]
+            if frozen_payload is None:
+                # Not confirmed yet: the site's saved entries count anyway (7 Nov).
+                live_payload = await self.assemble_site_report_payload(
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    site_id=site_row["id"],
+                    report_date=report_date,
+                )
 
+            payload = site_payload_for_rollup(status, frozen_payload, live_payload)
             site_payloads.append((site_row["name"], payload))
             sources.append((site_daily_report_id, site_version_id))
 

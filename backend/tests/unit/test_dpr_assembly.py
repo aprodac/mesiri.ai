@@ -12,7 +12,12 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from mesiri.application.dpr.assembly import build_project_report_payload, build_site_report_payload
+from mesiri.application.dpr.assembly import (
+    build_project_report_payload,
+    build_site_report_payload,
+    has_saved_entries,
+    site_payload_for_rollup,
+)
 
 ACTIVITY_1 = uuid.uuid4()
 ACTIVITY_2 = uuid.uuid4()
@@ -505,3 +510,49 @@ def test_project_rollup_counts_possible_duplicates():
     )
     assert project["possible_duplicates"] == 1
     assert [s["possible_duplicates"] for s in project["sites"]] == [1, 0]
+
+
+# --- 7 Nov 2026: the project DPR no longer waits for the engineer's approval --
+
+CEMENT_USED = [{"material_name": "Cement", "unit": "bags", "received": "0", "used": "120"}]
+
+
+def test_an_unconfirmed_materials_only_site_is_in_the_project_dpr():
+    """New India, 7 Nov: only material usage was saved, the site day stayed
+    NEEDS_DETAILS, and the project DPR went out as "No work, 0 workers"."""
+    live = _site_payload(materials=CEMENT_USED)
+    site = site_payload_for_rollup("NEEDS_DETAILS", None, live)
+    payload = build_project_report_payload(
+        project_name="Green villa kerala", report_date=datetime.date(2026, 11, 7), site_payloads=[("Green villa kerala", site)]
+    )
+    assert payload["sites"][0]["reported"] is True
+    assert payload["materials"][0]["used"] == "120"
+    assert payload["reported_site_count"] == 1
+
+
+def test_every_unconfirmed_status_uses_the_live_entries():
+    live = _site_payload(labour={"headcount": 3, "total_cost": "0", "trades": []})
+    for status in (None, "DRAFT", "NEEDS_DETAILS", "READY", "IN_REVIEW", "NOT_REPORTED"):
+        assert site_payload_for_rollup(status, None, live) is live
+
+
+def test_a_confirmed_site_keeps_its_frozen_version_not_the_live_entries():
+    frozen = _site_payload(materials=CEMENT_USED)
+    live = _site_payload(materials=[{"material_name": "Cement", "unit": "bags", "received": "0", "used": "999"}])
+    for status in ("APPROVED", "PUBLISHED"):
+        assert site_payload_for_rollup(status, frozen, live) is frozen
+
+
+def test_a_site_with_nothing_saved_is_still_not_reported():
+    empty = _site_payload()
+    assert site_payload_for_rollup("DRAFT", None, empty) is None
+    assert site_payload_for_rollup(None, None, None) is None
+
+
+def test_saved_entries_count_by_section_but_carried_issues_do_not():
+    assert not has_saved_entries(_site_payload(carried_issues=[{"status": "OPEN"}], open_issue_count=1))
+    assert has_saved_entries(_site_payload(activity_count=1))
+    assert has_saved_entries(_site_payload(labour={"headcount": 2}))
+    assert has_saved_entries(_site_payload(materials=CEMENT_USED))
+    assert has_saved_entries(_site_payload(issues=[{"status": "OPEN"}]))
+    assert has_saved_entries(_site_payload(evidence_count=1))
