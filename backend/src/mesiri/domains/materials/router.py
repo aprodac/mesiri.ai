@@ -6,7 +6,7 @@ import json
 import uuid
 from collections.abc import Callable
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -543,7 +543,7 @@ async def set_unit_conversion(
     # from the reference tables (migration 0515), never saved.
     if reason := implausible(
         await load_reference(conn), material_name=material["name"],
-        from_code=str(unit["code"]).lower(), from_label=unit["display_name"],
+        from_code=str(unit["code"]).lower(), from_label=str(unit["code"]).lower(),  # "1 load", not "1 Loads"
         stock_code=str(stock["code"]).lower(), stock_label=stock["display_name"],
         one_unit_equals=body.one_unit_equals,
     ):
@@ -758,6 +758,9 @@ async def delete_unit_conversion(
 async def check_material_unit(
     material_id: uuid.UUID,
     unit_id: uuid.UUID,
+    one_unit_equals: Annotated[Decimal | None, Query(gt=0, description=(
+        "A size someone proposes (how many Stock Units one `unit_id` is): the answer then says whether it is "
+        "plausible (MK-02b), the same check saving it makes"))] = None,
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
@@ -782,6 +785,22 @@ async def check_material_unit(
     }
     if stock is None or str(stock["id"]) == str(unit["id"]):
         return {**answer, "fits": True, "one_unit_equals": "1"}
+    if one_unit_equals is not None:
+        # MK-02b: asked before the size is held (the assistant) or typed (the dashboard), not only refused at Save.
+        from mesiri.domains.materials.plausibility import assess, load_reference
+
+        verdict = assess(
+            await load_reference(conn), material_name=material["name"],
+            from_code=str(unit["code"]).lower(), from_label=str(unit["code"]).lower(),
+            stock_code=str(stock["code"]).lower(), stock_label=stock["display_name"], one_unit_equals=one_unit_equals,
+        )
+        answer["plausible"] = verdict is None
+        if verdict is not None:
+            answer["implausible"] = {
+                "reason": verdict.reason, "usual_low": f"{verdict.low.quantize(Decimal('0.01')).normalize():f}",
+                "usual_high": f"{verdict.high.quantize(Decimal('0.01')).normalize():f}", "usual_unit": verdict.unit,
+                "said_in_usual_unit": f"{verdict.value.quantize(Decimal('1')):f}",
+            }
     per = await _known_per_stock_unit(conn, auth_context.organization_id, material, unit, stock)
     one = f"{(Decimal(1) / per).quantize(Decimal('0.001')).normalize():f}" if per else None  # stored to 7 places
     return {**answer, "fits": per is not None, "one_unit_equals": one}
