@@ -518,6 +518,27 @@ Plan: [cost-control-plan.md](cost-control-plan.md). The client values a DPR alon
 
 ---
 
+## NXT — Next modules by role (7 Nov 2026)
+
+Plan: [next-modules-plan.md](next-modules-plan.md). What each role needs next, after Cost Control. Decisions D-N1..D-N4 in the plan; each row uses the plan's default until answered.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| NXT-01 | **Clients and contracts:** client per project (name, GSTIN, address, contact), contract value, retention %, mobilisation advance and recovery %, GST %, TDS % | M | Must | CC-02 | todo | — | Owner: "when does the client pay me?" Additive tables `clients`, `project_contracts` |
+| NXT-02 | **RA bills from the BOQ:** RA-01…, measured to date − previous bills at the client rate; retention, advance recovery, TDS, GST; draft → submitted → certified; PDF on the letterhead | L | Must | NXT-01, CC-04 | todo | — | D-N1 default: measured quantities, office may edit before submit. Reuse the PO document renderer (PRC-26) |
+| NXT-03 | **Payments received and receivables:** against a bill or on account; outstanding per client with age; "client paid 5 lakh for RA-03" on WhatsApp (v3 `ALLOWED` + SOP) | M | Must | NXT-02 | todo | — | Who sees it: D-N3 (needs Alan, permissions) |
+| NXT-04 | **Variations / extra items:** a line outside the BOQ, approved by the client, then billed like a BOQ line | S | Should | NXT-02 | todo | — | |
+| NXT-05 | **Subcontractors and work orders:** vendor kind subcontractor; work order with BOQ lines, agreed rate and quantity, site, retention, advance | M | Must | CC-02 | todo | — | D-N2 default: a vendor kind, no Workforce change |
+| NXT-06 | **Subcontract bill check:** bill quantity against what the site recorded on those BOQ lines, rate against the work order, over → flagged; from WhatsApp ("concrete team bill 15,000 for 40 m³") | M | Must | NXT-05, CC-04, CC-06 | todo | — | Extends CC-06, does not repeat it |
+| NXT-07 | **Subcontractor payments and ledger:** retention held, advances recovered, balance; on the supplier ledger | S | Must | NXT-06, CC-09 | todo | — | No second ledger |
+| NXT-08 | **Approvals inbox:** one "waiting for you" list (requests, expenses to confirm, subcontract bills, stock adjustments, RA bills to submit) on the dashboard and "what is waiting for me?" on WhatsApp; each row opens the existing screen | M | Must | — | todo | — | A read model over existing statuses; no new approval table; who decides stays each module's rule |
+| NXT-09 | **Wages and advances:** advance to a worker or labour contractor ("gave Ravi 500 advance"), weekly sheet (days × wage − advances = to pay), paid / unpaid | M | Must | — | blocked | — | Workforce / Payroll: needs Alan's approval (D-N4). Reuse the employee-advance money accounts |
+| NXT-10 | **Weekly lookahead per site:** the PM lists this week's tasks (BOQ lines or free text), work updates tick them, the evening review names what slipped | M | Should | — | todo | — | |
+| NXT-11 | **Equipment** on WhatsApp and the DPR | — | Should | WA-68 | blocked | — | Tracked as WA-68; listed here so the role view is complete. Not repeated |
+| NXT-12 | **Tally export:** expenses, supplier bills, payments and receipts as Tally vouchers (XML) for the CA; one-way first | M | Should | CC-09, NXT-03 | todo | — | |
+
+---
+
 ## LRN — Field guides (team learning, 7 Nov 2026)
 
 Plan and template: [docs/learning/README.md](../learning/README.md). Internal edition first, English first; Malayalam after.
