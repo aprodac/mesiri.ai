@@ -84,7 +84,7 @@ from .client import Actor, ApiClient, new_idempotency_key
 from .memory import DayMemory, tools_version
 from .receipts import preview_card
 from .record_links import record_link, with_links
-from .reply_guard import claims_cannot, without_ids
+from .reply_guard import without_ids
 from .tools import build_tools
 from .units import is_stock_unit_refusal, plain_refusal, unit_rows
 
@@ -1336,10 +1336,6 @@ def _without_stale_sends(entries: list[PendingWrite]) -> list[PendingWrite]:
     return entries
 
 
-#: PRC-32: how a remembered "could not / cannot" reply is read back.
-PASSING_NOTE = "(a problem at that moment, not an answer for now: for the same question, use the tools again) "
-
-
 def for_memory(sent: str, listed: list[str] | tuple[str, ...] = ()) -> str:
     """What the conversation keeps of a reply (WA-130): the words, and the drawn list only as a
     short note. Kept whole, the model saw the list's format in the history and wrote it again
@@ -1347,11 +1343,6 @@ def for_memory(sent: str, listed: list[str] | tuple[str, ...] = ()) -> str:
     then only its caption); they get the same note, else the conversation held request -> "tap Save" and the model
     copied that reply for the next request with no tool called (PRC-32, 7 Nov)."""
     sent = without_heard_echo(sent)  # [258]: the model never sees the "🎤 heard" line, so it never writes one
-    if claims_cannot(sent):
-        # PRC-32 (7 Nov: one real outage at 19:01, then "I could not ... right now. Please try again in a minute." seven
-        # times with no tool called, each copy feeding the next): a "could not / cannot" reply is kept marked as what
-        # it was, a problem of that moment, never the answer for now (as WA-157 marks an older version's "I can't").
-        sent = PASSING_NOTE + sent
     words = without_ready_block(sent)
     items: list[str] = []
     if words != sent.strip():

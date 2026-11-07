@@ -73,23 +73,28 @@ def test_guard_the_note_is_built_one_way_for_both() -> None:
 OUTAGE = "I could not get the purchase orders right now. Please try again in a minute."
 
 
-def test_a_could_not_reply_is_remembered_as_a_passing_problem() -> None:
-    kept = wa.for_memory(OUTAGE)
-    assert kept.startswith(wa.PASSING_NOTE) and kept.endswith(OUTAGE)
+def test_a_could_not_reply_is_read_back_as_a_passing_problem() -> None:
+    from agent_api.memory import PASSING_NOTE, _read
+
+    kept = _read("model", OUTAGE, None).text
+    assert kept.startswith(PASSING_NOTE) and kept.endswith(OUTAGE)
     issues = "I could not check for open issues right now, so please try again in a minute if it is still open."
-    assert wa.for_memory(issues).startswith(wa.PASSING_NOTE)
+    assert _read("model", issues, None).text.startswith(PASSING_NOTE)
+    assert _read("user", OUTAGE, None).text == OUTAGE  # only Mesiri's own replies
 
 
-async def test_the_conversation_reads_the_mark_back() -> None:
-    from mesiri_ai.fakes import FakeToolCallingProvider
+async def test_a_reply_stored_before_the_fix_is_marked_when_read() -> None:
+    from agent_api.memory import PASSING_NOTE
 
-    service, _ = _service(FakeToolCallingProvider([OUTAGE]), Cards(), [])
-    await service.handle(_message("What is still to come?"), CTX)
+    service, _ = _service(two_receipts_model(), Cards(), [])
+    await service._memory.remember(CTX, "What is still to come?", OUTAGE)  # stored as it was, unmarked
     (kept,) = await _remembered(service)
-    assert kept.startswith(wa.PASSING_NOTE)
+    assert kept.startswith(PASSING_NOTE) and kept.endswith(OUTAGE)
 
 
-def test_guard_ordinary_answers_and_other_peoples_could_not_are_kept_word_for_word() -> None:
+def test_guard_ordinary_answers_and_other_peoples_could_not_are_read_word_for_word() -> None:
+    from agent_api.memory import _read
+
     for said in ("asus aanu Green Villa-yile Steel order cheythathu.", "The supplier could not come today.",
                  "Could you send the bill photo?"):
-        assert wa.for_memory(said) == said
+        assert _read("model", said, None).text == said
