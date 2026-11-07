@@ -113,3 +113,22 @@ def test_site_tools_in_a_message_are_not_cut() -> None:
 
     for said in ("The tools were stolen from the store room.", "Cutting tool broke, new one needed."):
         assert without_internals(said) == said
+
+
+def test_every_app_that_serves_the_api_turns_a_bad_value_into_a_422() -> None:
+    """Guard (the second live re-test failed because v3's own API app lacked the handler): all three apps install it."""
+    from sqlalchemy.exc import DBAPIError
+
+    from agent_api.app import build_api_app
+    from mesiri_contracts.common.errors import MesiriError
+
+    def has_handler(app: FastAPI) -> bool:
+        return DBAPIError in app.exception_handlers and MesiriError in app.exception_handlers
+
+    from mesiri.http.app import create_app as backend_app
+    from runtime.dependencies import Settings
+    from runtime.lifecycle import create_app as assistant_app
+
+    assert has_handler(build_api_app(None))  # what v3 calls
+    assert has_handler(backend_app())
+    assert has_handler(assistant_app(Settings(verify_token="x", app_secret="x", access_token="x")))  # production

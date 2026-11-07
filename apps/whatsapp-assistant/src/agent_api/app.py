@@ -39,6 +39,10 @@ def build_api_app(database: Any) -> FastAPI:
     from mesiri.infrastructure.postgres.tenant import TenantResetMiddleware
 
     app = FastAPI(title="Mesiri API (agent)")
+    # [282]: the API app v3 actually calls (the worker builds its own); a bad value is a 422 here too.
+    from mesiri.http import db_errors
+
+    db_errors.install(app)
     app.add_middleware(TenantResetMiddleware)
     for module in API_ROUTERS:
         app.include_router(importlib.import_module(module).router)

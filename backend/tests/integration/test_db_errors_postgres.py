@@ -89,3 +89,22 @@ def test_a_made_up_id_is_explained() -> None:
     message = ("invalid input for query argument $2: '11116a12-47aa-436c-88be-7a5ea29cc1b92' "
                "(invalid UUID '11116a12-47aa-436c-88be-7a5ea29cc1b92': length must be between 32..36 characters)")
     assert "not a valid id" in (db_errors.invalid_value_detail(message) or "")
+
+
+async def test_the_api_app_v3_calls_answers_a_422_too() -> None:
+    """Live re-test, 7 Nov 19:12: still 'unavailable'. v3's worker calls its own API app
+    (agent_api.app.build_api_app), not the web app; the handler was missing there."""
+    from agent_api.app import build_api_app
+    from mesiri.bootstrap.settings import Settings
+    from mesiri.infrastructure.postgres.database import PostgresDatabase
+
+    database = PostgresDatabase(Settings().postgres)
+    await database.connect()
+    try:
+        app = build_api_app(database)
+        app.dependency_overrides[get_auth_context] = _app(handler=False).dependency_overrides[get_auth_context]
+        res = await _get(app, "/progress/issues", {"status": "open"})
+    finally:
+        await database.disconnect()
+    assert res.status_code == 422
+    assert "Did you mean 'OPEN'?" in res.json()["detail"]
