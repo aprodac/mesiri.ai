@@ -10,6 +10,7 @@ import uuid
 from decimal import Decimal
 
 from fastapi import Depends, FastAPI
+from pydantic import BaseModel
 from tests.agent_api.standin import ACTOR
 
 from agent_api.agent import _short, size_check
@@ -94,3 +95,55 @@ def test_an_api_reason_is_never_cut_mid_word() -> None:
     assert len(cut) <= 300 and cut.endswith(("?", ".", "…"))
     assert not cut.endswith("supplie")
     assert _short("short reason") == "short reason"
+
+
+# -- sibling (live, 7 Nov 22:24): the same size as an admin's answer to a waiting size request --------------------
+
+REQUEST = str(uuid.uuid4())
+
+
+class SizeAnswer(BaseModel):
+    one_unit_equals: Decimal
+
+
+def _requests_api() -> FastAPI:
+    app = _units_api()
+
+    @app.get("/materials/size-requests")
+    async def size_requests(jwt: dict = Depends(get_current_user)):
+        return {"items": [{"id": REQUEST, "material_id": M_SAND, "from_unit_id": LOAD, "material": "M Sand"}]}
+
+    @app.post("/materials/size-requests/{request_id}/answer")
+    async def answer(request_id: str, body: SizeAnswer, jwt: dict = Depends(get_current_user)):
+        return {"status": "answered"}
+
+    return app
+
+
+async def _answer(size: float, message: str):  # noqa: ANN202
+    from agent_api.agent import ApiAgent
+    from agent_api.tools import ALLOWED, CONFIRM_ARG, build_tools
+    from mesiri_ai.fakes import FakeToolCallingProvider
+
+    app = _requests_api()
+    tools = build_tools(app.openapi(), tuple(a for a in ALLOWED if a.name == "answer_size_request"))
+    model = FakeToolCallingProvider([
+        [("answer_size_request", {"request_id": REQUEST, "one_unit_equals": size, CONFIRM_ARG: f"1 load = {size:g} cum"})],
+        "ok",
+    ])
+    client = ApiClient(ACTOR, app=app)
+    try:
+        return await ApiAgent(model, tools).run(client, message)
+    finally:
+        await client.close()
+
+
+async def test_reported_an_admins_answer_of_sixty_cum_is_never_held() -> None:
+    turn = await _answer(60, "M sand oru load 60 cum aanu, athu set cheyyu")
+    assert turn.pending == []
+    assert "usually 50 to 600 cft" in turn.calls[0]["result"]["error"]
+
+
+async def test_guard_an_admins_usual_answer_is_held() -> None:
+    turn = await _answer(4.25, "M sand oru load 4.25 cum aanu")
+    assert [e.tool for e in turn.pending] == ["answer_size_request"]
