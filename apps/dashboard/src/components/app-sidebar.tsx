@@ -455,7 +455,7 @@ export function AppSidebar() {
     tone: group.tone,
     items: group.pages
       .filter((p) => (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)))
-      .map((p) => ({ title: p.title, url: p.url, soon: p.status === 'planned', phase: p.phase })),
+      .map((p) => ({ title: p.navTitle ?? p.title, url: p.url, soon: p.status === 'planned', phase: p.phase })),
   })
   const groupByKey = (key: string) => MODULE_GROUPS.find((g) => g.key === key)!
   const financeCategory = isModuleEnabled('finance') ? toCategory(groupByKey('finance')) : null

@@ -15,6 +15,10 @@ import {
   ShoppingCart,
   Truck,
   Activity,
+  CalendarRange,
+  ListTodo,
+  ShieldAlert,
+  Stamp,
   type LucideIcon,
 } from 'lucide-react'
 import type { ModuleKey } from './modules'
@@ -47,6 +51,10 @@ export interface ModulePage {
   tracker?: string
   /** Only these roles see it (the API refuses the rest). */
   roles?: readonly string[]
+  /** A shorter name for the sidebar, when the title is long. */
+  navTitle?: string
+  /** Also listed in this module's menu, but its home is another module (breadcrumb, counts). */
+  shortcut?: boolean
   /** Built pages that already hold part of this, linked from the placeholder. */
   related?: { title: string; url: string }[]
 }
@@ -138,10 +146,14 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     about: 'From "the site needs it" to "the supplier is paid", each step checked against the last.',
     pages: [
       { title: 'Purchase orders', url: '/procurement/orders', status: 'planned', phase: 'V1', about: 'Orders to suppliers, with what is still to arrive and duplicate warnings.', example: 'PO-0042 to Malabar: 200 bags at ₹400, 150 delivered, 50 pending.', tracker: 'PRC-06..10', related: [{ title: 'Movements', url: '/materials?view=movements' }] },
+      { title: 'Goods received (GRN)', navTitle: 'GRN', url: '/procurement/grn', status: 'planned', phase: 'V1', about: 'Each delivery received against its order: GRN number, challan photo, quantity accepted and rejected, who received it.', example: 'GRN-0117: 150 of 200 bags against PO-0042, 3 torn bags rejected, challan photo attached, received by Arun.', tracker: 'PRC-08', related: [{ title: 'Deliveries today (Movements)', url: '/materials?view=movements' }] },
       { title: 'Pending deliveries', url: '/procurement/pending', status: 'planned', phase: 'V1', about: 'What is ordered but has not arrived, and which orders are late.', example: '3 orders past their date: 50 bags cement from Malabar, 2 days late.', tracker: 'PRC-08' },
       { title: 'Bills', url: '/procurement/bills', status: 'planned', phase: 'V1', about: 'Supplier bills matched to deliveries; material delivered but not billed.', example: 'Bill says 200 bags at ₹420, delivery says 150 at ₹400: flagged.', tracker: 'PRC-11', roles: MONEY_ROLES },
       { title: 'Rates', url: '/procurement/rates', status: 'planned', phase: 'V1', about: 'What each item cost, from which supplier, over time.', example: 'Cement ₹14 more than last time at Malabar.', tracker: 'PRC-14, PRC-16', roles: MONEY_ROLES },
       { title: 'Quotations', url: '/procurement/quotations', status: 'planned', phase: 'V1.5', about: 'Ask several suppliers, compare side by side, pick one.', example: 'Three shops quote for TMT 12 mm.', roles: MONEY_ROLES },
+      { title: 'Suppliers', url: '/finance/vendors', status: 'built', phase: 'V1', shortcut: true, about: 'Suppliers with phone and GSTIN.', example: 'Malabar Hardware · GSTIN 32AAAPM…' },
+      { title: 'Payables', url: '/finance/payables', status: 'planned', phase: 'V1', shortcut: true, about: 'What you owe each supplier: deliveries, payments, advances, balance.', example: 'Malabar: ₹40,000 + ₹36,000 delivered − ₹50,000 paid = ₹26,000 due.', tracker: 'CC-09, CC-10', roles: MONEY_ROLES },
+      { title: 'Reports', url: '/procurement/reports', status: 'planned', phase: 'V1', about: 'Spend by supplier, category and project; late deliveries; rate changes.', example: 'October: ₹28 L bought, 41% from Malabar; 6 late deliveries; cement up 3.5%.', tracker: 'PRC-19', roles: MONEY_ROLES, related: [{ title: 'Movements', url: '/materials?view=movements' }] },
       { title: 'Returns', url: '/procurement/returns', status: 'planned', phase: 'Later', about: 'Material sent back, and what the supplier now owes you (debit note).', example: 'Bent steel returned: Kerala Steels owes ₹8,400.', roles: MONEY_ROLES },
       { title: 'Rate contracts', url: '/procurement/contracts', status: 'planned', phase: 'Later', about: 'Yearly agreed rates with a supplier, used on every order automatically.', example: 'Malabar: cement at ₹395 a bag until March.', roles: MONEY_ROLES },
     ],
@@ -219,7 +231,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
 ]
 
 /** Pages with their module, flat. */
-export const ALL_PAGES = MODULE_GROUPS.flatMap((group) => group.pages.map((page) => ({ group, page })))
+export const ALL_PAGES = MODULE_GROUPS.flatMap((group) => group.pages.filter((page) => !page.shortcut).map((page) => ({ group, page })))
 
 /** Planned pages own a route each; the placeholder page reads them from here. */
 export const PLANNED_PAGES = ALL_PAGES.filter((p) => p.page.status === 'planned')
@@ -248,5 +260,9 @@ export const PAGE_ICONS: Record<string, LucideIcon> = {
   '/site-log': Activity,
   '/analytics': BarChart3,
   '/site/quality': ClipboardCheck,
+  '/reports/period': CalendarRange,
+  '/site/approvals': Stamp,
+  '/site/safety': ShieldAlert,
+  '/site/snags': ListTodo,
   '/boq': Calculator,
 }
