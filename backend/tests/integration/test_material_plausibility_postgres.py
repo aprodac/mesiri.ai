@@ -115,3 +115,21 @@ async def test_twenty_bars_a_ton_is_refused_for_a_sized_bar(conn) -> None:
         await _set(conn, auth, tmt12, "nos", "0.05")
     assert "10.67 kg" in refused.value.detail
     assert (await _set(conn, auth, tmt12, "nos", "0.0107"))["message"].startswith("Saved for the company")
+
+
+async def test_unit_check_says_before_save_whether_a_proposed_size_is_plausible(conn) -> None:
+    """MK-02b: the read-only check the assistant (and the dashboard) asks before a size is held."""
+    created, auth = await _company(conn, "9876500094")
+    m_sand = await _material(conn, created.organization_id, "M Sand", "cum")
+    load = await _id(conn, "SELECT id FROM units_of_measure WHERE code = 'load'")
+    bad = await materials_router.check_material_unit(m_sand, load, one_unit_equals=Decimal(60), auth_context=auth,
+                                                     conn=conn)
+    assert bad["plausible"] is False
+    assert bad["implausible"]["said_in_usual_unit"] == "2119"
+    assert (bad["implausible"]["usual_low"], bad["implausible"]["usual_high"]) == ("50", "600")
+    good = await materials_router.check_material_unit(m_sand, load, one_unit_equals=Decimal("4.25"),
+                                                      auth_context=auth, conn=conn)
+    assert good["plausible"] is True and "implausible" not in good
+    plain = await materials_router.check_material_unit(m_sand, load, one_unit_equals=None, auth_context=auth,
+                                                       conn=conn)
+    assert "plausible" not in plain  # guard: without a size the answer is as before

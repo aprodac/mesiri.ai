@@ -1484,8 +1484,18 @@ def _detail(body: Any) -> str:
             detail = detail.get("message") or detail
         if isinstance(detail, list):  # FastAPI validation errors
             detail = "; ".join(str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail)
-        return str(detail)[:200]
-    return str(body)[:200]
+        return _short(str(detail))
+    return _short(str(body))
+
+
+def _short(text: str, limit: int = 300) -> str:
+    """MK-02b (7 Nov: a size refusal ended "as the bill or the supplie"): cut at the last sentence, else word, that
+    fits; never in the middle of a word."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+    return cut[: end + 1] if end > limit // 2 else cut[: cut.rfind(" ")].rstrip(",;:") + "…"
 
 
 async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "unit_id") -> str:
@@ -1764,7 +1774,8 @@ async def size_check(client: ApiClient, material_id: str, from_unit_id: str, siz
     if not (is_uuid(material_id) and is_uuid(from_unit_id)):
         return {}
     try:
-        response = await client.call("GET", f"/materials/{material_id}/unit-check", params={"unit_id": from_unit_id})
+        response = await client.call("GET", f"/materials/{material_id}/unit-check",
+                                     params={"unit_id": from_unit_id, "one_unit_equals": str(size)})
     except Exception:  # noqa: BLE001
         return {}
     found = response.body if response.ok and isinstance(response.body, dict) else {}
@@ -1776,6 +1787,16 @@ async def size_check(client: ApiClient, material_id: str, from_unit_id: str, siz
     if built_in_per_stock_unit(str(found.get("unit") or ""), str(found.get("stock_unit") or ""), str(material or "")):
         return {"error": (f"The code already converts {unit} to {stock} for {material} (a standard measure). Nothing "
                           f"is prepared: never set or ask this size. Prepare the line in {unit}, as they said.")}
+    if isinstance(bad := found.get("implausible"), dict):
+        # MK-02b (live, 7 Nov 19:57: "1 load M sand = 60 cum" was put on the card, then refused at Save, cut off, in
+        # English, with "send it again"). The API's reference says it cannot be right: never held; ONE question now.
+        said_unit = str(found.get("unit") or unit)
+        return {"error": (
+            f"Nothing is prepared: {bad.get('reason')} Tell them in ONE short message, in their language: 1 {said_unit} "
+            f"= {_amount(size)} {stock} would be {bad.get('said_in_usual_unit')} {bad.get('usual_unit')}, and 1 "
+            f"{said_unit} of {material} is usually {bad.get('usual_low')} to {bad.get('usual_high')} "
+            f"{bad.get('usual_unit')}; ask how much 1 {said_unit} is, as the bill or the supplier says. Their own line "
+            "(if any) stays as it is: never ask them to send anything again.")}
     if str(found.get("stock_unit") or "").lower() in COUNT_UNITS and size < 1:
         return {"error": (f"1 {unit} of {material} cannot be less than 1 {stock}: the size is the wrong way round. "
                           f"Nothing is prepared. Ask again, in their language: how many {stock} are in 1 {unit}?")}

@@ -98,7 +98,19 @@ def _num(value: Decimal) -> str:
     return f"{value.quantize(step).normalize():f}"
 
 
-def implausible(
+@dataclass(frozen=True)
+class Verdict:
+    """Why a size cannot be right, and what is usual: ``reason`` in plain words; ``low``..``high`` ``unit`` the usual
+    size (for a sized bar, the expected weight both ways of its tolerance); ``value`` the size said, in that unit."""
+
+    reason: str
+    low: Decimal
+    high: Decimal
+    unit: str
+    value: Decimal
+
+
+def assess(
     reference: Reference,
     *,
     material_name: str,
@@ -107,9 +119,9 @@ def implausible(
     stock_code: str,
     stock_label: str,
     one_unit_equals: Decimal,
-) -> str | None:
-    """Why "1 ``from`` of the material = ``one_unit_equals`` ``stock``" cannot be right, in plain words with the usual
-    size and the question to ask; None when it is possible or the reference has nothing to say."""
+) -> Verdict | None:
+    """The verdict on "1 ``from`` of the material = ``one_unit_equals`` ``stock``"; None when it is possible or the
+    reference has nothing to say."""
     kind = kind_of(material_name, reference.kinds)
     if kind is None:
         return None
@@ -119,14 +131,18 @@ def implausible(
     to_kg = factor(reference.facts, stock_code, "kg")
     if rule.get("rule") == "round_bar" and size and to_kg is not None and (kind.code, from_code) in reference.ranges:
         diameter = Decimal(size.group(1))
-        expected = diameter * diameter / Decimal(str(rule["divisor"])) * Decimal(str(rule["length_m"]))
+        length = Decimal(str(rule["length_m"]))
+        expected = diameter * diameter / Decimal(str(rule["divisor"])) * length
         tolerance = Decimal(str(rule.get("tolerance", "0.1")))
         weight = one_unit_equals * to_kg
-        if abs(weight - expected) > expected * tolerance:
-            return (f"{said} looks wrong: that is {_num(weight)} kg a piece, and a {diameter.normalize():f} mm bar of "
-                    f"{_num(Decimal(str(rule['length_m'])))} m weighs about {_num(expected)} kg. How much does one piece "
-                    "weigh, as the bill says?")
-        return None
+        if abs(weight - expected) <= expected * tolerance:
+            return None
+        return Verdict(
+            reason=(f"{said} looks wrong: that is {_num(weight)} kg a piece, and a {diameter.normalize():f} mm bar of "
+                    f"{_num(length)} m weighs about {_num(expected)} kg. How much does one piece weigh, as the bill "
+                    "says?"),
+            low=expected * (1 - tolerance), high=expected * (1 + tolerance), unit="kg", value=weight,
+        )
     limits = reference.ranges.get((kind.code, from_code))
     if limits is None:
         return None
@@ -136,6 +152,15 @@ def implausible(
     value = one_unit_equals * to_range_unit
     if limits.low <= value <= limits.high:
         return None
-    return (f"{said} looks wrong: that is {_num(value)} {limits.unit}, and 1 {from_label} of {kind.name.split(' (')[0]} "
-            f"is usually {_num(limits.low)} to {_num(limits.high)} {limits.unit}. How much is 1 {from_label}, as the "
-            "bill or the supplier says?")
+    return Verdict(
+        reason=(f"{said} looks wrong: that is {_num(value)} {limits.unit}, and 1 {from_label} of "
+                f"{kind.name.split(' (')[0]} is usually {_num(limits.low)} to {_num(limits.high)} {limits.unit}. How "
+                f"much is 1 {from_label}, as the bill or the supplier says?"),
+        low=limits.low, high=limits.high, unit=limits.unit, value=value,
+    )
+
+
+def implausible(reference: Reference, **said: Any) -> str | None:
+    """``assess``'s reason only (the size route's 422)."""
+    verdict = assess(reference, **said)
+    return verdict.reason if verdict else None
