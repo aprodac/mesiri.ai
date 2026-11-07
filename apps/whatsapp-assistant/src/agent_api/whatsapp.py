@@ -80,7 +80,7 @@ from .agent import (
     size_question,
 )
 from .app import build_api_app
-from .client import Actor, ApiClient
+from .client import Actor, ApiClient, new_idempotency_key
 from .memory import DayMemory, tools_version
 from .receipts import preview_card
 from .record_links import record_link, with_links
@@ -1081,6 +1081,8 @@ class ApiWhatsApp:
             text = _saved_text(results, state.get("language"), today=_today(ctx), admin=_may_set_sizes(ctx))
         if dropped:
             text += "\n\n" + _in(state.get("language"), "api.refused_dropped", REFUSED_DROPPED)
+        if any(confirm_field(r) for r in results):
+            text += "\n\n" + _in(state.get("language"), "api.extra_ask", EXTRA_ASK)  # PRC-32: Save = it is extra
         sizes = [r for r in results if not r.ok and is_stock_unit_refusal(_detail(r.body))]
         if left and len(sizes) == len(left):
             # WA-165 (3 Nov, Paraclette: Save tapped twice, refused twice): Save cannot work until they say the size,
@@ -1602,6 +1604,13 @@ def _refused_to_keep(results: list[WriteResult], state: dict) -> tuple[list[Pend
     for r in results:
         if r.ok or r.body == {"detail": UNIT_UNSETTLED}:
             continue
+        if field := confirm_field(r):
+            # PRC-32 (7 Nov 22:51: an order for cement a site had already asked for was refused at Save and dropped,
+            # "send it again"): the API's duplicate / more-than-ordered check is a question, not an error. The line
+            # stays, marked confirmed (a new key: the refused one is spent), so Save records it as extra.
+            keep.append(dataclasses.replace(r.pending, body={**r.pending.body, field: True},
+                                            idempotency_key=new_idempotency_key()))
+            continue
         key = r.pending.idempotency_key
         transient = r.status >= 500 or r.status == 424
         if is_stock_unit_refusal(_detail(r.body)) or (transient and key not in once):
@@ -1611,6 +1620,20 @@ def _refused_to_keep(results: list[WriteResult], state: dict) -> tuple[list[Pend
             dropped = True
     state["retried"] = sorted(once)[-20:] if keep else []
     return keep, dropped
+
+
+#: PRC-32: the API's 409 codes that ask whether something is extra, and the field that says it is.
+CONFIRM_BY_CODE = {"possible_duplicate": "confirm_duplicate", "more_than_ordered": "confirm_extra"}
+EXTRA_ASK = "If it is extra, tap *Save* and it is recorded anyway; if not, tap *Cancel*."
+
+
+def confirm_field(result: WriteResult) -> str:
+    """PRC-32: for a line the API refused as a possible duplicate or more than ordered, the body field that confirms
+    it is extra (never already set: refused once confirmed, it is a real refusal); "" otherwise."""
+    detail = result.body.get("detail") if isinstance(result.body, dict) else None
+    code = detail.get("code") if isinstance(detail, dict) else None
+    field = CONFIRM_BY_CODE.get(str(code)) if result.status == 409 else None
+    return field if field and not result.pending.body.get(field) else ""
 
 
 #: WEB-71: the line before the invite, and the invite to forward to someone added by number.

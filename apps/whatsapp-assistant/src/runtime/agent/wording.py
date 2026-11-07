@@ -554,6 +554,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "इन्हें दर्ज करने के लिए *Save* दबाइए।",
         "hinglish": "Inhe record karne ke liye *Save* dabaiye.",
     },
+    "api.extra_ask": {
+        "english": "If it is extra, tap *Save* and it is recorded anyway; if not, tap *Cancel*.",
+        "manglish": "Ithu extra aanenkil *Save* amarthuka, record aakum; allenkil *Cancel* amarthuka.",
+        "malayalam": "ഇത് എക്സ്ട്രാ ആണെങ്കിൽ *Save* അമർത്തുക, രേഖപ്പെടുത്തും; അല്ലെങ്കിൽ *Cancel* അമർത്തുക.",
+        "hindi": "अगर यह अतिरिक्त है तो *Save* दबाइए, दर्ज हो जाएगा; नहीं तो *Cancel* दबाइए।",
+        "hinglish": "Agar yeh extra hai to *Save* dabaiye, record ho jayega; nahi to *Cancel* dabaiye.",
+    },
     "api.refused_dropped": {
         "english": "I've taken the lines that could not be saved off the list. Send them again with what's missing.",
         "manglish": "Save aavaatha lines list-il ninnu maatti. Illaathathu koode cherthu onnu koodi ayakkoo.",
