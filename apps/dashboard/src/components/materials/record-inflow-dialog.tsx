@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { ShieldAlert, CheckCircle2, Truck } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,9 @@ import {
   type InflowReason,
   type InflowResult,
 } from '@/lib/materials'
-import { asMoreThanOrdered, setDeliveryOrder } from '@/lib/orders'
+import { asMoreThanOrdered, dueWords, fetchOrders, setDeliveryOrder, type PurchaseOrder } from '@/lib/orders'
+import { ReceiveOrderDialog } from '@/components/orders/order-detail'
+import { CategoryTile } from '@/components/requests/parts'
 import type { AppScope } from '@/lib/scope-types'
 import { fetchVendorsApi } from '@/lib/api'
 import { Combobox } from '@/components/ui/combobox'
@@ -39,14 +41,18 @@ interface RecordInflowDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   scope: AppScope
+  /** WEB-77: Materials > Stock's item panel opens it for one site and item. */
+  prefill?: { project_id: string; site_id: string; material_id: string } | null
 }
 
-export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDialogProps) {
+export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: RecordInflowDialogProps) {
   const { me } = useAuth()
   const queryClient = useQueryClient()
 
   const scopedProjectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : ''
   const scopedSiteId = scope.mode === 'site' ? scope.siteId : ''
+  // WEB-79: a delivery on an open order is received on the order ("Material came": stock, the order, its GRN).
+  const [receiving, setReceiving] = React.useState<{ order: PurchaseOrder; lineId: string } | null>(null)
 
   const [projectId, setProjectId] = React.useState(scopedProjectId)
   const [siteId, setSiteId] = React.useState(scopedSiteId)
@@ -91,9 +97,9 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
 
   React.useEffect(() => {
     if (open) {
-      setProjectId(scopedProjectId)
-      setSiteId(scopedSiteId)
-      setMaterialId('')
+      setProjectId(prefill?.project_id || scopedProjectId)
+      setSiteId(prefill?.site_id || scopedSiteId)
+      setMaterialId(prefill?.material_id ?? '')
       setQuantity('')
       setReason('RECEIVED')
       setOccurredDate(todayIso())
@@ -114,16 +120,33 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
   const { data: projects = [] } = useQuery({
     queryKey: ['scope-projects'],
     queryFn: fetchProjects,
-    enabled: open && !scopedProjectId,
+    enabled: open && (!scopedProjectId || !!prefill),
     staleTime: 60_000,
   })
 
   const { data: sites = [] } = useQuery({
     queryKey: ['scope-sites', projectId],
     queryFn: () => fetchSites(projectId),
-    enabled: open && !!projectId && !scopedSiteId,
+    enabled: open && !!projectId && (!scopedSiteId || !!prefill),
     staleTime: 60_000,
   })
+
+  // WEB-79: what is still to come on open orders at the chosen site (the chosen item's lines only, once picked),
+  // offered before the form so a delivery on an order is received on it instead of saved loose.
+  const { data: siteOrders } = useQuery({
+    queryKey: ['procurement', 'orders', projectId || null, siteId || null],
+    queryFn: () => fetchOrders({ project_id: projectId || null, site_id: siteId || null }),
+    enabled: open && !!siteId,
+    retry: false,
+    staleTime: 30_000,
+  })
+  const coming = React.useMemo(
+    () =>
+      (siteOrders?.items ?? [])
+        .filter((o) => (o.status === 'open' || o.status === 'part') && o.site_id === siteId)
+        .flatMap((o) => o.lines.filter((l) => Number(l.pending) > 0 && (!materialId || l.material_id === materialId)).map((l) => ({ order: o, line: l }))),
+    [siteOrders, siteId, materialId],
+  )
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', ''],
@@ -241,6 +264,8 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
   }
 
   return (
+    <>
+    <ReceiveOrderDialog order={receiving?.order ?? null} lineId={receiving?.lineId} open={!!receiving} onClose={() => setReceiving(null)} />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
@@ -289,7 +314,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label>Project</Label>
-              {scopedProjectId ? (
+              {scopedProjectId && !prefill ? (
                 <Input value={scope.mode !== 'portfolio' ? scope.projectName : ''} disabled />
               ) : (
                 <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSiteId('') }}>
@@ -309,7 +334,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
 
             <div className="grid gap-1.5">
               <Label>Site</Label>
-              {scopedSiteId ? (
+              {scopedSiteId && !prefill ? (
                 <Input value={scope.mode === 'site' ? scope.siteName : ''} disabled />
               ) : (
                 <Select value={siteId} onValueChange={setSiteId} disabled={!projectId}>
@@ -327,6 +352,35 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               )}
             </div>
           </div>
+
+          {!success && reason === 'RECEIVED' && coming.length > 0 && (
+            <div className="flex flex-col gap-1.5 rounded-lg border border-blue-200 bg-blue-50/60 p-2.5 dark:border-blue-900 dark:bg-blue-950/40">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-blue-950 dark:text-blue-100">
+                <Truck className="size-3.5" /> On order for this site: is it one of these?
+              </span>
+              {coming.slice(0, 6).map(({ order, line }) => (
+                <button
+                  key={line.id}
+                  type="button"
+                  onClick={() => {
+                    setReceiving({ order, lineId: line.id })
+                    onOpenChange(false)
+                  }}
+                  className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-left transition hover:border-blue-400"
+                >
+                  <CategoryTile mainCategory={line.main_category} size="sm" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{line.material}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {order.ref} · {order.vendor_name} · {dueWords(order)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold tabular-nums">{Number(line.pending)} {line.unit} to come</span>
+                </button>
+              ))}
+              <span className="text-[11px] text-muted-foreground">Not on an order? Fill in the form below.</span>
+            </div>
+          )}
 
           <div className="grid gap-1.5">
             <Label>Material</Label>
@@ -503,5 +557,6 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
         </form>
       </DialogContent>
     </Dialog>
+    </>
   )
 }
