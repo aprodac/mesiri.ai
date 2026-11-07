@@ -209,8 +209,9 @@ async def test_office_decides_and_the_engineer_is_told(client, world, test_engin
             "SELECT recipient_user_id, payload->>'message' FROM notifications WHERE rule_key = "
             "'material_request_update' ORDER BY created_at"))).all()
     assert [n[0] for n in notes] == [w["arun"]["id"], w["arun"]["id"]]
-    assert notes[0][1].startswith("🛒 Ordered by Meera: 100 bags Cement OPC 53 (Malabar Hardware)")
-    assert notes[1][1].startswith("✅ Marked received")
+    # In Arun's language: none chosen is Manglish (WA-207).
+    assert notes[0][1].startswith("🛒 Order cheythu (Meera): 100 bags Cement OPC 53 (Malabar Hardware)")
+    assert notes[1][1].startswith("✅ Kitti ennu mark cheythu (Meera)")
 
 
 async def test_engineer_cancels_own_waiting_request_but_not_someone_elses(client, world):

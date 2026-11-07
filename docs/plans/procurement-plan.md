@@ -212,6 +212,37 @@ Fixes 4e A1–A5, B6, B9 and C13. No migration (reads `purchase_order_lines.requ
   delivery from a closed order (refused: its deliveries stay); notifications are de-duplicated per request and status,
   so a request that waits again a second time for another reason is not told twice.
 
+### 4g. Both ways: through Mesiri, or done outside and told quickly (decided 7 Nov 2026)
+
+Some companies will run every step through Mesiri; others will phone the vendor, take quotes on paper and only tell
+Mesiri afterwards; most will mix the two. Both are first-class ([DECISIONS.md](../DECISIONS.md), 7 Nov). The rules for
+every procurement item from here on:
+
+1. **Every step is optional.** No step needs the one before it in Mesiri: an order without a request, a delivery
+   without an order, a bill without a delivery. Mesiri links them when it can, offers when unsure, never refuses.
+2. **Done outside = one tap or one line.** "Ordered 200 cement from Malabar by phone" is one WhatsApp line or one
+   button, not the full order form. Rate, date, supplier and their own reference are filled when said, never required
+   beyond what makes the record true.
+3. **Their numbers count.** A paper PO, a quote or a Tally voucher has its own number; it is kept beside Mesiri's
+   (PO-0003) and searchable, never replaced.
+4. **Mesiri never pretends.** Sending the PO to the supplier (PRC-26) is a choice per order; an order recorded after a
+   phone call is never shown as "sent by Mesiri".
+5. **Nothing waits on Mesiri.** A request is never stuck because its order was handled outside: there is always a
+   one-step way to say "bought outside / came / not needed".
+
+**Checked against what is built (7 Nov):**
+
+| Step | Through Mesiri | Done outside: how fast is telling Mesiri? |
+|---|---|---|
+| Request | Dashboard, WhatsApp | Not needed: orders and deliveries work without one ✓ |
+| Quote | Not built | Nothing depends on it ✓ (any quote feature must stay optional) |
+| Order | Order form, from a request | Request › "Ordered outside Mesiri? Mark it ordered" (one tap + note) ✓. **Gap:** no place for their own PO / quote number; no WhatsApp line for "ordered X from Y" (office) until PRC-09 |
+| Sending the PO | Not built (PRC-26) | Mesiri never claims it was sent ✓; PRC-26 must be optional per order |
+| Delivery | "Material came" on the order | Any delivery in Materials or on WhatsApp, no order needed; fills its order when plain (PRC-23) ✓ |
+| More than ordered | Asked | Never blocks a delivery recorded without an order ✓ |
+| Request covered by an order, rest bought outside | — | **Two steps today:** close the order short, then mark the request. Make it one ("Rest bought outside") — PRC-30 |
+| Bill | Bills in Materials | Unbilled lists (PRC-11) must accept "bill handled outside" |
+
 ### 4e. Gaps found in the request ↔ order review (7 Nov 2026)
 
 Checked against the code after PRC-22 and PRC-06/07/08/10 went live. Each has a tracker row (PRC-23 to PRC-29) or

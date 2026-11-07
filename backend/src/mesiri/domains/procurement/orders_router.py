@@ -538,6 +538,7 @@ async def requests_follow(conn: AsyncConnection, auth: AuthorizationContext, req
             continue
         await request_store.set_status(conn, rid, target, auth.user_id, message)
         try:
-            await _tell_requester(conn, auth, await one_request(conn, auth, rid), target, message)
+            await _tell_requester(conn, auth, await one_request(conn, auth, rid), target, message,
+                                  wording="received" if target == "done" else None)
         except HTTPException:
             continue  # the request is outside what this person can see: it still follows the order

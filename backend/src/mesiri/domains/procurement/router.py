@@ -302,21 +302,29 @@ async def _locked(conn: AsyncConnection, auth: AuthorizationContext, request_id:
 
 
 async def _tell_requester(conn: AsyncConnection, auth: AuthorizationContext, item: dict, status: str,
-                          note: str | None) -> None:
-    """The person who asked hears what happened, on WhatsApp (the notification queue; once per change)."""
+                          note: str | None, *, wording: str | None = None) -> None:
+    """The person who asked hears what happened, on WhatsApp (the notification queue), in their reply language.
+    Once per change: the same status reached again later (ordered, closed short, ordered again the same day) is a new
+    change and is told again. ``wording``: another line for the same status (``received`` for one done by its orders)."""
     if not item["requested_by"] or item["requested_by"] == str(auth.user_id):
         return
+    from sqlalchemy import text
+
     from mesiri.infrastructure.postgres.repositories.notifications import (
         PostgresNotificationRepository,
     )
 
     try:
         async with conn.begin_nested():
+            language = (await conn.execute(text("SELECT reply_language FROM users WHERE id = :id"),
+                                           {"id": uuid.UUID(item["requested_by"])})).scalar()
+            changed_at = item.get("done_at") if status == "done" else item.get("decided_at")
             await PostgresNotificationRepository(conn).claim(
                 organization_id=auth.organization_id, rule_key="material_request_update",
-                subject_id=f"{item['id']}:{status}", occurred_on=datetime.date.today(),
+                subject_id=f"{item['id']}:{status}:{changed_at or ''}", occurred_on=datetime.date.today(),
                 recipient_user_id=uuid.UUID(item["requested_by"]),
                 project_id=uuid.UUID(item["project_id"]), site_id=uuid.UUID(item["site_id"]),
-                payload={"message": store.requester_message(item, status, note, item.get("decided_by_name"))})
+                payload={"message": store.requester_message(item, wording or status, note,
+                                                            item.get("decided_by_name"), language)})
     except Exception:  # noqa: BLE001 -- the decision is saved; the note is a courtesy
         return

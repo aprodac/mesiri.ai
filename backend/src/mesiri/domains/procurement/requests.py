@@ -320,17 +320,52 @@ def open_duplicates(all_requests: list[dict], project_id: uuid.UUID, material_id
     return found
 
 
-def requester_message(item: dict[str, Any], status: str, note: str | None, by: str | None) -> str:
-    """What the person who asked is told on WhatsApp when the office acts (plain words, one line)."""
+#: What the person who asked is told, in their reply language (users.reply_language; none chosen: Manglish, WA-207).
+#: ``{who}`` is " by Meera" in English, " (Meera)" otherwise; ``{tail}`` is " (note)".
+_TOLD: dict[str, dict[str, str]] = {
+    "ordered": {
+        "english": "🛒 Ordered{who}: {what}{tail}. {ref}",
+        "manglish": "🛒 Order cheythu{who}: {what}{tail}. {ref}",
+        "malayalam": "🛒 ഓർഡർ ചെയ്തു{who}: {what}{tail}. {ref}",
+    },
+    "sent": {
+        "english": "🚚 Being sent from another site{who}: {what}{tail}. {ref}",
+        "manglish": "🚚 Vere site-il ninnu ayakkunnu{who}: {what}{tail}. {ref}",
+        "malayalam": "🚚 മറ്റൊരു സൈറ്റിൽ നിന്ന് അയക്കുന്നു{who}: {what}{tail}. {ref}",
+    },
+    "rejected": {
+        "english": "✖️ Not ordered{who}: {what}. Reason: {note}. {ref}",
+        "manglish": "✖️ Order cheyyunnilla{who}: {what}. Kaaranam: {note}. {ref}",
+        "malayalam": "✖️ ഓർഡർ ചെയ്യുന്നില്ല{who}: {what}. കാരണം: {note}. {ref}",
+    },
+    # Closed by hand in the office.
+    "done": {
+        "english": "✅ Marked received{who}: {what}. {ref}",
+        "manglish": "✅ Kitti ennu mark cheythu{who}: {what}. {ref}",
+        "malayalam": "✅ കിട്ടി എന്ന് മാർക്ക് ചെയ്തു{who}: {what}. {ref}",
+    },
+    # PRC-23: everything ordered for it came (recorded against its orders).
+    "received": {
+        "english": "✅ Received: {what}{tail}. {ref}",
+        "manglish": "✅ Ellam vannu: {what}{tail}. {ref}",
+        "malayalam": "✅ എല്ലാം വന്നു: {what}{tail}. {ref}",
+    },
+    # PRC-23: its order was cancelled, or closed with part of it still missing: the office has it to order again.
+    "waiting": {
+        "english": "↩️ Not coming yet: {what}{tail}. Waiting to be ordered again. {ref}",
+        "manglish": "↩️ Ippo varilla: {what}{tail}. Veendum order cheyyaan kaathirikkunnu. {ref}",
+        "malayalam": "↩️ ഇപ്പോൾ വരില്ല: {what}{tail}. വീണ്ടും ഓർഡർ ചെയ്യാൻ കാത്തിരിക്കുന്നു. {ref}",
+    },
+}
+
+
+def requester_message(item: dict[str, Any], status: str, note: str | None, by: str | None,
+                      language: str | None = None) -> str:
+    """What the person who asked is told on WhatsApp when the request moves (plain words, one line), in their
+    language. ``status``: ordered, sent, rejected, done (by hand), received (its orders came), waiting."""
+    lang = language if language in ("english", "manglish", "malayalam") else (
+        "english" if language in ("hindi", "hinglish") else "manglish")
     what = ", ".join(f"{line['quantity']} {line['unit']} {line['material']}" for line in item["lines"])
-    who = f" by {by}" if by else ""
+    who = "" if not by else (f" by {by}" if lang == "english" else f" ({by})")
     tail = f" ({note})" if note else ""
-    words = {
-        "ordered": f"🛒 Ordered{who}: {what}{tail}. {item['ref']}",
-        "sent": f"🚚 Being sent from another site{who}: {what}{tail}. {item['ref']}",
-        "rejected": f"✖️ Not ordered{who}: {what}. Reason: {note}. {item['ref']}",
-        "done": f"✅ Marked received: {what}. {item['ref']}",
-        # PRC-23: its order was cancelled, or closed with part of it still missing: the office has it to order again.
-        "waiting": f"↩️ Not coming yet: {what}{tail}. Waiting to be ordered again. {item['ref']}",
-    }
-    return words[status]
+    return _TOLD[status][lang].format(who=who, what=what, tail=tail, note=note or "", ref=item["ref"])

@@ -187,6 +187,7 @@ async def test_the_same_material_on_an_open_order_is_flagged(client, world):
 
 async def test_request_to_order_to_delivery_closes_the_loop(client, world, test_engine):
     w = world
+    await _exec(test_engine, "UPDATE users SET reply_language = 'english' WHERE id = :id", id=w["arun"]["id"])
     req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "200"), headers=w["arun"]["h"])).json()
     body = _order(w, w["cement"], "200", rate="400")
     body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
@@ -216,7 +217,7 @@ async def test_request_to_order_to_delivery_closes_the_loop(client, world, test_
         told = [r[0] for r in (await conn.execute(sa.text(
             "SELECT payload->>'message' FROM notifications WHERE rule_key = 'material_request_update' ORDER BY created_at"))).all()]
     assert told[0].startswith("🛒 Ordered by Meera: 200 bags Cement OPC 53 (PO-0001, Malabar Hardware)")
-    assert told[1].startswith("✅ Marked received")
+    assert told[1].startswith("✅ Received: 200 bags Cement OPC 53")  # by its order, not marked by hand
     more = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
         "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "1"}]})
     assert more.status_code == 409
@@ -432,13 +433,16 @@ async def test_close_short_and_cancel_move_the_request_on_and_tell_the_engineer(
     assert back["status"] == "waiting"
     assert back["decision_note"] == "PO-0001 closed short: Shop out of stock; still to order: 10 bags Cement OPC 53"
     assert (back["lines"][0]["on_order"], back["lines"][0]["to_buy"]) == ("0", "10")
-    assert (await _told(test_engine))[-1].startswith("↩️ Not coming yet")
+    assert (await _told(test_engine))[-1].startswith("↩️ Ippo varilla")  # Arun's language (Manglish by default)
     assert not back["follows_order"] and back["may_decide"]  # the office may now say no to the rest, or send it
     # The office orders the rest from the request: ordered again, then received in full -> done.
     body = _order(w, w["cement"], "10", supplier="KK Traders")
     body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
     po2 = (await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])).json()
     assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "ordered"
+    # Ordered again the same day: told again (the first "ordered" message does not swallow it).
+    told = await _told(test_engine)
+    assert sum(1 for t in told if t.startswith("🛒")) == 2 and "PO-0002, KK Traders" in told[-1]
     await client.post(f"/procurement/orders/{po2['id']}/receive", headers=w["admin"]["h"], json={
         "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po2["lines"][0]["id"], "quantity": "10"}]})
     # One order closed short, the other brought the rest: 150 + 10 is what was asked, so it is received.
