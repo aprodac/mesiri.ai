@@ -14,13 +14,16 @@ interaction layer.
 
 from __future__ import annotations
 
+from mesiri.authorization.roles import MONEY_TRANSFER_ROLES
+
 from .transfer_commands import TransferMoneyCommand
 
 # PROJECT_MANAGER may transfer (within their project scope, enforced by the
 # existing project/site authorization already applied upstream); ADMIN and
 # FINANCE always may. SITE_ENGINEER never may -- matches the permission
 # table in docs/execution/FINANCE_MODULE_PLAN.md.
-_TRANSFER_ROLES = frozenset({"ADMIN", "FINANCE", "PROJECT_MANAGER"})
+# 7 Nov 2026 (SEC-03): read from authorization/roles.py; the owner was missing from this copy.
+_TRANSFER_ROLES = MONEY_TRANSFER_ROLES
 
 
 def validate(cmd: TransferMoneyCommand) -> list[str]:

@@ -15,6 +15,7 @@ import { PeriodSelect } from '@/components/filter-select'
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
 import { RecordExpenseDialog } from '@/components/expenses/record-expense-dialog'
 import { ExpenseDetailSheet, type ExpenseDetailData } from '@/components/expenses/expense-detail-sheet'
+import { FullCost } from '@/components/expenses/full-cost'
 import { useScope } from '@/lib/ScopeContext'
 import { useReadOnly } from '@/lib/trial'
 import { useUrlState } from '@/lib/url-state'
@@ -25,7 +26,8 @@ import { CHIP } from '@/lib/site-day'
 import { swatch } from '@/lib/requests'
 import { cn } from '@/lib/utils'
 import { fetchAllExpenseAttachmentsApi, reverseExpenseApi } from '@/lib/api'
-import { PAID_VIA, compact, fetchExpenses, paidWords, rupees, type Expense, type PaidVia } from '@/lib/expenses'
+import { PAID_VIA, compact, fetchExpenses, mayManageMoney, paidWords, rupees, type Expense, type PaidVia } from '@/lib/expenses'
+import { useAuth } from '@/lib/AuthContext'
 
 // WEB-51 (Ilan, 5 Nov) and PRC-18 (7 Nov): Finance > Expenses. Five tiles say what was spent and how it was paid --
 // petty cash, direct, owed back to the person who paid, unpaid (decision D3: by the account it was paid from) --
@@ -49,6 +51,9 @@ export default function ExpensesPage() {
   usePageTitle('Expenses')
   const { scope } = useScope()
   const readOnly = useReadOnly()
+  const { me } = useAuth()
+  const canPay = mayManageMoney(me?.role) && !readOnly
+  const [payNow, setPayNow] = React.useState(false)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { id: routeId } = useParams()
@@ -116,6 +121,7 @@ export default function ExpensesPage() {
   const sum = (xs: Expense[]) => xs.reduce((n, e) => n + e.amount, 0)
   const byVia = (v: PaidVia) => base.filter((e) => e.paid_via === v)
   const total = sum(base)
+  const gstTotal = base.reduce((n, e) => n + (e.tax_amount ?? 0), 0)
   const filtered = !!(q || clean(category) || vendor || site || via || clean(photo) || clean(source))
 
   const options = React.useMemo(() => {
@@ -197,14 +203,15 @@ export default function ExpensesPage() {
     description: opened.description,
     paid_line: paidWords(opened),
     recorded_by: opened.recorded_by,
+    owed_to: opened.paid_via === 'own_pocket' ? opened.recorded_by ?? 'whoever paid' : null,
   }
 
   const exportRows = (rows: Expense[]) =>
     exportCsv(
       `expenses-${rangeFrom ?? 'all'}-to-${rangeTo ?? 'today'}.csv`,
-      ['Number', 'Date', 'Category', 'Vendor', 'Project', 'Site', 'Description', 'Amount', 'Paid', 'Account', 'Payment status', 'Recorded by', 'From', 'Bill photo'],
+      ['Number', 'Date', 'Category', 'Vendor', 'Project', 'Site', 'Description', 'Amount', 'GST %', 'GST', 'Paid', 'Account', 'Payment status', 'Recorded by', 'From', 'Bill photo'],
       rows.map((e) => [
-        e.number ?? '', e.date, e.category, e.vendor ?? '', e.project ?? '', e.site ?? '', e.description ?? '', e.amount, PAID_VIA[e.paid_via].label,
+        e.number ?? '', e.date, e.category, e.vendor ?? '', e.project ?? '', e.site ?? '', e.description ?? '', e.amount, e.tax_rate ?? '', e.tax_amount ?? '', PAID_VIA[e.paid_via].label,
         e.account ?? '', e.payment, e.recorded_by ?? '', e.source === 'whatsapp' ? 'WhatsApp' : 'Dashboard', photos.data?.[e.id] ? 'yes' : '',
       ]),
     )
@@ -256,6 +263,8 @@ export default function ExpensesPage() {
         </div>
       </header>
 
+      <FullCost filters={filters} />
+
       {/* What was spent, and how it was paid (PRC-18). Each payment tile filters the list. */}
       <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
         <div className="col-span-2 flex items-center gap-3 rounded-xl border bg-card p-3 sm:p-3.5 lg:col-span-1">
@@ -267,6 +276,7 @@ export default function ExpensesPage() {
             <span className="truncate text-sm text-foreground/80">
               Spent · {base.length} {base.length === 1 ? 'expense' : 'expenses'}
             </span>
+            {gstTotal > 0 && <span className="truncate text-[11px] text-muted-foreground">incl. {rupees(gstTotal)} GST</span>}
           </span>
         </div>
         {tiles.map((t) => {
@@ -404,6 +414,16 @@ export default function ExpensesPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             <DropdownMenuItem onClick={() => open(e)}>Open</DropdownMenuItem>
+                            {canPay && (e.paid_via === 'unpaid' || e.paid_via === 'own_pocket' || e.payment === 'partially_paid') && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setPayNow(true)
+                                  open(e)
+                                }}
+                              >
+                                {e.paid_via === 'own_pocket' ? `Repay ${(e.recorded_by ?? '').split(' ')[0] || 'who paid'}` : 'Mark paid'}
+                              </DropdownMenuItem>
+                            )}
                             {photos.data?.[e.id] ? (
                               <DropdownMenuItem
                                 onClick={() => {
@@ -418,7 +438,7 @@ export default function ExpensesPage() {
                               !readOnly && <DropdownMenuItem onClick={() => open(e)}>Add bill</DropdownMenuItem>
                             )}
                             {e.vendor_id && <DropdownMenuItem onClick={() => setVendor(e.vendor_id!)}>Only {e.vendor}</DropdownMenuItem>}
-                            {!readOnly && (
+                            {canPay && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setTaking(e)}>
@@ -452,9 +472,16 @@ export default function ExpensesPage() {
       <RecordExpenseDialog open={recordOpen} onOpenChange={setRecordOpen} scope={scope} onExpenseCreated={() => queryClient.invalidateQueries({ queryKey: ['finance'] })} />
       <ExpenseDetailSheet
         open={!!detail}
-        onOpenChange={(o) => !o && close()}
+        onOpenChange={(o) => {
+          if (!o) {
+            close()
+            setPayNow(false)
+          }
+        }}
         expense={detail}
         readOnly={readOnly}
+        canPay={canPay}
+        payNow={payNow}
         onOpenVendor={() => {
           if (opened?.vendor_id) setVendor(opened.vendor_id)
           close()

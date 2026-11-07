@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { SiteDayMoney } from '@/components/expenses/site-day-money'
 import {
   Check,
   CheckCheck,
@@ -911,6 +912,7 @@ export default function SiteDayPage() {
                 }
               />
               <DprVersionsCard reportId={reportId} versions={detail.versions} onPdf={openPdf} />
+              <SiteDayMoney siteId={siteId} date={date} />
             </DprAside>
           </div>
         </>

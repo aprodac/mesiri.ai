@@ -2113,11 +2113,13 @@ async def _create_invoice_expense(
     if amount is None or amount <= 0:
         return None
 
+    # 7 Nov 2026: the resolvers moved to application/ (expenses/router.py imports them from there); this import was
+    # left pointing at expense_execution, so a supplier bill with a price failed with an ImportError (500).
     from mesiri.application.expenses.handlers import RecordExpenseHandler
+    from mesiri.application.expenses.resolution import PostgresExpenseCategoryResolver
+    from mesiri.application.vendors.resolution import PostgresVendorResolver
     from mesiri.infrastructure.postgres.repositories.expense_execution import (
-        PostgresExpenseCategoryResolver,
         PostgresExpenseExecutionRepository,
-        PostgresVendorResolver,
     )
 
     cmd = build_expense_command(

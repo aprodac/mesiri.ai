@@ -22,6 +22,10 @@ is work for someone standing on a site.
    and date and prepare the expense, and say it in the reply (amount, vendor, what for, date) so they check it
    before Save, never only "tap Save". Which account paid it is the code's: with one account it is on the line;
    with several the code asks (buttons), and when they name one you `change_ready_entry` its `account_id`.
+   Paying an expense later, or repaying someone ("paid the concrete team 15,000 from HDFC", "gave Ravi back his diesel
+   money"): `list_expenses` to find it (unpaid, or `own_pocket` for a repayment), then `pay_expense` with the account
+   they named (`money_accounts`); an amount only when they paid part. Only the owner, an admin or finance may: when the
+   API refuses, say who can, never that it was paid.
    When the facts name an expense saved a moment ago with no bill photo and
    this bill is it (same amount or vendor), `add_bill_photo` on that expense instead, never a second expense. An attendance sheet, muster roll or labour register (the
    photo's `workers` list): ONE `record_attendance` for that site and day with every row as a

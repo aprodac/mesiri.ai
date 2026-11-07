@@ -26,7 +26,8 @@ from mesiri.infrastructure.postgres.dependency import get_db_conn
 pytestmark = pytest.mark.integration
 
 _TABLES = (
-    "goods_receipt_lines", "goods_receipts", "purchase_order_events", "purchase_order_lines", "purchase_orders", "material_request_lines", "material_requests", "notifications", "material_movements", "material_receipts",
+    "labour_attendance_lines", "labour_attendance_reports", "expense_payments", "money_transactions", "expense_attachments", "expenses",
+    "expense_categories", "goods_receipt_lines", "goods_receipts", "purchase_order_events", "purchase_order_lines", "purchase_orders", "material_request_lines", "material_requests", "notifications", "material_movements", "material_receipts",
     "material_usage", "material_invoice_attachments", "material_invoices", "materials_catalog",
     "material_categories", "vendors", "sites", "projects", "users", "organizations",
 )
@@ -36,6 +37,7 @@ async def _wipe(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.execute(sa.text("UPDATE material_usage SET reverses_movement_id = NULL"))
         await conn.execute(sa.text("UPDATE material_receipts SET reverses_movement_id = NULL"))
+        await conn.execute(sa.text("UPDATE material_invoices SET expense_id = NULL"))
         for table in _TABLES:
             await conn.execute(sa.text(f"DELETE FROM {table}"))  # noqa: S608 -- fixed names
 
@@ -248,3 +250,61 @@ async def test_money_roles_only_scope_and_one_supplier(client, world):
     assert _item(mine, w["cement"])["best"]["vendor_name"] == "Malabar Hardware"
     assert (await client.get("/procurement/rates", params={"date_from": _day(1), "date_to": _day(5)},
                              headers=w["admin"]["h"])).status_code == 422
+
+
+# CC-01 (approved in session by the owner, 7 Nov 2026): the full cost of a period -- expenses, priced deliveries that
+# came without a bill (a bill already made an expense), and labour at the wage on each attendance line -- each once.
+async def test_full_cost_counts_each_rupee_once(client, world, test_engine):
+    w = world
+    h = w["admin"]["h"]
+    exp = await client.post("/expenses", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "amount": "1500", "category_text": "Tea",
+        "occurred_date": _day(2)})
+    assert exp.status_code == 201, exp.text
+    await _came(client, w, "cement", "100", "400", days_ago=3, supplier="Malabar Hardware")             # 40,000
+    billed = await _came(client, w, "cement", "10", "410", days_ago=3, supplier="Malabar Hardware")     # has a bill
+    await _came(client, w, "cement", "5", None, days_ago=1, supplier="Malabar Hardware", site="yard")   # no price
+    await _came(client, w, "cement", "20", "450", days_ago=1, supplier="Edappally Stores", site="tower", project="flats")
+    inv = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO material_invoices (id, organization_id, project_id, currency, source, created_by) "
+                "VALUES (:id, :org, :p, 'INR', 'web', :u)", id=inv, org=w["org"], p=w["villa"], u=w["admin"]["id"])
+    await _exec(test_engine, "UPDATE material_receipts SET invoice_id = :inv WHERE id = :id", inv=inv, id=billed["id"])
+    report = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO labour_attendance_reports (id, organization_id, project_id, site_id, occurred_date, "
+                "recorded_via, created_at, created_by) VALUES (:id, :org, :p, :s, :d, 'whatsapp_text', now(), :u)",
+                id=report, org=w["org"], p=w["villa"], s=w["block_a"], d=TODAY - datetime.timedelta(days=1), u=w["admin"]["id"])
+    for trade, n, wage in (("mason", 4, "1000"), ("helper", 2, "700"), ("cleaner", 1, None)):
+        await _exec(test_engine, "INSERT INTO labour_attendance_lines (id, report_id, trade, headcount, daily_wage, created_at) "
+                    "VALUES (:id, :r, :t, :n, :w, now())", id=uuid.uuid4(), r=report, t=trade, n=n, w=wage)
+
+    resp = await client.get("/finance/costs", headers=h)
+    assert resp.status_code == 200, resp.text
+    c = resp.json()
+    assert c["expenses"] == {"amount": "1500.00", "count": 1}
+    assert (c["materials"]["amount"], c["materials"]["deliveries"], c["materials"]["unpriced"]) == ("49000.00", 2, 1)
+    assert (c["labour"]["amount"], c["labour"]["man_days"], c["labour"]["priced_man_days"]) == ("5400.00", "7", "6")
+    assert c["total"] == "55900.00"
+    block_a = next(s for s in c["by_site"] if s["site_name"] == "Block A")
+    assert (block_a["expenses"], block_a["materials"], block_a["labour"], block_a["total"]) == ("1500.00", "40000.00", "5400.00", "46900.00")
+
+    villa = (await client.get("/finance/costs", params={"project_id": str(w["villa"])}, headers=h)).json()
+    assert villa["total"] == "46900.00"
+    assert (await client.get("/finance/costs", headers=w["arun"]["h"])).status_code == 403
+
+
+async def test_an_expense_from_a_bill_shows_the_bill_its_items_and_gst(client, world):
+    """The expense a supplier bill made links back to the bill and what it delivered; the list carries GST."""
+    w = world
+    h = w["admin"]["h"]
+    resp = await client.post("/materials/invoices", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "supplier_name": "Malabar Hardware",
+        "invoice_number": "MH/2231", "invoice_date": _day(1), "invoice_total": "41300",
+        "lines": [{"material_id": w["cement"], "unit_id": w["units"]["bags"], "quantity": "100", "unit_cost": "413"}]})
+    assert resp.status_code == 201, resp.text
+    expense_id = resp.json()["expense_id"]
+    one = (await client.get(f"/expenses/{expense_id}", headers=h)).json()
+    inv = one["source_invoice"]
+    assert (inv["number"], inv["supplier"]) == ("MH/2231", "Malabar Hardware")
+    assert inv["items"] == [{"material": "Cement OPC 53", "quantity": "100", "unit": "bags", "rate": "413.00", "order_id": None, "order_ref": None}]
+    row = next(r for r in (await client.get("/expenses", headers=h)).json() if r["id"] == expense_id)
+    assert "tax_rate" in row and row["is_tax_inclusive"] is True

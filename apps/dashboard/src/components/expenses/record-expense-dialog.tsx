@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Plus, DollarSign, Calendar, Tag, Building2, CreditCard, FileText, CheckCircle2, HelpCircle } from 'lucide-react'
 import {
   Dialog,
@@ -23,6 +24,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { toLocalISODate } from '@/lib/utils'
 import {
   recordExpenseApi,
+  fetchAccountsApi,
   fetchCategoriesApi,
   fetchVendorsApi,
   createVendorApi,
@@ -50,8 +52,12 @@ export function RecordExpenseDialog({
   const [vendor, setVendor] = React.useState('')
   const [vendors, setVendors] = React.useState<VendorItem[]>([])
   const [occurredDate, setOccurredDate] = React.useState(() => toLocalISODate())
-  const [paymentStatus, setPaymentStatus] = React.useState<'unpaid' | 'paid'>('paid')
-  const [paymentMethod, setPaymentMethod] = React.useState('bank_transfer')
+  // PRC-18 (7 Nov): where the money came from, saved for real -- an account (a payment is recorded), someone's own
+  // pocket (owed back to them), or not paid yet. The old "Paid now / method" buttons were never sent.
+  const [paidFrom, setPaidFrom] = React.useState<string>('unpaid')
+  const [gst, setGst] = React.useState<string>('0')
+  const accountsQuery = useQuery({ queryKey: ['finance', 'accounts', 'payable'], queryFn: () => fetchAccountsApi(), enabled: open, staleTime: 30_000 })
+  const payable = ((accountsQuery.data ?? []) as { id: string; name: string; status: string; current_balance: number }[]).filter((a) => a.status !== 'inactive')
   const [submitting, setSubmitting] = React.useState(false)
   // Set only when the typed vendor name doesn't match an existing vendor --
   // swaps the form for a "create this vendor?" confirmation instead of
@@ -102,6 +108,11 @@ export function RecordExpenseDialog({
           occurred_date: occurredDate,
           description: description || selectedCat?.name,
           source: 'web',
+          account_id: paidFrom !== 'unpaid' && paidFrom !== 'own' ? paidFrom : undefined,
+          paid_from_own_pocket: paidFrom === 'own',
+          ...(Number(gst) > 0
+            ? { tax_rate: Number(gst), tax_amount: Math.round((parseFloat(amount) * Number(gst) * 100) / (100 + Number(gst))) / 100, is_tax_inclusive: true }
+            : {}),
         },
         idempotencyKey
       )
@@ -122,12 +133,11 @@ export function RecordExpenseDialog({
         description: description || selectedCat?.name,
         vendor_name: vendorId ? vendor : 'Direct Payment',
         occurred_date: occurredDate,
-        payment_status: paymentStatus,
+        payment_status: paidFrom === 'own' ? 'reimbursable' : paidFrom === 'unpaid' ? 'unpaid' : 'paid',
         workflow_status: 'confirmed',
         source: 'web',
         project_name: scope.projectName,
         site_name: scope.mode === 'site' ? scope.siteName : 'All Sites',
-        payment_method: paymentStatus === 'paid' ? paymentMethod : undefined,
       }
 
       onExpenseCreated?.(newEntry)
@@ -352,54 +362,49 @@ export function RecordExpenseDialog({
               />
             </div>
 
-            {/* Payment Status & Method */}
-            <div className="grid grid-cols-2 gap-3 pt-1 border-t">
+            {/* Paid from (PRC-18) and GST */}
+            <div className="grid grid-cols-2 gap-3 border-t pt-1">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="size-3.5 text-muted-foreground" />
-                  Initial Settlement
+                <Label className="flex items-center gap-1 text-xs font-semibold">
+                  <CreditCard className="size-3.5 text-muted-foreground" />
+                  Paid from
                 </Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={paymentStatus === 'paid' ? 'default' : 'outline'}
-                    className={`flex-1 h-8 text-xs ${paymentStatus === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
-                    onClick={() => setPaymentStatus('paid')}
-                  >
-                    Paid Now
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={paymentStatus === 'unpaid' ? 'default' : 'outline'}
-                    className={`flex-1 h-8 text-xs ${paymentStatus === 'unpaid' ? 'bg-rose-600 hover:bg-rose-700 text-white' : ''}`}
-                    onClick={() => setPaymentStatus('unpaid')}
-                  >
-                    Unpaid
-                  </Button>
-                </div>
+                <Select value={paidFrom} onValueChange={setPaidFrom}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unpaid" className="text-xs">Not paid yet</SelectItem>
+                    <SelectItem value="own" className="text-xs">Someone's own pocket (owed back)</SelectItem>
+                    {payable.map((a) => (
+                      <SelectItem key={a.id} value={String(a.id)} className="text-xs">
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-
-              {paymentStatus === 'paid' && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="method" className="text-xs font-semibold flex items-center gap-1">
-                    <CreditCard className="size-3.5 text-muted-foreground" />
-                    Payment Method
-                  </Label>
-                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                    <SelectTrigger id="method" className="h-8 text-xs">
-                      <SelectValue placeholder="Method" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="bank_transfer" className="text-xs">Bank Transfer (NEFT/RTGS)</SelectItem>
-                      <SelectItem value="upi" className="text-xs">UPI / GPay / PhonePe</SelectItem>
-                      <SelectItem value="petty_cash" className="text-xs">Petty Cash</SelectItem>
-                      <SelectItem value="cash" className="text-xs">Direct Cash</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1 text-xs font-semibold">
+                  <CheckCircle2 className="size-3.5 text-muted-foreground" />
+                  GST in this amount
+                </Label>
+                <Select value={gst} onValueChange={setGst}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['0', '5', '12', '18', '28'].map((r) => (
+                      <SelectItem key={r} value={r} className="text-xs">
+                        {r === '0' ? 'No GST / not known' : `${r}% (included)`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {Number(gst) > 0 && Number(amount) > 0 && (
+                  <p className="text-[11px] text-muted-foreground">GST ₹{(Math.round((parseFloat(amount) * Number(gst) * 100) / (100 + Number(gst))) / 100).toLocaleString('en-IN')}</p>
+                )}
+              </div>
             </div>
           </div>
           )}

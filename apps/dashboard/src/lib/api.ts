@@ -804,6 +804,11 @@ export interface RecordExpenseApiPayload {
   // Paid immediately from this org account (e.g. a petty cash box) -- omit
   // to record an unpaid expense, as before this field existed.
   account_id?: string
+  /** Someone paid it themselves and is owed it back. */
+  paid_from_own_pocket?: boolean
+  tax_rate?: number
+  tax_amount?: number
+  is_tax_inclusive?: boolean
   currency?: string
   description?: string
   source?: string

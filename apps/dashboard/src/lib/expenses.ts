@@ -31,6 +31,9 @@ export interface Expense {
   account_id: string | null
   account: string | null
   recorded_by: string | null
+  /** GST in the amount (null: none recorded). */
+  tax_amount: number | null
+  tax_rate: number | null
   source: 'whatsapp' | 'web'
   reversed: boolean
 }
@@ -61,6 +64,8 @@ export function toExpense(raw: any): Expense {
     account_id: raw.account_id ? String(raw.account_id) : null,
     account: raw.account_name ?? null,
     recorded_by: raw.created_by_name ?? null,
+    tax_amount: raw.tax_amount != null ? Number(raw.tax_amount) : null,
+    tax_rate: raw.tax_rate != null ? Number(raw.tax_rate) : null,
     source: raw.source === 'whatsapp' ? 'whatsapp' : 'web',
     reversed: raw.workflow_status === 'reversed',
   }
@@ -95,4 +100,71 @@ export function compact(n: number): string {
   if (n >= 1e7) return `₹${(n / 1e7).toLocaleString('en-IN', { maximumFractionDigits: 2 })} Cr`
   if (n >= 1e5) return `₹${(n / 1e5).toLocaleString('en-IN', { maximumFractionDigits: 2 })} L`
   return rupees(n)
+}
+
+// PRC-35: pay an expense (or repay who paid it) from an account; the owner, an admin or finance only (SEC-03).
+export const MONEY_MANAGERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE']
+export const MONEY_MOVERS = [...MONEY_MANAGERS, 'PROJECT_MANAGER']
+export const mayManageMoney = (role: string | null | undefined) => MONEY_MANAGERS.includes((role ?? '').toUpperCase())
+export const mayMoveMoney = (role: string | null | undefined) => MONEY_MOVERS.includes((role ?? '').toUpperCase())
+
+export interface ExpensePayment {
+  id: string
+  amount: string
+  paid_date: string
+  status: 'confirmed' | 'reversed' | 'pending'
+  reference: string | null
+  account_id: string
+  account_name: string
+  account_type: string
+  recorded_by: string | null
+}
+
+export interface ExpensePayments {
+  expense_id: string
+  amount: string
+  paid: string
+  left: string
+  payment_status: string
+  payments: ExpensePayment[]
+}
+
+export async function fetchExpensePayments(expenseId: string): Promise<ExpensePayments> {
+  return (await api.get(`/expenses/${expenseId}/payments`)).data
+}
+
+export async function payExpense(expenseId: string, body: { account_id: string; amount?: string; paid_date?: string; reference?: string }): Promise<ExpensePayments> {
+  return (await api.post(`/expenses/${expenseId}/payments`, body)).data
+}
+
+export async function undoExpensePayment(expenseId: string, paymentId: string): Promise<ExpensePayments> {
+  return (await api.post(`/expenses/${expenseId}/payments/${paymentId}/reverse`)).data
+}
+
+// CC-01: a period's full cost -- expenses + priced deliveries without a bill + labour (backend domains/finance/costs.py).
+export interface ProjectCosts {
+  date_from: string
+  date_to: string
+  expenses: { amount: string; count: number }
+  materials: { amount: string; deliveries: number; unpriced: number }
+  labour: { amount: string; man_days: string; priced_man_days: string }
+  total: string
+  by_site: { project_id: string; project_name: string; site_id: string | null; site_name: string | null; expenses: string; materials: string; labour: string; total: string }[]
+}
+
+export async function fetchCosts(filters: ExpenseFilters = {}): Promise<ProjectCosts> {
+  return (await api.get('/finance/costs', { params: filters })).data
+}
+
+export interface SourceInvoice {
+  id: string
+  number: string | null
+  date: string | null
+  supplier: string | null
+  items: { material: string; quantity: string; unit: string; rate: string | null; order_id: string | null; order_ref: string | null }[]
+}
+
+/** One expense with what only its own read carries: the supplier bill it came from, GST. */
+export async function fetchExpenseDetail(expenseId: string): Promise<{ source_invoice: SourceInvoice | null; tax_rate: string | null; tax_amount: string | null; is_tax_inclusive: boolean }> {
+  return (await api.get(`/expenses/${expenseId}`)).data
 }

@@ -18,12 +18,15 @@ just-created Activity is ever resolved), not by role.
 
 from __future__ import annotations
 
+from mesiri.authorization.roles import MONEY_MANAGE_ROLES
+
 from .reverse_commands import ReverseTransactionCommand
 
 # Reversal is a stricter gate than transfer's ADMIN/FINANCE/PROJECT_MANAGER --
 # undoing a confirmed record is ADMIN/FINANCE only, per
 # docs/execution/FINANCE_MODULE_PLAN.md's permission table.
-_REVERSAL_ROLES = frozenset({"ADMIN", "FINANCE"})
+# 7 Nov 2026 (SEC-03): read from authorization/roles.py; the owner could not undo a transfer or an expense.
+_REVERSAL_ROLES = MONEY_MANAGE_ROLES
 _FINANCIAL_TARGET_KINDS = frozenset({"expense", "transfer"})
 # `activity` and `attendance` are operational, not financial: both are
 # scoped to the person who filed the record (checked in reverse_resolution

@@ -82,6 +82,29 @@ def may_view_expenses(role: str | None) -> bool:
     return str(role or "").strip().upper() in EXPENSE_VIEW_ROLES
 
 
+# Who may change where the company's money is kept and move it (SEC-03 and PRC-35, approved in session by the
+# owner, 7 Nov 2026): add, edit or close a money account, transfer between accounts or undo a transfer, and mark an
+# expense paid or repay someone who paid from their own pocket. The owner/admin and finance -- not project managers
+# or site roles. Recording an expense paid from one's own cash box (WhatsApp, WEB-68) stays open: that is spending,
+# not moving money.
+MONEY_MANAGE_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN", "FINANCE"})
+
+
+def may_manage_money(role: str | None) -> bool:
+    """True if `role` may change money accounts, undo a transfer or take back an expense, or pay an expense."""
+    return str(role or "").strip().upper() in MONEY_MANAGE_ROLES
+
+
+# Moving money between accounts (a site's petty cash top-up) is also for project managers. One list for the dashboard
+# and WhatsApp (application/finance/transfer_validation.py read its own copy until 7 Nov).
+MONEY_TRANSFER_ROLES: frozenset[str] = MONEY_MANAGE_ROLES | {"PROJECT_MANAGER"}
+
+
+def may_transfer_money(role: str | None) -> bool:
+    """True if `role` may transfer money between the company's accounts."""
+    return str(role or "").strip().upper() in MONEY_TRANSFER_ROLES
+
+
 # Who may set how many of a unit make one stock unit of a material ("28 bags
 # of sand = 1 m³") for the whole company (WA-41, decided by Ilan 21 Oct 2026):
 # it changes every later stock figure for that material, so admins and

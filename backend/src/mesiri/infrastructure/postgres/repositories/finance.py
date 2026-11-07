@@ -310,6 +310,15 @@ class PostgresMoneyTransactionRepository:
                 created_by=created_by,
             )
         )
+        if from_account_id is not None:
+            # Petty cash running low is said on WhatsApp (domains/finance/low_float.py); never stops the money moving.
+            try:
+                from mesiri.domains.finance.low_float import notify_if_low
+
+                async with self.conn.begin_nested():
+                    await notify_if_low(self.conn, organization_id, from_account_id)
+            except Exception:  # noqa: BLE001
+                pass
         res = await self.conn.execute(
             sa.select(_money_transactions).where(_money_transactions.c.id == new_id)
         )

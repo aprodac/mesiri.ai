@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from channel.replies import ReplySpec
+from mesiri.authorization.roles import MONEY_MANAGE_ROLES
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.planner_decision import (
@@ -59,7 +60,8 @@ if TYPE_CHECKING:
 # only) -- FINANCE may also manage accounts, matching the permission table
 # in docs/execution/FINANCE_MODULE_PLAN.md. Same normalization idiom as
 # mesiri.authorization.roles.role_is_org_wide (str(role or "").strip().upper()).
-_ACCOUNT_ADMIN_ROLES = frozenset({"ADMIN", "FINANCE"})
+# 7 Nov 2026 (SEC-03): the one rule in mesiri.authorization.roles.
+_ACCOUNT_ADMIN_ROLES = MONEY_MANAGE_ROLES
 
 
 @dataclass(frozen=True, slots=True)
