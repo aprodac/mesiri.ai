@@ -41,6 +41,7 @@ async def clean_db(test_engine: AsyncEngine):
     async def wipe() -> None:
         async with test_engine.begin() as conn:
             await conn.execute(sa.text("DELETE FROM idempotency_keys WHERE command_type = 'record_expense'"))
+            await conn.execute(sa.text("DELETE FROM notifications"))
             await conn.execute(sa.text("DELETE FROM expense_payments"))
             await conn.execute(sa.text("DELETE FROM money_transactions"))  # PRC-18: payments post one each
             await conn.execute(sa.text("DELETE FROM money_accounts"))
@@ -542,3 +543,34 @@ async def test_repay_someone_who_paid_from_their_pocket(client, test_engine, tes
     assert paid.status_code == 201 and paid.json()["payment_status"] == "paid"
     row = next(r for r in (await client.get("/expenses", headers=h)).json() if r["id"] == eid)
     assert row["paid_via"] == "petty_cash"
+
+
+# Petty cash running low is said on WhatsApp (approved in session by the owner, 7 Nov 2026): money leaving a cash box
+# that ends under the company's line queues one note a day per person (holder + owner/admin/finance); a bank never.
+async def test_a_cash_box_going_under_the_line_queues_one_note_per_person(client, test_engine, test_org, admin_ctx):
+    h = _auth(admin_ctx["token"])
+    box = await _account(test_engine, test_org, admin_ctx["user_id"], "cash", "Villa petty cash")  # opening 1,00,000
+    bank = await _account(test_engine, test_org, admin_ctx["user_id"], "bank", "SBI current")
+    finance_id = await _make_user(test_engine, test_org, "finance")
+    await _make_user(test_engine, test_org, "site_engineer")  # not told
+
+    async def spend(amount: str, account) -> None:
+        r = await client.post("/expenses", json={**_body(admin_ctx), "amount": amount, "account_id": str(account)},
+                              headers={**h, "Idempotency-Key": str(uuid.uuid4())})
+        assert r.status_code == 201, r.text
+
+    async def notes() -> list:
+        async with test_engine.begin() as conn:
+            return (await conn.execute(sa.text(
+                "SELECT recipient_user_id, payload->>'message' AS m FROM notifications WHERE rule_key = 'petty_cash_low'"))).all()
+
+    await spend("40000.00", box)  # 60,000 left: above the line
+    assert await notes() == []
+    await spend("90000.00", bank)
+    assert await notes() == []
+    await spend("15000.00", box)  # 45,000 left
+    rows = await notes()
+    assert {r.recipient_user_id for r in rows} == {admin_ctx["user_id"], finance_id}
+    assert "Villa petty cash is low on cash: ₹45,000 left, below ₹50,000" in rows[0].m
+    await spend("1000.00", box)  # again the same day: no second note
+    assert len(await notes()) == 2
