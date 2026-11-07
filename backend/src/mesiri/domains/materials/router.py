@@ -537,6 +537,17 @@ async def set_unit_conversion(
         raise HTTPException(status_code=422, detail=(
             f"1 {unit['display_name']} of {material['name']} cannot be less than 1 {stock['display_name']}: "
             f"how many {stock['display_name']} are in 1 {unit['display_name']}?"))
+    from mesiri.domains.materials.plausibility import implausible, load_reference
+
+    # MK-02 (New India, 5 Nov: "1 load M-sand = 60 cum" was saved): an impossible size is refused with the usual one,
+    # from the reference tables (migration 0515), never saved.
+    if reason := implausible(
+        await load_reference(conn), material_name=material["name"],
+        from_code=str(unit["code"]).lower(), from_label=unit["display_name"],
+        stock_code=str(stock["code"]).lower(), stock_label=stock["display_name"],
+        one_unit_equals=body.one_unit_equals,
+    ):
+        raise HTTPException(status_code=422, detail=reason)
     per_stock_unit = (Decimal(1) / body.one_unit_equals).quantize(Decimal("0.0000001"))
     await PostgresMaterialUnitConversionRepository(conn).upsert(
         organization_id=auth_context.organization_id, material_id=material["id"], from_unit_id=unit["id"],

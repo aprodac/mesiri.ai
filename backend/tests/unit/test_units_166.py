@@ -55,6 +55,12 @@ def _put(monkeypatch: pytest.MonkeyPatch):  # noqa: ANN202
     monkeypatch.setattr(materials_router, "PostgresMaterialCatalogRepository", Catalog)
     monkeypatch.setattr(materials_router, "UnitsOfMeasureRepository", Units)
     monkeypatch.setattr(repo, "PostgresMaterialUnitConversionRepository", Conversions)
+    from mesiri.domains.materials import plausibility
+
+    async def no_reference(conn: object) -> plausibility.Reference:  # MK-02 reads the reference tables
+        return plausibility.Reference()
+
+    monkeypatch.setattr(plausibility, "load_reference", no_reference)
 
     async def put(size: str) -> dict:
         return await materials_router.set_unit_conversion(
