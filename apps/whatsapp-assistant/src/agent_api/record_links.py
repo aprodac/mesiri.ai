@@ -42,6 +42,10 @@ RECORD_PAGES: dict[str, str | None] = {
     "delivery_order": None,  # PRC-23: the saved line already says which order (PO-0003); no page of its own yet
     "cancel_material_request": "material_requests",
     "change_material_request": "material_requests",  # PRC-31
+    "place_order": "purchase_orders",  # PRC-09
+    "change_order": "purchase_orders",
+    "cancel_order": "purchase_orders",
+    "close_order": "purchase_orders",
     "add_expense_category": "expense_categories",
     "create_project": "project",
     "update_project": "project",

@@ -62,12 +62,21 @@ class OrderLineIn(BaseModel):
 
 
 class OrderCreate(BaseModel):
-    project_id: uuid.UUID
-    site_id: uuid.UUID
+    """Several items as ``lines``; or one item as ``material_id`` + ``quantity`` + ``unit_id`` (+ ``rate``), the WhatsApp
+    form (PRC-09); or ``request_id``: the order is made from a site's request, its site and items (what is still to buy),
+    each line linked so the request follows the order (``quantity`` / ``rate`` set the one item of a one-item request)."""
+
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
     #: The vendor from the list, or ``supplier`` in words (the company's vendor of that name, made when new).
     vendor_id: uuid.UUID | None = None
     supplier: str | None = Field(default=None, max_length=120)
-    lines: list[OrderLineIn] = Field(min_length=1, max_length=50)
+    lines: list[OrderLineIn] = Field(default_factory=list, max_length=50)
+    request_id: uuid.UUID | None = None
+    material_id: uuid.UUID | None = None
+    quantity: Decimal | None = Field(default=None, gt=0)
+    unit_id: uuid.UUID | None = None
+    rate: Decimal | None = Field(default=None, ge=0)
     expected_date: datetime.date | None = None
     notes: str | None = Field(default=None, max_length=500)
     confirm_duplicate: bool = False
@@ -243,6 +252,8 @@ async def create_order(body: OrderCreate, auth_context: AuthorizationContext = D
     """Place an order. If an open order in the project already has one of these materials, nothing is saved and a
     409 names it (``detail.code`` = ``possible_duplicate``), unless ``confirm_duplicate`` (PRC-07)."""
     _office(auth_context)
+    await _one_form(conn, auth_context, body)
+    assert body.project_id is not None and body.site_id is not None  # set by _one_form
     _authorize_write(auth_context, body.project_id, body.site_id)
     await _assert_site_in_project(conn, auth_context.organization_id, body.project_id, body.site_id)
     lines = await _lines(conn, auth_context, body.project_id, body.lines)
@@ -500,6 +511,34 @@ async def _line_rate(conn: AsyncConnection, line_id: uuid.UUID) -> Decimal | Non
     """The agreed rate, read here so it reaches stock and spend even when the caller may not see rates."""
     row = (await conn.execute(text("SELECT rate FROM purchase_order_lines WHERE id = :id"), {"id": line_id})).first()
     return row.rate if row else None
+
+
+async def _one_form(conn: AsyncConnection, auth: AuthorizationContext, body: OrderCreate) -> None:
+    """PRC-09: the WhatsApp forms of a new order, made into ``lines`` (and the site, from a request)."""
+    if body.request_id is not None:
+        if body.lines:
+            raise HTTPException(status_code=422, detail="An order from a request takes its items from the request.")
+        req = await one_request(conn, auth, body.request_id)
+        if req["status"] not in (request_store.WAITING, "ordered"):
+            raise HTTPException(status_code=409, detail=f"{req['ref']} is {req['status']}; it is not ordered now.")
+        if (body.quantity is not None or body.rate is not None) and len(req["lines"]) != 1:
+            raise HTTPException(status_code=422, detail=f"{req['ref']} has several items: order it on the dashboard "
+                                "to set each one.")
+        body.project_id, body.site_id = uuid.UUID(req["project_id"]), uuid.UUID(req["site_id"])
+        body.lines = [OrderLineIn(material_id=uuid.UUID(line["material_id"]), unit_id=uuid.UUID(line["unit_id"]),
+                                  quantity=body.quantity or (Decimal(line["to_buy"]) if Decimal(line["to_buy"]) > 0
+                                                             else Decimal(line["quantity"])),
+                                  rate=body.rate, request_line_id=uuid.UUID(line["id"])) for line in req["lines"]]
+        return
+    if body.material_id is not None:
+        if body.lines or body.quantity is None or body.unit_id is None:
+            raise HTTPException(status_code=422, detail="One item is material_id, quantity and unit_id (or use lines).")
+        body.lines = [OrderLineIn(material_id=body.material_id, quantity=body.quantity, unit_id=body.unit_id,
+                                  rate=body.rate)]
+    if not body.lines:
+        raise HTTPException(status_code=422, detail="Say what is ordered: at least one item.")
+    if body.project_id is None or body.site_id is None:
+        raise HTTPException(status_code=422, detail="Say which project and site it is delivered to.")
 
 
 def _request_ids(item: dict) -> set[uuid.UUID]:

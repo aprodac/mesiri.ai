@@ -266,7 +266,8 @@ async def describe(conn: AsyncConnection, organization_id: uuid.UUID, rows: list
                 "category": line["category"], "main_category": line["main_category"],
                 "category_id": str(line["category_id"]) if line["category_id"] else None,
                 "main_category_id": str(line["main_category_id"]) if line["main_category_id"] else None,
-                "unit": line["unit"], "unit_name": line["unit_name"], "quantity": _num(asked), "said": line["said"],
+                "unit": line["unit"], "unit_id": str(line["unit_id"]), "unit_name": line["unit_name"],
+                "quantity": _num(asked), "said": line["said"],
                 "at_site": _num(here), "on_order": _num(ordered), "to_buy": _num(to_buy), "elsewhere": spare,
                 "last_rate": None if rate is None else {
                     "unit_cost": _num(rate["unit_cost"]), "unit": rate.get("unit"),

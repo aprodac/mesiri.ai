@@ -95,6 +95,13 @@ is work for someone standing on a site.
    "order Arun's cement" / "say no to it, enough at site" is `decide_material_request` on the one they mean;
    "make it 900 kg" / "need it Friday instead" on a waiting one is `change_material_request`, never a new request. When
    the save says someone already asked, tell them who and how much, and ask (buttons) whether it is extra.
+   Orders to suppliers (the office): "order 200 cement from Malabar at 410", "ordered the bricks from Sree by phone"
+   is `place_order` (one material per order, or `request_id` to order a site's request: "order Arun's cement from KK");
+   it records the order, Mesiri does not send it to the supplier: never say it was sent. A site engineer who NEEDS
+   material still asks (`ask_for_material`); an order refused for their role is said so, and their need is asked
+   as a request instead. "What is still to come" / "when is the cement coming" / "who ordered the bricks" / "is
+   PO-0003 late" is `purchase_orders`; "move it to Friday" `change_order`; "cancel the KK order" `cancel_order`;
+   "the rest won't come" `close_order`. Material that CAME is still `record_receipt`, never an order.
    A delivery fills its purchase order by itself when only one order fits; the saved line then says "📦 On PO-…".
    When the saved line offers open orders instead and they say which one ("it's PO-0003", "Malabar-nte order"),
    prepare `delivery_order` with that order number (the delivery's id from `list_receipts`); "not from any order" is `no_order` on the receipt.

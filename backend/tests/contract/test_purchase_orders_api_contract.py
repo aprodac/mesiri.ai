@@ -633,3 +633,29 @@ async def test_an_order_shared_with_another_request_is_not_stopped_from_one(clie
     resp = await client.post(f"/procurement/requests/{a['id']}/outside", json={}, headers=w["admin"]["h"])
     assert resp.status_code == 409 and "also covers REQ-0002" in resp.text
     assert (await client.get(f"/procurement/orders/{po['id']}", headers=w["admin"]["h"])).json()["status"] == "open"
+
+
+# --- PRC-09: the WhatsApp forms of an order ---------------------------------------------------------------------------
+
+
+async def test_one_item_form_and_from_a_request(client, world):
+    w = world
+    one = await client.post("/procurement/orders", headers=w["admin"]["h"], json={
+        "project_id": str(w["villa"]), "site_id": str(w["yard"]), "supplier": "Malabar Hardware",
+        "material_id": w["tmt"], "quantity": "500", "unit_id": w["units"]["kg"], "rate": "72"})
+    assert one.status_code == 201, one.text
+    assert [(x["material"], x["quantity"], x["rate"]) for x in one.json()["lines"]] == [("TMT bar 12 mm", "500", "72.00")]
+    # From Arun's request: its site, what is still to buy, linked; the request is ordered and he is told.
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "100"), headers=w["arun"]["h"])).json()
+    from_req = await client.post("/procurement/orders", headers=w["admin"]["h"], json={
+        "request_id": req["id"], "supplier": "KK Traders", "rate": "405"})
+    assert from_req.status_code == 201, from_req.text
+    po = from_req.json()
+    assert (po["site_name"], po["lines"][0]["quantity"], po["lines"][0]["request"]["ref"]) == ("Block A", "100", "REQ-0001")
+    assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "ordered"
+    # Guards: neither site nor request is refused; an engineer cannot order.
+    none = await client.post("/procurement/orders", headers=w["admin"]["h"], json={
+        "supplier": "X", "material_id": w["tmt"], "quantity": "5", "unit_id": w["units"]["kg"]})
+    assert none.status_code == 422 and "which project and site" in none.text
+    assert (await client.post("/procurement/orders", headers=w["arun"]["h"], json={
+        "request_id": req["id"], "supplier": "KK Traders"})).status_code == 403

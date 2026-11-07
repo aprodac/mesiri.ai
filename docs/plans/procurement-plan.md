@@ -228,6 +228,20 @@ Fixes 4e A1–A5, B6, B9 and C13. No migration (reads `purchase_order_lines.requ
 - **Fixed on the way (browser check):** a late request could not be changed (the date field refused a past date); the
   request's "Ordered" tile read as ordered when it is what is still coming ("Coming").
 
+### 4i. As built: orders on WhatsApp (PRC-09, 7 Nov 2026)
+
+- **Tools** (`agent_api/tools.py`, the dashboard's routes): `purchase_orders` (what is still to come, late first; who
+  ordered; their number), `place_order`, `change_order`, `cancel_order`, `close_order`. Deliveries stay
+  `record_receipt` and fill their order by themselves (PRC-23); "it's PO-0003" is `delivery_order`.
+- **The order API takes WhatsApp's forms** (`orders_router._one_form`): one item as `material_id` + `quantity` +
+  `unit_id` (+ `rate`), or `request_id` ("order Arun's cement from KK"): the request's site and items (what is still to
+  buy), linked, so the request follows the order and Arun is told. The dashboard's `lines` and vendor picker are hidden.
+- **SOP:** "order X from Y" (also "ordered by phone") is `place_order`; Mesiri records the order and never says it sent
+  it to the supplier (PRC-26 does that, optionally); an engineer who needs material still asks; material that came is
+  never an order.
+- **Not verified here:** the live model on real messages (the SOP eval workflow runs on the real model; it was not run
+  from this session).
+
 ### 4g. Both ways: through Mesiri, or done outside and told quickly (decided 7 Nov 2026)
 
 Some companies will run every step through Mesiri; others will phone the vendor, take quotes on paper and only tell

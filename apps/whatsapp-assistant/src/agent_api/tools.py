@@ -141,6 +141,32 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("cancel_material_request", "POST", "/procurement/requests/{request_id}/cancel",
             "Prepare taking back a material request that is still waiting (their own, or any for the office)."
             + _WRITE),
+    # PRC-09: orders to suppliers (Procurement > Purchase orders), the dashboard's own routes. Deliveries stay
+    # record_receipt (a delivery fills its order by itself, PRC-23).
+    Allowed("purchase_orders", "GET", "/procurement/orders",
+            "Purchase orders to suppliers, the late ones first: status open (default: still to come, in part or "
+            "not at all), part, received, closed, cancelled or all; filter by project or site. Each: its PO number "
+            "(ref) and their own number (their_ref), the supplier, the site, who ordered it (created_by_name) and "
+            "when, the expected date and urgency (late, soon), and per item what was ordered, has come and is still "
+            "to come, with the request it covers."),
+    Allowed("place_order", "POST", "/procurement/orders",
+            "Prepare an order to a supplier (the office: admin, owner, project manager), placed now or already placed "
+            "by phone: material_id + quantity in the unit they said (+ rate if said), supplier in their words, the "
+            "site, expected_date when they said a day, their_ref when they gave the supplier's or their own number. "
+            "Ordering a site's request ('order Arun's cement'): request_id (from material_requests) + supplier "
+            "(+ rate), the items come from the request. If an open order or a waiting request already has that "
+            "material the save is refused and says which; prepare it again with confirm_duplicate only when they "
+            "say it is extra or separate." + _WRITE, hide=("lines", "vendor_id")),
+    Allowed("change_order", "PATCH", "/procurement/orders/{order_id}",
+            "Prepare a change to an open order (find it with purchase_orders): expected_date when it is moved, "
+            "notes, their_ref, or the supplier while nothing has come. Only what they changed." + _WRITE,
+            hide=("lines", "vendor_id")),
+    Allowed("cancel_order", "POST", "/procurement/orders/{order_id}/cancel",
+            "Prepare cancelling an order nothing came against (reason: their words, required). Its requests wait "
+            "again and the people who asked are told." + _WRITE),
+    Allowed("close_order", "POST", "/procurement/orders/{order_id}/close",
+            "Prepare closing a part-received order: the rest will not come (reason required). A request still short "
+            "waits to be ordered again." + _WRITE),
     # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),
