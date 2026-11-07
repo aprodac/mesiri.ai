@@ -36,6 +36,7 @@ async def _wipe(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.execute(sa.text("UPDATE material_usage SET reverses_movement_id = NULL"))
         await conn.execute(sa.text("UPDATE material_receipts SET reverses_movement_id = NULL"))
+        await conn.execute(sa.text("UPDATE material_invoices SET expense_id = NULL"))
         for table in _TABLES:
             await conn.execute(sa.text(f"DELETE FROM {table}"))  # noqa: S608 -- fixed names
 
@@ -288,3 +289,21 @@ async def test_full_cost_counts_each_rupee_once(client, world, test_engine):
     villa = (await client.get("/finance/costs", params={"project_id": str(w["villa"])}, headers=h)).json()
     assert villa["total"] == "46900.00"
     assert (await client.get("/finance/costs", headers=w["arun"]["h"])).status_code == 403
+
+
+async def test_an_expense_from_a_bill_shows_the_bill_its_items_and_gst(client, world):
+    """The expense a supplier bill made links back to the bill and what it delivered; the list carries GST."""
+    w = world
+    h = w["admin"]["h"]
+    resp = await client.post("/materials/invoices", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "supplier_name": "Malabar Hardware",
+        "invoice_number": "MH/2231", "invoice_date": _day(1), "invoice_total": "41300",
+        "lines": [{"material_id": w["cement"], "unit_id": w["units"]["bags"], "quantity": "100", "unit_cost": "413"}]})
+    assert resp.status_code == 201, resp.text
+    expense_id = resp.json()["expense_id"]
+    one = (await client.get(f"/expenses/{expense_id}", headers=h)).json()
+    inv = one["source_invoice"]
+    assert (inv["number"], inv["supplier"]) == ("MH/2231", "Malabar Hardware")
+    assert inv["items"] == [{"material": "Cement OPC 53", "quantity": "100", "unit": "bags", "rate": "413.00", "order_id": None, "order_ref": None}]
+    row = next(r for r in (await client.get("/expenses", headers=h)).json() if r["id"] == expense_id)
+    assert "tax_rate" in row and row["is_tax_inclusive"] is True

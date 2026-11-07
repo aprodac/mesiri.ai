@@ -135,6 +135,9 @@ class RecordExpenseRequest(BaseModel):
     # set). Omit to leave the expense unpaid, exactly as before this field
     # existed on the REST request.
     account_id: uuid.UUID | None = None
+    #: PRC-18 (7 Nov): someone paid it themselves and is owed it back ('reimbursable'); the WhatsApp path already
+    #: could, the dashboard form had a "Paid" button that saved nothing.
+    paid_from_own_pocket: bool = False
     currency: str = "INR"
     description: str | None = None
     occurred_time: datetime.time | None = None
@@ -182,6 +185,7 @@ async def record_expense(
         vendor_id=str(body.vendor_id) if body.vendor_id else None,
         vendor_text=body.vendor_text,
         account_id=str(body.account_id) if body.account_id else None,
+        paid_from_own_pocket=body.paid_from_own_pocket and body.account_id is None,
         amount=body.amount,
         currency=body.currency,
         description=body.description,
@@ -357,6 +361,33 @@ async def _list_names(conn: AsyncConnection, organization_id: uuid.UUID, items: 
     return out
 
 
+async def _source_invoice(conn: AsyncConnection, organization_id: uuid.UUID, expense_id: uuid.UUID) -> dict | None:
+    """The supplier bill that made this expense (material_invoices.expense_id), its deliveries and their orders."""
+    from mesiri.domains.procurement.orders import ref as order_ref
+
+    inv = (await conn.execute(text(
+        "SELECT i.id, i.invoice_number, i.invoice_date, COALESCE(v.name, i.supplier_name) AS supplier "
+        "FROM material_invoices i LEFT JOIN vendors v ON v.id = i.vendor_id "
+        "WHERE i.organization_id = :org AND i.expense_id = :eid LIMIT 1"), {"org": organization_id, "eid": expense_id})).mappings().first()
+    if inv is None:
+        return None
+    rows = (await conn.execute(text(
+        "SELECT COALESCE(mc.name, r.material_name) AS material, r.quantity, r.unit, r.unit_cost, po.id AS order_id, "
+        "po.number AS order_number FROM material_receipts r LEFT JOIN materials_catalog mc ON mc.id = r.material_id "
+        "LEFT JOIN purchase_order_lines pol ON pol.id = r.purchase_order_line_id "
+        "LEFT JOIN purchase_orders po ON po.id = pol.purchase_order_id "
+        "WHERE r.organization_id = :org AND r.invoice_id = :inv AND r.reverses_movement_id IS NULL ORDER BY r.created_at"),
+        {"org": organization_id, "inv": inv["id"]})).mappings().all()
+    return {
+        "id": str(inv["id"]), "number": inv["invoice_number"],
+        "date": inv["invoice_date"].isoformat() if inv["invoice_date"] else None, "supplier": inv["supplier"],
+        "items": [{"material": r["material"], "quantity": format(Decimal(r["quantity"]).normalize(), "f"), "unit": r["unit"],
+                   "rate": str(r["unit_cost"]) if r["unit_cost"] is not None else None,
+                   "order_id": str(r["order_id"]) if r["order_id"] else None,
+                   "order_ref": order_ref(r["order_number"]) if r["order_number"] else None} for r in rows],
+    }
+
+
 async def _list_payments(conn: AsyncConnection, organization_id: uuid.UUID, expense_ids: list) -> dict:
     """PRC-18: per expense, its confirmed payments: the account paid most from (name, type), the total paid, and the
     amount per account type that ``paid_via`` reads. One query for the page."""
@@ -435,6 +466,8 @@ async def list_expenses(
             account_type=payments.get(item.id, {}).get("account_type"),
             paid_amount=payments.get(item.id, {}).get("paid"),
             paid_via=paid_via(item.payment_status, payments.get(item.id, {}).get("by_type")),
+            tax_rate=getattr(item, "tax_rate", None),
+            is_tax_inclusive=getattr(item, "is_tax_inclusive", True) if getattr(item, "is_tax_inclusive", None) is not None else True,
             created_by_name=names["users"].get(item.created_by),
             amount=item.amount,
             currency=item.currency,
@@ -632,6 +665,7 @@ async def get_expense(
         account_type=paid.get("account_type"),
         paid_amount=paid.get("paid"),
         paid_via=paid_via(expense.payment_status, paid.get("by_type")),
+        source_invoice=await _source_invoice(conn, auth_context.organization_id, expense.id),
         amount=expense.amount,
         currency=expense.currency,
         description=expense.description,

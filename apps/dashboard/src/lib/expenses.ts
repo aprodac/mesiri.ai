@@ -31,6 +31,9 @@ export interface Expense {
   account_id: string | null
   account: string | null
   recorded_by: string | null
+  /** GST in the amount (null: none recorded). */
+  tax_amount: number | null
+  tax_rate: number | null
   source: 'whatsapp' | 'web'
   reversed: boolean
 }
@@ -61,6 +64,8 @@ export function toExpense(raw: any): Expense {
     account_id: raw.account_id ? String(raw.account_id) : null,
     account: raw.account_name ?? null,
     recorded_by: raw.created_by_name ?? null,
+    tax_amount: raw.tax_amount != null ? Number(raw.tax_amount) : null,
+    tax_rate: raw.tax_rate != null ? Number(raw.tax_rate) : null,
     source: raw.source === 'whatsapp' ? 'whatsapp' : 'web',
     reversed: raw.workflow_status === 'reversed',
   }
@@ -149,4 +154,17 @@ export interface ProjectCosts {
 
 export async function fetchCosts(filters: ExpenseFilters = {}): Promise<ProjectCosts> {
   return (await api.get('/finance/costs', { params: filters })).data
+}
+
+export interface SourceInvoice {
+  id: string
+  number: string | null
+  date: string | null
+  supplier: string | null
+  items: { material: string; quantity: string; unit: string; rate: string | null; order_id: string | null; order_ref: string | null }[]
+}
+
+/** One expense with what only its own read carries: the supplier bill it came from, GST. */
+export async function fetchExpenseDetail(expenseId: string): Promise<{ source_invoice: SourceInvoice | null; tax_rate: string | null; tax_amount: string | null; is_tax_inclusive: boolean }> {
+  return (await api.get(`/expenses/${expenseId}`)).data
 }

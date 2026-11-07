@@ -10,6 +10,8 @@ import { BILL_ACCEPT, billFile } from '@/lib/bill-upload'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { addExpenseBillApi, fetchExpenseAttachmentsApi } from '@/lib/api'
 import { ExpensePayments } from './expense-payments'
+import { Link } from 'react-router-dom'
+import { fetchExpenseDetail } from '@/lib/expenses'
 
 // WEB-65 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense if image is there"): one
 // expense, with every bill on it (WhatsApp photos, a delivery's invoice, ones added here) and "Add bill" for a photo
@@ -74,6 +76,7 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
     queryFn: () => fetchExpenseAttachmentsApi(id!),
     enabled: open && !!id,
   })
+  const more = useQuery({ queryKey: ['finance', 'expense', id], queryFn: () => fetchExpenseDetail(id!), enabled: open && !!id })
   const add = useMutation({
     mutationFn: async (file: File) => addExpenseBillApi(id!, await billFile(file)),
     onSuccess: (rows) => {
@@ -170,6 +173,33 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
             )}
           </section>
 
+          {more.data?.source_invoice && (
+            <section className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
+              <h3 className="flex items-center gap-2 font-semibold">
+                <FileText className="size-4 text-muted-foreground" aria-hidden="true" /> From supplier bill
+                {more.data.source_invoice.number && <span className="font-normal text-muted-foreground">{more.data.source_invoice.number}</span>}
+              </h3>
+              <ul className="flex flex-col gap-1">
+                {more.data.source_invoice.items.map((it, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate">
+                      {it.quantity} {it.unit} {it.material}
+                      {it.rate && <span className="text-muted-foreground"> at ₹{Number(it.rate).toLocaleString('en-IN')}</span>}
+                    </span>
+                    {it.order_id && (
+                      <Link to={`/procurement/orders?id=${it.order_id}`} className="shrink-0 text-xs font-semibold text-info hover:underline">
+                        {it.order_ref}
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/procurement/rates" className="self-start text-xs font-semibold underline-offset-2 hover:underline">
+                Compare these rates
+              </Link>
+            </section>
+          )}
+
           {!expense.reversed && <ExpensePayments key={`${expense.id}:${payNow ? 1 : 0}`} expenseId={expense.id} owedTo={expense.owed_to} canPay={!!canPay && !readOnly} startOpen={payNow} />}
 
           <section className="divide-y border-t">
@@ -197,6 +227,12 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
             </Row>
             <Row label="Where">{[expense.project_name, expense.site_name].filter(Boolean).join(' · ') || '—'}</Row>
             {expense.paid_line && <Row label="Paid">{expense.paid_line}</Row>}
+            {more.data && Number(more.data.tax_amount) > 0 && (
+              <Row label="GST">
+                ₹{Number(more.data.tax_amount).toLocaleString('en-IN')}
+                {more.data.tax_rate && <span className="font-normal text-muted-foreground"> · {Number(more.data.tax_rate)}%{more.data.is_tax_inclusive ? ', included' : ', on top'}</span>}
+              </Row>
+            )}
             <Row label="From">
               {expense.source === 'whatsapp' ? 'WhatsApp' : 'Dashboard'}
               {expense.recorded_by && <span className="font-normal text-muted-foreground"> · {expense.recorded_by}</span>}

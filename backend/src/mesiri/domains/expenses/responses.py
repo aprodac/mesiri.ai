@@ -28,6 +28,10 @@ class ExpenseResponse(BaseModel):
     #: The paying account's type (cash, bank, employee_advance, other) and what was paid so far.
     account_type: str | None = None
     paid_amount: Decimal | None = None
+    #: The supplier bill this expense came from (a delivery recorded with its bill), with what it delivered and the
+    #: orders those deliveries filled: {id, number, date, supplier, items: [{material, quantity, unit, rate, order_id,
+    #: order_ref}]}. Only on GET /expenses/{id}.
+    source_invoice: dict | None = None
     custodian_name: str | None = None
     amount: Decimal
     currency: str

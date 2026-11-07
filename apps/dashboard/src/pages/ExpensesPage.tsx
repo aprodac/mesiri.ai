@@ -121,6 +121,7 @@ export default function ExpensesPage() {
   const sum = (xs: Expense[]) => xs.reduce((n, e) => n + e.amount, 0)
   const byVia = (v: PaidVia) => base.filter((e) => e.paid_via === v)
   const total = sum(base)
+  const gstTotal = base.reduce((n, e) => n + (e.tax_amount ?? 0), 0)
   const filtered = !!(q || clean(category) || vendor || site || via || clean(photo) || clean(source))
 
   const options = React.useMemo(() => {
@@ -208,9 +209,9 @@ export default function ExpensesPage() {
   const exportRows = (rows: Expense[]) =>
     exportCsv(
       `expenses-${rangeFrom ?? 'all'}-to-${rangeTo ?? 'today'}.csv`,
-      ['Number', 'Date', 'Category', 'Vendor', 'Project', 'Site', 'Description', 'Amount', 'Paid', 'Account', 'Payment status', 'Recorded by', 'From', 'Bill photo'],
+      ['Number', 'Date', 'Category', 'Vendor', 'Project', 'Site', 'Description', 'Amount', 'GST %', 'GST', 'Paid', 'Account', 'Payment status', 'Recorded by', 'From', 'Bill photo'],
       rows.map((e) => [
-        e.number ?? '', e.date, e.category, e.vendor ?? '', e.project ?? '', e.site ?? '', e.description ?? '', e.amount, PAID_VIA[e.paid_via].label,
+        e.number ?? '', e.date, e.category, e.vendor ?? '', e.project ?? '', e.site ?? '', e.description ?? '', e.amount, e.tax_rate ?? '', e.tax_amount ?? '', PAID_VIA[e.paid_via].label,
         e.account ?? '', e.payment, e.recorded_by ?? '', e.source === 'whatsapp' ? 'WhatsApp' : 'Dashboard', photos.data?.[e.id] ? 'yes' : '',
       ]),
     )
@@ -275,6 +276,7 @@ export default function ExpensesPage() {
             <span className="truncate text-sm text-foreground/80">
               Spent · {base.length} {base.length === 1 ? 'expense' : 'expenses'}
             </span>
+            {gstTotal > 0 && <span className="truncate text-[11px] text-muted-foreground">incl. {rupees(gstTotal)} GST</span>}
           </span>
         </div>
         {tiles.map((t) => {
