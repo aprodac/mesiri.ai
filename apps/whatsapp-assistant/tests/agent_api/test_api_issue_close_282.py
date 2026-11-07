@@ -91,3 +91,25 @@ async def test_a_working_read_is_passed_on_unchanged() -> None:
     model = FakeToolCallingProvider([[("list_issues", {"site_id": SITE, "status": "OPEN"})], "1 open issue."])
     turn = await _turn(_issues_api(), model)
     assert turn.calls[0]["result"]["status"] == 200
+
+
+def test_the_reply_never_says_the_tool_failed() -> None:
+    """Live re-test, 7 Nov 19:01: the model wrote "The tool failed." again, copying its earlier reply, although the
+    code's note said never to. The code cuts it; the rest of the answer stays."""
+    from agent_api.reply_guard import without_internals
+
+    live = ("The tool failed. I could not check for open issues right now, so please try again in a minute if you "
+            "want to record the fix for the leak, and tell me which issue it is.")
+    clean = without_internals(live)
+    assert "tool" not in clean.lower()
+    assert clean.startswith("I could not check for open issues right now")
+    for leak in ("The tool returned an error.", "Tool call failed.", "The tool is not available now."):
+        assert without_internals(f"{leak} Leak closed.") == "Leak closed."
+
+
+def test_site_tools_in_a_message_are_not_cut() -> None:
+    """Guard: tools on a construction site are real ("the tools were stolen", "cutting tool broke")."""
+    from agent_api.reply_guard import without_internals
+
+    for said in ("The tools were stolen from the store room.", "Cutting tool broke, new one needed."):
+        assert without_internals(said) == said

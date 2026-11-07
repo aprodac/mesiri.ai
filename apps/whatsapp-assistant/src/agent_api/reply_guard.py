@@ -121,7 +121,9 @@ _CODE_NOTE_WHOLE = re.compile(r"\(\s*ignored\b[^\n]*\)", re.IGNORECASE)
 _API_ERROR = re.compile(
     r"\b[a-z]+_id\b|\bHTTP\s*\d{3}\b|\b(?:400|401|403|404|409|422|424|500|502|503)\s+(?:error|bad|not found|forbidden"
     r"|conflict|unprocessable|internal)|\bTraceback\b|\bvalidation error\b|\bUnprocessable\b|\bInternal Server Error\b"
-    r"|\bField required\b|\bis not a valid\b|[\"']detail[\"']\s*:",
+    r"|\bField required\b|\bis not a valid\b|[\"']detail[\"']\s*:"
+    # [282] (7 Nov, twice): "The tool failed. I could not check ..." -- the model's own words for a failed tool.
+    r"|\btools?\s+(?:failed|call(?:ed)?\s+failed|error|returned an error|(?:is|was)\s+(?:not available|unavailable|down))\b",
     re.IGNORECASE,
 )
 

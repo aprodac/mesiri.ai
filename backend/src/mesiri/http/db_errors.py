@@ -23,6 +23,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 
+from mesiri_contracts.common.errors import MesiriError
+
 _log = logging.getLogger("mesiri.http.db_errors")
 
 _ENUM = re.compile(r'invalid input value for enum (?P<type>\w+): "(?P<value>[^"]*)"')
@@ -45,15 +47,30 @@ def invalid_value_detail(message: str) -> str | None:
     return None
 
 
+def _db_error_in(exc: BaseException) -> DBAPIError | None:
+    """The DBAPIError behind ``exc``. `get_db_conn`'s transaction re-raises every
+    database error as MesiriError[POSTGRES_UNAVAILABLE] (database.py), so a bad
+    value arrives wrapped; found by following the cause chain."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, DBAPIError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
+
+
 def install(app: FastAPI) -> None:
     @app.exception_handler(DBAPIError)
-    async def _db_value_error(request: Request, exc: DBAPIError) -> JSONResponse:
+    @app.exception_handler(MesiriError)
+    async def _db_value_error(request: Request, exc: Exception) -> JSONResponse:
         # Only these messages are a caller's bad value (22P02, or asyncpg's own
-        # check of an argument); anything else stays a 500 with its trace.
-        detail = invalid_value_detail(str(exc.orig))
+        # check of an argument). Anything else is re-raised untouched, so a real
+        # failure is the same 500, logged and reported exactly as before.
+        db_error = _db_error_in(exc)
+        detail = invalid_value_detail(str(db_error.orig)) if db_error is not None else None
         if detail is None:
-            # Not a bad value: a real failure. Keep it a 500 and keep the trace.
-            _log.exception("db error on %s %s", request.method, request.url.path, exc_info=exc)
-            return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+            raise exc
         _log.info("db_errors.invalid_value path=%s detail=%s", request.url.path, detail)
         return JSONResponse(status_code=422, content={"detail": detail})
