@@ -82,6 +82,11 @@ export interface MaterialReceipt {
   // Set when this purchase came from a supplier invoice — several purchases
   // can share one, and the original document hangs off it.
   invoice_id?: string | null
+  /** WEB-78: the purchase order and goods received note this delivery came on (null when on none). */
+  purchase_order_id?: string | null
+  order_ref?: string | null
+  grn_id?: string | null
+  grn_ref?: string | null
   occurred_date: string
   occurred_time: string | null
   correlation_id: string | null

@@ -131,7 +131,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     module: 'materials',
     about: 'What is on site, what came, what went into the work.',
     pages: [
-      { title: 'Stock', url: '/materials?view=stock', status: 'built', phase: 'V1', about: 'What is on site now, and how long it lasts.', example: 'Cement: 217 bags, lasts about 10 days.' },
+      { title: 'Stock', url: '/materials?view=stock', status: 'built', phase: 'V1', about: 'What is on site now, how long it lasts, what is coming on orders and what the sites asked for.', example: 'Cement: 217 bags, lasts about 10 days, 200 coming on PO-0042.', tracker: 'WEB-77' },
       { title: 'Movements', url: '/materials?view=movements', status: 'built', phase: 'V1', about: 'The register: every delivery, use and move.', example: '+100 bags cement from Malabar Hardware, ₹41,400.' },
       { title: 'Items', url: '/materials?view=items', status: 'built', phase: 'V1', about: 'Your list of materials, with category and unit.', example: 'Cement OPC 53 · Structural › Concrete · bags.', roles: MANAGERS },
       { title: 'Requests', url: '/materials/requests', status: 'built', phase: 'V1', about: 'What the site asks for, before anyone orders it.', example: 'Engineer: need 200 bags cement by Friday for the first-floor slab.', tracker: 'PRC-22', related: [{ title: 'Stock', url: '/materials' }] },

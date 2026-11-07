@@ -279,7 +279,30 @@ function Step({ icon: Icon, title, meta, quote, now, bad, action }: { icon: type
   )
 }
 
-function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: PurchaseOrder; open: boolean; onClose: () => void; onDone: () => void; onError: (e: unknown) => void }) {
+/** WEB-79: "Material came" on its own, for Materials > Record delivery when the delivery is on an open order:
+ * the same receiving (stock, the order, its GRN) as the order page, with the same toast. */
+export function ReceiveOrderDialog({ order, lineId, open, onClose }: { order: PurchaseOrder | null; lineId?: string | null; open: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  if (!order) return null
+  return (
+    <ReceiveDialog
+      order={order}
+      lineId={lineId}
+      open={open}
+      onClose={onClose}
+      onDone={() => {
+        queryClient.invalidateQueries({ queryKey: ['procurement'] })
+        queryClient.invalidateQueries({ queryKey: ['materials'] })
+        toast.success(`Delivery recorded on ${order.ref}; stock is updated`)
+        onClose()
+      }}
+      onError={(err) => toast.error('Not saved', errorText(err))}
+    />
+  )
+}
+
+function ReceiveDialog({ order, lineId, open, onClose, onDone, onError }: { order: PurchaseOrder; lineId?: string | null; open: boolean; onClose: () => void; onDone: () => void; onError: (e: unknown) => void }) {
   const { me } = useAuth()
   const [amounts, setAmounts] = React.useState<Record<string, string>>({})
   // PRC-29: the goods received note: some may be turned away at the gate (with why), the challan, who received it.
@@ -295,7 +318,8 @@ function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: Purch
   const [extra, setExtra] = React.useState<string | null>(null)
   React.useEffect(() => {
     if (open) {
-      setAmounts(Object.fromEntries(order.lines.map((l) => [l.id, Number(l.pending) > 0 ? l.pending : ''])))
+      // WEB-79: from Materials > Record delivery for one item, only that line is filled in.
+      setAmounts(Object.fromEntries(order.lines.map((l) => [l.id, Number(l.pending) > 0 && (!lineId || l.id === lineId) ? l.pending : ''])))
       setRejected({})
       setReasons({})
       setChecking(false)
@@ -307,7 +331,7 @@ function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: Purch
       setExtra(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, order.id])
+  }, [open, order.id, lineId])
   const lines = order.lines
     .map((l) => ({ line_id: l.id, quantity: amounts[l.id] || '0', rejected: rejected[l.id] || '0', rejected_reason: reasons[l.id]?.trim() || null }))
     .filter((l) => Number(l.quantity) > 0 || Number(l.rejected) > 0)

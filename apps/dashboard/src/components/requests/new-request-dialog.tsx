@@ -33,10 +33,17 @@ function dateFor(when: When, picked: string): string | null {
   return picked || null
 }
 
-export function NewRequestDialog({ open, onOpenChange, scope, editing }: { open: boolean; onOpenChange: (open: boolean) => void; scope: AppScope; editing?: MaterialRequest | null }) {
+/** WEB-77: Materials > Stock's "Request more" opens the form with the site and item filled in. */
+export interface RequestPrefill {
+  project_id: string
+  site_id: string
+  lines: { material_id: string; quantity: string }[]
+}
+
+export function NewRequestDialog({ open, onOpenChange, scope, editing, prefill }: { open: boolean; onOpenChange: (open: boolean) => void; scope: AppScope; editing?: MaterialRequest | null; prefill?: RequestPrefill | null }) {
   // PRC-31: with `editing`, the same form changes a waiting request (its site stays).
-  const scopedProject = editing ? editing.project_id : scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : ''
-  const scopedSite = editing ? editing.site_id : scope.mode === 'site' ? scope.siteId : ''
+  const scopedProject = editing ? editing.project_id : prefill?.project_id ?? (scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : '')
+  const scopedSite = editing ? editing.site_id : prefill?.site_id ?? (scope.mode === 'site' ? scope.siteId : '')
   const [projectId, setProjectId] = React.useState(scopedProject)
   const [siteId, setSiteId] = React.useState(scopedSite)
   const [lines, setLines] = React.useState<Line[]>([{ key: 1, materialId: '', quantity: '' }])
@@ -52,7 +59,7 @@ export function NewRequestDialog({ open, onOpenChange, scope, editing }: { open:
     if (!open) return
     setProjectId(scopedProject)
     setSiteId(scopedSite)
-    setLines(editing ? editing.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, lineId: l.id })) : [{ key: 1, materialId: '', quantity: '' }])
+    setLines(editing ? editing.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, lineId: l.id })) : prefill?.lines.length ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity })) : [{ key: 1, materialId: '', quantity: '' }])
     setWhen(editing ? 'pick' : 'tomorrow')
     setPicked(editing?.needed_by ?? '')
     setPurpose(editing?.purpose ?? '')

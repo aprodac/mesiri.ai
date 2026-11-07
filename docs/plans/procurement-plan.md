@@ -253,6 +253,26 @@ Fixes 4e A1–A5, B6, B9 and C13. No migration (reads `purchase_order_lines.requ
   (`hold_until_window`, 2 days) instead of being dropped: no Meta template is needed for them (PRC-13 stays for the rest).
 - Open: "4 working hours" (the plan) is plain hours for now; quiet hours are the sender's.
 
+### 4k. As built: Materials joined to procurement (WEB-77..80, 7 Nov 2026)
+
+Asked by Ilan once requests and orders were live: the Materials pages should look and work like them.
+
+- **Stock** (`components/materials/category-view.tsx`): the Requests design (four tiles that filter: running
+  low, out of stock, coming on orders, asked for; category chips; Site pill). Per site and item, *Coming* is
+  the open order lines still to come (`on_order`, PRC-27) and *Asked* the waiting requests' quantities, read
+  from the same lists as the Requests / Purchase orders pages (`lib/stock-flow.ts`), so the three pages always
+  agree. An item opens a panel (`stock-item-panel.tsx`): at site / coming / asked, use per day, its orders and
+  requests (linked), last rate (money roles), the stock book, and **Create order** (office), **Request more**,
+  **Material came**, each opening its form filled in.
+- **Movements**: a delivery on an order shows "PO-0002 · GRN-0001" (API: `order_ref`, `grn_ref` on inflows);
+  filter "Came on an order" / "Came, no order".
+- **Record delivery**: the chosen site's open order lines come first; picking one is the order's own
+  "Material came" (stock, order, GRN by the one receiving path). Not on an order: the form, as before.
+- **Items** and the header: same look.
+
+Not built: a GRN for a delivery saved loose and linked afterwards (PRC-23's question links it, no GRN), and
+WhatsApp deliveries (unchanged).
+
 ### 4g. Both ways: through Mesiri, or done outside and told quickly (decided 7 Nov 2026)
 
 Some companies will run every step through Mesiri; others will phone the vendor, take quotes on paper and only tell

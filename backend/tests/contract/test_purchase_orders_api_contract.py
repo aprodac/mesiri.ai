@@ -840,6 +840,25 @@ async def test_a_grn_with_a_rejected_part_a_challan_and_its_photo(client, world,
     assert (await client.get("/procurement/grns", headers=w["ravi"]["h"])).json()["items"] == []  # another project
 
 
+async def test_the_register_names_the_order_and_grn_a_delivery_came_on(client, world):
+    """WEB-77: Materials > Movements shows "PO-0001 · GRN-0001" on a delivery received against an order; a delivery
+    on no order names none; the single delivery read says the same."""
+    w = world
+    po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100"), headers=w["admin"]["h"])).json()
+    got = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "60"}]})
+    assert got.status_code == 201, got.text
+    await _deliver(client, w, w["block_a"], w["villa"], w["tmt"], w["units"]["kg"], "40")
+    rows = (await client.get("/materials/inflows", headers=w["admin"]["h"])).json()["items"]
+    by_material = {r["material_name"]: r for r in rows}
+    cement, tmt = by_material["Cement OPC 53"], by_material["TMT bar 12 mm"]
+    assert (cement["order_ref"], cement["grn_ref"], cement["purchase_order_id"]) == ("PO-0001", "GRN-0001", po["id"])
+    assert cement["grn_id"] is not None
+    assert (tmt["order_ref"], tmt["grn_ref"], tmt["purchase_order_id"], tmt["grn_id"]) == (None, None, None, None)
+    one = (await client.get(f"/materials/inflows/{cement['id']}", headers=w["admin"]["h"])).json()
+    assert (one["order_ref"], one["grn_ref"]) == ("PO-0001", "GRN-0001")
+
+
 async def test_everything_rejected_puts_nothing_in_stock_and_a_reason_is_needed(client, world):
     w = world
     po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "50"), headers=w["admin"]["h"])).json()
