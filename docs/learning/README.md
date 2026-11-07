@@ -6,7 +6,7 @@ loaded into NotebookLM. **Drafts:** construction details must be checked by some
 experience before they are used with customers.
 
 Build: `node docs/learning/build.js [filter]` (Playwright, A4, page numbers) turns `src/*.html`
-into `pdf/*.pdf`. Screenshots in `img/` come from the demo company on a local copy, never production.
+into `pdf/*.pdf`. Any screenshots in `img/` come from the demo company on a local copy, never production.
 
 ## The set (agreed 7 Nov 2026)
 
@@ -26,17 +26,19 @@ into `pdf/*.pdf`. Screenshots in `img/` come from the demo company on a local co
 | 11 | Equipment | to do |
 | 12 | Glossary | to do |
 
-## What every module guide contains, in this order
+## What every module guide contains, in this order (domain first, 7 Nov 2026)
 
-1. **The problem without it** (the most space): what goes wrong, who feels it, what it costs, in the customer's words where we have them.
-2. **The problems people hit while using it**, and how Mesiri's design avoids each.
-3. Who uses it, and when.
-4. One real site story, with numbers.
-5. **The pages**: purpose, what must be on it, how it looks (screenshot if built, wireframe if planned), status.
-6. The best UX for the module: do / don't.
-7. **On WhatsApp**: what works today (only what really exists), what is planned.
-8. How it connects: diagram of what feeds it and what it feeds.
-9. Mesiri vs other software · customer questions · key terms · check yourself.
+Parts 1 to 7 are about the business, not about Mesiri; part 8 is the gap list to build from.
+
+1. **How it works in a construction company**: the real process step by step, the paper documents, who does what.
+2. **The problems** (the most space): where money leaks at each step, what owners complain about, and why software for it usually fails.
+3. **What good control looks like**: the habits of well-run contractors and the numbers they watch.
+4. **What a complete system needs**: the requirements checklist, each marked Must / Should / Nice, from industry practice and the major ERPs.
+5. **Best UX** for this kind of software: do / don't.
+6. **Where WhatsApp and voice fit**: which steps suit chat, which need a screen.
+7. **How it connects** to the other modules (diagram).
+8. **Mesiri today: the gap list**: the checklist from part 4, marked Have / Partly / Missing, with tracker IDs. This is the build list.
+9. Key terms · questions customers ask · check yourself.
 
 Sources: `apps/dashboard/src/lib/module-map.ts` (pages and status), the plans in `docs/plans/`,
 the assistant's tools and SOP (`apps/whatsapp-assistant/src/agent_api/`), meeting notes.

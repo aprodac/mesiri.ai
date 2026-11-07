@@ -12,364 +12,414 @@
   <div class="brand">Mesiri <span></span></div>
   <p class="series">Field Guide · 03 of 13 · Internal team edition</p>
   <h1>Materials</h1>
-  <p class="lede">What is on site, what came, what went into the work, and where the money disappears when nobody is counting.</p>
-  <div class="status-strip">
-    <div><b>4</b><span>pages working today</span></div>
-    <div><b>2</b><span>pages planned for V1</span></div>
-    <div><b>1</b><span>page planned for Later</span></div>
-    <div><b>Yes</b><span>works on WhatsApp</span></div>
+  <p class="lede">How a construction company receives, stores, issues and accounts for material; where the money leaks; what good control looks like; and what a complete system must do.</p>
+  <div class="draft">Draft, 7 Nov 2026. Written from industry practice, construction ERPs and customer meetings. Practices, documents and numbers vary between companies and must be checked by someone with site experience before we use them with customers.</div>
+  <div class="howto">
+    <p><b>How to read this guide.</b> Parts 1 to 7 are about the business, not about any software. Part 8 compares Mesiri with the checklist in part 4: that is the list of what to build next.</p>
   </div>
-  <div class="draft">Draft, 7 Nov 2026. Construction details here are our understanding and must be checked by someone with site experience before we use them with customers.</div>
   <div class="toc">
     <p class="toc-title">In this guide</p>
     <ol>
-      <li>The problem without it</li>
-      <li>The problems people hit while using it</li>
-      <li>Who uses it, and when</li>
-      <li>One week on a real site</li>
-      <li>The pages, and how they look</li>
-      <li>The best UX for materials</li>
-      <li>On WhatsApp</li>
-      <li>How it connects to everything else</li>
-      <li>Mesiri vs other software</li>
-      <li>Questions customers will ask</li>
-      <li>Key terms · Check yourself</li>
+      <li>How materials work on a construction project</li>
+      <li>The problems: where money leaks</li>
+      <li>What good control looks like</li>
+      <li>What a complete system needs</li>
+      <li>Best UX for materials software</li>
+      <li>Where WhatsApp and voice fit</li>
+      <li>How it connects to other modules</li>
+      <li>Mesiri today: the gap list</li>
+      <li>Key terms · Questions · Check yourself</li>
     </ol>
   </div>
 </section>
 
-<!-- ===================== 1. PROBLEM ===================== -->
-<section>
-  <p class="eyebrow">1 · The problem without it</p>
+<!-- ===================== 1. HOW IT WORKS ===================== -->
+<section class="new-page">
+  <p class="eyebrow">1 · How materials work on a construction project</p>
+  <h2>From "we need it" to "it is in the wall"</h2>
+  <p>Material is usually the largest cost on a building project, often around half of it. It is bought in many small lots from many suppliers, delivered to several sites, stored in the open or in a small shed, and used a little at a time by different teams. Every step has a person responsible and, in a well-run company, a document.</p>
+
+  <svg class="diagram" viewBox="0 0 760 250" role="img" aria-label="The material cycle: plan, request, order, receive at the gate, store, issue to work, use, then count and reconcile, with returns and transfers as side paths.">
+    <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8178"/></marker></defs>
+    <g font-family="Noto Sans, sans-serif" font-size="12">
+      <g fill="#fff" stroke="#c9c0b4">
+        <rect x="10" y="20" width="130" height="62" rx="10"/><rect x="160" y="20" width="130" height="62" rx="10"/><rect x="310" y="20" width="130" height="62" rx="10"/><rect x="460" y="20" width="130" height="62" rx="10"/><rect x="610" y="20" width="140" height="62" rx="10"/>
+        <rect x="610" y="150" width="140" height="62" rx="10"/><rect x="460" y="150" width="130" height="62" rx="10"/><rect x="310" y="150" width="130" height="62" rx="10"/>
+      </g>
+      <rect x="10" y="150" width="280" height="62" rx="10" fill="#e9f6ee" stroke="#2f855a"/>
+      <g text-anchor="middle" fill="#1f1d1a">
+        <text x="75" y="45" font-weight="700">1 Plan</text><text x="75" y="63" fill="#5f5a52">BOQ: how much</text>
+        <text x="225" y="45" font-weight="700">2 Request</text><text x="225" y="63" fill="#5f5a52">indent from site</text>
+        <text x="375" y="45" font-weight="700">3 Order</text><text x="375" y="63" fill="#5f5a52">purchase order</text>
+        <text x="525" y="45" font-weight="700">4 Receive</text><text x="525" y="63" fill="#5f5a52">challan → GRN</text>
+        <text x="680" y="45" font-weight="700">5 Store</text><text x="680" y="63" fill="#5f5a52">stock register</text>
+        <text x="680" y="175" font-weight="700">6 Issue</text><text x="680" y="193" fill="#5f5a52">issue slip to a team</text>
+        <text x="525" y="175" font-weight="700">7 Use</text><text x="525" y="193" fill="#5f5a52">into named work</text>
+        <text x="375" y="175" font-weight="700">8 Count</text><text x="375" y="193" fill="#5f5a52">physical stock check</text>
+        <text x="150" y="175" font-weight="700">9 Reconcile</text><text x="150" y="193" fill="#3c4a42">should have used vs did use</text>
+      </g>
+      <g stroke="#8a8178" stroke-width="1.4" fill="none" marker-end="url(#ar)">
+        <path d="M140 51 L160 51"/><path d="M290 51 L310 51"/><path d="M440 51 L460 51"/><path d="M590 51 L610 51"/>
+        <path d="M680 82 L680 150"/><path d="M610 181 L590 181"/><path d="M460 181 L440 181"/><path d="M310 181 L290 181"/>
+        <path d="M150 150 C 150 110, 200 100, 225 84" stroke-dasharray="4 3"/>
+      </g>
+      <text x="230" y="125" fill="#8a8178" font-size="11">shortage → new request</text>
+      <text x="470" y="238" fill="#8a8178" font-size="11">Side paths: returns to supplier · transfers between sites · wastage and scrap</text>
+    </g>
+  </svg>
+
+  <h3>The steps, the document, and who is responsible</h3>
+  <table>
+    <thead><tr><th style="width:18%">Step</th><th style="width:47%">What happens</th><th style="width:20%">Document</th><th>Who</th></tr></thead>
+    <tbody>
+      <tr><td><b>1 Plan</b></td><td>The estimate (BOQ) gives quantities of work; standard material per unit of work turns them into material needed: e.g. 1 m³ of M20 concrete needs roughly 8 bags of cement plus sand and metal.</td><td>BOQ, material schedule</td><td>QS, planning engineer</td></tr>
+      <tr><td><b>2 Request</b></td><td>The site asks for what the next days' work needs, with a needed-by date.</td><td>Indent / material requisition</td><td>Site engineer; approved by PM</td></tr>
+      <tr><td><b>3 Order</b></td><td>Purchase picks a supplier and agrees quantity, rate, GST, delivery date and terms.</td><td>Purchase order (PO)</td><td>Purchase / PM</td></tr>
+      <tr><td><b>4 Receive</b></td><td>The lorry arrives with a delivery challan. At the gate the material is counted, measured or weighed, checked for quality, and short or damaged quantity is rejected. What is accepted is written up.</td><td>Delivery challan, gate entry, GRN (goods receipt note), weighbridge slip</td><td>Storekeeper / security; engineer for quality</td></tr>
+      <tr><td><b>5 Store</b></td><td>Accepted material goes into stock: cement stacked off the ground, steel by diameter, sand and metal in marked heaps.</td><td>Stock register / bin card</td><td>Storekeeper</td></tr>
+      <tr><td><b>6 Issue</b></td><td>Material leaves the store to a team or subcontractor for a named piece of work, signed for.</td><td>Material issue slip (MIN)</td><td>Storekeeper; receiver signs</td></tr>
+      <tr><td><b>7 Use</b></td><td>It goes into the work. Leftovers come back to the store.</td><td>Daily report, return slip</td><td>Foreman, engineer</td></tr>
+      <tr><td><b>8 Count</b></td><td>Stock is physically counted every week or month and compared with the register; differences are adjusted with a reason.</td><td>Stock verification sheet</td><td>Storekeeper, checked by PM or accounts</td></tr>
+      <tr><td><b>9 Reconcile</b></td><td>For the work actually done, how much material should have been used? Compare with what was used. Excess beyond an agreed wastage allowance is investigated.</td><td>Material reconciliation statement</td><td>QS</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Side documents: <b>return to supplier</b> (debit note), <b>site-to-site transfer</b> (transfer note or internal challan), <b>wastage / scrap register</b> (broken blocks, hardened cement, steel offcuts sold as scrap).</p>
+
+  <h3>Material behaves differently by type</h3>
+  <table>
+    <thead><tr><th style="width:20%">Type</th><th style="width:22%">Examples</th><th style="width:30%">How it is received</th><th>Special care</th></tr></thead>
+    <tbody>
+      <tr><td><b>Countable</b></td><td>Cement bags, blocks, tiles, pipes</td><td>Counted at the gate</td><td>Cement loses strength with age: use oldest first (FIFO), check the manufacture date</td></tr>
+      <tr><td><b>Bulk, measured</b></td><td>Sand, M-sand, metal (aggregate)</td><td>Lorry body measured (length × width × height), in cft or brass</td><td>Cannot be counted once dumped: only receipts and use can tell you what should be in the heap</td></tr>
+      <tr><td><b>Weighed</b></td><td>Steel (TMT bars), binding wire</td><td>Weighbridge slip; bars counted by diameter</td><td>Test certificate from the mill; offcuts and scrap</td></tr>
+      <tr><td><b>Small, many types</b></td><td>Electrical and plumbing fittings, hardware</td><td>Counted against the order, item by item</td><td>Many sizes; leftovers disappear; drawn up from the MEP drawings</td></tr>
+      <tr><td><b>Free issue</b></td><td>Cement or steel supplied by the client to the contractor</td><td>As above, but owned by the client</td><td>Contracts often require reconciliation; excess use beyond the allowance can be recovered from the contractor</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 2. PROBLEMS ===================== -->
+<section class="new-page">
+  <p class="eyebrow">2 · The problems: where money leaks</p>
   <h2>Money leaves the company as material, and nobody sees where it goes</h2>
   <blockquote>
     "Near project closeout, you suddenly discover a shortage of 4 loads of metal. Reflected on paper, but missing on the ground.
     Accounts are tied to that: if money left, the material should be there."
     <cite>GM of a Kerala builder, sales meeting, 6 Nov 2026</cite>
   </blockquote>
-  <p>Material is usually the biggest cost on a building site, bigger than labour. It arrives in many small loads, from many suppliers, to several sites, and is used a little every day by different teams. On most sites it is tracked in a paper register that reaches the office days later, if at all. These are the problems that follow:</p>
 
+  <h3>Leaks at each step</h3>
   <table class="problems">
-    <thead><tr><th>What goes wrong</th><th>What it looks like on site</th><th>Who feels it, and what it costs</th></tr></thead>
+    <thead><tr><th>Step</th><th>What goes wrong</th><th>What it costs, and who feels it</th></tr></thead>
     <tbody>
-      <tr><td><b>Shortage found too late</b></td><td>The slab is planned for Friday; on Thursday evening the engineer finds 30 bags of cement left, not 130.</td><td>The team waits or the pour is moved. 6 people idle for a day is about ₹6,400 of wages for nothing, plus an urgent purchase at a worse rate.</td></tr>
-      <tr><td><b>Paid for, not on site</b></td><td>The bill says 4 loads of metal; the ground shows less. Short delivery, unloading at another site, or theft.</td><td>Accounts pays the full bill. Nobody can prove what arrived, so the loss is never recovered.</td></tr>
-      <tr><td><b>Used more than the estimate</b></td><td>Plastering uses 9 bags per 100 sq ft where the estimate said 7. Nobody compares.</td><td>The margin on the job shrinks quietly. The QS finds out at the end, when it can't be fixed.</td></tr>
-      <tr><td><b>Things you can't count</b></td><td>Sand and metal are dumped in a heap. Once dumped, nobody can count them.</td><td>Only "what came" and "what was used" can tell you what should be there. Without both, a heap is a guess.</td></tr>
-      <tr><td><b>Double orders and leftovers</b></td><td>Two engineers order cement the same morning. The electrician asks for 10 pipes, uses 6, the rest disappear.</td><td>Cash locked in extra stock; leftovers wasted or taken.</td></tr>
-      <tr><td><b>Moved between sites, not recorded</b></td><td>20 bags taken to the Chennai site in the company's own lorry.</td><td>One site looks short, the other has extra that nobody knows about.</td></tr>
-      <tr><td><b>Price creep</b></td><td>Cement is ₹14 a bag dearer than last month from the same shop.</td><td>Nobody notices, because last month's rate is in a different notebook.</td></tr>
-      <tr><td><b>The office is blind</b></td><td>The MD calls the engineer to ask "how much steel is left?"</td><td>Every answer costs a phone call and is only as good as the engineer's memory.</td></tr>
+      <tr><td><b>Request</b></td><td>Site asks late, or two people ask for the same thing. The electrician asks for 10 pipes and uses 6.</td><td>Urgent buying at worse rates; duplicate stock; leftovers that vanish.</td></tr>
+      <tr><td><b>Order</b></td><td>No comparison of rates; nobody notices cement is ₹14 a bag dearer than last month.</td><td>A few percent on every purchase, every month. Owner and purchase.</td></tr>
+      <tr><td><b>Receive</b></td><td>Short delivery accepted by the challan, not by counting. A lorry of sand "looks full". Steel not weighed.</td><td>The company pays for material it never received. Accounts pays the full bill; nobody can prove otherwise later.</td></tr>
+      <tr><td><b>Store</b></td><td>Cement stored on the ground gets damp; old bags used last; steel rusts; no lock on the store.</td><td>Spoiled material and theft. Storekeeper and PM.</td></tr>
+      <tr><td><b>Issue</b></td><td>Material taken without an issue slip; nobody knows which team took it or for which work.</td><td>Use cannot be checked against work; subcontractors over-draw.</td></tr>
+      <tr><td><b>Use</b></td><td>More used than the work needs: thick plaster, poor mixing, breakage.</td><td>The job's margin shrinks quietly. QS finds out at the end.</td></tr>
+      <tr><td><b>Transfer</b></td><td>20 bags taken to another site in the company's lorry, never written down.</td><td>One site looks short, another has extra nobody knows about.</td></tr>
+      <tr><td><b>Count</b></td><td>No regular stock check; the register drifts away from the ground.</td><td>Losses found months later, when nobody remembers why.</td></tr>
+      <tr><td><b>Reconcile</b></td><td>Nobody compares material used with work done.</td><td>The "4 loads missing at closeout" problem. Too late to recover.</td></tr>
     </tbody>
   </table>
 
   <div class="callout money">
-    <b>A rough example of what one leak costs.</b> If a load of 20 mm metal is about 200 cft (sizes vary by lorry) at ₹46 a cft, the GM's "4 loads missing" is about <b>₹36,800</b>, on one material, on one site. Mesiri's monthly fee is a fraction of that.
+    <b>Rough size of a leak.</b> If a load of 20 mm metal is about 200 cft (lorry sizes vary) at ₹46 a cft, the GM's 4 missing loads are about <b>₹36,800</b> on one material, on one site. A 3% leak on ₹1 crore of material is ₹3 lakh per project. These are illustrations, not measured figures.
   </div>
 
-  <h3>What the customer actually wants</h3>
-  <p>Not a digital copy of the paper register. The GM said it plainly: "Just noting down that metal arrived or cement arrived has no real benefit." What he wants is to <b>know, while there is still time to act</b>:</p>
+  <h3>The problems people have with materials software</h3>
+  <p>Contractors have tried registers, Excel and apps. Most stop using them, for the same reasons:</p>
   <ul class="tight">
-    <li>what is on each site right now, and how many days it will last;</li>
-    <li>that what was paid for actually arrived;</li>
-    <li>that what was used matches the work done (this needs the BOQ, see Guide 07 Cost control);</li>
-    <li>a shortage a week before it happens, not at the end of the project.</li>
+    <li><b>Too much typing on site.</b> A storekeeper with dusty hands will not fill a 10-field form for every lorry.</li>
+    <li><b>Units that don't add up.</b> Sand comes in loads, is used in cft or bags; steel in tonnes, used in bars.</li>
+    <li><b>One item, five names.</b> "M sand", "msand", "manal" become separate items and totals split.</li>
+    <li><b>No opening stock</b>, so the numbers are wrong from day one and nobody trusts them after.</li>
+    <li><b>Only deliveries are entered, never use</b>, so stock only ever goes up.</li>
+    <li><b>Silent edits</b> change last week's totals and nobody knows why.</li>
+    <li><b>Price and bill are not known at the gate</b>, so the form can't be completed and is skipped.</li>
+    <li><b>A register, not an answer.</b> Someone must read pages of entries to find the one problem.</li>
   </ul>
 </section>
 
-<!-- ===================== 2. PROBLEMS WHILE USING ===================== -->
-<section class="new-page">
-  <p class="eyebrow">2 · The problems people hit while using it</p>
-  <h2>Why materials software usually dies by week three, and how Mesiri avoids it</h2>
-  <p>Contractors have tried registers, Excel and apps before. Most stop using them. The reasons are almost always the same, and each one is a design rule for us.</p>
-  <table class="pairs">
-    <thead><tr><th>Why it fails</th><th>How Mesiri handles it</th></tr></thead>
+<!-- ===================== 3. GOOD CONTROL ===================== -->
+<section>
+  <p class="eyebrow">3 · What good control looks like</p>
+  <h2>The habits of contractors who don't lose material</h2>
+  <div class="rules">
+    <div><b>Count at the gate, not from the challan.</b> Count bags, measure the lorry body for sand and metal, weigh steel. Accept what is counted; note what is rejected.</div>
+    <div><b>Separate the hands.</b> The person who orders is not the one who receives, and neither is the one who pays. The bill is paid only when order, delivery and bill agree (3-way match).</div>
+    <div><b>Issue against work.</b> Material leaves the store for a named piece of work and a named team, signed for.</div>
+    <div><b>Oldest first.</b> Cement and other perishables are used in the order they arrived.</div>
+    <div><b>Count regularly.</b> Weekly for high-value items, monthly for the rest; surprise checks now and then.</div>
+    <div><b>Reconcile against the estimate.</b> For the work done, what should have been used? Agree a wastage allowance per material and investigate anything above it.</div>
+    <div><b>Control by value (ABC).</b> Tight control of the few expensive items (cement, steel, tiles); light control of cheap ones (nails, binding wire).</div>
+    <div><b>Every correction leaves a trace.</b> Who changed what, when and why.</div>
+  </div>
+
+  <h3>The numbers good companies watch</h3>
+  <table>
+    <thead><tr><th style="width:28%">Measure</th><th style="width:44%">What it means</th><th>Example</th></tr></thead>
     <tbody>
-      <tr><td><b>Too much typing on site.</b> A storekeeper with dusty hands will not fill a 10-field form for every lorry.</td><td>A voice note or a line on WhatsApp ("200 bag cement vannu"). Mesiri prepares the entry; the person taps <b>Save</b>. Only material and quantity are required.</td></tr>
-      <tr><td><b>Units don't add up.</b> Sand comes in loads, is used in cft or bags; steel in tons, used in bars.</td><td>Each item has one <b>stock unit</b>. Standard conversions are automatic (1 ton = 1000 kg, 1 brass = 100 cft, a cement bag = 50 kg). For a "load", Mesiri asks once, an admin answers ("1 load M-sand = 60 cft"), and it is used for everyone after.</td></tr>
-      <tr><td><b>The same item under five names.</b> "M sand", "msand", "manal", "Msand 1st quality".</td><td>One item list per company with <b>aliases</b>. Mesiri never guesses a "near" material: if it's not on the list, it asks or adds it, it never saves cement as cement paint.</td></tr>
-      <tr><td><b>No opening stock.</b> The site already had 60 bags when Mesiri started, so stock is wrong from day one.</td><td><b>Opening stock</b> is its own entry type, and can be loaded from Excel at setup.</td></tr>
-      <tr><td><b>Only deliveries are recorded, never use.</b> Stock only ever goes up.</td><td>Use is one line ("45 bag cement footing-nu"). Planned: comparing use with the BOQ will flag a site that reports deliveries but no use (CC-08).</td></tr>
-      <tr><td><b>Nobody trusts the numbers.</b> Someone edited last week's entry; the total changed; no one knows why.</td><td>Nothing is edited silently. A correction is a new entry that reverses the old one, with who and why. Every number on Stock can be traced to its entries in Movements.</td></tr>
-      <tr><td><b>Price and bill are not known at the gate.</b></td><td>Supplier and rate are optional at delivery; they come later from the bill (planned: bill photo matched to the delivery, PRC-11). A missing price shows as "Not recorded", never as ₹0.</td></tr>
-      <tr><td><b>The office screen is confusing.</b> Twenty columns, codes, menus.</td><td>Three tabs, each answering one question: <b>Stock</b> (what do we have), <b>Movements</b> (what happened), <b>Items</b> (what we use).</td></tr>
+      <tr><td><b>Days of cover</b></td><td>How many days current stock lasts at the recent rate of use.</td><td>Cement: 217 bags, about 10 days.</td></tr>
+      <tr><td><b>Wastage %</b></td><td>Used beyond what the work needed, against the allowance agreed for that material.</td><td>Cement 4% against a 2% allowance: investigate. (Allowances vary by company and contract.)</td></tr>
+      <tr><td><b>Material variance (₹)</b></td><td>Value of material used above or below the estimate for the work done.</td><td>Plastering this month: ₹18,000 over.</td></tr>
+      <tr><td><b>Stock accuracy</b></td><td>How close the physical count is to the register.</td><td>Count 205 bags, register 217: 12 bags to explain.</td></tr>
+      <tr><td><b>Rate variance</b></td><td>Price paid against the budget or last rate.</td><td>Cement ₹414 against ₹400 budget: +3.5%.</td></tr>
+      <tr><td><b>Stock-outs</b></td><td>Days work stopped or slowed for lack of material.</td><td>2 days in October.</td></tr>
+      <tr><td><b>Unbilled deliveries</b></td><td>Material received with no supplier bill yet.</td><td>6 deliveries, ₹1.2 lakh.</td></tr>
     </tbody>
   </table>
 </section>
 
-<!-- ===================== 3. WHO ===================== -->
-<section>
-  <p class="eyebrow">3 · Who uses it, and when</p>
-  <h2>Six people, six different questions</h2>
-  <table class="who">
-    <thead><tr><th>Who</th><th>When</th><th>Their question</th><th>Where they get it</th></tr></thead>
+<!-- ===================== 4. REQUIREMENTS ===================== -->
+<section class="new-page">
+  <p class="eyebrow">4 · What a complete system needs</p>
+  <h2>The requirements checklist</h2>
+  <p>Drawn from how the steps in part 1 are run and from what construction ERPs and site apps offer. <span class="pri must">Must</span> = a contractor will not adopt without it. <span class="pri should">Should</span> = expected by a serious buyer. <span class="pri nice">Nice</span> = differentiator or for larger companies.</p>
+
+  <table class="req">
+    <thead><tr><th style="width:5%">#</th><th>Requirement</th><th style="width:12%">Priority</th></tr></thead>
     <tbody>
-      <tr><td>Site engineer / supervisor</td><td>Daily, several times</td><td>"Record that cement came." "Is there enough sand for tomorrow?"</td><td>WhatsApp</td></tr>
-      <tr><td>Storekeeper</td><td>Every delivery</td><td>"Did the lorry bring what the challan says?"</td><td>WhatsApp</td></tr>
-      <tr><td>Project manager</td><td>Daily / weekly</td><td>"What is running low? Should I move stock from another site?"</td><td>WhatsApp, Stock tab</td></tr>
-      <tr><td>Purchase / accounts</td><td>Weekly</td><td>"What came from Malabar this month, at what rate? Is the bill right?"</td><td>Movements tab, Finance</td></tr>
-      <tr><td>Quantity surveyor (QS)</td><td>Weekly / monthly</td><td>"Does the cement used match the work done?"</td><td>Reconciliation (planned)</td></tr>
-      <tr><td>GM / MD</td><td>Weekly</td><td>"How much did we spend on materials? Any shortages coming?"</td><td>Stock tab, weekly report</td></tr>
+      <tr class="grp"><td colspan="3">A · Item list (masters)</td></tr>
+      <tr><td>A1</td><td>Item list per company with category, sub-category and one stock unit per item</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>A2</td><td>Other names for the same item (aliases), and search by any of them</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>A3</td><td>Unit conversions: standard ones built in (tonne/kg, brass/cft, cum/cft, cement bag/kg), and company sizes ("1 load = 60 cft")</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>A4</td><td>Grade, brand and size as part of the item (OPC 53, Fe500D, 12 mm)</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>A5</td><td>Minimum / reorder level per item and site</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>A6</td><td>Import items, categories and opening stock from Excel</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>A7</td><td>Value class (ABC) to decide how tightly an item is controlled</td><td><span class="pri nice">Nice</span></td></tr>
+
+      <tr class="grp"><td colspan="3">B · Receiving</td></tr>
+      <tr><td>B1</td><td>Record a delivery: site, item, quantity, date, who received it</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>B2</td><td>Supplier and rate, optional at the gate, completed from the bill later</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>B3</td><td>Delivery against a purchase order, including part deliveries and what is still pending</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>B4</td><td>Photo of the challan and of the loaded lorry</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>B5</td><td>Accepted and rejected quantity, with the reason</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>B6</td><td>GRN number; vehicle number; weighbridge slip or measured lorry volume</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>B7</td><td>Quality at receipt: test certificate, manufacture date (cement)</td><td><span class="pri nice">Nice</span></td></tr>
+
+      <tr class="grp"><td colspan="3">C · Stock</td></tr>
+      <tr><td>C1</td><td>Live stock per item and site, and across all sites</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>C2</td><td>Stock for a period: opening, received, used, adjusted, closing</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>C3</td><td>Days of cover and a running-low alert</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>C4</td><td>Negative stock shown and flagged, never hidden</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>C5</td><td>Physical stock count with an adjustment and reason for each difference</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>C6</td><td>Stock value (at last rate or average rate)</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>C7</td><td>Batches and oldest-first for perishables (cement)</td><td><span class="pri nice">Nice</span></td></tr>
+
+      <tr class="grp"><td colspan="3">D · Issue and use</td></tr>
+      <tr><td>D1</td><td>Record use with the work it went into</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>D2</td><td>Use linked to a BOQ line, so it can be compared with the work done</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>D3</td><td>Issue to a named team or subcontractor, signed for</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>D4</td><td>Returns from site back to the store</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>D5</td><td>Free-issue material (client's) tracked separately, with recovery for excess use</td><td><span class="pri should">Should</span></td></tr>
+
+      <tr class="grp"><td colspan="3">E · Transfers, returns, wastage</td></tr>
+      <tr><td>E1</td><td>Site-to-site transfer as one record (out of one, into the other)</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>E2</td><td>Return to supplier, with a debit note</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>E3</td><td>Wastage and scrap register (and scrap sales)</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>E4</td><td>Central store or yard that supplies sites</td><td><span class="pri nice">Nice</span></td></tr>
+
+      <tr class="grp"><td colspan="3">F · Requests and ordering</td></tr>
+      <tr><td>F1</td><td>Request from site with a needed-by date and the work it is for</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>F2</td><td>Approval of requests; warning when another site already has the stock</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>F3</td><td>Duplicate request / order warning</td><td><span class="pri should">Should</span></td></tr>
+
+      <tr class="grp"><td colspan="3">G · Reconciliation and audit</td></tr>
+      <tr><td>G1</td><td>Should-have-used (BOQ × material per unit + allowance) vs used, per material and work</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>G2</td><td>Variance report in quantity and ₹, with wastage allowances per material</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>G3</td><td>Full history: every entry with who and when; corrections as reversals, never silent edits</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>G4</td><td>Lock a closed period</td><td><span class="pri nice">Nice</span></td></tr>
+
+      <tr class="grp"><td colspan="3">H · Reports, alerts, access</td></tr>
+      <tr><td>H1</td><td>Spend by category, supplier, site and project</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>H2</td><td>Rate history per item and supplier</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>H3</td><td>Weekly / monthly stock report (PDF and Excel), sent on schedule</td><td><span class="pri should">Should</span></td></tr>
+      <tr><td>H4</td><td>Export to Excel</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>H5</td><td>Roles: who records, who corrects and adjusts, who sees rates</td><td><span class="pri must">Must</span></td></tr>
+      <tr><td>H6</td><td>Recording by chat or voice, without an app</td><td><span class="pri should">Should</span></td></tr>
     </tbody>
   </table>
-  <p class="note">The site people should never need the dashboard. If an engineer has to open a laptop to record a delivery, we have already lost.</p>
 </section>
 
-<!-- ===================== 4. STORY ===================== -->
-<section>
-  <p class="eyebrow">4 · One week on a real site</p>
-  <h2>Villa, Kakkanad: the wall putty that went missing</h2>
-  <p class="note">The numbers below are the demo company you will see in the screenshots.</p>
-  <ol class="story">
-    <li><b>Friday, opening stock.</b> The storekeeper sends the counts once: 60 bags cement, 300 cft M-sand, 400 cft metal, 25 bags wall putty, and the rest. Mesiri records them as opening stock.</li>
-    <li><b>Sunday to Tuesday, deliveries.</b> 200 bags cement from Malabar Hardware at ₹400, M-sand and metal from Periyar Sands, TMT steel from Kerala Steels. Each one is a WhatsApp line, confirmed with Save.</li>
-    <li><b>Monday to Thursday, use.</b> "45 bags cement, column footings grid B." "650 blocks, ground floor walls." Each use names the work it went into.</li>
-    <li><b>Thursday, a delivery with no price.</b> 40 bags of wall putty arrive; nobody knows the rate yet. Mesiri saves it without a price and marks spend as incomplete instead of pretending it was free.</li>
-    <li><b>Friday morning, the gap shows.</b> The site reports 70 bags of putty used for the interior. Only 65 ever arrived (25 + 40). Stock shows <b>−5 bags, Out</b>, and a "running low" banner appears at the top of the page.</li>
-    <li><b>Friday, 10 minutes later.</b> The PM asks the storekeeper on WhatsApp. A 10-bag delivery on Wednesday was never sent. It is recorded with its real date; putty is now +5, and the week's numbers are right.</li>
-  </ol>
-  <div class="callout">The same gap on paper would have surfaced at month end, if ever. That is the whole value of the module in one story: <b>a mismatch becomes visible the same day, while someone still remembers what happened.</b></div>
-</section>
-
-<!-- ===================== 5. PAGES ===================== -->
+<!-- ===================== 5-7 ===================== -->
 <section class="new-page">
-  <p class="eyebrow">5 · The pages, and how they look</p>
-  <h2>Three tabs today, three pages to come</h2>
-
-  <div class="page-card">
-    <div class="page-head"><h3>Stock</h3><span class="chip ok">Working</span></div>
-    <p class="q">Answers: <b>what do we have on site right now, and how long will it last?</b></p>
-    <img src="../img/03-stock.png" alt="The Stock tab: running-low banner, spend by category, and a table per category with before, received, used, in stock, lasts, last rate and spend.">
-    <p class="caption">Stock tab, last 7 days, all projects. Demo data.</p>
-    <p><b>What must be on it, and why:</b></p>
-    <ul class="tight">
-      <li><b>Before → Received → Used → In stock</b> in one row, so anyone can check the sum in their head (60 + 300 − 143 = 217).</li>
-      <li><b>Lasts</b> (days left at the recent rate of use): the number that turns a register into a warning.</li>
-      <li><b>Running low</b> banner on top, and negative stock in red. A problem must be impossible to miss.</li>
-      <li><b>Spend by category</b> (Structural, Electrical, Plumbing, Finishing) for the GM, and <b>Last rate</b> for purchase.</li>
-      <li>Filters: period, project/site (from the top bar), category, search by any name.</li>
-    </ul>
-  </div>
-
-  <div class="page-card">
-    <div class="page-head"><h3>Movements</h3><span class="chip ok">Working</span></div>
-    <p class="q">Answers: <b>what happened, when, who reported it, and what was it for?</b> This is the register, the record every Stock number comes from.</p>
-    <img src="../img/03-movements.png" alt="The Movements tab: totals for came in, went out, materials and spent, then every entry with date, site, material, what, details, in, out, cost and who.">
-    <p class="caption">Movements tab, last 30 days. The chat icon marks entries sent on WhatsApp.</p>
-    <p><b>What must be on it:</b> date, site, material, kind (delivery, use, move, opening stock, return), supplier or work, quantity in green or red, cost, who reported it and whether it came from WhatsApp; totals on top; Excel/CSV export for accounts; corrections shown as reversals, never as silent edits.</p>
-  </div>
-
-  <div class="page-card">
-    <div class="page-head"><h3>Items</h3><span class="chip ok">Working</span><span class="chip muted">Admins and PMs</span></div>
-    <p class="q">Answers: <b>which materials do we use, in which category, counted in which unit?</b></p>
-    <img src="../img/03-items.png" alt="The Items tab: materials grouped by category and sub-category, each with its unit, plus Add item, Import, Categories and Sizes.">
-    <p class="caption">Items tab: Structural › Concrete › Cement OPC 53, counted in bags.</p>
-    <p><b>What must be on it:</b> item name and its other names (aliases), category and sub-category, stock unit, sizes ("1 load = 60 cft"), import from Excel. Set up once; mostly untouched after.</p>
-  </div>
-
-  <div class="page-card two">
-    <div>
-      <div class="page-head"><h3>Record delivery · use · move</h3><span class="chip ok">Working</span></div>
-      <p class="q">For the office. Site people use WhatsApp instead.</p>
-      <p>Only <b>site, material and quantity</b> are needed. Supplier, rate and notes are optional and can come later from the bill. The unit is set by the material, so nobody types "bag" five different ways. <b>Record use</b> asks what it was used for; <b>Move</b> takes it out of one site and into another as one record.</p>
-    </div>
-    <img class="narrow" src="../img/03-delivery-dialog.png" alt="Record a delivery form: project, site, material, quantity, unit set by the material, kind, day, optional supplier, rate, total cost and notes.">
-  </div>
-
-  <div class="page-card">
-    <div class="page-head"><h3>Requests</h3><span class="chip plan">Planned · V1</span><span class="chip muted">Tracker PRC</span></div>
-    <p class="q">Answers: <b>what does the site need, by when, and has anyone acted on it?</b> Comes before a purchase order (Guide 04 Procurement).</p>
-    <div class="wire">
-      <div class="wire-bar"><span>Requests</span><span class="wbtn">New request</span></div>
-      <table>
-        <thead><tr><th>Needed by</th><th>Site</th><th>Material</th><th>Qty</th><th>For</th><th>Asked by</th><th>Status</th></tr></thead>
-        <tbody>
-          <tr><td>Fri 13 Nov</td><td>Main building</td><td>Cement OPC 53</td><td>200 bags</td><td>First-floor slab</td><td>Arun</td><td><span class="wpill new">New</span></td></tr>
-          <tr><td>Mon 16 Nov</td><td>Main building</td><td>TMT bar 12 mm</td><td>1.5 t</td><td>Slab steel</td><td>Arun</td><td><span class="wpill ok">Ordered · PO-0043</span></td></tr>
-          <tr><td>Today</td><td>Chennai site</td><td>PVC pipe 1 inch</td><td>10 nos</td><td>Toilet block</td><td>Ravi</td><td><span class="wpill warn">Stock at Kakkanad: move?</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p><b>Must have:</b> needed-by date, the work it is for, who asked, status through to delivery; a warning when another site already has it in stock; one tap to turn it into an order.</p>
-  </div>
-
-  <div class="page-card">
-    <div class="page-head"><h3>Reconciliation</h3><span class="chip plan">Planned · V1</span><span class="chip muted">Tracker CC-08</span></div>
-    <p class="q">Answers the GM's question: <b>for the work planned, what should we have received and used, and what is missing?</b></p>
-    <div class="wire">
-      <div class="wire-bar"><span>Reconciliation · Villa, Kakkanad</span><span class="wbtn">Export</span></div>
-      <table>
-        <thead><tr><th>Material</th><th>Needed (BOQ)</th><th>Received</th><th>Used</th><th>On site</th><th>Used vs work done</th><th>Runs out</th></tr></thead>
-        <tbody>
-          <tr><td>Cement OPC 53</td><td>960 bags</td><td>700</td><td>610</td><td>90</td><td><span class="wpill warn">+8% over</span></td><td>in 6 days</td></tr>
-          <tr><td>20 mm metal</td><td>3,200 cft</td><td>2,600</td><td>2,350</td><td>250</td><td><span class="wpill ok">on norm</span></td><td>in 9 days</td></tr>
-          <tr><td>M-sand</td><td>4,100 cft</td><td>3,000</td><td>2,180</td><td>820</td><td><span class="wpill bad">heap short 200 cft</span></td><td>in 14 days</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p><b>Must have:</b> what the BOQ needs (quantity × the material per unit of work), received, used, on site, whether use matches the work done, and when it runs out. This page is where Materials meets Planning and Cost control.</p>
-  </div>
-
-  <div class="page-card slim">
-    <div class="page-head"><h3>Central store</h3><span class="chip plan">Planned · Later</span></div>
-    <p>For builders with a yard or godown: bulk stock at the store, issued to sites like a move. Same register, one more "site".</p>
-  </div>
-</section>
-
-<!-- ===================== 6. UX ===================== -->
-<section>
-  <p class="eyebrow">6 · The best UX for materials</p>
-  <h2>Rules we design by</h2>
+  <p class="eyebrow">5 · Best UX for materials software</p>
+  <h2>What makes site people use it, and what makes them give up</h2>
   <div class="dodont">
     <div>
       <p class="do">Do</p>
       <ul>
+        <li>Ask for the minimum at the moment it happens: item and quantity. Everything else can come later.</li>
         <li>Put the unit next to every number: "217 bags", never "217".</li>
-        <li>Show days left, not just quantity. "Lasts ~10 days" is what a PM acts on.</li>
-        <li>Show negative stock in red with a banner. A gap is information, not an error to hide.</li>
-        <li>Let every number open the entries behind it.</li>
-        <li>Group by category, so electrical fittings don't bury cement.</li>
-        <li>Ask a unit size once, company-wide, from an admin.</li>
-        <li>Mark missing prices as "Not recorded".</li>
-        <li>Keep history: corrections are reversals with a reason.</li>
+        <li>Show days of cover, not only quantity. It is what a PM acts on.</li>
+        <li>Make problems loud: negative stock in red, running-low on top.</li>
+        <li>Let every total open the entries behind it.</li>
+        <li>Group by category so fittings don't bury cement.</li>
+        <li>Mark unknown prices as "not recorded".</li>
+        <li>Answer the three questions separately: what we have, what happened, what we use.</li>
       </ul>
     </div>
     <div>
       <p class="dont">Don't</p>
       <ul>
-        <li>Make site staff open the dashboard or fill forms.</li>
-        <li>Require supplier, rate or bill at the gate.</li>
+        <li>Make site staff install an app, log in or fill a long form.</li>
         <li>Let people type units freely ("bag", "bags", "bg").</li>
-        <li>Guess a "close" material name.</li>
+        <li>Guess a "close" item name; ask instead.</li>
         <li>Show stock without saying for which site and date.</li>
-        <li>Edit old entries silently.</li>
-        <li>Fill the screen with 20 columns; three questions, three tabs.</li>
-        <li>Show ₹0 for "we don't know".</li>
+        <li>Allow silent edits of past entries.</li>
+        <li>Show ₹0 when the price is simply not known.</li>
+        <li>Fill one screen with 20 columns and codes.</li>
+        <li>Make the office the only place information enters.</li>
       </ul>
     </div>
   </div>
-</section>
 
-<!-- ===================== 7. WHATSAPP ===================== -->
-<section class="new-page">
-  <p class="eyebrow">7 · On WhatsApp</p>
-  <h2>Most of Materials is done in chat</h2>
-  <div class="wa">
-    <div>
-      <p><b>Working today</b> (each write waits for the person's Save):</p>
-      <table class="cmd">
-        <tbody>
-          <tr><td>Record a delivery</td><td>"Malabar-il ninnu 200 bag cement vannu"</td></tr>
-          <tr><td>Record use</td><td>"45 bag cement footing-nu use cheythu"</td></tr>
-          <tr><td>Move to another site</td><td>"20 bag cement Chennai site-ilekku kondupoyi"</td></tr>
-          <tr><td>Ask stock</td><td>"Cement ethra und?"</td></tr>
-          <tr><td>Stock for a period</td><td>"This week cement: previous, used, balance"</td></tr>
-          <tr><td>What to order</td><td>"Enthokke theerarayi?" (what is running low)</td></tr>
-          <tr><td>By category</td><td>"Electrical stock?"</td></tr>
-          <tr><td>New material</td><td>"Wash basin 20 vannu": added to the list, with its category suggested</td></tr>
-          <tr><td>Sizes</td><td>"1 load M-sand = 60 cft" (admin or PM)</td></tr>
-          <tr><td>Undo</td><td>Take back a delivery, use or move saved by mistake</td></tr>
-        </tbody>
-      </table>
-      <p><b>Planned:</b> requests ("need 200 bags by Friday"), orders and duplicate warnings, bill photo matched to the delivery, a daily nudge when a site reports deliveries but no use.</p>
-      <p class="note">How it decides: the code, not the AI, checks units and material names. The AI never invents a size ("one truck" is not a size) and never saves a material that is only "near" what was said.</p>
-    </div>
-    <figure>
-      <img src="../img/03-whatsapp.png" alt="Illustration of a WhatsApp chat: a voice note saying 200 bags of cement came from Malabar, a card to save the delivery, Save tapped, and a saved confirmation with the new cement stock.">
-      <figcaption>Illustration of the flow, not a screenshot. The real card's wording differs.</figcaption>
-    </figure>
-  </div>
-</section>
+  <p class="eyebrow">6 · Where WhatsApp and voice fit</p>
+  <h2>Chat for the moment it happens; a screen for checking and setup</h2>
+  <table>
+    <thead><tr><th style="width:50%">Best in chat or voice (site, on the move)</th><th>Best on a screen (office, at a desk)</th></tr></thead>
+    <tbody>
+      <tr><td>Reporting a delivery, with a photo of the challan</td><td>Setting up the item list, categories and units</td></tr>
+      <tr><td>Reporting use: "45 bags into the footings"</td><td>Reconciliation: comparing use with the estimate</td></tr>
+      <tr><td>Transfers between sites</td><td>Physical stock count across many items</td></tr>
+      <tr><td>Quick questions: "how much cement is left?", "what is running low?"</td><td>Reports, trends, Excel exports</td></tr>
+      <tr><td>Requests: "need 200 bags by Friday"</td><td>Approving many requests or orders at once</td></tr>
+      <tr><td>Alerts pushed to the PM: running low, unrecorded delivery</td><td>Correcting mistakes in bulk; audit history</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Rule of thumb: the person standing next to the material uses chat; the person deciding about money uses a screen. Every chat entry should be confirmed before it is saved, and the software, not the AI, should check units and item names.</p>
 
-<!-- ===================== 8. CONNECTS ===================== -->
-<section>
-  <p class="eyebrow">8 · How it connects to everything else</p>
-  <h2>Materials sits in the middle of the money</h2>
-  <svg class="diagram" viewBox="0 0 760 330" role="img" aria-label="Diagram: WhatsApp, Procurement and Planning feed Materials; Materials feeds Cost control, Finance payables, Accounts, the daily report and Procurement requests.">
-    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8178"/></marker></defs>
-    <g font-family="Noto Sans, sans-serif" font-size="13">
-      <rect x="290" y="125" width="180" height="80" rx="12" fill="#e9f6ee" stroke="#2f855a" stroke-width="1.5"/>
-      <text x="380" y="160" text-anchor="middle" font-weight="700" font-size="16" fill="#1f2a24">Materials</text>
-      <text x="380" y="182" text-anchor="middle" fill="#3c4a42">stock · movements · items</text>
-      <g fill="#fff" stroke="#c9c0b4">
-        <rect x="20" y="20" width="200" height="56" rx="10"/><rect x="20" y="137" width="200" height="56" rx="10"/><rect x="20" y="254" width="200" height="56" rx="10"/>
-        <rect x="540" y="10" width="200" height="56" rx="10"/><rect x="540" y="80" width="200" height="56" rx="10"/><rect x="540" y="150" width="200" height="56" rx="10"/><rect x="540" y="220" width="200" height="50" rx="10"/><rect x="540" y="280" width="200" height="44" rx="10"/>
+  <p class="eyebrow">7 · How it connects to other modules</p>
+  <svg class="diagram" viewBox="0 0 760 250" role="img" aria-label="Planning, Procurement and site reports feed Materials; Materials feeds Cost control, Payables, Accounts, the daily report and new requests.">
+    <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8178"/></marker></defs>
+    <g font-family="Noto Sans, sans-serif" font-size="12.5">
+      <rect x="290" y="90" width="180" height="70" rx="12" fill="#e9f6ee" stroke="#2f855a" stroke-width="1.5"/>
+      <text x="380" y="122" text-anchor="middle" font-weight="700" font-size="15">Materials</text><text x="380" y="142" text-anchor="middle" fill="#3c4a42">receive · store · issue · count</text>
+      <g fill="#fff" stroke="#c9c0b4"><rect x="20" y="15" width="200" height="50" rx="10"/><rect x="20" y="100" width="200" height="50" rx="10"/><rect x="20" y="185" width="200" height="50" rx="10"/>
+      <rect x="540" y="5" width="200" height="44" rx="10"/><rect x="540" y="57" width="200" height="44" rx="10"/><rect x="540" y="109" width="200" height="44" rx="10"/><rect x="540" y="161" width="200" height="44" rx="10"/><rect x="540" y="213" width="200" height="32" rx="10"/></g>
+      <g text-anchor="middle" fill="#1f1d1a">
+        <text x="120" y="36" font-weight="700">Planning (BOQ)</text><text x="120" y="54" fill="#5f5a52">how much is needed</text>
+        <text x="120" y="121" font-weight="700">Procurement</text><text x="120" y="139" fill="#5f5a52">orders → deliveries</text>
+        <text x="120" y="206" font-weight="700">Site reports</text><text x="120" y="224" fill="#5f5a52">use, transfers, counts</text>
+        <text x="640" y="24" font-weight="700">Cost control</text><text x="640" y="41" fill="#5f5a52">material cost of the work</text>
+        <text x="640" y="76" font-weight="700">Payables</text><text x="640" y="93" fill="#5f5a52">what we owe suppliers</text>
+        <text x="640" y="128" font-weight="700">Accounts</text><text x="640" y="145" fill="#5f5a52">stock value, project P&amp;L</text>
+        <text x="640" y="180" font-weight="700">Daily report</text><text x="640" y="197" fill="#5f5a52">materials section</text>
+        <text x="640" y="234" font-weight="700">New requests</text>
       </g>
-      <g fill="#1f1d1a">
-        <text x="120" y="44" text-anchor="middle" font-weight="700">WhatsApp</text><text x="120" y="63" text-anchor="middle" fill="#5f5a52">deliveries, use, moves</text>
-        <text x="120" y="161" text-anchor="middle" font-weight="700">Procurement</text><text x="120" y="180" text-anchor="middle" fill="#5f5a52">orders → GRN deliveries</text>
-        <text x="120" y="278" text-anchor="middle" font-weight="700">Planning (BOQ)</text><text x="120" y="297" text-anchor="middle" fill="#5f5a52">how much is needed</text>
-        <text x="640" y="34" text-anchor="middle" font-weight="700">Cost control</text><text x="640" y="53" text-anchor="middle" fill="#5f5a52">material cost of the work</text>
-        <text x="640" y="104" text-anchor="middle" font-weight="700">Finance · Payables</text><text x="640" y="123" text-anchor="middle" fill="#5f5a52">what we owe each supplier</text>
-        <text x="640" y="174" text-anchor="middle" font-weight="700">Accounts</text><text x="640" y="193" text-anchor="middle" fill="#5f5a52">stock value, project P&amp;L</text>
-        <text x="640" y="243" text-anchor="middle" font-weight="700">Daily report (DPR)</text><text x="640" y="260" text-anchor="middle" fill="#5f5a52">materials section</text>
-        <text x="640" y="301" text-anchor="middle" font-weight="700">Requests → orders</text><text x="640" y="316" text-anchor="middle" fill="#5f5a52">when stock runs low</text>
-      </g>
-      <g stroke="#8a8178" stroke-width="1.4" fill="none" marker-end="url(#a)">
-        <path d="M220 48 C 260 48, 260 140, 290 145"/><path d="M220 165 L 290 165"/><path d="M220 282 C 260 282, 260 190, 290 185"/>
-        <path d="M470 145 C 510 140, 510 38, 540 38"/><path d="M470 155 C 505 150, 510 108, 540 108"/><path d="M470 170 L 540 178"/><path d="M470 185 C 505 190, 510 245, 540 245"/><path d="M470 195 C 500 210, 505 300, 540 302"/>
+      <g stroke="#8a8178" stroke-width="1.4" fill="none" marker-end="url(#a2)">
+        <path d="M220 40 C 260 40, 260 105, 290 108"/><path d="M220 125 L 290 125"/><path d="M220 210 C 260 210, 260 145, 290 142"/>
+        <path d="M470 105 C 505 100, 510 27, 540 27"/><path d="M470 115 C 505 112, 510 79, 540 79"/><path d="M470 125 L 540 131"/><path d="M470 138 C 505 142, 510 183, 540 183"/><path d="M470 150 C 500 165, 505 229, 540 229"/>
       </g>
     </g>
   </svg>
-  <ul class="tight">
-    <li><b>In:</b> site messages; deliveries against purchase orders (Procurement); how much the BOQ needs (Planning).</li>
-    <li><b>Out:</b> the material cost of each day's work (Cost control); what is owed to each supplier (Payables); stock value and project profit (Accounts); the materials part of the daily report; new requests when stock runs low.</li>
-  </ul>
 </section>
 
-<!-- ===================== 9-11 ===================== -->
-<section>
-  <p class="eyebrow">9 · Mesiri vs other software</p>
-  <table class="pairs">
-    <thead><tr><th>Typical construction app or ERP</th><th>Mesiri</th></tr></thead>
+<!-- ===================== 8. GAP LIST ===================== -->
+<section class="new-page">
+  <p class="eyebrow">8 · Mesiri today: the gap list</p>
+  <h2>The checklist from part 4, against what Mesiri does now</h2>
+  <p><span class="st have">Have</span> works today · <span class="st part">Partly</span> some of it · <span class="st miss">Missing</span> not built. Tracker IDs refer to <code>docs/plans/V1_TRACKER.md</code>.</p>
+  <table class="req gap">
+    <thead><tr><th style="width:6%">#</th><th>Requirement</th><th style="width:10%">Priority</th><th style="width:10%">Mesiri</th><th style="width:30%">Note</th></tr></thead>
     <tbody>
-      <tr><td>The storekeeper installs an app, logs in, fills a GRN form.</td><td>One WhatsApp line or voice note, in Malayalam, Manglish or English.</td></tr>
-      <tr><td>A register of entries; someone has to read it.</td><td>Answers on top: running low, days left, spend by category; planned: used vs work done.</td></tr>
-      <tr><td>Weeks of setup with item codes.</td><td>Standard builder categories built in; the customer's item list imported from Excel.</td></tr>
+      <tr><td>A1</td><td>Item list, categories, stock unit</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>Standard builder categories (PRC-01..03)</td></tr>
+      <tr><td>A2</td><td>Aliases and search</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td></td></tr>
+      <tr><td>A3</td><td>Unit conversions</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>Standard built in; company sizes asked once</td></tr>
+      <tr><td>A4</td><td>Grade, brand, size</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Only as part of the item name</td></tr>
+      <tr><td>A5</td><td>Reorder level</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Running low from rate of use; no set minimum</td></tr>
+      <tr><td>A6</td><td>Excel import</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>Items, categories, opening stock (PRC-05)</td></tr>
+      <tr><td>A7</td><td>ABC class</td><td><span class="pri nice">Nice</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>B1</td><td>Record a delivery</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>WhatsApp and dashboard</td></tr>
+      <tr><td>B2</td><td>Supplier and rate optional</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>Vendor linked (PRC-04)</td></tr>
+      <tr><td>B3</td><td>Against a purchase order</td><td><span class="pri must">Must</span></td><td><span class="st miss">Missing</span></td><td>PRC-06, PRC-08</td></tr>
+      <tr><td>B4</td><td>Challan / lorry photo</td><td><span class="pri must">Must</span></td><td><span class="st part">Partly</span></td><td>Supplier bills with photos exist; a photo on the delivery itself is to be checked</td></tr>
+      <tr><td>B5</td><td>Accepted and rejected quantity</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>B6</td><td>GRN no., vehicle, weighbridge</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>Free-text notes only</td></tr>
+      <tr><td>B7</td><td>Quality at receipt</td><td><span class="pri nice">Nice</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>C1</td><td>Live stock, all sites</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td></td></tr>
+      <tr><td>C2</td><td>Stock for a period</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>PRC-17</td></tr>
+      <tr><td>C3</td><td>Days of cover, running low</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td></td></tr>
+      <tr><td>C4</td><td>Negative stock flagged</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td></td></tr>
+      <tr><td>C5</td><td>Physical count with adjustments</td><td><span class="pri must">Must</span></td><td><span class="st part">Partly</span></td><td>Adjustment entries exist; no count sheet workflow</td></tr>
+      <tr><td>C6</td><td>Stock value</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Spend shown; no valuation of what is on hand</td></tr>
+      <tr><td>C7</td><td>Batches, oldest first</td><td><span class="pri nice">Nice</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>D1</td><td>Use with the work</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>"Used for" in words</td></tr>
+      <tr><td>D2</td><td>Use linked to a BOQ line</td><td><span class="pri must">Must</span></td><td><span class="st miss">Missing</span></td><td>BOQ exists (CC-02); link is CC-08</td></tr>
+      <tr><td>D3</td><td>Issue to a named team</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>D4</td><td>Returns from site</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Return entry types exist</td></tr>
+      <tr><td>D5</td><td>Free-issue material</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>E1</td><td>Site-to-site transfer</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td></td></tr>
+      <tr><td>E2</td><td>Return to supplier, debit note</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Return recorded; no debit note</td></tr>
+      <tr><td>E3</td><td>Wastage and scrap</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Wastage entry type; no scrap sales</td></tr>
+      <tr><td>E4</td><td>Central store</td><td><span class="pri nice">Nice</span></td><td><span class="st part">Partly</span></td><td>A yard can be a "site" today</td></tr>
+      <tr><td>F1</td><td>Requests from site</td><td><span class="pri must">Must</span></td><td><span class="st miss">Missing</span></td><td>Planned page: Materials › Requests</td></tr>
+      <tr><td>F2</td><td>Request approval, other-site stock warning</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>F3</td><td>Duplicate warning</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>PRC-07</td></tr>
+      <tr><td>G1</td><td>Should-have-used vs used</td><td><span class="pri must">Must</span></td><td><span class="st miss">Missing</span></td><td>CC-03 (norms), CC-08</td></tr>
+      <tr><td>G2</td><td>Variance with allowances</td><td><span class="pri must">Must</span></td><td><span class="st miss">Missing</span></td><td>CC-08</td></tr>
+      <tr><td>G3</td><td>Full history, reversals</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td></td></tr>
+      <tr><td>G4</td><td>Period lock</td><td><span class="pri nice">Nice</span></td><td><span class="st miss">Missing</span></td><td></td></tr>
+      <tr><td>H1</td><td>Spend by category, supplier, site</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>By category yes; by supplier is PRC-19</td></tr>
+      <tr><td>H2</td><td>Rate history</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Last rate only (PRC-14)</td></tr>
+      <tr><td>H3</td><td>Scheduled weekly / monthly report</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>PRC-19, PRC-20</td></tr>
+      <tr><td>H4</td><td>Export to Excel</td><td><span class="pri must">Must</span></td><td><span class="st have">Have</span></td><td>CSV from Movements</td></tr>
+      <tr><td>H5</td><td>Roles</td><td><span class="pri must">Must</span></td><td><span class="st part">Partly</span></td><td>Item list writes not role-checked in the API (known gap)</td></tr>
+      <tr><td>H6</td><td>Chat and voice</td><td><span class="pri should">Should</span></td><td><span class="st have">Have</span></td><td>Malayalam, Manglish, English</td></tr>
     </tbody>
   </table>
 
-  <p class="eyebrow">10 · Questions customers will ask</p>
-  <dl class="qa">
-    <dt>"Can it handle electrical and plumbing detail, fittings, bends, wire lengths?"</dt>
-    <dd>Yes. Each size or type is its own item under a category (Electrical › Conduits, Plumbing › Pipe fittings). Mesiri suggests the category when a new item is added.</dd>
-    <dt>"What if the engineer forgets to report use?"</dt>
-    <dd>Then stock stays too high, and we must be honest about it. Today the daily report shows what each site sent; planned reconciliation against the BOQ will flag a site whose use doesn't match its work.</dd>
-    <dt>"We measure sand in loads, they bill in cft."</dt>
-    <dd>Each item has one stock unit. Mesiri converts known units itself and asks once for a load's size.</dd>
-    <dt>"Can we see all sites together?"</dt>
-    <dd>Yes: All projects in the top bar, or one project or site. Moves between sites are one record.</dd>
-    <dt>"Who can change numbers?"</dt>
-    <dd>Nobody edits old entries. A correction reverses the old one, with who and why, so history is never lost.</dd>
-    <dt>"We already have our item list in Excel."</dt>
-    <dd>Items › Import loads it, with categories and opening stock.</dd>
-  </dl>
+  <div class="callout">
+    <b>What to build next, by this list.</b> The missing <b>Must</b>s are: deliveries against purchase orders (B3), use linked to the BOQ (D2), requests from site (F1), and reconciliation with variance (G1, G2). Close behind: the challan photo on the delivery (B4), a stock-count workflow (C5) and role checks (H5). Most of these are already in the tracker (PRC, CC). Together they turn Materials from a register into the control the GM asked for.
+  </div>
 </section>
 
-<section>
-  <p class="eyebrow">11 · Key terms</p>
+<!-- ===================== 9. TERMS, Q&A, QUIZ ===================== -->
+<section class="new-page">
+  <p class="eyebrow">9 · Key terms</p>
   <dl class="terms">
-    <dt>Delivery / GRN</dt><dd>Material that arrived. A GRN (goods receipt note) is the formal record of it, ideally against an order.</dd>
-    <dt>Challan</dt><dd>The delivery note that comes with the lorry.</dd>
-    <dt>Opening stock</dt><dd>What was already on site when counting started.</dd>
-    <dt>Use / consumption</dt><dd>Material that went into the work.</dd>
-    <dt>Stock unit</dt><dd>The one unit an item is counted in (bags, cft, kg, nos).</dd>
-    <dt>Conversion / size</dt><dd>How many stock units are in another unit ("1 load = 60 cft").</dd>
-    <dt>Move / transfer</dt><dd>Material sent from one site to another.</dd>
-    <dt>Wastage</dt><dd>Material lost or spoiled (hardened cement, broken blocks).</dd>
-    <dt>Reconciliation</dt><dd>Comparing what should have been used (by the BOQ) with what was.</dd>
+    <dt>Indent / requisition</dt><dd>A request from site for material, with quantity and date needed.</dd>
+    <dt>Purchase order (PO)</dt><dd>The order to a supplier: item, quantity, rate, GST, delivery date.</dd>
+    <dt>Delivery challan</dt><dd>The supplier's delivery note that comes with the lorry.</dd>
+    <dt>GRN / MRN</dt><dd>Goods (material) receipt note: the company's record of what was accepted.</dd>
+    <dt>Weighbridge slip</dt><dd>The weight of the loaded and empty lorry; the difference is the material.</dd>
+    <dt>Stock register / bin card</dt><dd>Running record of receipts, issues and balance per item.</dd>
+    <dt>Material issue slip (MIN)</dt><dd>Record of material given from the store to a team, signed.</dd>
+    <dt>Opening stock</dt><dd>What was on hand when counting started.</dd>
+    <dt>Wastage allowance</dt><dd>The extra use above the estimate that is accepted as normal, per material.</dd>
+    <dt>Reconciliation</dt><dd>Should-have-used (for the work done) compared with actually used.</dd>
+    <dt>Free-issue material</dt><dd>Material supplied by the client to the contractor, to be accounted for.</dd>
+    <dt>3-way match</dt><dd>Order, delivery and bill agree before the bill is paid.</dd>
+    <dt>FIFO</dt><dd>First in, first out: use the oldest stock first.</dd>
+    <dt>ABC analysis</dt><dd>Controlling items by value: A expensive and tight, C cheap and light.</dd>
     <dt>CFT, cum, brass</dt><dd>Volumes: 1 cum ≈ 35.3 cft; 1 brass = 100 cft.</dd>
+  </dl>
+
+  <p class="eyebrow">Questions customers ask</p>
+  <dl class="qa">
+    <dt>"Can it handle electrical and plumbing detail: fittings, bends, wire lengths?"</dt>
+    <dd>A good system treats each size or type as its own item under a category, so detail doesn't clutter the cement and steel.</dd>
+    <dt>"How do you count sand that's already dumped?"</dt>
+    <dd>You don't. You measure each lorry at the gate and record use; the difference is what should be in the heap, and a periodic estimate of the heap shows any gap.</dd>
+    <dt>"What if the engineer forgets to report use?"</dt>
+    <dd>Stock stays too high. Reconciliation against the work done catches it: work progressed but no material was used.</dd>
+    <dt>"Can we see all sites together, and move stock between them?"</dt>
+    <dd>Yes in a good system: one view across sites, and a transfer as one record so nothing is lost between them.</dd>
+    <dt>"Who can change the numbers?"</dt>
+    <dd>Nobody should edit history. Corrections are new entries with who and why.</dd>
   </dl>
 
   <p class="eyebrow">Check yourself</p>
   <ol class="quiz">
-    <li>Before 60, received 300, used 143. What is in stock, and how do you check it on the Stock tab?</li>
-    <li>Why is wall putty showing −5, and what are the two possible reasons?</li>
-    <li>Which tab answers "what happened on Tuesday at the villa?"</li>
-    <li>A lorry brings "one load" of M-sand. What does Mesiri need before it can add it to stock in cft?</li>
-    <li>Which planned page answers the GM's "4 loads missing at closeout" problem, and what does it need from Planning?</li>
+    <li>Name the nine steps of the material cycle and the document for steps 2, 3, 4 and 6.</li>
+    <li>Why can't you count sand once it is dumped, and how do you control it instead?</li>
+    <li>What is a 3-way match, and which leak does it stop?</li>
+    <li>Cement used was 4% above what the work needed. What do you compare that with before acting?</li>
+    <li>Which four missing "Must" items in part 8 would most change what the GM sees?</li>
   </ol>
-  <p class="answers"><b>Answers:</b> 1. 217; the row shows Before, Received, Used, In stock side by side. 2. More was reported used (70) than ever arrived (65): a delivery wasn't recorded, or use was over-reported. 3. Movements, filtered to that site and date. 4. The size of a load in cft, answered once by an admin or PM. 5. Reconciliation; it needs the BOQ quantities and the material per unit of work.</p>
+  <p class="answers"><b>Answers:</b> 1. Plan, request, order, receive, store, issue, use, count, reconcile; indent, purchase order, challan/GRN, issue slip. 2. It can't be counted in a heap; measure each lorry and record use, then compare with the heap. 3. Order, delivery and bill must agree before payment; it stops paying for material that never came or at the wrong rate. 4. The wastage allowance agreed for cement. 5. Deliveries against orders, use linked to the BOQ, requests from site, reconciliation with variance.</p>
 </section>
 
 </body>

@@ -91,3 +91,16 @@ tr { break-inside: avoid; }
 .terms { display: grid; grid-template-columns: 38mm 1fr; gap: 1.6mm 4mm; } .terms dt { font-weight: 700; } .terms dd { margin: 0; color: #3d3a35; }
 .quiz li { margin-bottom: 1.6mm; }
 .answers { font-size: 8.8pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 2.5mm; margin-top: 3mm; }
+
+/* domain-first guide additions */
+.howto { background: var(--soft); border-radius: 3mm; padding: 3mm 4mm; font-size: 10pt; }
+.rules { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-bottom: 4mm; }
+.rules div { border: 1px solid var(--line); border-radius: 3mm; padding: 3mm 4mm; font-size: 9.4pt; break-inside: avoid; }
+.rules b { display: block; margin-bottom: .8mm; font-size: 10pt; }
+.req td { padding: 1.4mm 2mm; font-size: 9pt; }
+.req tr.grp td { background: var(--soft); font-weight: 700; font-size: 9.2pt; padding-top: 2.4mm; border-bottom: 1px solid var(--line); }
+.pri, .st { font-size: 7.6pt; font-weight: 700; padding: .4mm 2mm; border-radius: 10mm; white-space: nowrap; }
+.pri.must { background: #1f1d1a; color: #fff; } .pri.should { background: #e5ded3; color: #3d3a35; } .pri.nice { background: #f2efe9; color: var(--muted); }
+.st.have { background: var(--ok-bg); color: var(--ok); } .st.part { background: var(--plan-bg); color: var(--plan); } .st.miss { background: var(--bad-bg); color: var(--bad); }
+.gap td:last-child { color: var(--muted); font-size: 8.4pt; }
+code { font-size: 8.6pt; background: var(--soft); padding: 0 1mm; border-radius: 1mm; }
