@@ -172,6 +172,14 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
                           </>
                         )}
                       </Fact>
+                      {receipt.order_ref && receipt.purchase_order_id && (
+                        <Fact label="Order">
+                          <Link to={`/procurement/orders?id=${receipt.purchase_order_id}`} className="font-medium hover:underline">
+                            {receipt.order_ref}
+                            {receipt.grn_ref && <span className="font-normal text-muted-foreground"> · {receipt.grn_ref}</span>}
+                          </Link>
+                        </Fact>
+                      )}
                       {receipt.invoice_id && (
                         <Fact label="Invoice">
                           <button type="button" className="inline-flex items-center gap-1 font-medium hover:underline" onClick={() => setInvoiceOpen(true)}>

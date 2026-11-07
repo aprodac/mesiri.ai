@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight, ArrowRight, Download, FileText, MapPin, MessageSquare, Package, TriangleAlert } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowLeftRight, ArrowRight, Download, FileText, MapPin, MessageSquare, Package, TriangleAlert, Truck } from 'lucide-react'
 import { ArrowDownLeft as IcArrowDownLeft, ArrowUpRight as IcArrowUpRight, Warehouse as IcWarehouse, Package as IcPackage, IndianRupee as IcIndianRupee } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -31,7 +32,11 @@ import { InvoiceDetailsSheet } from './invoice-details-sheet'
 // red. Pick a material and it becomes that material's stock book, with the
 // stock left on the site after every line and totals at the foot.
 
-type Dir = 'all' | 'in' | 'out'
+// WEB-78: deliveries on a purchase order or on none ("bought outside an order") are a filter of their own.
+type Dir = 'all' | 'in' | 'out' | 'order' | 'loose'
+
+const onOrder = (r: LedgerRow) => r.direction === 'IN' && !!r.purchase_order_id
+const looseDelivery = (r: LedgerRow) => r.direction === 'IN' && r.movement_reason === 'RECEIVED' && !r.purchase_order_id && !r.transfer_id && !r.reverses_movement_id
 
 const dayLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
 
@@ -89,7 +94,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
       }
     }
     const shown = all
-      .filter((r) => (dir === 'all' ? true : dir === 'in' ? r.direction === 'IN' : r.direction === 'OUT'))
+      .filter((r) => (dir === 'all' ? true : dir === 'in' ? r.direction === 'IN' : dir === 'out' ? r.direction === 'OUT' : dir === 'order' ? onOrder(r) : looseDelivery(r)))
       .filter((r) => !material || ((!range.from || r.occurred_date >= range.from) && (!range.to || r.occurred_date <= range.to)))
       .reverse()
     return { lines: shown, balanceAfter: after }
@@ -126,7 +131,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
   const detail = (r: LedgerRow) => (r.direction === 'IN' ? r.supplier : r.work_item) || r.notes || ''
 
   const exportCsv = () => {
-    const head = ['Date', 'Site', 'Project', 'Material', 'Kind', 'Details', 'In', 'Out', 'Unit', ...(material ? ['Stock after'] : []), 'Cost', 'Recorded by', 'From']
+    const head = ['Date', 'Site', 'Project', 'Material', 'Kind', 'Details', 'Order', 'GRN', 'In', 'Out', 'Unit', ...(material ? ['Stock after'] : []), 'Cost', 'Recorded by', 'From']
     const body = lines.map((r) => {
       const s = r.site_id ? siteNames.get(r.site_id) : undefined
       const k = kind(r)
@@ -137,6 +142,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
         r.material_name,
         typeof k === 'string' ? k : r.direction === 'OUT' ? 'Moved to another site' : 'Moved from another site',
         detail(r),
+        r.direction === 'IN' ? r.order_ref ?? '' : '',
+        r.direction === 'IN' ? r.grn_ref ?? '' : '',
         r.direction === 'IN' ? r.quantity : '',
         r.direction === 'OUT' ? r.quantity : '',
         r.unit,
@@ -199,11 +206,13 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
           value={dir}
           onChange={setDir}
           icon={ArrowLeftRight}
-          className="w-[140px]"
+          className="w-[160px]"
           options={[
             { value: 'all', label: 'In and out' },
             { value: 'in', label: 'Only in' },
             { value: 'out', label: 'Only out' },
+            { value: 'order', label: 'Came on an order' },
+            { value: 'loose', label: 'Came, no order' },
           ]}
         />
         <div className="ml-auto flex items-center gap-1">
@@ -294,6 +303,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
                       {!material && <span className="font-normal text-muted-foreground"> · {kind(r)}</span>}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">{[showSite && site?.name, detail(r)].filter(Boolean).join(' · ') || '—'}</span>
+                    {r.direction === 'IN' && r.order_ref && <OrderChip row={r} link={false} className="mt-1 self-start" />}
                   </div>
                   <div className="flex shrink-0 flex-col items-end">
                     <span className={cn('font-semibold tabular-nums', r.direction === 'IN' ? 'text-success' : 'text-destructive')}>
@@ -353,7 +363,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
                       {kind(r)}
                       {correction && <span className="ml-1.5 text-xs text-draft">{r.reverses_movement_id ? 'correction' : 'corrected'}</span>}
                     </td>
-                    <td className="max-w-[220px] truncate px-3 py-1.5 text-muted-foreground">
+                    <td className="max-w-[260px] truncate px-3 py-1.5 text-muted-foreground">
+                      {r.direction === 'IN' && r.order_ref && <OrderChip row={r} className="mr-1.5" />}
                       {detail(r)}
                       {r.direction === 'IN' && r.invoice_id && (
                         <button
@@ -419,5 +430,32 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
       <MovementDetailsSheet direction={openRow?.direction ?? 'IN'} id={openRow?.id ?? null} open={openRow !== null} onOpenChange={(open) => !open && setOpenRow(null)} />
       <InvoiceDetailsSheet invoiceId={invoiceId} open={invoiceId !== null} onOpenChange={(open) => !open && setInvoiceId(null)} />
     </div>
+  )
+}
+
+/** WEB-78: "PO-0002 · GRN-0001" on a delivery that came on an order; opens the order. */
+function OrderChip({ row, className, link = true }: { row: LedgerRow; className?: string; link?: boolean }) {
+  if (row.direction !== 'IN' || !row.order_ref || !row.purchase_order_id) return null
+  const look = cn('inline-flex items-center gap-1 rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-semibold text-blue-950 dark:bg-blue-950 dark:text-blue-100', className)
+  // Inside a row that is itself a button (phones) it is a label; the details sheet links the order.
+  if (!link)
+    return (
+      <span className={look}>
+        <Truck className="size-3" />
+        {row.order_ref}
+        {row.grn_ref && <span className="font-normal opacity-80">· {row.grn_ref}</span>}
+      </span>
+    )
+  return (
+    <Link
+      to={`/procurement/orders?id=${row.purchase_order_id}`}
+      onClick={(e) => e.stopPropagation()}
+      title="Came on this purchase order"
+      className={cn(look, 'hover:underline')}
+    >
+      <Truck className="size-3" />
+      {row.order_ref}
+      {row.grn_ref && <span className="font-normal opacity-80">· {row.grn_ref}</span>}
+    </Link>
   )
 }
