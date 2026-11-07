@@ -113,3 +113,16 @@ def test_the_sop_says_a_need_is_a_request_not_a_receipt() -> None:
 
     sop = (Path(agent_api.__file__).parent / "SOP.md").read_text()
     assert "Material a site NEEDS" in sop and "`ask_for_material`, one per material, never a receipt" in sop
+
+
+def test_a_bare_my_requests_lists_both_kinds() -> None:
+    """PRC-32 / [283] (7 Nov 22:14): "show my requests" listed only what was asked of Mesiri's team, never the material
+    requests just made. Bare, it is both lists; with material words it is material_requests; complaints stay
+    my_requests (guard for [230])."""
+    from pathlib import Path
+
+    import agent_api
+
+    sop = (Path(agent_api.__file__).parent / "SOP.md").read_text()
+    assert 'a bare "my requests" / "ente requests" is BOTH lists, material ones first' in sop
+    assert '"ente complaints kaanikku" / "is it fixed", call\n   `my_requests`' in sop

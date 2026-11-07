@@ -16,6 +16,7 @@ import datetime as dt
 import json
 import logging
 import re
+import uuid
 from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -115,6 +116,14 @@ UNAVAILABLE_NOTE = (
     "plainly, in their language, that you could not check it right now and will try again if they send it in a "
     "minute; do every other part of their message. Never mention a tool, an error, a status or the team here."
 )
+
+
+def _is_uuid(value: Any) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except ValueError:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -795,6 +804,13 @@ class ApiAgent:
             missing = [r for r in tool.required if arguments.get(r) in (None, "")]
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
+            if tool.is_write and (refs := [p for p in tool.uuid_path if not _is_uuid(arguments[p])]):
+                # PRC-32 (7 Nov: "REQ-0001 cement athu 250 aakku" held change_material_request with request_id "REQ-0001";
+                # the card said Save and the Save failed, 422): a record's id is checked when the line is prepared, so
+                # the model looks it up in this turn instead of the person finding out at Save.
+                return ToolOutcome(content={"error": (
+                    f"{refs[0]} must be the record's id from the list tool for these records, not "
+                    f"\"{arguments[refs[0]]}\" (the number people see). Look it up now and prepare this again.")})
             path = tool.path
             for p in tool.path_params:
                 path = path.replace("{" + p + "}", str(arguments[p]))
