@@ -907,3 +907,9 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--neutral-900); 
   .main-content input[type='checkbox'], .main-content input[type='radio'] { width: 22px !important; height: 22px !important; flex: none; }
   .tap-link { display: inline-flex; align-items: center; min-height: 32px; }
 }
+
+/* SA-37: Announcements -- history beside the editor on a desktop, stacked on a phone. */
+@media (max-width: 900px) {
+  .announcements-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .announcements-grid .card { grid-template-columns: minmax(0, 1fr) !important; }
+}

@@ -12,6 +12,7 @@ import {
   Inbox,
   IndianRupee,
   LayoutGrid,
+  Megaphone,
   ListChecks,
   ListOrdered,
   MessageSquareReply,
@@ -50,6 +51,7 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { to: '/replies', label: 'Reply insights', icon: MessageSquareReply, hint: 'Reply time and AI tokens per message' },
       { to: '/requests', label: 'Requests', icon: Inbox, hint: 'What people asked for: building, live, verified, who asked' },
       { to: '/test-message', label: 'Test message', icon: FlaskConical, hint: 'Send a message through the pipeline' },
+      { to: '/announcements', label: 'Announcements', icon: Megaphone, hint: 'Tell every company about something new, on WhatsApp' },
     ],
   },
   {

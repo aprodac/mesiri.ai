@@ -22,6 +22,7 @@ import QueueHealth from './QueueHealth';
 import Database from './Database';
 import Overview from './Overview';
 import People from './People';
+import Announcements from './Announcements';
 
 function AppLayout() {
   return (
@@ -48,6 +49,7 @@ function AppLayout() {
             <Route path="/semantic-types" element={<SemanticTypes />} />
             <Route path="/workflows" element={<Workflows />} />
             <Route path="/test-message" element={<TestMessage />} />
+            <Route path="/announcements" element={<Announcements />} />
             <Route path="/users" element={<PlatformUsers />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Overview />} />
