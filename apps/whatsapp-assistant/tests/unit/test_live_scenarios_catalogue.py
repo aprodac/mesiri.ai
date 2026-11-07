@@ -36,7 +36,9 @@ class _Chat:
 def test_the_catalogue_checks_every_mark_of_the_27_oct_rounds():
     cat = scenarios.load(scenarios.DEFAULT_FILE)
     assert scenarios.validate(cat) == []
-    assert len(cat["marks"]) == 59  # the 58 of 27 Oct and the photo (M59)
+    assert len([m for m in cat["marks"] if m.startswith("M")]) == 59  # the 58 of 27 Oct and the photo (M59)
+    # The 7 Nov sweep (W01..) sits beside them, every mark checked by validate() above.
+    assert all(m.startswith(("M", "W")) for m in cat["marks"])
 
 
 def test_a_mark_with_no_check_is_a_catalogue_problem():

@@ -6,7 +6,11 @@
   "CANCELLED": "nothing saved",
   "MANGLISH": "\\b(aanu|undu|und|illa|cheyy\\w*|tharaam|pattilla|pattum|ayakk\\w*|aakk\\w*|vannu|sheri|ningal\\w*|ippo|innu|njan|kazhinj\\w*)\\b",
   "HINDI_LATIN": "\\b(hai|hain|aaye|karein|kijiye|dabayein|dabaiye|theek|gaye|kar|ho)\\b",
-  "EXAMPLE": "vannu|e\\.g\\.|example|udaharan|ഉദാഹരണ|like:|ingane"
+  "EXAMPLE": "vannu|e\\.g\\.|example|udaharan|ഉദാഹരണ|like:|ingane",
+  "SAVED_NOW": "✅ Sav|Save aayi|Saved\\b|സേവ് ആയി",
+  "RETYPE": "full line|whole line|onnu koodi ayakk|veendum ayakk|send (it|the line|everything) again",
+  "ERRORISH": "tool failed|tool returned|error|traceback|is not a valid|Internal Server",
+  "MAL_SCRIPT": "[\\u0d00-\\u0d7f]"
  },
  "reset": [
   {
@@ -339,6 +343,96 @@
    "shot": "-",
    "group": "N",
    "what": "never tested on 27 Oct: a photo of a delivery challan (50 bags cement) becomes a card line, nothing saved before Save"
+  },
+  "W01": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "labour: card + Save works"
+  },
+  "W02": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "labour: correction after Save is one card line (8 -> 6), no retype"
+  },
+  "W03": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "labour: after the correction the day shows the corrected count"
+  },
+  "W04": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "materials: card names EVERY item said (cement AND steel)"
+  },
+  "W05": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "materials: Save works"
+  },
+  "W06": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "M-sand: impossible load size caught at once, plain words, no card"
+  },
+  "W07": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "M-sand: size answered as the bill says (150 cft) goes on the card"
+  },
+  "W08": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "issue: report + Save"
+  },
+  "W09": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "issue: close by saying it was fixed, one tap"
+  },
+  "W10": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "work progress: card + Save"
+  },
+  "W11": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "questions: stock answered with a number, no card"
+  },
+  "W12": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "purchase request: right card buttons (never report-time buttons), Save works"
+  },
+  "W13": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "purchase order: prepared from a request, or a plain way forward (observed)"
+  },
+  "W14": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "what is still to come: an answer, not 'cannot' (observed)"
+  },
+  "W15": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "English message gets an English reply"
+  },
+  "W16": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "no internal error words in any reply"
+  },
+  "W17": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "DPR: asking for today's report never sends it without a tap (observed)"
+  },
+  "W18": {
+   "shot": "sweep-7nov",
+   "group": "SW",
+   "what": "Cancel: nothing saved"
   }
  },
  "scenarios": [
@@ -1349,6 +1443,517 @@
     },
     {
      "tap_if": "❌ Cancel"
+    }
+   ]
+  },
+  {
+   "id": "SW01",
+   "title": "Sweep 7 Nov: labour, Save, correction after Save",
+   "steps": [
+    {
+     "send": "Site B: 4 mason 2 helper vannu innu",
+     "checks": [
+      {
+       "mark": "W01",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap_if": "Add"
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W01",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      }
+     ]
+    },
+    {
+     "send": "alla, 3 mason aanu",
+     "checks": [
+      {
+       "mark": "W02",
+       "lacks_re": [
+        "{RETYPE}"
+       ]
+      },
+      {
+       "mark": "W02",
+       "has_re": [
+        "4\\s*→\\s*3|3\\s*mason|mason\\W{0,3}3"
+       ]
+      },
+      {
+       "mark": "W02",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W02",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      }
+     ]
+    },
+    {
+     "send": "Site B-il innu ethra mason undu?",
+     "checks": [
+      {
+       "mark": "W03",
+       "has_re": [
+        "\\b3\\b"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW02",
+   "title": "Sweep 7 Nov: two materials in one message",
+   "steps": [
+    {
+     "send": "Green Villa: 40 bag cement vannu, 15 rod steel use cheythu",
+     "checks": [
+      {
+       "mark": "W04",
+       "has_re": [
+        "cement|സിമ"
+       ]
+      },
+      {
+       "mark": "W04",
+       "has_re": [
+        "steel|kambi|tmt|rod|കമ്പി"
+       ]
+      },
+      {
+       "mark": "W05",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W05",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW03",
+   "title": "Sweep 7 Nov: M-sand load size, impossible then as the bill says",
+   "steps": [
+    {
+     "send": "M sand oru load 60 cum aanu, athu set cheyyu",
+     "checks": [
+      {
+       "mark": "W06",
+       "lacks_re": [
+        "would be|2119"
+       ]
+      },
+      {
+       "mark": "W06",
+       "has_re": [
+        "50.{0,25}600"
+       ]
+      },
+      {
+       "mark": "W06",
+       "buttons_lacks_re": [
+        "^Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "send": "bill-il oru load 150 cft aanu",
+     "checks": [
+      {
+       "mark": "W07",
+       "has_re": [
+        "150"
+       ]
+      },
+      {
+       "mark": "W07",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W07",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW04",
+   "title": "Sweep 7 Nov: issue reported, then closed",
+   "steps": [
+    {
+     "send": "Site B-il scaffolding loose aanu, danger aanu",
+     "checks": [
+      {
+       "mark": "W08",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W08",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      }
+     ]
+    },
+    {
+     "send": "Site B scaffolding sheriyaakki, aa issue close cheyyu",
+     "checks": [
+      {
+       "mark": "W09",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W09",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW05",
+   "title": "Sweep 7 Nov: work progress",
+   "steps": [
+    {
+     "send": "Site B first floor shuttering 50% aayi",
+     "checks": [
+      {
+       "mark": "W10",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W10",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW06",
+   "title": "Sweep 7 Nov: a stock question",
+   "steps": [
+    {
+     "send": "Green Villa-il cement stock ethra und?",
+     "checks": [
+      {
+       "mark": "W11",
+       "has_re": [
+        "\\d"
+       ]
+      },
+      {
+       "mark": "W11",
+       "buttons_lacks_re": [
+        "^Save"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW07",
+   "title": "Sweep 7 Nov: purchase request, order, still to come",
+   "steps": [
+    {
+     "send": "Green Villa-ilekku 100 bag cement venam, nale ethikkanam",
+     "checks": [
+      {
+       "mark": "W12",
+       "buttons_has": [
+        "Save"
+       ]
+      },
+      {
+       "mark": "W12",
+       "buttons_lacks_re": [
+        "Keep 9|9 pm|report"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Save",
+     "checks": [
+      {
+       "mark": "W12",
+       "has_re": [
+        "{SAVED_NOW}"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "send": "aa cement request-inu order undaakku, ABC Traders, bag-inu 380 rupees",
+     "checks": [
+      {
+       "mark": "W13",
+       "observe": "kinds"
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap_if": "Save",
+     "checks": [
+      {
+       "mark": "W13",
+       "observe": "kinds"
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "send": "Enthokke material ini varaanund?",
+     "checks": [
+      {
+       "mark": "W14",
+       "observe": "kinds"
+      },
+      {
+       "mark": "W14",
+       "lacks_re": [
+        "could not|cannot|kazhiyilla|pattilla"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW08",
+   "title": "Sweep 7 Nov: English in, English out; then Cancel",
+   "steps": [
+    {
+     "send": "3 electricians came to Site B today",
+     "checks": [
+      {
+       "mark": "W15",
+       "lacks_re": [
+        "{MANGLISH}",
+        "{MAL_SCRIPT}"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
+    },
+    {
+     "tap": "Cancel",
+     "checks": [
+      {
+       "mark": "W18",
+       "lacks_re": [
+        "{SAVED_NOW}"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "SW09",
+   "title": "Sweep 7 Nov: today's report, asked (never sent without a tap)",
+   "steps": [
+    {
+     "send": "innathe report enthokke aanu? ayakkenda, kaanichal mathi",
+     "checks": [
+      {
+       "mark": "W17",
+       "observe": "kinds"
+      },
+      {
+       "mark": "W17",
+       "lacks_re": [
+        "Report ayachu|report sent"
+       ]
+      },
+      {
+       "mark": "W16",
+       "lacks_re": [
+        "{ERRORISH}"
+       ]
+      }
+     ]
     }
    ]
   }
