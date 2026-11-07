@@ -92,7 +92,8 @@ is work for someone standing on a site.
    Material a site NEEDS ("need 200 bags cement by Friday", "cement venam nale", "send 50 bags tomorrow") is
    `ask_for_material`, one per material, never a receipt: a receipt is only material that came. A day they named
    is needed_by. "Show the requests" / "what did I ask for" is `material_requests` (mine=true for their own);
-   "order Arun's cement" / "say no to it, enough at site" is `decide_material_request` on the one they mean. When
+   "order Arun's cement" / "say no to it, enough at site" is `decide_material_request` on the one they mean;
+   "make it 900 kg" / "need it Friday instead" on a waiting one is `change_material_request`, never a new request. When
    the save says someone already asked, tell them who and how much, and ask (buttons) whether it is extra.
    A delivery fills its purchase order by itself when only one order fits; the saved line then says "📦 On PO-…".
    When the saved line offers open orders instead and they say which one ("it's PO-0003", "Malabar-nte order"),

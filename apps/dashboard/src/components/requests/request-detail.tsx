@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, BarChart3, Check, Clock, Copy, Home, IndianRupee, MessageCircle, PackageCheck, ShoppingCart, Truck, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Check, Clock, Copy, Home, IndianRupee, MessageCircle, PackageCheck, Pencil, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,7 @@ import {
   URGENCY_LOOK,
   cancelRequest,
   decideRequest,
+  reopenRequest,
   neededWords,
   qty,
   type Decision,
@@ -23,6 +24,7 @@ import {
 import { ORDER_LOOK } from '@/lib/orders'
 import { Avatar, CategoryTile, CoverBar, ProjectDot, StatusChip } from './parts'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
+import { NewRequestDialog } from './new-request-dialog'
 
 // PRC-22: one request, as the office acts on it: what is asked, what is here / ordered / still to buy, other sites
 // that hold some, the last rate (money roles only), what happened so far, and the one next step.
@@ -42,6 +44,8 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
   const [decision, setDecision] = React.useState<Decision | null>(null)
   // PRC-06: a purchase order made from this request, filled in with what is still to buy at its site.
   const [ordering, setOrdering] = React.useState(false)
+  // PRC-31: change it while it waits; bring it back once said no to or taken back.
+  const [editing, setEditing] = React.useState(false)
   const prefill = React.useMemo<OrderPrefill>(() => ({
     project_id: request.project_id,
     site_id: request.site_id,
@@ -53,8 +57,8 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
   const toast = useToast()
 
   const act = useMutation({
-    mutationFn: ({ action, note }: { action: Decision | 'cancel'; note?: string }) =>
-      action === 'cancel' ? cancelRequest(request.id) : decideRequest(request.id, action, note),
+    mutationFn: ({ action, note }: { action: Decision | 'cancel' | 'reopen'; note?: string }) =>
+      action === 'cancel' ? cancelRequest(request.id) : action === 'reopen' ? reopenRequest(request.id) : decideRequest(request.id, action, note),
     onSuccess: (after) => {
       queryClient.invalidateQueries({ queryKey: ['procurement', 'requests'] })
       setDecision(null)
@@ -136,6 +140,17 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
 
       <History request={request} />
 
+      {(request.may_edit || request.may_reopen) && (
+        <div className="flex flex-wrap gap-2 px-5 pb-1">
+          {request.may_edit && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing(true)}><Pencil className="size-3.5" /> Change request</Button>
+          )}
+          {request.may_reopen && (
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate({ action: 'reopen' })}><RotateCcw className="size-3.5" /> Bring it back</Button>
+          )}
+        </div>
+      )}
+
       {(request.may_act || request.may_cancel) && !['done', 'rejected', 'cancelled'].includes(request.status) && (
         <div className="mt-auto flex flex-wrap gap-2 border-t px-5 py-4">
           {request.may_act && request.status === 'waiting' && (
@@ -182,6 +197,7 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
       )}
 
       <NewOrderDialog open={ordering} onOpenChange={setOrdering} scope={{ mode: 'portfolio' }} prefill={prefill} />
+      <NewRequestDialog open={editing} onOpenChange={setEditing} scope={{ mode: 'portfolio' }} editing={request} />
       <DecisionDialog
         request={request}
         action={decision}
@@ -237,7 +253,7 @@ function LineCover({ line, showName, open }: { line: RequestLine; showName: bool
       <CoverBar line={line} className="h-3.5" />
       <div className="grid grid-cols-3 gap-2 text-xs">
         <Stat icon={Home} label="At site" value={qty(line.at_site, line.unit)} tone="bg-success-soft text-success" />
-        <Stat icon={Truck} label="Ordered" value={qty(line.on_order, line.unit)} tone="bg-info-soft text-info" />
+        <Stat icon={Truck} label="Coming" value={qty(line.on_order, line.unit)} tone="bg-info-soft text-info" />
         <Stat icon={ShoppingCart} label="To buy" value={qty(line.to_buy, line.unit)} tone={open && Number(line.to_buy) > 0 ? 'bg-yellow-400 text-stone-950' : 'bg-muted text-muted-foreground'} />
       </div>
     </div>

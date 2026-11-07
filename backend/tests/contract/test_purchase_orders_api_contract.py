@@ -483,3 +483,95 @@ async def test_a_new_order_names_the_waiting_request_for_the_same_material(clien
     body = _order(w, w["cement"], "100")
     body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
     assert (await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])).status_code == 201
+
+
+# --- PRC-31: every basic --------------------------------------------------------------------------------------------
+
+
+async def test_a_waiting_request_is_changed_by_the_asker_or_the_office(client, world, test_engine):
+    w = world
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "100", purpose="slab"),
+                             headers=w["arun"]["h"])).json()
+    line = req["lines"][0]
+    assert req["may_edit"]
+    # The WhatsApp form: the only line's quantity.
+    one = await client.patch(f"/procurement/requests/{req['id']}", json={"quantity": "120", "unit_id": w["units"]["bags"]},
+                             headers=w["arun"]["h"])
+    assert one.status_code == 200, one.text
+    assert one.json()["lines"][0]["quantity"] == "120" and one.json()["lines"][0]["id"] == line["id"]
+    # Several items, a date and a reason, by the office.
+    both = await client.patch(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"], json={
+        "needed_by": str(datetime.date.today()), "purpose": "Slab and columns",
+        "lines": [{"id": line["id"], "material_id": w["cement"], "quantity": "150", "unit_id": w["units"]["bags"]},
+                  {"material_id": w["tmt"], "quantity": "500", "unit_id": w["units"]["kg"]}]})
+    after = both.json()
+    assert [(x["material"], x["quantity"]) for x in after["lines"]] == [("Cement OPC 53", "150"), ("TMT bar 12 mm", "500")]
+    assert (after["purpose"], after["urgency"]) == ("Slab and columns", "soon")
+    async with test_engine.begin() as conn:
+        told = [r[0] for r in (await conn.execute(sa.text(
+            "SELECT payload->>'message' FROM notifications ORDER BY created_at"))).all()]
+    assert len(told) == 1 and told[0].startswith("✏️ Maatti: ippo 150 bags Cement OPC 53, 500 kg TMT bar 12 mm")
+    # Another engineer cannot; nobody can once it is ordered.
+    assert (await client.patch(f"/procurement/requests/{req['id']}", json={"purpose": "x"},
+                               headers=w["ravi"]["h"])).status_code == 404
+    body = _order(w, w["cement"], "150")
+    body["lines"][0]["request_line_id"] = line["id"]
+    await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])
+    late = await client.patch(f"/procurement/requests/{req['id']}", json={"purpose": "x"}, headers=w["arun"]["h"])
+    assert late.status_code == 409
+
+
+async def test_a_line_an_order_points_at_keeps_its_material(client, world):
+    w = world
+    req, po = await _req_with_order(client, w, "100")
+    await client.post(f"/procurement/orders/{po['id']}/cancel", json={"reason": "Wrong shop"}, headers=w["admin"]["h"])
+    line = req["lines"][0]
+    swap = await client.patch(f"/procurement/requests/{req['id']}", headers=w["arun"]["h"], json={
+        "lines": [{"id": line["id"], "material_id": w["tmt"], "quantity": "5", "unit_id": w["units"]["kg"]}]})
+    assert swap.status_code == 409 and "PO-0001" in swap.text
+    drop = await client.patch(f"/procurement/requests/{req['id']}", headers=w["arun"]["h"], json={
+        "lines": [{"material_id": w["tmt"], "quantity": "5", "unit_id": w["units"]["kg"]}]})
+    assert drop.status_code == 409
+    more = await client.patch(f"/procurement/requests/{req['id']}", headers=w["arun"]["h"], json={
+        "lines": [{"id": line["id"], "material_id": w["cement"], "quantity": "90", "unit_id": w["units"]["bags"]}]})
+    assert more.status_code == 200 and more.json()["lines"][0]["quantity"] == "90"
+
+
+async def test_bringing_back_a_request_and_an_order(client, world, test_engine):
+    w = world
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "40"), headers=w["arun"]["h"])).json()
+    await client.post(f"/procurement/requests/{req['id']}/decide", json={"action": "rejected", "note": "enough at site"},
+                      headers=w["admin"]["h"])
+    assert (await client.post(f"/procurement/requests/{req['id']}/reopen", headers=w["arun"]["h"])).status_code == 403
+    back = await client.post(f"/procurement/requests/{req['id']}/reopen", headers=w["admin"]["h"])
+    assert back.status_code == 200 and back.json()["status"] == "waiting"
+    assert "Veendum eduthu (Meera)" in (await _told(test_engine))[-1]
+    # Arun takes his own back, then brings it back himself.
+    await client.post(f"/procurement/requests/{req['id']}/cancel", headers=w["arun"]["h"])
+    assert (await client.post(f"/procurement/requests/{req['id']}/reopen", headers=w["arun"]["h"])).json()["status"] == "waiting"
+    # An order cancelled by mistake is opened again; its request is ordered again.
+    body = _order(w, w["cement"], "40")
+    body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
+    po = (await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])).json()
+    gone = (await client.post(f"/procurement/orders/{po['id']}/cancel", json={"reason": "oops"}, headers=w["admin"]["h"])).json()
+    assert gone["may_reopen"]
+    assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "waiting"
+    again = await client.post(f"/procurement/orders/{po['id']}/reopen", headers=w["admin"]["h"])
+    assert again.status_code == 200 and again.json()["status"] == "open"
+    assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "ordered"
+    assert (await client.post(f"/procurement/orders/{po['id']}/reopen", headers=w["admin"]["h"])).status_code == 409
+    assert (await client.post(f"/procurement/orders/{po['id']}/reopen", headers=w["arun"]["h"])).status_code == 403
+
+
+async def test_open_records_are_never_dropped_by_the_cap(client, world, test_engine):
+    w = world
+    old = (await client.post("/procurement/orders", json=_order(w, w["cement"], "10"), headers=w["admin"]["h"])).json()
+    await _exec(test_engine, "UPDATE purchase_orders SET created_at = now() - interval '3 years' WHERE id = :id", id=old["id"])
+    async with test_engine.begin() as conn:
+        for n in range(2, 503):
+            await conn.execute(sa.text(
+                "INSERT INTO purchase_orders (organization_id, number, project_id, site_id, vendor_id, created_by, status) "
+                "SELECT organization_id, :n, project_id, site_id, vendor_id, created_by, 'cancelled' FROM purchase_orders "
+                "WHERE id = :id"), {"n": n, "id": old["id"]})
+    listing = (await client.get("/procurement/orders", params={"status": "open"}, headers=w["admin"]["h"])).json()
+    assert [i["ref"] for i in listing["items"]] == ["PO-0001"]

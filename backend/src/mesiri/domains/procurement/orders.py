@@ -261,7 +261,11 @@ async def fetch_orders(conn: AsyncConnection, organization_id: uuid.UUID, *, pro
     if order_id is not None:
         sql += " AND o.id = :id"
         params["id"] = order_id
-    sql += " ORDER BY o.created_at DESC LIMIT 500"
+    else:
+        # PRC-31: every open order; of the closed and cancelled ones, the newest 500 (an open one is never dropped).
+        sql += (" AND (o.status = 'open' OR o.id IN (SELECT c.id FROM purchase_orders c WHERE c.organization_id = :org "
+                "AND c.status <> 'open' ORDER BY c.created_at DESC LIMIT 500))")
+    sql += " ORDER BY o.created_at DESC"
     if lock:
         sql += " FOR UPDATE OF o"
     rows = [dict(r._mapping) for r in (await conn.execute(text(sql), params)).all()]
@@ -367,7 +371,7 @@ def describe(rows: list[dict[str, Any]], *, today: datetime.date, with_money: bo
                 "amount": _money(qty * rate) if with_money and rate is not None else None,
                 "request": None if not line["request_id"] else {
                     "id": str(line["request_id"]), "ref": f"REQ-{line['request_number']:04d}",
-                    "status": line["request_status"]},
+                    "status": line["request_status"], "line_id": str(line["request_line_id"])},
             })
         duplicates: dict[uuid.UUID, dict] = {}
         if status in ("open", "part"):

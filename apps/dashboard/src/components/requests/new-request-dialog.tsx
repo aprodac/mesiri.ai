@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/toast-notification'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import { fetchMaterialCategories, categoryPaths, fetchMaterials, fetchStockCheck } from '@/lib/materials'
-import { asDuplicateConflict, createRequest, qty, type DuplicateConflict } from '@/lib/requests'
+import { asDuplicateConflict, createRequest, qty, updateRequest, type DuplicateConflict, type MaterialRequest } from '@/lib/requests'
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from './parts'
@@ -18,7 +18,7 @@ import { CategoryTile } from './parts'
 // PRC-22: ask for material. Built for speed: the site is the scope's, several items in one request, each line says
 // what the site already holds, and a request that repeats an open one is shown before it is saved.
 
-type Line = { key: number; materialId: string; quantity: string }
+type Line = { key: number; materialId: string; quantity: string; lineId?: string }
 type When = 'today' | 'tomorrow' | 'week' | 'pick'
 
 function iso(d: Date): string {
@@ -33,9 +33,10 @@ function dateFor(when: When, picked: string): string | null {
   return picked || null
 }
 
-export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean; onOpenChange: (open: boolean) => void; scope: AppScope }) {
-  const scopedProject = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : ''
-  const scopedSite = scope.mode === 'site' ? scope.siteId : ''
+export function NewRequestDialog({ open, onOpenChange, scope, editing }: { open: boolean; onOpenChange: (open: boolean) => void; scope: AppScope; editing?: MaterialRequest | null }) {
+  // PRC-31: with `editing`, the same form changes a waiting request (its site stays).
+  const scopedProject = editing ? editing.project_id : scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : ''
+  const scopedSite = editing ? editing.site_id : scope.mode === 'site' ? scope.siteId : ''
   const [projectId, setProjectId] = React.useState(scopedProject)
   const [siteId, setSiteId] = React.useState(scopedSite)
   const [lines, setLines] = React.useState<Line[]>([{ key: 1, materialId: '', quantity: '' }])
@@ -51,14 +52,14 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
     if (!open) return
     setProjectId(scopedProject)
     setSiteId(scopedSite)
-    setLines([{ key: 1, materialId: '', quantity: '' }])
-    setWhen('tomorrow')
-    setPicked('')
-    setPurpose('')
+    setLines(editing ? editing.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, lineId: l.id })) : [{ key: 1, materialId: '', quantity: '' }])
+    setWhen(editing ? 'pick' : 'tomorrow')
+    setPicked(editing?.needed_by ?? '')
+    setPurpose(editing?.purpose ?? '')
     setDuplicate(null)
     setError('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, editing?.id])
 
   // The page's scope can settle after the dialog opened (it picks a project once projects load): follow it.
   React.useEffect(() => {
@@ -79,8 +80,18 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
   const options = React.useMemo(() => materials.map((m) => ({ value: m.id, label: m.name })), [materials])
 
   const save = useMutation({
-    mutationFn: (confirm: boolean) =>
-      createRequest({
+    mutationFn: (confirm: boolean) => editing
+      ? updateRequest(editing.id, {
+        lines: lines.filter((l) => l.materialId && Number(l.quantity) > 0).map((l) => ({
+          ...(l.lineId ? { id: l.lineId } : {}),
+          material_id: l.materialId,
+          quantity: l.quantity,
+          unit_id: materials.find((m) => m.id === l.materialId)?.default_unit_id ?? '',
+        })),
+        needed_by: dateFor(when, picked),
+        purpose: purpose.trim() || null,
+      })
+      : createRequest({
         project_id: projectId,
         site_id: siteId,
         lines: lines.filter((l) => l.materialId && Number(l.quantity) > 0).map((l) => ({
@@ -94,7 +105,7 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
       }),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['procurement', 'requests'] })
-      toast.success(`${created.ref} sent`, 'The office sees it now.')
+      toast.success(editing ? `${created.ref} changed` : `${created.ref} sent`, editing ? undefined : 'The office sees it now.')
       onOpenChange(false)
     },
     onError: (err) => {
@@ -109,7 +120,7 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
   })
 
   const ready = lines.filter((l) => l.materialId && Number(l.quantity) > 0)
-  const canSend = !!projectId && !!siteId && ready.length > 0 && !save.isPending && (when !== 'pick' || !!picked)
+  const canSend = !!projectId && !!siteId && ready.length > 0 && !save.isPending && (when !== 'pick' || !!picked || !!editing)
   const update = (key: number, patch: Partial<Line>) => {
     setDuplicate(null)
     setLines((all) => all.map((l) => (l.key === key ? { ...l, ...patch } : l)))
@@ -119,7 +130,7 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>New request</DialogTitle>
+          <DialogTitle>{editing ? `Change ${editing.ref}` : 'New request'}</DialogTitle>
         </DialogHeader>
         <form
           className="flex flex-col gap-5"
@@ -131,7 +142,7 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label>Project</Label>
-              <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSiteId(''); setDuplicate(null) }} disabled={!!scopedProject}>
+              <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSiteId(''); setDuplicate(null) }} disabled={!!scopedProject || !!editing}>
                 <SelectTrigger><SelectValue placeholder="Choose project" /></SelectTrigger>
                 <SelectContent>{projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
               </Select>
@@ -198,7 +209,7 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
                   {{ today: 'Today', tomorrow: 'Tomorrow', week: 'This week', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={iso(new Date())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.needed_by && editing?.needed_by < iso(new Date()) ? editing?.needed_by : iso(new Date())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
             </div>
           </div>
 
@@ -226,7 +237,7 @@ export function NewRequestDialog({ open, onOpenChange, scope }: { open: boolean;
             <span className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               <Button type="submit" disabled={!canSend || !!duplicate} className="font-semibold">
-                Send request{ready.length > 1 ? ` · ${ready.length} items` : ''}
+                {editing ? 'Save changes' : `Send request${ready.length > 1 ? ` · ${ready.length} items` : ''}`}
               </Button>
             </span>
           </DialogFooter>

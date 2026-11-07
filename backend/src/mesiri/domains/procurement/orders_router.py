@@ -169,6 +169,8 @@ async def _describe(conn: AsyncConnection, auth: AuthorizationContext, rows: lis
         item["may_cancel"] = office and item["status"] == "open" and nothing_came
         item["may_close"] = office and item["status"] == "part"
         item["may_receive"] = item["status"] in ("open", "part")
+        #: PRC-31: a closed or cancelled order can be brought back (the rest is coming after all).
+        item["may_reopen"] = office and item["status"] in ("closed", "cancelled")
     return items
 
 
@@ -342,6 +344,22 @@ async def close_order(order_id: uuid.UUID, body: StatusChange,
         raise HTTPException(status_code=422, detail="Say why the rest will not come (a reason is required).")
     await store.set_status(conn, order_id, "closed", auth_context.user_id, reason)
     await requests_follow(conn, auth_context, _request_ids(item), note=f"{item['ref']} closed short: {reason}")
+    return await _one(conn, auth_context, order_id)
+
+
+@router.post("/{order_id}/reopen")
+async def reopen_order(order_id: uuid.UUID, auth_context: AuthorizationContext = Depends(get_auth_context),
+                       conn: AsyncConnection = Depends(get_db_conn)):
+    """PRC-31: a closed or cancelled order is open again (the rest is coming after all, or it was cancelled by
+    mistake). Its requests follow: ordered again, the person who asked told."""
+    _office(auth_context)
+    item = await _one(conn, auth_context, order_id, lock=True)
+    if not item["may_reopen"]:
+        raise HTTPException(status_code=409, detail=f"{item['ref']} is {item['status']}; only a closed or cancelled "
+                            "order can be opened again.")
+    await store.set_status(conn, order_id, "open", auth_context.user_id, f"opened again (was {item['status']})")
+    after = await _one(conn, auth_context, order_id)
+    await requests_follow(conn, auth_context, _request_ids(after))
     return await _one(conn, auth_context, order_id)
 
 

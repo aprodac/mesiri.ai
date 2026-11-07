@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlarmClock, CalendarDays, LayoutGrid, MapPin, PackageOpen, Plus, Search, ShoppingCart, Store, Truck } from 'lucide-react'
+import { AlarmClock, CalendarDays, Download, LayoutGrid, MapPin, PackageOpen, Plus, Search, ShoppingCart, Store, Truck } from 'lucide-react'
+import { exportCsv } from '@/lib/export'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -48,6 +49,18 @@ function inTile(o: PurchaseOrder, tile: Tile): boolean {
 }
 
 const ORDER: Record<Urgency, number> = { late: 0, soon: 1, later: 2, closed: 3 }
+
+/** PRC-31: the orders shown (tab and filters applied), one row per item, for Excel. Rates only when the API sent them. */
+function exportOrders(items: PurchaseOrder[]): void {
+  const rows = items.flatMap((o) => o.lines.map((l) => [
+    o.ref, ORDER_LOOK[o.status].label, o.vendor_name, o.project_name, o.site_name, o.created_by_name ?? '', o.created_at.slice(0, 10),
+    o.expected_date ?? '', l.material, Number(l.quantity), l.unit, l.rate === null ? '' : Number(l.rate), l.amount === null ? '' : Number(l.amount),
+    Number(l.received), Number(l.pending), l.request?.ref ?? '', o.notes ?? '', o.status_note ?? '',
+  ]))
+  exportCsv(`purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Order', 'Status', 'Supplier', 'Project', 'Site', 'Ordered by', 'Ordered on', 'Expected', 'Item', 'Quantity', 'Unit', 'Rate',
+      'Amount', 'Received', 'Still to come', 'Request', 'Notes', 'Closed / cancelled because'], rows)
+}
 
 export default function PurchaseOrdersPage() {
   usePageTitle('Purchase orders')
@@ -127,6 +140,7 @@ export default function PurchaseOrdersPage() {
         </div>
         <div className="flex items-center gap-3">
           {openValue > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">Still to come: <strong className="text-foreground tabular-nums">{rupees(openValue)}</strong></span>}
+          <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportOrders(list)} title="The orders shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
           {office && !readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)}><Plus className="size-4" strokeWidth={2.6} /> New order</Button>}
         </div>
       </header>

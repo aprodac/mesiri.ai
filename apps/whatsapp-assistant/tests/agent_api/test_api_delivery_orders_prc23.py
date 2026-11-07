@@ -107,3 +107,53 @@ def test_the_sop_says_how_a_delivery_meets_its_order() -> None:
 
     sop = (Path(agent_api.__file__).parent / "SOP.md").read_text()
     assert "prepare `delivery_order` with that order number" in sop and "`no_order` on the receipt" in sop
+
+
+# --- PRC-31: a waiting request is changed, never asked again ----------------------------------------------------------
+
+
+def test_changing_a_request_is_the_dashboards_route() -> None:
+    tools = _real_tools()
+    change = tools["change_material_request"]
+    assert (change.method, change.path, change.is_write) == ("PATCH", "/procurement/requests/{request_id}", True)
+    assert {"quantity", "unit_id", "needed_by", "purpose"} <= set(change.body_fields)
+    assert "lines" not in change.body_fields  # the flat one-item form, as asking
+
+
+class Change(BaseModel):
+    quantity: str | None = None
+    unit_id: uuid.UUID | None = None
+    needed_by: str | None = None
+
+
+async def test_make_it_900_prepares_a_change_held_for_save() -> None:
+    app = FastAPI()
+    saved: list = []
+    request_id = str(uuid.uuid4())
+
+    @app.patch("/procurement/requests/{request_id}")
+    async def change(request_id: uuid.UUID, body: Change, jwt: dict = Depends(get_current_user)):
+        saved.append(body)
+        return {"id": str(request_id)}
+
+    tools = build_tools(app.openapi(), tuple(a for a in ALLOWED if a.name == "change_material_request"))
+    client = ApiClient(ACTOR, app=app)
+    line = ("change_material_request", {"request_id": request_id, "needed_by": "2026-11-13",
+                                        CONFIRM_ARG: "REQ-0002: needed by Fri 13 Nov"})
+    try:
+        turn = await ApiAgent(FakeToolCallingProvider([[line], "Ready: REQ-0002 needed Friday."]), tools).run(
+            client, "TMT venda innu, Friday mathi")
+    finally:
+        await client.close()
+    assert saved == []
+    assert [(p.tool, p.method) for p in turn.pending] == [("change_material_request", "PATCH")]
+    assert turn.pending[0].body == {"needed_by": "2026-11-13"}
+
+
+def test_the_sop_says_a_change_is_not_a_new_request() -> None:
+    from pathlib import Path
+
+    import agent_api
+
+    sop = (Path(agent_api.__file__).parent / "SOP.md").read_text()
+    assert "is `change_material_request`, never a new request" in sop

@@ -118,6 +118,36 @@ async def set_status(conn: AsyncConnection, request_id: uuid.UUID, status: str, 
         {"status": status, "note": note, "user": user_id, "id": request_id})
 
 
+async def lines_on_orders(conn: AsyncConnection, request_id: uuid.UUID) -> dict[str, str]:
+    """PRC-31: this request's lines that an order line points at (any status), with that order's ref."""
+    rows = (await conn.execute(text(
+        "SELECT l.id, MIN(o.number) AS number FROM material_request_lines l "
+        "JOIN purchase_order_lines pl ON pl.request_line_id = l.id JOIN purchase_orders o ON o.id = pl.purchase_order_id "
+        "WHERE l.request_id = :id GROUP BY l.id"), {"id": request_id})).all()
+    return {str(r.id): f"PO-{r.number:04d}" for r in rows}
+
+
+async def replace_lines(conn: AsyncConnection, organization_id: uuid.UUID, request_id: uuid.UUID, lines: list[dict], *,
+                        remove: set[str]) -> None:
+    """PRC-31: a waiting request's lines as given: kept ones changed in place (an order may point at them), new ones
+    added, ``remove`` deleted."""
+    for gone in remove:
+        await conn.execute(text("DELETE FROM material_request_lines WHERE id = :id AND request_id = :r"),
+                           {"id": uuid.UUID(gone), "r": request_id})
+    for position, line in enumerate(lines):
+        params = {"org": organization_id, "request": request_id, "material": line["material_id"],
+                  "unit": line["unit_id"], "quantity": line["quantity"], "said": line.get("said"), "position": position}
+        if line.get("id") is not None:
+            await conn.execute(text(
+                "UPDATE material_request_lines SET material_id = :material, unit_id = :unit, quantity = :quantity, "
+                "said = :said, position = :position WHERE id = :id AND request_id = :request"),
+                {**params, "id": line["id"]})
+        else:
+            await conn.execute(text(
+                "INSERT INTO material_request_lines (organization_id, request_id, material_id, unit_id, quantity, said, "
+                "position) VALUES (:org, :request, :material, :unit, :quantity, :said, :position)"), params)
+
+
 _SELECT = """
     SELECT r.id, r.number, r.project_id, p.name AS project_name, r.site_id, s.name AS site_name,
            r.requested_by, ru.full_name AS requested_by_name, ru.role AS requested_by_role, r.source, r.needed_by,
@@ -143,7 +173,12 @@ async def fetch_requests(conn: AsyncConnection, organization_id: uuid.UUID, *,
     if request_id is not None:
         sql += " AND r.id = :id"
         params["id"] = request_id
-    sql += " ORDER BY r.created_at DESC LIMIT 500"
+    else:
+        # PRC-31: every open request; of the closed ones, the newest 500 (an open one is never dropped).
+        sql += (" AND (r.status IN ('waiting', 'ordered', 'sent') OR r.id IN (SELECT c.id FROM material_requests c "
+                "WHERE c.organization_id = :org AND c.status NOT IN ('waiting', 'ordered', 'sent') "
+                "ORDER BY c.created_at DESC LIMIT 500))")
+    sql += " ORDER BY r.created_at DESC"
     if lock:
         sql += " FOR UPDATE OF r"
     rows = [dict(r._mapping) for r in (await conn.execute(text(sql), params)).all()]
@@ -351,6 +386,17 @@ _TOLD: dict[str, dict[str, str]] = {
         "malayalam": "✅ എല്ലാം വന്നു: {what}{tail}. {ref}",
     },
     # PRC-23: its order was cancelled, or closed with part of it still missing: the office has it to order again.
+    # PRC-31: the office changed what they asked for.
+    "changed": {
+        "english": "✏️ Changed{who}: now {what}{tail}. {ref}",
+        "manglish": "✏️ Maatti{who}: ippo {what}{tail}. {ref}",
+        "malayalam": "✏️ മാറ്റി{who}: ഇപ്പോൾ {what}{tail}. {ref}",
+    },
+    "reopened": {
+        "english": "🔁 Brought back{who}: {what}. Waiting for the office again. {ref}",
+        "manglish": "🔁 Veendum eduthu{who}: {what}. Office-nte theerumaanathinu kaathirikkunnu. {ref}",
+        "malayalam": "🔁 വീണ്ടും എടുത്തു{who}: {what}. ഓഫീസിന്റെ തീരുമാനത്തിന് കാത്തിരിക്കുന്നു. {ref}",
+    },
     "waiting": {
         "english": "↩️ Not coming yet: {what}{tail}. Waiting to be ordered again. {ref}",
         "manglish": "↩️ Ippo varilla: {what}{tail}. Veendum order cheyyaan kaathirikkunnu. {ref}",

@@ -61,6 +61,9 @@ export interface MaterialRequest {
   may_act: boolean
   may_cancel: boolean
   may_decide: boolean
+  /** PRC-31: the asker or the office may change it (waiting); bring it back (said no to, taken back). */
+  may_edit: boolean
+  may_reopen: boolean
 }
 
 export interface RequestOrder {
@@ -112,6 +115,20 @@ export function asDuplicateConflict(err: unknown): DuplicateConflict | null {
   if (detail?.status !== 409) return null
   const d = detail.data?.detail as DuplicateConflict | undefined
   return d && d.code === 'possible_duplicate' ? d : null
+}
+
+export async function updateRequest(id: string, payload: {
+  lines?: { id?: string; material_id: string; quantity: string; unit_id: string }[]
+  needed_by?: string | null
+  purpose?: string | null
+}): Promise<MaterialRequest> {
+  const { data } = await api.patch<MaterialRequest>(`/procurement/requests/${id}`, payload)
+  return data
+}
+
+export async function reopenRequest(id: string): Promise<MaterialRequest> {
+  const { data } = await api.post<MaterialRequest>(`/procurement/requests/${id}/reopen`)
+  return data
 }
 
 export async function decideRequest(id: string, action: Decision, note?: string): Promise<MaterialRequest> {

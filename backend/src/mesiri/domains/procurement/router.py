@@ -16,6 +16,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
@@ -66,6 +67,26 @@ class RequestCreate(BaseModel):
     confirm_duplicate: bool = False
 
 
+class RequestLineEdit(BaseModel):
+    #: An existing line of this request (kept, its quantity changed); without it, a new line.
+    id: uuid.UUID | None = None
+    material_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+    unit_id: uuid.UUID
+    notes: str | None = None  # filled by the conversion
+
+
+class RequestUpdate(BaseModel):
+    """PRC-31: change a waiting request. ``lines`` replaces every line (lines left out are removed); or, for a
+    one-item request (the WhatsApp form), ``quantity`` + ``unit_id`` change its only line."""
+
+    needed_by: datetime.date | None = None
+    purpose: str | None = Field(default=None, max_length=300)
+    lines: list[RequestLineEdit] | None = Field(default=None, min_length=1, max_length=50)
+    quantity: Decimal | None = Field(default=None, gt=0)
+    unit_id: uuid.UUID | None = None
+
+
 class RequestDecision(BaseModel):
     action: Literal["ordered", "sent", "rejected", "done"]
     note: str | None = Field(default=None, max_length=300)
@@ -113,6 +134,10 @@ def _with_rights(item: dict, auth: AuthorizationContext) -> dict:
     item["may_cancel"] = item["status"] == store.WAITING and (mine or item["may_act"])
     #: PRC-23: a request an order covers follows the order; the office decides on the order, not here.
     item["may_decide"] = item["may_act"] and not item["follows_order"] and item["status"] in store.OPEN
+    #: PRC-31: the person who asked, or the office, changes it while it waits; brings back one said no to or taken back.
+    item["may_edit"] = item["status"] == store.WAITING and (mine or item["may_act"])
+    item["may_reopen"] = (item["status"] == "rejected" and item["may_act"]) or (
+        item["status"] == "cancelled" and (mine or item["may_act"]))
     return item
 
 
@@ -291,6 +316,97 @@ async def cancel_request(
         raise HTTPException(status_code=403, detail="Only the person who asked, or the office, can cancel it.")
     await store.set_status(conn, request_id, "cancelled", auth_context.user_id, None)
     return await _one(conn, auth_context, request_id)
+
+
+@router.patch("/{request_id}")
+async def update_request(
+    request_id: uuid.UUID,
+    body: RequestUpdate,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-31: change what a waiting request asks for (items, quantities), when it is needed, or why. The person who
+    asked or the office. A line an order (even a cancelled one) points at keeps its material: change its quantity, or
+    leave it and add another."""
+    item = await _locked(conn, auth_context, request_id)
+    if not item["may_edit"]:
+        if item["status"] != store.WAITING:
+            raise HTTPException(status_code=409, detail=f"{item['ref']} is {item['status']}; only a waiting request "
+                                "can be changed.")
+        raise HTTPException(status_code=403, detail="Only the person who asked, or the office, can change it.")
+    org = auth_context.organization_id
+    fields = body.model_fields_set
+    changes: dict = {}
+    if "needed_by" in fields:
+        changes["needed_by"] = body.needed_by
+    if "purpose" in fields:
+        changes["purpose"] = (body.purpose or "").strip() or None
+    lines = body.lines
+    if lines is None and (body.quantity is not None or body.unit_id is not None):
+        if len(item["lines"]) != 1:
+            raise HTTPException(status_code=422, detail="This request has several items: send lines.")
+        only = item["lines"][0]
+        lines = [RequestLineEdit(id=uuid.UUID(only["id"]), material_id=uuid.UUID(only["material_id"]),
+                                 quantity=body.quantity or Decimal(only["quantity"]),
+                                 unit_id=body.unit_id or uuid.UUID(only["unit_id"]))]
+    if lines is not None:
+        if len({line.material_id for line in lines}) != len(lines):
+            raise HTTPException(status_code=422, detail="Each material once per request: add the quantities together.")
+        current = {line["id"]: line for line in item["lines"]}
+        held = await store.lines_on_orders(conn, request_id)
+        for line in lines:
+            if line.id is not None and str(line.id) not in current:
+                raise HTTPException(status_code=422, detail="A line is not on this request.")
+            if line.id is not None and str(line.id) in held and str(line.material_id) != current[str(line.id)]["material_id"]:
+                raise HTTPException(status_code=409, detail=f"{held[str(line.id)]} points at this line: its material "
+                                    "stays (add the other material as a new line).")
+        kept = {str(line.id) for line in lines if line.id is not None}
+        for gone in set(current) - kept:
+            if gone in held:
+                raise HTTPException(status_code=409, detail=f"{held[gone]} points at {current[gone]['material']}: that "
+                                    "line stays (change its quantity instead).")
+        out = []
+        for line in lines:
+            said = await _convert_to_stock_unit(conn, org, line)
+            await _resolve_and_validate_material_unit(conn, org, line.material_id, line.unit_id)
+            out.append({"id": line.id, "material_id": line.material_id, "unit_id": line.unit_id,
+                        "quantity": line.quantity, "said": said.split(" = ")[0] if said else None})
+        await store.replace_lines(conn, org, request_id, out, remove=set(current) - kept)
+    if changes:
+        sets = ", ".join(f"{k} = :{k}" for k in changes)
+        await conn.execute(text(f"UPDATE material_requests SET {sets}, updated_at = now() WHERE id = :id"),  # noqa: S608
+                           {**changes, "id": request_id})
+    elif lines is not None:
+        await conn.execute(text("UPDATE material_requests SET updated_at = now() WHERE id = :id"), {"id": request_id})
+    after = await _one(conn, auth_context, request_id)
+    if changes or lines is not None:
+        # The person who asked hears it when the office changed it (their own change is not echoed back).
+        needed = f"needed {after['needed_by']}" if after["needed_by"] else None
+        # Each change is its own message (a fresh key), without a name (the request records no editor).
+        await _tell_requester(conn, auth_context, {**after, "decided_at": uuid.uuid4().hex, "decided_by_name": None},
+                              "changed", needed)
+    return after
+
+
+@router.post("/{request_id}/reopen")
+async def reopen_request(
+    request_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-31: bring back a request said no to (the office) or taken back (the person who asked, or the office): it
+    waits for the office again. The person who asked is told when the office did it."""
+    item = await _locked(conn, auth_context, request_id)
+    if not item["may_reopen"]:
+        if item["status"] not in ("rejected", "cancelled"):
+            raise HTTPException(status_code=409, detail=f"{item['ref']} is {item['status']}; only one said no to or "
+                                "taken back can be brought back.")
+        raise HTTPException(status_code=403, detail="Only the office (or the person who asked, for one they took "
+                            "back) can bring it back.")
+    await store.set_status(conn, request_id, store.WAITING, auth_context.user_id, "brought back")
+    after = await _one(conn, auth_context, request_id)
+    await _tell_requester(conn, auth_context, after, "reopened", None)
+    return after
 
 
 async def _locked(conn: AsyncConnection, auth: AuthorizationContext, request_id: uuid.UUID) -> dict:

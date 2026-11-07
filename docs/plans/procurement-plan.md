@@ -212,6 +212,22 @@ Fixes 4e A1–A5, B6, B9 and C13. No migration (reads `purchase_order_lines.requ
   delivery from a closed order (refused: its deliveries stay); notifications are de-duplicated per request and status,
   so a request that waits again a second time for another reason is not told twice.
 
+### 4h. As built: every basic (PRC-31, 7 Nov 2026)
+
+- **Change a waiting request** (`PATCH /procurement/requests/{id}`): items and quantities (`lines`, kept lines by `id`),
+  `needed_by`, `purpose`; or the one-item form (`quantity` + `unit_id`) WhatsApp uses (`change_material_request`). The
+  person who asked or the office. A line an order (even a cancelled one) points at keeps its material and cannot be
+  removed. The asker is told when the office changed it ("✏️ Maatti: ippo …").
+- **Bring back** a request said no to (office) or taken back (asker or office): `POST …/requests/{id}/reopen` (asker
+  told). **Open again** a closed or cancelled order: `POST /procurement/orders/{id}/reopen`; its requests are ordered again.
+- **Change an order** on the dashboard: the order form opens filled in (supplier, items, rates, date, notes; a request's
+  line keeps its link) while nothing has come; afterwards only the date ("Expected", now labelled).
+- **Export** both lists as CSV (the tab and filters shown; one row per item; rates only for the money roles).
+- **Never capped:** every open request and order is read; only closed ones beyond the newest 500 are left out.
+- **Menu:** Requests also sits in Procurement, before Purchase orders (the same page as Materials › Requests).
+- **Fixed on the way (browser check):** a late request could not be changed (the date field refused a past date); the
+  request's "Ordered" tile read as ordered when it is what is still coming ("Coming").
+
 ### 4g. Both ways: through Mesiri, or done outside and told quickly (decided 7 Nov 2026)
 
 Some companies will run every step through Mesiri; others will phone the vendor, take quotes on paper and only tell

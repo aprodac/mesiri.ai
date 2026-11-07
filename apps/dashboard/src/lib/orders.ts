@@ -23,7 +23,7 @@ export interface OrderLine {
   /** Only for the roles that see spending. */
   rate: string | null
   amount: string | null
-  request: { id: string; ref: string; status: string } | null
+  request: { id: string; ref: string; status: string; line_id: string } | null
 }
 
 export interface PurchaseOrder {
@@ -61,6 +61,8 @@ export interface PurchaseOrder {
   may_cancel: boolean
   may_close: boolean
   may_receive: boolean
+  /** PRC-31: a closed or cancelled order can be opened again (the office). */
+  may_reopen: boolean
 }
 
 export async function fetchOrders(params: { project_id?: string | null; site_id?: string | null }): Promise<{ items: PurchaseOrder[] }> {
@@ -86,8 +88,18 @@ export async function createOrder(payload: CreateOrderPayload): Promise<Purchase
   return data
 }
 
-export async function updateOrder(id: string, payload: { expected_date?: string | null; notes?: string | null }): Promise<PurchaseOrder> {
+export async function updateOrder(id: string, payload: {
+  expected_date?: string | null
+  notes?: string | null
+  supplier?: string | null
+  lines?: CreateOrderPayload['lines']
+}): Promise<PurchaseOrder> {
   const { data } = await api.patch(`/procurement/orders/${id}`, payload)
+  return data
+}
+
+export async function reopenOrder(id: string): Promise<PurchaseOrder> {
+  const { data } = await api.post(`/procurement/orders/${id}/reopen`)
   return data
 }
 

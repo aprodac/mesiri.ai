@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Ban, CalendarDays, Check, ClipboardList, Clock, PackageCheck, Phone, ShoppingCart, Truck, X } from 'lucide-react'
+import { Ban, CalendarDays, Check, ClipboardList, Clock, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { cn } from '@/lib/utils'
 import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
-import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, receiveOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
+import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
+import { NewOrderDialog } from './new-order-dialog'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 
 // PRC-06/08: one order, as the office and the site see it: the supplier, what was ordered and what came per line,
@@ -49,7 +50,7 @@ export function OrderProgress({ order, className }: { order: PurchaseOrder; clas
 }
 
 export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?: boolean }) {
-  const [dialog, setDialog] = React.useState<'receive' | 'cancel' | 'close' | null>(null)
+  const [dialog, setDialog] = React.useState<'receive' | 'cancel' | 'close' | 'edit' | null>(null)
   const [date, setDate] = React.useState(order.expected_date ?? '')
   React.useEffect(() => setDate(order.expected_date ?? ''), [order.id, order.expected_date])
   const queryClient = useQueryClient()
@@ -74,6 +75,7 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
     },
   })
   const unlinked = order.unlinked_deliveries ?? []
+  const reopen = useMutation({ mutationFn: () => reopenOrder(order.id), onSuccess: done(`${order.ref} is open again`), onError: fail })
   const open = order.status === 'open' || order.status === 'part'
 
   return (
@@ -184,9 +186,10 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex h-10 items-center gap-2 rounded-md border px-2.5 text-sm">
                 <CalendarDays className="size-4 text-muted-foreground" />
-                <span className="sr-only">Expected by</span>
+                <span className="text-xs text-muted-foreground">Expected</span>
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date !== (order.expected_date ?? '') && move.mutate(date)} className="bg-transparent outline-none dark:[color-scheme:dark]" />
               </label>
+              {order.may_edit && <Button variant="outline" className="h-10" onClick={() => setDialog('edit')}><Pencil className="size-4" /> Change</Button>}
               {order.may_cancel && <Button variant="outline" className="h-10 border-destructive/30 text-destructive" onClick={() => setDialog('cancel')}><X className="size-4" /> Cancel order</Button>}
               {order.may_close && <Button variant="outline" className="h-10" onClick={() => setDialog('close')}>Close short</Button>}
             </div>
@@ -194,6 +197,14 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
         </div>
       )}
 
+      {order.may_reopen && (
+        <div className="flex flex-col gap-1.5 border-t px-5 py-4">
+          <Button variant="outline" className="h-10 gap-2" disabled={reopen.isPending} onClick={() => reopen.mutate()}><RotateCcw className="size-4" /> Open it again</Button>
+          <p className="text-xs text-muted-foreground">The rest is coming after all, or it was {order.status === 'cancelled' ? 'cancelled' : 'closed'} by mistake. Its requests are ordered again.</p>
+        </div>
+      )}
+
+      <NewOrderDialog open={dialog === 'edit'} onOpenChange={(o) => setDialog(o ? 'edit' : null)} scope={{ mode: 'portfolio' }} editing={order} />
       <ReceiveDialog order={order} open={dialog === 'receive'} onClose={() => setDialog(null)} onDone={done('Delivery recorded; stock is updated')} onError={fail} />
       <ReasonDialog
         open={dialog === 'cancel' || dialog === 'close'}

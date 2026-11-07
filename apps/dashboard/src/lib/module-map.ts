@@ -146,6 +146,8 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'sky',
     about: 'From "the site needs it" to "the supplier is paid", each step checked against the last.',
     pages: [
+      // PRC-31: requests and orders are one flow; Requests also sits here (the same page as Materials > Requests).
+      { title: 'Requests', url: '/materials/requests', status: 'built', phase: 'V1', shortcut: true, about: 'What the sites ask for, before anyone orders it.', example: 'Engineer: need 200 bags cement by Friday for the first-floor slab.', tracker: 'PRC-22' },
       { title: 'Purchase orders', url: '/procurement/orders', status: 'built', phase: 'V1', about: 'Orders to suppliers, with what is still to arrive and duplicate warnings.', example: 'PO-0042 to Malabar: 200 bags at ₹400, 150 delivered, 50 pending.', tracker: 'PRC-06..10', related: [{ title: 'Movements', url: '/materials?view=movements' }] },
       { title: 'Goods received (GRN)', navTitle: 'GRN', url: '/procurement/grn', status: 'planned', phase: 'V1', about: 'Each delivery received against its order: GRN number, challan photo, quantity accepted and rejected, who received it.', example: 'GRN-0117: 150 of 200 bags against PO-0042, 3 torn bags rejected, challan photo attached, received by Arun.', tracker: 'PRC-08', related: [{ title: 'Deliveries today (Movements)', url: '/materials?view=movements' }] },
       { title: 'Pending deliveries', url: '/procurement/pending', status: 'planned', phase: 'V1', about: 'What is ordered but has not arrived, and which orders are late.', example: '3 orders past their date: 50 bags cement from Malabar, 2 days late.', tracker: 'PRC-08' },

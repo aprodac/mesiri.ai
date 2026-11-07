@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlarmClock, CalendarDays, ClipboardList, Copy, Inbox, LayoutGrid, MapPin, Plus, Search, ShoppingCart, User } from 'lucide-react'
+import { AlarmClock, CalendarDays, ClipboardList, Copy, Download, Inbox, LayoutGrid, MapPin, Plus, Search, ShoppingCart, User } from 'lucide-react'
+import { exportCsv } from '@/lib/export'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -57,6 +58,18 @@ function inTile(r: MaterialRequest, tile: Tile): boolean {
 }
 
 const URGENCY_ORDER: Record<Urgency, number> = { late: 0, soon: 1, later: 2, closed: 3 }
+
+/** PRC-31: the requests shown (tab and filters applied), one row per item, for Excel. */
+function exportRequests(items: MaterialRequest[]): void {
+  const rows = items.flatMap((r) => r.lines.map((l) => [
+    r.ref, r.status, r.project_name, r.site_name, r.requested_by_name ?? '', r.created_at.slice(0, 10), r.needed_by ?? '',
+    l.material, l.category ?? '', Number(l.quantity), l.unit, Number(l.at_site), Number(l.on_order), Number(l.to_buy),
+    r.orders.filter((o) => o.status !== 'cancelled').map((o) => o.ref).join(' '), r.purpose ?? '', r.decision_note ?? '',
+  ]))
+  exportCsv(`material-requests-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Request', 'Status', 'Project', 'Site', 'Asked by', 'Asked on', 'Needed by', 'Item', 'Category', 'Quantity', 'Unit',
+      'At site', 'On order', 'To buy', 'Orders', 'Purpose', 'Office note'], rows)
+}
 
 export default function RequestsPage() {
   usePageTitle('Requests')
@@ -167,12 +180,17 @@ export default function RequestsPage() {
             <h1 className="text-2xl leading-tight font-semibold tracking-tight">Requests</h1>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportRequests(list)} title="The requests shown, as a CSV file (opens in Excel)">
+          <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
+        </Button>
         {canAsk && (
           <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)}>
             <Plus className="size-4" strokeWidth={2.6} /> New request
             <kbd className="rounded bg-primary-foreground/20 px-1.5 text-[11px]">N</kbd>
           </Button>
         )}
+        </div>
       </header>
 
       <div className="grid grid-cols-4 gap-2 sm:gap-3 lg:grid-cols-4">

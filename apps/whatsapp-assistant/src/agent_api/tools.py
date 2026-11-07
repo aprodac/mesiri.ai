@@ -133,6 +133,11 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare the office's answer to a material request (find it with material_requests): ordered (note: "
             "the supplier if said), sent (from another site), rejected (note: the reason, required), or done "
             "(received). The person who asked is told. Admin, owner or project manager only." + _WRITE),
+    # PRC-31: "make it 900 kg", "need it by Friday instead": the request is changed while it waits.
+    Allowed("change_material_request", "PATCH", "/procurement/requests/{request_id}",
+            "Prepare a change to a material request still waiting (find it with material_requests; their own, or "
+            "any for the office): quantity (with unit_id) of a one-item request, needed_by, purpose. Only what they "
+            "changed." + _WRITE, hide=("lines",)),
     Allowed("cancel_material_request", "POST", "/procurement/requests/{request_id}/cancel",
             "Prepare taking back a material request that is still waiting (their own, or any for the office)."
             + _WRITE),
