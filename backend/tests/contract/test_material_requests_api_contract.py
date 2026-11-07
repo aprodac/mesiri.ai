@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from contract.company_day import company_today
 from mesiri.bootstrap.settings import Settings
 from mesiri.domains.identity.auth_service import create_access_token
 from mesiri.http.app import create_app
@@ -120,7 +121,7 @@ async def world(test_engine, client):
 
 async def _deliver(client, w, site, project, material, unit, qty: str, rate: str | None = None) -> None:
     body = {"project_id": str(project), "site_id": str(site), "material_id": material, "unit_id": unit,
-            "quantity": qty, "movement_reason": "RECEIVED", "occurred_date": str(datetime.date.today())}
+            "quantity": qty, "movement_reason": "RECEIVED", "occurred_date": str(company_today())}
     if rate:
         body["unit_cost"] = rate
     resp = await client.post("/materials/inflows", json=body, headers=w["admin"]["h"])
@@ -136,7 +137,7 @@ async def test_a_request_shows_what_is_here_and_what_to_buy(client, world):
     w = world
     await _deliver(client, w, w["block_a"], w["villa"], w["cement"], w["units"]["bags"], "40", rate="400")
     await _deliver(client, w, w["yard"], w["villa"], w["cement"], w["units"]["bags"], "30")
-    tomorrow = str(datetime.date.today() + datetime.timedelta(days=1))
+    tomorrow = str(company_today() + datetime.timedelta(days=1))
     resp = await client.post("/procurement/requests", json=_ask(w, w["cement"], "200", needed_by=tomorrow,
                                                               purpose="First-floor slab"), headers=w["arun"]["h"])
     assert resp.status_code == 201, resp.text
@@ -270,7 +271,7 @@ async def test_one_item_at_the_top_level_is_the_whatsapp_form(client, world):
     """The assistant's write: one material per request, as flat fields, checked and converted like lines."""
     w = world
     body = {"project_id": str(w["villa"]), "site_id": str(w["block_a"]), "material_id": w["tmt"], "quantity": "0.5",
-            "unit_id": w["units"]["tons"], "source": "whatsapp", "needed_by": str(datetime.date.today())}
+            "unit_id": w["units"]["tons"], "source": "whatsapp", "needed_by": str(company_today())}
     resp = await client.post("/procurement/requests", json=body, headers=w["arun"]["h"])
     assert resp.status_code == 201, resp.text
     item = resp.json()

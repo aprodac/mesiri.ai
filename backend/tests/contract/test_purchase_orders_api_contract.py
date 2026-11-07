@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from contract.company_day import company_today
 from mesiri.bootstrap.settings import Settings
 from mesiri.domains.identity.auth_service import create_access_token
 from mesiri.http.app import create_app
@@ -123,7 +124,7 @@ async def world(test_engine, client):
 
 async def _deliver(client, w, site, project, material, unit, qty: str, rate: str | None = None) -> None:
     body = {"project_id": str(project), "site_id": str(site), "material_id": material, "unit_id": unit,
-            "quantity": qty, "movement_reason": "RECEIVED", "occurred_date": str(datetime.date.today())}
+            "quantity": qty, "movement_reason": "RECEIVED", "occurred_date": str(company_today())}
     if rate:
         body["unit_cost"] = rate
     resp = await client.post("/materials/inflows", json=body, headers=w["admin"]["h"])
@@ -153,7 +154,7 @@ async def _stock(client, w, site="block_a", material="cement") -> str:
 async def test_placing_an_order_with_a_supplier_in_words(client, world):
     w = world
     resp = await client.post("/procurement/orders", json=_order(w, w["cement"], "200", rate="400",
-                                                               expected_date=str(datetime.date.today())),
+                                                               expected_date=str(company_today())),
                              headers=w["admin"]["h"])
     assert resp.status_code == 201, resp.text
     po = resp.json()
@@ -198,7 +199,7 @@ async def test_request_to_order_to_delivery_closes_the_loop(client, world, test_
 
     # Arun receives part of it at his site: stock goes up, from the order's supplier at its rate.
     part = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["arun"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
     assert part.status_code == 201, part.text
     assert (part.json()["status"], part.json()["lines"][0]["received"], part.json()["lines"][0]["pending"]) == ("part", "150", "50")
     assert await _stock(client, w) == "150"
@@ -210,7 +211,7 @@ async def test_request_to_order_to_delivery_closes_the_loop(client, world, test_
     assert not as_office["may_cancel"] and as_office["may_close"]
 
     rest = (await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "50"}]})).json()
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "50"}]})).json()
     assert rest["status"] == "received" and rest["urgency"] == "closed" and len(rest["deliveries"]) == 2
     assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "done"
     async with test_engine.begin() as conn:
@@ -219,7 +220,7 @@ async def test_request_to_order_to_delivery_closes_the_loop(client, world, test_
     assert told[0].startswith("🛒 Ordered by Meera: 200 bags Cement OPC 53 (PO-0001, Malabar Hardware)")
     assert told[1].startswith("✅ Received: 200 bags Cement OPC 53")  # by its order, not marked by hand
     more = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "1"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "1"}]})
     assert more.status_code == 409
 
 
@@ -240,13 +241,13 @@ async def test_cancel_and_close_rules(client, world):
     line = po2["lines"][0]["id"]
     assert (await client.post(f"/procurement/orders/{po2['id']}/close", json={"reason": "x"}, headers=w["admin"]["h"])).status_code == 409
     await client.post(f"/procurement/orders/{po2['id']}/receive", headers=w["admin"]["h"],
-                      json={"occurred_date": str(datetime.date.today()), "lines": [{"line_id": line, "quantity": "300"}]})
+                      json={"occurred_date": str(company_today()), "lines": [{"line_id": line, "quantity": "300"}]})
     assert (await client.post(f"/procurement/orders/{po2['id']}/cancel", json={"reason": "x"}, headers=w["admin"]["h"])).status_code == 409
     edit = await client.patch(f"/procurement/orders/{po2['id']}", headers=w["admin"]["h"], json={
         "lines": [{"material_id": w["tmt"], "quantity": "400", "unit_id": w["units"]["kg"]}]})
     assert edit.status_code == 409
     moved = await client.patch(f"/procurement/orders/{po2['id']}", headers=w["admin"]["h"],
-                               json={"expected_date": str(datetime.date.today() - datetime.timedelta(days=1))})
+                               json={"expected_date": str(company_today() - datetime.timedelta(days=1))})
     assert moved.json()["urgency"] == "late"
     closed = (await client.post(f"/procurement/orders/{po2['id']}/close", json={"reason": "Rest out of stock"},
                                 headers=w["admin"]["h"])).json()
@@ -257,7 +258,7 @@ async def test_a_delivery_taken_back_no_longer_counts(client, world):
     w = world
     po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100"), headers=w["admin"]["h"])).json()
     await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "100"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "100"}]})
     receipt = (await client.get("/materials/inflows", headers=w["admin"]["h"])).json()["items"][0]["id"]
     undo = await client.post(f"/materials/inflows/{receipt}/reverse", json={"reason_note": "wrong order"}, headers=w["admin"]["h"])
     assert undo.status_code == 201, undo.text
@@ -270,7 +271,7 @@ async def test_a_delivery_cannot_fill_another_sites_order_line(client, world):
     po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100"), headers=w["admin"]["h"])).json()
     body = {"project_id": str(w["villa"]), "site_id": str(w["yard"]), "material_id": w["cement"],
             "unit_id": w["units"]["bags"], "quantity": "5", "movement_reason": "RECEIVED",
-            "occurred_date": str(datetime.date.today()), "purchase_order_line_id": po["lines"][0]["id"]}
+            "occurred_date": str(company_today()), "purchase_order_line_id": po["lines"][0]["id"]}
     resp = await client.post("/materials/inflows", json=body, headers=w["admin"]["h"])
     assert resp.status_code == 422 and "another site" in resp.text
     ok = await client.post("/materials/inflows", json={**body, "site_id": str(w["block_a"])}, headers=w["admin"]["h"])
@@ -284,7 +285,7 @@ async def test_scope_an_engineer_of_another_project_cannot_see_or_receive(client
     assert (await client.get(f"/procurement/orders/{po['id']}", headers=w["ravi"]["h"])).status_code == 404
     assert (await client.get("/procurement/orders?status=all", headers=w["ravi"]["h"])).json()["items"] == []
     resp = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["ravi"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "1"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "1"}]})
     assert resp.status_code == 404
 
 
@@ -304,7 +305,7 @@ async def _req_with_order(client, w, qty: str = "160", ordered: str | None = Non
 def _inflow(w, qty: str, *, site="block_a", **extra) -> dict:
     return {"project_id": str(w["villa"]), "site_id": str(w[site]), "material_id": w["cement"],
             "unit_id": w["units"]["bags"], "quantity": qty, "movement_reason": "RECEIVED",
-            "occurred_date": str(datetime.date.today()), **extra}
+            "occurred_date": str(company_today()), **extra}
 
 
 async def _told(engine) -> list[str]:
@@ -327,7 +328,7 @@ async def test_on_order_comes_from_open_order_lines_even_without_a_request(clien
     assert (req["lines"][0]["on_order"], req["lines"][0]["to_buy"]) == ("100", "20")
     # 40 came: 60 still on order, 40 here, 20 to buy. Closed: nothing on order any more.
     await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "40"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "40"}]})
     line = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["lines"][0]
     assert (line["at_site"], line["on_order"], line["to_buy"]) == ("40", "60", "20")
     await client.post(f"/procurement/orders/{po['id']}/close", json={"reason": "Rest not needed"}, headers=w["admin"]["h"])
@@ -406,7 +407,7 @@ async def test_more_than_ordered_is_asked(client, world):
     w = world
     _, po = await _req_with_order(client, w, "160")
     line = po["lines"][0]["id"]
-    receive = {"occurred_date": str(datetime.date.today()), "lines": [{"line_id": line, "quantity": "170"}]}
+    receive = {"occurred_date": str(company_today()), "lines": [{"line_id": line, "quantity": "170"}]}
     asked = await client.post(f"/procurement/orders/{po['id']}/receive", json=receive, headers=w["admin"]["h"])
     assert asked.status_code == 409
     detail = asked.json()["detail"]
@@ -427,7 +428,7 @@ async def test_close_short_and_cancel_move_the_request_on_and_tell_the_engineer(
     w = world
     req, po = await _req_with_order(client, w, "160")
     await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
     await client.post(f"/procurement/orders/{po['id']}/close", json={"reason": "Shop out of stock"},
                       headers=w["admin"]["h"])
     back = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
@@ -445,7 +446,7 @@ async def test_close_short_and_cancel_move_the_request_on_and_tell_the_engineer(
     told = await _told(test_engine)
     assert sum(1 for t in told if t.startswith("🛒")) == 2 and "PO-0002, KK Traders" in told[-1]
     await client.post(f"/procurement/orders/{po2['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po2["lines"][0]["id"], "quantity": "10"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po2["lines"][0]["id"], "quantity": "10"}]})
     # One order closed short, the other brought the rest: 150 + 10 is what was asked, so it is received.
     final = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
     assert final["status"] == "done", final
@@ -502,7 +503,7 @@ async def test_a_waiting_request_is_changed_by_the_asker_or_the_office(client, w
     assert one.json()["lines"][0]["quantity"] == "120" and one.json()["lines"][0]["id"] == line["id"]
     # Several items, a date and a reason, by the office.
     both = await client.patch(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"], json={
-        "needed_by": str(datetime.date.today()), "purpose": "Slab and columns",
+        "needed_by": str(company_today()), "purpose": "Slab and columns",
         "lines": [{"id": line["id"], "material_id": w["cement"], "quantity": "150", "unit_id": w["units"]["bags"]},
                   {"material_id": w["tmt"], "quantity": "500", "unit_id": w["units"]["kg"]}]})
     after = both.json()
@@ -591,7 +592,7 @@ async def test_their_own_reference_is_kept_beside_ours(client, world):
     assert changed["their_ref"] == "PO/25-26/114"
     # Still changeable after something came (it is only a reference).
     await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "4"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "4"}]})
     later = await client.patch(f"/procurement/orders/{po['id']}", json={"their_ref": None}, headers=w["admin"]["h"])
     assert later.status_code == 200 and later.json()["their_ref"] is None
 
@@ -600,7 +601,7 @@ async def test_rest_bought_outside_is_one_step(client, world, test_engine):
     w = world
     req, po = await _req_with_order(client, w, "160")
     await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
     assert (await client.post(f"/procurement/requests/{req['id']}/outside", json={}, headers=w["arun"]["h"])).status_code == 403
     out = await client.post(f"/procurement/requests/{req['id']}/outside", json={"note": "by phone from KK Traders"},
                             headers=w["admin"]["h"])
@@ -697,10 +698,10 @@ async def test_reminders_for_a_waiting_request_and_a_late_order(client, world, t
                                headers=w["arun"]["h"])).json()
     await _exec(test_engine, "UPDATE material_requests SET created_at = now() - interval '5 hours' WHERE id = :id", id=req["id"])
     po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100", confirm_duplicate=True,
-                                                               expected_date=str(datetime.date.today() - datetime.timedelta(days=2))),
+                                                               expected_date=str(company_today() - datetime.timedelta(days=2))),
                             headers=w["admin"]["h"])).json()
     await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "40"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "40"}]})
     now = datetime.datetime.now(tz=datetime.UTC)
     async with test_engine.begin() as conn:
         first = await queue_reminders(conn, w["org"], now=now)
@@ -740,7 +741,7 @@ async def test_a_request_split_between_two_suppliers(client, world, test_engine)
     assert [o["ref"] for o in after["orders"]] == ["PO-0001", "PO-0002"] and after["lines"][0]["to_buy"] == "0"
     for po, qty in ((po_a, "100"), (po_b, "60")):
         await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-            "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": qty}]})
+            "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": qty}]})
     assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "done"
 
 
@@ -820,7 +821,7 @@ async def test_a_grn_with_a_rejected_part_a_challan_and_its_photo(client, world,
     po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "200"), headers=w["admin"]["h"])).json()
     line = po["lines"][0]["id"]
     resp = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["arun"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "challan_no": "DC-5531", "received_by_name": "Shibu (store)",
+        "occurred_date": str(company_today()), "challan_no": "DC-5531", "received_by_name": "Shibu (store)",
         "challan_photo": {"content_type": "image/jpeg", "data_base64": base64.b64encode(_JPEG).decode()},
         "lines": [{"line_id": line, "quantity": "147", "rejected": "3", "rejected_reason": "torn bags"}]})
     assert resp.status_code == 201, resp.text
@@ -846,7 +847,7 @@ async def test_the_register_names_the_order_and_grn_a_delivery_came_on(client, w
     w = world
     po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100"), headers=w["admin"]["h"])).json()
     got = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "60"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "60"}]})
     assert got.status_code == 201, got.text
     await _deliver(client, w, w["block_a"], w["villa"], w["tmt"], w["units"]["kg"], "40")
     rows = (await client.get("/materials/inflows", headers=w["admin"]["h"])).json()["items"]
@@ -864,13 +865,13 @@ async def test_everything_rejected_puts_nothing_in_stock_and_a_reason_is_needed(
     po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "50"), headers=w["admin"]["h"])).json()
     line = po["lines"][0]["id"]
     no_reason = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": line, "quantity": "0", "rejected": "50"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": line, "quantity": "0", "rejected": "50"}]})
     assert no_reason.status_code == 422 and "why" in no_reason.text
     nothing = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": line, "quantity": "0"}]})
+        "occurred_date": str(company_today()), "lines": [{"line_id": line, "quantity": "0"}]})
     assert nothing.status_code == 422
     turned = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
         "lines": [{"line_id": line, "quantity": "0", "rejected": "50", "rejected_reason": "wet cement"}]})
     assert turned.status_code == 201, turned.text
     assert (turned.json()["status"], turned.json()["lines"][0]["pending"]) == ("open", "50")

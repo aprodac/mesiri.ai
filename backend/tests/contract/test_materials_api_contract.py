@@ -24,6 +24,7 @@ import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from contract.company_day import company_today
 from mesiri.bootstrap.settings import Settings
 from mesiri.domains.identity.auth_service import create_access_token
 from mesiri.http.app import create_app
@@ -307,7 +308,7 @@ async def test_delete_material_with_movements_rejected(client, admin_ctx):
         "unit_id": bags_id,
         "quantity": "100",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 201
@@ -332,7 +333,7 @@ async def test_valid_inflow_then_outflow_derives_inventory(client, admin_ctx):
         "unit_id": bags_id,
         "quantity": "100",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 201
@@ -367,7 +368,7 @@ async def test_outflow_with_unit_mismatched_to_stock_unit_rejected(client, admin
         "unit_id": bags_id,  # Rebar's Stock Unit is tons, not bags
         "quantity": "10",
         "movement_reason": "CONSUMED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post(
         "/materials/outflows", json=out_body, headers=_auth(admin_ctx["token"])
@@ -386,7 +387,7 @@ async def test_outflow_exceeding_stock_surfaces_negative(client, admin_ctx):
         "unit_id": tons_id,
         "quantity": "10",
         "movement_reason": "CONSUMED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post(
         "/materials/outflows", json=out_body, headers=_auth(admin_ctx["token"])
@@ -412,7 +413,7 @@ async def test_unknown_material_id_rejected(client, admin_ctx):
         "unit_id": bags_id,
         "quantity": "10",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 422
@@ -432,7 +433,7 @@ async def test_invalid_direction_reason_combo_rejected(client, admin_ctx, endpoi
         "unit_id": bags_id,
         "quantity": "10",
         "movement_reason": reason,
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post(endpoint, json=body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 422
@@ -446,7 +447,7 @@ async def test_non_positive_quantity_rejected(client, admin_ctx):
         "material_id": material_id,
         "unit_id": bags_id,
         "quantity": "0",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 422
@@ -463,7 +464,7 @@ async def test_site_not_in_project_rejected(client, test_engine, test_org, admin
         "material_id": material_id,
         "unit_id": bags_id,
         "quantity": "10",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 422
@@ -485,7 +486,7 @@ async def test_inaccessible_project_rejected(client, test_engine, test_org, admi
         "material_id": material_id,
         "unit_id": bags_id,
         "quantity": "10",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(token))
     assert resp.status_code == 403
@@ -509,7 +510,7 @@ async def test_adjustment_reason_forbidden_for_non_elevated_role(
         "unit_id": bags_id,
         "quantity": "10",
         "movement_reason": "ADJUSTMENT_IN",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(token))
     assert resp.status_code == 403
@@ -525,7 +526,7 @@ async def test_reversal_creates_offsetting_movement_and_preserves_original(clien
         "unit_id": bags_id,
         "quantity": "100",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
     receipt_id = resp.json()["id"]
@@ -571,7 +572,7 @@ async def test_ledger_running_balance(client, admin_ctx):
             "unit_id": bags_id,
             "quantity": qty,
             "movement_reason": reason,
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
         }
         await client.post(endpoint, json=body, headers=_auth(admin_ctx["token"]))
 
@@ -649,7 +650,7 @@ async def test_rest_path_unique_constraint_prevents_duplicate_movement(
                 "site_id": admin_ctx["site_id"],
                 "unit_id": bags_id,
                 "material_id": material_id,
-                "occurred_date": datetime.date.today(),
+                "occurred_date": company_today(),
                 "user_id": admin_ctx["user_id"],
             },
         )
@@ -728,7 +729,7 @@ async def test_inflow_with_unit_mismatched_to_stock_unit_rejected(client, admin_
         "unit_id": tons_id,  # Cement's Stock Unit is bags, not tons
         "quantity": "10",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 422
@@ -752,7 +753,7 @@ async def test_stock_unit_change_rejected_after_movement_exists(client, admin_ct
         "unit_id": tons_id,
         "quantity": "10",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post(
         "/materials/inflows", json=inflow_body, headers=_auth(admin_ctx["token"])
@@ -810,7 +811,7 @@ async def test_stock_levels_derived_exclusively_from_movement_ledger(
                 "site_id": admin_ctx["site_id"],
                 "unit_id": bags_id,
                 "material_id": material_id,
-                "occurred_date": datetime.date.today(),
+                "occurred_date": company_today(),
                 "user_id": admin_ctx["user_id"],
             },
         )
@@ -822,7 +823,7 @@ async def test_stock_levels_derived_exclusively_from_movement_ledger(
         "unit_id": bags_id,
         "quantity": "10",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post("/materials/inflows", json=real_body, headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 201
@@ -874,7 +875,7 @@ async def test_reversal_produces_opposite_movement_and_net_zero_stock(
         "unit_id": bags_id,
         "quantity": "10",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     resp = await client.post(
         "/materials/inflows", json=inflow_body, headers=_auth(admin_ctx["token"])
@@ -947,7 +948,7 @@ async def _receive(client, ctx, material_id, unit_id, qty):
             "unit_id": unit_id,
             "quantity": str(qty),
             "movement_reason": "RECEIVED",
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
         },
         headers=_auth(ctx["token"]),
     )
@@ -1042,7 +1043,7 @@ async def test_idempotency_key_makes_a_retried_inflow_safe(client, admin_ctx):
         "unit_id": bags_id,
         "quantity": "40",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     headers = {**_auth(admin_ctx["token"]), "Idempotency-Key": f"test-{uuid.uuid4()}"}
 
@@ -1068,7 +1069,7 @@ async def test_outflow_beyond_stock_is_refused_unless_explicitly_allowed(client,
         "unit_id": bags_id,
         "quantity": "500",
         "movement_reason": "CONSUMED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
         "allow_negative": False,
     }
     refused = await client.post(
@@ -1118,7 +1119,7 @@ async def test_concurrent_outflows_cannot_both_pass_the_same_stock(client, admin
         "unit_id": bags_id,
         "quantity": "8",
         "movement_reason": "CONSUMED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
         "allow_negative": False,
     }
     first, second = await asyncio.gather(
@@ -1145,7 +1146,7 @@ async def test_allow_negative_default_leaves_other_write_paths_unchanged(client,
             "unit_id": bags_id,
             "quantity": "5",
             "movement_reason": "CONSUMED",
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
         },
         headers=_auth(admin_ctx["token"]),
     )
@@ -1171,7 +1172,7 @@ async def test_purchase_cost_is_stored_and_returned(client, admin_ctx):
             "unit_id": bags_id,
             "quantity": "200",
             "movement_reason": "RECEIVED",
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
             "unit_cost": "312.50",
         },
         headers=_auth(admin_ctx["token"]),
@@ -1213,7 +1214,7 @@ async def test_last_purchase_reports_the_most_recent_recorded_rate(client, admin
                 "unit_id": bags_id,
                 "quantity": "10",
                 "movement_reason": "RECEIVED",
-                "occurred_date": str(datetime.date.today()),
+                "occurred_date": str(company_today()),
                 "unit_cost": rate,
             },
             headers=_auth(admin_ctx["token"]),
@@ -1258,7 +1259,7 @@ async def test_a_corrected_purchase_is_flagged_so_spend_totals_can_exclude_it(
             "unit_id": bags_id,
             "quantity": "100",
             "movement_reason": "RECEIVED",
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
             "unit_cost": "312.50",
         },
         headers=_auth(admin_ctx["token"]),
@@ -1303,7 +1304,7 @@ def _opening_body(ctx: dict, material_id: str, unit_id: str, quantity: str = "40
         "unit_id": unit_id,
         "quantity": quantity,
         "movement_reason": "OPENING_STOCK",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
 
 
@@ -1386,7 +1387,7 @@ async def test_dpr_flags_usage_beyond_known_stock(client, test_engine, test_org,
 
     bags_id = await _bags_unit_id(client, admin_ctx["token"])
     material_id = await _make_material(client, admin_ctx["token"], "Cement", bags_id)
-    today = datetime.date.today()
+    today = company_today()
     yesterday = today - datetime.timedelta(days=1)
     base = {
         "project_id": str(admin_ctx["project_id"]),
@@ -1460,7 +1461,7 @@ async def _transfer_setup(client, test_engine, test_org, admin_ctx, *, other_pro
             "unit_id": bags_id,
             "quantity": "100",
             "movement_reason": "RECEIVED",
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
         },
         headers=_auth(admin_ctx["token"]),
     )
@@ -1471,7 +1472,7 @@ async def _transfer_setup(client, test_engine, test_org, admin_ctx, *, other_pro
         "material_id": material_id,
         "unit_id": bags_id,
         "quantity": "30",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
         "notes": "leftover from block A",
     }
     return material_id, to_project, to_site, body
@@ -1795,7 +1796,7 @@ async def test_stock_rows_carry_the_material_category(client, admin_ctx):
         "unit_id": bags_id,
         "quantity": "40",
         "movement_reason": "RECEIVED",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
     assert (await client.post("/materials/inflows", json=body, headers=_auth(token))).status_code == 201
     resp = await client.get(
@@ -1827,7 +1828,7 @@ async def test_stock_names_its_category_and_filters_by_main_category(client, adm
             "unit_id": bags_id,
             "quantity": "5",
             "movement_reason": "RECEIVED",
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
         }
         assert (await client.post("/materials/inflows", json=body, headers=_auth(token))).status_code == 201
 
@@ -1861,7 +1862,7 @@ async def test_deliveries_and_use_name_their_category_and_filter_by_it(client, a
             "site_id": str(admin_ctx["site_id"]),
             "material_id": ids[name],
             "unit_id": bags_id,
-            "occurred_date": str(datetime.date.today()),
+            "occurred_date": str(company_today()),
         }
         got = await client.post(
             "/materials/inflows", json={**line, "quantity": "10", "movement_reason": "RECEIVED"}, headers=_auth(token)
@@ -1888,7 +1889,7 @@ async def test_stock_for_a_period_adds_up_and_says_what_is_running_low(client, a
     token = admin_ctx["token"]
     bags_id = await _bags_unit_id(client, token)
     masonry = await _make_category(client, token, "Masonry")
-    today = datetime.date.today()
+    today = company_today()
     ids = {}
     for name in ("Cement", "Sand", "Steel", "Old paint"):
         resp = await client.post(
@@ -1971,7 +1972,7 @@ async def test_a_delivery_is_linked_to_its_vendor_by_the_one_rule(client, test_e
         "material_id": cement,
         "unit_id": bags_id,
         "quantity": "10",
-        "occurred_date": str(datetime.date.today()),
+        "occurred_date": str(company_today()),
     }
 
     async def deliver(**extra) -> dict:
@@ -2181,7 +2182,7 @@ async def test_stock_for_a_period_shows_money_only_to_roles_that_see_spending(cl
     token = admin_ctx["token"]
     bags_id = await _bags_unit_id(client, token)
     cement = await _make_material(client, token, "Cement", bags_id)
-    today = datetime.date.today()
+    today = company_today()
     base = {"project_id": str(admin_ctx["project_id"]), "site_id": str(admin_ctx["site_id"]), "material_id": cement,
             "unit_id": bags_id, "movement_reason": "RECEIVED"}
     for qty, rate, days_ago in (("100", "380", 3), ("50", "395", 1), ("10", None, 0)):

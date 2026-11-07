@@ -17,6 +17,7 @@ import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from contract.company_day import company_today
 from mesiri.bootstrap.settings import Settings
 from mesiri.domains.identity.auth_service import create_access_token
 from mesiri.http.app import create_app
@@ -122,7 +123,7 @@ async def world(test_engine, client):
 
 async def _deliver(client, w, site, project, material, unit, qty: str, rate: str | None = None) -> None:
     body = {"project_id": str(project), "site_id": str(site), "material_id": material, "unit_id": unit,
-            "quantity": qty, "movement_reason": "RECEIVED", "occurred_date": str(datetime.date.today())}
+            "quantity": qty, "movement_reason": "RECEIVED", "occurred_date": str(company_today())}
     if rate:
         body["unit_cost"] = rate
     resp = await client.post("/materials/inflows", json=body, headers=w["admin"]["h"])
@@ -130,7 +131,7 @@ async def _deliver(client, w, site, project, material, unit, qty: str, rate: str
 
 
 
-TODAY = datetime.date.today()
+TODAY = company_today()
 
 
 def _day(days_ago: int) -> str:

@@ -20,6 +20,7 @@ import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from contract.company_day import company_today
 from mesiri.bootstrap.settings import Settings
 from mesiri.domains.identity.auth_service import create_access_token
 from mesiri.http.app import create_app
@@ -171,7 +172,7 @@ def _body(ctx: dict, **overrides) -> dict:
         "project_id": str(ctx["project_id"]),
         "category_id": str(ctx["category_id"]),
         "amount": "150.00",
-        "occurred_date": datetime.date.today().isoformat(),
+        "occurred_date": company_today().isoformat(),
     }
     base.update(overrides)
     return base
@@ -458,7 +459,7 @@ async def test_each_expense_says_how_it_was_paid(client, test_engine, test_org, 
     petty = await record(account_id=str(box), vendor_text="Tea stall")
     direct = await record(account_id=str(bank), vendor_text="Malabar Hardware", amount="12000.00")
     unpaid = await record(vendor_text="Malabar Hardware")
-    own = await record(occurred_date=(datetime.date.today() - datetime.timedelta(days=40)).isoformat())
+    own = await record(occurred_date=(company_today() - datetime.timedelta(days=40)).isoformat())
     async with test_engine.begin() as conn:  # "paid from my pocket" (the WhatsApp path's paid_from_own_pocket)
         await conn.execute(sa.text("UPDATE expenses SET payment_status = 'reimbursable' WHERE id = :id"), {"id": own})
 
@@ -476,7 +477,7 @@ async def test_each_expense_says_how_it_was_paid(client, test_engine, test_org, 
     vendor_id = rows[direct]["vendor_id"]
     mine = (await client.get("/expenses", params={"vendor_id": vendor_id}, headers=h)).json()
     assert {r["id"] for r in mine} == {direct, unpaid}
-    recent = (await client.get("/expenses", params={"date_from": (datetime.date.today() - datetime.timedelta(days=30)).isoformat()}, headers=h)).json()
+    recent = (await client.get("/expenses", params={"date_from": (company_today() - datetime.timedelta(days=30)).isoformat()}, headers=h)).json()
     assert own not in {r["id"] for r in recent} and petty in {r["id"] for r in recent}
 
 
