@@ -137,7 +137,7 @@ function TitleScene({ to }: { to: string | null }) {
       <ul className="m-0 grid list-none grid-cols-2 gap-x-6 gap-y-5 p-0 @xl:grid-cols-4">
         {stats.map((st, i) => (
           <li key={st.what} className="border-t-2 border-foreground pt-3" style={at('meet-rise', 2.3 + i * 0.3)}>
-            <span className="text-[44px] font-bold leading-none tracking-[-0.04em] text-primary @xl:text-[54px]">
+            <span className="text-[44px] font-bold leading-none tracking-[-0.04em] text-primary-ink @xl:text-[54px]">
               <Count to={st.n} delay={2.4 + i * 0.3} ms={700} />
               {st.unit && <span className="ml-1 text-[24px]">{st.unit}</span>}
             </span>
@@ -197,7 +197,7 @@ function CardScene({ site }: { site: string }) {
                 const Icon = l.icon
                 return (
                   <li key={i} className="flex items-center gap-3 border-b border-dashed border-foreground/15 py-2.5 last:border-0" style={at('meet-deal', 4.8 + i * 0.4)}>
-                    <span className="w-4 font-mono text-xs text-primary">{i + 1}</span>
+                    <span className="w-4 font-mono text-xs text-primary-ink">{i + 1}</span>
                     <span className={cn('grid grid-cols-1 size-8 shrink-0 place-items-center rounded-md', l.tone)}>
                       <Icon className="size-4" />
                     </span>
@@ -310,7 +310,7 @@ function WordsScene() {
           <li key={ml} className="relative grid grid-cols-1 min-h-36 content-start gap-1 bg-background px-4 py-4" style={at('meet-deal', 0.5 + i * 0.15)}>
             <span className="text-[30px] font-bold leading-tight">{ml}</span>
             <span className="text-sm text-muted-foreground">{roman}</span>
-            <span className="mt-2 text-[22px] font-bold text-primary" style={at('meet-flip', 2 + i * 0.3, 500)}>
+            <span className="mt-2 text-[22px] font-bold text-primary-ink" style={at('meet-flip', 2 + i * 0.3, 500)}>
               = {en}
             </span>
           </li>
@@ -346,7 +346,7 @@ function AskScene({ site }: { site: string }) {
             </span>
             <Bubble s={x.s + 1.5} className="w-[92%]">
               {x.a}{' '}
-              <b className="text-[26px] tracking-[-0.02em] text-primary">
+              <b className="text-[26px] tracking-[-0.02em] text-primary-ink">
                 <Count to={x.n} delay={x.s + 1.6} format={(n) => n.toLocaleString('en-IN')} />
               </b>{' '}
               {x.unit}
@@ -380,7 +380,7 @@ function CatchesScene() {
               12
               <span className="absolute left-0 top-1/2 h-[2px] w-full origin-left bg-[var(--destructive)]" style={at('meet-strike', 2.6, 400)} />
             </span>{' '}
-            <b className="text-primary" style={at('meet-pop', 3, 400)}>
+            <b className="text-primary-ink" style={at('meet-pop', 3, 400)}>
               → 14
             </b>{' '}
             chaakku aakki.
@@ -615,7 +615,7 @@ function OwnerScene({ site }: { site: string }) {
             ))}
             <p className="m-0 mt-2 flex items-baseline justify-between border-t-2 border-foreground pt-2" style={at('meet-rise', 6)}>
               <span className="font-semibold">Total</span>
-              <b className="text-[28px] tracking-[-0.02em] text-primary tabular-nums">
+              <b className="text-[28px] tracking-[-0.02em] text-primary-ink tabular-nums">
                 <Count to={total} delay={6.1} ms={1200} format={rupees} />
               </b>
             </p>
@@ -633,7 +633,7 @@ function CloseScene({ number, link, joining }: { number: string | null; link: st
         <Big s={0.4} className="@xl:text-[56px]">
           Just send a voice note.
           <br />
-          <span className="text-primary">In any language.</span>
+          <span className="text-primary-ink">In any language.</span>
         </Big>
         <p className="m-0 text-xl text-muted-foreground" style={at('meet-rise', 1.6)}>
           No app to install, no forms to fill. Your team only does the first step.

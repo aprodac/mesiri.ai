@@ -96,7 +96,7 @@ export function Finale({
       >
         <div className="grid h-full content-start gap-2 p-3">
           <div className="flex items-center gap-1.5">
-            <FileText className="size-4 shrink-0 text-primary" />
+            <FileText className="size-4 shrink-0 text-primary-ink" />
             <span className="truncate font-mono text-[10px] uppercase tracking-[0.06em] text-black/60">{fileName}</span>
           </div>
           <div className="h-[2px] bg-primary" />

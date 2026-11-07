@@ -70,15 +70,15 @@ export function ReportStrip({
                 <Check className="size-4" /> Report sent{p.dpr_send_deadline ? ` · ${clockOf(p.dpr_send_deadline)}` : ''}
               </span>
             ) : p.send_requested ? (
-              <span className="font-medium text-primary">Report going out now…</span>
+              <span className="font-medium text-primary-ink">Report going out now…</span>
             ) : (
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <Clock className="size-3.5" />
                 {due ? `Report at ${clockOf(p.dpr_send_deadline)}` : 'Report today'}
                 {isToday && late != null && late > 0 && (
-                  <b className={cn('tabular-nums', late < 60 * 60_000 ? 'text-primary' : 'text-foreground')}>in {left(late)}</b>
+                  <b className={cn('tabular-nums', late < 60 * 60_000 ? 'text-primary-ink' : 'text-foreground')}>in {left(late)}</b>
                 )}
-                {isToday && late != null && late <= 0 && <b className="text-primary">due now</b>}
+                {isToday && late != null && late <= 0 && <b className="text-primary-ink">due now</b>}
               </span>
             )}
             <span className="font-mono text-[12px] text-muted-foreground">

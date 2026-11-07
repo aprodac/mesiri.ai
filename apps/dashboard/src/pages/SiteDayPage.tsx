@@ -292,7 +292,7 @@ function SourcesSheet({ item, onClose }: { item: ReviewItem | null; onClose: () 
                       {m.text && <p className="mt-1 whitespace-pre-wrap">{m.text}</p>}
                       {!m.text && <p className="mt-1 text-muted-foreground">{humanize(m.type)} message</p>}
                       {m.media_url && (
-                        <a className="mt-2 inline-block text-xs font-semibold text-primary hover:underline" href={m.media_url} target="_blank" rel="noreferrer">
+                        <a className="mt-2 inline-block text-xs font-semibold text-primary-ink hover:underline" href={m.media_url} target="_blank" rel="noreferrer">
                           Open attachment
                         </a>
                       )}
@@ -731,7 +731,7 @@ export default function SiteDayPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Button asChild variant="outline" className="h-10 gap-1.5">
                 <Link to={`/live?site=${siteId}&date=${date}`} title="Watch this report write itself as updates come in">
-                  <Radio className="size-4 text-primary" /> Watch live
+                  <Radio className="size-4 text-primary-ink" /> Watch live
                 </Link>
               </Button>
               <DprViewToggle value={view} onChange={setView} />

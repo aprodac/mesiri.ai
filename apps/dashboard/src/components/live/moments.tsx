@@ -80,7 +80,7 @@ export function BillMoment({ item, step, presenting }: { item: LiveFeedItem; ste
           fields.map(([k, v], i) => (
             <div key={k} className="flex items-baseline justify-between gap-3 border-b border-foreground/10 pb-1.5" style={step === 'understood' ? at('meet-deal', 0.15 + i * 0.3) : undefined}>
               <dt className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">{k}</dt>
-              <dd className={cn('m-0 text-right font-semibold', k === 'Amount' ? (presenting ? 'text-[34px]' : 'text-[26px]') + ' tracking-[-0.02em] text-primary' : 'text-[15px]')}>
+              <dd className={cn('m-0 text-right font-semibold', k === 'Amount' ? (presenting ? 'text-[34px]' : 'text-[26px]') + ' tracking-[-0.02em] text-primary-ink' : 'text-[15px]')}>
                 {v}
               </dd>
             </div>
@@ -117,7 +117,7 @@ export function LanguageMoment({ language, presenting }: { language: string | nu
   const landed = i >= GREETINGS.length
   return (
     <div className="grid justify-items-center gap-2" aria-live="polite">
-      <p className={cn('m-0 font-bold tracking-[-0.03em]', presenting ? 'text-[56px]' : 'text-[42px]', landed && 'text-primary')}>
+      <p className={cn('m-0 font-bold tracking-[-0.03em]', presenting ? 'text-[56px]' : 'text-[42px]', landed && 'text-primary-ink')}>
         <span key={i} className="inline-block" style={at('meet-flip', 0, 220)}>
           {landed ? chosen.name : GREETINGS[i]}
         </span>
@@ -139,7 +139,7 @@ export function AskedMoment({ question, who, presenting }: { question: string; w
         className={cn('relative max-w-[34rem] border-2 border-foreground bg-background px-5 py-4 text-left font-medium', presenting ? 'text-[28px]' : 'text-[22px]')}
         style={at('meet-pop', 0)}
       >
-        <MessageCircleQuestion className="absolute -left-3 -top-3 size-7 bg-background text-primary" aria-hidden="true" />
+        <MessageCircleQuestion className="absolute -left-3 -top-3 size-7 bg-background text-primary-ink" aria-hidden="true" />
         {question}
       </div>
       <p className="m-0 flex items-center gap-2 text-sm text-muted-foreground" style={at('meet-rise', 0.5)}>
@@ -167,7 +167,7 @@ export function AnswerMoment({ reply, presenting }: { reply: string; presenting:
       <span className="leading-snug">
         {before.length > 220 ? `${before.slice(0, 219)}…` : before}
         {n != null && Number.isFinite(n) && (
-          <b className={cn('mx-0.5 text-primary tracking-[-0.02em]', presenting ? 'text-[44px]' : 'text-[34px]')}>
+          <b className={cn('mx-0.5 text-primary-ink tracking-[-0.02em]', presenting ? 'text-[44px]' : 'text-[34px]')}>
             <Count to={n} ms={900} format={(v) => (match![1].includes(',') || v >= 1000 ? v.toLocaleString('en-IN') : String(v))} />
           </b>
         )}
@@ -319,7 +319,7 @@ export function EntryCard({
               className="relative flex items-center gap-3 border-b border-dashed border-foreground/15 px-4 py-2 last:border-0"
               style={at('meet-deal', 0.2 + i * 0.3)}
             >
-              <span className="w-4 font-mono text-xs text-primary">{i + 1}</span>
+              <span className="w-4 font-mono text-xs text-primary-ink">{i + 1}</span>
               <span className={cn('min-w-0 flex-1 font-medium transition-colors duration-500', presenting ? 'text-[19px]' : 'text-[16px]', gone && 'text-muted-foreground')}>
                 {l}
               </span>

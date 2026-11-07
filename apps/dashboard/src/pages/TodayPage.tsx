@@ -313,7 +313,7 @@ export default function TodayPage() {
             {isToday && projects.length > 0 && (
               <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
                 <Link to="/live" title="Watch every message to Mesiri land, across the company">
-                  <Radio className="size-4 text-primary" /> Live
+                  <Radio className="size-4 text-primary-ink" /> Live
                 </Link>
               </Button>
             )}
@@ -414,7 +414,7 @@ export default function TodayPage() {
                         <span className={cn(CHIP, 'hidden sm:inline-flex', project.sent ? 'bg-success-soft text-success' : 'bg-muted text-muted-foreground')}>
                           {projectDprLabel(project, projectSites)}
                         </span>
-                        <Button asChild variant="ghost" size="sm" className="gap-1 text-primary">
+                        <Button asChild variant="ghost" size="sm" className="gap-1 text-primary-ink">
                           <Link to={projectDayPath(project.project_id, date)}>
                             Project DPR <ChevronRight />
                           </Link>
@@ -453,14 +453,14 @@ export default function TodayPage() {
                       <span className="ml-2 font-normal text-muted-foreground">None</span>
                     )}
                   </h2>
-                  <Link to="/issues" className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+                  <Link to="/issues" className="inline-flex items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline">
                     All issues <ChevronRight className="size-3.5" />
                   </Link>
                 </div>
                 {issuesQuery.isError ? (
                   <p className="text-sm text-muted-foreground">
                     Could not load issues.{' '}
-                    <button type="button" className="font-medium text-primary hover:underline" onClick={() => issuesQuery.refetch()}>
+                    <button type="button" className="font-medium text-primary-ink hover:underline" onClick={() => issuesQuery.refetch()}>
                       Try again
                     </button>
                   </p>

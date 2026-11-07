@@ -16,8 +16,10 @@
   --card-foreground: #1a1d21;
   --popover: #ffffff;
   --popover-foreground: #1a1d21;
-  --primary: #c2410c;
-  --primary-foreground: #ffffff;
+  --primary: #facc15;
+  --primary-foreground: #1a1d21;
+  /* Brand text and links: yellow is unreadable as text on white, so words take a dark gold (WEB-76). */
+  --primary-ink: #854d0e;
   --secondary: #f3f4f6;
   --secondary-foreground: #1a1d21;
   --muted: #f3f4f6;
@@ -27,8 +29,8 @@
   --destructive: #b42318;
   --border: #e5e7eb;
   --input: #d1d5db;
-  --ring: #c2410c;
-  --chart-1: #c2410c;
+  --ring: #ca8a04;
+  --chart-1: #ca8a04;
   --chart-2: #1e3a8a;
   --chart-3: #0f766e;
   --chart-4: #b45309;
@@ -40,7 +42,7 @@
   --sidebar-accent: #f3f4f6;
   --sidebar-accent-foreground: #1a1d21;
   --sidebar-border: #e5e7eb;
-  --sidebar-ring: #c2410c;
+  --sidebar-ring: #ca8a04;
   /* Status: text colour on its soft background clears 4.5:1 in both themes. */
   --success: #0f5132;
   --success-soft: #dcf1e4;
@@ -67,8 +69,9 @@
   --popover-foreground: #ecebe7;
   /* Lighter orange with dark text: white on the light-theme orange would
      fall under 4.5:1 against this ground's button sizes. */
-  --primary: #f0843f;
+  --primary: #facc15;
   --primary-foreground: #1a1d21;
+  --primary-ink: #fde047;
   --secondary: #26282d;
   --secondary-foreground: #ecebe7;
   --muted: #26282d;
@@ -78,8 +81,8 @@
   --destructive: #f2756a;
   --border: #2e3136;
   --input: #3a3d43;
-  --ring: #f0843f;
-  --chart-1: #f0843f;
+  --ring: #facc15;
+  --chart-1: #facc15;
   --chart-2: #8fa9f2;
   --chart-3: #5cc8bd;
   --chart-4: #e3a64d;
@@ -91,7 +94,7 @@
   --sidebar-accent: #26282d;
   --sidebar-accent-foreground: #ecebe7;
   --sidebar-border: #2e3136;
-  --sidebar-ring: #f0843f;
+  --sidebar-ring: #facc15;
   --success: #7fd6a3;
   --success-soft: #183424;
   --draft: #f6ad7a;
@@ -126,6 +129,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-ink: var(--primary-ink);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

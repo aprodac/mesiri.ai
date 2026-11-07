@@ -93,7 +93,7 @@ function ConversationRow({ c, active, onClick }: { c: Conversation; active: bool
         <span
           className={cn(
             'flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-            c.member ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+            c.member ? 'bg-primary/10 text-primary-ink' : 'bg-muted text-muted-foreground',
           )}
           aria-hidden="true"
         >

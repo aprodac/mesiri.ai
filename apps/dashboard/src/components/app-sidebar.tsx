@@ -302,7 +302,7 @@ function CollapsibleNavCategory({
                   item.soon && !active && 'opacity-75',
                 )}
               >
-                {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full bg-orange-400" />}
+                {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full bg-yellow-400" />}
                 <span className="truncate">{item.title}</span>
                 {item.soon && <SoonDot className="ml-auto" />}
               </Link>

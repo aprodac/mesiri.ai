@@ -1210,7 +1210,7 @@ export function CompanyLive({
                   <button
                     type="button"
                     onClick={(e) => openDest(destOf(current.item)!, e.currentTarget, current.item)}
-                    className="flex items-center gap-1.5 border-b border-foreground text-sm font-medium hover:text-primary"
+                    className="flex items-center gap-1.5 border-b border-foreground text-sm font-medium hover:text-primary-ink"
                     style={prefersReducedMotion() ? undefined : { animation: 'live-in 400ms ease-out' }}
                   >
                     Open in {destOf(current.item)!.name} <ArrowRight className="size-3.5" />
@@ -1380,7 +1380,7 @@ function Steps({ step }: { step: Step | null }) {
       {['Heard', 'Reading', 'Understood', 'Done'].map((w, i) => (
         <li key={w} className="flex items-center gap-2">
           {i > 0 && <span className={cn('h-px w-6 transition-colors duration-500', i <= at ? 'bg-primary' : 'bg-foreground/20')} />}
-          <span className={cn('transition-colors duration-500', i <= at ? 'text-primary' : 'text-muted-foreground')}>{w}</span>
+          <span className={cn('transition-colors duration-500', i <= at ? 'text-primary-ink' : 'text-muted-foreground')}>{w}</span>
         </li>
       ))}
     </ol>
@@ -1492,7 +1492,7 @@ function MessageCard({
       )}
       {(m.text || isVoice(m)) && (
         <p className="m-0 text-[15px] leading-snug">
-          {isVoice(m) && <Mic className="mr-1.5 inline size-4 align-[-2px] text-primary" aria-label="Voice note" />}
+          {isVoice(m) && <Mic className="mr-1.5 inline size-4 align-[-2px] text-primary-ink" aria-label="Voice note" />}
           {short(m.text, 220)}
         </p>
       )}
@@ -1514,7 +1514,7 @@ function MessageCard({
             <button
               type="button"
               onClick={(e) => onDest(dest, e.currentTarget)}
-              className="flex items-center gap-1 border-b border-foreground text-[12px] font-medium hover:text-primary"
+              className="flex items-center gap-1 border-b border-foreground text-[12px] font-medium hover:text-primary-ink"
             >
               {dest.name} <ArrowRight className="size-3" />
             </button>

@@ -44,7 +44,7 @@ function TopBar() {
   const today = new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
   return (
     <header className="sticky top-0 z-20 shrink-0 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-      <div aria-hidden className="h-[3px] bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400" />
+      <div aria-hidden className="h-[3px] bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
       <div className="flex h-12 items-center gap-2 px-3 sm:px-4">
         <SidebarTrigger />
         <Separator orientation="vertical" className="mr-1 h-4" />
@@ -55,7 +55,7 @@ function TopBar() {
             <button
               type="button"
               onClick={() => setShowPlanned(false)}
-              className="hidden items-center gap-1.5 rounded-full border border-orange-300/60 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 sm:inline-flex dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-300"
+              className="hidden items-center gap-1.5 rounded-full border border-yellow-300/70 bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-900 hover:bg-yellow-100 sm:inline-flex dark:border-yellow-700/60 dark:bg-yellow-950/40 dark:text-yellow-200"
               title="Planned modules are shown. Click to hide them."
             >
               <MapIcon className="size-3.5" /> Preview
@@ -66,7 +66,7 @@ function TopBar() {
             className="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium text-foreground/80 hover:bg-muted sm:inline-flex"
             title={drafts > 0 ? `${drafts} items to confirm today` : 'Today'}
           >
-            <CalendarDays className="size-3.5 text-orange-600 dark:text-orange-400" />
+            <CalendarDays className="size-3.5 text-yellow-700 dark:text-yellow-400" />
             {today}
             {drafts > 0 && (
               <span className="rounded-full bg-orange-500 px-1.5 text-[11px] font-semibold text-white tabular-nums">{drafts}</span>

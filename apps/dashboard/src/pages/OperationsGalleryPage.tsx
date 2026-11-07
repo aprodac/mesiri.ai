@@ -178,7 +178,7 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
                       <span className="font-medium">{names.get(site)?.name ?? 'Site'}</span>
                       {names.get(site)?.project && <span className="text-muted-foreground"> · {names.get(site)?.project}</span>}
                     </span>
-                    <Link to={siteDayPath(site, day)} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+                    <Link to={siteDayPath(site, day)} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline">
                       Site report <ChevronRight className="size-3.5" />
                     </Link>
                   </div>

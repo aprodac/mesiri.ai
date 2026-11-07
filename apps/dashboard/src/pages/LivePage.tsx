@@ -269,7 +269,7 @@ function ThinkingPanel({
   const reading = think.step === 'reading'
   return (
     <div className="mt-3 grid gap-2 border-l-2 border-primary/50 pl-3 animate-in fade-in duration-500 motion-reduce:animate-none">
-      <Label className="flex items-center gap-2 text-primary">
+      <Label className="flex items-center gap-2 text-primary-ink">
         <span className={cn('size-1.5 rounded-full bg-primary', reading && 'animate-ping')} aria-hidden="true" />
         Mesiri · {reading ? (looking ? 'looking at the photo' : 'reading') : think.step === 'done' ? 'understood' : 'understanding'}
         {reading && <span className="animate-pulse">…</span>}
@@ -564,7 +564,7 @@ function DayProgress({
       </ul>
       {project && today && (
         <span
-          className={cn('font-mono text-[11px] uppercase tracking-[0.06em]', close ? 'text-primary' : 'text-muted-foreground')}
+          className={cn('font-mono text-[11px] uppercase tracking-[0.06em]', close ? 'text-primary-ink' : 'text-muted-foreground')}
           style={close && !prefersReducedMotion() ? { animation: 'pulse 2s ease-in-out infinite' } : undefined}
         >
           {project.sent
@@ -1800,7 +1800,7 @@ function SiteLive({ onClose }: { onClose: () => void }) {
                   // The report was asked for: it goes out as a PDF.
                   <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-white/40" aria-live="polite">
                     <span
-                      className="rotate-[-8deg] border-4 border-primary bg-white px-5 py-2 font-brand text-[28px] tracking-[0.1em] text-primary shadow-lg"
+                      className="rotate-[-8deg] border-4 border-primary bg-white px-5 py-2 font-brand text-[28px] tracking-[0.1em] text-primary-ink shadow-lg"
                       style={prefersReducedMotion() ? undefined : { animation: 'live-slam 800ms cubic-bezier(.2,.9,.3,1.2) both' }}
                     >
                       SENT AS PDF
@@ -1970,7 +1970,7 @@ function SiteLive({ onClose }: { onClose: () => void }) {
                   <span
                     className={cn(
                       'rotate-[-6deg] border-2 px-2 py-0.5 font-brand text-[11px] tracking-[0.08em]',
-                      frozen ? 'border-emerald-700 text-emerald-700' : 'border-primary text-primary',
+                      frozen ? 'border-emerald-700 text-emerald-700' : 'border-primary text-primary-ink',
                     )}
                   >
                     {frozen ? 'CONFIRMED' : detail.data?.project?.sent ? 'SENT' : 'LIVE DRAFT'}

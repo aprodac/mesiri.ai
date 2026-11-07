@@ -163,7 +163,7 @@ export function AnswerSheet({
           Asked{at ? ` at ${at}` : ''}
           {question.sender_name ? ` · ${question.sender_name}` : ''}
         </span>
-        <span className="rotate-[-4deg] border-2 border-primary px-2 py-0.5 font-brand text-[11px] tracking-[0.08em] text-primary">
+        <span className="rotate-[-4deg] border-2 border-primary px-2 py-0.5 font-brand text-[11px] tracking-[0.08em] text-primary-ink">
           ANSWERED
         </span>
       </div>

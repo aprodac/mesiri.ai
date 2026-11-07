@@ -349,7 +349,7 @@ export default function OperationsAnalyticsPage() {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  <Link to="/issues" className="inline-flex items-center gap-0.5 self-start text-xs font-medium text-primary hover:underline">
+                  <Link to="/issues" className="inline-flex items-center gap-0.5 self-start text-xs font-medium text-primary-ink hover:underline">
                     All issues <ChevronRight className="size-3.5" />
                   </Link>
                 </>

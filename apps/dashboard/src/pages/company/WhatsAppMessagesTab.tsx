@@ -330,7 +330,7 @@ export function WhatsAppMessagesTab() {
       {/* Main Table */}
       {isLoading ? (
         <div className="flex h-64 items-center justify-center text-xs text-muted-foreground gap-2">
-          <RotateCw className="size-4 animate-spin text-primary" />
+          <RotateCw className="size-4 animate-spin text-primary-ink" />
           Loading WhatsApp message logs...
         </div>
       ) : !messagesResponse || messagesResponse.items.length === 0 ? (
@@ -494,7 +494,7 @@ export function WhatsAppMessagesTab() {
 
           {isLoadingDetail || !detail ? (
             <div className="flex h-64 items-center justify-center text-xs text-muted-foreground gap-2">
-              <RotateCw className="size-4 animate-spin text-primary" />
+              <RotateCw className="size-4 animate-spin text-primary-ink" />
               Loading trace logs...
             </div>
           ) : (
@@ -502,7 +502,7 @@ export function WhatsAppMessagesTab() {
               {/* Profile Bar */}
               <div className="flex items-start justify-between border border-border/50 bg-muted/20 p-3 rounded">
                 <div className="flex items-center gap-3">
-                  <div className="size-8 rounded bg-primary/10 text-primary flex items-center justify-center font-bold">
+                  <div className="size-8 rounded bg-primary/10 text-primary-ink flex items-center justify-center font-bold">
                     {detail.member ? detail.member.full_name.substring(0, 2).toUpperCase() : <User className="size-4" />}
                   </div>
                   <div>
@@ -590,7 +590,7 @@ export function WhatsAppMessagesTab() {
               {/* Journey Traces */}
               <div>
                 <h4 className="font-semibold text-foreground text-xs mb-3 flex items-center gap-1.5">
-                  <ArrowRightLeft className="size-4 text-primary" />
+                  <ArrowRightLeft className="size-4 text-primary-ink" />
                   Journey Stage Traces
                 </h4>
                 {detail.traces.length === 0 ? (
@@ -650,7 +650,7 @@ export function WhatsAppMessagesTab() {
               {/* Provider Executions */}
               <div>
                 <h4 className="font-semibold text-foreground text-xs mb-3 flex items-center gap-1.5">
-                  <Database className="size-4 text-primary" />
+                  <Database className="size-4 text-primary-ink" />
                   AI/LLM Provider Executions
                 </h4>
                 {detail.providers.length === 0 ? (
@@ -703,7 +703,7 @@ export function WhatsAppMessagesTab() {
               {detail.timeline_entries.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-foreground text-xs mb-3 flex items-center gap-1.5">
-                    <Globe className="size-4 text-primary" />
+                    <Globe className="size-4 text-primary-ink" />
                     Ingested Timeline Events
                   </h4>
                   <div className="space-y-2">
@@ -780,7 +780,7 @@ export function WhatsAppMessagesTab() {
 
           {isLoadingConversation ? (
             <div className="flex h-96 items-center justify-center text-xs text-muted-foreground gap-2">
-              <RotateCw className="size-4 animate-spin text-primary" />
+              <RotateCw className="size-4 animate-spin text-primary-ink" />
               Loading messages...
             </div>
           ) : (

@@ -269,7 +269,7 @@ export default function OperationsTimelinePage({ embedded = false }: { embedded?
                         <div className="flex items-center justify-between gap-2 sm:w-16 sm:shrink-0">
                           <span className="text-xs text-muted-foreground tabular-nums">{clock(e.occurred_at)}</span>
                           {link && (
-                            <Link to={link.to} className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline sm:hidden">
+                            <Link to={link.to} className="inline-flex items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline sm:hidden">
                               {link.label} <ChevronRight className="size-3.5" />
                             </Link>
                           )}
@@ -284,7 +284,7 @@ export default function OperationsTimelinePage({ embedded = false }: { embedded?
                           )}
                         </div>
                         {link && (
-                          <Link to={link.to} className="hidden shrink-0 items-center gap-0.5 text-xs font-medium text-primary hover:underline sm:inline-flex">
+                          <Link to={link.to} className="hidden shrink-0 items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline sm:inline-flex">
                             {link.label} <ChevronRight className="size-3.5" />
                           </Link>
                         )}

@@ -298,7 +298,7 @@ export function GettingStartedCard() {
         <button
           type="button"
           aria-expanded={expanded}
-          className="self-start text-xs font-medium text-primary hover:underline"
+          className="self-start text-xs font-medium text-primary-ink hover:underline"
           onClick={() => setExpanded((e) => !e)}
         >
           {expanded ? 'Show only the next step' : `All ${list.length - doneCount} steps to do`}

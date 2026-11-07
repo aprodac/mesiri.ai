@@ -132,7 +132,9 @@ Colour is for **meaning only**. Each meaning has one colour, everywhere.
 | Bad / critical | `destructive` | red | critical issues, over stock, remove |
 | AI | `ai` / `ai-soft` | indigo | AI summary, "what the AI read" |
 | Neutral | `muted` | grey | no updates, not reported, low severity |
-| Primary action | `primary` | site orange `#c2410c` | **one** main button per page |
+| Primary action | `primary` | hazard yellow `#facc15`, dark text (`primary-foreground`) | **one** main button per page (WEB-76, 7 Nov 2026: replaced site orange) |
+| Brand text, links | `primary-ink` | dark gold `#854d0e` (`#fde047` in dark mode) | never `text-primary`: yellow is unreadable as text on white |
+| Focus ring, first chart series | `ring`, `chart-1` | gold `#ca8a04` | |
 
 Rules:
 

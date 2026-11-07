@@ -398,7 +398,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
                 {totalCostEdited && (
                   <button
                     type="button"
-                    className="text-[11px] text-primary font-semibold"
+                    className="text-[11px] text-primary-ink font-semibold"
                     onClick={() => setTotalCostEdited(false)}
                   >
                     recalculate

@@ -579,7 +579,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
                           <span className="font-medium">{site?.name ?? 'Site'}</span>
                           {site?.project && <span className="text-muted-foreground"> · {site.project}</span>}
                         </span>
-                        <Link to={siteDayPath(siteId, day)} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+                        <Link to={siteDayPath(siteId, day)} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline">
                           Site report <ChevronRight className="size-3.5" />
                         </Link>
                       </div>
@@ -671,7 +671,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
                 >
                   <Trash2 className="size-3.5" /> Remove
                 </Button>
-                <Button asChild size="sm" variant="ghost" className="ml-auto gap-1 text-primary">
+                <Button asChild size="sm" variant="ghost" className="ml-auto gap-1 text-primary-ink">
                   <Link to={siteDayPath(detailData.site_id, detailData.activity_date)}>
                     Site report <ChevronRight className="size-3.5" />
                   </Link>

@@ -669,7 +669,7 @@ function ProjectRow({
             type="checkbox"
             checked={isSelected}
             onChange={onToggleProject}
-            className="rounded border-border/80 text-primary focus:ring-primary size-4"
+            className="rounded border-border/80 text-primary-ink focus:ring-primary size-4"
           />
           {project.name}
         </label>
@@ -700,7 +700,7 @@ function ProjectRow({
                   checked={isChecked}
                   onChange={() => onToggleSite(site.id)}
                   disabled={isAllSites}
-                  className="rounded border-border/80 text-primary focus:ring-primary size-3.5 disabled:opacity-50"
+                  className="rounded border-border/80 text-primary-ink focus:ring-primary size-3.5 disabled:opacity-50"
                 />
                 {site.name}
               </label>

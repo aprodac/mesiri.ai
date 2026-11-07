@@ -370,7 +370,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   if (isResolving) {
     return (
       <div className="flex h-svh items-center justify-center text-sm text-muted-foreground gap-2">
-        <Loader2 className="size-4 animate-spin text-primary" />
+        <Loader2 className="size-4 animate-spin text-primary-ink" />
         Loading…
       </div>
     )

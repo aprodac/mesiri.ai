@@ -192,7 +192,7 @@ export function AddEditProjectDialog({
                     <button
                        type="button"
                        onClick={generateProjectCode}
-                       className="text-[9px] text-primary hover:underline font-semibold"
+                       className="text-[9px] text-primary-ink hover:underline font-semibold"
                      >
                        Generate from Name
                      </button>
@@ -492,7 +492,7 @@ export function ProjectMemberDialog({
             <Label htmlFor="memberSelect">Person</Label>
             {isUsersLoading ? (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-2">
-                <Loader2 className="size-3.5 animate-spin text-primary" /> Loading users list...
+                <Loader2 className="size-3.5 animate-spin text-primary-ink" /> Loading users list...
               </div>
             ) : availableUsers.length === 0 ? (
               <div className="text-xs text-muted-foreground italic py-2 border rounded border-dashed px-3">

@@ -211,7 +211,7 @@ export function UserWhatsAppMessagesTab({
     if (!outcome) return <span className="text-[10px] text-muted-foreground/60 italic">No record created</span>
     const recordLabel = outcome.record_type.replace(/([A-Z])/g, ' $1').trim()
     return (
-      <Badge variant="outline" className="text-[9px] rounded-sm py-0 bg-primary/5 text-primary border-primary/20 flex items-center gap-1 shrink-0 w-fit">
+      <Badge variant="outline" className="text-[9px] rounded-sm py-0 bg-primary/5 text-primary-ink border-primary/20 flex items-center gap-1 shrink-0 w-fit">
         <Sparkles className="size-2.5" />
         {recordLabel}
       </Badge>
@@ -239,11 +239,11 @@ export function UserWhatsAppMessagesTab({
             </Button>
           )}
 
-          <Button size="sm" variant="outline" onClick={() => setFilterSheetOpen(true)} className="h-8 text-xs gap-1.5 font-bold rounded-md border border-primary/20 text-primary">
+          <Button size="sm" variant="outline" onClick={() => setFilterSheetOpen(true)} className="h-8 text-xs gap-1.5 font-bold rounded-md border border-primary/20 text-primary-ink">
             <SlidersHorizontal className="size-3.5" />
             Filters
             {activeFiltersCount > 0 && (
-              <Badge className="bg-primary text-white size-4 rounded-full p-0 flex items-center justify-center text-[9px]">
+              <Badge className="bg-primary text-primary-foreground size-4 rounded-full p-0 flex items-center justify-center text-[9px]">
                 {activeFiltersCount}
               </Badge>
             )}
@@ -259,7 +259,7 @@ export function UserWhatsAppMessagesTab({
       {/* Table view */}
       {isMessagesLoading ? (
         <div className="flex h-48 items-center justify-center text-xs text-muted-foreground gap-2">
-          <Loader2 className="size-4 animate-spin text-primary" />
+          <Loader2 className="size-4 animate-spin text-primary-ink" />
           Loading user message history...
         </div>
       ) : isMessagesError ? (
@@ -342,7 +342,7 @@ export function UserWhatsAppMessagesTab({
                       <TableCell>
                         <div className="flex flex-col gap-0.5 font-medium">
                           {hasProject ? (
-                            <Link to={`/today?project=${msg.project!.id}`} className="text-primary hover:underline truncate block">
+                            <Link to={`/today?project=${msg.project!.id}`} className="text-primary-ink hover:underline truncate block">
                               {msg.project!.name}
                             </Link>
                           ) : (
@@ -366,7 +366,7 @@ export function UserWhatsAppMessagesTab({
                       <TableCell className="text-right">
                         <Button size="sm" variant="ghost" onClick={() => {
                           setSelectedMessageId(msg.id)
-                        }} className="font-bold text-[10px] text-primary h-7 px-2">
+                        }} className="font-bold text-[10px] text-primary-ink h-7 px-2">
                           Details
                         </Button>
                       </TableCell>
