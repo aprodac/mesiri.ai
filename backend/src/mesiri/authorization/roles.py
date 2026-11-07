@@ -94,6 +94,18 @@ def may_set_unit_conversions(role: str | None) -> bool:
     return str(role or "").strip().upper() in UNIT_CONVERSION_ROLES
 
 
+# Who may act on a site's material request -- order it, send it from another site, say no, mark it
+# received (PRC-22, 7 Nov 2026). The default until PRC-12 (who may order, Alan's decision D1) is
+# made: the people who run the projects, the same group that sets company-wide sizes. Anyone in the
+# project may ask, and cancel their own request while it waits.
+MATERIAL_REQUEST_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN", "PROJECT_MANAGER"})
+
+
+def may_act_on_material_requests(role: str | None) -> bool:
+    """True if `role` may decide a material request (within the projects it can reach)."""
+    return str(role or "").strip().upper() in MATERIAL_REQUEST_ROLES
+
+
 # Who may give which role when adding a person (WA-67, audit SET-01). An
 # admin may give any role; a project manager only their own level or below,
 # as the dashboard (Team page, admins only) never lets anyone else make an

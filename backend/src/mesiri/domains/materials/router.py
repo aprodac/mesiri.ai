@@ -947,7 +947,7 @@ async def delete_material(
     if not deleted:
         raise HTTPException(
             status_code=409,
-            detail="Material has recorded movements and cannot be deleted. Deactivate it instead.",
+            detail="Material has recorded movements or requests and cannot be deleted. Deactivate it instead.",
         )
     return None
 

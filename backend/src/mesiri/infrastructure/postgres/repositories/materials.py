@@ -1104,12 +1104,17 @@ class PostgresMaterialCatalogRepository:
             .select_from(_material_movements)
             .where(_material_movements.c.material_id == material_id)
         )
+        # PRC-22: a material a site has asked for is in use too (the request line points at it).
+        not_requested = sa.text(
+            "NOT EXISTS (SELECT 1 FROM material_request_lines l WHERE l.material_id = materials_catalog.id)"
+        )
         stmt = (
             sa.delete(_materials_catalog)
             .where(
                 _materials_catalog.c.id == material_id,
                 _materials_catalog.c.organization_id == organization_id,
                 no_movements,
+                not_requested,
             )
             .returning(_materials_catalog.c.id)
         )
