@@ -28,3 +28,13 @@ def test_the_sop_says_how_and_who() -> None:
 def test_guard_undoing_a_payment_is_not_on_the_list() -> None:
     # A payment made by mistake is undone on the dashboard (it moves money back); not by the model.
     assert not any(a.path.endswith("/payments/{payment_id}/reverse") for a in ALLOWED)
+
+
+def test_after_save_the_link_opens_the_expense_it_paid() -> None:
+    import uuid
+
+    from agent_api.record_links import record_link
+
+    expense = str(uuid.uuid4())
+    url = record_link("pay_expense", f"/expenses/{expense}/payments", {"account_id": str(uuid.uuid4())}, {"id": "p"}, today="2026-11-07")
+    assert url and url.endswith(f"/finance/expenses/{expense}")
