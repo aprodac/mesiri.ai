@@ -35,13 +35,16 @@ from mesiri.domains.materials.router import (
     _resolve_project_ids,
     record_inflow,
 )
+from mesiri.domains.procurement import grn as grn_store
 from mesiri.domains.procurement import orders as store
 from mesiri.domains.procurement import requests as request_store
 from mesiri.domains.procurement.router import _one as one_request
 from mesiri.domains.procurement.router import _tell_requester, _visible
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
+from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
+from mesiri_contracts.common.storage import ObjectStoragePort
 
 router = APIRouter(
     prefix="/procurement/orders",
@@ -100,13 +103,26 @@ class StatusChange(BaseModel):
 
 class ReceiveLine(BaseModel):
     line_id: uuid.UUID
-    quantity: Decimal = Field(gt=0)
+    #: Accepted: into stock. Zero when everything that came on this line was turned away.
+    quantity: Decimal = Field(ge=0)
+    #: PRC-29: turned away at the gate (not in stock; still to come on the order), with why.
+    rejected: Decimal = Field(default=Decimal(0), ge=0)
+    rejected_reason: str | None = Field(default=None, max_length=200)
+
+
+class ChallanPhoto(BaseModel):
+    content_type: str = Field(max_length=60)
+    data_base64: str
 
 
 class Receive(BaseModel):
     lines: list[ReceiveLine] = Field(min_length=1, max_length=50)
     occurred_date: datetime.date
     notes: str | None = Field(default=None, max_length=300)
+    #: PRC-29: the goods received note: the supplier's challan number and photo, who received it at the site.
+    challan_no: str | None = Field(default=None, max_length=60)
+    received_by_name: str | None = Field(default=None, max_length=120)
+    challan_photo: ChallanPhoto | None = None
     #: PRC-23: more than a line still has to come is refused (409 ``more_than_ordered``) unless confirmed.
     confirm_extra: bool = False
 
@@ -204,6 +220,13 @@ async def _one(conn: AsyncConnection, auth: AuthorizationContext, order_id: uuid
     item = (await _describe(conn, auth, rows, all_rows))[0]
     # PRC-23: deliveries here on no order that may belong to it (put on it with POST /deliveries/{id}/order).
     item["history"] = await store.history(conn, order_id)  # PRC-28
+    # PRC-29: its goods received notes, and per line what was turned away (still to come).
+    item["grns"] = await grn_store.fetch(conn, auth.organization_id, order_id=order_id)
+    for g in item["grns"]:
+        g["has_photo"] = bool(g.pop("photo_key", None))  # the link is made by the single read (get_order)
+    rejected = await grn_store.rejected_by_line(conn, [uuid.UUID(x["id"]) for x in item["lines"]])
+    for line in item["lines"]:
+        line["rejected"] = store._num(rejected.get(line["id"], 0))
     item["unlinked_deliveries"] = await store.unlinked_deliveries(
         conn, auth.organization_id, site_id=rows[0]["site_id"],
         material_ids=[line["material_id"] for line in rows[0]["lines"]],
@@ -249,8 +272,22 @@ async def list_orders(
 
 @router.get("/{order_id}")
 async def get_order(order_id: uuid.UUID, auth_context: AuthorizationContext = Depends(get_auth_context),
-                    conn: AsyncConnection = Depends(get_db_conn)):
-    return await _one(conn, auth_context, order_id)
+                    conn: AsyncConnection = Depends(get_db_conn),
+                    object_storage: ObjectStoragePort = Depends(get_object_storage)):
+    item = await _one(conn, auth_context, order_id)
+    item["grns"] = await grn_store.fetch(conn, auth_context.organization_id, order_id=order_id)
+    await with_photo_links(object_storage, item["grns"])
+    return item
+
+
+async def with_photo_links(object_storage: ObjectStoragePort, grns: list[dict]) -> None:
+    """PRC-29: each GRN's challan photo as a short-lived link (``photo_url``); the storage key never leaves."""
+    from mesiri.domains.shared.media import signed_media_url
+
+    for g in grns:
+        key = g.pop("photo_key", None)
+        g["has_photo"] = bool(key)
+        g["photo_url"] = await signed_media_url(object_storage, key)
 
 
 @router.post("", status_code=201)
@@ -398,9 +435,12 @@ async def reopen_order(order_id: uuid.UUID, auth_context: AuthorizationContext =
 @router.post("/{order_id}/receive", status_code=201)
 async def receive_order(order_id: uuid.UUID, body: Receive,
                         auth_context: AuthorizationContext = Depends(get_auth_context),
-                        conn: AsyncConnection = Depends(get_db_conn)):
-    """Material came against the order: each line is a delivery at the order's site (stock goes up at once), from
-    the order's supplier at the order's rate. A request whose lines have all come is received, and its asker told."""
+                        conn: AsyncConnection = Depends(get_db_conn),
+                        object_storage: ObjectStoragePort = Depends(get_object_storage)):
+    """Material came against the order: a goods received note (GRN-0001, PRC-29) with the challan number and photo
+    and who received it; each line's accepted part is a delivery at the order's site (stock goes up at once), from
+    the order's supplier at the order's rate; a rejected part is noted with why and stays to come. A request whose
+    lines have all come is received, and its asker told."""
     item = await _one(conn, auth_context, order_id, lock=True)
     if item["status"] not in ("open", "part"):
         raise HTTPException(status_code=409, detail=f"{item['ref']} is {item['status']}; it takes no more deliveries.")
@@ -408,15 +448,55 @@ async def receive_order(order_id: uuid.UUID, body: Receive,
     if len({str(x.line_id) for x in body.lines}) != len(body.lines):
         raise HTTPException(status_code=422, detail="Each order line once per delivery.")
     for got in body.lines:
-        line = by_id.get(str(got.line_id))
-        if line is None:
+        if str(got.line_id) not in by_id:
             raise HTTPException(status_code=422, detail="A line is not on this order.")
-        await record_inflow(conn, auth_context, MaterialInflowCreate(
-            project_id=uuid.UUID(item["project_id"]), site_id=uuid.UUID(item["site_id"]),
-            material_id=uuid.UUID(line["material_id"]), unit_id=uuid.UUID(line["unit_id"]), quantity=got.quantity,
-            movement_reason="RECEIVED", vendor_id=uuid.UUID(item["vendor_id"]), occurred_date=body.occurred_date,
-            unit_cost=await _line_rate(conn, got.line_id), notes=(body.notes or "").strip() or f"Against {item['ref']}",
-            purchase_order_line_id=got.line_id, confirm_extra=body.confirm_extra))
+        if got.quantity + got.rejected <= 0:
+            raise HTTPException(status_code=422, detail="Say how much came (accepted or rejected) on each line.")
+        if got.rejected > 0 and not (got.rejected_reason or "").strip():
+            raise HTTPException(status_code=422, detail=f"Say why the {by_id[str(got.line_id)]['material']} was "
+                                "rejected (torn bags, wrong size, short weight…).")
+    photo = None
+    if body.challan_photo is not None:
+        from mesiri.domains.expenses.bill_file import decode_bill
+
+        try:
+            photo = decode_bill(body.challan_photo.data_base64, body.challan_photo.content_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc).replace("bill", "challan")) from exc
+    grn_id, number = await grn_store.insert(
+        conn, auth_context.organization_id, order_id=order_id, received_on=body.occurred_date,
+        challan_no=(body.challan_no or "").strip() or None, photo_key=None,
+        received_by_name=(body.received_by_name or "").strip() or None, notes=(body.notes or "").strip() or None,
+        created_by=auth_context.user_id)
+    grn_ref = grn_store.ref(number)
+    if photo is not None:
+        key = grn_store.challan_key(auth_context.organization_id, grn_id, photo[1])
+        await object_storage.put_object(key, photo[0], content_type=photo[2])
+        await conn.execute(text("UPDATE goods_receipts SET challan_photo_key = :k WHERE id = :id"), {"k": key, "id": grn_id})
+    said = []
+    for got in body.lines:
+        line = by_id[str(got.line_id)]
+        receipt_id = None
+        if got.quantity > 0:
+            result = await record_inflow(conn, auth_context, MaterialInflowCreate(
+                project_id=uuid.UUID(item["project_id"]), site_id=uuid.UUID(item["site_id"]),
+                material_id=uuid.UUID(line["material_id"]), unit_id=uuid.UUID(line["unit_id"]), quantity=got.quantity,
+                movement_reason="RECEIVED", vendor_id=uuid.UUID(item["vendor_id"]), occurred_date=body.occurred_date,
+                unit_cost=await _line_rate(conn, got.line_id),
+                notes=(body.notes or "").strip() or f"{grn_ref}, against {item['ref']}",
+                purchase_order_line_id=got.line_id, confirm_extra=body.confirm_extra))
+            receipt_id = result["id"]
+        reason = (got.rejected_reason or "").strip() or None
+        await grn_store.insert_line(conn, auth_context.organization_id, grn_id, line_id=got.line_id,
+                                    accepted=got.quantity, rejected=got.rejected, reason=reason if got.rejected else None,
+                                    receipt_id=receipt_id)
+        words = f"{store._num(got.quantity)} {line['unit']} {line['material']} accepted"
+        if got.rejected > 0:
+            words += f", {store._num(got.rejected)} rejected ({reason})"
+        said.append(words)
+    challan = f" · challan {body.challan_no.strip()}" if body.challan_no and body.challan_no.strip() else ""
+    await store.log(conn, auth_context.organization_id, order_id, "grn", f"{grn_ref}: {'; '.join(said)}{challan}",
+                    auth_context.user_id)
     # record_inflow already moved the requests (requests_follow, after each line).
     return await _one(conn, auth_context, order_id)
 

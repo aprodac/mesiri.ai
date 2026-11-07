@@ -792,3 +792,67 @@ async def test_an_orders_changes_are_in_its_history(client, world):
     # Guard: a site engineer sees the history without the rates.
     as_arun = (await client.get(f"/procurement/orders/{po['id']}", headers=w["arun"]["h"])).json()
     assert as_arun["lines"][0]["rate"] is None
+
+
+# --- PRC-29: goods received notes ------------------------------------------------------------------------------------
+
+_JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
+
+
+@pytest.fixture
+def storage(client):
+    from mesiri.infrastructure.objectstorage.dependency import get_object_storage
+    from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage
+
+    class Store(FakeObjectStorage):
+        async def generate_presigned_url(self, key, *, expires_in_seconds=900, method="GET"):
+            return f"https://files.test/{key}"
+
+    store = Store()
+    client._transport.app.dependency_overrides[get_object_storage] = lambda: store
+    return store
+
+
+async def test_a_grn_with_a_rejected_part_a_challan_and_its_photo(client, world, storage):
+    import base64
+
+    w = world
+    po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "200"), headers=w["admin"]["h"])).json()
+    line = po["lines"][0]["id"]
+    resp = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["arun"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "challan_no": "DC-5531", "received_by_name": "Shibu (store)",
+        "challan_photo": {"content_type": "image/jpeg", "data_base64": base64.b64encode(_JPEG).decode()},
+        "lines": [{"line_id": line, "quantity": "147", "rejected": "3", "rejected_reason": "torn bags"}]})
+    assert resp.status_code == 201, resp.text
+    after = resp.json()
+    # Only the accepted part is in stock and counts as received; the 3 torn bags are still to come.
+    assert (after["lines"][0]["received"], after["lines"][0]["rejected"], after["lines"][0]["pending"]) == ("147", "3", "53")
+    assert await _stock(client, w) == "147"
+    assert after["grns"][0]["ref"] == "GRN-0001" and after["grns"][0]["has_photo"] and "photo_key" not in after["grns"][0]
+    one = (await client.get(f"/procurement/orders/{po['id']}", headers=w["admin"]["h"])).json()
+    grn = one["grns"][0]
+    assert (grn["challan_no"], grn["received_by_name"], grn["lines"][0]["rejected_reason"]) == ("DC-5531", "Shibu (store)", "torn bags")
+    assert grn["photo_url"].startswith("https://files.test/org/")
+    assert one["history"][-1]["what"] == ("GRN-0001: 147 bags Cement OPC 53 accepted, 3 rejected (torn bags) · "
+                                          "challan DC-5531")
+    page = (await client.get("/procurement/grns", headers=w["admin"]["h"])).json()["items"]
+    assert [g["ref"] for g in page] == ["GRN-0001"] and page[0]["order_ref"] == "PO-0001"
+    assert (await client.get("/procurement/grns", headers=w["ravi"]["h"])).json()["items"] == []  # another project
+
+
+async def test_everything_rejected_puts_nothing_in_stock_and_a_reason_is_needed(client, world):
+    w = world
+    po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "50"), headers=w["admin"]["h"])).json()
+    line = po["lines"][0]["id"]
+    no_reason = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": line, "quantity": "0", "rejected": "50"}]})
+    assert no_reason.status_code == 422 and "why" in no_reason.text
+    nothing = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": line, "quantity": "0"}]})
+    assert nothing.status_code == 422
+    turned = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()),
+        "lines": [{"line_id": line, "quantity": "0", "rejected": "50", "rejected_reason": "wet cement"}]})
+    assert turned.status_code == 201, turned.text
+    assert (turned.json()["status"], turned.json()["lines"][0]["pending"]) == ("open", "50")
+    assert await _stock(client, w) == "0"

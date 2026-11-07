@@ -1,8 +1,9 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, CalendarDays, Check, ClipboardList, Clock, FileText, MessageCircle, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
+import { Ban, CalendarDays, Camera, Check, ClipboardList, Clock, FileText, MessageCircle, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
+import { billFile } from '@/lib/bill-upload'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -136,12 +137,33 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
                 <span><strong className="text-success">{qty(line.received, line.unit)}</strong> came</span>
                 {Number(line.pending) > 0 && <span><strong className="text-info">{qty(line.pending, line.unit)}</strong> to come</span>}
                 {Number(line.extra) > 0 && <span className="font-semibold text-orange-700">{qty(line.extra, line.unit)} extra</span>}
+                {Number(line.rejected) > 0 && <span className="font-semibold text-destructive">{qty(line.rejected ?? '0', line.unit)} rejected</span>}
                 {line.request && <span className="inline-flex items-center gap-1"><ClipboardList className="size-3" />{line.request.ref}</span>}
               </div>
             </div>
           )
         })}
       </div>
+
+      {(order.grns ?? []).length > 0 && (
+        <div className="flex flex-col gap-2 border-b px-5 py-4">
+          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Goods received</h3>
+          {(order.grns ?? []).map((g) => (
+            <div key={g.id} className="flex items-start gap-3 rounded-lg border px-3 py-2 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="font-semibold tabular-nums">{g.ref}</span>
+                <span className="text-muted-foreground"> · {new Date(`${g.received_on}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}{g.challan_no ? ` · challan ${g.challan_no}` : ''}{g.received_by_name ? ` · ${g.received_by_name}` : ''}</span>
+                {g.lines.map((l) => (
+                  <span key={l.line_id} className="block text-xs">
+                    {qty(l.accepted, l.unit)} {l.material} accepted{Number(l.rejected) > 0 && <span className="text-destructive"> · {qty(l.rejected, l.unit)} rejected ({l.rejected_reason})</span>}
+                  </span>
+                ))}
+              </span>
+              {g.photo_url && <a href={g.photo_url} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-medium underline-offset-2 hover:underline">Challan photo</a>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col px-5 py-4">
         <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">History</h3>
@@ -239,7 +261,7 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
 
 const HISTORY_ICON: Record<string, typeof Clock> = {
   date: CalendarDays, supplier: Phone, items: ShoppingCart, rates: ShoppingCart, their_ref: ClipboardList, notes: Pencil,
-  cancelled: Ban, closed: Check, reopened: RotateCcw, delivery_on: Truck, delivery_off: Truck,
+  cancelled: Ban, closed: Check, reopened: RotateCcw, delivery_on: Truck, delivery_off: Truck, grn: ClipboardList,
 }
 
 function Step({ icon: Icon, title, meta, quote, now, bad, action }: { icon: typeof Clock; title: string; meta?: string; quote?: string | null; now?: boolean; bad?: boolean; action?: { label: string; onClick: () => void; busy?: boolean } }) {
@@ -258,19 +280,43 @@ function Step({ icon: Icon, title, meta, quote, now, bad, action }: { icon: type
 }
 
 function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: PurchaseOrder; open: boolean; onClose: () => void; onDone: () => void; onError: (e: unknown) => void }) {
+  const { me } = useAuth()
   const [amounts, setAmounts] = React.useState<Record<string, string>>({})
+  // PRC-29: the goods received note: some may be turned away at the gate (with why), the challan, who received it.
+  const [rejected, setRejected] = React.useState<Record<string, string>>({})
+  const [reasons, setReasons] = React.useState<Record<string, string>>({})
+  const [checking, setChecking] = React.useState(false)
+  const [challan, setChallan] = React.useState('')
+  const [receivedBy, setReceivedBy] = React.useState('')
+  const [photo, setPhoto] = React.useState<{ name: string; file: { content_type: string; data_base64: string } } | null>(null)
+  const [photoError, setPhotoError] = React.useState('')
   const [date, setDate] = React.useState(today())
   // PRC-23: more than a line still has to come is asked before it is saved.
   const [extra, setExtra] = React.useState<string | null>(null)
   React.useEffect(() => {
     if (open) {
       setAmounts(Object.fromEntries(order.lines.map((l) => [l.id, Number(l.pending) > 0 ? l.pending : ''])))
+      setRejected({})
+      setReasons({})
+      setChecking(false)
+      setChallan('')
+      setReceivedBy(me?.name || me?.full_name || '')
+      setPhoto(null)
+      setPhotoError('')
       setDate(today())
       setExtra(null)
     }
-  }, [open, order])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, order.id])
+  const lines = order.lines
+    .map((l) => ({ line_id: l.id, quantity: amounts[l.id] || '0', rejected: rejected[l.id] || '0', rejected_reason: reasons[l.id]?.trim() || null }))
+    .filter((l) => Number(l.quantity) > 0 || Number(l.rejected) > 0)
+  const missingReason = lines.some((l) => Number(l.rejected) > 0 && !l.rejected_reason)
   const save = useMutation({
-    mutationFn: (confirm: boolean) => receiveOrder(order.id, { occurred_date: date, confirm_extra: confirm, lines: Object.entries(amounts).filter(([, v]) => Number(v) > 0).map(([line_id, quantity]) => ({ line_id, quantity })) }),
+    mutationFn: (confirm: boolean) => receiveOrder(order.id, {
+      occurred_date: date, confirm_extra: confirm, lines,
+      challan_no: challan.trim() || null, received_by_name: receivedBy.trim() || null, challan_photo: photo?.file ?? null,
+    }),
     onSuccess: onDone,
     onError: (err) => {
       const more = asMoreThanOrdered(err)
@@ -278,32 +324,77 @@ function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: Purch
       onError(err)
     },
   })
-  const any = Object.values(amounts).some((v) => Number(v) > 0)
+  const pickPhoto = async (file: File | undefined) => {
+    setPhotoError('')
+    if (!file) return
+    try {
+      setPhoto({ name: file.name, file: await billFile(file) })
+    } catch (e) {
+      setPhotoError(e instanceof Error ? e.message.replace(/bill/g, 'challan') : 'This photo could not be used.')
+    }
+  }
+  const any = lines.length > 0
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Material came · {order.ref}</DialogTitle>
-          <DialogDescription>From {order.vendor_name} at {order.site_name}. Stock goes up as soon as you save.</DialogDescription>
+          <DialogDescription>From {order.vendor_name} at {order.site_name}. What you accept goes into stock as soon as you save.</DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (any) save.mutate(false) }}>
+        <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (any && !missingReason) save.mutate(false) }}>
           {order.lines.map((line) => (
-            <div key={line.id} className="flex items-center gap-2">
-              <CategoryTile mainCategory={line.main_category} size="sm" />
-              <span className="min-w-0 flex-1 text-sm">
-                <span className="font-semibold">{line.material}</span>
-                <span className="block text-xs text-muted-foreground">{qty(line.pending, line.unit)} to come</span>
-              </span>
-              <div className="flex w-32 items-center rounded-md border focus-within:ring-2 focus-within:ring-ring">
-                <Input aria-label={`${line.material} quantity`} inputMode="decimal" className="border-0 text-right font-semibold tabular-nums shadow-none focus-visible:ring-0" value={amounts[line.id] ?? ''} placeholder="0" onChange={(e) => { setExtra(null); setAmounts({ ...amounts, [line.id]: e.target.value.replace(/[^0-9.]/g, '') }) }} />
-                <span className="pr-2.5 text-xs text-muted-foreground">{line.unit}</span>
+            <div key={line.id} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <CategoryTile mainCategory={line.main_category} size="sm" />
+                <span className="min-w-0 flex-1 text-sm">
+                  <span className="font-semibold">{line.material}</span>
+                  <span className="block text-xs text-muted-foreground">{qty(line.pending, line.unit)} to come</span>
+                </span>
+                <div className="flex w-32 items-center rounded-md border focus-within:ring-2 focus-within:ring-ring">
+                  <Input aria-label={`${line.material} accepted`} inputMode="decimal" className="border-0 text-right font-semibold tabular-nums shadow-none focus-visible:ring-0" value={amounts[line.id] ?? ''} placeholder="0" onChange={(e) => { setExtra(null); setAmounts({ ...amounts, [line.id]: e.target.value.replace(/[^0-9.]/g, '') }) }} />
+                  <span className="pr-2.5 text-xs text-muted-foreground">{line.unit}</span>
+                </div>
               </div>
+              {checking && (
+                <div className="ml-8 flex flex-wrap items-center gap-2">
+                  <div className="flex w-28 items-center rounded-md border border-destructive/30 focus-within:ring-2 focus-within:ring-ring">
+                    <Input aria-label={`${line.material} rejected`} inputMode="decimal" className="h-8 border-0 text-right tabular-nums shadow-none focus-visible:ring-0" value={rejected[line.id] ?? ''} placeholder="0" onChange={(e) => setRejected({ ...rejected, [line.id]: e.target.value.replace(/[^0-9.]/g, '') })} />
+                    <span className="pr-2 text-xs text-destructive">rejected</span>
+                  </div>
+                  {Number(rejected[line.id]) > 0 && (
+                    <Input aria-label={`Why ${line.material} was rejected`} className="h-8 min-w-[160px] flex-1" placeholder="Why: torn bags, wrong size…" value={reasons[line.id] ?? ''} onChange={(e) => setReasons({ ...reasons, [line.id]: e.target.value })} />
+                  )}
+                </div>
+              )}
             </div>
           ))}
+          {!checking && (
+            <button type="button" className="w-fit text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={() => setChecking(true)}>Some of it rejected at the gate?</button>
+          )}
+          {checking && <p className="text-xs text-muted-foreground">Rejected material does not go into stock; it stays to come on the order (a replacement is owed).</p>}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="receive-challan">Challan no. <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Input id="receive-challan" value={challan} maxLength={60} placeholder="DC-5531" onChange={(e) => setChallan(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="receive-by">Received by</Label>
+              <Input id="receive-by" value={receivedBy} maxLength={120} placeholder="Name" onChange={(e) => setReceivedBy(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted/50">
+              <Camera className="size-4" /> {photo ? 'Change challan photo' : 'Challan photo'}
+              <input type="file" accept="image/*,application/pdf" capture="environment" className="sr-only" onChange={(e) => pickPhoto(e.target.files?.[0])} />
+            </label>
+            {photo && <span className="truncate text-xs text-success">✓ {photo.name}</span>}
+            {photoError && <span className="text-xs text-destructive">{photoError}</span>}
+          </div>
           <div className="flex items-center gap-2">
             <Label htmlFor="receive-date">Date</Label>
             <Input id="receive-date" type="date" max={today()} value={date} onChange={(e) => setDate(e.target.value)} className="w-[160px] dark:[color-scheme:dark]" />
           </div>
+          {missingReason && <p className="text-xs text-destructive">Say why it was rejected.</p>}
           {extra && (
             <div className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-950 dark:bg-orange-950 dark:text-orange-100" role="alert">{extra}</div>
           )}
@@ -311,7 +402,7 @@ function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: Purch
             <Button type="button" variant="outline" onClick={onClose}>Back</Button>
             {extra
               ? <Button type="button" disabled={save.isPending} className="bg-orange-600 font-semibold text-white hover:bg-orange-700" onClick={() => save.mutate(true)}>Yes, the extra came</Button>
-              : <Button type="submit" disabled={!any || save.isPending} className="font-semibold">Save delivery</Button>}
+              : <Button type="submit" disabled={!any || missingReason || save.isPending} className="font-semibold">Save delivery</Button>}
           </DialogFooter>
         </form>
       </DialogContent>

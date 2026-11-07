@@ -20,6 +20,8 @@ export interface OrderLine {
   received: string
   pending: string
   extra: string
+  /** PRC-29 (one order only): turned away at the gate, still to come. */
+  rejected?: string
   /** Only for the roles that see spending. */
   rate: string | null
   amount: string | null
@@ -61,6 +63,8 @@ export interface PurchaseOrder {
   value_complete: boolean | null
   deliveries: { id: string; line_id: string; material: string; quantity: string; unit: string; date: string; by_name: string | null; at: string }[]
   duplicates: { id: string; ref: string; vendor_name: string; created_by_name: string | null }[]
+  /** PRC-29 (one order only): its goods received notes. */
+  grns?: GoodsReceipt[]
   /** PRC-28 (one order only): each change, who made it, when. */
   history?: { kind: string; what: string; at: string; by_name: string | null }[]
   /** PRC-23 (one order only): deliveries at its site of its materials, on no order, since it was placed. */
@@ -129,7 +133,42 @@ export async function closeOrder(id: string, reason: string): Promise<PurchaseOr
   return data
 }
 
-export async function receiveOrder(id: string, payload: { occurred_date: string; lines: { line_id: string; quantity: string }[]; notes?: string; confirm_extra?: boolean }): Promise<PurchaseOrder> {
+export interface GoodsReceipt {
+  id: string
+  ref: string
+  order_id: string
+  order_ref: string
+  project_id: string
+  project_name: string
+  site_id: string
+  site_name: string
+  vendor_name: string
+  received_on: string
+  challan_no: string | null
+  received_by_name: string | null
+  notes: string | null
+  created_by_name: string | null
+  created_at: string
+  has_photo?: boolean
+  /** A short-lived link (the single order read and the GRN page only). */
+  photo_url?: string | null
+  lines: { line_id: string; material: string; unit: string; accepted: string; rejected: string; rejected_reason: string | null }[]
+}
+
+export async function fetchGrns(params: { project_id?: string | null; site_id?: string | null }): Promise<{ items: GoodsReceipt[] }> {
+  const { data } = await api.get('/procurement/grns', { params: { project_id: params.project_id || undefined, site_id: params.site_id || undefined } })
+  return data
+}
+
+export async function receiveOrder(id: string, payload: {
+  occurred_date: string
+  lines: { line_id: string; quantity: string; rejected?: string; rejected_reason?: string | null }[]
+  notes?: string
+  confirm_extra?: boolean
+  challan_no?: string | null
+  received_by_name?: string | null
+  challan_photo?: { content_type: string; data_base64: string } | null
+}): Promise<PurchaseOrder> {
   const { data } = await api.post(`/procurement/orders/${id}/receive`, payload)
   return data
 }
