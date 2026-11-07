@@ -25,6 +25,7 @@ import {
 } from '@/lib/materials'
 import { CategoriesPanel } from './categories-panel'
 import { ImportDialog } from './import-dialog'
+import { CategoryTile } from '@/components/requests/parts'
 
 // Radix Select can't hold an empty value; this stands for "no category".
 const NO_CATEGORY = 'none'
@@ -216,7 +217,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
   const showForm = formOpen || editing
 
   const materialRow = (m: MaterialCatalog, loose: boolean) => (
-    <li key={m.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2', !m.is_active && 'text-muted-foreground')}>
+    <li key={m.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 hover:bg-muted/30', !m.is_active && 'text-muted-foreground')}>
       <span className="min-w-0 flex-1 truncate font-medium">
         {m.name}
         {m.sku && <span className="ml-2 text-xs font-normal text-muted-foreground">{m.sku}</span>}
@@ -380,29 +381,34 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
       ) : (
         <>
           {sections.placed.map((sec) => (
-            <section key={sec.key} className="flex flex-col gap-2">
-              <h3 className="text-sm font-semibold">
+            // WEB-80: one list per main category, its sub-categories as heading rows inside (as Materials > Stock).
+            <section key={sec.key} className="flex flex-col gap-1.5">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <CategoryTile mainCategory={sec.title} size="sm" />
                 {sec.title}{' '}
                 <span className="font-normal text-muted-foreground">{sec.groups.reduce((n, g) => n + g.list.length, 0)}</span>
               </h3>
-              {sec.groups.map((g) => (
-                <div key={g.key} className="flex flex-col gap-1">
-                  {g.title && (
-                    <h4 className="text-xs font-semibold text-muted-foreground">
-                      {g.title} <span className="font-normal">{g.list.length}</span>
-                    </h4>
-                  )}
-                  <ul className="divide-y rounded-lg border">{g.list.map((m) => materialRow(m, false))}</ul>
-                </div>
-              ))}
+              <ul className="divide-y overflow-hidden rounded-xl border">
+                {sec.groups.map((g) => (
+                  <React.Fragment key={g.key}>
+                    {g.title && (
+                      <li className="bg-muted/30 px-3 py-1 text-xs font-semibold text-muted-foreground">
+                        {g.title} <span className="font-normal">{g.list.length}</span>
+                      </li>
+                    )}
+                    {g.list.map((m) => materialRow(m, false))}
+                  </React.Fragment>
+                ))}
+              </ul>
             </section>
           ))}
           {sections.loose.length > 0 && (
             <section className="flex flex-col gap-1.5">
-              <h3 className="text-sm font-semibold">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <CategoryTile mainCategory={null} size="sm" />
                 No category <span className="font-normal text-muted-foreground">{sections.loose.length}</span>
               </h3>
-              <ul className="divide-y rounded-lg border">{sections.loose.map((m) => materialRow(m, true))}</ul>
+              <ul className="divide-y overflow-hidden rounded-xl border">{sections.loose.map((m) => materialRow(m, true))}</ul>
             </section>
           )}
         </>

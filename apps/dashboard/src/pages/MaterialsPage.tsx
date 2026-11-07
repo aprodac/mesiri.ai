@@ -1,10 +1,10 @@
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ArrowLeftRight, PackageMinus, PackagePlus } from 'lucide-react'
+import { ArrowLeftRight, Boxes, PackageMinus, PackagePlus } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import { useAuth } from '@/lib/AuthContext'
 import { Button } from '@/components/ui/button'
-import { PageHeader, Segmented } from '@/components/dpr-page'
+import { Segmented } from '@/components/dpr-page'
 import { LedgerView } from '@/components/materials/ledger-view'
 import { CatalogueView } from '@/components/materials/catalogue-view'
 import { SizesView } from '@/components/materials/sizes-view'
@@ -24,6 +24,8 @@ import { useReadOnly } from '@/lib/trial'
 // right view (?view=ledger / inventory / catalogue / sizes / inflows ...).
 
 type MaterialsView = 'stock' | 'movements' | 'items'
+
+const VIEW_TITLE: Record<MaterialsView, string> = { stock: 'Stock', movements: 'Movements', items: 'Items' }
 
 function viewFor(requested: string, canManage: boolean): MaterialsView {
   if (['ledger', 'movements', 'inflows', 'outflows', 'transfers', 'purchases'].includes(requested)) return 'movements'
@@ -76,27 +78,34 @@ export default function MaterialsPage() {
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
-      <PageHeader
-        title="Materials"
-        actions={
-          canRecord && (
-            <>
-              <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog('in')}>
-                <PackagePlus className="size-4" /> <span className="sm:hidden">Delivery</span>
-                <span className="hidden sm:inline">Record delivery</span>
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setDialog('out')}>
-                <PackageMinus className="size-4" /> <span className="sm:hidden">Use</span>
-                <span className="hidden sm:inline">Record use</span>
-              </Button>
-              <Button size="icon" variant="outline" className="size-8 sm:w-auto sm:px-3" title="Move between sites" onClick={() => setDialog('transfer')}>
-                <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Move</span>
-              </Button>
-            </>
-          )
-        }
-      />
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-8 sm:px-2">
+      {/* WEB-80: the Requests / Purchase orders header, so Materials and Procurement read as one flow. */}
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="hidden size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 sm:inline-flex text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+            <Boxes className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-xs text-muted-foreground">Materials</div>
+            <h1 className="truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">{VIEW_TITLE[view]}</h1>
+          </div>
+        </div>
+        {canRecord && (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog('in')}>
+              <PackagePlus className="size-4" /> <span className="sm:hidden">Delivery</span>
+              <span className="hidden sm:inline">Record delivery</span>
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setDialog('out')}>
+              <PackageMinus className="size-4" /> <span className="sm:hidden">Use</span>
+              <span className="hidden sm:inline">Record use</span>
+            </Button>
+            <Button size="icon" variant="outline" className="size-8 sm:w-auto sm:px-3" title="Move between sites" onClick={() => setDialog('transfer')}>
+              <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Move</span>
+            </Button>
+          </div>
+        )}
+      </header>
 
       {view === 'stock' && <CategoryView projectId={projectId} siteId={siteId} leading={switcher} />}
       {view === 'movements' && <LedgerView projectId={projectId} siteId={siteId} leading={switcher} />}
