@@ -67,7 +67,9 @@ class ApiClient:
         self.role: str | None = actor.role if actor is not None else None
         #: WEB-68: who is asking (the accounts they hold); None with a login token.
         self.user_id: str | None = actor.user_id if actor is not None else None
-        transport = httpx.ASGITransport(app=app) if app is not None else None
+        # [282]: an API crash comes back as its 500 response, never as an exception the
+        # model would turn into "The tool failed" (agent.py answers a 5xx itself).
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False) if app is not None else None
         bearer = token if token is not None else token_for(actor)  # type: ignore[arg-type]
         self._http = httpx.AsyncClient(
             transport=transport,

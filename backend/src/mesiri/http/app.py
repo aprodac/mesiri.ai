@@ -42,6 +42,10 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
 
     app = FastAPI(title="Mesiri Assistant", version="0.1.0", lifespan=lifespan)
     app.state.lifecycle = lc
+    # [282]: a value the database cannot read is a 422, never a crash (every route).
+    from . import db_errors
+
+    db_errors.install(app)
 
     @app.middleware("http")
     async def correlation_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]

@@ -122,6 +122,16 @@ SELECT 'provider:' || p.provider || '/' || p.operation,
        o2.name, p.error_code, p.model, p.correlation_id
 FROM provider_executions p LEFT JOIN organizations o2 ON o2.id = p.organization_id
 WHERE p.created_at > {since} AND p.succeeded = false
+UNION ALL
+-- 7 Nov 2026: a v3 tool whose API call crashed (e.g. list_issues on a bad status)
+-- is a succeeded turn with a wrong reply; it showed up nowhere else.
+SELECT 'tool:' || (c->>'tool'), to_char(j.created_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon HH24:MI'),
+       o3.name, 'tool_failed', left(c->>'arguments', 100), j.correlation_id
+FROM journey_traces j
+CROSS JOIN LATERAL jsonb_array_elements(coalesce(j.stage_payload->'calls', '[]'::jsonb)) c
+LEFT JOIN inbound_messages m3 ON m3.correlation_id = j.correlation_id
+LEFT JOIN organizations o3 ON o3.id = m3.organization_id
+WHERE j.created_at > {since} AND j.stage = 'agent_api_turn' AND c->'result'->>'error' = 'the tool failed'
 ORDER BY at_ist DESC LIMIT {int(limit)}"""
 
 

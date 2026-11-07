@@ -122,6 +122,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.container.receipt_renderer.close()
 
     app = FastAPI(title="Mesiri WhatsApp Assistant", lifespan=lifespan)
+    # [282]: a value the database cannot read is a 422, never a crash (every route).
+    from mesiri.http import db_errors
+
+    db_errors.install(app)
 
     @app.get("/health", tags=["ops"])
     async def health() -> dict:

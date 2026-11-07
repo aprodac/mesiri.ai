@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import re
 from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal, InvalidOperation
@@ -93,6 +94,13 @@ MAX_STEPS = 8
 TIMEOUT_SECONDS = 40.0
 #: A read's JSON is cut to this many characters before the model sees it.
 READ_LIMIT = 8000
+#: [282] What the model is told when a read crashed on the API side (5xx). Written by the code so
+#: the reply never shows the person a tool, an error or a status ("The tool failed", 7 Nov).
+UNAVAILABLE_NOTE = (
+    "This could not be read just now (a problem on Mesiri's side, already logged for the team). Tell the person "
+    "plainly, in their language, that you could not check it right now and will try again if they send it in a "
+    "minute; do every other part of their message. Never mention a tool, an error, a status or the team here."
+)
 
 
 @dataclass(frozen=True)
@@ -1048,6 +1056,10 @@ class ApiAgent:
                              "prepare them now, in this turn; they save after it.")
                 return ToolOutcome(content={"status": "ready, NOT saved", "note": note + size_hint + account_note})
             response = await client.call(tool.method, path, params=params)
+            if response.status >= 500:
+                # [282]: the person never reads a crash; the code words what the model is told.
+                logging.getLogger("agent_api").warning("agent_api.read_unavailable tool=%s status=%s", name, response.status)
+                return ToolOutcome(content={"status": "unavailable", "note": UNAVAILABLE_NOTE})
             content = json.dumps(response.body, default=str, ensure_ascii=False)
             if len(content) > READ_LIMIT:
                 content = content[:READ_LIMIT] + " ...(cut)"
