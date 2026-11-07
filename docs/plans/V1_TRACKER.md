@@ -599,6 +599,20 @@ Structural drawings become the list of what has to be built (`location_nodes` + 
 | DRW-11 | Revision diff: what changed between revisions, which built elements it affects | M | Later | DRW-04 | todo | | |
 | DRW-12 | Photo stage hint (vision), bar counting only after an eval proves it | M | Later | DRW-05 | todo | | |
 
+## MK — Material knowledge as data (Ilan, 7 Nov 2026; design [ADR-material-knowledge](../architecture/ADR-material-knowledge.md))
+
+Why: 33% of v3 material save calls refused (31 Oct - 7 Nov); TMT and M-sand asked site people for sizes they cannot know and saved impossible ones. Knowledge to review: [material-knowledge-inventory.md](material-knowledge-inventory.md).
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| MK-01 | Design + knowledge inventory | S | Must | — | done | Claude (session 7 Nov) | ADR proposed; **Alan to review** (shared resolver; C3 changes units-and-sizes rule 4); inventory for a civil engineer to tick. |
+| MK-02 | Slice 1: reference tables (unit facts, material kinds, plausible ranges) seeded for TMT + M-sand; the size route refuses the impossible with the range | M | Must | MK-01 | in progress | Claude (session 7 Nov) | Additive migration. Extends units-and-sizes rule 3 (Ilan's go, 7 Nov). |
+| MK-03 | Slice 2: `unit_conversion.py` reads the reference tables instead of constants (same answers) | M | Must | MK-02 | todo | — | No behaviour change; existing tests prove it. |
+| MK-04 | Slice 3: TMT sizes as items (`kind`, `size_mm`); the only TMT question is the size | M | Must | MK-03 | todo | — | Needs Alan (shared component). |
+| MK-05 | Slice 4-5: one resolver `POST /materials/resolve`, shadow mode, then switch v3 + dashboard; delete `agent_api/materials.py` branches; save what was said (C3) | L | Must | MK-04 | todo | — | Needs Alan. |
+| MK-06 | Slice 6: initial data from documents (bills, BOQ, POs, stock sheet) | L | Should | MK-05 | todo | — | Needs Alan. |
+| MK-07 | Correct wrong saved rows: New India "1 load M-sand = 60 cum" + its receipt; test company "20 TMT = 1 ton", Steel / TMT / Rod steel split | S | Must | — | blocked | — | Changes saved data: Ilan's OK row by row (rows listed in session 7 Nov). New India: ask Midhlaj the real load size. |
+
 ## Done log
 
 | Date | ID / work | Commit |
