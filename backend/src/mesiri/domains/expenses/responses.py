@@ -23,6 +23,11 @@ class ExpenseResponse(BaseModel):
     expense_number: str | None = None
     account_id: str | None = None
     account_name: str | None = None
+    #: PRC-18: petty_cash / direct / own_pocket / unpaid (domains/expenses/paid_via.py).
+    paid_via: str | None = None
+    #: The paying account's type (cash, bank, employee_advance, other) and what was paid so far.
+    account_type: str | None = None
+    paid_amount: Decimal | None = None
     custodian_name: str | None = None
     amount: Decimal
     currency: str

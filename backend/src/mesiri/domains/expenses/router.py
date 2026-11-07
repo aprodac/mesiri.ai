@@ -41,6 +41,7 @@ from mesiri.application.vendors.resolution import PostgresVendorResolver
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
 from mesiri.domains.expenses.bill_file import bill_key, decode_bill
+from mesiri.domains.expenses.paid_via import paid_via
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import assert_downloadable_url
@@ -336,20 +337,48 @@ async def _list_names(conn: AsyncConnection, organization_id: uuid.UUID, items: 
     """Vendor, project and site names for a page of expenses, one query per kind."""
     from sqlalchemy import text
 
-    out: dict[str, dict] = {"vendors": {}, "projects": {}, "sites": {}}
+    out: dict[str, dict] = {"vendors": {}, "projects": {}, "sites": {}, "expense_categories": {}, "users": {}}
     wanted = {
         "vendors": {getattr(i, "vendor_id", None) for i in items} - {None},
         "projects": {i.project_id for i in items} - {None},
         "sites": {i.site_id for i in items} - {None},
+        "expense_categories": {i.category_id for i in items} - {None},
+        "users": {getattr(i, "created_by", None) for i in items} - {None},
     }
     for kind, ids in wanted.items():
         if not ids:
             continue
+        name = "full_name" if kind == "users" else "name"
         rows = await conn.execute(
-            text(f"SELECT id, name FROM {kind} WHERE organization_id = :org AND id = ANY(:ids)"),
+            text(f"SELECT id, {name} AS name FROM {kind} WHERE organization_id = :org AND id = ANY(:ids)"),  # noqa: S608 -- fixed names
             {"org": organization_id, "ids": list(ids)},
         )
         out[kind] = {r.id: r.name for r in rows}
+    return out
+
+
+async def _list_payments(conn: AsyncConnection, organization_id: uuid.UUID, expense_ids: list) -> dict:
+    """PRC-18: per expense, its confirmed payments: the account paid most from (name, type), the total paid, and the
+    amount per account type that ``paid_via`` reads. One query for the page."""
+    from sqlalchemy import text
+
+    if not expense_ids:
+        return {}
+    rows = await conn.execute(
+        text(
+            "SELECT p.expense_id, a.id AS account_id, a.name AS account_name, a.account_type, SUM(p.amount) AS paid "
+            "FROM expense_payments p JOIN money_accounts a ON a.id = p.account_id "
+            "WHERE p.organization_id = :org AND p.expense_id = ANY(:ids) AND p.status = 'confirmed' "
+            "GROUP BY p.expense_id, a.id, a.name, a.account_type ORDER BY p.expense_id, SUM(p.amount) DESC"
+        ),
+        {"org": organization_id, "ids": list(expense_ids)},
+    )
+    out: dict = {}
+    for r in rows.mappings():
+        e = out.setdefault(r["expense_id"], {"account_id": str(r["account_id"]), "account_name": r["account_name"],
+                                             "account_type": r["account_type"], "paid": Decimal(0), "by_type": {}})
+        e["paid"] += Decimal(r["paid"])
+        e["by_type"][r["account_type"]] = e["by_type"].get(r["account_type"], Decimal(0)) + Decimal(r["paid"])
     return out
 
 
@@ -358,31 +387,34 @@ async def list_expenses(
     project_id: uuid.UUID | None = None,
     site_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
+    vendor_id: uuid.UUID | None = None,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    """Confirmed expenses, newest first. 7 Nov (PRC-18): ``vendor_id`` and the dates are honoured (the supplier sheet
+    asked for one supplier's expenses and got every expense), and each row says how it was paid (``paid_via``),
+    from which account, and who recorded it (whom a "reimbursable" one is owed to)."""
     scope = _expense_view_scope(auth_context)
     repo = PostgresExpenseRepository(conn)
-    cat_repo = PostgresExpenseCategoryRepository(conn)
 
     items = await repo.list_confirmed(
         auth_context.organization_id,
         project_id=project_id,
         site_id=site_id,
         category_id=category_id,
+        vendor_id=vendor_id,
+        start_date=date_from,
+        end_date=date_to,
     )
     items = [item for item in items if _in_scope(item.project_id, scope)]
 
-    # Build a category name lookup in one pass (avoids N queries)
-    cat_ids = {item.category_id for item in items if item.category_id}
-    cat_names: dict[uuid.UUID, str] = {}
-    for cid in cat_ids:
-        cat = await cat_repo.get_by_id(auth_context.organization_id, cid)
-        if cat:
-            cat_names[cid] = cat.name
     # WEB-51: the list names the vendor, project and site (the dashboard showed "Direct Payee" / "Org Wide" for every
-    # row without them), one query each.
+    # row without them), one query each; categories, payments and people the same way.
     names = await _list_names(conn, auth_context.organization_id, items)
+    cat_names = names["expense_categories"]
+    payments = await _list_payments(conn, auth_context.organization_id, [i.id for i in items])
 
     return [
         ExpenseResponse(
@@ -398,6 +430,12 @@ async def list_expenses(
             tax_amount=getattr(item, "tax_amount", None),
             category_id=item.category_id,
             category_name=cat_names.get(item.category_id),
+            account_id=payments.get(item.id, {}).get("account_id"),
+            account_name=payments.get(item.id, {}).get("account_name"),
+            account_type=payments.get(item.id, {}).get("account_type"),
+            paid_amount=payments.get(item.id, {}).get("paid"),
+            paid_via=paid_via(item.payment_status, payments.get(item.id, {}).get("by_type")),
+            created_by_name=names["users"].get(item.created_by),
             amount=item.amount,
             currency=item.currency,
             description=item.description,
@@ -559,6 +597,8 @@ async def get_expense(
     except Exception as ex:
         print(f"Failed resolving money account details for expense: {ex}")
 
+    paid = (await _list_payments(conn, auth_context.organization_id, [expense.id])).get(expense.id, {})
+
     user_name, user_email, user_role = None, None, None
     if expense.created_by:
         from sqlalchemy import text
@@ -587,6 +627,9 @@ async def get_expense(
         account_id=account_id,
         account_name=account_name,
         custodian_name=custodian_name,
+        account_type=paid.get("account_type"),
+        paid_amount=paid.get("paid"),
+        paid_via=paid_via(expense.payment_status, paid.get("by_type")),
         amount=expense.amount,
         currency=expense.currency,
         description=expense.description,

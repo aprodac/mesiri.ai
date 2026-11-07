@@ -30,6 +30,9 @@ export interface ExpenseDetailData {
   source: 'whatsapp' | 'web'
   reversed: boolean
   description?: string | null
+  /** PRC-18: "Petty cash · Villa box", "Owed to Ravi", "Unpaid". */
+  paid_line?: string
+  recorded_by?: string | null
 }
 
 interface ExpenseDetailSheetProps {
@@ -184,7 +187,11 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
               )}
             </Row>
             <Row label="Where">{[expense.project_name, expense.site_name].filter(Boolean).join(' · ') || '—'}</Row>
-            <Row label="From">{expense.source === 'whatsapp' ? 'WhatsApp' : 'Dashboard'}</Row>
+            {expense.paid_line && <Row label="Paid">{expense.paid_line}</Row>}
+            <Row label="From">
+              {expense.source === 'whatsapp' ? 'WhatsApp' : 'Dashboard'}
+              {expense.recorded_by && <span className="font-normal text-muted-foreground"> · {expense.recorded_by}</span>}
+            </Row>
             {expense.description && <Row label="Note">{expense.description}</Row>}
           </section>
         </div>

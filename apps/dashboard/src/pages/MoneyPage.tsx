@@ -1,12 +1,13 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftRight, Banknote, Filter, Landmark, MoreHorizontal, Plus, TriangleAlert, Undo2, Wallet } from 'lucide-react'
+import { ArrowLeftRight, CheckCircle2, ChevronRight, Download, Filter, HandCoins, Landmark, MoreHorizontal, PiggyBank, Plus, TriangleAlert, Undo2, Wallet } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Callout, PageHeader, Segmented, StatStrip } from '@/components/dpr-page'
+import { Callout, Segmented } from '@/components/dpr-page'
 import { FilterSelect, PeriodSelect } from '@/components/filter-select'
 import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet'
 import { AccountDialog } from '@/components/accounts/account-dialog'
@@ -23,6 +24,9 @@ import { periodRange, type Period } from '@/lib/period'
 import { CHIP } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import { deleteAccountApi, fetchAccountsApi, fetchFinanceSettingsApi, fetchTransactionsApi, reverseTransferApi } from '@/lib/api'
+import { exportCsv } from '@/lib/export'
+import { compact, fetchExpenses } from '@/lib/expenses'
+import type { AccountForEdit } from '@/components/accounts/account-dialog'
 
 // WEB-51 (Ilan, 5 Nov): Finance > Money, one page for what used to be Accounts, Petty cash, Transactions and the
 // transfers. Accounts: the company's bank accounts, each site's petty cash and the rest, with what each holds; a row
@@ -30,6 +34,9 @@ import { deleteAccountApi, fetchAccountsApi, fetchFinanceSettingsApi, fetchTrans
 // every money movement, filtered by account, kind and period (dropdowns, in the address); a transfer can be undone.
 // The old pages filled gaps with made-up text ("Site Supervisor", "Project Site", "Direct Payee", two invented
 // banks in the top-up dialog); this page shows only what the API returns.
+// PRC-18 (7 Nov): four tiles -- in the bank, petty cash, owed back to staff, unpaid bills -- the last two open
+// Expenses filtered; each account says what was spent from it in 30 days; a setup guide names what is missing (the
+// bank account, each site's petty cash); transactions show money in, out and net, and export.
 
 type View = 'accounts' | 'transactions'
 type Kind = 'bank' | 'petty' | 'other'
@@ -85,6 +92,7 @@ export default function MoneyPage() {
   const [dialog, setDialog] = React.useState<'transfer' | 'topup' | 'voucher' | null>(null)
   const [opened, setOpened] = React.useState<Account | null>(null)
   const [editing, setEditing] = React.useState<Account | null | undefined>(undefined) // null: a new account
+  const [preset, setPreset] = React.useState<{ type: 'bank' | 'cash'; site_id?: string; name?: string } | null>(null)
   const [closing, setClosing] = React.useState<Account | null>(null)
   const [undoing, setUndoing] = React.useState<any | null>(null)
 
@@ -127,6 +135,20 @@ export default function MoneyPage() {
     enabled: view === 'transactions',
   })
   const settings = useQuery({ queryKey: ['finance', 'settings'], queryFn: fetchFinanceSettingsApi, staleTime: 60_000 })
+  // Every expense in scope (no dates): what is still owed back to staff or unpaid, and each account's last 30 days.
+  const expenses = useQuery({ queryKey: ['finance', 'expenses', { ...scoped, all: true }], queryFn: () => fetchExpenses(scoped), retry: false })
+  const since = periodRange('30d', '', '').from ?? ''
+  const spent30 = React.useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of expenses.data ?? []) if (e.account_id && e.date >= since) m.set(e.account_id, (m.get(e.account_id) ?? 0) + e.amount)
+    return m
+  }, [expenses.data, since])
+  const owed = (expenses.data ?? []).filter((e) => e.paid_via === 'own_pocket')
+  const unpaidBills = (expenses.data ?? []).filter((e) => e.paid_via === 'unpaid')
+  const addAccount = (p: typeof preset) => {
+    setPreset(p)
+    setEditing(null)
+  }
   const LOW_PETTY = Number((settings.data as any)?.low_float_threshold ?? 50000)
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['finance'] })
   const close = useMutation({
@@ -181,21 +203,27 @@ export default function MoneyPage() {
     a.kind === 'bank' ? [a.bank_name, a.account_last4 ? `•••• ${a.account_last4}` : null].filter(Boolean).join(' ') || null : null
 
   const header = (
-    <PageHeader
-      title="Money"
-      actions={
-        !readOnly && (
-          <>
-            <Button size="sm" variant="outline" className="gap-1.5" disabled={active.length < 2} onClick={() => setDialog('transfer')}>
-              <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Transfer</span>
-            </Button>
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setEditing(null)}>
-              <Plus className="size-4" /> Add account
-            </Button>
-          </>
-        )
-      }
-    />
+    <header className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+          <PiggyBank className="size-5" />
+        </span>
+        <div>
+          <div className="text-xs text-muted-foreground">Finance</div>
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Money</h1>
+        </div>
+      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" disabled={active.length < 2} onClick={() => setDialog('transfer')}>
+            <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Transfer</span>
+          </Button>
+          <Button className="gap-2 font-semibold" onClick={() => addAccount(null)}>
+            <Plus className="size-4" /> <span className="hidden sm:inline">Add account</span>
+          </Button>
+        </div>
+      )}
+    </header>
   )
   const switcher = (
     <Segmented<View>
@@ -221,8 +249,10 @@ export default function MoneyPage() {
                 {low && <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Low</span>}
                 {a.status === 'inactive' && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Closed</span>}
               </span>
-              {(bankLine(a) || a.custodian || where(a)) && (
-                <span className="text-xs text-muted-foreground">{[bankLine(a), a.custodian, where(a)].filter(Boolean).join(' · ')}</span>
+              {(bankLine(a) || a.custodian || where(a) || spent30.get(a.id)) && (
+                <span className="text-xs text-muted-foreground">
+                  {[bankLine(a), a.custodian, where(a), spent30.get(a.id) ? `${rupees(spent30.get(a.id)!)} spent in 30 days` : null].filter(Boolean).join(' · ')}
+                </span>
               )}
             </button>
             <span className="flex shrink-0 items-center gap-1">
@@ -290,30 +320,66 @@ export default function MoneyPage() {
               ))}
             </div>
           ) : all.length === 0 ? (
+            <>
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
               <Landmark className="size-6 text-muted-foreground" aria-hidden="true" />
               <p className="text-sm font-medium">No accounts yet</p>
               <p className="max-w-sm text-sm text-muted-foreground">Add the company's bank account and each site's petty cash to see what is spent from where.</p>
               {!readOnly && (
-                <Button size="sm" onClick={() => setEditing(null)}>
+                <Button size="sm" onClick={() => addAccount(null)}>
                   Add account
                 </Button>
               )}
             </div>
+            <SetupGuide
+              hasBank={false}
+              sitesWithoutCash={[...siteNames.entries()]
+                .filter(([id, st]) => (scope.mode === 'portfolio' || st.projectId === scope.projectId) && (scope.mode !== 'site' || id === scope.siteId))
+                .map(([id, st]) => ({ id, name: st.name, project: st.project }))}
+              readOnly={readOnly}
+              onAdd={addAccount}
+            />
+            </>
           ) : (
             <>
-              <StatStrip
-                stats={[
-                  { label: 'In bank', value: rupees(banks.reduce((n, a) => n + a.balance, 0)), icon: Landmark },
+              <MoneyTiles
+                tiles={[
+                  { label: 'In the bank', value: compact(banks.reduce((n, a) => n + a.balance, 0)), hint: `${banks.length} ${banks.length === 1 ? 'account' : 'accounts'}`, icon: Landmark, tone: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100' },
                   {
                     label: 'Petty cash',
-                    value: rupees(petty.reduce((n, a) => n + a.balance, 0)),
+                    value: compact(petty.reduce((n, a) => n + a.balance, 0)),
+                    hint: petty.some((a) => a.balance < LOW_PETTY) ? `${petty.filter((a) => a.balance < LOW_PETTY).length} running low` : `${petty.length} at sites`,
+                    warn: petty.some((a) => a.balance < LOW_PETTY),
                     icon: Wallet,
-                    tone: petty.some((a) => a.balance < LOW_PETTY) ? 'warn' : 'default',
-                    hint: petty.some((a) => a.balance < LOW_PETTY) ? `${petty.filter((a) => a.balance < LOW_PETTY).length} low` : undefined,
+                    tone: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100',
                   },
-                  { label: 'All accounts', value: rupees(active.reduce((n, a) => n + a.balance, 0)), icon: Banknote },
+                  {
+                    label: 'Owed back to staff',
+                    value: compact(owed.reduce((n, e) => n + e.amount, 0)),
+                    hint: owed.length ? `${owed.length} paid from their pocket` : 'Nothing owed',
+                    icon: HandCoins,
+                    tone: 'bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-100',
+                    to: owed.length ? '/finance/expenses?paid=own_pocket&period=all' : undefined,
+                  },
+                  {
+                    label: 'Unpaid bills',
+                    value: compact(unpaidBills.reduce((n, e) => n + e.amount, 0)),
+                    hint: unpaidBills.length ? `${unpaidBills.length} not paid yet` : 'All paid',
+                    warn: unpaidBills.length > 0,
+                    icon: TriangleAlert,
+                    tone: 'bg-orange-200 text-orange-950 dark:bg-orange-900 dark:text-orange-100',
+                    to: unpaidBills.length ? '/finance/expenses?paid=unpaid&period=all' : undefined,
+                  },
                 ]}
+                onOpen={(to) => navigate(to)}
+              />
+              <SetupGuide
+                hasBank={banks.length > 0}
+                sitesWithoutCash={[...siteNames.entries()]
+                  .filter(([id, st]) => (scope.mode === 'portfolio' || st.projectId === scope.projectId) && (scope.mode !== 'site' || id === scope.siteId) && !petty.some((a) => a.site_id === id))
+                  .map(([id, st]) => ({ id, name: st.name, project: st.project }))}
+                readOnly={readOnly}
+                onAdd={addAccount}
               />
               {(['bank', 'petty', 'other'] as Kind[]).map((k) => {
                 const list = all.filter((a) => a.kind === k)
@@ -383,6 +449,7 @@ export default function MoneyPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
+              <TxSummary rows={txRows} account={account !== 'all' ? account : null} onExport={() => exportTx(txRows, account !== 'all' ? account : null)} />
               {txDays.map((day) => (
                 <section key={day.date} className="flex flex-col gap-1">
                   <h3 className="text-xs font-semibold text-muted-foreground">{dayLabel(day.date)}</h3>
@@ -440,7 +507,8 @@ export default function MoneyPage() {
         open={editing !== undefined}
         onOpenChange={(o) => !o && setEditing(undefined)}
         scope={scope}
-        account={editing ? { id: editing.id, name: editing.name, type: editing.type, owner_user_id: editing.owner_user_id, bank_name: editing.bank_name, ifsc_code: editing.ifsc_code, account_last4: editing.account_last4 } : null}
+        account={editing ? ({ id: editing.id, name: editing.name, type: editing.type, owner_user_id: editing.owner_user_id, bank_name: editing.bank_name, ifsc_code: editing.ifsc_code, account_last4: editing.account_last4 } satisfies AccountForEdit) : null}
+        preset={editing === null ? preset : null}
         onSaved={refresh}
       />
       <TransferMoneyDialog
@@ -522,5 +590,145 @@ export default function MoneyPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function exportTx(rows: any[], account: string | null): void {
+  exportCsv(
+    `money-transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Date', 'Kind', 'From', 'To', 'Description', 'Amount', ...(account ? ['In / out'] : [])],
+    rows.map((tx) => [
+      tx.occurred_date, TX_LABEL[tx.transaction_type] ?? tx.transaction_type, tx.from_account_name ?? '', tx.to_account_name ?? '', tx.description ?? '', Number(tx.amount) || 0,
+      ...(account ? [String(tx.to_account_id) === account ? 'in' : String(tx.from_account_id) === account ? 'out' : ''] : []),
+    ]),
+  )
+}
+
+/** Money in, out and net for the account chosen; otherwise how much moved, by kind. */
+function TxSummary({ rows, account, onExport }: { rows: any[]; account: string | null; onExport: () => void }) {
+  const amount = (tx: any) => Number(tx.amount) || 0
+  const inn = account ? rows.filter((tx) => String(tx.to_account_id) === account).reduce((n, tx) => n + amount(tx), 0) : 0
+  const out = account ? rows.filter((tx) => String(tx.from_account_id) === account).reduce((n, tx) => n + amount(tx), 0) : 0
+  const kinds = new Map<string, number>()
+  for (const tx of rows) kinds.set(tx.transaction_type, (kinds.get(tx.transaction_type) ?? 0) + amount(tx))
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-card px-4 py-3 text-sm">
+      {account ? (
+        <>
+          <span>
+            In <strong className="tabular-nums text-success">+{rupees(inn)}</strong>
+          </span>
+          <span>
+            Out <strong className="tabular-nums text-destructive">−{rupees(out)}</strong>
+          </span>
+          <span>
+            Net <strong className={cn('tabular-nums', inn - out < 0 && 'text-destructive')}>{inn - out < 0 ? '−' : '+'}{rupees(Math.abs(inn - out))}</strong>
+          </span>
+        </>
+      ) : (
+        [...kinds.entries()].map(([k, v]) => (
+          <span key={k}>
+            {TX_LABEL[k] ?? k} <strong className="tabular-nums">{rupees(v)}</strong>
+          </span>
+        ))
+      )}
+      <span className="text-muted-foreground">
+        {rows.length} {rows.length === 1 ? 'entry' : 'entries'}
+      </span>
+      <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={onExport}>
+        <Download className="size-3.5" /> Export
+      </Button>
+    </div>
+  )
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function MoneyTiles({
+  tiles,
+  onOpen,
+}: {
+  tiles: { label: string; value: string; hint: string; icon: LucideIcon; tone: string; warn?: boolean; to?: string }[]
+  onOpen: (to: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+      {tiles.map((t) => {
+        const body = (
+          <>
+            <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', t.tone)}>
+              <t.icon className="size-4 sm:size-5" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-lg leading-none font-semibold tabular-nums sm:text-2xl">{t.value}</span>
+              <span className="truncate text-xs text-foreground/80 sm:text-sm">{t.label}</span>
+              <span className={cn('truncate text-[11px] text-muted-foreground', t.warn && 'font-semibold text-draft')}>{t.hint}</span>
+            </span>
+            {t.to && <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
+          </>
+        )
+        return t.to ? (
+          <button key={t.label} type="button" onClick={() => onOpen(t.to!)} className="flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:p-3.5">
+            {body}
+          </button>
+        ) : (
+          <div key={t.label} className="flex items-center gap-3 rounded-xl border bg-card p-3 sm:p-3.5">
+            {body}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** What is missing for "spent from where" to work: the company's bank account and each site's petty cash. */
+function SetupGuide({
+  hasBank,
+  sitesWithoutCash,
+  readOnly,
+  onAdd,
+}: {
+  hasBank: boolean
+  sitesWithoutCash: { id: string; name: string; project: string }[]
+  readOnly: boolean
+  onAdd: (preset: { type: 'bank' | 'cash'; site_id?: string; name?: string }) => void
+}) {
+  if (readOnly || (hasBank && sitesWithoutCash.length === 0)) return null
+  const shown = sitesWithoutCash.slice(0, 4)
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900 dark:bg-sky-950/30">
+      <div>
+        <h3 className="text-sm font-semibold">Set up where money is kept</h3>
+        <p className="text-sm text-muted-foreground">
+          Then every expense says whether it came from the bank or a site's petty cash, and the totals split both ways.
+        </p>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        <li className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2">
+          {hasBank ? <CheckCircle2 className="size-5 shrink-0 text-success" /> : <Landmark className="size-5 shrink-0 text-sky-700 dark:text-sky-300" />}
+          <span className="min-w-0 flex-1 text-sm font-medium">{hasBank ? 'Bank account added' : "The company's bank account"}</span>
+          {!hasBank && (
+            <Button size="sm" variant="outline" onClick={() => onAdd({ type: 'bank' })}>
+              Add
+            </Button>
+          )}
+        </li>
+        {shown.map((site) => (
+          <li key={site.id} className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2">
+            <Wallet className="size-5 shrink-0 text-amber-700 dark:text-amber-300" />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm font-medium">Petty cash at {site.name}</span>
+              <span className="truncate text-xs text-muted-foreground">{site.project}</span>
+            </span>
+            <Button size="sm" variant="outline" onClick={() => onAdd({ type: 'cash', site_id: site.id, name: `${site.name} petty cash` })}>
+              Add
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {sitesWithoutCash.length > shown.length && (
+        <p className="text-xs text-muted-foreground">{sitesWithoutCash.length - shown.length} more sites have no petty cash account yet.</p>
+      )}
+    </section>
   )
 }

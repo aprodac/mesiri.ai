@@ -67,6 +67,31 @@ async def clean_db(test_engine: AsyncEngine):
         await conn.execute(sa.text("DELETE FROM users"))
         await conn.execute(sa.text("DELETE FROM organizations"))
     yield
+    # Also after (7 Nov): receipts left behind made later files' clean-up fail on material_receipts_site_id_fkey.
+    async with test_engine.begin() as conn:
+        await conn.execute(sa.text("DELETE FROM material_movements"))
+        # A correction row points at the row it corrects, across the two tables.
+        await conn.execute(sa.text("UPDATE material_usage SET reverses_movement_id = NULL"))
+        await conn.execute(sa.text("UPDATE material_receipts SET reverses_movement_id = NULL"))
+        await conn.execute(sa.text("DELETE FROM material_receipts"))
+        await conn.execute(sa.text("DELETE FROM material_usage"))
+        # PRC-04: bills and the vendors deliveries now create.
+        await conn.execute(sa.text("DELETE FROM material_invoice_attachments"))
+        await conn.execute(sa.text("DELETE FROM material_invoices"))
+        await conn.execute(sa.text("DELETE FROM materials_catalog"))
+        await conn.execute(sa.text("DELETE FROM expense_payments"))
+        await conn.execute(sa.text("DELETE FROM expense_attachments"))
+        await conn.execute(sa.text("DELETE FROM budget_allocations"))
+        await conn.execute(sa.text("DELETE FROM budgets"))
+        await conn.execute(sa.text("DELETE FROM money_transactions"))
+        await conn.execute(sa.text("DELETE FROM expenses"))
+        await conn.execute(sa.text("DELETE FROM vendors"))
+        await conn.execute(sa.text("DELETE FROM money_accounts"))
+        await conn.execute(sa.text("DELETE FROM expense_categories"))
+        await conn.execute(sa.text("DELETE FROM sites"))
+        await conn.execute(sa.text("DELETE FROM projects"))
+        await conn.execute(sa.text("DELETE FROM users"))
+        await conn.execute(sa.text("DELETE FROM organizations"))
 
 
 @pytest.fixture

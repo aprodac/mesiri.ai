@@ -38,18 +38,26 @@ async def test_engine():
 
 @pytest.fixture
 async def clean_db(test_engine: AsyncEngine):
-    async with test_engine.begin() as conn:
-        await conn.execute(sa.text("DELETE FROM idempotency_keys WHERE command_type = 'record_expense'"))
-        await conn.execute(sa.text("DELETE FROM expense_payments"))
-        await conn.execute(sa.text("DELETE FROM expense_attachments"))
-        await conn.execute(sa.text("DELETE FROM expenses"))
-        await conn.execute(sa.text("DELETE FROM vendors"))  # WEB-51: the list test names a vendor
-        await conn.execute(sa.text("DELETE FROM expense_categories"))
-        await conn.execute(sa.text("DELETE FROM sites"))
-        await conn.execute(sa.text("DELETE FROM projects"))
-        await conn.execute(sa.text("DELETE FROM users"))
-        await conn.execute(sa.text("DELETE FROM organizations"))
+    async def wipe() -> None:
+        async with test_engine.begin() as conn:
+            await conn.execute(sa.text("DELETE FROM idempotency_keys WHERE command_type = 'record_expense'"))
+            await conn.execute(sa.text("DELETE FROM expense_payments"))
+            await conn.execute(sa.text("DELETE FROM money_transactions"))  # PRC-18: payments post one each
+            await conn.execute(sa.text("DELETE FROM money_accounts"))
+            await conn.execute(sa.text("DELETE FROM expense_attachments"))
+            await conn.execute(sa.text("DELETE FROM expenses"))
+            await conn.execute(sa.text("DELETE FROM vendors"))  # WEB-51: the list test names a vendor
+            await conn.execute(sa.text("DELETE FROM expense_categories"))
+            await conn.execute(sa.text("DELETE FROM sites"))
+            await conn.execute(sa.text("DELETE FROM projects"))
+            await conn.execute(sa.text("DELETE FROM users"))
+            await conn.execute(sa.text("DELETE FROM organizations"))
+
+    await wipe()
     yield
+    # Also after: expenses left behind (they name vendors since WEB-51) made every later file's clean-up fail on
+    # fk_expenses_vendor_id -- the 24 errors a full `contract/` run showed on 7 Nov.
+    await wipe()
 
 
 @pytest.fixture
@@ -418,3 +426,67 @@ async def test_a_bill_needs_access_to_the_expenses_project(client, test_engine, 
         headers=_auth(_token(user_id, test_org, "site_engineer")),
     )
     assert resp.status_code == 403
+
+
+# PRC-18 (decision D3): every expense says how it was paid, from the account it was paid from; the list honours the
+# supplier and the dates (the supplier sheet asked for one supplier's expenses and got every expense).
+async def _account(test_engine, org_id, user_id, account_type: str, name: str) -> uuid.UUID:
+    account_id = uuid.uuid4()
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO money_accounts (id, organization_id, account_type, name, currency, opening_balance, "
+                "opening_balance_date, status, created_by) VALUES (:id, :org, :type, :name, 'INR', 100000, "
+                "CURRENT_DATE - 60, 'active', :user)"
+            ),
+            {"id": account_id, "org": org_id, "type": account_type, "name": name, "user": user_id},
+        )
+    return account_id
+
+
+async def test_each_expense_says_how_it_was_paid(client, test_engine, test_org, admin_ctx):
+    h = {**_auth(admin_ctx["token"])}
+    box = await _account(test_engine, test_org, admin_ctx["user_id"], "cash", "Villa petty cash")
+    bank = await _account(test_engine, test_org, admin_ctx["user_id"], "bank", "SBI current")
+
+    async def record(**extra) -> str:
+        resp = await client.post("/expenses", json={**_body(admin_ctx), **extra},
+                                 headers={**h, "Idempotency-Key": str(uuid.uuid4())})
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    petty = await record(account_id=str(box), vendor_text="Tea stall")
+    direct = await record(account_id=str(bank), vendor_text="Malabar Hardware", amount="12000.00")
+    unpaid = await record(vendor_text="Malabar Hardware")
+    own = await record(occurred_date=(datetime.date.today() - datetime.timedelta(days=40)).isoformat())
+    async with test_engine.begin() as conn:  # "paid from my pocket" (the WhatsApp path's paid_from_own_pocket)
+        await conn.execute(sa.text("UPDATE expenses SET payment_status = 'reimbursable' WHERE id = :id"), {"id": own})
+
+    rows = {r["id"]: r for r in (await client.get("/expenses", headers=h)).json()}
+    assert (rows[petty]["paid_via"], rows[petty]["account_name"], rows[petty]["account_type"]) == ("petty_cash", "Villa petty cash", "cash")
+    assert (rows[direct]["paid_via"], rows[direct]["account_name"], rows[direct]["paid_amount"]) == ("direct", "SBI current", "12000.00")
+    assert (rows[unpaid]["paid_via"], rows[unpaid]["account_name"]) == ("unpaid", None)
+    assert rows[own]["paid_via"] == "own_pocket" and rows[own]["created_by_name"] == "Test User"
+    assert rows[petty]["category_name"] == "materials"
+
+    one = (await client.get(f"/expenses/{direct}", headers=h)).json()
+    assert (one["paid_via"], one["account_type"]) == ("direct", "bank")
+
+    # One supplier's expenses only; the dates bound the list.
+    vendor_id = rows[direct]["vendor_id"]
+    mine = (await client.get("/expenses", params={"vendor_id": vendor_id}, headers=h)).json()
+    assert {r["id"] for r in mine} == {direct, unpaid}
+    recent = (await client.get("/expenses", params={"date_from": (datetime.date.today() - datetime.timedelta(days=30)).isoformat()}, headers=h)).json()
+    assert own not in {r["id"] for r in recent} and petty in {r["id"] for r in recent}
+
+
+def test_paid_via_rule():
+    from decimal import Decimal
+
+    from mesiri.domains.expenses.paid_via import paid_via
+
+    assert paid_via("paid", {"employee_advance": Decimal("300")}) == "petty_cash"
+    assert paid_via("paid", {"cash": Decimal("100"), "bank": Decimal("900")}) == "direct"  # the larger part
+    assert paid_via("partially_paid", {"other": Decimal("50")}) == "direct"
+    assert paid_via("reimbursable", None) == "own_pocket"
+    assert paid_via("unpaid", {}) == "unpaid"

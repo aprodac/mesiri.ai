@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { AppScope } from '@/lib/scope-types'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { createAccountApi, fetchUsers, updateAccountApi } from '@/lib/api'
+import { useSiteNames } from '@/lib/site-names'
 
 // WEB-66 (Ilan, 5 Nov: "what about bank accounts page", "bank account connecting it to a user"): one dialog adds or
 // edits a money account: its name, kind, who holds it (a person in the team) and, for a bank account, the bank, IFSC
@@ -39,10 +40,12 @@ interface AccountDialogProps {
   scope: AppScope
   /** The account to edit; null to add one. */
   account: AccountForEdit | null
+  /** A new account's kind, site and name to start from (the Money page's setup guide: "Add petty cash for Block A"). */
+  preset?: { type: Kind; site_id?: string; name?: string } | null
   onSaved: () => void
 }
 
-export function AccountDialog({ open, onOpenChange, scope, account, onSaved }: AccountDialogProps) {
+export function AccountDialog({ open, onOpenChange, scope, account, preset, onSaved }: AccountDialogProps) {
   const editing = account !== null
   const [name, setName] = React.useState('')
   const [kind, setKind] = React.useState<Kind>('bank')
@@ -51,19 +54,27 @@ export function AccountDialog({ open, onOpenChange, scope, account, onSaved }: A
   const [bank, setBank] = React.useState('')
   const [ifsc, setIfsc] = React.useState('')
   const [last4, setLast4] = React.useState('')
+  // PRC-18 (7 Nov): a site's petty cash says which site. It was linked only when the page was in one site's view, so
+  // one added from the company view belonged to no site.
+  const [siteId, setSiteId] = React.useState('')
+  const siteNames = useSiteNames()
+  const sites = [...siteNames.entries()]
+    .filter(([, s]) => scope.mode === 'portfolio' || s.projectId === scope.projectId)
+    .sort((a, b) => `${a[1].project} ${a[1].name}`.localeCompare(`${b[1].project} ${b[1].name}`))
   const users = useQuery({ queryKey: ['users'], queryFn: fetchUsers, enabled: open })
   const team = (users.data ?? []).filter((u) => u.status === 'active' || u.id === account?.owner_user_id)
 
   React.useEffect(() => {
     if (!open) return
-    setName(account?.name ?? '')
-    setKind((['bank', 'cash', 'employee_advance', 'other'].includes(account?.type ?? '') ? account?.type : 'bank') as Kind)
+    setName(account?.name ?? preset?.name ?? '')
+    setKind((['bank', 'cash', 'employee_advance', 'other'].includes(account?.type ?? '') ? account?.type : preset?.type ?? 'bank') as Kind)
+    setSiteId(preset?.site_id ?? (scope.mode === 'site' ? scope.siteId : ''))
     setOpening('')
     setHolder(account?.owner_user_id ?? NOBODY)
     setBank(account?.bank_name ?? '')
     setIfsc(account?.ifsc_code ?? '')
     setLast4(account?.account_last4 ?? '')
-  }, [open, account])
+  }, [open, account, preset]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isBank = kind === 'bank'
   const save = useMutation({
@@ -80,8 +91,8 @@ export function AccountDialog({ open, onOpenChange, scope, account, onSaved }: A
         account_type: kind,
         currency: 'INR',
         opening_balance: Number(opening) || 0,
-        project_id: scope.mode !== 'portfolio' ? scope.projectId : undefined,
-        site_id: scope.mode === 'site' ? scope.siteId : undefined,
+        project_id: kind === 'cash' && siteId ? siteNames.get(siteId)?.projectId : scope.mode !== 'portfolio' ? scope.projectId : undefined,
+        site_id: kind === 'cash' && siteId ? siteId : scope.mode === 'site' ? scope.siteId : undefined,
         ...details,
         owner_user_id: details.owner_user_id ?? undefined,
       })
@@ -134,6 +145,23 @@ export function AccountDialog({ open, onOpenChange, scope, account, onSaved }: A
               </div>
             </div>
           )}
+          {!editing && kind === 'cash' && (
+            <div className="grid gap-1.5">
+              <Label>Site</Label>
+              <Select value={siteId} onValueChange={setSiteId}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Which site keeps this cash" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.map(([id, s]) => (
+                    <SelectItem key={id} value={id}>
+                      {s.project} › {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid gap-1.5">
             <Label>{isBank ? 'Who looks after it' : 'Who holds the cash'}</Label>
             <Select value={holder} onValueChange={setHolder}>
@@ -175,7 +203,7 @@ export function AccountDialog({ open, onOpenChange, scope, account, onSaved }: A
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" form="account-form" disabled={save.isPending || !name.trim()}>
+          <Button type="submit" form="account-form" disabled={save.isPending || !name.trim() || (!editing && kind === 'cash' && sites.length > 0 && !siteId)}>
             {save.isPending ? 'Saving…' : editing ? 'Save' : 'Add account'}
           </Button>
         </DialogFooter>
