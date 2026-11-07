@@ -25,7 +25,8 @@ import { CHIP } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import { deleteAccountApi, fetchAccountsApi, fetchFinanceSettingsApi, fetchTransactionsApi, reverseTransferApi } from '@/lib/api'
 import { exportCsv } from '@/lib/export'
-import { compact, fetchExpenses } from '@/lib/expenses'
+import { compact, fetchExpenses, mayManageMoney, mayMoveMoney } from '@/lib/expenses'
+import { useAuth } from '@/lib/AuthContext'
 import type { AccountForEdit } from '@/components/accounts/account-dialog'
 
 // WEB-51 (Ilan, 5 Nov): Finance > Money, one page for what used to be Accounts, Petty cash, Transactions and the
@@ -81,6 +82,10 @@ export default function MoneyPage() {
   const { scope } = useScope()
   const siteNames = useSiteNames()
   const readOnly = useReadOnly()
+  const { me } = useAuth()
+  // SEC-03 (7 Nov): accounts and undo for the owner, admins and finance; transfers and top-ups also project managers.
+  const canManage = mayManageMoney(me?.role) && !readOnly
+  const canMove = mayMoveMoney(me?.role) && !readOnly
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [view, setView] = useUrlState<View>('view', 'accounts')
@@ -213,14 +218,16 @@ export default function MoneyPage() {
           <h1 className="text-2xl leading-tight font-semibold tracking-tight">Money</h1>
         </div>
       </div>
-      {!readOnly && (
+      {canMove && (
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2" disabled={active.length < 2} onClick={() => setDialog('transfer')}>
             <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Transfer</span>
           </Button>
-          <Button className="gap-2 font-semibold" onClick={() => addAccount(null)}>
-            <Plus className="size-4" /> <span className="hidden sm:inline">Add account</span>
-          </Button>
+          {canManage && (
+            <Button className="gap-2 font-semibold" onClick={() => addAccount(null)}>
+              <Plus className="size-4" /> <span className="hidden sm:inline">Add account</span>
+            </Button>
+          )}
         </div>
       )}
     </header>
@@ -274,13 +281,17 @@ export default function MoneyPage() {
                     >
                       Its transactions
                     </DropdownMenuItem>
-                    {a.kind === 'petty' && <DropdownMenuItem onClick={() => setDialog('topup')}>Top up</DropdownMenuItem>}
+                    {a.kind === 'petty' && canMove && <DropdownMenuItem onClick={() => setDialog('topup')}>Top up</DropdownMenuItem>}
                     {a.kind === 'petty' && <DropdownMenuItem onClick={() => setDialog('voucher')}>Record a voucher</DropdownMenuItem>}
-                    <DropdownMenuItem onClick={() => setEditing(a)}>Edit</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setClosing(a)}>
-                      Close account
-                    </DropdownMenuItem>
+                    {canManage && (
+                      <>
+                        <DropdownMenuItem onClick={() => setEditing(a)}>Edit</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setClosing(a)}>
+                          Close account
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -325,7 +336,7 @@ export default function MoneyPage() {
               <Landmark className="size-6 text-muted-foreground" aria-hidden="true" />
               <p className="text-sm font-medium">No accounts yet</p>
               <p className="max-w-sm text-sm text-muted-foreground">Add the company's bank account and each site's petty cash to see what is spent from where.</p>
-              {!readOnly && (
+              {canManage && (
                 <Button size="sm" onClick={() => addAccount(null)}>
                   Add account
                 </Button>
@@ -336,7 +347,7 @@ export default function MoneyPage() {
               sitesWithoutCash={[...siteNames.entries()]
                 .filter(([id, st]) => (scope.mode === 'portfolio' || st.projectId === scope.projectId) && (scope.mode !== 'site' || id === scope.siteId))
                 .map(([id, st]) => ({ id, name: st.name, project: st.project }))}
-              readOnly={readOnly}
+              readOnly={!canManage}
               onAdd={addAccount}
             />
             </>
@@ -378,7 +389,7 @@ export default function MoneyPage() {
                 sitesWithoutCash={[...siteNames.entries()]
                   .filter(([id, st]) => (scope.mode === 'portfolio' || st.projectId === scope.projectId) && (scope.mode !== 'site' || id === scope.siteId) && !petty.some((a) => a.site_id === id))
                   .map(([id, st]) => ({ id, name: st.name, project: st.project }))}
-                readOnly={readOnly}
+                readOnly={!canManage}
                 onAdd={addAccount}
               />
               {(['bank', 'petty', 'other'] as Kind[]).map((k) => {
@@ -390,7 +401,7 @@ export default function MoneyPage() {
                       <span>
                         {KIND_LABEL[k]} <span className="font-normal text-muted-foreground">{list.length}</span>
                       </span>
-                      {k === 'petty' && !readOnly && (
+                      {k === 'petty' && canMove && (
                         <span className="flex gap-1">
                           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setDialog('topup')}>
                             Top up
@@ -462,8 +473,8 @@ export default function MoneyPage() {
                           <button
                             type="button"
                             className="flex min-w-0 flex-1 flex-col gap-0.5 text-left after:absolute after:inset-0 disabled:cursor-default"
-                            disabled={tx.transaction_type !== 'expense_payment' || !tx.source_id}
-                            onClick={() => navigate(`/finance/expenses/${tx.source_id}`)}
+                            disabled={tx.transaction_type !== 'expense_payment' || !(tx.expense_id ?? tx.source_id)}
+                            onClick={() => navigate(`/finance/expenses/${tx.expense_id ?? tx.source_id}`)}
                           >
                             <span className="flex flex-wrap items-center gap-2">
                               <span className="font-medium">{TX_LABEL[tx.transaction_type] ?? tx.transaction_type}</span>
@@ -478,7 +489,7 @@ export default function MoneyPage() {
                               {into ? '+' : outOf ? '−' : ''}
                               {rupees(Number(tx.amount) || 0)}
                             </span>
-                            {tx.transaction_type === 'transfer' && !readOnly && (
+                            {tx.transaction_type === 'transfer' && canManage && (
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -538,7 +549,7 @@ export default function MoneyPage() {
           open={opened !== null}
           onOpenChange={(o) => !o && setOpened(null)}
           onEdit={
-            readOnly
+            !canManage
               ? undefined
               : () => {
                   setEditing(opened)

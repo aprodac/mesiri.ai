@@ -490,3 +490,55 @@ def test_paid_via_rule():
     assert paid_via("partially_paid", {"other": Decimal("50")}) == "direct"
     assert paid_via("reimbursable", None) == "own_pocket"
     assert paid_via("unpaid", {}) == "unpaid"
+
+
+# PRC-35 + SEC-03 (approved in session by the owner, 7 Nov 2026): an expense is paid, in part or in full, or the
+# person who paid from their pocket is repaid, from an account; only the money roles may; a payment can be undone.
+async def test_pay_an_expense_in_parts_undo_and_who_may(client, test_engine, test_org, admin_ctx):
+    h = _auth(admin_ctx["token"])
+    bank = await _account(test_engine, test_org, admin_ctx["user_id"], "bank", "SBI current")
+    box = await _account(test_engine, test_org, admin_ctx["user_id"], "cash", "Villa petty cash")
+    resp = await client.post("/expenses", json={**_body(admin_ctx), "amount": "1000.00"},
+                             headers={**h, "Idempotency-Key": str(uuid.uuid4())})
+    eid = resp.json()["id"]
+
+    pm_id = await _make_user(test_engine, test_org, "project_manager")
+    pm = _auth(_token(pm_id, test_org, "project_manager"))
+    refused = await client.post(f"/expenses/{eid}/payments", json={"account_id": str(bank)}, headers=pm)
+    assert refused.status_code == 403
+    assert (await client.post("/finance/accounts", json={"name": "PM box", "account_type": "cash"}, headers=pm)).status_code == 403
+
+    part = await client.post(f"/expenses/{eid}/payments", json={"account_id": str(box), "amount": "400"}, headers=h)
+    assert part.status_code == 201, part.text
+    assert (part.json()["paid"], part.json()["left"], part.json()["payment_status"]) == ("400.00", "600.00", "partially_paid")
+    too_much = await client.post(f"/expenses/{eid}/payments", json={"account_id": str(bank), "amount": "700"}, headers=h)
+    assert too_much.status_code == 422 and "600" in too_much.text
+    rest = await client.post(f"/expenses/{eid}/payments", json={"account_id": str(bank)}, headers=h)  # what is left
+    assert rest.json()["payment_status"] == "paid" and rest.json()["left"] == "0.00"
+    assert (await client.post(f"/expenses/{eid}/payments", json={"account_id": str(bank)}, headers=h)).status_code == 409
+
+    row = next(r for r in (await client.get("/expenses", headers=h)).json() if r["id"] == eid)
+    assert (row["paid_via"], row["account_name"], row["paid_amount"]) == ("direct", "SBI current", "1000.00")  # the larger part
+    one = (await client.get(f"/expenses/{eid}", headers=h)).json()
+    assert one["account_name"] == "SBI current"  # was never found by the old ledger lookup
+
+    # The Money page's transaction says which expense it paid.
+    txs = (await client.get("/finance/transactions", headers=h)).json()
+    assert {t["expense_id"] for t in txs if t["transaction_type"] == "expense_payment"} == {eid}
+
+    undone = await client.post(f"/expenses/{eid}/payments/{rest.json()['payment_id']}/reverse", headers=h)
+    assert undone.status_code == 200 and undone.json()["payment_status"] == "partially_paid"
+    assert undone.json()["left"] == "600.00"
+
+
+async def test_repay_someone_who_paid_from_their_pocket(client, test_engine, test_org, admin_ctx):
+    h = _auth(admin_ctx["token"])
+    box = await _account(test_engine, test_org, admin_ctx["user_id"], "cash", "Villa petty cash")
+    eid = (await client.post("/expenses", json={**_body(admin_ctx), "amount": "250.00"},
+                             headers={**h, "Idempotency-Key": str(uuid.uuid4())})).json()["id"]
+    async with test_engine.begin() as conn:
+        await conn.execute(sa.text("UPDATE expenses SET payment_status = 'reimbursable' WHERE id = :id"), {"id": eid})
+    paid = await client.post(f"/expenses/{eid}/payments", json={"account_id": str(box)}, headers=h)
+    assert paid.status_code == 201 and paid.json()["payment_status"] == "paid"
+    row = next(r for r in (await client.get("/expenses", headers=h)).json() if r["id"] == eid)
+    assert row["paid_via"] == "petty_cash"

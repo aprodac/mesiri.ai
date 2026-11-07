@@ -234,6 +234,14 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare taking back a material transfer saved by mistake." + _WRITE),
     Allowed("undo_expense", "POST", "/expenses/{expense_id}/reverse",
             "Prepare taking back an expense saved by mistake (find it with list_expenses)." + _WRITE),
+    # PRC-35 (approved in session by the owner, 7 Nov 2026): pay an unpaid expense, or repay whoever paid from their
+    # own pocket, from one of the company's accounts. The API lets only the owner, an admin or finance.
+    Allowed("expense_payments", "GET", "/expenses/{expense_id}/payments",
+            "What has been paid on one expense, from which account, and what is still unpaid."),
+    Allowed("pay_expense", "POST", "/expenses/{expense_id}/payments",
+            "Prepare paying an expense, or repaying the person who paid it from their own pocket, from one of the company's "
+            "accounts (account_id from money_accounts; amount only when they paid part, else what is unpaid is paid). Find "
+            "the expense with list_expenses (its paid_via says unpaid or own_pocket)." + _WRITE),
     # PRC-02: the code picks `category_id` (the model's `category` in words, then the API's rule on the name); a
     # guessed id would fail the save, so it stays hidden on add and update.
     Allowed("add_material", "POST", "/materials",

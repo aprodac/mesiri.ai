@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { BILL_ACCEPT, billFile } from '@/lib/bill-upload'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { addExpenseBillApi, fetchExpenseAttachmentsApi } from '@/lib/api'
+import { ExpensePayments } from './expense-payments'
 
 // WEB-65 (Ilan, 5 Nov: "make sure sent expense bill and all is there saved for an expense if image is there"): one
 // expense, with every bill on it (WhatsApp photos, a delivery's invoice, ones added here) and "Add bill" for a photo
@@ -33,6 +34,8 @@ export interface ExpenseDetailData {
   /** PRC-18: "Petty cash · Villa box", "Owed to Ravi", "Unpaid". */
   paid_line?: string
   recorded_by?: string | null
+  /** PRC-35: paid from its owner's pocket: "Repay Ravi". */
+  owed_to?: string | null
 }
 
 interface ExpenseDetailSheetProps {
@@ -42,6 +45,10 @@ interface ExpenseDetailSheetProps {
   readOnly?: boolean
   onOpenVendor?: () => void
   onOpenCategory?: (categoryId: string) => void
+  /** PRC-35: the owner, an admin or finance may pay it. */
+  canPay?: boolean
+  /** Open the payment form at once ("Mark paid" from the list's menu). */
+  payNow?: boolean
 }
 
 const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
@@ -58,7 +65,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOpenVendor, onOpenCategory }: ExpenseDetailSheetProps) {
+export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOpenVendor, onOpenCategory, canPay, payNow }: ExpenseDetailSheetProps) {
   const queryClient = useQueryClient()
   const input = React.useRef<HTMLInputElement>(null)
   const id = expense?.id
@@ -162,6 +169,8 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
               </ul>
             )}
           </section>
+
+          {!expense.reversed && <ExpensePayments key={`${expense.id}:${payNow ? 1 : 0}`} expenseId={expense.id} owedTo={expense.owed_to} canPay={!!canPay && !readOnly} startOpen={payNow} />}
 
           <section className="divide-y border-t">
             <Row label="Category">

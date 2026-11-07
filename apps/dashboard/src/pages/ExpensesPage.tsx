@@ -25,7 +25,8 @@ import { CHIP } from '@/lib/site-day'
 import { swatch } from '@/lib/requests'
 import { cn } from '@/lib/utils'
 import { fetchAllExpenseAttachmentsApi, reverseExpenseApi } from '@/lib/api'
-import { PAID_VIA, compact, fetchExpenses, paidWords, rupees, type Expense, type PaidVia } from '@/lib/expenses'
+import { PAID_VIA, compact, fetchExpenses, mayManageMoney, paidWords, rupees, type Expense, type PaidVia } from '@/lib/expenses'
+import { useAuth } from '@/lib/AuthContext'
 
 // WEB-51 (Ilan, 5 Nov) and PRC-18 (7 Nov): Finance > Expenses. Five tiles say what was spent and how it was paid --
 // petty cash, direct, owed back to the person who paid, unpaid (decision D3: by the account it was paid from) --
@@ -49,6 +50,9 @@ export default function ExpensesPage() {
   usePageTitle('Expenses')
   const { scope } = useScope()
   const readOnly = useReadOnly()
+  const { me } = useAuth()
+  const canPay = mayManageMoney(me?.role) && !readOnly
+  const [payNow, setPayNow] = React.useState(false)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { id: routeId } = useParams()
@@ -197,6 +201,7 @@ export default function ExpensesPage() {
     description: opened.description,
     paid_line: paidWords(opened),
     recorded_by: opened.recorded_by,
+    owed_to: opened.paid_via === 'own_pocket' ? opened.recorded_by ?? 'whoever paid' : null,
   }
 
   const exportRows = (rows: Expense[]) =>
@@ -404,6 +409,16 @@ export default function ExpensesPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             <DropdownMenuItem onClick={() => open(e)}>Open</DropdownMenuItem>
+                            {canPay && (e.paid_via === 'unpaid' || e.paid_via === 'own_pocket' || e.payment === 'partially_paid') && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setPayNow(true)
+                                  open(e)
+                                }}
+                              >
+                                {e.paid_via === 'own_pocket' ? `Repay ${(e.recorded_by ?? '').split(' ')[0] || 'who paid'}` : 'Mark paid'}
+                              </DropdownMenuItem>
+                            )}
                             {photos.data?.[e.id] ? (
                               <DropdownMenuItem
                                 onClick={() => {
@@ -418,7 +433,7 @@ export default function ExpensesPage() {
                               !readOnly && <DropdownMenuItem onClick={() => open(e)}>Add bill</DropdownMenuItem>
                             )}
                             {e.vendor_id && <DropdownMenuItem onClick={() => setVendor(e.vendor_id!)}>Only {e.vendor}</DropdownMenuItem>}
-                            {!readOnly && (
+                            {canPay && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setTaking(e)}>
@@ -452,9 +467,16 @@ export default function ExpensesPage() {
       <RecordExpenseDialog open={recordOpen} onOpenChange={setRecordOpen} scope={scope} onExpenseCreated={() => queryClient.invalidateQueries({ queryKey: ['finance'] })} />
       <ExpenseDetailSheet
         open={!!detail}
-        onOpenChange={(o) => !o && close()}
+        onOpenChange={(o) => {
+          if (!o) {
+            close()
+            setPayNow(false)
+          }
+        }}
         expense={detail}
         readOnly={readOnly}
+        canPay={canPay}
+        payNow={payNow}
         onOpenVendor={() => {
           if (opened?.vendor_id) setVendor(opened.vendor_id)
           close()

@@ -39,7 +39,7 @@ from mesiri.application.finance.reverse_handler import ReverseTransactionHandler
 from mesiri.application.finance.reverse_resolution import PostgresReverseTargetResolver
 from mesiri.application.vendors.resolution import PostgresVendorResolver
 from mesiri.authorization.context import AuthorizationContext
-from mesiri.authorization.roles import may_view_expenses
+from mesiri.authorization.roles import may_manage_money, may_view_expenses
 from mesiri.domains.expenses.bill_file import bill_key, decode_bill
 from mesiri.domains.expenses.paid_via import paid_via
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
@@ -624,8 +624,10 @@ async def get_expense(
         category_name=cat_name,
         vendor_id=getattr(expense, "vendor_id", None),
         vendor_name=vendor_name,
-        account_id=account_id,
-        account_name=account_name,
+        # The ledger lookup above reads money_transactions by the expense's id, but a payment's transaction carries
+        # the payment's id, so it never matched: the payments say which account paid it.
+        account_id=paid.get("account_id") or account_id,
+        account_name=paid.get("account_name") or account_name,
         custodian_name=custodian_name,
         account_type=paid.get("account_type"),
         paid_amount=paid.get("paid"),
@@ -773,11 +775,10 @@ async def reverse_expense(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Reverse / void a confirmed expense, including reversing any ledger payments."""
-    role_upper = (auth_context.role or "USER").upper()
-    if role_upper not in ("ADMIN", "FINANCE", "USER", "OWNER", "SUPER_ADMIN"):
-        raise HTTPException(
-            status_code=403, detail="Not authorized to void expenses"
-        )
+    # SEC-03 (7 Nov 2026): the same rule as the reversal itself (application/finance/reverse_validation.py), said
+    # as a 403 instead of a 422 after the work.
+    if not may_manage_money(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin or finance can take back an expense.")
 
     ikey = idempotency_key or f"rev_rest_{expense_id}_{uuid.uuid4().hex[:8]}"
     cmd = ReverseTransactionCommand(
@@ -800,3 +801,138 @@ async def reverse_expense(
 
     return {"id": str(expense_id), "status": "voided"}
 
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# PRC-35 (approved in session by the owner, 7 Nov 2026): mark an expense paid from an account, in full or in part, or
+# repay someone who paid from their own pocket (the same thing: a payment from the account the money leaves). Each
+# payment posts its ledger entry (expense_payments + money_transactions, record_payment) and the expense's payment
+# status follows. For the roles in authorization.roles.may_manage_money; the expense's project must be in scope.
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+class PayExpenseRequest(BaseModel):
+    account_id: uuid.UUID
+    #: Without it: what is still unpaid.
+    amount: Decimal | None = None
+    paid_date: datetime.date | None = None
+    reference: str | None = None
+    method: str | None = None
+
+
+async def _payable_expense(conn: AsyncConnection, auth_context: AuthorizationContext, expense_id: uuid.UUID):
+    if not may_manage_money(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin or finance can pay an expense.")
+    scope = _expense_view_scope(auth_context)
+    expense = await PostgresExpenseRepository(conn).get_by_id(auth_context.organization_id, expense_id)
+    if expense is None or not _in_scope(expense.project_id, scope):
+        raise HTTPException(status_code=404, detail="Expense not found")
+    if expense.workflow_status != "confirmed":
+        raise HTTPException(status_code=409, detail="This expense was taken back.")
+    return expense
+
+
+async def _payments_out(conn: AsyncConnection, organization_id: uuid.UUID, expense_id: uuid.UUID) -> list[dict]:
+    rows = await conn.execute(
+        text(
+            "SELECT p.id, p.amount, p.paid_date, p.status, p.reference_number, p.payment_method, p.created_at, "
+            "a.id AS account_id, a.name AS account_name, a.account_type, u.full_name AS paid_by "
+            "FROM expense_payments p JOIN money_accounts a ON a.id = p.account_id "
+            "LEFT JOIN users u ON u.id = p.created_by "
+            "WHERE p.organization_id = :org AND p.expense_id = :eid ORDER BY p.paid_date, p.created_at"
+        ),
+        {"org": organization_id, "eid": expense_id},
+    )
+    return [
+        {"id": str(r["id"]), "amount": str(r["amount"]), "paid_date": r["paid_date"].isoformat(), "status": r["status"],
+         "reference": r["reference_number"], "method": r["payment_method"], "account_id": str(r["account_id"]),
+         "account_name": r["account_name"], "account_type": r["account_type"], "recorded_by": r["paid_by"]}
+        for r in rows.mappings()
+    ]
+
+
+@router.get("/{expense_id}/payments")
+async def list_expense_payments(
+    expense_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    scope = _expense_view_scope(auth_context)
+    expense = await PostgresExpenseRepository(conn).get_by_id(auth_context.organization_id, expense_id)
+    if expense is None or not _in_scope(expense.project_id, scope):
+        raise HTTPException(status_code=404, detail="Expense not found")
+    payments = await _payments_out(conn, auth_context.organization_id, expense_id)
+    paid = sum((Decimal(p["amount"]) for p in payments if p["status"] == "confirmed"), Decimal(0))
+    cents = Decimal("0.01")
+    left = max(Decimal(0), Decimal(expense.amount) - paid)
+    return {"expense_id": str(expense_id), "amount": str(Decimal(expense.amount).quantize(cents)),
+            "paid": str(paid.quantize(cents)), "left": str(left.quantize(cents)),
+            "payment_status": expense.payment_status, "payments": payments}
+
+
+@router.post("/{expense_id}/payments", status_code=201)
+async def pay_expense(
+    expense_id: uuid.UUID,
+    body: PayExpenseRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Pay an expense (or repay who paid it) from one of the company's accounts."""
+    from mesiri.infrastructure.postgres.repositories.expenses import (
+        PostgresExpensePaymentRepository,
+    )
+    from mesiri.infrastructure.postgres.repositories.finance import PostgresMoneyAccountRepository
+
+    expense = await _payable_expense(conn, auth_context, expense_id)
+    account = await PostgresMoneyAccountRepository(conn).get_by_id(auth_context.organization_id, body.account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if str(getattr(account.status, "value", account.status)) != "active":
+        raise HTTPException(status_code=409, detail=f"{account.name} is closed.")
+    payments = PostgresExpensePaymentRepository(conn)
+    already = sum((Decimal(p["amount"]) for p in await _payments_out(conn, auth_context.organization_id, expense_id)
+                   if p["status"] == "confirmed"), Decimal(0))
+    left = Decimal(expense.amount) - already
+    amount = body.amount if body.amount is not None else left
+    if left <= 0:
+        raise HTTPException(status_code=409, detail="This expense is already paid.")
+    if amount <= 0:
+        raise HTTPException(status_code=422, detail="The amount must be more than zero.")
+    if amount > left:
+        raise HTTPException(status_code=422, detail=f"Only {left} is still unpaid.")
+    try:
+        payment = await payments.record_payment(
+            organization_id=auth_context.organization_id, expense_id=expense_id, account_id=body.account_id,
+            amount=amount, paid_date=body.paid_date or datetime.date.today(), created_by=auth_context.user_id,
+            payment_method=body.method, reference_number=body.reference,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"payment_id": str(payment.id), **(await list_expense_payments(expense_id, auth_context, conn))}
+
+
+@router.post("/{expense_id}/payments/{payment_id}/reverse")
+async def reverse_expense_payment(
+    expense_id: uuid.UUID,
+    payment_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Undo a payment made by mistake: the money goes back to the account, the expense is unpaid again for that part."""
+    from mesiri.infrastructure.postgres.repositories.expenses import (
+        PostgresExpensePaymentRepository,
+    )
+
+    await _payable_expense(conn, auth_context, expense_id)
+    owned = await conn.execute(
+        text("SELECT 1 FROM expense_payments WHERE id = :pid AND expense_id = :eid AND organization_id = :org"),
+        {"pid": payment_id, "eid": expense_id, "org": auth_context.organization_id},
+    )
+    if owned.first() is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    try:
+        await PostgresExpensePaymentRepository(conn).reverse_payment(auth_context.organization_id, payment_id,
+                                                                      auth_context.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return await list_expense_payments(expense_id, auth_context, conn)

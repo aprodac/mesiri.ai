@@ -18,6 +18,8 @@ caller reaches this Command directly.
 
 from __future__ import annotations
 
+from mesiri.authorization.roles import MONEY_MANAGE_ROLES
+
 from .commands import ManageMoneyAccountCommand
 
 _VALID_ACTIONS = {"create", "rename", "deactivate"}
@@ -27,7 +29,8 @@ _VALID_ACCOUNT_TYPES = {"cash", "bank", "employee_advance", "other"}
 # PROJECT_MANAGER) -- matches runtime/account_admin_journey.py's
 # _ACCOUNT_ADMIN_ROLES exactly. Managing the chart of accounts itself is a
 # step further than moving money through it.
-_ACCOUNT_ADMIN_ROLES = frozenset({"ADMIN", "FINANCE"})
+# 7 Nov 2026 (SEC-03): read from authorization/roles.py, the same rule as the dashboard's account routes.
+_ACCOUNT_ADMIN_ROLES = MONEY_MANAGE_ROLES
 
 
 def validate(cmd: ManageMoneyAccountCommand) -> list[str]:

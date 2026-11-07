@@ -28,6 +28,7 @@ from mesiri.application.finance.transfer_commands import TransferMoneyCommand
 from mesiri.application.finance.transfer_handler import TransferMoneyHandler
 from mesiri.application.finance.transfer_resolution import PostgresTransferAccountResolver
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.authorization.roles import may_manage_money, may_transfer_money
 from mesiri.domains.finance.bank_details import BankDetailError, clean_bank_name, clean_ifsc, last4
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
@@ -95,6 +96,8 @@ class MoneyTransactionResponse(BaseModel):
     to_account_name: str | None = None
     source_type: str | None = None
     source_id: uuid.UUID | None = None
+    #: For an expense payment: the expense it paid (source_id is the payment's id).
+    expense_id: uuid.UUID | None = None
     description: str | None = None
     correlation_id: str | None = None
 
@@ -700,6 +703,26 @@ def _bank_changes(body: BaseModel) -> dict[str, str | None]:
     return changes
 
 
+
+async def _expense_of_payments(conn: AsyncConnection, organization_id: uuid.UUID, txs: list) -> dict:
+    """The expense each payment transaction paid (7 Nov: the Money page linked to the payment's id as if it were the
+    expense's, so "Expense paid" opened nothing)."""
+    ids = [t.source_id for t in txs if t.source_id and t.source_type in ("expense_payment", "expense_payment_reversal")]
+    if not ids:
+        return {}
+    rows = await conn.execute(
+        sa.text("SELECT id, expense_id FROM expense_payments WHERE organization_id = :org AND id = ANY(:ids)"),
+        {"org": organization_id, "ids": ids},
+    )
+    return {r.id: r.expense_id for r in rows}
+
+
+def _require(allowed: bool, detail: str) -> None:
+    """SEC-03 (7 Nov 2026): money writes are for the roles in authorization/roles.py; reads keep their scope."""
+    if not allowed:
+        raise HTTPException(status_code=403, detail=detail)
+
+
 @router.get("/accounts", response_model=list[MoneyAccountResponse])
 async def list_accounts(
     account_type: str | None = None,
@@ -737,6 +760,7 @@ async def create_account(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    _require(may_manage_money(auth_context.role), "Only the owner, an admin or finance can change money accounts.")
     await _check_holder(conn, auth_context.organization_id, body.owner_user_id)
     bank = _bank_changes(body)
     repo = PostgresMoneyAccountRepository(conn)
@@ -766,6 +790,7 @@ async def list_account_transactions(
     """List transactions (inbound & outbound ledger) for a given account."""
     tx_repo = PostgresMoneyTransactionRepository(conn)
     txs = await tx_repo.list_by_account(auth_context.organization_id, account_id, limit=limit)
+    expense_of = await _expense_of_payments(conn, auth_context.organization_id, txs)
     return [
         MoneyTransactionResponse(
             id=t.id,
@@ -778,6 +803,7 @@ async def list_account_transactions(
             to_account_id=t.to_account_id,
             source_type=t.source_type,
             source_id=t.source_id,
+            expense_id=expense_of.get(t.source_id),
             description=t.description,
             correlation_id=t.correlation_id,
         )
@@ -795,6 +821,7 @@ async def list_petty_cash_vouchers(
     """List petty cash voucher transactions."""
     tx_repo = PostgresMoneyTransactionRepository(conn)
     txs = await tx_repo.list_vouchers(auth_context.organization_id, cash_box_id=cash_box_id, limit=limit)
+    expense_of = await _expense_of_payments(conn, auth_context.organization_id, txs)
     return [
         MoneyTransactionResponse(
             id=t.id,
@@ -807,6 +834,7 @@ async def list_petty_cash_vouchers(
             to_account_id=t.to_account_id,
             source_type=t.source_type,
             source_id=t.source_id,
+            expense_id=expense_of.get(t.source_id),
             description=t.description,
             correlation_id=t.correlation_id,
         )
@@ -850,6 +878,7 @@ async def list_transactions(
         acc = await acc_repo.get_by_id(auth_context.organization_id, aid)
         if acc:
             acc_names[aid] = acc.name
+    expense_of = await _expense_of_payments(conn, auth_context.organization_id, txs)
 
     return [
         MoneyTransactionResponse(
@@ -865,6 +894,7 @@ async def list_transactions(
             to_account_name=acc_names.get(t.to_account_id) if t.to_account_id else None,
             source_type=t.source_type,
             source_id=t.source_id,
+            expense_id=expense_of.get(t.source_id),
             description=t.description,
             correlation_id=t.correlation_id,
         )
@@ -880,6 +910,7 @@ async def transfer_money(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Transfer money between two money accounts in the organization."""
+    _require(may_transfer_money(auth_context.role), "Only the owner, an admin, finance or a project manager can move money.")
     cmd = TransferMoneyCommand(
         idempotency_key=idempotency_key,
         organization_id=str(auth_context.organization_id),
@@ -922,9 +953,7 @@ async def reverse_transfer(
     could only ever be undone via WhatsApp chat. Mirrors that endpoint's
     shape for the other target_kind.
     """
-    role_upper = (auth_context.role or "USER").upper()
-    if role_upper not in ("ADMIN", "FINANCE", "USER", "OWNER", "SUPER_ADMIN"):
-        raise HTTPException(status_code=403, detail="Not authorized to reverse transfers")
+    _require(may_manage_money(auth_context.role), "Only the owner, an admin or finance can undo a transfer.")
 
     ikey = idempotency_key or f"rev_rest_{transfer_id}_{uuid.uuid4().hex[:8]}"
     cmd = ReverseTransactionCommand(
@@ -971,6 +1000,7 @@ async def update_account(
     Same rule for who may call it as before (create / rename / close have no role check of their own; see the
     tracker's WEB-66 note). The holder is checked to be an active person of this company.
     """
+    _require(may_manage_money(auth_context.role), "Only the owner, an admin or finance can change money accounts.")
     repo = PostgresMoneyAccountRepository(conn)
     org = auth_context.organization_id
     acc = await repo.get_by_id(org, account_id)
@@ -1004,6 +1034,7 @@ async def deactivate_account(
     Historical money_transactions rows referencing this account stay queryable
     and keep counting in get_balance().
     """
+    _require(may_manage_money(auth_context.role), "Only the owner, an admin or finance can change money accounts.")
     repo = PostgresMoneyAccountRepository(conn)
     acc = await repo.get_by_id(auth_context.organization_id, account_id)
     if acc is None:

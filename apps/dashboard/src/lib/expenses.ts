@@ -96,3 +96,42 @@ export function compact(n: number): string {
   if (n >= 1e5) return `₹${(n / 1e5).toLocaleString('en-IN', { maximumFractionDigits: 2 })} L`
   return rupees(n)
 }
+
+// PRC-35: pay an expense (or repay who paid it) from an account; the owner, an admin or finance only (SEC-03).
+export const MONEY_MANAGERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE']
+export const MONEY_MOVERS = [...MONEY_MANAGERS, 'PROJECT_MANAGER']
+export const mayManageMoney = (role: string | null | undefined) => MONEY_MANAGERS.includes((role ?? '').toUpperCase())
+export const mayMoveMoney = (role: string | null | undefined) => MONEY_MOVERS.includes((role ?? '').toUpperCase())
+
+export interface ExpensePayment {
+  id: string
+  amount: string
+  paid_date: string
+  status: 'confirmed' | 'reversed' | 'pending'
+  reference: string | null
+  account_id: string
+  account_name: string
+  account_type: string
+  recorded_by: string | null
+}
+
+export interface ExpensePayments {
+  expense_id: string
+  amount: string
+  paid: string
+  left: string
+  payment_status: string
+  payments: ExpensePayment[]
+}
+
+export async function fetchExpensePayments(expenseId: string): Promise<ExpensePayments> {
+  return (await api.get(`/expenses/${expenseId}/payments`)).data
+}
+
+export async function payExpense(expenseId: string, body: { account_id: string; amount?: string; paid_date?: string; reference?: string }): Promise<ExpensePayments> {
+  return (await api.post(`/expenses/${expenseId}/payments`, body)).data
+}
+
+export async function undoExpensePayment(expenseId: string, paymentId: string): Promise<ExpensePayments> {
+  return (await api.post(`/expenses/${expenseId}/payments/${paymentId}/reverse`)).data
+}
