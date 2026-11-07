@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ClipboardList, PackagePlus, ShoppingCart, Truck, Warehouse } from 'lucide-react'
+import { ArrowLeftRight, ClipboardList, MapPin, PackagePlus, ShoppingCart, Truck, Warehouse } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SheetTitle } from '@/components/ui/sheet'
@@ -15,6 +15,15 @@ import { StockBook } from './material-ledger-sheet'
 // WEB-77: Materials > Stock, one item at one site -- what is here, what is coming on orders, what the site has asked
 // for, and the three things to do about it (ask, order, record what came). The Requests / Purchase orders panels'
 // look (category tile, three boxes, chips), so the three pages read as one flow.
+// PRC-00: the same item at the company's other sites, and "Move here" from one that has it -- before ordering more.
+
+/** The same item at another site, for "At other sites". */
+export interface OtherSiteStock {
+  row: StockSummaryRow
+  siteName: string
+  projectName: string
+  sameProject: boolean
+}
 
 export function StockItemPanel({
   row,
@@ -29,6 +38,10 @@ export function StockItemPanel({
   onAsk,
   onOrder,
   onRecord,
+  others,
+  othersLoading,
+  canMove,
+  onMove,
 }: {
   row: StockSummaryRow
   siteName?: string
@@ -42,11 +55,17 @@ export function StockItemPanel({
   onAsk: () => void
   onOrder: () => void
   onRecord: () => void
+  others: OtherSiteStock[]
+  othersLoading?: boolean
+  canMove: boolean
+  onMove: (from: StockSummaryRow) => void
 }) {
   const closing = Number(row.closing)
   const coming = Number(row.on_order ?? 0)
   const perDay = periodDays > 0 ? Number(row.used) / periodDays : 0
   const out = closing <= 0
+  // Short here, and another site has stock to spare: say so before anyone orders more. Same project first.
+  const spare = row.running_low || out ? others.find((o) => Number(o.row.closing) > 0 && !o.row.running_low) : undefined
   return (
     <div className="flex flex-col">
       <div className={cn('flex flex-col gap-3 border-b p-4 sm:p-5', row.running_low && 'bg-draft-soft/40')}>
@@ -77,6 +96,23 @@ export function StockItemPanel({
             .filter(Boolean)
             .join(' · ')}
         </p>
+        {spare && (
+          <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 dark:border-blue-800 dark:bg-blue-950/50">
+            <MapPin className="size-4 shrink-0 text-blue-700 dark:text-blue-300" />
+            <p className="min-w-0 flex-1 text-sm">
+              <span className="font-semibold">{spare.siteName}</span> has{' '}
+              <span className="font-semibold tabular-nums">
+                {qty(spare.row.closing)} {row.unit}
+              </span>
+              {spare.row.days_left !== null && <span className="text-muted-foreground"> (lasts {lasts(spare.row.days_left)} there)</span>}.
+            </p>
+            {canMove && (
+              <Button size="sm" variant="outline" className="shrink-0 gap-1.5 bg-background" onClick={() => onMove(spare.row)}>
+                <ArrowLeftRight className="size-3.5" /> Move here
+              </Button>
+            )}
+          </div>
+        )}
         {(canAsk || canOrder || canRecord) && (
           <div className="flex flex-wrap gap-2">
             {canOrder && (
@@ -97,6 +133,39 @@ export function StockItemPanel({
           </div>
         )}
       </div>
+
+      <Section title="At other sites" count={othersLoading ? undefined : others.length} empty="No other site has this item.">
+        {othersLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          others.map((o) => (
+            <div key={o.row.site_id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{o.siteName}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {o.sameProject ? 'This project' : o.projectName}
+                  {Number(o.row.on_order ?? 0) > 0 && ` · +${qty(o.row.on_order ?? '0')} coming`}
+                </span>
+              </span>
+              <span className="flex shrink-0 flex-col items-end gap-0.5">
+                <span className={cn('text-sm font-semibold tabular-nums', Number(o.row.closing) < 0 && 'text-destructive')}>
+                  {Number(o.row.closing) <= 0 ? 'Out' : `${qty(o.row.closing)} ${row.unit}`}
+                </span>
+                {Number(o.row.closing) > 0 && (
+                  <span className={cn('text-[11px]', o.row.running_low ? 'font-semibold text-draft' : 'text-muted-foreground')}>
+                    {o.row.running_low ? `Low · ${lasts(o.row.days_left ?? 0)}` : lasts(o.row.days_left) || ''}
+                  </span>
+                )}
+              </span>
+              {canMove && Number(o.row.closing) > 0 && (
+                <Button size="sm" variant="ghost" className="shrink-0 gap-1 px-2" title={`Move ${row.material_name} from ${o.siteName} to here`} onClick={() => onMove(o.row)}>
+                  <ArrowLeftRight className="size-3.5" /> <span className="hidden sm:inline">Move here</span>
+                </Button>
+              )}
+            </div>
+          ))
+        )}
+      </Section>
 
       <Section title="Coming on orders" count={flow.orders.length} empty="Nothing on order for this site.">
         {flow.orders.map(({ order, line }) => (

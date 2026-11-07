@@ -939,6 +939,8 @@ export interface StockSummaryFilters {
   project_id?: string
   site_id?: string
   category_id?: string
+  /** PRC-00: one item at every site this person can see. */
+  material_id?: string
 }
 
 export async function fetchStockSummary(filters: StockSummaryFilters = {}): Promise<StockSummaryRow[]> {

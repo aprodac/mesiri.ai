@@ -28,16 +28,26 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** PRC-00: opened from an item at one site, "Move here" from another site that has it. */
+export interface TransferPrefill {
+  from_project_id: string
+  from_site_id: string
+  to_project_id: string
+  to_site_id: string
+  material_id: string
+}
+
 interface RecordTransferDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   scope: AppScope
+  prefill?: TransferPrefill | null
 }
 
 // Moves material out of one site's stock and into another's as ONE record
 // (POST /materials/transfers): both halves are written together, so a
 // transfer is never half-recorded, and it is corrected as a whole.
-export function RecordTransferDialog({ open, onOpenChange, scope }: RecordTransferDialogProps) {
+export function RecordTransferDialog({ open, onOpenChange, scope, prefill }: RecordTransferDialogProps) {
   const queryClient = useQueryClient()
 
   const scopedProjectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : ''
@@ -60,11 +70,11 @@ export function RecordTransferDialog({ open, onOpenChange, scope }: RecordTransf
 
   React.useEffect(() => {
     if (open) {
-      setFromProjectId(scopedProjectId)
-      setFromSiteId(scopedSiteId)
-      setToProjectId(scopedProjectId)
-      setToSiteId('')
-      setMaterialId('')
+      setFromProjectId(prefill?.from_project_id ?? scopedProjectId)
+      setFromSiteId(prefill?.from_site_id ?? scopedSiteId)
+      setToProjectId(prefill?.to_project_id ?? scopedProjectId)
+      setToSiteId(prefill?.to_site_id ?? '')
+      setMaterialId(prefill?.material_id ?? '')
       setQuantity('')
       setOccurredDate(todayIso())
       setNotes('')
