@@ -3,8 +3,9 @@
 
 Root cause: a write's path id went into the URL unchecked; only the API at Save could refuse it, after the person was
 told to tap Save. Class: every write whose path takes a record's id (requests, orders, issues, receipts, expenses, work,
-materials, sites ...). Fix: when a line is prepared, a path param the API declares as a UUID must be one; otherwise the
-model is told to look the record up and prepare it again, in the same turn.
+materials, sites ...). Fix: when a line is prepared, a path param the API declares as a UUID must be one. Said as a number, the code finds
+the record in the collection's own list route (live re-test 22:46: told to look it up, the model gave up instead);
+only when no single record has that number is the model told which list tool to use.
 
 Guards: a real id goes through unchanged; a read is not stopped (its error comes back at once anyway).
 """
@@ -42,8 +43,10 @@ def _app(seen: list) -> FastAPI:
 
     @app.get("/procurement/requests")
     async def listing(status: str = "waiting", mine: bool = False, jwt: dict = Depends(get_current_user)):
-        seen.append("list")
-        return {"items": [{"id": REQ, "ref": "REQ-0001", "status": "waiting"}], "counts": {"waiting": 1}}
+        seen.append(f"list:{status}")
+        return {"items": [{"id": REQ, "number": 1, "ref": "REQ-0001", "status": "waiting"},
+                          {"id": str(uuid.uuid4()), "number": 2, "ref": "REQ-0002", "status": "done"}],
+                "counts": {"waiting": 1}}
 
     @app.patch("/procurement/requests/{request_id}")
     async def change(request_id: uuid.UUID, body: Change, jwt: dict = Depends(get_current_user)):
@@ -79,15 +82,25 @@ def test_the_tools_know_which_path_ids_are_uuids() -> None:
     assert tools["work_item"].uuid_path == ()  # declared a plain string: never checked
 
 
-async def test_a_request_named_by_its_number_is_looked_up_before_the_card() -> None:
+async def test_a_request_named_by_its_number_is_found_by_the_code() -> None:
     by_ref = ("change_material_request", {"request_id": "REQ-0001", "quantity": 250, CONFIRM_ARG: "REQ-0001: 250 bags"})
-    by_id = ("change_material_request", {"request_id": REQ, "quantity": 250, CONFIRM_ARG: "REQ-0001: 250 bags"})
-    turn, seen = await _turn([[by_ref], [("material_requests", {"mine": True})], [by_id], "Ready: REQ-0001 250 bags."],
-                             "REQ-0001 cement athu 250 aakku")
-    refused = turn.calls[0]
-    assert "error" in refused["result"] and "REQ-0001" in refused["result"]["error"]
-    assert seen == ["list"]  # the model looked it up in the same turn
+    turn, seen = await _turn([[by_ref], "Ready: REQ-0001 250 bags."], "REQ-0001 cement athu 250 aakku")
+    assert seen == ["list:all"]  # the collection's own list, every status
     assert [p.path for p in turn.pending] == [f"/procurement/requests/{REQ}"]  # the card holds the real id only
+
+
+async def test_sibling_the_number_said_other_ways_is_the_same_request() -> None:
+    for said in ("req 1", "1", "REQ-1"):
+        line = ("change_material_request", {"request_id": said, "needed_by": "2026-11-13", CONFIRM_ARG: "Friday"})
+        turn, _ = await _turn([[line], "Ready."], f"{said} Friday mathi")
+        assert [p.path for p in turn.pending] == [f"/procurement/requests/{REQ}"], said
+
+
+async def test_a_number_no_request_has_names_the_list_tool() -> None:
+    line = ("change_material_request", {"request_id": "REQ-0099", "quantity": 5, CONFIRM_ARG: "REQ-0099: 5"})
+    turn, _ = await _turn([[line], "Ok."], "REQ-0099 5 aakku")
+    error = turn.calls[0]["result"]["error"]
+    assert "REQ-0099" in error and "material_requests" in error and turn.pending == []
 
 
 async def test_sibling_an_order_by_its_po_number_is_refused_when_prepared() -> None:

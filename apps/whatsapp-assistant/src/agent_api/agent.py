@@ -126,6 +126,34 @@ def _is_uuid(value: Any) -> bool:
     return True
 
 
+def _number_of(said: str) -> int | None:
+    digits = re.sub(r"\D", "", said)
+    return int(digits) if digits else None
+
+
+async def record_by_ref(client: ApiClient, tools: dict[str, ApiTool], tool: ApiTool, param: str,
+                        said: str) -> tuple[str | None, str | None]:
+    """PRC-32: the id of the one record a write's path names by its number ("REQ-0001", "po 3"), read from the GET
+    route of the same collection (with status all when it takes one). (None, that list tool's name) when there is
+    no such route, or no single record has that number."""
+    collection = tool.path.split("/{" + param + "}")[0]
+    lister = next((t for t in tools.values() if t.method == "GET" and t.path == collection and not t.path_params), None)
+    if lister is None:
+        return None, None
+    number = _number_of(said)
+    try:
+        got = await client.call("GET", collection, params={"status": "all"} if "status" in lister.query_params else None)
+    except Exception:  # noqa: BLE001 -- the model is told which tool to use instead
+        return None, lister.name
+    rows = (got.body or {}).get("items") if isinstance(got.body, dict) else got.body
+    if not got.ok or not isinstance(rows, list):
+        return None, lister.name
+    hits = [r for r in rows if isinstance(r, dict) and r.get("id") and (
+        str(r.get("ref") or "").casefold() == said.strip().casefold()
+        or (number is not None and (r.get("number") == number or _number_of(str(r.get("ref") or "")) == number)))]
+    return (str(hits[0]["id"]), lister.name) if len(hits) == 1 else (None, lister.name)
+
+
 @dataclass(frozen=True)
 class PendingWrite:
     """An entry the model prepared; reaches the API only through ``confirm``."""
@@ -804,13 +832,17 @@ class ApiAgent:
             missing = [r for r in tool.required if arguments.get(r) in (None, "")]
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
-            if tool.is_write and (refs := [p for p in tool.uuid_path if not _is_uuid(arguments[p])]):
-                # PRC-32 (7 Nov: "REQ-0001 cement athu 250 aakku" held change_material_request with request_id "REQ-0001";
-                # the card said Save and the Save failed, 422): a record's id is checked when the line is prepared, so
-                # the model looks it up in this turn instead of the person finding out at Save.
-                return ToolOutcome(content={"error": (
-                    f"{refs[0]} must be the record's id from the list tool for these records, not "
-                    f"\"{arguments[refs[0]]}\" (the number people see). Look it up now and prepare this again.")})
+            for p in [p for p in tool.uuid_path if tool.is_write and not _is_uuid(arguments[p])]:
+                # PRC-32 (7 Nov: "REQ-0001 cement athu 250 aakku" held request_id "REQ-0001" and the Save failed, 422;
+                # told to look it up, the model gave up): the code finds the record by the number people see, from
+                # the collection's own list route; only when it cannot is the model told which list tool to use.
+                found_id, lister = await record_by_ref(client, self._tools, tool, p, str(arguments[p]))
+                if found_id is None:
+                    return ToolOutcome(content={"error": (
+                        f"{p} must be the record's id, not \"{arguments[p]}\" (the number people see)"
+                        + (f": call {lister} (status all) and use the id of {arguments[p]}" if lister else "")
+                        + ". Then prepare this again.")})
+                arguments = {**arguments, p: found_id}
             path = tool.path
             for p in tool.path_params:
                 path = path.replace("{" + p + "}", str(arguments[p]))
