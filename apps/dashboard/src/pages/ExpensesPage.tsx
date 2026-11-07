@@ -15,6 +15,7 @@ import { PeriodSelect } from '@/components/filter-select'
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
 import { RecordExpenseDialog } from '@/components/expenses/record-expense-dialog'
 import { ExpenseDetailSheet, type ExpenseDetailData } from '@/components/expenses/expense-detail-sheet'
+import { FullCost } from '@/components/expenses/full-cost'
 import { useScope } from '@/lib/ScopeContext'
 import { useReadOnly } from '@/lib/trial'
 import { useUrlState } from '@/lib/url-state'
@@ -260,6 +261,8 @@ export default function ExpensesPage() {
           )}
         </div>
       </header>
+
+      <FullCost filters={filters} />
 
       {/* What was spent, and how it was paid (PRC-18). Each payment tile filters the list. */}
       <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">

@@ -1044,3 +1044,36 @@ async def deactivate_account(
     return {"id": str(account_id), "status": "inactive"}
 
 
+
+
+@router.get("/costs")
+async def project_costs(
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    project_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """CC-01: a period's full cost -- expenses, priced deliveries without a bill, and labour (domains/finance/costs.py),
+    in total and per site. The roles that see expenses (SEC-01); the project and site scope of stock and rates."""
+    from mesiri.authorization.roles import may_view_expenses
+    from mesiri.domains.finance.costs import project_costs as build
+    from mesiri.domains.materials.router import _resolve_project_ids, _site_filter_denied
+    from mesiri.domains.procurement.router import _visible
+
+    if not may_view_expenses(auth_context.role):
+        raise HTTPException(status_code=403, detail="Costs are shown to the roles that see spending.")
+    if date_to is None:
+        from mesiri.application.dpr import project_day
+
+        date_to = await project_day.company_today(conn, auth_context.organization_id)
+    date_from = date_from or date_to - datetime.timedelta(days=29)
+    if date_from > date_to or (date_to - date_from).days > 731:
+        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied or _site_filter_denied(auth_context, project_id, site_id):
+        project_ids = set()
+    return await build(conn, auth_context.organization_id, project_ids=project_ids, site_id=site_id,
+                       date_from=date_from, date_to=date_to,
+                       visible=lambda p, s: _visible(auth_context, p, s))

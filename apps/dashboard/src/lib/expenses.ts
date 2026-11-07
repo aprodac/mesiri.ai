@@ -135,3 +135,18 @@ export async function payExpense(expenseId: string, body: { account_id: string; 
 export async function undoExpensePayment(expenseId: string, paymentId: string): Promise<ExpensePayments> {
   return (await api.post(`/expenses/${expenseId}/payments/${paymentId}/reverse`)).data
 }
+
+// CC-01: a period's full cost -- expenses + priced deliveries without a bill + labour (backend domains/finance/costs.py).
+export interface ProjectCosts {
+  date_from: string
+  date_to: string
+  expenses: { amount: string; count: number }
+  materials: { amount: string; deliveries: number; unpriced: number }
+  labour: { amount: string; man_days: string; priced_man_days: string }
+  total: string
+  by_site: { project_id: string; project_name: string; site_id: string | null; site_name: string | null; expenses: string; materials: string; labour: string; total: string }[]
+}
+
+export async function fetchCosts(filters: ExpenseFilters = {}): Promise<ProjectCosts> {
+  return (await api.get('/finance/costs', { params: filters })).data
+}
