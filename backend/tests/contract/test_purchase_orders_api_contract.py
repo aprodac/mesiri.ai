@@ -856,3 +856,22 @@ async def test_everything_rejected_puts_nothing_in_stock_and_a_reason_is_needed(
     assert turned.status_code == 201, turned.text
     assert (turned.json()["status"], turned.json()["lines"][0]["pending"]) == ("open", "50")
     assert await _stock(client, w) == "0"
+
+
+async def test_an_item_left_off_the_order_is_still_to_buy(client, world):
+    w = world
+    body = _ask(w, w["cement"], "200")
+    body["lines"].append({"material_id": w["tmt"], "quantity": "500", "unit_id": w["units"]["kg"]})
+    req = (await client.post("/procurement/requests", json=body, headers=w["arun"]["h"])).json()
+    order = _order(w, w["cement"], "200")
+    order["lines"][0]["request_line_id"] = req["lines"][0]["id"]
+    assert (await client.post("/procurement/orders", json=order, headers=w["admin"]["h"])).status_code == 201
+    after = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
+    tmt = [x for x in after["lines"] if x["material"].startswith("TMT")][0]
+    assert after["status"] == "ordered" and (tmt["on_order"], tmt["to_buy"]) == ("0", "500")
+    # Guard: a request ordered by hand (no order) still counts as coming.
+    hand = (await client.post("/procurement/requests", json=_ask(w, w["tmt"], "50", unit="kg", site="yard",
+                                                                  confirm_duplicate=True), headers=w["arun"]["h"])).json()
+    await client.post(f"/procurement/requests/{hand['id']}/decide", json={"action": "ordered"}, headers=w["admin"]["h"])
+    line = (await client.get(f"/procurement/requests/{hand['id']}", headers=w["admin"]["h"])).json()["lines"][0]
+    assert (line["on_order"], line["to_buy"]) == ("50", "0")

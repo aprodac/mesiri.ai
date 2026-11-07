@@ -107,7 +107,14 @@ export default function PurchaseOrdersPage() {
       .sort((a, b) => ORDER[a.urgency] - ORDER[b.urgency] || (a.expected_date ?? '9999').localeCompare(b.expected_date ?? '9999') || b.number - a.number),
     [filtered, tab, tile],
   )
-  const current = all.find((o) => o.id === selected) ?? (isMobile ? undefined : list[0])
+  // The one being worked on stays open when acting on it moves it to another tab (ordered, received); a tab change or
+  // a pick of another row lets it go.
+  const [kept, setKept] = React.useState('')
+  React.useEffect(() => setKept(''), [tab])
+  const current = all.find((o) => o.id === selected) ?? (isMobile ? undefined : all.find((o) => o.id === kept) ?? list[0])
+  React.useEffect(() => {
+    if (!selected && current && current.id !== kept) setKept(current.id)
+  }, [selected, current, kept])
 
   const options = React.useMemo(() => {
     const count = (skip: string, test: (o: PurchaseOrder) => boolean) => all.filter((o) => pass(o, skip) && test(o)).length

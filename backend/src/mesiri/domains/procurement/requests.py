@@ -225,6 +225,10 @@ async def describe(conn: AsyncConnection, organization_id: uuid.UUID, rows: list
     on_order: dict[tuple, Decimal] = {}
     covered = {line["request_line_id"] for line in order_lines
                if line["request_line_id"] is not None and line["status"] != "cancelled"}
+    # A request an open order covers is ordered through its orders: an item left off them (PRC-24 split) is still to
+    # buy, never "ordered by hand".
+    on_open_orders = {line["request_id"] for line in order_lines if line["request_id"] is not None
+                      and line["status"] == "open"}
     by_request: dict[uuid.UUID, list[dict]] = {}
     for line in order_lines:
         if line["pending"] > 0:
@@ -235,7 +239,7 @@ async def describe(conn: AsyncConnection, organization_id: uuid.UUID, rows: list
     open_by_material: dict[tuple, list[dict]] = {}
     for other in all_requests:
         for line in other["lines"]:
-            if other["status"] in IN_FLIGHT and line["id"] not in covered:
+            if other["status"] in IN_FLIGHT and line["id"] not in covered and other["id"] not in on_open_orders:
                 # Ordered by hand or sent from another site: no order line says what is still to come.
                 key = (other["site_id"], line["material_id"])
                 on_order[key] = on_order.get(key, Decimal(0)) + Decimal(line["quantity"])
