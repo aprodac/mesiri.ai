@@ -57,6 +57,8 @@ class ApiTool:
     fixed: tuple[tuple[str, Any], ...] = ()
     #: Body fields the API takes but the model never sees (some the code fills, e.g. a photo).
     hidden: tuple[str, ...] = ()
+    #: PRC-32: path params the API declares as a UUID (the model is shown a plain string).
+    uuid_path: tuple[str, ...] = ()
 
     @property
     def is_write(self) -> bool:
@@ -309,11 +311,14 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
         required: list[str] = []
         path_params: list[str] = []
         query_params: list[str] = []
+        uuid_path: list[str] = []
         for param in operation.get("parameters", []):
             where = param.get("in")
             if where not in ("path", "query"):
                 continue  # headers (Idempotency-Key) are the client's, not the model's
             name = param["name"]
+            if where == "path" and (param.get("schema") or {}).get("format") == "uuid":
+                uuid_path.append(name)
             schema = _clean(param.get("schema", {}), components)
             if param.get("description"):
                 schema.setdefault("description", param["description"])
@@ -361,6 +366,7 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
             required=tuple(required),
             fixed=item.fixed,
             hidden=tuple(sorted(hidden)),
+            uuid_path=tuple(uuid_path),
         )
     return tools
 
