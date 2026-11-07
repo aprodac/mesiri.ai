@@ -52,8 +52,13 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
     site_id: request.site_id,
     site_name: request.site_name,
     request_ref: request.ref,
-    lines: request.lines.map((l) => ({ material_id: l.material_id, quantity: Number(l.to_buy) > 0 ? l.to_buy : l.quantity, request_line_id: l.id })),
+    request_id: request.id,
+    // PRC-24: a request already part ordered is ordered for what is still to buy only (the rest from another supplier).
+    lines: request.lines
+      .filter((l) => request.status === 'waiting' || Number(l.to_buy) > 0)
+      .map((l) => ({ material_id: l.material_id, quantity: Number(l.to_buy) > 0 ? l.to_buy : l.quantity, request_line_id: l.id })),
   }), [request])
+  const restToBuy = request.status === 'ordered' && request.lines.some((l) => Number(l.to_buy) > 0)
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -155,6 +160,11 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
 
       {(request.may_act || request.may_cancel) && !['done', 'rejected', 'cancelled'].includes(request.status) && (
         <div className="mt-auto flex flex-wrap gap-2 border-t px-5 py-4">
+          {request.may_act && restToBuy && (
+            <Button className="h-11 basis-full gap-2 font-semibold" onClick={() => setOrdering(true)}>
+              <ShoppingCart className="size-4" /> Order the rest{buyWords}
+            </Button>
+          )}
           {request.may_act && request.status === 'waiting' && (
             <>
               <Button className="h-11 basis-full gap-2 font-semibold" onClick={() => setOrdering(true)}>

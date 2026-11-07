@@ -193,7 +193,7 @@ export default function PurchaseOrdersPage() {
           {!isLoading && !isError && list.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground">
               <PackageOpen className="size-8 opacity-40" />
-              {all.length === 0 ? 'No orders yet. Place one here, or from a request in Materials › Requests.' : 'Nothing here.'}
+              {all.length === 0 ? 'No orders yet. Place one here, or from a request in Procurement › Requests.' : tab === 'open' ? 'Nothing still to come.' : 'No orders here with these filters.'}
             </div>
           )}
           {list.map((o) => <OrderRow key={o.id} order={o} selected={current?.id === o.id} onPick={() => setSelected(o.id)} />)}

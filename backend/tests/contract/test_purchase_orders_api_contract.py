@@ -719,3 +719,48 @@ async def test_reminders_for_a_waiting_request_and_a_late_order(client, world, t
     assert rows["material_request_waiting"].startswith("⏰ REQ-0001 5 manikkoor aayi office-nu vendi kaathirikkunnu")
     assert "60 bags Cement OPC 53" in rows["purchase_order_late"] and "PO-0001" in rows["purchase_order_late"]
     assert fresh["ref"] not in rows["material_request_waiting"]  # guard: one asked just now is not chased
+
+
+# --- PRC-24: split a request between suppliers; several requests in one order ------------------------------------
+
+
+async def test_a_request_split_between_two_suppliers(client, world, test_engine):
+    w = world
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "160"), headers=w["arun"]["h"])).json()
+    line = req["lines"][0]["id"]
+    a = _order(w, w["cement"], "100")
+    a["lines"][0]["request_line_id"] = line
+    po_a = (await client.post("/procurement/orders", json=a, headers=w["admin"]["h"])).json()
+    after = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
+    assert after["status"] == "ordered" and (after["lines"][0]["on_order"], after["lines"][0]["to_buy"]) == ("100", "60")
+    b = _order(w, w["cement"], "60", supplier="KK Traders", confirm_duplicate=True)
+    b["lines"][0]["request_line_id"] = line
+    po_b = (await client.post("/procurement/orders", json=b, headers=w["admin"]["h"])).json()
+    after = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
+    assert [o["ref"] for o in after["orders"]] == ["PO-0001", "PO-0002"] and after["lines"][0]["to_buy"] == "0"
+    for po, qty in ((po_a, "100"), (po_b, "60")):
+        await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+            "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": qty}]})
+    assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "done"
+
+
+async def test_several_requests_in_one_order(client, world):
+    w = world
+    r1 = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "50"), headers=w["arun"]["h"])).json()
+    r2 = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "30", confirm_duplicate=True),
+                            headers=w["arun"]["h"])).json()
+    r3 = (await client.post("/procurement/requests", json=_ask(w, w["tmt"], "200", unit="kg"), headers=w["arun"]["h"])).json()
+    body = _order(w, w["cement"], "50")
+    body["lines"] = [
+        {"material_id": w["cement"], "quantity": "50", "unit_id": w["units"]["bags"], "request_line_id": r1["lines"][0]["id"]},
+        {"material_id": w["cement"], "quantity": "30", "unit_id": w["units"]["bags"], "request_line_id": r2["lines"][0]["id"]},
+        {"material_id": w["tmt"], "quantity": "200", "unit_id": w["units"]["kg"], "request_line_id": r3["lines"][0]["id"]}]
+    po = await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])
+    assert po.status_code == 201, po.text
+    assert sorted(x["request"]["ref"] for x in po.json()["lines"]) == ["REQ-0001", "REQ-0002", "REQ-0003"]
+    for r in (r1, r2, r3):
+        assert (await client.get(f"/procurement/requests/{r['id']}", headers=w["admin"]["h"])).json()["status"] == "ordered"
+    # Guards: the same material twice without separate requests is still one line.
+    twice = _order(w, w["tmt"], "5", unit="kg", confirm_duplicate=True)
+    twice["lines"].append(dict(twice["lines"][0]))
+    assert (await client.post("/procurement/orders", json=twice, headers=w["admin"]["h"])).status_code == 422

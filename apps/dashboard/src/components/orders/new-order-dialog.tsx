@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { fetchVendorsApi } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import { categoryPaths, fetchLastPurchase, fetchMaterialCategories, fetchMaterials } from '@/lib/materials'
-import { asDuplicateConflict } from '@/lib/requests'
+import { asDuplicateConflict, fetchRequests, qty } from '@/lib/requests'
 import { createOrder, rupees, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,8 @@ export interface OrderPrefill {
   site_id: string
   site_name?: string
   request_ref?: string
+  /** PRC-24: the request it comes from; other waiting requests at the same site can be added to the same order. */
+  request_id?: string
   lines: { material_id: string; quantity: string; request_line_id?: string }[]
 }
 
@@ -96,6 +98,26 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
   const materials = React.useMemo(() => catalog?.items ?? [], [catalog])
   const options = React.useMemo(() => materials.map((m) => ({ value: m.id, label: m.name })), [materials])
 
+  // PRC-24: other requests waiting at the same site, to put in this one order (from a request only).
+  const { data: siteRequests } = useQuery({
+    queryKey: ['procurement', 'requests', 'site', siteId],
+    queryFn: () => fetchRequests({ site_id: siteId }),
+    enabled: open && !!prefill && !editing && !!siteId,
+    staleTime: 30_000,
+  })
+  const added = new Set(lines.map((l) => l.requestLineId).filter(Boolean))
+  const alsoWaiting = (siteRequests?.items ?? []).filter((r) => r.status === 'waiting' && r.id !== prefill?.request_id && !r.lines.some((l) => added.has(l.id)))
+  const addRequest = (r: (typeof alsoWaiting)[number]) => {
+    setDuplicate(null)
+    // The note written for them ("For REQ-0002") follows the requests in the order; their own words are kept.
+    setNotes((n) => (/^For (REQ-\d+(, )?)+$/.test(n) ? `${n}, ${r.ref}` : n))
+    setLines((all) => [...all, ...r.lines.map((l, i) => ({
+      key: Math.max(0, ...all.map((x) => x.key)) + i + 1, materialId: l.material_id,
+      quantity: Number(l.to_buy) > 0 ? l.to_buy : l.quantity, rate: '', requestLineId: l.id, requestRef: r.ref,
+    }))])
+  }
+  const fromRequests = [...new Set(lines.map((l) => l.requestRef).filter(Boolean))]
+
   const ready = lines.filter((l) => l.materialId && Number(l.quantity) > 0)
   const total = ready.reduce((n, l) => n + (Number(l.rate) || 0) * Number(l.quantity), 0)
 
@@ -122,7 +144,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
     onSuccess: (po) => {
       queryClient.invalidateQueries({ queryKey: ['procurement'] })
       if (editing) toast.success(`${po.ref} changed`)
-      else toast.success(`${po.ref} placed with ${po.vendor_name}`, prefill?.request_ref ? `${prefill.request_ref} is marked ordered; the engineer is told.` : undefined)
+      else toast.success(`${po.ref} placed with ${po.vendor_name}`, fromRequests.length ? `${fromRequests.join(', ')} ${fromRequests.length > 1 ? 'are' : 'is'} marked ordered; whoever asked is told.` : undefined)
       onOpenChange(false)
     },
     onError: (err) => {
@@ -144,7 +166,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{editing ? `Change ${editing.ref}` : `New purchase order${prefill?.request_ref ? ` · for ${prefill.request_ref}` : ''}`}</DialogTitle>
+          <DialogTitle>{editing ? `Change ${editing.ref}` : `New purchase order${fromRequests.length ? ` · for ${fromRequests.join(', ')}` : ''}`}</DialogTitle>
         </DialogHeader>
         <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); if (canSave) save.mutate(false) }}>
           <div className="flex flex-col gap-1.5">
@@ -197,7 +219,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
                         <span className="pr-2.5 text-xs text-muted-foreground">/{unit || 'unit'}</span>
                       </div>
                     )}
-                    {lines.length > 1 && (!line.requestLineId || !!editing) && (
+                    {lines.length > 1 && (
                       <Button type="button" variant="ghost" size="icon" aria-label="Remove item" onClick={() => setLines((all) => all.filter((l) => l.key !== line.key))}><X className="size-4" /></Button>
                     )}
                   </div>
@@ -206,6 +228,23 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
                 </div>
               )
             })}
+            {prefill && !editing && (
+              <p className="text-xs text-muted-foreground">Order part of it here: lower a quantity or take an item off, and the rest stays to buy for another supplier.</p>
+            )}
+            {alsoWaiting.length > 0 && (
+              <div className="flex flex-col gap-1.5 rounded-xl border border-dashed p-3">
+                <span className="text-xs font-semibold text-muted-foreground">Also waiting at {prefill?.site_name ?? 'this site'}: add to this order</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {alsoWaiting.slice(0, 6).map((r) => (
+                    <button key={r.id} type="button" onClick={() => addRequest(r)} className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs hover:border-foreground/40">
+                      <Plus className="size-3" /><span className="font-semibold tabular-nums">{r.ref}</span>
+                      {r.lines.map((l) => `${qty(Number(l.to_buy) > 0 ? l.to_buy : l.quantity, l.unit)} ${l.material}`).join(', ')}
+                      {r.requested_by_name ? ` · ${r.requested_by_name.split(' ')[0]}` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {(!prefill || editing) && (
               <Button type="button" variant="outline" className="h-10 justify-start gap-2 border-dashed text-muted-foreground" onClick={() => setLines((all) => [...all, { key: Math.max(0, ...all.map((l) => l.key)) + 1, materialId: '', quantity: '', rate: '' }])}>
                 <Plus className="size-4" /> Add item

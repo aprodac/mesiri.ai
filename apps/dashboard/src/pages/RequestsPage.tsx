@@ -261,7 +261,7 @@ export default function RequestsPage() {
           {!isLoading && !isError && list.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground">
               <ClipboardList className="size-8 opacity-40" />
-              {all.length === 0 ? 'No requests yet. Engineers can also ask on WhatsApp: “need 50 bags cement tomorrow”.' : 'Nothing here.'}
+              {all.length === 0 ? 'No requests yet. Engineers can also ask on WhatsApp: “need 50 bags cement tomorrow”.' : tab === 'waiting' ? 'Nothing waiting for the office.' : 'No requests here with these filters.'}
             </div>
           )}
           {list.map((r) => (

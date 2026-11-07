@@ -163,8 +163,14 @@ async def _lines(conn: AsyncConnection, auth: AuthorizationContext, project_id: 
         out.append({"material_id": line.material_id, "unit_id": line.unit_id, "quantity": line.quantity,
                     "rate": rate, "said": said.split(" = ")[0] if said else None,
                     "request_line_id": line.request_line_id})
-    if len({line["material_id"] for line in out}) != len(out):
-        raise HTTPException(status_code=422, detail="Each material once per order: add the quantities together.")
+    # PRC-24: the same material may be on two lines only when each covers a different site's request (requests put
+    # together in one order); otherwise add the quantities together.
+    seen: dict = {}
+    for line in out:
+        seen.setdefault(line["material_id"], []).append(line["request_line_id"])
+    for covers in seen.values():
+        if len(covers) > 1 and (None in covers or len(set(covers)) != len(covers)):
+            raise HTTPException(status_code=422, detail="Each material once per order: add the quantities together.")
     return out
 
 
