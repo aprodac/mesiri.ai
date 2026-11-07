@@ -37,6 +37,9 @@ RECORD_PAGES: dict[str, str | None] = {
     "set_unit_conversion": "materials",
     "add_standard_categories": "materials",
     "answer_size_request": "materials",
+    "ask_for_material": "material_requests",  # PRC-22
+    "decide_material_request": "material_requests",
+    "cancel_material_request": "material_requests",
     "add_expense_category": "expense_categories",
     "create_project": "project",
     "update_project": "project",

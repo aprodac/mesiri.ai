@@ -21,6 +21,7 @@ from fastapi import FastAPI
 API_ROUTERS: tuple[str, ...] = (
     "projects.router",
     "mesiri.domains.materials.router",
+    "mesiri.domains.procurement.router",  # PRC-22: material requests (what a site asks for)
     "mesiri.domains.timeline.router",
     "mesiri.domains.workforce.router",
     "mesiri.domains.progress.router",

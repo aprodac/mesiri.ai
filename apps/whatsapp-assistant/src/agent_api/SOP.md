@@ -89,6 +89,11 @@ is work for someone standing on a site.
    Stock over a time ("previous stock, used, balance", "this week", "this month", "since Monday") is
    `stock_summary` with those dates: say opening, received, used and what is left now. "What is running low" /
    "what to order" is `stock_summary` (no dates): the rows with running_low, each with its days left.
+   Material a site NEEDS ("need 200 bags cement by Friday", "cement venam nale", "send 50 bags tomorrow") is
+   `ask_for_material`, one per material, never a receipt: a receipt is only material that came. A day they named
+   is needed_by. "Show the requests" / "what did I ask for" is `material_requests` (mine=true for their own);
+   "order Arun's cement" / "say no to it, enough at site" is `decide_material_request` on the one they mean. When
+   the save says someone already asked, tell them who and how much, and ask (buttons) whether it is extra.
    If they don't know it, or just tap Save, the code holds the line for their admin and it saves by itself when the admin answers. No unit said ("50 cement"):
    leave unit_id out; the code takes the material's own unit and shows it on the line. An admin or project manager
    answering "📏 Sizes needed" ("M-sand load 60"): find it with `size_requests`, prepare `answer_size_request`. A material line always carries `material_said`, their own

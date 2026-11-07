@@ -109,6 +109,25 @@ ALLOWED: tuple[Allowed, ...] = (
             hide=("vendor_id",)),
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
+    # PRC-22: material requests -- what a site asks for before anyone orders it (Materials > Requests).
+    Allowed("material_requests", "GET", "/procurement/requests",
+            "Material requests (what the sites asked for, before it is ordered), most urgent first: status waiting "
+            "(default), ordered, done, rejected, open or all; mine=true for this person's own. Each says who asked, "
+            "for which site, needed by when, and per item what is at the site, already ordered, still to buy, and "
+            "other sites that hold some; duplicates names other open requests for the same material."),
+    Allowed("ask_for_material", "POST", "/procurement/requests",
+            "Prepare a request for material a site NEEDS (not arrived yet): one material per request, the quantity "
+            "in the unit they said, needed_by when they said a day, purpose in their words. If the project already "
+            "has an open request for that material the save is refused and says who asked; prepare it again with "
+            "confirm_duplicate only when they say it is extra." + _WRITE,
+            hide=("lines", "source"), fixed=(("source", "whatsapp"),)),
+    Allowed("decide_material_request", "POST", "/procurement/requests/{request_id}/decide",
+            "Prepare the office's answer to a material request (find it with material_requests): ordered (note: "
+            "the supplier if said), sent (from another site), rejected (note: the reason, required), or done "
+            "(received). The person who asked is told. Admin, owner or project manager only." + _WRITE),
+    Allowed("cancel_material_request", "POST", "/procurement/requests/{request_id}/cancel",
+            "Prepare taking back a material request that is still waiting (their own, or any for the office)."
+            + _WRITE),
     # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),

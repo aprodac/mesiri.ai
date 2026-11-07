@@ -440,6 +440,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Materials router not loaded: %s", exc)
 
+    # PRC-22: material requests (what a site asks for, before anyone orders it)
+    try:
+        from mesiri.domains.procurement.router import router as procurement_requests_router
+
+        app.include_router(procurement_requests_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Material requests router not loaded: %s", exc)
+
     # Timeline routes
     try:
         from mesiri.domains.timeline.router import router as timeline_router
