@@ -54,8 +54,21 @@ export interface MaterialRequest {
   created_at: string
   lines: RequestLine[]
   duplicates: { id: string; ref: string; status: RequestStatus; requested_by_name: string | null; created_at: string }[]
+  /** PRC-23: the purchase orders behind it ("PO-0003 · Malabar · 150 of 160 came"), cancelled ones too. */
+  orders: RequestOrder[]
+  /** PRC-23: an order covers it: it moves with the order, so the office's buttons here are off. */
+  follows_order: boolean
   may_act: boolean
   may_cancel: boolean
+  may_decide: boolean
+}
+
+export interface RequestOrder {
+  id: string
+  ref: string
+  vendor_name: string
+  status: 'open' | 'part' | 'received' | 'closed' | 'cancelled'
+  lines: { material: string; unit: string; quantity: string; received: string; pending: string }[]
 }
 
 export interface RequestList {
@@ -67,6 +80,10 @@ export interface DuplicateConflict {
   code: 'possible_duplicate'
   message: string
   duplicates: { id: string; ref: string; status: RequestStatus; site_name: string; requested_by_name: string | null }[]
+  /** PRC-23: open orders in the project already bringing the material (no request behind them). */
+  orders?: { id: string; ref: string; vendor_name: string; lines: { material: string; pending: string; unit: string }[] }[]
+  /** PRC-23 (a new order): a site's waiting request for the same material, which the order does not cover. */
+  requests?: { id: string; ref: string; site_name: string; requested_by_name: string | null }[]
 }
 
 export async function fetchRequests(params: { project_id?: string | null; site_id?: string | null }): Promise<RequestList> {

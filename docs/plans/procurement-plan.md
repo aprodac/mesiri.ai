@@ -170,9 +170,47 @@ The first step of the process (request → order → delivery/GRN → bill → p
   cancel, close short, receive (records the deliveries through the Materials delivery path).
 - **Loop:** request → Create order (filled with what is still to buy) → request ordered, engineer told → Material
   came (part or all) → stock up → request received, engineer told.
-- **Not built:** WhatsApp tools for orders (PRC-09); suggesting the open line when a delivery is recorded elsewhere;
+- **Not built:** WhatsApp tools for orders (PRC-09); suggesting the open line when a delivery is recorded elsewhere (since built, PRC-23 / 4f);
   GRN details (challan photo, rejected quantity); sending the PO to the supplier (PDF / WhatsApp); bills matched to
   orders (PRC-11).
+
+### 4f. As built: requests and orders agree (PRC-23, 7 Nov 2026)
+
+Fixes 4e A1–A5, B6, B9 and C13. No migration (reads `purchase_order_lines.request_line_id` and
+`material_receipts.purchase_order_line_id`, both from 0511).
+
+- **On order** (`requests.describe`): what is still to come on open order lines at the site (an order placed without a
+  request counts; a closed or received one no longer does), plus requests ordered by hand or sent from another site
+  that no order covers. A closed-short order leaves its shortfall "to buy" again.
+- **A request follows its orders, in one place** (`orders_router.requests_follow`, called on create, edit, receive,
+  cancel, close and every delivery put on or taken off an order): ordered while anything is still to come; received
+  when what came is what was asked (or every order for it came in full: an order can be for less than asked when some
+  was at the site); otherwise waiting again, the asker told on WhatsApp ("↩️ Not coming yet … PO-0003 closed short:
+  reason; still to order: 10 bags Cement"). A request ordered by hand or sent, with no order ever behind it, is left alone.
+- **Hand decisions** (`decide`) are refused while an open order covers the request (`follows_order`, `may_decide`); the
+  dashboard hides Mark received / Sent / Not ordering then and says it moves with PO-0003.
+- **A request shows its orders** (`orders`: ref, supplier, status, received of ordered per line; cancelled ones dimmed),
+  each linking to Procurement › Purchase orders.
+- **Duplicate checks see each other:** a new request is warned of an open order still bringing the material
+  ("Already on order … still to come on PO-0001 from Malabar"); a new order is warned of a waiting request it does not
+  cover ("Arun asked for 100 bags … for Block A (REQ-0001, waiting). Order it from the request so they are told."). Both
+  the existing 409 `possible_duplicate`, confirmed the same way.
+- **A delivery recorded anywhere meets its order** (`record_inflow` → `match_delivery`): exactly one open line at the
+  site for the material, the quantity within what is still to come, and no other supplier named → it fills that line
+  (the code decides; the result says `order`, the dashboard dialog and the WhatsApp saved line say "📦 On PO-0003
+  (Malabar): 150 of 160 bags came"). Otherwise nothing is linked and the open lines are offered (`open_orders`):
+  the dashboard dialog asks "Is it from one of these orders?", WhatsApp's saved line lists them and "it's PO-0003" is
+  the `delivery_order` tool. `no_order` says it is from no order. Opening stock, adjustments and the Excel import never match.
+- **Put on / taken off later:** `POST /procurement/orders/deliveries/{receipt_id}/order` (`line_id`, or `order` as said,
+  "PO-0003"; null = not this order). Stock never changes. An open order's panel lists "Came here, on no order"
+  (deliveries at its site of its materials since it was placed) with "Count on PO-0003", and each delivery on it has
+  "Not this order".
+- **More than ordered is asked:** receiving, filling a line from Materials, or putting a delivery on a line with more
+  than the line still has to come is a 409 `more_than_ordered` ("PO-0001 has 160 bags … still to come; this is 170. Is
+  the extra 10 bags meant to come?") unless `confirm_extra`; the dashboard asks "Yes, the extra came".
+- **Not built here:** a page link for `delivery_order` on WhatsApp (the saved line names the order); unlinking a
+  delivery from a closed order (refused: its deliveries stay); notifications are de-duplicated per request and status,
+  so a request that waits again a second time for another reason is not told twice.
 
 ### 4e. Gaps found in the request ↔ order review (7 Nov 2026)
 
@@ -210,7 +248,7 @@ points at the one it belongs to.
 GRN details (challan photo, rejected quantity) (PRC-29), bills matched to orders (PRC-11), rate history and GST
 (PRC-14/16), payables, order approval above an amount (D4), PO numbering by financial year (PO/25-26/0001).
 
-**Order of work:** PRC-23 (A, 6, 9, 13), then PRC-24, PRC-25, then PRC-09.
+**Order of work:** PRC-23 (A, 6, 9, 13; built, see 4f), then PRC-24, PRC-25, then PRC-09.
 
 ---
 

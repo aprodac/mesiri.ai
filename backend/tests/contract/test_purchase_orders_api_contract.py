@@ -285,3 +285,197 @@ async def test_scope_an_engineer_of_another_project_cannot_see_or_receive(client
     resp = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["ravi"]["h"], json={
         "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "1"}]})
     assert resp.status_code == 404
+
+
+# --- PRC-23: requests and orders agree -------------------------------------------------------------------------------
+
+
+async def _req_with_order(client, w, qty: str = "160", ordered: str | None = None, supplier: str = "Malabar Hardware"):
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], qty), headers=w["arun"]["h"])).json()
+    body = _order(w, w["cement"], ordered or qty, supplier=supplier)
+    body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
+    resp = await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])
+    assert resp.status_code == 201, resp.text
+    return req, resp.json()
+
+
+def _inflow(w, qty: str, *, site="block_a", **extra) -> dict:
+    return {"project_id": str(w["villa"]), "site_id": str(w[site]), "material_id": w["cement"],
+            "unit_id": w["units"]["bags"], "quantity": qty, "movement_reason": "RECEIVED",
+            "occurred_date": str(datetime.date.today()), **extra}
+
+
+async def _told(engine) -> list[str]:
+    async with engine.begin() as conn:
+        return [r[0] for r in (await conn.execute(sa.text(
+            "SELECT payload->>'message' FROM notifications WHERE rule_key = 'material_request_update' "
+            "ORDER BY created_at"))).all()]
+
+
+async def test_on_order_comes_from_open_order_lines_even_without_a_request(client, world):
+    w = world
+    po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100"), headers=w["admin"]["h"])).json()
+    asked = await client.post("/procurement/requests", json=_ask(w, w["cement"], "120"), headers=w["arun"]["h"])
+    assert asked.status_code == 409  # the request's duplicate check sees the order
+    detail = asked.json()["detail"]
+    assert detail["code"] == "possible_duplicate" and detail["orders"][0]["ref"] == "PO-0001"
+    assert "100 bags Cement OPC 53 still to come on PO-0001 from Malabar Hardware" in detail["message"]
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "120", confirm_duplicate=True),
+                             headers=w["arun"]["h"])).json()
+    assert (req["lines"][0]["on_order"], req["lines"][0]["to_buy"]) == ("100", "20")
+    # 40 came: 60 still on order, 40 here, 20 to buy. Closed: nothing on order any more.
+    await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "40"}]})
+    line = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["lines"][0]
+    assert (line["at_site"], line["on_order"], line["to_buy"]) == ("40", "60", "20")
+    await client.post(f"/procurement/orders/{po['id']}/close", json={"reason": "Rest not needed"}, headers=w["admin"]["h"])
+    line = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["lines"][0]
+    assert (line["on_order"], line["to_buy"]) == ("0", "80")
+    # Guard: an order at another site is not on order here.
+    other = (await client.post("/procurement/orders", json=_order(w, w["tmt"], "50", unit="kg", site="yard"),
+                               headers=w["admin"]["h"])).json()
+    assert other["status"] == "open"
+
+
+async def test_a_delivery_recorded_in_materials_fills_the_one_open_order(client, world, test_engine):
+    w = world
+    req, po = await _req_with_order(client, w, "160")
+    resp = await client.post("/materials/inflows", json=_inflow(w, "150"), headers=w["arun"]["h"])
+    assert resp.status_code == 201, resp.text
+    order = resp.json()["order"]
+    assert (order["ref"], order["received"], order["pending"], order["status"]) == ("PO-0001", "150", "10", "part")
+    inflows = (await client.get("/materials/inflows", headers=w["admin"]["h"])).json()["items"]
+    assert inflows[0]["supplier"] == "Malabar Hardware"  # the order's supplier when none was said
+    after = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
+    assert after["status"] == "ordered" and after["orders"][0]["lines"][0]["received"] == "150"
+    assert after["follows_order"] and not after["may_decide"]
+    done = (await client.post("/materials/inflows", json=_inflow(w, "10"), headers=w["arun"]["h"])).json()
+    assert done["order"]["status"] == "received"
+    assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "done"
+    assert not (await _told(test_engine))[-1].startswith("✅")  # Arun recorded it himself: not messaged about it
+    # Guard: with no open order left, a delivery is plain (nothing linked, nothing offered).
+    plain = (await client.post("/materials/inflows", json=_inflow(w, "5"), headers=w["arun"]["h"])).json()
+    assert "order" not in plain and "open_orders" not in plain
+
+
+async def test_a_delivery_is_offered_not_filled_when_it_is_not_plain(client, world):
+    w = world
+    _, po = await _req_with_order(client, w, "100")
+    # More than still to come, another shop, or "not against an order": never filled silently.
+    more = (await client.post("/materials/inflows", json=_inflow(w, "120"), headers=w["admin"]["h"])).json()
+    assert "order" not in more and more["open_orders"][0]["ref"] == "PO-0001"
+    shop = (await client.post("/materials/inflows", json=_inflow(w, "5", supplier="KK Traders"),
+                              headers=w["admin"]["h"])).json()
+    assert "order" not in shop and shop["open_orders"][0]["pending"] == "100"
+    none = (await client.post("/materials/inflows", json=_inflow(w, "5", no_order=True), headers=w["admin"]["h"])).json()
+    assert "order" not in none and "open_orders" not in none
+    # Two open orders for the same material and site: offered both.
+    second = (await client.post("/procurement/orders", json=_order(w, w["cement"], "50", supplier="KK Traders",
+                                                                   confirm_duplicate=True),
+                                headers=w["admin"]["h"])).json()
+    both = (await client.post("/materials/inflows", json=_inflow(w, "5"), headers=w["admin"]["h"])).json()
+    assert [o["ref"] for o in both["open_orders"]] == ["PO-0001", "PO-0002"]
+    # The office puts the KK delivery on PO-0002 from the order's page; it lists it until then.
+    detail = (await client.get(f"/procurement/orders/{second['id']}", headers=w["admin"]["h"])).json()
+    assert shop["id"] in [d["id"] for d in detail["unlinked_deliveries"]]
+    wrong = await client.post(f"/procurement/orders/deliveries/{shop['id']}/order", json={"order": "PO-0009"},
+                              headers=w["admin"]["h"])
+    assert wrong.status_code == 422
+    put = await client.post(f"/procurement/orders/deliveries/{shop['id']}/order",
+                            json={"order": "PO-0002"}, headers=w["admin"]["h"])  # as said on WhatsApp
+    assert put.status_code == 200, put.text
+    assert put.json()["orders"][0]["lines"][0]["received"] == "5"
+    # "Not this order": off again; stock never changes.
+    stock = await _stock(client, w)
+    off = await client.post(f"/procurement/orders/deliveries/{shop['id']}/order", json={"line_id": None},
+                            headers=w["admin"]["h"])
+    assert off.status_code == 200 and off.json()["orders"][0]["lines"][0]["received"] == "0"
+    assert await _stock(client, w) == stock
+    # More than the line has to come is asked here too.
+    big = await client.post(f"/procurement/orders/deliveries/{more['id']}/order",
+                            json={"line_id": po["lines"][0]["id"]}, headers=w["admin"]["h"])
+    assert big.status_code == 409 and big.json()["detail"]["code"] == "more_than_ordered"
+    # Another project's engineer cannot touch the delivery.
+    assert (await client.post(f"/procurement/orders/deliveries/{shop['id']}/order", json={"line_id": None},
+                              headers=w["ravi"]["h"])).status_code == 404
+
+
+async def test_more_than_ordered_is_asked(client, world):
+    w = world
+    _, po = await _req_with_order(client, w, "160")
+    line = po["lines"][0]["id"]
+    receive = {"occurred_date": str(datetime.date.today()), "lines": [{"line_id": line, "quantity": "170"}]}
+    asked = await client.post(f"/procurement/orders/{po['id']}/receive", json=receive, headers=w["admin"]["h"])
+    assert asked.status_code == 409
+    detail = asked.json()["detail"]
+    assert detail["code"] == "more_than_ordered" and "160 bags Cement OPC 53 still to come" in detail["message"]
+    assert await _stock(client, w) == "0"  # nothing saved
+    ok = await client.post(f"/procurement/orders/{po['id']}/receive", json={**receive, "confirm_extra": True},
+                           headers=w["admin"]["h"])
+    assert ok.status_code == 201 and ok.json()["lines"][0]["extra"] == "10"
+    # The same rule for a delivery recorded in Materials against a line.
+    _, po2 = await _req_with_order(client, w, "20", supplier="KK Traders")
+    body = _inflow(w, "25", purchase_order_line_id=po2["lines"][0]["id"])
+    assert (await client.post("/materials/inflows", json=body, headers=w["admin"]["h"])).status_code == 409
+    assert (await client.post("/materials/inflows", json={**body, "confirm_extra": True},
+                              headers=w["admin"]["h"])).status_code == 201
+
+
+async def test_close_short_and_cancel_move_the_request_on_and_tell_the_engineer(client, world, test_engine):
+    w = world
+    req, po = await _req_with_order(client, w, "160")
+    await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
+    await client.post(f"/procurement/orders/{po['id']}/close", json={"reason": "Shop out of stock"},
+                      headers=w["admin"]["h"])
+    back = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
+    assert back["status"] == "waiting"
+    assert back["decision_note"] == "PO-0001 closed short: Shop out of stock; still to order: 10 bags Cement OPC 53"
+    assert (back["lines"][0]["on_order"], back["lines"][0]["to_buy"]) == ("0", "10")
+    assert (await _told(test_engine))[-1].startswith("↩️ Not coming yet")
+    assert not back["follows_order"] and back["may_decide"]  # the office may now say no to the rest, or send it
+    # The office orders the rest from the request: ordered again, then received in full -> done.
+    body = _order(w, w["cement"], "10", supplier="KK Traders")
+    body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
+    po2 = (await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])).json()
+    assert (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()["status"] == "ordered"
+    await client.post(f"/procurement/orders/{po2['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po2["lines"][0]["id"], "quantity": "10"}]})
+    # One order closed short, the other brought the rest: 150 + 10 is what was asked, so it is received.
+    final = (await client.get(f"/procurement/requests/{req['id']}", headers=w["admin"]["h"])).json()
+    assert final["status"] == "done", final
+    assert [o["ref"] for o in final["orders"]] == ["PO-0001", "PO-0002"]
+
+    # Cancel: back to waiting, the engineer told.
+    req2, po3 = await _req_with_order(client, w, "500", supplier="KK Traders")
+    await client.post(f"/procurement/orders/{po3['id']}/cancel", json={"reason": "Price too high"}, headers=w["admin"]["h"])
+    back2 = (await client.get(f"/procurement/requests/{req2['id']}", headers=w["admin"]["h"])).json()
+    assert back2["status"] == "waiting" and back2["decision_note"].startswith("PO-0003 cancelled: Price too high")
+    assert not back2["follows_order"] and back2["may_decide"]  # a cancelled order no longer holds it
+    assert "Price too high" in (await _told(test_engine))[-1]
+
+
+async def test_mark_received_by_hand_is_refused_while_an_order_covers_the_request(client, world):
+    w = world
+    req, _ = await _req_with_order(client, w, "20")
+    resp = await client.post(f"/procurement/requests/{req['id']}/decide", json={"action": "done"}, headers=w["admin"]["h"])
+    assert resp.status_code == 409 and "follows PO-0001" in resp.text
+    # Guard: a request with no order is still decided by hand.
+    other = (await client.post("/procurement/requests", json=_ask(w, w["tmt"], "5", unit="kg"), headers=w["arun"]["h"])).json()
+    assert (await client.get(f"/procurement/requests/{other['id']}", headers=w["admin"]["h"])).json()["may_decide"]
+    assert (await client.post(f"/procurement/requests/{other['id']}/decide", json={"action": "ordered"},
+                              headers=w["admin"]["h"])).status_code == 200
+
+
+async def test_a_new_order_names_the_waiting_request_for_the_same_material(client, world):
+    w = world
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "100"), headers=w["arun"]["h"])).json()
+    resp = await client.post("/procurement/orders", json=_order(w, w["cement"], "100"), headers=w["admin"]["h"])
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["requests"][0]["ref"] == "REQ-0001"
+    assert detail["message"].startswith("Arun asked for 100 bags Cement OPC 53 for Block A (REQ-0001, waiting)")
+    # Guard: ordered from the request itself, no warning.
+    body = _order(w, w["cement"], "100")
+    body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
+    assert (await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])).status_code == 201

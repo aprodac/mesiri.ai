@@ -24,7 +24,9 @@ import {
   ADJUSTMENT_REASONS,
   TRANSFER_REASONS,
   type InflowReason,
+  type InflowResult,
 } from '@/lib/materials'
+import { asMoreThanOrdered, setDeliveryOrder } from '@/lib/orders'
 import type { AppScope } from '@/lib/scope-types'
 import { fetchVendorsApi } from '@/lib/api'
 import { Combobox } from '@/components/ui/combobox'
@@ -75,6 +77,9 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
   const [notes, setNotes] = React.useState('')
   const [error, setError] = React.useState('')
   const [success, setSuccess] = React.useState(false)
+  // PRC-23: what the delivery did to the open orders at the site, and the over-delivery question.
+  const [saved, setSaved] = React.useState<InflowResult | null>(null)
+  const [extra, setExtra] = React.useState<{ line: string; message: string } | null>(null)
   // One key per dialog session, so a double tap or a retry after a timeout on
   // site wifi replays the first result instead of recording a second delivery.
   const [idempotencyKey, setIdempotencyKey] = React.useState(newIdempotencyKey)
@@ -99,6 +104,8 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
       setNotes('')
       setError('')
       setSuccess(false)
+      setSaved(null)
+      setExtra(null)
       setIdempotencyKey(newIdempotencyKey())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,13 +195,29 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
         },
         idempotencyKey
       ),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['materials'] })
+      queryClient.invalidateQueries({ queryKey: ['procurement'] })
       setSuccess(true)
-      setTimeout(() => onOpenChange(false), 900)
+      setSaved(result)
+      // PRC-23: open orders it may belong to are offered; the dialog stays until they answer.
+      if (!result.open_orders?.length) setTimeout(() => onOpenChange(false), result.order ? 2200 : 900)
     },
     onError: (err: any) => {
       setError(err.response?.data?.detail || 'Failed to record material inflow.')
+    },
+  })
+
+  const putOnOrder = useMutation({
+    mutationFn: ({ line, confirm }: { line: string; confirm?: boolean }) => setDeliveryOrder(saved!.id, { line_id: line, confirm_extra: confirm }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['procurement'] })
+      onOpenChange(false)
+    },
+    onError: (err: any, v) => {
+      const more = asMoreThanOrdered(err)
+      if (more) return setExtra({ line: v.line, message: more.message })
+      setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Not counted on the order.')
     },
   })
 
@@ -233,7 +256,33 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
           {success && (
             <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 p-2.5 rounded flex items-center gap-2">
               <CheckCircle2 className="size-4 shrink-0" />
-              <span>Material inflow recorded.</span>
+              <span>
+                Delivery recorded.
+                {saved?.order && ` Counted on ${saved.order.ref} (${saved.order.vendor_name}): ${Number(saved.order.received)} of ${Number(saved.order.quantity)} ${saved.order.unit} came.`}
+              </span>
+            </div>
+          )}
+          {success && saved?.open_orders && saved.open_orders.length > 0 && (
+            <div className="flex flex-col gap-2 rounded border border-sky-300 bg-sky-50 p-2.5 text-xs text-sky-950 dark:bg-sky-950 dark:text-sky-100">
+              <span className="font-semibold">Is it from one of these orders?</span>
+              {extra ? (
+                <>
+                  <span>{extra.message}</span>
+                  <span className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => setExtra(null)}>Back</Button>
+                    <Button type="button" size="sm" disabled={putOnOrder.isPending} onClick={() => putOnOrder.mutate({ line: extra.line, confirm: true })}>Yes, the extra came</Button>
+                  </span>
+                </>
+              ) : (
+                <span className="flex flex-wrap gap-2">
+                  {saved.open_orders.map((o) => (
+                    <Button key={o.line_id} type="button" size="sm" variant="outline" disabled={putOnOrder.isPending} onClick={() => putOnOrder.mutate({ line: o.line_id })}>
+                      {o.ref} · {o.vendor_name} ({Number(o.pending)} {o.unit} to come)
+                    </Button>
+                  ))}
+                  <Button type="button" size="sm" variant="ghost" onClick={() => onOpenChange(false)}>Not from an order</Button>
+                </span>
+              )}
             </div>
           )}
 

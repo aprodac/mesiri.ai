@@ -39,6 +39,7 @@ RECORD_PAGES: dict[str, str | None] = {
     "answer_size_request": "materials",
     "ask_for_material": "material_requests",  # PRC-22
     "decide_material_request": "material_requests",
+    "delivery_order": None,  # PRC-23: the saved line already says which order (PO-0003); no page of its own yet
     "cancel_material_request": "material_requests",
     "add_expense_category": "expense_categories",
     "create_project": "project",

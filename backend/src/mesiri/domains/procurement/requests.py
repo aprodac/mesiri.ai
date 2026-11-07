@@ -7,10 +7,15 @@ converted the way a delivery is, and what was said is kept in ``said``).
 What each line shows is worked out here, once, for the dashboard and the assistant alike:
 
 * ``at_site``: the site's stock now (the movement ledger, the same figure as Materials > Stock);
-* ``on_order``: what other requests for the same site and material already have ordered or on its way;
+* ``on_order``: what is still to come at the site: open purchase order lines (PRC-23: an order placed without a
+  request counts too; a closed or received one no longer does), plus requests ordered or sent with no order behind
+  them (marked by hand, or sent from another site);
 * ``to_buy``: what is still missing (asked - at site - on order, never below zero);
 * ``elsewhere``: other sites, within what the caller can see, that hold some;
 * ``duplicates``: other open requests in the same project for the same material.
+
+A request also lists its purchase orders (``orders``, PRC-23) and follows them (``follows_order``): while an order
+covers it, the office's manual decisions are off and the orders move it (``orders_router.requests_follow``).
 """
 
 from __future__ import annotations
@@ -169,7 +174,8 @@ async def fetch_requests(conn: AsyncConnection, organization_id: uuid.UUID, *,
 
 async def describe(conn: AsyncConnection, organization_id: uuid.UUID, rows: list[dict[str, Any]], *,
                    stock_rows: list[dict], all_requests: list[dict], today: datetime.date,
-                   last_rates: dict[uuid.UUID, dict] | None) -> list[dict[str, Any]]:
+                   last_rates: dict[uuid.UUID, dict] | None,
+                   order_lines: list[dict] | None = None) -> list[dict[str, Any]]:
     """Each request as the page and the assistant show it: its lines with stock at the site, on order, to buy,
     stock at other sites, duplicates, and the last rate (``last_rates`` only for the roles that see money)."""
     stock: dict[tuple, Decimal] = {}
@@ -180,13 +186,24 @@ async def describe(conn: AsyncConnection, organization_id: uuid.UUID, rows: list
             elsewhere.setdefault(s["material_id"], []).append(s)
     site_names = await _site_names(conn, organization_id, {s["site_id"] for s in stock_rows if s.get("site_id")})
 
-    on_order: dict[tuple, list[tuple[uuid.UUID, Decimal]]] = {}
+    order_lines = order_lines or []
+    on_order: dict[tuple, Decimal] = {}
+    covered = {line["request_line_id"] for line in order_lines
+               if line["request_line_id"] is not None and line["status"] != "cancelled"}
+    by_request: dict[uuid.UUID, list[dict]] = {}
+    for line in order_lines:
+        if line["pending"] > 0:
+            key = (line["site_id"], line["material_id"])
+            on_order[key] = on_order.get(key, Decimal(0)) + line["pending"]
+        if line["request_id"] is not None:
+            by_request.setdefault(line["request_id"], []).append(line)
     open_by_material: dict[tuple, list[dict]] = {}
     for other in all_requests:
         for line in other["lines"]:
-            if other["status"] in IN_FLIGHT:
-                on_order.setdefault((other["site_id"], line["material_id"]), []).append(
-                    (other["id"], Decimal(line["quantity"])))
+            if other["status"] in IN_FLIGHT and line["id"] not in covered:
+                # Ordered by hand or sent from another site: no order line says what is still to come.
+                key = (other["site_id"], line["material_id"])
+                on_order[key] = on_order.get(key, Decimal(0)) + Decimal(line["quantity"])
             if other["status"] in OPEN:
                 open_by_material.setdefault((other["project_id"], line["material_id"]), []).append(other)
 
@@ -198,10 +215,7 @@ async def describe(conn: AsyncConnection, organization_id: uuid.UUID, rows: list
             key = (row["site_id"], line["material_id"])
             asked = Decimal(line["quantity"])
             here = stock.get(key, Decimal(0))
-            ordered = sum((q for rid, q in on_order.get(key, []) if rid != row["id"]), Decimal(0))
-            if row["status"] in IN_FLIGHT:
-                # This request is the order: what it asked for is on its way, nothing left to buy for it.
-                ordered += asked
+            ordered = on_order.get(key, Decimal(0))
             to_buy = max(asked - max(here, Decimal(0)) - ordered, Decimal(0)) if row["status"] in OPEN else Decimal(0)
             spare = [
                 {"site_id": str(s["site_id"]), "site_name": site_names.get(s["site_id"], ""),
@@ -239,11 +253,29 @@ async def describe(conn: AsyncConnection, organization_id: uuid.UUID, rows: list
             "done_at": row["done_at"].isoformat() if row["done_at"] else None,
             "created_at": row["created_at"].isoformat(),
             "lines": lines,
+            "orders": _orders_of(by_request.get(row["id"], [])),
+            # An open order covers it: it moves with that order (closed or cancelled ones leave it to the office).
+            "follows_order": any(line["status"] == "open" for line in by_request.get(row["id"], [])),
             "duplicates": [{"id": str(d["id"]), "ref": ref(d["number"]), "status": d["status"],
                             "requested_by_name": d["requested_by_name"], "created_at": d["created_at"].isoformat()}
                            for d in duplicates.values()],
         })
     return out
+
+
+def _orders_of(lines: list[dict]) -> list[dict]:
+    """PRC-23: the purchase orders behind a request ("PO-0003 · Malabar · 150 of 160 came"), oldest first."""
+    from mesiri.domains.procurement.orders import order_shown_status
+    from mesiri.domains.procurement.orders import ref as order_ref
+
+    orders: dict[uuid.UUID, list[dict]] = {}
+    for line in lines:
+        orders.setdefault(line["order_id"], []).append(line)
+    return [{"id": str(order_id), "ref": order_ref(its[0]["number"]), "vendor_name": its[0]["vendor_name"],
+             "status": order_shown_status(its, its[0]["status"]),
+             "lines": [{"material": x["material"], "unit": x["unit"], "quantity": _num(x["quantity"]),
+                        "received": _num(x["received"]), "pending": _num(x["pending"])} for x in its]}
+            for order_id, its in orders.items()]
 
 
 async def _site_names(conn: AsyncConnection, organization_id: uuid.UUID, ids: set) -> dict:
@@ -252,6 +284,21 @@ async def _site_names(conn: AsyncConnection, organization_id: uuid.UUID, ids: se
     rows = (await conn.execute(text("SELECT id, name FROM sites WHERE organization_id = :org AND id = ANY(:ids)"),
                                {"org": organization_id, "ids": list(ids)})).all()
     return {r.id: r.name for r in rows}
+
+
+def on_order_in_project(order_lines: list[dict], project_id: uuid.UUID, material_ids: set) -> list[dict]:
+    """PRC-23: open order lines in the project still bringing any of these materials: what a new request may repeat
+    (the order's side of the duplicate check)."""
+    from mesiri.domains.procurement.orders import ref as order_ref
+
+    found: dict[uuid.UUID, dict] = {}
+    for line in order_lines:
+        if line["project_id"] != project_id or line["pending"] <= 0 or line["material_id"] not in material_ids:
+            continue
+        entry = found.setdefault(line["order_id"], {"id": str(line["order_id"]), "ref": order_ref(line["number"]),
+                                                    "vendor_name": line["vendor_name"], "lines": []})
+        entry["lines"].append({"material": line["material"], "pending": _num(line["pending"]), "unit": line["unit"]})
+    return list(found.values())
 
 
 def open_duplicates(all_requests: list[dict], project_id: uuid.UUID, material_ids: set[uuid.UUID]) -> list[dict]:
@@ -283,5 +330,7 @@ def requester_message(item: dict[str, Any], status: str, note: str | None, by: s
         "sent": f"🚚 Being sent from another site{who}: {what}{tail}. {item['ref']}",
         "rejected": f"✖️ Not ordered{who}: {what}. Reason: {note}. {item['ref']}",
         "done": f"✅ Marked received: {what}. {item['ref']}",
+        # PRC-23: its order was cancelled, or closed with part of it still missing: the office has it to order again.
+        "waiting": f"↩️ Not coming yet: {what}{tail}. Waiting to be ordered again. {item['ref']}",
     }
     return words[status]

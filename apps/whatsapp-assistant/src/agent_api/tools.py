@@ -105,8 +105,16 @@ ALLOWED: tuple[Allowed, ...] = (
             "Materials used or issued: what, where, when, who recorded it, and each one's category. Filter by "
             "category as list_receipts."),
     # PRC-04: the supplier goes in words (the API links it to the vendor); vendor_id is the dashboard's picker.
+    # PRC-23: a delivery fills the one open purchase order it plainly belongs to by itself (the code decides);
+    # no_order when they say it is not from any order. The saved line says which order, or offers the open ones.
     Allowed("record_receipt", "POST", "/materials/inflows", "Prepare a material receipt (material that arrived at a site)." + _WRITE,
-            hide=("vendor_id", "purchase_order_line_id")),  # PRC-08: the order line is the dashboard's until PRC-09
+            hide=("vendor_id", "purchase_order_line_id", "confirm_extra")),
+    Allowed("delivery_order", "POST", "/procurement/orders/deliveries/{receipt_id}/order",
+            "Prepare putting a delivery already saved (its id from list_receipts) on a purchase order line at its site "
+            "(order: the order number they said, e.g. PO-0003), or taking it off its order (no order, no line_id: "
+            "'not that order'). Stock does not change. If it is more than the order still has to come "
+            "the save is refused and says so; prepare it again with confirm_extra only when they say the extra came."
+            + _WRITE),
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
     # PRC-22: material requests -- what a site asks for before anyone orders it (Materials > Requests).

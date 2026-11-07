@@ -416,6 +416,21 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "{name} पहले से है ✅ इस नाम के {count} प्रोजेक्ट हैं:",
         "hinglish": "{name} pehle se hai ✅ Is naam ke {count} projects hain:",
     },
+    # PRC-23: a delivery saved on WhatsApp that filled an open purchase order, or that may belong to one.
+    "api.delivery_on_order": {
+        "english": "📦 On {ref} ({vendor}): {received} of {quantity} {unit} came",
+        "manglish": "📦 {ref} ({vendor}): {quantity}-il {received} {unit} vannu",
+        "malayalam": "📦 {ref} ({vendor}): {quantity}-ൽ {received} {unit} വന്നു",
+        "hindi": "📦 {ref} ({vendor}): {quantity} में से {received} {unit} आया",
+        "hinglish": "📦 {ref} ({vendor}): {quantity} mein se {received} {unit} aaya",
+    },
+    "api.delivery_open_orders": {
+        "english": "📦 Not put on an order: {orders} still to come here. Say which order it is to count it there.",
+        "manglish": "📦 Order-il cherthilla: {orders} ivide varaanundu. Ethu order aanennu paranjaal athil koottaam.",
+        "malayalam": "📦 ഓർഡറിൽ ചേർത്തില്ല: {orders} ഇവിടെ വരാനുണ്ട്. ഏത് ഓർഡർ ആണെന്ന് പറഞ്ഞാൽ അതിൽ കൂട്ടാം.",
+        "hindi": "📦 किसी ऑर्डर में नहीं जोड़ा: {orders} यहाँ आना बाकी है. कौन सा ऑर्डर है बताएँ तो उसमें गिन लेंगे.",
+        "hinglish": "📦 Kisi order mein nahi joda: {orders} yahan aana baaki hai. Kaunsa order hai batao to usme gin lenge.",
+    },
     "api.twin_line": {
         "english": "{number}. {name} · {sites} sites · {records} records",
         "manglish": "{number}. {name} · {sites} site · {records} records",

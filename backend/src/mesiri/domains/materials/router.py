@@ -1318,6 +1318,11 @@ class MaterialInflowCreate(BaseModel):
     total_cost: Decimal | None = None
     #: PRC-08: the purchase order line this delivery fills (same site and material, the order still open).
     purchase_order_line_id: uuid.UUID | None = None
+    #: PRC-23: more than the order line still has to come is refused (409 ``more_than_ordered``) unless confirmed.
+    confirm_extra: bool = False
+    #: PRC-23: not against any order. Without it (and without ``purchase_order_line_id``) a delivery fills the one
+    #: open order line at the site for the material when that fits plainly; otherwise the result offers the open ones.
+    no_order: bool = False
 
 
 class MaterialOutflowCreate(BaseModel):
@@ -1509,17 +1514,30 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
     if body.movement_reason == OPENING_STOCK:
         await _assert_no_opening_stock(conn, auth_context.organization_id, body.site_id, material)
     unit_cost, total_cost = _resolve_costs(body.quantity, body.unit_cost, body.total_cost)
+    open_orders: list[dict] = []
     if body.purchase_order_line_id is not None:
         from mesiri.domains.procurement.orders import OrderRuleError, check_delivery_line
 
         try:
             order_vendor = await check_delivery_line(conn, auth_context.organization_id, body.purchase_order_line_id,
                                                      site_id=body.site_id, material_id=material["id"],
-                                                     reason=body.movement_reason)
+                                                     reason=body.movement_reason, quantity=body.quantity,
+                                                     confirm_extra=body.confirm_extra)
         except OrderRuleError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         if body.vendor_id is None and not body.supplier:
             body.vendor_id = order_vendor  # the order's supplier, unless they said another one
+    elif body.movement_reason == "RECEIVED" and body.site_id is not None and not body.no_order:
+        # PRC-23: a delivery recorded in Materials or on WhatsApp fills the open order it plainly belongs to.
+        from mesiri.domains.procurement.orders_router import match_delivery
+
+        matched, open_orders = await match_delivery(conn, auth_context, site_id=body.site_id,
+                                                    material_id=material["id"], quantity=body.quantity,
+                                                    vendor_id=body.vendor_id, supplier=body.supplier)
+        if matched is not None:
+            body.purchase_order_line_id = uuid.UUID(matched["line_id"])
+            if body.vendor_id is None and not body.supplier:
+                body.vendor_id = uuid.UUID(matched["vendor_id"])
     supplier, vendor_id = await _delivery_vendor(conn, auth_context, body.supplier, body.vendor_id)
 
     row_id = uuid.uuid4()
@@ -1582,7 +1600,16 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
             "occurred_date_source": "reported",
         },
     )
-    return {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
+    result: dict = {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
+    if body.purchase_order_line_id is not None:
+        from mesiri.domains.procurement.orders_router import after_delivery
+
+        # The order it filled ("PO-0003: 150 of 160 came"); its requests follow it.
+        result["order"] = await after_delivery(conn, auth_context, body.purchase_order_line_id)
+    elif open_orders:
+        # Open orders at this site for this material it may belong to: offered, never filled silently.
+        result["open_orders"] = open_orders
+    return result
 
 
 @router.post("/outflows", status_code=201)

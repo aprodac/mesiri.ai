@@ -57,7 +57,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill }: { open: b
   const [when, setWhen] = React.useState<When>('tomorrow')
   const [picked, setPicked] = React.useState('')
   const [notes, setNotes] = React.useState('')
-  const [duplicate, setDuplicate] = React.useState<string | null>(null)
+  const [duplicate, setDuplicate] = React.useState<{ message: string; request: boolean } | null>(null)
   const [error, setError] = React.useState('')
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -118,7 +118,8 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill }: { open: b
     },
     onError: (err) => {
       const dup = asDuplicateConflict(err)
-      if (dup) return setDuplicate(dup.message)
+      // PRC-23: the same material already on an open order, or a site's waiting request for it (order from the request).
+      if (dup) return setDuplicate({ message: dup.message, request: !dup.duplicates?.length && !!dup.requests?.length })
       const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
       setError(typeof detail === 'string' ? detail : 'Not placed. Try again.')
     },
@@ -222,10 +223,10 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill }: { open: b
 
           {duplicate && (
             <div className="flex flex-col gap-2 rounded-xl border border-orange-300 bg-orange-50 p-3 text-sm text-orange-950 dark:bg-orange-950 dark:text-orange-100">
-              <div className="flex items-start gap-2"><Copy className="mt-0.5 size-4 shrink-0" /><span><strong>Already on order.</strong> {duplicate}</span></div>
+              <div className="flex items-start gap-2"><Copy className="mt-0.5 size-4 shrink-0" /><span><strong>{duplicate.request ? 'A site asked for this.' : 'Already on order.'}</strong> {duplicate.message}</span></div>
               <div className="flex flex-wrap gap-2 pl-6">
                 <Button type="button" size="sm" variant="outline" onClick={() => onOpenChange(false)}>Don’t order</Button>
-                <Button type="button" size="sm" className="bg-orange-600 text-white hover:bg-orange-700" disabled={save.isPending} onClick={() => save.mutate(true)}>It is extra, order anyway</Button>
+                <Button type="button" size="sm" className="bg-orange-600 text-white hover:bg-orange-700" disabled={save.isPending} onClick={() => save.mutate(true)}>{duplicate.request ? 'Order it separately' : 'It is extra, order anyway'}</Button>
               </div>
             </div>
           )}

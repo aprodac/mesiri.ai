@@ -497,11 +497,21 @@ function idempotencyHeaders(key?: string) {
   return key ? { headers: { 'Idempotency-Key': key } } : undefined
 }
 
+/** PRC-23: what a delivery did to the purchase orders at its site. */
+export interface InflowResult {
+  id: string
+  status: string
+  /** The open order it filled by itself (the only one that fits plainly). */
+  order?: { id: string; ref: string; vendor_name: string; received: string; quantity: string; unit: string; status: string }
+  /** Open orders it may belong to, offered (several, more than still to come, or another supplier). */
+  open_orders?: { line_id: string; order_id: string; ref: string; vendor_name: string; pending: string; unit: string }[]
+}
+
 export async function createInflow(
   payload: CreateInflowPayload,
   idempotencyKey?: string
-): Promise<{ id: string; status: string }> {
-  const res = await api.post<{ id: string; status: string }>(
+): Promise<InflowResult> {
+  const res = await api.post<InflowResult>(
     '/materials/inflows',
     payload,
     idempotencyHeaders(idempotencyKey)

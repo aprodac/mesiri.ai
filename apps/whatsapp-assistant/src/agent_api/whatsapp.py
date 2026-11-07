@@ -1073,7 +1073,7 @@ class ApiWhatsApp:
         previewed = state.pop("previewed", None) == batch
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
-        if previewed and results and all(r.ok and not held(r) for r in results):
+        if previewed and results and all(r.ok and not held(r) and not order_note(r, None) for r in results):
             # WA-210: every line was on the preview card and all of them saved: "✅ Saved." and the links, no list.
             self._previewed_saves[correlation_id] = True
             text = _saved_short(results, state.get("language"), today=_today(ctx))
@@ -1655,6 +1655,25 @@ def without_listed_lines(text: str, entries: list[PendingWrite], language: str |
     return words or press
 
 
+def order_note(result: WriteResult, language: str | None) -> str:
+    """PRC-23: under a saved delivery, the purchase order it filled ("📦 On PO-0003 (Malabar): 150 of 160 bags
+    came"), or the open orders at the site it may belong to (offered, never filled silently). "" otherwise."""
+    from runtime.agent.wording import say
+
+    body = result.body if result.ok and isinstance(result.body, dict) else {}
+    lang = language or "english"
+    order = body.get("order")
+    if isinstance(order, dict) and order.get("ref"):
+        return say("api.delivery_on_order", lang, ref=str(order["ref"]), vendor=str(order.get("vendor_name") or ""),
+                   received=str(order.get("received")), quantity=str(order.get("quantity")),
+                   unit=str(order.get("unit") or ""))
+    offered = [o for o in body.get("open_orders") or [] if isinstance(o, dict) and o.get("ref")]
+    if offered:
+        orders = ", ".join(f"{o['ref']} ({o.get('vendor_name')}, {o.get('pending')} {o.get('unit')})" for o in offered[:3])
+        return say("api.delivery_open_orders", lang, orders=orders)
+    return ""
+
+
 def _saved_short(results: list[WriteResult], language: str | None, *, today: str) -> str:
     """WA-210: everything on the preview card saved: one line, then the record links (no repeat of the list)."""
     links = [line for line in saved_links(results, today=today).split("\n") if line]
@@ -1749,7 +1768,9 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
         note = r.body.get("converted") if isinstance(r.body, dict) else None
         if isinstance(r.body, dict) and r.body.get("already_listed"):
             return " (already in your list)"  # [246]: added elsewhere first; its lines went on it
-        return f" ({note} in stock)" if note else ""
+        tail = f" ({note} in stock)" if note else ""
+        on_order = order_note(r, language)  # PRC-23
+        return f"{tail}\n{on_order}" if on_order else tail
 
     waiting = [r for r in results if held(r)]  # WA-197: held for the admin's size: never called saved
     results = [r for r in results if not held(r)]

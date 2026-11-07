@@ -55,6 +55,8 @@ export interface PurchaseOrder {
   value_complete: boolean | null
   deliveries: { id: string; line_id: string; material: string; quantity: string; unit: string; date: string; by_name: string | null; at: string }[]
   duplicates: { id: string; ref: string; vendor_name: string; created_by_name: string | null }[]
+  /** PRC-23 (one order only): deliveries at its site of its materials, on no order, since it was placed. */
+  unlinked_deliveries?: { id: string; material_id: string; material: string; quantity: string; unit: string; date: string; supplier: string | null; by_name: string | null }[]
   may_edit: boolean
   may_cancel: boolean
   may_close: boolean
@@ -99,9 +101,24 @@ export async function closeOrder(id: string, reason: string): Promise<PurchaseOr
   return data
 }
 
-export async function receiveOrder(id: string, payload: { occurred_date: string; lines: { line_id: string; quantity: string }[]; notes?: string }): Promise<PurchaseOrder> {
+export async function receiveOrder(id: string, payload: { occurred_date: string; lines: { line_id: string; quantity: string }[]; notes?: string; confirm_extra?: boolean }): Promise<PurchaseOrder> {
   const { data } = await api.post(`/procurement/orders/${id}/receive`, payload)
   return data
+}
+
+/** PRC-23: put a delivery already recorded on an order line, or take it off its order (`line_id` null). */
+export async function setDeliveryOrder(receiptId: string, payload: { line_id: string | null; confirm_extra?: boolean }): Promise<unknown> {
+  const { data } = await api.post(`/procurement/orders/deliveries/${receiptId}/order`, payload)
+  return data
+}
+
+/** PRC-23: the API's question when more came than the line still has to come (409 `more_than_ordered`). */
+export interface MoreThanOrdered { code: 'more_than_ordered'; message: string; ref: string; pending: string; quantity: string; unit: string }
+
+export function asMoreThanOrdered(err: unknown): MoreThanOrdered | null {
+  const res = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response
+  const d = res?.status === 409 ? (res.data?.detail as MoreThanOrdered | undefined) : undefined
+  return d && typeof d === 'object' && d.code === 'more_than_ordered' ? d : null
 }
 
 export const ORDER_LOOK: Record<OrderStatus, { label: string; chip: string; dot: string }> = {

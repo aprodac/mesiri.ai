@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { cn } from '@/lib/utils'
 import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
-import { ORDER_LOOK, cancelOrder, closeOrder, dueWords, receiveOrder, rupees, updateOrder, type PurchaseOrder } from '@/lib/orders'
+import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, receiveOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 
 // PRC-06/08: one order, as the office and the site see it: the supplier, what was ordered and what came per line,
@@ -16,6 +16,7 @@ import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 
 function errorText(err: unknown): string {
   const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (detail && typeof detail === 'object' && 'message' in detail) return String((detail as { message: unknown }).message)
   return typeof detail === 'string' ? detail : 'That did not save. Try again.'
 }
 
@@ -61,6 +62,18 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
   }
   const fail = (err: unknown) => toast.error('Not saved', errorText(err))
   const move = useMutation({ mutationFn: (d: string) => updateOrder(order.id, { expected_date: d || null }), onSuccess: done('Date changed'), onError: fail })
+  // PRC-23: a delivery recorded elsewhere put on this order (or taken off it). More than still to come is asked.
+  const [extra, setExtra] = React.useState<{ receipt: string; line: string; message: string } | null>(null)
+  const link = useMutation({
+    mutationFn: ({ receipt, line, confirm }: { receipt: string; line: string | null; confirm?: boolean }) => setDeliveryOrder(receipt, { line_id: line, confirm_extra: confirm }),
+    onSuccess: (_, v) => { setExtra(null); done(v.line ? `Counted on ${order.ref}` : `Taken off ${order.ref}`)() },
+    onError: (err, v) => {
+      const more = asMoreThanOrdered(err)
+      if (more && v.line) return setExtra({ receipt: v.receipt, line: v.line, message: more.message })
+      fail(err)
+    },
+  })
+  const unlinked = order.unlinked_deliveries ?? []
   const open = order.status === 'open' || order.status === 'part'
 
   return (
@@ -125,11 +138,42 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
       <div className="flex flex-col px-5 py-4">
         <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">History</h3>
         <Step icon={ShoppingCart} title={`Ordered${order.created_by_name ? ` by ${order.created_by_name}` : ''}`} meta={when(order.created_at)} quote={order.notes} />
-        {order.deliveries.map((d) => <Step key={d.id} icon={Truck} title={`${qty(d.quantity, d.unit)} ${d.material} came`} meta={`${d.by_name ?? ''} · ${new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`} />)}
+        {order.deliveries.map((d) => (
+          <Step key={d.id} icon={Truck} title={`${qty(d.quantity, d.unit)} ${d.material} came`} meta={`${d.by_name ?? ''} · ${new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+            action={open && order.may_receive ? { label: 'Not this order', onClick: () => link.mutate({ receipt: d.id, line: null }), busy: link.isPending } : undefined} />
+        ))}
         {order.status === 'received' && <Step icon={PackageCheck} title="Everything came" />}
         {(order.status === 'closed' || order.status === 'cancelled') && <Step icon={order.status === 'cancelled' ? Ban : Check} title={order.status === 'cancelled' ? 'Cancelled' : 'Closed short'} meta={`${order.status_by_name ?? ''}${order.status_at ? ` · ${when(order.status_at)}` : ''}`} quote={order.status_note} bad />}
         {open && <Step icon={Clock} title="Waiting for the rest" now />}
       </div>
+
+      {open && order.may_receive && unlinked.length > 0 && (
+        <div className="flex flex-col gap-2 border-t px-5 py-4">
+          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Came here, on no order</h3>
+          <p className="text-xs text-muted-foreground">Recorded in Materials or on WhatsApp since this order was placed. Count one on this order if it came from it.</p>
+          {unlinked.map((d) => {
+            const line = order.lines.find((l) => l.material_id === d.material_id)
+            return (
+              <div key={d.id} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="font-semibold">{qty(d.quantity, d.unit)} {d.material}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{[d.supplier, d.by_name, new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })].filter(Boolean).join(' · ')}</span>
+                </span>
+                {line && <Button size="sm" variant="outline" disabled={link.isPending} onClick={() => link.mutate({ receipt: d.id, line: line.id })}>Count on {order.ref}</Button>}
+              </div>
+            )
+          })}
+          {extra && (
+            <div className="flex flex-col gap-2 rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-950 dark:bg-orange-950 dark:text-orange-100">
+              <span>{extra.message}</span>
+              <span className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setExtra(null)}>No</Button>
+                <Button size="sm" className="bg-orange-600 text-white hover:bg-orange-700" disabled={link.isPending} onClick={() => link.mutate({ receipt: extra.receipt, line: extra.line, confirm: true })}>Yes, the extra came</Button>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {open && (
         <div className="flex flex-col gap-2 border-t px-5 py-4">
@@ -154,7 +198,7 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
       <ReasonDialog
         open={dialog === 'cancel' || dialog === 'close'}
         title={dialog === 'cancel' ? `Cancel ${order.ref}` : `Close ${order.ref} short`}
-        hint={dialog === 'cancel' ? 'Its requests go back to waiting.' : 'What came stays; the rest is no longer expected.'}
+        hint={dialog === 'cancel' ? 'Its requests go back to waiting; whoever asked is told on WhatsApp.' : 'What came stays; the rest is no longer expected. A request still short waits to be ordered again, and whoever asked is told.'}
         placeholder={dialog === 'cancel' ? 'Supplier has no stock' : 'Rest out of stock, ordering elsewhere'}
         onClose={() => setDialog(null)}
         onSave={(reason) => (dialog === 'cancel' ? cancelOrder(order.id, reason) : closeOrder(order.id, reason)).then(done(dialog === 'cancel' ? 'Order cancelled' : 'Order closed'), fail)}
@@ -163,7 +207,7 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
   )
 }
 
-function Step({ icon: Icon, title, meta, quote, now, bad }: { icon: typeof Clock; title: string; meta?: string; quote?: string | null; now?: boolean; bad?: boolean }) {
+function Step({ icon: Icon, title, meta, quote, now, bad, action }: { icon: typeof Clock; title: string; meta?: string; quote?: string | null; now?: boolean; bad?: boolean; action?: { label: string; onClick: () => void; busy?: boolean } }) {
   return (
     <div className="flex gap-2.5">
       <span className={cn('mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full', now ? 'border-2 border-yellow-500 bg-yellow-50 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200' : bad ? 'bg-destructive/10 text-destructive' : 'bg-foreground text-background')}>
@@ -171,7 +215,7 @@ function Step({ icon: Icon, title, meta, quote, now, bad }: { icon: typeof Clock
       </span>
       <div className="min-w-0 pb-3">
         <div className={cn('text-sm', now ? 'font-semibold' : 'font-medium')}>{title}</div>
-        {meta && <div className="text-xs text-muted-foreground">{meta}</div>}
+        {meta && <div className="text-xs text-muted-foreground">{meta}{action && <> · <button type="button" disabled={action.busy} className="underline-offset-2 hover:underline" onClick={action.onClick}>{action.label}</button></>}</div>}
         {quote && <div className="mt-1 max-w-xs rounded-xl rounded-bl-sm bg-muted px-3 py-1.5 text-sm">{quote}</div>}
       </div>
     </div>
@@ -181,16 +225,23 @@ function Step({ icon: Icon, title, meta, quote, now, bad }: { icon: typeof Clock
 function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: PurchaseOrder; open: boolean; onClose: () => void; onDone: () => void; onError: (e: unknown) => void }) {
   const [amounts, setAmounts] = React.useState<Record<string, string>>({})
   const [date, setDate] = React.useState(today())
+  // PRC-23: more than a line still has to come is asked before it is saved.
+  const [extra, setExtra] = React.useState<string | null>(null)
   React.useEffect(() => {
     if (open) {
       setAmounts(Object.fromEntries(order.lines.map((l) => [l.id, Number(l.pending) > 0 ? l.pending : ''])))
       setDate(today())
+      setExtra(null)
     }
   }, [open, order])
   const save = useMutation({
-    mutationFn: () => receiveOrder(order.id, { occurred_date: date, lines: Object.entries(amounts).filter(([, v]) => Number(v) > 0).map(([line_id, quantity]) => ({ line_id, quantity })) }),
+    mutationFn: (confirm: boolean) => receiveOrder(order.id, { occurred_date: date, confirm_extra: confirm, lines: Object.entries(amounts).filter(([, v]) => Number(v) > 0).map(([line_id, quantity]) => ({ line_id, quantity })) }),
     onSuccess: onDone,
-    onError,
+    onError: (err) => {
+      const more = asMoreThanOrdered(err)
+      if (more) return setExtra(more.message)
+      onError(err)
+    },
   })
   const any = Object.values(amounts).some((v) => Number(v) > 0)
   return (
@@ -200,7 +251,7 @@ function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: Purch
           <DialogTitle>Material came · {order.ref}</DialogTitle>
           <DialogDescription>From {order.vendor_name} at {order.site_name}. Stock goes up as soon as you save.</DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (any) save.mutate() }}>
+        <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (any) save.mutate(false) }}>
           {order.lines.map((line) => (
             <div key={line.id} className="flex items-center gap-2">
               <CategoryTile mainCategory={line.main_category} size="sm" />
@@ -209,7 +260,7 @@ function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: Purch
                 <span className="block text-xs text-muted-foreground">{qty(line.pending, line.unit)} to come</span>
               </span>
               <div className="flex w-32 items-center rounded-md border focus-within:ring-2 focus-within:ring-ring">
-                <Input aria-label={`${line.material} quantity`} inputMode="decimal" className="border-0 text-right font-semibold tabular-nums shadow-none focus-visible:ring-0" value={amounts[line.id] ?? ''} placeholder="0" onChange={(e) => setAmounts({ ...amounts, [line.id]: e.target.value.replace(/[^0-9.]/g, '') })} />
+                <Input aria-label={`${line.material} quantity`} inputMode="decimal" className="border-0 text-right font-semibold tabular-nums shadow-none focus-visible:ring-0" value={amounts[line.id] ?? ''} placeholder="0" onChange={(e) => { setExtra(null); setAmounts({ ...amounts, [line.id]: e.target.value.replace(/[^0-9.]/g, '') }) }} />
                 <span className="pr-2.5 text-xs text-muted-foreground">{line.unit}</span>
               </div>
             </div>
@@ -218,9 +269,14 @@ function ReceiveDialog({ order, open, onClose, onDone, onError }: { order: Purch
             <Label htmlFor="receive-date">Date</Label>
             <Input id="receive-date" type="date" max={today()} value={date} onChange={(e) => setDate(e.target.value)} className="w-[160px] dark:[color-scheme:dark]" />
           </div>
+          {extra && (
+            <div className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-950 dark:bg-orange-950 dark:text-orange-100" role="alert">{extra}</div>
+          )}
           <DialogFooter className="mt-2">
             <Button type="button" variant="outline" onClick={onClose}>Back</Button>
-            <Button type="submit" disabled={!any || save.isPending} className="font-semibold">Save delivery</Button>
+            {extra
+              ? <Button type="button" disabled={save.isPending} className="bg-orange-600 font-semibold text-white hover:bg-orange-700" onClick={() => save.mutate(true)}>Yes, the extra came</Button>
+              : <Button type="submit" disabled={!any || save.isPending} className="font-semibold">Save delivery</Button>}
           </DialogFooter>
         </form>
       </DialogContent>

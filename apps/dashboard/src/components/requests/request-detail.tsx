@@ -18,7 +18,9 @@ import {
   type Decision,
   type MaterialRequest,
   type RequestLine,
+  type RequestOrder,
 } from '@/lib/requests'
+import { ORDER_LOOK } from '@/lib/orders'
 import { Avatar, CategoryTile, CoverBar, ProjectDot, StatusChip } from './parts'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
 
@@ -118,6 +120,8 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
         )}
       </div>
 
+      {request.orders.length > 0 && <OrdersBlock orders={request.orders} />}
+
       {request.lines.some((l) => l.last_rate) && (
         <div className="grid grid-cols-1 gap-2 border-b px-5 py-4 sm:grid-cols-2">
           {request.lines.filter((l) => l.last_rate).map((l) => (
@@ -139,6 +143,7 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
               <Button className="h-11 basis-full gap-2 font-semibold" onClick={() => setOrdering(true)}>
                 <ShoppingCart className="size-4" /> Create order{buyWords}
               </Button>
+              {request.may_decide && (<>
               <Button variant="outline" className="h-11 flex-1 gap-2 border-fuchsia-300 bg-fuchsia-50 font-semibold text-fuchsia-900 hover:bg-fuchsia-100 dark:bg-fuchsia-950 dark:text-fuchsia-100" onClick={() => setDecision('sent')}>
                 <ArrowRight className="size-4" /> Sent from a site
               </Button>
@@ -148,9 +153,17 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
               <button type="button" className="basis-full text-left text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setDecision('ordered')}>
                 Ordered outside Mesiri? Mark it ordered
               </button>
+              </>)}
             </>
           )}
-          {request.may_act && (request.status === 'ordered' || request.status === 'sent') && (
+          {request.may_act && request.follows_order && (
+            // PRC-23: an open order covers it; it is received when the delivery is recorded against the order.
+            <p className="w-full text-sm text-muted-foreground">
+              Moves with its order: it is received when the delivery is recorded against{' '}
+              {request.orders.filter((o) => o.status === 'open' || o.status === 'part').map((o) => o.ref).join(', ') || 'the order'}.
+            </p>
+          )}
+          {request.may_decide && (request.status === 'ordered' || request.status === 'sent') && (
             <div className="flex w-full flex-col gap-1.5">
               <Button className="h-11 gap-2 font-semibold" disabled={act.isPending} onClick={() => act.mutate({ action: 'done' })}>
                 <PackageCheck className="size-4" /> Mark received
@@ -176,6 +189,27 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
         onClose={() => setDecision(null)}
         onSave={(note) => decision && act.mutate({ action: decision, note })}
       />
+    </div>
+  )
+}
+
+function OrdersBlock({ orders }: { orders: RequestOrder[] }) {
+  // PRC-23: the purchase orders behind the request, each with what came of what was ordered.
+  return (
+    <div className="flex flex-col gap-2 border-b px-5 py-4">
+      <div className="text-xs font-semibold text-muted-foreground">Orders</div>
+      {orders.map((o) => (
+        <Link key={o.id} to={`/procurement/orders?id=${o.id}`} className={cn('flex items-center gap-3 rounded-lg border px-3 py-2 text-sm hover:bg-muted/40', o.status === 'cancelled' && 'opacity-60')}>
+          <ShoppingCart className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1">
+            <span className="font-semibold tabular-nums">{o.ref}</span> · {o.vendor_name}
+            <span className="block truncate text-xs text-muted-foreground">
+              {o.lines.map((l) => `${qty(l.received, l.unit)} of ${qty(l.quantity, l.unit)} came${o.lines.length > 1 ? ` (${l.material})` : ''}`).join(' · ')}
+            </span>
+          </span>
+          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', ORDER_LOOK[o.status].chip)}>{ORDER_LOOK[o.status].label}</span>
+        </Link>
+      ))}
     </div>
   )
 }

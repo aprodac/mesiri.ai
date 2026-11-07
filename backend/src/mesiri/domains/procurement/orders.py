@@ -23,8 +23,8 @@ SOON_DAYS = 2
 
 
 class OrderRuleError(Exception):
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
+    def __init__(self, status_code: int, detail: str | dict) -> None:
+        super().__init__(str(detail))
         self.status_code = status_code
         self.detail = detail
 
@@ -42,13 +42,21 @@ def _money(value: Decimal | None) -> str | None:
 
 
 async def check_delivery_line(conn: AsyncConnection, organization_id: uuid.UUID, line_id: uuid.UUID, *,
-                              site_id: uuid.UUID | None, material_id: Any, reason: str) -> uuid.UUID:
+                              site_id: uuid.UUID | None, material_id: Any, reason: str,
+                              quantity: Decimal | None = None, confirm_extra: bool = False,
+                              receipt_id: uuid.UUID | None = None) -> uuid.UUID:
     """A delivery may fill this order line: the company's, the same material and site, a receipt, the order still
-    open. Returns the order's vendor (the delivery's supplier unless they named another)."""
+    open. Returns the order's vendor (the delivery's supplier unless they named another).
+
+    PRC-23: more than the line still has to come is asked, never taken silently: a 409 ``more_than_ordered`` unless
+    ``confirm_extra`` (``receipt_id``: a delivery already on this line is not counted against itself)."""
     row = (await conn.execute(text(
         """
-        SELECT l.material_id, o.site_id, o.status, o.vendor_id, o.number
+        SELECT l.material_id, l.quantity, o.site_id, o.status, o.vendor_id, o.number, m.name AS material,
+               u.code AS unit
           FROM purchase_order_lines l JOIN purchase_orders o ON o.id = l.purchase_order_id
+          JOIN materials_catalog m ON m.id = l.material_id
+          JOIN units_of_measure u ON u.id = l.unit_id
          WHERE l.id = :id AND l.organization_id = :org
         """), {"id": line_id, "org": organization_id})).first()
     if row is None:
@@ -61,7 +69,118 @@ async def check_delivery_line(conn: AsyncConnection, organization_id: uuid.UUID,
         raise OrderRuleError(422, f"{ref(row.number)} is for another site.")
     if row.status != "open":
         raise OrderRuleError(409, f"{ref(row.number)} is {row.status}; it takes no more deliveries.")
+    if quantity is not None and not confirm_extra:
+        pending = row.quantity - await line_received(conn, line_id, besides=receipt_id)
+        if quantity > pending:
+            left = max(pending, Decimal(0))
+            raise OrderRuleError(409, {
+                "code": "more_than_ordered",
+                "message": f"{ref(row.number)} has {_num(left)} {row.unit} {row.material} still to come; this is "
+                           f"{_num(quantity)}. Is the extra {_num(quantity - left)} {row.unit} meant to come?",
+                "ref": ref(row.number), "pending": _num(left), "quantity": _num(quantity), "unit": row.unit})
     return row.vendor_id
+
+
+async def line_received(conn: AsyncConnection, line_id: uuid.UUID, *, besides: uuid.UUID | None = None) -> Decimal:
+    """What came against one order line (deliveries taken back do not count), leaving out ``besides``."""
+    row = (await conn.execute(text(
+        f"SELECT COALESCE(SUM(r.quantity), 0) FROM material_receipts r WHERE r.purchase_order_line_id = :line "
+        f"AND (CAST(:besides AS uuid) IS NULL OR r.id <> CAST(:besides AS uuid)) AND {_COUNTED}"),
+        {"line": line_id, "besides": besides})).first()
+    return Decimal(row[0])  # type: ignore[index]
+
+
+async def open_lines_at(conn: AsyncConnection, organization_id: uuid.UUID, *, site_id: uuid.UUID,
+                        material_id: Any) -> list[dict[str, Any]]:
+    """PRC-23: open order lines at a site for a material with something still to come, oldest order first: what a
+    delivery recorded in Materials or on WhatsApp may be filling."""
+    rows = (await conn.execute(text(
+        f"""
+        SELECT l.id AS line_id, o.id AS order_id, o.number, o.vendor_id, v.name AS vendor_name, l.quantity,
+               u.code AS unit, o.expected_date,
+               COALESCE((SELECT SUM(r.quantity) FROM material_receipts r WHERE r.purchase_order_line_id = l.id
+                         AND {_COUNTED}), 0) AS received
+          FROM purchase_order_lines l
+          JOIN purchase_orders o ON o.id = l.purchase_order_id
+          JOIN vendors v ON v.id = o.vendor_id
+          JOIN units_of_measure u ON u.id = l.unit_id
+         WHERE l.organization_id = :org AND o.site_id = :site AND l.material_id = :material AND o.status = 'open'
+         ORDER BY o.created_at, l.position
+        """), {"org": organization_id, "site": site_id, "material": material_id})).all()
+    out = []
+    for r in rows:
+        pending = Decimal(r.quantity) - Decimal(r.received)
+        if pending > 0:
+            out.append({"line_id": str(r.line_id), "order_id": str(r.order_id), "ref": ref(r.number),
+                        "vendor_id": str(r.vendor_id), "vendor_name": r.vendor_name, "quantity": _num(r.quantity),
+                        "received": _num(r.received), "pending": _num(pending), "unit": r.unit,
+                        "expected_date": str(r.expected_date) if r.expected_date else None})
+    return out
+
+
+async def order_lines_for_requests(conn: AsyncConnection, organization_id: uuid.UUID, *,
+                                   project_ids: set[uuid.UUID] | None) -> list[dict[str, Any]]:
+    """PRC-23: every order line in these projects that is open (on order at its site) or covers a request line (any
+    status, cancelled too: a request's history), with what came. What requests read "on order" and their orders from."""
+    sql = f"""
+        SELECT l.id, l.purchase_order_id AS order_id, o.number, o.status, o.project_id, o.site_id,
+               v.name AS vendor_name, l.material_id, m.name AS material, u.code AS unit, l.quantity,
+               l.request_line_id, rl.request_id,
+               COALESCE((SELECT SUM(r.quantity) FROM material_receipts r WHERE r.purchase_order_line_id = l.id
+                         AND {_COUNTED}), 0) AS received
+          FROM purchase_order_lines l
+          JOIN purchase_orders o ON o.id = l.purchase_order_id
+          JOIN vendors v ON v.id = o.vendor_id
+          JOIN materials_catalog m ON m.id = l.material_id
+          JOIN units_of_measure u ON u.id = l.unit_id
+          LEFT JOIN material_request_lines rl ON rl.id = l.request_line_id
+         WHERE l.organization_id = :org AND (o.status = 'open' OR l.request_line_id IS NOT NULL)
+    """
+    params: dict[str, Any] = {"org": organization_id}
+    if project_ids is not None:
+        sql += " AND o.project_id = ANY(:projects)"
+        params["projects"] = list(project_ids)
+    sql += " ORDER BY o.number, l.position"
+    out = []
+    for r in (await conn.execute(text(sql), params)).all():
+        row = dict(r._mapping)
+        row["quantity"], row["received"] = Decimal(row["quantity"]), Decimal(row["received"])
+        #: Still to come: only on an open order (a closed one's rest will not come).
+        row["pending"] = max(row["quantity"] - row["received"], Decimal(0)) if row["status"] == "open" else Decimal(0)
+        out.append(row)
+    return out
+
+
+async def unlinked_deliveries(conn: AsyncConnection, organization_id: uuid.UUID, *, site_id: Any,
+                              material_ids: list, since: datetime.date) -> list[dict[str, Any]]:
+    """PRC-23: deliveries at the site of the order's materials, on no order, since the order was placed (newest first,
+    at most 20): what the office may put on the order (recorded in Materials or on WhatsApp before it was matched)."""
+    if not material_ids:
+        return []
+    rows = (await conn.execute(text(
+        f"""
+        SELECT r.id, r.material_id, m.name AS material, r.quantity, u.code AS unit, r.occurred_date, r.supplier,
+               uu.full_name AS by_name
+          FROM material_receipts r
+          JOIN materials_catalog m ON m.id = r.material_id
+          JOIN units_of_measure u ON u.id = r.unit_id
+          LEFT JOIN users uu ON uu.id = r.created_by
+         WHERE r.organization_id = :org AND r.site_id = :site AND r.material_id = ANY(:materials)
+           AND r.movement_reason = 'RECEIVED' AND r.purchase_order_line_id IS NULL AND r.occurred_date >= :since
+           AND {_COUNTED}
+         ORDER BY r.occurred_date DESC, r.created_at DESC LIMIT 20
+        """), {"org": organization_id, "site": site_id, "materials": material_ids, "since": since})).all()
+    return [{"id": str(r.id), "material_id": str(r.material_id), "material": r.material, "quantity": _num(r.quantity),
+             "unit": r.unit, "date": str(r.occurred_date), "supplier": r.supplier, "by_name": r.by_name} for r in rows]
+
+
+def order_shown_status(lines: list[dict[str, Any]], status: str) -> str:
+    """open / part / received for an open order from its lines (as ``shown_status``); closed, cancelled as stored."""
+    if status != "open":
+        return status
+    if lines and all(line["received"] >= line["quantity"] for line in lines):
+        return "received"
+    return "part" if any(line["received"] > 0 for line in lines) else "open"
 
 
 async def next_number(conn: AsyncConnection, organization_id: uuid.UUID) -> int:

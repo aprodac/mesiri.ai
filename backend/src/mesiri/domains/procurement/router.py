@@ -89,6 +89,12 @@ async def _context(conn: AsyncConnection, auth: AuthorizationContext, project_id
     return stock_rows, all_rows, today
 
 
+async def _order_lines(conn: AsyncConnection, auth: AuthorizationContext, project_ids: set[uuid.UUID] | None):
+    from mesiri.domains.procurement.orders import order_lines_for_requests
+
+    return await order_lines_for_requests(conn, auth.organization_id, project_ids=project_ids)
+
+
 async def _rates(conn: AsyncConnection, auth: AuthorizationContext, rows: list[dict]) -> dict | None:
     if not may_view_expenses(auth.role):
         return None
@@ -105,12 +111,16 @@ def _with_rights(item: dict, auth: AuthorizationContext) -> dict:
     mine = item["requested_by"] == str(auth.user_id)
     item["may_act"] = may_act_on_material_requests(auth.role)
     item["may_cancel"] = item["status"] == store.WAITING and (mine or item["may_act"])
+    #: PRC-23: a request an order covers follows the order; the office decides on the order, not here.
+    item["may_decide"] = item["may_act"] and not item["follows_order"] and item["status"] in store.OPEN
     return item
 
 
 async def _describe(conn, auth, rows, stock_rows, all_rows, today) -> list[dict]:
+    project_ids, _ = _resolve_project_ids(auth, None)
     items = await store.describe(conn, auth.organization_id, rows, stock_rows=stock_rows, all_requests=all_rows,
-                                 today=today, last_rates=await _rates(conn, auth, rows))
+                                 today=today, last_rates=await _rates(conn, auth, rows),
+                                 order_lines=await _order_lines(conn, auth, project_ids))
     return [_with_rights(item, auth) for item in items]
 
 
@@ -212,19 +222,28 @@ async def create_request(
         raise HTTPException(status_code=422, detail="Each material once per request: add the quantities together.")
     project_ids, _ = _resolve_project_ids(auth_context, body.project_id)
     existing = await store.fetch_requests(conn, org, project_ids=project_ids)
-    duplicates = store.open_duplicates(existing, body.project_id, {line["material_id"] for line in lines})
-    if duplicates and not body.confirm_duplicate:
-        first = duplicates[0]
-        who = first["requested_by_name"] or "Someone"
-        what = ", ".join(f"{x['quantity']} {x['unit']} {x['material']}" for x in first["lines"])
+    materials = {line["material_id"] for line in lines}
+    duplicates = store.open_duplicates(existing, body.project_id, materials)
+    # PRC-23: an order placed without a request is a duplicate too ("already on order").
+    on_order = store.on_order_in_project(await _order_lines(conn, auth_context, project_ids), body.project_id,
+                                         materials)
+    if (duplicates or on_order) and not body.confirm_duplicate:
+        if duplicates:
+            first = duplicates[0]
+            who = first["requested_by_name"] or "Someone"
+            what = ", ".join(f"{x['quantity']} {x['unit']} {x['material']}" for x in first["lines"])
+            message = f"{who} already asked for {what} in this project ({first['ref']}, {first['status']})."
+        else:
+            order = on_order[0]
+            what = ", ".join(f"{x['pending']} {x['unit']} {x['material']}" for x in order["lines"])
+            message = (f"Already on order for this project: {what} still to come on {order['ref']} from "
+                       f"{order['vendor_name']}.")
         return JSONResponse(status_code=409, content={"detail": {
-            "code": "possible_duplicate",
-            "message": f"{who} already asked for {what} in this project ({first['ref']}, {first['status']}).",
-            "duplicates": duplicates}})
+            "code": "possible_duplicate", "message": message, "duplicates": duplicates, "orders": on_order}})
     request_id = await store.insert_request(
         conn, org, project_id=body.project_id, site_id=body.site_id, requested_by=auth_context.user_id,
         source=body.source, needed_by=body.needed_by, purpose=(body.purpose or "").strip() or None,
-        raised_over_duplicate=bool(duplicates), lines=lines)
+        raised_over_duplicate=bool(duplicates or on_order), lines=lines)
     return await _one(conn, auth_context, request_id)
 
 
@@ -240,6 +259,10 @@ async def decide_request(
     if not may_act_on_material_requests(auth_context.role):
         raise HTTPException(status_code=403, detail="Only an admin, owner or project manager can act on a request.")
     item = await _locked(conn, auth_context, request_id)
+    if item["follows_order"]:
+        refs = ", ".join(o["ref"] for o in item["orders"] if o["status"] in ("open", "part", "received"))
+        raise HTTPException(status_code=409, detail=f"{item['ref']} follows {refs}: it moves with the order (record "
+                            "the delivery against the order, or close or cancel the order).")
     target, allowed_from = store.DECISIONS[body.action]
     if item["status"] not in allowed_from:
         raise HTTPException(status_code=409, detail=f"This request is {item['status']}; it cannot be marked "

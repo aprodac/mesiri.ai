@@ -22,6 +22,7 @@ API_ROUTERS: tuple[str, ...] = (
     "projects.router",
     "mesiri.domains.materials.router",
     "mesiri.domains.procurement.router",  # PRC-22: material requests (what a site asks for)
+    "mesiri.domains.procurement.orders_router",  # PRC-23: a saved delivery put on its purchase order
     "mesiri.domains.timeline.router",
     "mesiri.domains.workforce.router",
     "mesiri.domains.progress.router",
