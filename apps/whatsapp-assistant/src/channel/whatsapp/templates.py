@@ -174,6 +174,17 @@ REQUEST_FIXED = TemplateSpec(
     quick_replies=("Works ✅", "Still wrong ❌"),
 )
 
+#: SA-37: an announcement from the Mesiri team, for someone who has not messaged in 24 h. It only says there is
+#: news; their reply opens the window and the full message (with its pictures) follows. Meta files product news as
+#: Marketing. Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "There is something new in Mesiri: {{1}}. Reply to this message to see what it does."
+PRODUCT_UPDATE = TemplateSpec(
+    name="mesiri_product_update",
+    language="en",
+    category="MARKETING",
+    body_param_count=1,
+)
+
 TEMPLATES: dict[str, TemplateSpec] = {
     spec.name: spec
     for spec in (
@@ -183,6 +194,7 @@ TEMPLATES: dict[str, TemplateSpec] = {
         JOIN_REQUEST,
         LOGIN_CODE,
         OPS_ALERT,
+        PRODUCT_UPDATE,
         REQUEST_FIXED,
         SITE_DAY_REVIEW,
         SITE_NO_UPDATE,

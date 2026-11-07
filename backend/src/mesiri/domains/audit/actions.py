@@ -59,6 +59,9 @@ SIGNUP_TRIAL_ALLOWED = "signup.trial_allowed"
 DATABASE_QUERY_READ = "database.query_read"
 DATABASE_ROWS_CHANGED = "database.rows_changed"
 
+# Announcements (SA-37): a message from the Mesiri team queued for the people of one or more companies.
+ANNOUNCEMENT_SENT = "announcement.sent"
+
 ACTIONS = frozenset(
     {
         COMPANY_CREATED,
@@ -84,6 +87,7 @@ ACTIONS = frozenset(
         SIGNUP_TRIAL_ALLOWED,
         DATABASE_QUERY_READ,
         DATABASE_ROWS_CHANGED,
+        ANNOUNCEMENT_SENT,
     }
 )
 

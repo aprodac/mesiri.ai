@@ -59,6 +59,7 @@ Submitted on the **Mesiri** WhatsApp account (named Paraclete until 24 Oct) (ID 
 | `mesiri_join_request` | In review |
 | `mesiri_ops_alert` | In review |
 | `mesiri_request_fixed` | **To submit** (WA-156, 3 Nov) |
+| `mesiri_product_update` | **To submit** (SA-37, 7 Nov). Until approved, an announcement waits for each person's next message (up to its hold, 7 days by default) |
 | `mesiri_group_invite` | In review (submitted 29 Oct, WA-87; reworded to pass as Utility, see below) |
 | `mesiri_dpr_delivery` | In review |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
@@ -246,6 +247,25 @@ when nobody was reached the alert goes to the team WhatsApp group instead.
 Sample values: `{{1}}` = `worker`, `{{2}}` = `dpr.render_failed project=Skyline Towers`.
 
 To switch it on: add `mesiri_ops_alert` to `WHATSAPP_APPROVED_TEMPLATES`.
+
+### `mesiri_product_update` — news from the Mesiri team (SA-37)
+
+An announcement from the control panel (Announcements) to someone who has not messaged Mesiri in the last 24
+hours. It only says there is news: their reply opens the window and the full message, with its pictures, follows
+at once. Without it, the announcement waits for their next message anyway (up to its hold).
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_product_update` |
+| Category | Marketing (Meta files product news as Marketing; Utility was refused for `mesiri_trial_ending`) |
+| Language | English (`en`) |
+| Header | None |
+| Body | `There is something new in Mesiri: {{1}}. Reply to this message to see what it does.` |
+| Footer | `Sent by Mesiri` |
+| Buttons | None |
+
+Sample value for the submission: `{{1}}` = `Material Requests`. After approval, add it to
+`WHATSAPP_APPROVED_TEMPLATES` on the server.
 
 ### `mesiri_request_fixed` — "what you asked for works now" (WA-156)
 

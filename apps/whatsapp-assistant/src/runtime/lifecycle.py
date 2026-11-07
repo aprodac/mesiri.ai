@@ -320,6 +320,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Replies admin router not loaded: %s", exc)
 
+    # Announcements from the Mesiri team to every company (SA-37); like replies.
+    try:
+        from mesiri.domains.admin.announcements_router import router as announcements_admin_router
+
+        app.include_router(announcements_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Announcements admin router not loaded: %s", exc)
+
     # The Overview, the super admin's morning screen (SA-18); like costs.
     try:
         from mesiri.domains.admin.overview_router import router as overview_admin_router

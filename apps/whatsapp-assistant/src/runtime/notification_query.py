@@ -158,6 +158,25 @@ class NotificationSendQueueService:
             repo = PostgresNotificationRepository(conn)
             await repo.mark_sent(notification_id=uuid.UUID(notification_id))
 
+    async def list_waiting_window(self) -> list[dict[str, Any]]:
+        from mesiri.infrastructure.postgres.repositories.notifications import (
+            PostgresNotificationRepository,
+        )
+
+        async with self._db.transaction() as conn:
+            return await PostgresNotificationRepository(conn).list_waiting_window()
+
+    async def set_waiting(self, *, notification_id: str, waiting: bool, payload: dict | None = None) -> None:
+        import uuid
+
+        from mesiri.infrastructure.postgres.repositories.notifications import (
+            PostgresNotificationRepository,
+        )
+
+        async with self._db.transaction() as conn:
+            await PostgresNotificationRepository(conn).set_waiting(
+                notification_id=uuid.UUID(notification_id), waiting=waiting, payload=payload)
+
     async def mark_skipped(self, *, notification_id: str, reason: str) -> None:
         import uuid
 

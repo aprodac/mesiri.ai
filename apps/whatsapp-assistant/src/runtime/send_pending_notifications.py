@@ -119,6 +119,54 @@ def _buttons(payload: dict[str, Any]) -> list[Any]:
     ]
 
 
+async def _send_images(payload: dict[str, Any], *, wa_id: str, sender: Any, object_storage: Any | None) -> None:
+    """``payload["images"]`` (object keys) as pictures. A picture that fails is logged and left out: the
+    message still goes."""
+    if object_storage is None:
+        return
+    for number, key in enumerate(payload.get("images") or [], start=1):
+        try:
+            stored = await object_storage.get_object(str(key))
+            await sender.send_image(wa_id, stored.data, filename=f"picture-{number}.png", shows="Announcement picture")
+        except Exception:  # noqa: BLE001
+            import logging
+
+            logging.getLogger("mesiri.notifications").warning("notification.image_send_failed key=%s", key, exc_info=True)
+
+
+def _held_for_window(payload: dict[str, Any], created_at: Any, now: datetime) -> str | None:
+    """SA-37: None while a held row may still wait for the person's next message; the skip reason once it is
+    too old (``payload["hold_days"]``, default 7)."""
+    from datetime import timedelta
+
+    if created_at is None:
+        return None
+    if now - created_at > timedelta(days=int(payload.get("hold_days") or 7)):
+        return "expired_after_template" if payload.get("template_sent") else "expired_waiting_for_window"
+    return None
+
+
+async def _release_waiting(queue: Any, now: datetime) -> None:
+    """SA-37: rows held for the person's next message go back to the sender once that message came (their
+    24-hour window is open); rows held too long are skipped with the reason."""
+    from mesiri.application.notifications.checks import is_within_whatsapp_session_window
+
+    if not hasattr(queue, "list_waiting_window"):
+        return
+    for row in await queue.list_waiting_window():
+        notification_id = str(row["id"])
+        payload = row.get("payload") or {}
+        expired = _held_for_window(payload, row.get("created_at"), now)
+        if expired:
+            await queue.mark_skipped(notification_id=notification_id, reason=expired)
+            continue
+        wa_id = await queue.resolve_recipient_wa_id(str(row["recipient_user_id"])) if row.get("recipient_user_id") else None
+        if wa_id is None:
+            continue
+        if is_within_whatsapp_session_window(last_inbound_at=await queue.last_inbound_at(wa_id), now=now):
+            await queue.set_waiting(notification_id=notification_id, waiting=False)
+
+
 async def _send_one(
     row: dict[str, Any],
     *,
@@ -135,6 +183,8 @@ async def _send_one(
     payload = row.get("payload") or {}
     buttons = _buttons(payload)
     text = _render(row)
+    # SA-37: an announcement's pictures (screenshots) go first, so its words are the last thing in the chat.
+    await _send_images(payload, wa_id=wa_id, sender=sender, object_storage=object_storage)
     # Request 91: a day card, when the payload has one and it can be drawn. It
     # carries the same text (header of the buttons, or the image's caption);
     # any failure sends the text alone, as before.
@@ -259,6 +309,7 @@ async def drain_and_send(
     timezones: dict[tuple[str, str], str] = {}
     testers: dict[str, bool] = {}  # organization id -> is a test company (release notes skip quiet hours)
 
+    await _release_waiting(queue, now_utc or datetime.now(tz=UTC))
     pending = await queue.list_pending()
     if only_ids is not None:
         pending = [row for row in pending if str(row["id"]) in only_ids]
@@ -304,6 +355,12 @@ async def drain_and_send(
                 # silently rejected. Only an approved template can go (WA-12);
                 # with none, skip with the reason rather than pretend.
                 template_choice = choose_template(row.get("payload"), approved_templates)
+                if payload.get("hold_until_window") and (payload.get("template_sent") or template_choice.spec is None):
+                    # SA-37: an announcement waits for their next message (the template, when there is one,
+                    # has gone already and only says there is news; the full message follows when they reply).
+                    await queue.set_waiting(notification_id=notification_id, waiting=True)
+                    outcomes[notification_id] = "waiting_window"
+                    continue
                 if template_choice.spec is None:
                     reason = template_choice.skip_reason or "outside_whatsapp_session_window_needs_template"
                     await queue.mark_skipped(notification_id=notification_id, reason=reason)
@@ -331,6 +388,14 @@ async def drain_and_send(
             sent = await _send_template(
                 row, template_choice, wa_id=wa_id, sender=sender, object_storage=object_storage
             )
+            if sent and payload.get("hold_until_window"):
+                # SA-37: the template only says there is news; keep the full message for their reply.
+                await queue.set_waiting(
+                    notification_id=notification_id, waiting=True, payload={**payload, "template_sent": True}
+                )
+                outcomes[notification_id] = "template_sent"
+                counts["sent"] += 1
+                continue
         else:
             sent = await _send_one(
                 row,

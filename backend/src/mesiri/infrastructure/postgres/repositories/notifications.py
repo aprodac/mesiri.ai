@@ -151,6 +151,38 @@ class PostgresNotificationRepository:
             {"id": notification_id},
         )
 
+    async def list_waiting_window(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        """SA-37: rows held for the recipient's next message (outside the 24-hour window, no template), oldest
+        first. Kept out of 'pending' so they never crowd the pending queue the sender reads."""
+        from sqlalchemy import text
+
+        rows = (
+            await self.conn.execute(
+                text(
+                    "SELECT id, organization_id, project_id, site_id, rule_key, subject_id, recipient_user_id, "
+                    "payload, created_at FROM notifications WHERE status = 'waiting_window' "
+                    "ORDER BY created_at ASC LIMIT :limit"
+                ),
+                {"limit": limit},
+            )
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def set_waiting(self, *, notification_id: uuid.UUID, waiting: bool, payload: dict | None = None) -> None:
+        """SA-37: hold a row for the recipient's next message (waiting=True), or hand it back to the sender."""
+        import json
+
+        from sqlalchemy import text
+
+        await self.conn.execute(
+            text(
+                "UPDATE notifications SET status = :status, "
+                "payload = COALESCE(CAST(:payload AS jsonb), payload) WHERE id = :id"
+            ),
+            {"status": "waiting_window" if waiting else "pending", "id": notification_id,
+             "payload": json.dumps(payload) if payload is not None else None},
+        )
+
     async def mark_skipped(self, *, notification_id: uuid.UUID, reason: str) -> None:
         """Recorded, never silently dropped -- e.g. outside the WhatsApp
         session window with no approved template, or no recipient could be
