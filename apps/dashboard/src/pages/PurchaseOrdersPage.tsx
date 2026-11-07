@@ -53,12 +53,12 @@ const ORDER: Record<Urgency, number> = { late: 0, soon: 1, later: 2, closed: 3 }
 /** PRC-31: the orders shown (tab and filters applied), one row per item, for Excel. Rates only when the API sent them. */
 function exportOrders(items: PurchaseOrder[]): void {
   const rows = items.flatMap((o) => o.lines.map((l) => [
-    o.ref, ORDER_LOOK[o.status].label, o.vendor_name, o.project_name, o.site_name, o.created_by_name ?? '', o.created_at.slice(0, 10),
+    o.ref, o.their_ref ?? '', ORDER_LOOK[o.status].label, o.vendor_name, o.project_name, o.site_name, o.created_by_name ?? '', o.created_at.slice(0, 10),
     o.expected_date ?? '', l.material, Number(l.quantity), l.unit, l.rate === null ? '' : Number(l.rate), l.amount === null ? '' : Number(l.amount),
     Number(l.received), Number(l.pending), l.request?.ref ?? '', o.notes ?? '', o.status_note ?? '',
   ]))
   exportCsv(`purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`,
-    ['Order', 'Status', 'Supplier', 'Project', 'Site', 'Ordered by', 'Ordered on', 'Expected', 'Item', 'Quantity', 'Unit', 'Rate',
+    ['Order', 'Their number', 'Status', 'Supplier', 'Project', 'Site', 'Ordered by', 'Ordered on', 'Expected', 'Item', 'Quantity', 'Unit', 'Rate',
       'Amount', 'Received', 'Still to come', 'Request', 'Notes', 'Closed / cancelled because'], rows)
 }
 
@@ -96,7 +96,7 @@ export default function PurchaseOrdersPage() {
     if (skip !== 'due' && due && o.urgency !== due) return false
     if (search) {
       const q = search.toLowerCase()
-      if (!o.ref.toLowerCase().includes(q) && !o.vendor_name.toLowerCase().includes(q) && !o.lines.some((l) => l.material.toLowerCase().includes(q))) return false
+      if (!o.ref.toLowerCase().includes(q) && !(o.their_ref ?? '').toLowerCase().includes(q) && !o.vendor_name.toLowerCase().includes(q) && !o.lines.some((l) => l.material.toLowerCase().includes(q))) return false
     }
     return true
   }, [site, vendor, category, due, search])
@@ -181,7 +181,7 @@ export default function PurchaseOrdersPage() {
           <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-2.5">
             <Search className="size-4 text-muted-foreground" />
             <span className="sr-only">Search orders</span>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="PO, supplier, item" className="w-28 bg-transparent text-sm outline-none sm:w-36" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="PO, their no., supplier, item" className="w-28 bg-transparent text-sm outline-none sm:w-36" />
           </label>
         </div>
       </div>
@@ -228,7 +228,7 @@ function OrderRow({ order: o, selected, onPick }: { order: PurchaseOrder; select
       <VendorTile id={o.vendor_id} name={o.vendor_name} />
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate"><span className="font-semibold">{o.vendor_name}</span><span className="ml-2 text-xs text-muted-foreground tabular-nums">{o.ref}</span></span>
+          <span className="min-w-0 truncate"><span className="font-semibold">{o.vendor_name}</span><span className="ml-2 text-xs text-muted-foreground tabular-nums">{o.ref}{o.their_ref ? ` · ${o.their_ref}` : ''}</span></span>
           {o.urgency !== 'closed' && <span className={cn('inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', URGENCY_LOOK[o.urgency].chip)}>{dueWords(o)}</span>}
         </span>
         <span className="flex items-center gap-2 text-sm">

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import {
   STATUS_LOOK,
   URGENCY_LOOK,
+  boughtOutside,
   cancelRequest,
   decideRequest,
   reopenRequest,
@@ -41,7 +42,7 @@ function when(iso: string): string {
 export function RequestDetail({ request, className, inSheet }: { request: MaterialRequest; className?: string; inSheet?: boolean }) {
   const first = request.lines[0]
   const main = request.lines.length === 1 ? first?.main_category ?? null : null
-  const [decision, setDecision] = React.useState<Decision | null>(null)
+  const [decision, setDecision] = React.useState<Act | null>(null)
   // PRC-06: a purchase order made from this request, filled in with what is still to buy at its site.
   const [ordering, setOrdering] = React.useState(false)
   // PRC-31: change it while it waits; bring it back once said no to or taken back.
@@ -57,8 +58,9 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
   const toast = useToast()
 
   const act = useMutation({
-    mutationFn: ({ action, note }: { action: Decision | 'cancel' | 'reopen'; note?: string }) =>
-      action === 'cancel' ? cancelRequest(request.id) : action === 'reopen' ? reopenRequest(request.id) : decideRequest(request.id, action, note),
+    mutationFn: ({ action, note }: { action: Act | 'cancel' | 'reopen'; note?: string }) =>
+      action === 'cancel' ? cancelRequest(request.id) : action === 'reopen' ? reopenRequest(request.id)
+        : action === 'outside' ? boughtOutside(request.id, note) : decideRequest(request.id, action, note),
     onSuccess: (after) => {
       queryClient.invalidateQueries({ queryKey: ['procurement', 'requests'] })
       setDecision(null)
@@ -165,7 +167,7 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
               <Button variant="outline" size="icon" className="size-11 border-destructive/30 text-destructive" title="Not ordering it" aria-label="Not ordering it" onClick={() => setDecision('rejected')}>
                 <X className="size-4" strokeWidth={2.6} />
               </Button>
-              <button type="button" className="basis-full text-left text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setDecision('ordered')}>
+              <button type="button" className="basis-full text-left text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setDecision('outside')}>
                 Ordered outside Mesiri? Mark it ordered
               </button>
               </>)}
@@ -175,7 +177,8 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
             // PRC-23: an open order covers it; it is received when the delivery is recorded against the order.
             <p className="w-full text-sm text-muted-foreground">
               Moves with its order: it is received when the delivery is recorded against{' '}
-              {request.orders.filter((o) => o.status === 'open' || o.status === 'part').map((o) => o.ref).join(', ') || 'the order'}.
+              {request.orders.filter((o) => o.status === 'open' || o.status === 'part').map((o) => o.ref).join(', ') || 'the order'}.{' '}
+              <button type="button" className="font-medium text-foreground underline-offset-2 hover:underline" onClick={() => setDecision('outside')}>Got the rest outside Mesiri?</button>
             </p>
           )}
           {request.may_decide && (request.status === 'ordered' || request.status === 'sent') && (
@@ -311,14 +314,18 @@ function History({ request }: { request: MaterialRequest }) {
   )
 }
 
-const DECISION_WORDS: Record<Decision, { title: string; label: string; placeholder: string; required: boolean; button: string }> = {
+/** PRC-30: an office decision, or "got it outside Mesiri" (one step; its open orders stop). */
+type Act = Decision | 'outside'
+
+const DECISION_WORDS: Record<Act, { title: string; label: string; placeholder: string; required: boolean; button: string }> = {
+  outside: { title: 'Got it outside Mesiri', label: 'From whom, how (optional)', placeholder: 'By phone from KK Traders', required: false, button: 'Mark ordered outside' },
   ordered: { title: 'Mark ordered', label: 'Supplier or note (optional)', placeholder: 'Malabar Hardware, ₹400 a bag', required: false, button: 'Mark ordered' },
   sent: { title: 'Sent from another site', label: 'From which site (optional)', placeholder: 'Yard', required: false, button: 'Mark sent' },
   rejected: { title: 'Not ordering it', label: 'Reason', placeholder: '52 bags already at the site', required: true, button: 'Not ordering' },
   done: { title: 'Mark received', label: 'Note (optional)', placeholder: '', required: false, button: 'Mark received' },
 }
 
-function DecisionDialog({ request, action, pending, onClose, onSave }: { request: MaterialRequest; action: Decision | null; pending: boolean; onClose: () => void; onSave: (note: string) => void }) {
+function DecisionDialog({ request, action, pending, onClose, onSave }: { request: MaterialRequest; action: Act | null; pending: boolean; onClose: () => void; onSave: (note: string) => void }) {
   const [note, setNote] = React.useState('')
   React.useEffect(() => {
     if (action === 'sent') setNote(request.lines[0]?.elsewhere[0]?.site_name ?? '')
@@ -333,7 +340,7 @@ function DecisionDialog({ request, action, pending, onClose, onSave }: { request
         <DialogHeader>
           <DialogTitle>{words.title}</DialogTitle>
           <DialogDescription>
-            {request.ref} · {request.lines.map((l) => `${qty(l.quantity, l.unit)} ${l.material}`).join(', ')}. {request.requested_by_name ?? 'The person who asked'} is told on WhatsApp.
+            {request.ref} · {request.lines.map((l) => `${qty(l.quantity, l.unit)} ${l.material}`).join(', ')}.{action === 'outside' && request.follows_order ? ' Its open order stops (closed short if part came).' : ''} {request.requested_by_name ?? 'The person who asked'} is told on WhatsApp.
           </DialogDescription>
         </DialogHeader>
         <form

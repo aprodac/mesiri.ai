@@ -41,6 +41,8 @@ export interface PurchaseOrder {
   urgency: Urgency
   expected_date: string | null
   notes: string | null
+  /** PRC-30: the number it also goes by outside Mesiri (their paper PO, the supplier's quote, a Tally voucher). */
+  their_ref: string | null
   status_note: string | null
   status_by_name: string | null
   status_at: string | null
@@ -80,6 +82,7 @@ export interface CreateOrderPayload {
   lines: { material_id: string; quantity: string; unit_id: string; rate?: string | null; request_line_id?: string | null }[]
   expected_date?: string | null
   notes?: string | null
+  their_ref?: string | null
   confirm_duplicate?: boolean
 }
 
@@ -92,6 +95,7 @@ export async function updateOrder(id: string, payload: {
   expected_date?: string | null
   notes?: string | null
   supplier?: string | null
+  their_ref?: string | null
   lines?: CreateOrderPayload['lines']
 }): Promise<PurchaseOrder> {
   const { data } = await api.patch(`/procurement/orders/${id}`, payload)

@@ -57,6 +57,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
   const [when, setWhen] = React.useState<When>('tomorrow')
   const [picked, setPicked] = React.useState('')
   const [notes, setNotes] = React.useState('')
+  const [theirRef, setTheirRef] = React.useState('')
   const [duplicate, setDuplicate] = React.useState<{ message: string; request: boolean } | null>(null)
   const [error, setError] = React.useState('')
   const queryClient = useQueryClient()
@@ -76,6 +77,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
     setWhen(editing ? 'pick' : 'tomorrow')
     setPicked(editing?.expected_date ?? '')
     setNotes(editing ? editing.notes ?? '' : prefill?.request_ref ? `For ${prefill.request_ref}` : '')
+    setTheirRef(editing?.their_ref ?? '')
     setDuplicate(null)
     setError('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,7 +108,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
   }))
   const save = useMutation({
     mutationFn: (confirm: boolean) => editing
-      ? updateOrder(editing.id, { supplier: supplier.trim(), lines: orderLines, expected_date: dateFor(when, picked), notes: notes.trim() || null })
+      ? updateOrder(editing.id, { supplier: supplier.trim(), lines: orderLines, expected_date: dateFor(when, picked), notes: notes.trim() || null, their_ref: theirRef.trim() || null })
       : createOrder({
         project_id: projectId,
         site_id: siteId,
@@ -114,6 +116,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
         lines: orderLines,
         expected_date: dateFor(when, picked),
         notes: notes.trim() || null,
+        their_ref: theirRef.trim() || null,
         confirm_duplicate: confirm,
       }),
     onSuccess: (po) => {
@@ -222,9 +225,15 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="po-notes">Notes</Label>
-            <Input id="po-notes" value={notes} maxLength={500} placeholder="Unload at the back gate" onChange={(e) => setNotes(e.target.value)} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_200px]">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="po-notes">Notes</Label>
+              <Input id="po-notes" value={notes} maxLength={500} placeholder="Unload at the back gate" onChange={(e) => setNotes(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="po-their-ref">Their number <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Input id="po-their-ref" value={theirRef} maxLength={60} placeholder="Paper PO, quote no." onChange={(e) => setTheirRef(e.target.value)} />
+            </div>
           </div>
 
           {duplicate && (

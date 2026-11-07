@@ -388,6 +388,47 @@ async def update_request(
     return after
 
 
+class BoughtOutside(BaseModel):
+    #: How and where, in their words ("by phone from KK Traders"); optional.
+    note: str | None = Field(default=None, max_length=300)
+
+
+@router.post("/{request_id}/outside")
+async def bought_outside(
+    request_id: uuid.UUID,
+    body: BoughtOutside,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-30: the office got it (or the rest of it) outside Mesiri, by phone or in person: one step. Open orders that
+    cover only this request stop (closed short when part came, cancelled when nothing came); the request is ordered
+    outside, with the note, and the person who asked is told. It is then received by hand or by its delivery."""
+    if not may_act_on_material_requests(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only an admin, owner or project manager can do this.")
+    item = await _locked(conn, auth_context, request_id)
+    if item["status"] not in (store.WAITING, "ordered"):
+        raise HTTPException(status_code=409, detail=f"{item['ref']} is {item['status']}.")
+    from mesiri.domains.procurement import orders as order_store
+
+    note = "bought outside Mesiri" + (f": {body.note.strip()}" if body.note and body.note.strip() else "")
+    open_orders = [o for o in item["orders"] if o["status"] in ("open", "part")]
+    for order in open_orders:
+        others = (await conn.execute(text(
+            "SELECT DISTINCT r.number FROM purchase_order_lines l JOIN material_request_lines rl ON rl.id = l.request_line_id "
+            "JOIN material_requests r ON r.id = rl.request_id WHERE l.purchase_order_id = :o AND r.id <> :r"),
+            {"o": uuid.UUID(order["id"]), "r": request_id})).all()
+        if others:
+            raise HTTPException(status_code=409, detail=f"{order['ref']} also covers {store.ref(others[0].number)}: "
+                                "close or change that order first.")
+        came = any(Decimal(line["received"]) > 0 for line in order["lines"])
+        await order_store.set_status(conn, uuid.UUID(order["id"]), "closed" if came else "cancelled",
+                                     auth_context.user_id, f"{'Rest' if came else 'All'} {note}")
+    await store.set_status(conn, request_id, "ordered", auth_context.user_id, note)
+    after = await _one(conn, auth_context, request_id)
+    await _tell_requester(conn, auth_context, after, "ordered", note)
+    return after
+
+
 @router.post("/{request_id}/reopen")
 async def reopen_request(
     request_id: uuid.UUID,

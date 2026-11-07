@@ -71,11 +71,14 @@ class OrderCreate(BaseModel):
     expected_date: datetime.date | None = None
     notes: str | None = Field(default=None, max_length=500)
     confirm_duplicate: bool = False
+    #: PRC-30: the number it also goes by outside Mesiri (their paper PO, the supplier's quote, a Tally voucher).
+    their_ref: str | None = Field(default=None, max_length=60)
 
 
 class OrderUpdate(BaseModel):
     expected_date: datetime.date | None = None
     notes: str | None = Field(default=None, max_length=500)
+    their_ref: str | None = Field(default=None, max_length=60)
     vendor_id: uuid.UUID | None = None
     supplier: str | None = Field(default=None, max_length=120)
     #: Replaces every line; only while nothing has come against the order.
@@ -267,7 +270,8 @@ async def create_order(body: OrderCreate, auth_context: AuthorizationContext = D
     order_id = await store.insert_order(
         conn, auth_context.organization_id, project_id=body.project_id, site_id=body.site_id, vendor_id=vendor_id,
         expected_date=body.expected_date, notes=(body.notes or "").strip() or None, created_by=auth_context.user_id,
-        raised_over_duplicate=bool(duplicates or asked), lines=lines)
+        raised_over_duplicate=bool(duplicates or asked), lines=lines,
+        their_ref=(body.their_ref or "").strip() or None)
     item = await _one(conn, auth_context, order_id)
     await requests_follow(conn, auth_context, _request_ids(item))
     return await _one(conn, auth_context, order_id)
@@ -277,7 +281,8 @@ async def create_order(body: OrderCreate, auth_context: AuthorizationContext = D
 async def update_order(order_id: uuid.UUID, body: OrderUpdate,
                        auth_context: AuthorizationContext = Depends(get_auth_context),
                        conn: AsyncConnection = Depends(get_db_conn)):
-    """Change the date or notes any time the order is open; the supplier and the lines only while nothing came."""
+    """Change the date, notes or their reference any time the order is open; the supplier and the lines only while
+    nothing came."""
     _office(auth_context)
     item = await _one(conn, auth_context, order_id, lock=True)
     if item["status"] not in ("open", "part"):
@@ -288,6 +293,8 @@ async def update_order(order_id: uuid.UUID, body: OrderUpdate,
         changes["expected_date"] = body.expected_date
     if "notes" in fields:
         changes["notes"] = (body.notes or "").strip() or None
+    if "their_ref" in fields:
+        changes["their_ref"] = (body.their_ref or "").strip() or None
     if body.vendor_id is not None or body.supplier:
         if item["deliveries"]:
             raise HTTPException(status_code=409, detail="Something already came against this order; the supplier "

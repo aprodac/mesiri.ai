@@ -252,11 +252,11 @@ every procurement item from here on:
 |---|---|---|
 | Request | Dashboard, WhatsApp | Not needed: orders and deliveries work without one ✓ |
 | Quote | Not built | Nothing depends on it ✓ (any quote feature must stay optional) |
-| Order | Order form, from a request | Request › "Ordered outside Mesiri? Mark it ordered" (one tap + note) ✓. **Gap:** no place for their own PO / quote number; no WhatsApp line for "ordered X from Y" (office) until PRC-09 |
+| Order | Order form, from a request | Request › "Ordered outside Mesiri? Mark it ordered" (one tap + note) ✓. Their own PO / quote number on the order ✓ (PRC-30). WhatsApp line for "ordered X from Y" (office): PRC-09 |
 | Sending the PO | Not built (PRC-26) | Mesiri never claims it was sent ✓; PRC-26 must be optional per order |
 | Delivery | "Material came" on the order | Any delivery in Materials or on WhatsApp, no order needed; fills its order when plain (PRC-23) ✓ |
 | More than ordered | Asked | Never blocks a delivery recorded without an order ✓ |
-| Request covered by an order, rest bought outside | — | **Two steps today:** close the order short, then mark the request. Make it one ("Rest bought outside") — PRC-30 |
+| Request covered by an order, rest bought outside | — | One step: "Got the rest outside Mesiri?" (PRC-30) ✓ |
 | Bill | Bills in Materials | Unbilled lists (PRC-11) must accept "bill handled outside" |
 
 ### 4e. Gaps found in the request ↔ order review (7 Nov 2026)

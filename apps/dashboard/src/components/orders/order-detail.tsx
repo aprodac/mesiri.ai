@@ -82,7 +82,7 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
     <div className="flex flex-col">
       <div className="flex flex-col gap-3 bg-sky-50 px-5 pt-5 pb-4 dark:bg-sky-950/40">
         <div className={cn('flex items-center justify-between gap-2', inSheet && 'pr-8')}>
-          <span className="text-xs font-semibold text-muted-foreground tabular-nums">{order.ref}</span>
+          <span className="text-xs font-semibold text-muted-foreground tabular-nums">{order.ref}{order.their_ref && <span className="ml-2 rounded bg-background px-1.5 py-0.5 font-medium">Their no. {order.their_ref}</span>}</span>
           <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold', ORDER_LOOK[order.status].chip)}>
             <span className={cn('size-1.5 rounded-full', ORDER_LOOK[order.status].dot)} />{ORDER_LOOK[order.status].label}
           </span>

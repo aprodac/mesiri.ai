@@ -126,6 +126,12 @@ export async function updateRequest(id: string, payload: {
   return data
 }
 
+/** PRC-30: got it (or the rest of it) outside Mesiri: its open orders stop, the request is ordered outside. */
+export async function boughtOutside(id: string, note?: string): Promise<MaterialRequest> {
+  const { data } = await api.post<MaterialRequest>(`/procurement/requests/${id}/outside`, { note: note || null })
+  return data
+}
+
 export async function reopenRequest(id: string): Promise<MaterialRequest> {
   const { data } = await api.post<MaterialRequest>(`/procurement/requests/${id}/reopen`)
   return data

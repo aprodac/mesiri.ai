@@ -195,17 +195,17 @@ async def next_number(conn: AsyncConnection, organization_id: uuid.UUID) -> int:
 async def insert_order(conn: AsyncConnection, organization_id: uuid.UUID, *, project_id: uuid.UUID,
                        site_id: uuid.UUID, vendor_id: uuid.UUID, expected_date: datetime.date | None,
                        notes: str | None, created_by: uuid.UUID, raised_over_duplicate: bool,
-                       lines: list[dict]) -> uuid.UUID:
+                       lines: list[dict], their_ref: str | None = None) -> uuid.UUID:
     number = await next_number(conn, organization_id)
     order_id = uuid.uuid4()
     await conn.execute(text(
         """
         INSERT INTO purchase_orders (id, organization_id, number, project_id, site_id, vendor_id, expected_date, notes,
-                                     created_by, raised_over_duplicate)
-        VALUES (:id, :org, :number, :project, :site, :vendor, :expected, :notes, :by, :dup)
+                                     created_by, raised_over_duplicate, their_ref)
+        VALUES (:id, :org, :number, :project, :site, :vendor, :expected, :notes, :by, :dup, :their_ref)
         """), {"id": order_id, "org": organization_id, "number": number, "project": project_id, "site": site_id,
                "vendor": vendor_id, "expected": expected_date, "notes": notes, "by": created_by,
-               "dup": raised_over_duplicate})
+               "dup": raised_over_duplicate, "their_ref": their_ref})
     await insert_lines(conn, organization_id, order_id, lines)
     return order_id
 
@@ -231,7 +231,7 @@ async def set_status(conn: AsyncConnection, order_id: uuid.UUID, status: str, us
 
 _SELECT = """
     SELECT o.id, o.number, o.project_id, p.name AS project_name, o.site_id, s.name AS site_name, o.vendor_id,
-           v.name AS vendor_name, v.phone AS vendor_phone, o.status, o.expected_date, o.notes, o.status_note,
+           v.name AS vendor_name, v.phone AS vendor_phone, o.status, o.expected_date, o.notes, o.status_note, o.their_ref,
            o.raised_over_duplicate, o.created_by, cu.full_name AS created_by_name, o.created_at, o.updated_at,
            su.full_name AS status_by_name, o.status_at
       FROM purchase_orders o
@@ -389,6 +389,7 @@ def describe(rows: list[dict[str, Any]], *, today: datetime.date, with_money: bo
             "status": status, "urgency": urgency(status, row["expected_date"], today),
             "expected_date": str(row["expected_date"]) if row["expected_date"] else None,
             "notes": row["notes"], "status_note": row["status_note"], "status_by_name": row["status_by_name"],
+            "their_ref": row["their_ref"],
             "status_at": row["status_at"].isoformat() if row["status_at"] else None,
             "raised_over_duplicate": row["raised_over_duplicate"],
             "created_by": str(row["created_by"]) if row["created_by"] else None,

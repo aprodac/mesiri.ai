@@ -292,8 +292,9 @@ async def test_scope_an_engineer_of_another_project_cannot_see_or_receive(client
 
 
 async def _req_with_order(client, w, qty: str = "160", ordered: str | None = None, supplier: str = "Malabar Hardware"):
-    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], qty), headers=w["arun"]["h"])).json()
-    body = _order(w, w["cement"], ordered or qty, supplier=supplier)
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], qty, confirm_duplicate=True),
+                             headers=w["arun"]["h"])).json()
+    body = _order(w, w["cement"], ordered or qty, supplier=supplier, confirm_duplicate=True)
     body["lines"][0]["request_line_id"] = req["lines"][0]["id"]
     resp = await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])
     assert resp.status_code == 201, resp.text
@@ -575,3 +576,60 @@ async def test_open_records_are_never_dropped_by_the_cap(client, world, test_eng
                 "WHERE id = :id"), {"n": n, "id": old["id"]})
     listing = (await client.get("/procurement/orders", params={"status": "open"}, headers=w["admin"]["h"])).json()
     assert [i["ref"] for i in listing["items"]] == ["PO-0001"]
+
+
+# --- PRC-30: done outside, told fast --------------------------------------------------------------------------------
+
+
+async def test_their_own_reference_is_kept_beside_ours(client, world):
+    w = world
+    po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "10", their_ref=" Q-7781 "),
+                            headers=w["admin"]["h"])).json()
+    assert (po["ref"], po["their_ref"]) == ("PO-0001", "Q-7781")
+    changed = (await client.patch(f"/procurement/orders/{po['id']}", json={"their_ref": "PO/25-26/114"},
+                                  headers=w["admin"]["h"])).json()
+    assert changed["their_ref"] == "PO/25-26/114"
+    # Still changeable after something came (it is only a reference).
+    await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "4"}]})
+    later = await client.patch(f"/procurement/orders/{po['id']}", json={"their_ref": None}, headers=w["admin"]["h"])
+    assert later.status_code == 200 and later.json()["their_ref"] is None
+
+
+async def test_rest_bought_outside_is_one_step(client, world, test_engine):
+    w = world
+    req, po = await _req_with_order(client, w, "160")
+    await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "150"}]})
+    assert (await client.post(f"/procurement/requests/{req['id']}/outside", json={}, headers=w["arun"]["h"])).status_code == 403
+    out = await client.post(f"/procurement/requests/{req['id']}/outside", json={"note": "by phone from KK Traders"},
+                            headers=w["admin"]["h"])
+    assert out.status_code == 200, out.text
+    after = out.json()
+    assert after["status"] == "ordered" and after["decision_note"] == "bought outside Mesiri: by phone from KK Traders"
+    assert not after["follows_order"] and after["may_decide"]  # received by hand, or by its delivery
+    order = (await client.get(f"/procurement/orders/{po['id']}", headers=w["admin"]["h"])).json()
+    assert (order["status"], order["status_note"]) == ("closed", "Rest bought outside Mesiri: by phone from KK Traders")
+    assert "bought outside Mesiri" in (await _told(test_engine))[-1]
+    # Nothing came yet: the order is cancelled instead.
+    req2, po2 = await _req_with_order(client, w, "20", supplier="KK Traders")
+    await client.post(f"/procurement/requests/{req2['id']}/outside", json={}, headers=w["admin"]["h"])
+    assert (await client.get(f"/procurement/orders/{po2['id']}", headers=w["admin"]["h"])).json()["status"] == "cancelled"
+    # A waiting request with no order: simply ordered outside.
+    req3 = (await client.post("/procurement/requests", json=_ask(w, w["tmt"], "50", unit="kg"), headers=w["arun"]["h"])).json()
+    assert (await client.post(f"/procurement/requests/{req3['id']}/outside", json={},
+                              headers=w["admin"]["h"])).json()["status"] == "ordered"
+
+
+async def test_an_order_shared_with_another_request_is_not_stopped_from_one(client, world):
+    w = world
+    a = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "10"), headers=w["arun"]["h"])).json()
+    b = (await client.post("/procurement/requests", json=_ask(w, w["tmt"], "20", unit="kg"), headers=w["arun"]["h"])).json()
+    body = _order(w, w["cement"], "10")
+    body["lines"][0]["request_line_id"] = a["lines"][0]["id"]
+    body["lines"].append({"material_id": w["tmt"], "quantity": "20", "unit_id": w["units"]["kg"],
+                          "request_line_id": b["lines"][0]["id"]})
+    po = (await client.post("/procurement/orders", json=body, headers=w["admin"]["h"])).json()
+    resp = await client.post(f"/procurement/requests/{a['id']}/outside", json={}, headers=w["admin"]["h"])
+    assert resp.status_code == 409 and "also covers REQ-0002" in resp.text
+    assert (await client.get(f"/procurement/orders/{po['id']}", headers=w["admin"]["h"])).json()["status"] == "open"
