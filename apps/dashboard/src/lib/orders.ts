@@ -57,6 +57,8 @@ export interface PurchaseOrder {
   value_complete: boolean | null
   deliveries: { id: string; line_id: string; material: string; quantity: string; unit: string; date: string; by_name: string | null; at: string }[]
   duplicates: { id: string; ref: string; vendor_name: string; created_by_name: string | null }[]
+  /** PRC-28 (one order only): each change, who made it, when. */
+  history?: { kind: string; what: string; at: string; by_name: string | null }[]
   /** PRC-23 (one order only): deliveries at its site of its materials, on no order, since it was placed. */
   unlinked_deliveries?: { id: string; material_id: string; material: string; quantity: string; unit: string; date: string; supplier: string | null; by_name: string | null }[]
   may_edit: boolean
@@ -71,6 +73,12 @@ export async function fetchOrders(params: { project_id?: string | null; site_id?
   const { data } = await api.get('/procurement/orders', {
     params: { status: 'all', project_id: params.project_id || undefined, site_id: params.site_id || undefined },
   })
+  return data
+}
+
+/** One order with what only the single read carries: its history (PRC-28) and deliveries on no order (PRC-23). */
+export async function fetchOrder(id: string): Promise<PurchaseOrder> {
+  const { data } = await api.get(`/procurement/orders/${id}`)
   return data
 }
 

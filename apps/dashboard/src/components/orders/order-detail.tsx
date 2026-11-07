@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CalendarDays, Check, ClipboardList, Clock, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { cn } from '@/lib/utils'
 import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
-import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
+import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import { NewOrderDialog } from './new-order-dialog'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 
@@ -49,7 +49,10 @@ export function OrderProgress({ order, className }: { order: PurchaseOrder; clas
   )
 }
 
-export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?: boolean }) {
+export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; inSheet?: boolean }) {
+  // The list row first, then the order read on its own: its history and the deliveries here on no order.
+  const full = useQuery({ queryKey: ['procurement', 'orders', 'one', listed.id], queryFn: () => fetchOrder(listed.id), staleTime: 15_000 })
+  const order = full.data && full.data.id === listed.id ? full.data : listed
   const [dialog, setDialog] = React.useState<'receive' | 'cancel' | 'close' | 'edit' | null>(null)
   const [date, setDate] = React.useState(order.expected_date ?? '')
   React.useEffect(() => setDate(order.expected_date ?? ''), [order.id, order.expected_date])
@@ -140,12 +143,18 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
       <div className="flex flex-col px-5 py-4">
         <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">History</h3>
         <Step icon={ShoppingCart} title={`Ordered${order.created_by_name ? ` by ${order.created_by_name}` : ''}`} meta={when(order.created_at)} quote={order.notes} />
-        {order.deliveries.map((d) => (
-          <Step key={d.id} icon={Truck} title={`${qty(d.quantity, d.unit)} ${d.material} came`} meta={`${d.by_name ?? ''} · ${new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
-            action={open && order.may_receive ? { label: 'Not this order', onClick: () => link.mutate({ receipt: d.id, line: null }), busy: link.isPending } : undefined} />
-        ))}
+        {/* PRC-28: deliveries and changes, in the order they happened. */}
+        {[
+          ...order.deliveries.map((d) => ({ at: d.at, node: (
+            <Step key={d.id} icon={Truck} title={`${qty(d.quantity, d.unit)} ${d.material} came`} meta={`${d.by_name ?? ''} · ${new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+              action={open && order.may_receive ? { label: 'Not this order', onClick: () => link.mutate({ receipt: d.id, line: null }), busy: link.isPending } : undefined} />
+          ) })),
+          ...(order.history ?? []).map((h, i) => ({ at: h.at, node: (
+            <Step key={`h${i}`} icon={HISTORY_ICON[h.kind] ?? Pencil} title={h.what} meta={`${h.by_name ?? ''} · ${when(h.at)}`} bad={h.kind === 'cancelled' || h.kind === 'closed'} />
+          ) })),
+        ].sort((a, b) => a.at.localeCompare(b.at)).map((x) => x.node)}
         {order.status === 'received' && <Step icon={PackageCheck} title="Everything came" />}
-        {(order.status === 'closed' || order.status === 'cancelled') && <Step icon={order.status === 'cancelled' ? Ban : Check} title={order.status === 'cancelled' ? 'Cancelled' : 'Closed short'} meta={`${order.status_by_name ?? ''}${order.status_at ? ` · ${when(order.status_at)}` : ''}`} quote={order.status_note} bad />}
+        {(order.status === 'closed' || order.status === 'cancelled') && !(order.history ?? []).some((h) => h.kind === order.status) && <Step icon={order.status === 'cancelled' ? Ban : Check} title={order.status === 'cancelled' ? 'Cancelled' : 'Closed short'} meta={`${order.status_by_name ?? ''}${order.status_at ? ` · ${when(order.status_at)}` : ''}`} quote={order.status_note} bad />}
         {open && <Step icon={Clock} title="Waiting for the rest" now />}
       </div>
 
@@ -216,6 +225,11 @@ export function OrderDetail({ order, inSheet }: { order: PurchaseOrder; inSheet?
       />
     </div>
   )
+}
+
+const HISTORY_ICON: Record<string, typeof Clock> = {
+  date: CalendarDays, supplier: Phone, items: ShoppingCart, rates: ShoppingCart, their_ref: ClipboardList, notes: Pencil,
+  cancelled: Ban, closed: Check, reopened: RotateCcw, delivery_on: Truck, delivery_off: Truck,
 }
 
 function Step({ icon: Icon, title, meta, quote, now, bad, action }: { icon: typeof Clock; title: string; meta?: string; quote?: string | null; now?: boolean; bad?: boolean; action?: { label: string; onClick: () => void; busy?: boolean } }) {

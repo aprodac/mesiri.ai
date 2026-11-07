@@ -431,6 +431,9 @@ async def bought_outside(
         came = any(Decimal(line["received"]) > 0 for line in order["lines"])
         await order_store.set_status(conn, uuid.UUID(order["id"]), "closed" if came else "cancelled",
                                      auth_context.user_id, f"{'Rest' if came else 'All'} {note}")
+        await order_store.log(conn, auth_context.organization_id, order["id"], "closed" if came else "cancelled",
+                              f"{'Closed short' if came else 'Cancelled'}: {'rest' if came else 'all'} {note} "
+                              f"({item['ref']})", auth_context.user_id)
     await store.set_status(conn, request_id, "ordered", auth_context.user_id, note)
     after = await _one(conn, auth_context, request_id)
     await _tell_requester(conn, auth_context, after, "ordered", note)

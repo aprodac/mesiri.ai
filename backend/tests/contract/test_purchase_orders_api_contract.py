@@ -764,3 +764,31 @@ async def test_several_requests_in_one_order(client, world):
     twice = _order(w, w["tmt"], "5", unit="kg", confirm_duplicate=True)
     twice["lines"].append(dict(twice["lines"][0]))
     assert (await client.post("/procurement/orders", json=twice, headers=w["admin"]["h"])).status_code == 422
+
+
+# --- PRC-28: an order's history --------------------------------------------------------------------------------------
+
+
+async def test_an_orders_changes_are_in_its_history(client, world):
+    w = world
+    po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100", rate="400",
+                                                               expected_date="2026-11-13"), headers=w["admin"]["h"])).json()
+    await client.patch(f"/procurement/orders/{po['id']}", headers=w["admin"]["h"], json={
+        "expected_date": "2026-11-16", "supplier": "KK Traders", "their_ref": "Q-77",
+        "lines": [{"material_id": w["cement"], "quantity": "120", "unit_id": w["units"]["bags"], "rate": "395"}]})
+    stray = (await client.post("/materials/inflows", json=_inflow(w, "5", no_order=True), headers=w["arun"]["h"])).json()
+    await client.post(f"/procurement/orders/deliveries/{stray['id']}/order", json={"order": "PO-0001"}, headers=w["admin"]["h"])
+    await client.post(f"/procurement/orders/{po['id']}/close", json={"reason": "Rest not needed"}, headers=w["admin"]["h"])
+    await client.post(f"/procurement/orders/{po['id']}/reopen", headers=w["admin"]["h"])
+    seen = (await client.get(f"/procurement/orders/{po['id']}", headers=w["admin"]["h"])).json()["history"]
+    words = [h["what"] for h in seen]
+    assert words[0] == "Expected date: Fri 13 Nov → Mon 16 Nov"
+    assert "Supplier: Malabar Hardware → KK Traders" in words and "Their number: — → Q-77" in words
+    assert "Items: 100 bags Cement OPC 53 → 120 bags Cement OPC 53" in words and "Rates changed" in words
+    assert not any("400" in x or "395" in x for x in words)  # rates never in the words (SEC-01)
+    assert any(x.startswith("Delivery counted on this order: 5 bags Cement OPC 53") for x in words)
+    assert words[-2:] == ["Closed short: Rest not needed", "Opened again (was closed short)"]
+    assert {h["by_name"] for h in seen} == {"Meera"}
+    # Guard: a site engineer sees the history without the rates.
+    as_arun = (await client.get(f"/procurement/orders/{po['id']}", headers=w["arun"]["h"])).json()
+    assert as_arun["lines"][0]["rate"] is None

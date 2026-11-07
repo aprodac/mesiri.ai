@@ -188,6 +188,55 @@ async def on_order_by_site(conn: AsyncConnection, organization_id: uuid.UUID) ->
     return {(str(r.site_id), str(r.material_id)): Decimal(r.pending) for r in rows if r.pending and r.pending > 0}
 
 
+def _day(value: Any) -> str:
+    if value is None:
+        return "none"
+    d = value if isinstance(value, datetime.date) else datetime.date.fromisoformat(str(value))
+    return d.strftime("%a %d %b").replace(" 0", " ")
+
+
+async def log(conn: AsyncConnection, organization_id: uuid.UUID, order_id: Any, kind: str, what: str,
+              user_id: uuid.UUID | None) -> None:
+    """PRC-28: one change to an order, in words, for its history."""
+    await conn.execute(text(
+        "INSERT INTO purchase_order_events (organization_id, purchase_order_id, kind, what, created_by) "
+        "VALUES (:org, :order, :kind, :what, :by)"),
+        {"org": organization_id, "order": uuid.UUID(str(order_id)), "kind": kind, "what": what[:500], "by": user_id})
+
+
+async def history(conn: AsyncConnection, order_id: Any) -> list[dict[str, Any]]:
+    rows = (await conn.execute(text(
+        "SELECT e.kind, e.what, e.created_at, u.full_name AS by_name FROM purchase_order_events e "
+        "LEFT JOIN users u ON u.id = e.created_by WHERE e.purchase_order_id = :id ORDER BY e.created_at"),
+        {"id": uuid.UUID(str(order_id))})).all()
+    return [{"kind": r.kind, "what": r.what, "at": r.created_at.isoformat(), "by_name": r.by_name} for r in rows]
+
+
+def change_lines(before: dict[str, Any], after: dict[str, Any]) -> list[tuple[str, str]]:
+    """What an edit changed, as (kind, words) for the history."""
+    out: list[tuple[str, str]] = []
+    if before["expected_date"] != after["expected_date"]:
+        out.append(("date", f"Expected date: {_day(before['expected_date'])} → {_day(after['expected_date'])}"))
+    if before["vendor_name"] != after["vendor_name"]:
+        out.append(("supplier", f"Supplier: {before['vendor_name']} → {after['vendor_name']}"))
+    if (before.get("their_ref") or None) != (after.get("their_ref") or None):
+        out.append(("their_ref", f"Their number: {before.get('their_ref') or '—'} → {after.get('their_ref') or '—'}"))
+    if (before.get("notes") or None) != (after.get("notes") or None):
+        out.append(("notes", f"Notes: {after.get('notes') or '—'}"))
+
+    # Rates never go into the words: the history is read by roles that do not see money (SEC-01).
+    def items(order: dict[str, Any]) -> str:
+        return ", ".join(f"{x['quantity']} {x['unit']} {x['material']}" for x in order["lines"])
+
+    def rates(order: dict[str, Any]) -> list:
+        return [(x["material_id"], x.get("rate")) for x in order["lines"]]
+    if items(before) != items(after):
+        out.append(("items", f"Items: {items(before)} → {items(after)}"))
+    if rates(before) != rates(after):
+        out.append(("rates", "Rates changed"))
+    return out
+
+
 def order_shown_status(lines: list[dict[str, Any]], status: str) -> str:
     """open / part / received for an open order from its lines (as ``shown_status``); closed, cancelled as stored."""
     if status != "open":

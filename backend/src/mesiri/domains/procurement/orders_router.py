@@ -203,6 +203,7 @@ async def _one(conn: AsyncConnection, auth: AuthorizationContext, order_id: uuid
     all_rows = await store.fetch_orders(conn, auth.organization_id, project_ids=project_ids)
     item = (await _describe(conn, auth, rows, all_rows))[0]
     # PRC-23: deliveries here on no order that may belong to it (put on it with POST /deliveries/{id}/order).
+    item["history"] = await store.history(conn, order_id)  # PRC-28
     item["unlinked_deliveries"] = await store.unlinked_deliveries(
         conn, auth.organization_id, site_id=rows[0]["site_id"],
         material_ids=[line["material_id"] for line in rows[0]["lines"]],
@@ -329,6 +330,8 @@ async def update_order(order_id: uuid.UUID, body: OrderUpdate,
         await conn.execute(text("DELETE FROM purchase_order_lines WHERE purchase_order_id = :id"), {"id": order_id})
         await store.insert_lines(conn, auth_context.organization_id, order_id, lines)
     after = await _one(conn, auth_context, order_id)
+    for kind, words in store.change_lines(item, after):  # PRC-28
+        await store.log(conn, auth_context.organization_id, order_id, kind, words, auth_context.user_id)
     # A request taken off the order waits again; one put on it is ordered.
     await requests_follow(conn, auth_context, _request_ids(item) | _request_ids(after),
                           note=f"taken off {item['ref']}", released=_request_ids(item) - _request_ids(after))
@@ -349,6 +352,7 @@ async def cancel_order(order_id: uuid.UUID, body: StatusChange,
     if not reason:
         raise HTTPException(status_code=422, detail="Say why it is cancelled (a reason is required).")
     await store.set_status(conn, order_id, "cancelled", auth_context.user_id, reason)
+    await store.log(conn, auth_context.organization_id, order_id, "cancelled", f"Cancelled: {reason}", auth_context.user_id)
     await requests_follow(conn, auth_context, _request_ids(item), note=f"{item['ref']} cancelled: {reason}")
     return await _one(conn, auth_context, order_id)
 
@@ -367,6 +371,7 @@ async def close_order(order_id: uuid.UUID, body: StatusChange,
     if not reason:
         raise HTTPException(status_code=422, detail="Say why the rest will not come (a reason is required).")
     await store.set_status(conn, order_id, "closed", auth_context.user_id, reason)
+    await store.log(conn, auth_context.organization_id, order_id, "closed", f"Closed short: {reason}", auth_context.user_id)
     await requests_follow(conn, auth_context, _request_ids(item), note=f"{item['ref']} closed short: {reason}")
     return await _one(conn, auth_context, order_id)
 
@@ -382,6 +387,9 @@ async def reopen_order(order_id: uuid.UUID, auth_context: AuthorizationContext =
         raise HTTPException(status_code=409, detail=f"{item['ref']} is {item['status']}; only a closed or cancelled "
                             "order can be opened again.")
     await store.set_status(conn, order_id, "open", auth_context.user_id, f"opened again (was {item['status']})")
+    await store.log(conn, auth_context.organization_id, order_id, "reopened",
+                    f"Opened again (was {'cancelled' if item['status'] == 'cancelled' else 'closed short'})",
+                    auth_context.user_id)
     after = await _one(conn, auth_context, order_id)
     await requests_follow(conn, auth_context, _request_ids(after))
     return await _one(conn, auth_context, order_id)
@@ -452,6 +460,14 @@ async def set_delivery_order(receipt_id: uuid.UUID, body: DeliveryOrder,
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     await conn.execute(text("UPDATE material_receipts SET purchase_order_line_id = :line WHERE id = :id"),
                        {"line": body.line_id, "id": receipt_id})
+    words = (await conn.execute(text(
+        "SELECT r.quantity, u.code AS unit, m.name AS material, r.occurred_date FROM material_receipts r "
+        "JOIN units_of_measure u ON u.id = r.unit_id JOIN materials_catalog m ON m.id = r.material_id WHERE r.id = :id"),
+        {"id": receipt_id})).first()
+    came = f"{store._num(words.quantity)} {words.unit} {words.material} ({store._day(words.occurred_date)})" if words else "A delivery"
+    if row.order_id is not None and row.purchase_order_line_id != body.line_id:
+        await store.log(conn, auth_context.organization_id, row.order_id, "delivery_off",
+                        f"Delivery taken off this order: {came}", auth_context.user_id)
     touched = set()
     if row.order_id is not None:
         touched.add(row.order_id)
@@ -459,6 +475,9 @@ async def set_delivery_order(receipt_id: uuid.UUID, body: DeliveryOrder,
         new = (await conn.execute(text("SELECT purchase_order_id FROM purchase_order_lines WHERE id = :id"),
                                   {"id": body.line_id})).first()
         touched.add(new.purchase_order_id)  # type: ignore[union-attr]
+        if row.purchase_order_line_id != body.line_id:
+            await store.log(conn, auth_context.organization_id, new.purchase_order_id, "delivery_on",  # type: ignore[union-attr]
+                            f"Delivery counted on this order: {came}", auth_context.user_id)
     for order_id in touched:
         await requests_follow(conn, auth_context, _request_ids(await _one(conn, auth_context, order_id)))
     return {"id": str(receipt_id), "purchase_order_line_id": str(body.line_id) if body.line_id else None,
