@@ -128,6 +128,39 @@ is overwritten.
 - "Put it in Plumbing" on a listed material: `update_material` with `category` in words moves it.
 - Not built: prefilling the dashboard's picker with the suggestion.
 
+### 4c. As built: material requests (PRC-22, 7 Nov 2026)
+
+The first step of the process (request → order → delivery/GRN → bill → payment), designed with Ilan on 7 Nov
+(the "Material Requests page" canvas: visual language, desktop, phone, new-request dialog).
+
+- **Tables (migration 0509, additive):** `material_requests` (REQ-0001 numbering per company, project, site, who
+  asked, `source` dashboard / whatsapp, `needed_by`, `purpose`, `status`, `raised_over_duplicate`, the decision and
+  who made it) and `material_request_lines` (material, quantity in its stock unit, `said` when asked in another
+  unit). Row-level security as every company table.
+- **Statuses:** waiting → ordered | sent (from another site) | rejected (reason required) | cancelled (by the person
+  who asked, while waiting); ordered | sent → done. A purchase order (PRC-06) will point at the request later;
+  until then "ordered" carries the supplier as a note.
+- **Routes** (`domains/procurement/router.py`, Materials module): `GET /procurement/requests` (status, project,
+  site, requested_by, category_id, urgency, mine; counts for the tiles), `GET /{id}`, `POST` (several `lines`, or
+  one item as `material_id` + `quantity` + `unit_id`, the WhatsApp form), `POST /{id}/decide`, `POST /{id}/cancel`.
+- **What a line shows** (`domains/procurement/requests.py`, one place for the dashboard and the assistant): stock at
+  the site (the ledger), already on its way (other ordered / sent requests for the same site and material, or this
+  one once ordered), still to buy, other sites holding some (within what the caller can see), the last rate (SEC-01
+  roles only), and open requests in the same project for the same material (the duplicate warning, D2's default).
+- **Who acts:** anyone in the project asks; admin, owner, super admin and project manager decide
+  (`may_act_on_material_requests`, the default until PRC-12). The person who asked is told on WhatsApp (the
+  notification queue, `material_request_update`).
+- **Dashboard:** Materials > Requests (`/materials/requests`): attention tiles (waiting, late, due in 2 days,
+  duplicates), status tabs, filter dropdowns with the row cues (project colour, avatar, category icon, urgency dot,
+  counts), rows with the cover bar (here / ordered / hazard-striped to buy), the detail panel (a sheet on a phone),
+  the new-request dialog (several items, stock hint per line, needed-by chips, the duplicate warning before saving).
+  Materials is now a sidebar group (Stock, Movements, Items, Requests) like Finance.
+- **WhatsApp (v3):** `material_requests`, `ask_for_material` (one material per request, source fixed to whatsapp),
+  `decide_material_request`, `cancel_material_request`; an SOP rule: a need is a request, never a receipt.
+- **Not built:** turning a request into a purchase order (PRC-06/PRC-10); "Mark received" does not add stock (the
+  delivery is still recorded in Materials; PRC-08 links the two); BOQ quantity left per line (the BOQ holds work
+  items, not materials, today); a reminder when a request waits too long; comments on a request.
+
 ---
 
 ## 5. API work (each route used by the dashboard and, where useful, the assistant)

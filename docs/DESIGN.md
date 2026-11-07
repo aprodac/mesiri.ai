@@ -29,6 +29,7 @@ a view switch (`Segmented`), not several sidebar entries.
 | **Analytics** | `/analytics` | trends |
 | **Labour** (module) | `/labour` (`?view=workers`) | Attendance · Workers (was 7 pages, WEB-22) |
 | **Materials** (module) | `/materials` | Ledger · Catalogue; Stock now panel (WEB-30) |
+| **Materials › Requests** (module) | `/materials/requests` | what the sites asked for, before it is ordered (PRC-22): tiles, status tabs, filter dropdowns, list + detail panel (a sheet on a phone), new request |
 | *Setup* **Projects & Sites** | `/projects`, `/projects/:id` | |
 | **Team** | `/team`, `/team/:id` | |
 | **Company** | `/company` | details, letterhead |
