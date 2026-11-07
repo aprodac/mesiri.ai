@@ -889,6 +889,14 @@ class ApiAgent:
                 # [248]: an admin's size answer is their number, never one the model made up (it is for the company).
                 return ToolOutcome(content={"error": (
                     f"{_amount(size)} is not a size they said. Nothing is prepared. Ask them for the size in one question.")})
+            if name == ANSWER_SIZE_TOOL and (size := _decimal(body.get("one_unit_equals"))) is not None:
+                # MK-02b (live, 7 Nov 22:24): the same "1 load = 60 cum" came as an admin's answer to a waiting size
+                # request, a second way in that skipped size_check. Both ways now get the same check before holding.
+                if (request := await size_request(client, str(arguments.get("request_id") or ""))) is not None:
+                    check = await size_check(client, str(request.get("material_id") or ""),
+                                             str(request.get("from_unit_id") or ""), size, their_words)
+                    if check.get("error"):
+                        return ToolOutcome(content={"error": check["error"]})
             if name == CONVERSION_TOOL:
                 material_id = str(arguments.get("material_id") or "")
                 size = _decimal(body.get("one_unit_equals"))
@@ -1754,6 +1762,18 @@ async def saved_with_old_size(client: ApiClient, material_id: str, from_unit_id:
             "of your reply, in their language, say these were saved with the old size and ask whether to redo them; "
             "when they say yes, prepare `undo_receipt` for each and `record_receipt` again with the quantity in "
             f"{unit} as they reported it (same site, date and supplier), all in one Save.")
+
+
+async def size_request(client: ApiClient, request_id: str) -> dict[str, Any] | None:
+    """MK-02b: an open size request by its id (material, unit), or None when it cannot be read."""
+    if not is_uuid(request_id):
+        return None
+    try:
+        response = await client.call("GET", "/materials/size-requests")
+    except Exception:  # noqa: BLE001 -- the Save still checks it
+        return None
+    items = response.body.get("items", []) if response.ok and isinstance(response.body, dict) else []
+    return next((i for i in items if isinstance(i, dict) and str(i.get("id")) == request_id), None)
 
 
 async def size_check(client: ApiClient, material_id: str, from_unit_id: str, size: Decimal | None,
