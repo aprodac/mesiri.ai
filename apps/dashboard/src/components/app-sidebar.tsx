@@ -72,7 +72,7 @@ type NavItem = {
 }
 
 // A collapsible module in the sidebar (WEB-72): its pages come from lib/module-map.ts.
-type SubItem = { title: string; url: string; soon?: boolean }
+type SubItem = { title: string; url: string; soon?: boolean; phase?: string }
 type NavCategory = {
   key: string
   title: string
@@ -296,7 +296,7 @@ function CollapsibleNavCategory({
               <Link
                 key={item.url}
                 to={getUrlWithScope(item.url)}
-                title={item.soon ? `${item.title} · planned, not built yet` : undefined}
+                title={item.soon ? `${item.title} · planned (${item.phase}), not built yet` : undefined}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'group/row relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
@@ -455,7 +455,7 @@ export function AppSidebar() {
     tone: group.tone,
     items: group.pages
       .filter((p) => (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)))
-      .map((p) => ({ title: p.title, url: p.url, soon: p.status === 'planned' })),
+      .map((p) => ({ title: p.title, url: p.url, soon: p.status === 'planned', phase: p.phase })),
   })
   const groupByKey = (key: string) => MODULE_GROUPS.find((g) => g.key === key)!
   const financeCategory = isModuleEnabled('finance') ? toCategory(groupByKey('finance')) : null
