@@ -1,0 +1,93 @@
+/* Mesiri Field Guide: A4 print styles shared by every guide. */
+@page { size: A4; margin: 16mm 15mm 18mm; }
+:root { --ink:#1f1d1a; --muted:#5f5a52; --line:#e3ddd3; --soft:#faf7f2; --accent:#c2410c; --accent-soft:#fdeee6;
+  --ok:#1e7a45; --ok-bg:#e2f2e8; --plan:#9a6200; --plan-bg:#fbf0d9; --bad:#a33a2c; --bad-bg:#f8e5e1; --info:#1f4f8a; --info-bg:#e6eef8; }
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font-family: "Noto Sans", "Noto Sans Malayalam", system-ui, sans-serif; color: var(--ink); font-size: 10.2pt; line-height: 1.5; }
+section { margin-top: 9mm; }
+.cover { break-after: page; margin-top: 0; }
+section.new-page { break-before: page; margin-top: 0; }
+h2, h3, .eyebrow, .page-head { break-after: avoid; }
+.callout, blockquote, .dodont, .wa, .diagram, .qa dt, .quiz { break-inside: avoid; }
+h1, h2, h3 { line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: 46pt; letter-spacing: -1px; margin: 6mm 0 3mm; }
+h2 { font-size: 17pt; margin: 1mm 0 4mm; letter-spacing: -.2px; }
+h3 { font-size: 12.5pt; }
+p { margin: 0 0 2.6mm; }
+ul, ol { margin: 0 0 3mm; padding-left: 5mm; }
+li { margin-bottom: 1mm; }
+.tight li { margin-bottom: .6mm; }
+.eyebrow { font-size: 8.5pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 1mm; }
+section .eyebrow:not(:first-child) { margin-top: 7mm; }
+.note { color: var(--muted); font-size: 9.2pt; }
+
+/* cover */
+.cover { min-height: 255mm; display: flex; flex-direction: column; gap: 3mm; }
+.brand { font-weight: 800; font-size: 20pt; letter-spacing: -.5px; }
+.brand span { display: inline-block; width: 16mm; height: 1.6mm; border-radius: 1mm; background: linear-gradient(90deg, #e5562b, #f2b705); vertical-align: middle; margin-left: 3mm; }
+.series { color: var(--muted); font-size: 10pt; margin-top: 18mm; }
+.lede { font-size: 14pt; color: #3d3a35; max-width: 150mm; }
+.status-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 6mm 0; }
+.status-strip div { border: 1px solid var(--line); border-radius: 3mm; padding: 3mm 4mm; display: flex; flex-direction: column; }
+.status-strip b { font-size: 18pt; }
+.status-strip span { color: var(--muted); font-size: 9pt; }
+.draft { background: var(--plan-bg); color: #6b4500; border-radius: 3mm; padding: 3mm 4mm; font-size: 9.3pt; }
+.toc { margin-top: auto; border-top: 1px solid var(--line); padding-top: 4mm; }
+.toc-title { font-weight: 700; }
+.toc ol { columns: 2; column-gap: 10mm; font-size: 10pt; }
+
+/* blocks */
+blockquote { margin: 0 0 4mm; padding: 4mm 5mm; background: var(--soft); border-left: 1.2mm solid var(--accent); border-radius: 0 3mm 3mm 0; font-size: 11.5pt; font-style: italic; }
+blockquote cite { display: block; margin-top: 2mm; font-style: normal; font-size: 8.8pt; color: var(--muted); }
+.callout { background: var(--info-bg); border-radius: 3mm; padding: 3.5mm 4.5mm; margin: 3mm 0 4mm; }
+.callout.money { background: var(--accent-soft); }
+table { width: 100%; border-collapse: collapse; margin: 0 0 4mm; font-size: 9.2pt; }
+th { text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); border-bottom: 1.2px solid var(--ink); padding: 1.6mm 2mm; }
+td { border-bottom: 1px solid var(--line); padding: 2mm; vertical-align: top; }
+tr { break-inside: avoid; }
+.problems td:first-child, .pairs td:first-child { width: 30%; }
+.problems td:nth-child(2) { width: 36%; }
+.pairs td:first-child { width: 45%; }
+
+/* page cards */
+.page-card { border: 1px solid var(--line); border-radius: 3.5mm; padding: 4mm 5mm; margin: 0 0 5mm; break-inside: avoid; }
+.page-card.slim { padding: 3mm 5mm; }
+.page-card.two { display: grid; grid-template-columns: 1fr 62mm; gap: 5mm; align-items: start; }
+.page-head { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 1.5mm; flex-wrap: wrap; }
+.q { color: #3d3a35; }
+.chip { font-size: 7.8pt; font-weight: 700; padding: .6mm 2.4mm; border-radius: 10mm; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.plan { background: var(--plan-bg); color: var(--plan); }
+.chip.muted { background: #efebe5; color: var(--muted); }
+.page-card img { width: 100%; border: 1px solid var(--line); border-radius: 2mm; display: block; margin: 2mm 0 1mm; }
+.page-card img.narrow { width: 62mm; }
+.caption, figcaption { font-size: 8.3pt; color: var(--muted); margin-bottom: 2.5mm; }
+
+/* wireframes for planned pages */
+.wire { border: 1.2px dashed #b9afa2; border-radius: 3mm; padding: 3mm; margin: 2mm 0 3mm; background: repeating-linear-gradient(135deg, #fff, #fff 6px, #fcfaf6 6px, #fcfaf6 12px); }
+.wire-bar { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 2mm; }
+.wbtn { font-size: 8pt; background: var(--accent); color: #fff; padding: .8mm 3mm; border-radius: 1.5mm; }
+.wire table { margin: 0; background: #fff; font-size: 8.4pt; }
+.wpill { font-size: 7.6pt; font-weight: 700; padding: .4mm 2mm; border-radius: 10mm; white-space: nowrap; }
+.wpill.new { background: var(--info-bg); color: var(--info); } .wpill.ok { background: var(--ok-bg); color: var(--ok); }
+.wpill.warn { background: var(--plan-bg); color: var(--plan); } .wpill.bad { background: var(--bad-bg); color: var(--bad); }
+
+/* do / don't */
+.dodont { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+.dodont > div { border-radius: 3mm; padding: 4mm 5mm; }
+.dodont > div:first-child { background: var(--ok-bg); } .dodont > div:last-child { background: var(--bad-bg); }
+.do, .dont { font-weight: 800; font-size: 12pt; margin-bottom: 2mm; } .do { color: var(--ok); } .dont { color: var(--bad); }
+
+/* whatsapp */
+.wa { display: grid; grid-template-columns: 1fr 58mm; gap: 6mm; align-items: start; }
+.wa figure { margin: 0; } .wa img { width: 58mm; display: block; }
+.cmd td:first-child { width: 34%; font-weight: 600; } .cmd td:last-child { font-style: italic; color: #3d3a35; }
+
+/* story, diagram, q&a, terms, quiz */
+.story li { margin-bottom: 2.2mm; }
+.diagram { width: 100%; height: auto; margin: 2mm 0 4mm; }
+.qa dt { font-weight: 700; margin-top: 2.5mm; } .qa dd { margin: .8mm 0 0; color: #3d3a35; }
+.terms { display: grid; grid-template-columns: 38mm 1fr; gap: 1.6mm 4mm; } .terms dt { font-weight: 700; } .terms dd { margin: 0; color: #3d3a35; }
+.quiz li { margin-bottom: 1.6mm; }
+.answers { font-size: 8.8pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 2.5mm; margin-top: 3mm; }
