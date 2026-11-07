@@ -659,3 +659,63 @@ async def test_one_item_form_and_from_a_request(client, world):
     assert none.status_code == 422 and "which project and site" in none.text
     assert (await client.post("/procurement/orders", headers=w["arun"]["h"], json={
         "request_id": req["id"], "supplier": "KK Traders"})).status_code == 403
+
+
+# --- PRC-25: the office hears of requests; reminders -----------------------------------------------------------------
+
+
+async def _numbers(engine, w) -> None:
+    for who, number in (("admin", "919800000001"), ("arun", "919800000002"), ("ravi", "919800000003")):
+        await _exec(engine, "UPDATE users SET whatsapp_number = :n WHERE id = :id", n=number, id=w[who]["id"])
+
+
+async def test_the_office_hears_of_a_new_request_in_its_language(client, world, test_engine):
+    w = world
+    await _numbers(test_engine, w)
+    await _exec(test_engine, "UPDATE users SET reply_language = 'english' WHERE id = :id", id=w["admin"]["id"])
+    req = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "200", purpose="Slab",
+                                                                 needed_by="2026-11-13"), headers=w["arun"]["h"])).json()
+    async with test_engine.begin() as conn:
+        rows = (await conn.execute(sa.text(
+            "SELECT recipient_user_id, payload FROM notifications WHERE rule_key = 'material_request_new'"))).all()
+    assert [r[0] for r in rows] == [w["admin"]["id"]]  # the office only: not Arun himself, not Ravi
+    payload = rows[0][1]
+    assert payload["message"] == ("📦 New material request REQ-0001 from Arun · Block A: 200 bags Cement OPC 53, "
+                                  "needed by Fri 13 Nov (Slab). Reply \"order REQ-0001 from <shop>\" to order it, or "
+                                  "open Requests on the dashboard.")
+    assert payload["hold_until_window"] is True  # waits for their next message outside the 24-hour window
+    assert req["status"] == "waiting"
+
+
+async def test_reminders_for_a_waiting_request_and_a_late_order(client, world, test_engine):
+    from mesiri.application.procurement.alerts import queue_reminders
+
+    w = world
+    await _numbers(test_engine, w)
+    req = (await client.post("/procurement/requests", json=_ask(w, w["tmt"], "500", unit="kg"), headers=w["arun"]["h"])).json()
+    fresh = (await client.post("/procurement/requests", json=_ask(w, w["cement"], "5", confirm_duplicate=True),
+                               headers=w["arun"]["h"])).json()
+    await _exec(test_engine, "UPDATE material_requests SET created_at = now() - interval '5 hours' WHERE id = :id", id=req["id"])
+    po = (await client.post("/procurement/orders", json=_order(w, w["cement"], "100", confirm_duplicate=True,
+                                                               expected_date=str(datetime.date.today() - datetime.timedelta(days=2))),
+                            headers=w["admin"]["h"])).json()
+    await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"], json={
+        "occurred_date": str(datetime.date.today()), "lines": [{"line_id": po["lines"][0]["id"], "quantity": "40"}]})
+    now = datetime.datetime.now(tz=datetime.UTC)
+    async with test_engine.begin() as conn:
+        first = await queue_reminders(conn, w["org"], now=now)
+        again = await queue_reminders(conn, w["org"], now=now)  # the same day: nothing new
+    assert (first, again) == (2, 0)
+    from mesiri.application.procurement import alerts
+
+    alerts._last_run.clear()
+    async with test_engine.begin() as conn:
+        assert await alerts.queue_all_reminders(conn, now=now) == 0  # every company looked at; nothing new today
+        assert await alerts.queue_all_reminders(conn, now=now) == 0  # within 15 minutes: not even looked at
+    async with test_engine.begin() as conn:
+        rows = {r[0]: r[1] for r in (await conn.execute(sa.text(
+            "SELECT rule_key, payload->>'message' FROM notifications WHERE rule_key IN "
+            "('material_request_waiting', 'purchase_order_late')"))).all()}
+    assert rows["material_request_waiting"].startswith("⏰ REQ-0001 5 manikkoor aayi office-nu vendi kaathirikkunnu")
+    assert "60 bags Cement OPC 53" in rows["purchase_order_late"] and "PO-0001" in rows["purchase_order_late"]
+    assert fresh["ref"] not in rows["material_request_waiting"]  # guard: one asked just now is not chased

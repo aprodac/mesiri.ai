@@ -259,6 +259,16 @@ async def run_tick(
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.release_notes_failed")
 
+            # PRC-25: material requests waiting too long (to the office) and orders past their date (to whoever
+            # placed them), at most once a day each; looked for every 15 minutes.
+            try:
+                from mesiri.application.procurement.alerts import queue_all_reminders
+
+                async with conn.begin_nested():
+                    fired += await queue_all_reminders(conn)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.procurement_reminders_failed")
+
             # WA-168: once a day, the sizes nobody on site knew, asked of the company's admins.
             try:
                 from .size_requests_ask import queue_size_asks

@@ -105,7 +105,7 @@ export function NewRequestDialog({ open, onOpenChange, scope, editing }: { open:
       }),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['procurement', 'requests'] })
-      toast.success(editing ? `${created.ref} changed` : `${created.ref} sent`, editing ? undefined : 'The office sees it now.')
+      toast.success(editing ? `${created.ref} changed` : `${created.ref} sent`, editing ? undefined : 'The office is told on WhatsApp.')
       onOpenChange(false)
     },
     onError: (err) => {

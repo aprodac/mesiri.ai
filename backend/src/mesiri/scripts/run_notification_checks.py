@@ -78,6 +78,11 @@ async def run() -> int:
             repo = PostgresNotificationRepository(conn)
             for org_row in org_rows:
                 total += await _run_for_organization(repo, organization_id=org_row["id"])
+            # PRC-25: requests waiting too long, orders past their date (also run by the in-app scheduler; the
+            # notifications dedup key keeps it to once a day either way).
+            from ..application.procurement.alerts import queue_all_reminders
+
+            total += await queue_all_reminders(conn, now=datetime.now(tz=UTC))
     finally:
         await db.disconnect()
     return total

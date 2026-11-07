@@ -242,6 +242,17 @@ Fixes 4e A1–A5, B6, B9 and C13. No migration (reads `purchase_order_lines.requ
 - **Not verified here:** the live model on real messages (the SOP eval workflow runs on the real model; it was not run
   from this session).
 
+### 4j. As built: the office is told, and nothing waits unnoticed (PRC-25, 7 Nov 2026)
+
+- `application/procurement/alerts.py`: a new request (any surface) → one WhatsApp message per office person (admins,
+  owners, the project's managers; never the asker), in their reply language, with how to order it by replying.
+- Reminders, once a day each: a request still waiting after 4 hours → the office; an order past its expected date with
+  something still to come → whoever placed it (with the vendor's phone). Looked for every 15 minutes by the WhatsApp
+  app's scheduler (`runtime/automation_runner.py`); `scripts/run_notification_checks.py` runs the same as a backup.
+- Outside the 24-hour window these messages, and the engineer's request updates, wait for the person's next message
+  (`hold_until_window`, 2 days) instead of being dropped: no Meta template is needed for them (PRC-13 stays for the rest).
+- Open: "4 working hours" (the plan) is plain hours for now; quiet hours are the sender's.
+
 ### 4g. Both ways: through Mesiri, or done outside and told quickly (decided 7 Nov 2026)
 
 Some companies will run every step through Mesiri; others will phone the vendor, take quotes on paper and only tell

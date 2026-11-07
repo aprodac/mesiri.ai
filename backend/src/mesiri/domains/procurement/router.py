@@ -269,7 +269,15 @@ async def create_request(
         conn, org, project_id=body.project_id, site_id=body.site_id, requested_by=auth_context.user_id,
         source=body.source, needed_by=body.needed_by, purpose=(body.purpose or "").strip() or None,
         raised_over_duplicate=bool(duplicates or on_order), lines=lines)
-    return await _one(conn, auth_context, request_id)
+    created = await _one(conn, auth_context, request_id)
+    # PRC-25: the office hears of it on WhatsApp (held for their next message when outside the 24-hour window).
+    from mesiri.application.procurement.alerts import tell_office_of_new_request
+
+    try:
+        await tell_office_of_new_request(conn, org, created)
+    except Exception:  # noqa: BLE001 -- the request is saved; the message is a courtesy
+        pass
+    return created
 
 
 @router.post("/{request_id}/decide")
@@ -481,7 +489,9 @@ async def _tell_requester(conn: AsyncConnection, auth: AuthorizationContext, ite
                 subject_id=f"{item['id']}:{status}:{changed_at or ''}", occurred_on=datetime.date.today(),
                 recipient_user_id=uuid.UUID(item["requested_by"]),
                 project_id=uuid.UUID(item["project_id"]), site_id=uuid.UUID(item["site_id"]),
+                # PRC-25: outside the 24-hour window it waits for their next message (no template needed).
                 payload={"message": store.requester_message(item, wording or status, note,
-                                                            item.get("decided_by_name"), language)})
+                                                            item.get("decided_by_name"), language),
+                         "hold_until_window": True, "hold_days": 2})
     except Exception:  # noqa: BLE001 -- the decision is saved; the note is a courtesy
         return
