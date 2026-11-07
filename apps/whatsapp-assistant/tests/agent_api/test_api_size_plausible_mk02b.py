@@ -147,3 +147,20 @@ async def test_reported_an_admins_answer_of_sixty_cum_is_never_held() -> None:
 async def test_guard_an_admins_usual_answer_is_held() -> None:
     turn = await _answer(4.25, "M sand oru load 4.25 cum aanu")
     assert [e.tool for e in turn.pending] == ["answer_size_request"]
+
+
+# -- live, 7 Nov 22:30: "I could not ... try again in a minute" with no tool called ---------------------------------
+
+
+def test_a_could_not_reply_with_no_tool_tried_is_caught() -> None:
+    """The model copied the outage reply from the history instead of trying. WA-199's check now knows the past tense,
+    so it sends the model back to its tools (a turn where a tool WAS called and failed is not touched: the guard runs
+    only when no tool was called)."""
+    from agent_api.reply_guard import claims_cannot
+
+    for reply in ("I could not set the unit conversion right now. Please try again in a minute.",
+                  "We couldn't save it.", "Ippo set cheyyan kazhinjilla.", "Save cheyyan pattiyilla.",
+                  "ഇപ്പോൾ സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല."):
+        assert claims_cannot(reply), reply
+    for reply in ("Could not be better!", "Saved. The supplier could not come today.", "Couldn't you send it?"):
+        assert not claims_cannot(reply), reply  # guard: not Mesiri saying it could not
