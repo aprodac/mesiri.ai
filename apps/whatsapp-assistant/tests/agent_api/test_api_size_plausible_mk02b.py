@@ -19,8 +19,9 @@ from mesiri.domains.materials.plausibility import Kind, Range, Reference, assess
 from mesiri.domains.shared.auth import get_current_user
 
 M_SAND, TMT12, TMT = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
-LOAD, CUM, NOS, KG = (str(uuid.uuid4()) for _ in range(4))
-_UNITS = {LOAD: ("load", "Loads"), CUM: ("cum", "Cubic Meters"), NOS: ("nos", "Numbers"), KG: ("kg", "Kilograms")}
+LOAD, CUM, NOS, KG, CFT = (str(uuid.uuid4()) for _ in range(5))
+_UNITS = {LOAD: ("load", "Loads"), CUM: ("cum", "Cubic Meters"), NOS: ("nos", "Numbers"), KG: ("kg", "Kilograms"),
+          CFT: ("cft", "Cubic Feet")}
 _STOCK = {M_SAND: ("M Sand", CUM), TMT12: ("TMT 12mm", KG), TMT: ("TMT steel bars", KG)}
 #: As migration 0515 seeds it (the API reads the tables; the stand-in reads this).
 REF = Reference(
@@ -38,12 +39,16 @@ def _units_api() -> FastAPI:
 
     @app.get("/materials/{material_id}/unit-check")
     async def unit_check(material_id: str, unit_id: str, one_unit_equals: Decimal | None = None,
-                         jwt: dict = Depends(get_current_user)):
+                         size_unit_id: str | None = None, jwt: dict = Depends(get_current_user)):
         name, stock = _STOCK[material_id]
         answer = {"material": name, "unit": _UNITS[unit_id][0], "unit_name": _UNITS[unit_id][1],
                   "stock_unit": _UNITS[stock][0], "stock_unit_name": _UNITS[stock][1], "stock_unit_id": stock,
                   "fits": False, "one_unit_equals": None}
         if one_unit_equals is not None:
+            if size_unit_id:  # as the API does (MK-02c): the size as said, converted by the unit facts
+                one_unit_equals = one_unit_equals / REF.facts[(_UNITS[stock][0], _UNITS[size_unit_id][0])]
+                answer["one_unit_equals_in_stock"] = f"{one_unit_equals.quantize(Decimal('0.001')).normalize():f}"
+                answer["size_unit_name"] = _UNITS[size_unit_id][1]
             verdict = assess(REF, material_name=name, from_code=_UNITS[unit_id][0], from_label=_UNITS[unit_id][0],
                              stock_code=_UNITS[stock][0], stock_label=_UNITS[stock][1], one_unit_equals=one_unit_equals)
             answer["plausible"] = verdict is None
@@ -56,10 +61,10 @@ def _units_api() -> FastAPI:
     return app
 
 
-async def _size(material: str, unit: str, size: str, said: str) -> dict:
+async def _size(material: str, unit: str, size: str, said: str, size_unit: str | None = None) -> dict:
     client = ApiClient(ACTOR, app=_units_api())
     try:
-        return await size_check(client, material, unit, Decimal(size), said)
+        return await size_check(client, material, unit, Decimal(size), said, size_unit)
     finally:
         await client.close()
 
@@ -67,14 +72,15 @@ async def _size(material: str, unit: str, size: str, said: str) -> dict:
 async def test_reported_a_sixty_cum_load_is_never_held_and_one_question_is_asked() -> None:
     got = await _size(M_SAND, LOAD, "60", "M sand oru load 60 cum aanu, athu set cheyyu")
     assert "Nothing is prepared" in got["error"]
-    assert "would be 2119 cft" in got["error"] and "usually 50 to 600 cft" in got["error"]
-    assert "as the bill or the supplier says" in got["error"]
+    assert "far more than 1 load usually is (50 to 600 cft)" in got["error"]
+    assert "as the bill or the supplier says" in got["error"] and "No conversions or calculations" in got["error"]
+    assert "2119" not in got["error"]  # MK-02c: no unit arithmetic for them to read
     assert "never ask them to send anything again" in got["error"]
 
 
 async def test_sibling_an_impossible_bar_weight_is_never_held() -> None:
     got = await _size(TMT, NOS, "500", "oru kambi 500 kg")
-    assert "Nothing is prepared" in got["error"] and "usually 2 to 100 kg" in got["error"]
+    assert "Nothing is prepared" in got["error"] and "(2 to 100 kg)" in got["error"]
 
 
 async def test_guard_a_sized_bars_weight_is_never_asked_the_code_knows_it() -> None:
@@ -141,7 +147,7 @@ async def _answer(size: float, message: str):  # noqa: ANN202
 async def test_reported_an_admins_answer_of_sixty_cum_is_never_held() -> None:
     turn = await _answer(60, "M sand oru load 60 cum aanu, athu set cheyyu")
     assert turn.pending == []
-    assert "usually 50 to 600 cft" in turn.calls[0]["result"]["error"]
+    assert "(50 to 600 cft)" in turn.calls[0]["result"]["error"]
 
 
 async def test_guard_an_admins_usual_answer_is_held() -> None:
@@ -164,3 +170,18 @@ def test_a_could_not_reply_with_no_tool_tried_is_caught() -> None:
         assert claims_cannot(reply), reply
     for reply in ("Could not be better!", "Saved. The supplier could not come today.", "Couldn't you send it?"):
         assert not claims_cannot(reply), reply  # guard: not Mesiri saying it could not
+
+
+
+# -- MK-02c: the answer as the bill says it ("150 cft"), M-sand stocked in m³ ---------------------------------------
+
+
+async def test_a_size_answered_in_cft_is_held_as_said_and_converted_by_the_code() -> None:
+    got = await _size(M_SAND, LOAD, "150", "bill-il oru load 150 cft aanu", CFT)
+    assert got["line"] == "📏 1 Loads M Sand = 150 Cubic Feet (= 4.248 Cubic Meters)"
+    assert got["in_stock"] == "4.248"
+
+
+async def test_guard_an_impossible_size_in_cft_is_still_caught() -> None:
+    got = await _size(M_SAND, LOAD, "5000", "oru load 5000 cft", CFT)
+    assert "far more" in got["error"]

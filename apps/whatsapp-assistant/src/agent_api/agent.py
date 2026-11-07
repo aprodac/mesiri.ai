@@ -942,7 +942,8 @@ class ApiAgent:
                 # request, a second way in that skipped size_check. Both ways now get the same check before holding.
                 if (request := await size_request(client, str(arguments.get("request_id") or ""))) is not None:
                     check = await size_check(client, str(request.get("material_id") or ""),
-                                             str(request.get("from_unit_id") or ""), size, their_words)
+                                             str(request.get("from_unit_id") or ""), size, their_words,
+                                             str(body.get("size_unit_id") or ""))
                     if check.get("error"):
                         return ToolOutcome(content={"error": check["error"]})
             if name == CONVERSION_TOOL:
@@ -950,13 +951,15 @@ class ApiAgent:
                 size = _decimal(body.get("one_unit_equals"))
                 sized_line = code_lines.get((material_id, str(body.get("from_unit_id") or "")))
                 check = {"line": sized_line} if sized_line else await size_check(
-                    client, material_id, str(body.get("from_unit_id") or ""), size, their_words)
+                    client, material_id, str(body.get("from_unit_id") or ""), size, their_words,
+                    str(body.get("size_unit_id") or ""))
                 if check.get("error"):
                     return ToolOutcome(content={"error": check["error"]})
                 if not may_set_sizes and is_uuid(material_id) and size is not None:
                     # WA-166: only an admin or a project manager sets a size for the company (a Save of it was refused
                     # for everyone else, so their line was refused again). Their size converts their own lines.
-                    sizes_said[size_key(material_id, body.get("from_unit_id"))] = float(size)
+                    sizes_said[size_key(material_id, body.get("from_unit_id"))] = float(
+                        _decimal(check.get("in_stock")) or size)  # MK-02c: in the stock unit
                     try:  # WA-168: and proposed to the company: the admin confirms it with one tap
                         await client.call("POST", "/materials/size-requests", json={
                             "material_id": material_id, "from_unit_id": body.get("from_unit_id"),
@@ -1825,7 +1828,7 @@ async def size_request(client: ApiClient, request_id: str) -> dict[str, Any] | N
 
 
 async def size_check(client: ApiClient, material_id: str, from_unit_id: str, size: Decimal | None,
-                     said: str | None = None) -> dict[str, str]:
+                     said: str | None = None, size_unit_id: str | None = None) -> dict[str, str]:
     """WA-166: a size ("1 load = 60 bags") before it is held. ``{"error": ...}`` for one that cannot be right (none
     given, the material is already counted in that unit, or fewer than one piece in a load of a counted material:
     Paraclette's "1 load holobricks = 0.33 nos"); else ``{"line": "📏 1 Loads എംസാന്റ് = 60 Bags"}``, the ready line
@@ -1842,8 +1845,9 @@ async def size_check(client: ApiClient, material_id: str, from_unit_id: str, siz
     if not (is_uuid(material_id) and is_uuid(from_unit_id)):
         return {}
     try:
-        response = await client.call("GET", f"/materials/{material_id}/unit-check",
-                                     params={"unit_id": from_unit_id, "one_unit_equals": str(size)})
+        response = await client.call("GET", f"/materials/{material_id}/unit-check", params={
+            "unit_id": from_unit_id, "one_unit_equals": str(size),
+            **({"size_unit_id": size_unit_id} if is_uuid(size_unit_id or "") else {})})
     except Exception:  # noqa: BLE001
         return {}
     found = response.body if response.ok and isinstance(response.body, dict) else {}
@@ -1856,22 +1860,32 @@ async def size_check(client: ApiClient, material_id: str, from_unit_id: str, siz
         return {"error": (f"The code already converts {unit} to {stock} for {material} (a standard measure). Nothing "
                           f"is prepared: never set or ask this size. Prepare the line in {unit}, as they said.")}
     if isinstance(bad := found.get("implausible"), dict):
-        # MK-02b (live, 7 Nov 19:57: "1 load M sand = 60 cum" was put on the card, then refused at Save, cut off, in
-        # English, with "send it again"). The API's reference says it cannot be right: never held; ONE question now.
+        # MK-02b/c (live, 7 Nov): an impossible size is never held; ONE plain question. MK-02c: no unit arithmetic in
+        # the words ("60 cum would be 2119 cft" read as jargon): only "far more / far less than one load usually is".
         said_unit = str(found.get("unit") or unit)
+        try:
+            more = Decimal(str(bad.get("said_in_usual_unit"))) > Decimal(str(bad.get("usual_high")))
+        except (InvalidOperation, ValueError):
+            more = True
         return {"error": (
-            f"Nothing is prepared: {bad.get('reason')} Tell them in ONE short message, in their language: 1 {said_unit} "
-            f"= {_amount(size)} {stock} would be {bad.get('said_in_usual_unit')} {bad.get('usual_unit')}, and 1 "
-            f"{said_unit} of {material} is usually {bad.get('usual_low')} to {bad.get('usual_high')} "
-            f"{bad.get('usual_unit')}; ask how much 1 {said_unit} is, as the bill or the supplier says. Their own line "
-            "(if any) stays as it is: never ask them to send anything again.")}
-    if str(found.get("stock_unit") or "").lower() in COUNT_UNITS and size < 1:
+            f"Nothing is prepared: {_amount(size)} {stock} for 1 {said_unit} of {material} is far "
+            f"{'more' if more else 'less'} than 1 {said_unit} usually is ({bad.get('usual_low')} to "
+            f"{bad.get('usual_high')} {bad.get('usual_unit')}). Tell them in ONE short, plain message in their "
+            f"language: that it is far {'more' if more else 'less'} than one {said_unit} usually is, and ask how much "
+            f"one {said_unit} is as the bill or the supplier says (they may say it in {bad.get('usual_unit')}). No "
+            "conversions or calculations in your words. Their own line (if any) stays as it is: never ask them to "
+            "send anything again.")}
+    in_stock = _decimal(found.get("one_unit_equals_in_stock")) or size  # MK-02c: a size said in another unit
+    if str(found.get("stock_unit") or "").lower() in COUNT_UNITS and in_stock < 1:
         return {"error": (f"1 {unit} of {material} cannot be less than 1 {stock}: the size is the wrong way round. "
                           f"Nothing is prepared. Ask again, in their language: how many {stock} are in 1 {unit}?")}
     if said is not None and not said_number(said, size):
         return {"error": (f"{_amount(size)} is not a size they said: never make one up (it would be used for the whole "
                           f"company). Nothing is prepared. Prepare the line in {unit} as they said, without "
                           "`set_unit_conversion`: the code holds it and asks the size beside it.")}
+    if in_stock != size:  # MK-02c: shown as they said it, with what the stock counts
+        return {"line": f"📏 1 {unit} {material} = {_amount(size)} {found.get('size_unit_name') or ''} "
+                        f"(= {_amount(in_stock)} {stock})".replace("  ", " "), "in_stock": str(in_stock)}
     return {"line": f"📏 1 {unit} {material} = {_amount(size)} {stock}"}
 
 

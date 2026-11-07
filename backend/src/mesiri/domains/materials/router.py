@@ -502,6 +502,27 @@ class UnitConversionSet(BaseModel):
 
     from_unit_id: uuid.UUID
     one_unit_equals: Decimal = Field(gt=0, description="How many Stock Units one `from_unit` is, e.g. 10.67 (kg per bar)")
+    size_unit_id: uuid.UUID | None = Field(default=None, description=(
+        "The unit the size was SAID in when it is not the Stock Unit (\"1 load = 150 cft\" for M-sand stocked in m³): "
+        "one_unit_equals is then that number as said, and the code converts it (MK-02c)"))
+
+
+async def _size_in_stock(conn: AsyncConnection, body: UnitConversionSet, stock: dict) -> Decimal:
+    """MK-02c: a size said in another unit than the stock unit ("1 load = 150 cft", M-sand in m³) in the stock unit,
+    through the reference unit facts (never the model's arithmetic). 422 when no fact converts it."""
+    if body.size_unit_id is None or str(body.size_unit_id) == str(stock["id"]):
+        return body.one_unit_equals
+    from mesiri.domains.materials.plausibility import factor, load_reference
+
+    said = await UnitsOfMeasureRepository(conn).get_by_id(body.size_unit_id)
+    if said is None:
+        raise HTTPException(status_code=422, detail="size_unit_id is not a valid active unit")
+    rate = factor((await load_reference(conn)).facts, str(said["code"]).lower(), str(stock["code"]).lower())
+    if rate is None:
+        raise HTTPException(status_code=422, detail=(
+            f"{said['display_name']} cannot be turned into {stock['display_name']} by a standard measure: give the "
+            f"size in {stock['display_name']}."))
+    return body.one_unit_equals * rate
 
 
 @router.put("/{material_id}/unit-conversions")
@@ -530,6 +551,8 @@ async def set_unit_conversion(
         raise HTTPException(status_code=422, detail="from_unit_id is not a valid active unit")
     if str(unit["id"]) == str(stock["id"]):
         raise HTTPException(status_code=422, detail=f"{material['name']} is already counted in {stock['display_name']}.")
+    said_size = body.one_unit_equals
+    body = body.model_copy(update={"one_unit_equals": await _size_in_stock(conn, body, stock)})
     from mesiri.domains.materials.unit_conversion import COUNT_UNITS
 
     if str(stock["code"]).lower() in COUNT_UNITS and body.one_unit_equals < 1:
@@ -557,7 +580,8 @@ async def set_unit_conversion(
         "material": material["name"], "from_unit": unit["display_name"], "stock_unit": stock["display_name"],
         "one_unit_equals": f"{body.one_unit_equals.normalize():f}",  # WA-166: never "3E+2"
         "message": f"Saved for the company: 1 {unit['display_name']} of {material['name']} = "
-                   f"{body.one_unit_equals.normalize():f} {stock['display_name']}.",
+                   f"{body.one_unit_equals.quantize(Decimal('0.001')).normalize():f} {stock['display_name']}"
+                   + (f" ({said_size.normalize():f} as said)." if said_size != body.one_unit_equals else "."),
     }
 
 
@@ -576,6 +600,8 @@ class SizeRequestOpen(BaseModel):
 
 class SizeAnswer(BaseModel):
     one_unit_equals: Decimal = Field(gt=0)
+    size_unit_id: uuid.UUID | None = Field(default=None, description=(
+        "The unit the size was SAID in when it is not the Stock Unit; one_unit_equals is then that number (MK-02c)"))
 
 
 def _may_answer(auth_context: AuthorizationContext) -> None:
@@ -664,7 +690,8 @@ async def answer_size_request(
     if request["status"] != "open":
         raise HTTPException(status_code=409, detail="This size was already answered.")
     await set_unit_conversion(
-        request["material_id"], UnitConversionSet(from_unit_id=request["from_unit_id"], one_unit_equals=body.one_unit_equals),
+        request["material_id"], UnitConversionSet(from_unit_id=request["from_unit_id"], one_unit_equals=body.one_unit_equals,
+                          size_unit_id=body.size_unit_id),
         auth_context=auth_context, conn=conn)
     outcome = [await _save_held(conn, auth_context.organization_id, line) for line in request["held_lines"]]
     await size_requests.close_request(conn, request_id, "answered", auth_context.user_id, body.one_unit_equals, outcome)
@@ -761,6 +788,8 @@ async def check_material_unit(
     one_unit_equals: Annotated[Decimal | None, Query(gt=0, description=(
         "A size someone proposes (how many Stock Units one `unit_id` is): the answer then says whether it is "
         "plausible (MK-02b), the same check saving it makes"))] = None,
+    size_unit_id: Annotated[uuid.UUID | None, Query(description=(
+        "The unit `one_unit_equals` was said in, when not the Stock Unit (MK-02c)"))] = None,
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
@@ -788,6 +817,12 @@ async def check_material_unit(
     if one_unit_equals is not None:
         # MK-02b: asked before the size is held (the assistant) or typed (the dashboard), not only refused at Save.
         from mesiri.domains.materials.plausibility import assess, load_reference
+
+        one_unit_equals = await _size_in_stock(conn, UnitConversionSet(
+            from_unit_id=unit_id, one_unit_equals=one_unit_equals, size_unit_id=size_unit_id), stock)
+        answer["one_unit_equals_in_stock"] = f"{one_unit_equals.quantize(Decimal('0.001')).normalize():f}"
+        if size_unit_id is not None and (said_unit := await units.get_by_id(size_unit_id)) is not None:
+            answer["size_unit_name"] = said_unit["display_name"]
 
         verdict = assess(
             await load_reference(conn), material_name=material["name"],
