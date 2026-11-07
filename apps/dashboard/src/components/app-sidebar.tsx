@@ -10,7 +10,6 @@ import {
   Activity,
   BarChart3,
   FileText,
-  Boxes,
   ChevronRight,
   CalendarDays,
   Sun,
@@ -100,8 +99,6 @@ const RECORD_ITEMS: NavItem[] = [
   { title: 'Site log', url: '/site-log', icon: Activity, tone: 'sky' },
   { title: 'Analytics', url: '/analytics', icon: BarChart3, tone: 'indigo' },
 ]
-
-const MATERIALS_ITEM: NavItem = { title: 'Materials', url: '/materials', icon: Boxes, module: 'materials', tone: 'emerald' }
 
 const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
   { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN', tone: 'teal' },
@@ -428,7 +425,6 @@ export function AppSidebar() {
       (!item.allowedRoles || item.allowedRoles.includes((me?.role || '').toUpperCase()))
   )
 
-
   // Production's /auth/me returns org_name/name; the older identity router
   // shape used organization_name/full_name (see lib/api.ts's Me).
   const companyName = me?.org_name || me?.organization_name || 'Mesiri'
@@ -459,6 +455,8 @@ export function AppSidebar() {
   })
   const groupByKey = (key: string) => MODULE_GROUPS.find((g) => g.key === key)!
   const financeCategory = isModuleEnabled('finance') ? toCategory(groupByKey('finance')) : null
+  // PRC-22: Materials opens like Finance (Stock, Movements, Items, Requests), from the same module map.
+  const materialsCategory = isModuleEnabled('materials') ? toCategory(groupByKey('materials')) : null
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -611,7 +609,7 @@ export function AppSidebar() {
                 <SidebarMenu className="gap-0.5">
                   {RECORD_ITEMS.map(renderLink)}
                   {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
-                  {isModuleEnabled(MATERIALS_ITEM.module) && renderLink(MATERIALS_ITEM)}
+                  {materialsCategory && renderCategory(materialsCategory)}
                   {financeCategory && renderCategory(financeCategory)}
                 </SidebarMenu>
               </SidebarGroupContent>

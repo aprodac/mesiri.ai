@@ -23,6 +23,7 @@ import PlannedPage from '@/pages/PlannedPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
+import RequestsPage from '@/pages/RequestsPage'
 import ExpensesPage from '@/pages/ExpensesPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
 import FinanceSettingsPage from '@/pages/FinanceSettingsPage'
@@ -96,6 +97,8 @@ export default function App() {
 
           {/* Materials (module): one page with its own tabs. */}
           <Route path="materials" element={mat(<MaterialsPage />)} />
+          {/* PRC-22: what the sites ask for, before anyone orders it. */}
+          <Route path="materials/requests" element={mat(<RequestsPage />)} />
 
           {/* Setup */}
           <Route path="projects" element={<Projects />} />
