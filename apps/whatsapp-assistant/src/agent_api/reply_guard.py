@@ -50,10 +50,13 @@ _CANNOT = re.compile(
     r"\b(?:i|we|mesiri)\s+(?:can\s*not|can't|can’t|am\s+unable|'m\s+unable|am\s+not\s+able|'m\s+not\s+able"
     r"|do\s+not\s+have\s+(?:a\s+)?(?:way|tool|option)|don't\s+have\s+(?:a\s+)?(?:way|tool|option))\b"
     r"|\bi[’']m\s+(?:unable|not\s+able)\b"
+    # MK-02b (live, 7 Nov 22:30): "I could not set the unit conversion right now. Please try again in a minute." with no
+    # tool called: the past tense ("could not", "kazhinjilla") slipped past this check.
+    r"|\b(?:i|we|mesiri)\s+(?:could\s*not|couldn't|couldn’t|was\s+(?:not\s+able|unable)|wasn't\s+able)\b"
     r"|\bnot\s+(?:possible|supported)\s+(?:here|in\s+whatsapp|through\s+whatsapp|for\s+me|yet)\b"
-    r"|\b(?:patt(?:illa|ula|unnilla)|kazhiyilla|kazhiyunnilla|sadhikkilla|saadhikkilla)\b"
+    r"|\b(?:patt(?:illa|ula|unnilla|iyilla)|kazhiyilla|kazhiyunnilla|kazhinjilla|sadhikkilla|saadhikkilla)\b"
     r"|\bnahi[n]?\s+kar\s+(?:sakta|sakti|sakte|paunga|paungi)\b"
-    r"|പറ്റില്ല|പറ്റുന്നില്ല|കഴിയില്ല|സാധിക്കില്ല|नहीं\s+कर\s+(?:सकता|सकती|सकते|पाऊंगा|पाऊंगी)",
+    r"|പറ്റില്ല|പറ്റുന്നില്ല|പറ്റിയില്ല|കഴിയില്ല|കഴിഞ്ഞില്ല|സാധിക്കില്ല|नहीं\s+कर\s+(?:सकता|सकती|सकते|पाऊंगा|पाऊंगी)",
     re.IGNORECASE,
 )
 
