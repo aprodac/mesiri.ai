@@ -1316,6 +1316,8 @@ class MaterialInflowCreate(BaseModel):
     # a real invoice's discount, rounding or delivery charge survives instead
     # of being overwritten by arithmetic.
     total_cost: Decimal | None = None
+    #: PRC-08: the purchase order line this delivery fills (same site and material, the order still open).
+    purchase_order_line_id: uuid.UUID | None = None
 
 
 class MaterialOutflowCreate(BaseModel):
@@ -1507,6 +1509,17 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
     if body.movement_reason == OPENING_STOCK:
         await _assert_no_opening_stock(conn, auth_context.organization_id, body.site_id, material)
     unit_cost, total_cost = _resolve_costs(body.quantity, body.unit_cost, body.total_cost)
+    if body.purchase_order_line_id is not None:
+        from mesiri.domains.procurement.orders import OrderRuleError, check_delivery_line
+
+        try:
+            order_vendor = await check_delivery_line(conn, auth_context.organization_id, body.purchase_order_line_id,
+                                                     site_id=body.site_id, material_id=material["id"],
+                                                     reason=body.movement_reason)
+        except OrderRuleError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        if body.vendor_id is None and not body.supplier:
+            body.vendor_id = order_vendor  # the order's supplier, unless they said another one
     supplier, vendor_id = await _delivery_vendor(conn, auth_context, body.supplier, body.vendor_id)
 
     row_id = uuid.uuid4()
@@ -1515,10 +1528,10 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
             "INSERT INTO material_receipts "
             "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
             "supplier, vendor_id, occurred_date, occurred_date_source, source, movement_reason, notes, "
-            "material_id, unit_cost, total_cost, created_by) "
+            "material_id, unit_cost, total_cost, created_by, purchase_order_line_id) "
             "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
             ":quantity, :unit, :unit_id, :supplier, :vendor_id, :occurred_date, 'reported', 'web', "
-            ":movement_reason, :notes, :material_id, :unit_cost, :total_cost, :created_by)"
+            ":movement_reason, :notes, :material_id, :unit_cost, :total_cost, :created_by, :po_line)"
         ),
         {
             "id": row_id,
@@ -1538,6 +1551,7 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
             "unit_cost": unit_cost,
             "total_cost": total_cost,
             "created_by": auth_context.user_id,
+            "po_line": body.purchase_order_line_id,
         },
     )
     await post_material_movement(

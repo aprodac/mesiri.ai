@@ -106,7 +106,7 @@ ALLOWED: tuple[Allowed, ...] = (
             "category as list_receipts."),
     # PRC-04: the supplier goes in words (the API links it to the vendor); vendor_id is the dashboard's picker.
     Allowed("record_receipt", "POST", "/materials/inflows", "Prepare a material receipt (material that arrived at a site)." + _WRITE,
-            hide=("vendor_id",)),
+            hide=("vendor_id", "purchase_order_line_id")),  # PRC-08: the order line is the dashboard's until PRC-09
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
     # PRC-22: material requests -- what a site asks for before anyone orders it (Materials > Requests).
