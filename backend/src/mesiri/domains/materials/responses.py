@@ -40,6 +40,11 @@ class MaterialReceiptResponse(BaseModel):
     # WEB-35: the supplier invoice this purchase came from, so the ledger can
     # open the document. Was stored but never returned, so the link never showed.
     invoice_id: uuid.UUID | None = None
+    #: WEB-77: the purchase order and goods received note this delivery came on, if any.
+    purchase_order_id: uuid.UUID | None = None
+    order_ref: str | None = None
+    grn_id: uuid.UUID | None = None
+    grn_ref: str | None = None
     # True when a correction has already been posted against THIS movement, so
     # the UI can hide "Correct" rather than offer an action that now 409s.
     # Absent on list endpoints (it needs a per-row lookup); only the detail

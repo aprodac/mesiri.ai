@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.dpr import fact_review, project_day
 from mesiri.domains.materials.names import alias_key, require_latin_name
+from mesiri.domains.procurement.grn import ref as grn_ref
+from mesiri.domains.procurement.orders import ref as order_ref
 
 _material_receipts = sa.Table(
     "material_receipts",
@@ -28,6 +30,8 @@ _material_receipts = sa.Table(
     sa.Column("total_cost", sa.Numeric),
     sa.Column("supplier", sa.String),
     sa.Column("vendor_id", sa.UUID(as_uuid=True)),
+    # PRC-08: the purchase order line this delivery filled.
+    sa.Column("purchase_order_line_id", sa.UUID(as_uuid=True)),
     sa.Column("occurred_date", sa.Date),
     sa.Column("occurred_time", sa.Time),
     sa.Column("correlation_id", sa.String),
@@ -114,6 +118,33 @@ def _category_columns(material_id_col: sa.ColumnElement) -> list:
         sa.select(sa.func.coalesce(parent.c.name, cat.c.name)).select_from(source).where(where)
         .scalar_subquery().label("main_category"),
     ]
+
+
+_po_lines = sa.table("purchase_order_lines", sa.column("id"), sa.column("purchase_order_id"))
+_pos = sa.table("purchase_orders", sa.column("id"), sa.column("number"))
+_grn_lines = sa.table("goods_receipt_lines", sa.column("goods_receipt_id"), sa.column("material_receipt_id"))
+_grns = sa.table("goods_receipts", sa.column("id"), sa.column("number"))
+
+
+def _order_columns() -> list:
+    """WEB-77: the purchase order and goods received note a delivery came on, so the register can name them."""
+    on_line = _po_lines.c.id == _material_receipts.c.purchase_order_line_id
+    grn_source = _grns.join(_grn_lines, _grn_lines.c.goods_receipt_id == _grns.c.id)
+    on_grn = _grn_lines.c.material_receipt_id == _material_receipts.c.id
+    return [
+        sa.select(_po_lines.c.purchase_order_id).where(on_line).scalar_subquery().label("purchase_order_id"),
+        sa.select(_pos.c.number).select_from(_pos.join(_po_lines, _po_lines.c.purchase_order_id == _pos.c.id))
+        .where(on_line).scalar_subquery().label("purchase_order_number"),
+        sa.select(_grns.c.id).select_from(grn_source).where(on_grn).limit(1).scalar_subquery().label("grn_id"),
+        sa.select(_grns.c.number).select_from(grn_source).where(on_grn).limit(1).scalar_subquery().label("grn_number"),
+    ]
+
+
+def _with_order_refs(row: dict) -> dict:
+    po, grn = row.pop("purchase_order_number", None), row.pop("grn_number", None)
+    row["order_ref"] = order_ref(po) if po is not None else None
+    row["grn_ref"] = grn_ref(grn) if grn is not None else None
+    return row
 
 
 def _in_category(material_id_col: sa.ColumnElement, category_id: uuid.UUID) -> sa.ColumnElement:
@@ -304,7 +335,8 @@ class PostgresMaterialReadRepository:
         ).label("is_reversed")
 
         stmt = (
-            sa.select(_material_receipts, is_reversed, *_category_columns(_material_receipts.c.material_id))
+            sa.select(_material_receipts, is_reversed, *_category_columns(_material_receipts.c.material_id),
+                      *_order_columns())
             .where(*where_clauses)
             .order_by(
                 _material_receipts.c.occurred_date.desc(), _material_receipts.c.created_at.desc()
@@ -313,17 +345,17 @@ class PostgresMaterialReadRepository:
             .offset(offset)
         )
         res = await self.conn.execute(stmt)
-        items = [dict(r) for r in res.mappings().all()]
+        items = [_with_order_refs(dict(r)) for r in res.mappings().all()]
         return items, total
 
     async def get_receipt(self, organization_id: uuid.UUID, receipt_id: uuid.UUID) -> dict | None:
-        stmt = sa.select(_material_receipts).where(
+        stmt = sa.select(_material_receipts, *_order_columns()).where(
             _material_receipts.c.id == receipt_id,
             _material_receipts.c.organization_id == organization_id,
         )
         res = await self.conn.execute(stmt)
         row = res.mappings().first()
-        return dict(row) if row else None
+        return _with_order_refs(dict(row)) if row else None
 
     async def list_usage(
         self,
