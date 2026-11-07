@@ -15,6 +15,7 @@ what the code did before the setting existed.
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass
 
 from mesiri.domains.organizations.branding import DEFAULT_BRANDING
@@ -49,6 +50,11 @@ JOIN_REQUESTS = "join_requests"
 # a draft the engineer confirms with the evening DPR (decided 13 Oct 2026, on
 # for every company). "confirm_first": the old "Confirm? YES/NO" before
 # saving -- kept as a per-company switch back, not deleted.
+# Fix 2 (7 Nov 2026 sweep, borrowed from site-diary practice: "the report belongs to the shift's date"): an
+# update sent after midnight but before the company's day starts ("innu 4 mason vannu" at 00:05) is about the
+# day that just ended. Default 04:00: late-evening and night updates stay on their working day.
+WORKING_DAY_STARTS_AT = "working_day_starts_at"
+WORKING_DAY_STARTS_DEFAULT = "04:00"
 CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
@@ -197,6 +203,14 @@ _SPECS: dict[str, SettingSpec] = {
             "Product modules switched on for this company. Changed by the "
             "Mesiri team only; a switched-off module's pages and WhatsApp "
             "flows are unavailable."
+        ),
+    ),
+    WORKING_DAY_STARTS_AT: SettingSpec(
+        key=WORKING_DAY_STARTS_AT,
+        default=WORKING_DAY_STARTS_DEFAULT,
+        description=(
+            "When the company's working day starts (HH:MM, 00:00-11:59). Before it, 'today' in a WhatsApp update "
+            "means the day that just ended."
         ),
     ),
     CAPTURE_MODE: SettingSpec(
@@ -423,6 +437,8 @@ def validate(key: str, value: object) -> object:
         return validate_role_list(value)
     if key == ENABLED_MODULES:
         return validate_module_list(value)
+    if key == WORKING_DAY_STARTS_AT:
+        return f"{_day_start(value):%H:%M}"
     if key == CAPTURE_MODE:
         mode = str(value).strip().lower() if isinstance(value, str) else ""
         if mode not in CAPTURE_MODES:
@@ -491,3 +507,25 @@ def role_allowed(role: str | None, allowed: object) -> bool:
     return role.strip().upper() in {
         str(entry).strip().upper() for entry in allowed if isinstance(entry, str)
     }
+
+
+def _day_start(value: object) -> datetime.time:
+    """A working-day start as a time: "HH:MM" from 00:00 to 11:59 (a start after noon is a mistake)."""
+    try:
+        hours, minutes = (int(part) for part in str(value).strip().split(":"))
+        start = datetime.time(hours, minutes)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("working_day_starts_at must be HH:MM, e.g. 04:00") from exc
+    if start.hour >= 12:
+        raise ValueError("working_day_starts_at must be before 12:00")
+    return start
+
+
+def working_day(now: datetime.datetime, starts_at: object = WORKING_DAY_STARTS_DEFAULT) -> datetime.date:
+    """The working day ``now`` (the company's local time) belongs to: before the day's start it is still the day
+    before. A bad stored value falls back to the default rather than moving anyone's records."""
+    try:
+        start = _day_start(starts_at)
+    except ValueError:
+        start = _day_start(WORKING_DAY_STARTS_DEFAULT)
+    return now.date() - datetime.timedelta(days=1) if now.time() < start else now.date()
