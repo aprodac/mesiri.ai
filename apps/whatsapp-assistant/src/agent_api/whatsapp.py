@@ -389,7 +389,7 @@ class ApiWhatsApp:
             self._requested.discard(message.correlation_id)
             poke_watch_soon(message.correlation_id)
         if said:
-            await self._memory.remember(ctx, said, for_memory(reply.text))  # after the send: never on the wait
+            await self._memory.remember(ctx, said, for_memory(reply.text, await self._card_lines(reply, ctx)))
             _lap("v3_memory_write")
         return True
 
@@ -1147,6 +1147,18 @@ class ApiWhatsApp:
         await self._save_state(ctx, state)
         return reply
 
+    async def _card_lines(self, reply: ReplySpec, ctx: Any) -> list[str]:
+        """PRC-32: the lines a reply's TO SAVE card showed (its text has only the caption), for the conversation."""
+        if reply.header_image is None:
+            return []
+        try:
+            state = await self._state(ctx)
+            if state.get("previewed") != state.get("batch"):
+                return []
+            return [without_ids(PendingWrite.from_json(e).summary) for e in state.get("pending") or []]
+        except Exception:  # noqa: BLE001 -- the memory keeps the words as before
+            return []
+
     async def _with_preview(self, reply: ReplySpec, ctx: Any, correlation_id: str | None) -> ReplySpec:
         """WA-210 / WA-215: the reply that carries the ready list's Save button gets the list's draft slip as its header
         image, and its text loses the list (the slip shows every line, numbered) and the "tap Save" line (the button
@@ -1322,18 +1334,23 @@ def _without_stale_sends(entries: list[PendingWrite]) -> list[PendingWrite]:
     return entries
 
 
-def for_memory(sent: str) -> str:
+def for_memory(sent: str, listed: list[str] | tuple[str, ...] = ()) -> str:
     """What the conversation keeps of a reply (WA-130): the words, and the drawn list only as a
     short note. Kept whole, the model saw the list's format in the history and wrote it again
-    itself (Paraclette 2 Nov 10:52: the list twice)."""
+    itself (Paraclette 2 Nov 10:52: the list twice). ``listed``: the lines a TO SAVE card showed (WA-210: the text is
+    then only its caption); they get the same note, else the conversation held request -> "tap Save" and the model
+    copied that reply for the next request with no tool called (PRC-32, 7 Nov)."""
     sent = without_heard_echo(sent)  # [258]: the model never sees the "🎤 heard" line, so it never writes one
     words = without_ready_block(sent)
-    if words == sent.strip():
+    items: list[str] = []
+    if words != sent.strip():
+        parts = re.split(r"[\s*_]*Ready to (?:save|send)[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
+        if len(parts) < 2:
+            return words
+        items = [re.sub(r"^\d+\.\s*", "", line).strip() for line in parts[1].splitlines() if line.strip()]
+    items = items or [line.strip() for line in listed if line.strip()]
+    if not items:
         return sent
-    parts = re.split(r"[\s*_]*Ready to (?:save|send)[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
-    if len(parts) < 2:
-        return words
-    items = [re.sub(r"^\d+\.\s*", "", line).strip() for line in parts[1].splitlines() if line.strip()]
     return f"{words}\n(under this reply, waiting for the Save button: {'; '.join(items)})".strip()
 
 
