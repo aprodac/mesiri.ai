@@ -104,3 +104,10 @@ tr { break-inside: avoid; }
 .st.have { background: var(--ok-bg); color: var(--ok); } .st.part { background: var(--plan-bg); color: var(--plan); } .st.miss { background: var(--bad-bg); color: var(--bad); }
 .gap td:last-child { color: var(--muted); font-size: 8.4pt; }
 code { font-size: 8.6pt; background: var(--soft); padding: 0 1mm; border-radius: 1mm; }
+
+/* big picture: cost split bars */
+.bars { display: flex; flex-direction: column; gap: 1.6mm; margin: 2mm 0 3mm; }
+.bars div { display: grid; grid-template-columns: 45mm 1fr 48mm; align-items: center; gap: 3mm; font-size: 9.4pt; }
+.bars i { display: block; height: 4mm; border-radius: 1mm; background: #c9c0b4; }
+.bars .profit i { background: var(--ok); }
+.bars b { font-weight: 600; color: var(--muted); font-size: 8.8pt; }

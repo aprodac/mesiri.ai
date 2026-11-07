@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The big picture · Mesiri Field Guide 00</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<section class="cover">
+  <div class="brand">Mesiri <span></span></div>
+  <p class="series">Field Guide · 00 of 09 · Internal team edition · Read this first</p>
+  <h1>The big picture</h1>
+  <p class="lede">How a construction company runs and makes money, how a project moves from estimate to handover, who does what, where the money leaks, and how every part of the business connects.</p>
+  <div class="draft">Draft, 7 Nov 2026. Written from industry practice, construction software we studied and customer meetings. Percentages and periods are typical examples, not facts about any one company; check them with someone who has run sites.</div>
+  <div class="howto">
+    <p><b>How to read this guide.</b> Parts 1 to 10 are about the business, not about Mesiri. Part 11 is where Mesiri fits. Each later guide (01 to 09) goes deep into one part of the map in part 8.</p>
+  </div>
+  <div class="toc">
+    <p class="toc-title">In this guide</p>
+    <ol>
+      <li>What a construction company is, and how it makes money</li>
+      <li>The life of a project</li>
+      <li>Who's who</li>
+      <li>The rhythm: daily, weekly, monthly</li>
+      <li>How money flows</li>
+      <li>The ten biggest money leaks</li>
+      <li>The information problem</li>
+      <li>The module map: how everything connects</li>
+      <li>One load of cement through the whole business</li>
+      <li>The software market</li>
+      <li>Where Mesiri fits</li>
+      <li>Key terms · Check yourself</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===================== 1 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">1 · What a construction company is, and how it makes money</p>
+  <h2>A business that buys, builds and bills, on thin margins</h2>
+  <p>A construction company turns money, material and labour into a building, usually for someone else, and gets paid in stages as the work is measured. Most of its spending happens before it is paid for that work, and most of its profit can disappear in small leaks along the way.</p>
+
+  <h3>The kinds of companies</h3>
+  <table>
+    <thead><tr><th style="width:24%">Kind</th><th style="width:46%">What they do</th><th>Typical customer for Mesiri?</th></tr></thead>
+    <tbody>
+      <tr><td><b>Building contractor</b></td><td>Builds for a client (a house owner, a company, a developer) under a contract.</td><td>Yes: our main buyer. Several sites at once, 5 to 50 engineers.</td></tr>
+      <tr><td><b>Builder / developer</b></td><td>Buys land, builds flats or villas, sells them. Is its own client.</td><td>Yes for construction; their sales and bookings side is a different product.</td></tr>
+      <tr><td><b>Government contractor</b></td><td>Roads, buildings for public bodies; tenders, strict billing and material rules.</td><td>Later: more paperwork, longer sales.</td></tr>
+      <tr><td><b>Specialist / subcontractor</b></td><td>One trade: electrical, plumbing, plastering, waterproofing.</td><td>Sometimes; often they are our customer's suppliers.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>How the contract decides who carries the risk</h3>
+  <table>
+    <thead><tr><th style="width:24%">Contract type</th><th style="width:46%">How the contractor is paid</th><th>Who carries the risk of cost overrun</th></tr></thead>
+    <tbody>
+      <tr><td><b>Item rate (BOQ)</b></td><td>A rate per unit of each work item (₹ per m³ of concrete, ₹ per sq ft of plaster), paid on measured quantity.</td><td>Contractor carries cost per unit; client carries quantity changes.</td></tr>
+      <tr><td><b>Lump sum</b></td><td>A fixed price for the whole job, paid in stages.</td><td>Contractor carries almost all of it.</td></tr>
+      <tr><td><b>Labour only</b></td><td>The client buys material; the contractor supplies labour.</td><td>Contractor's risk is labour productivity; material must be reconciled with the client.</td></tr>
+      <tr><td><b>Cost plus</b></td><td>Actual cost plus a fee or percentage.</td><td>Client; the contractor must prove every cost.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Where the money goes</h3>
+  <div class="bars">
+    <div><span>Material</span><i style="width:50%"></i><b>often 40–60%</b></div>
+    <div><span>Labour</span><i style="width:25%"></i><b>often 20–30%</b></div>
+    <div><span>Subcontract</span><i style="width:15%"></i><b>varies widely</b></div>
+    <div><span>Equipment &amp; transport</span><i style="width:7%"></i><b>a few %</b></div>
+    <div><span>Site &amp; office overheads</span><i style="width:8%"></i><b>a few %</b></div>
+    <div class="profit"><span>What is left (margin)</span><i style="width:10%"></i><b>often single digits to low teens</b></div>
+  </div>
+  <p class="note">Rough ranges for building work; every company and project differs. The point that matters: <b>when the margin is around 10%, losing 3% of material is losing about a quarter of the profit.</b></p>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section>
+  <p class="eyebrow">2 · The life of a project</p>
+  <h2>From winning the job to the end of the defects period</h2>
+  <svg class="diagram" viewBox="0 0 760 170" role="img" aria-label="Project timeline: win, set up, execute, bill and collect running alongside execution, hand over, then the defects period.">
+    <g font-family="Noto Sans, sans-serif" font-size="12">
+      <rect x="10" y="20" width="110" height="40" rx="8" fill="#fdeee6"/><text x="65" y="45" text-anchor="middle" font-weight="700">1 Win</text>
+      <rect x="125" y="20" width="110" height="40" rx="8" fill="#fbf0d9"/><text x="180" y="45" text-anchor="middle" font-weight="700">2 Set up</text>
+      <rect x="240" y="20" width="330" height="40" rx="8" fill="#e9f6ee"/><text x="405" y="45" text-anchor="middle" font-weight="700">3 Execute (months to years)</text>
+      <rect x="240" y="68" width="390" height="30" rx="8" fill="#e6eef8"/><text x="435" y="88" text-anchor="middle" font-weight="700">4 Bill and collect, every month</text>
+      <rect x="575" y="20" width="85" height="40" rx="8" fill="#efe9f6"/><text x="617" y="45" text-anchor="middle" font-weight="700">5 Hand over</text>
+      <rect x="635" y="68" width="115" height="30" rx="8" fill="#f2efe9"/><text x="692" y="88" text-anchor="middle" font-weight="700">6 Defects period</text>
+      <g fill="#5f5a52" font-size="10.5">
+        <text x="10" y="122">estimate · BOQ · tender</text><text x="10" y="137">or negotiation · contract</text>
+        <text x="125" y="122">budget · team · site</text><text x="125" y="137">suppliers · subcontracts</text>
+        <text x="300" y="122">daily cycle: work · labour · material · issues</text><text x="300" y="137">weekly reviews · monthly stock checks</text>
+        <text x="575" y="122">snags · final bill</text><text x="575" y="137">closeout report</text>
+        <text x="650" y="152">retention released</text>
+      </g>
+    </g>
+  </svg>
+  <table>
+    <thead><tr><th style="width:18%">Phase</th><th style="width:52%">What happens</th><th>Where profit is won or lost</th></tr></thead>
+    <tbody>
+      <tr><td><b>1 Win</b></td><td>Drawings become a BOQ (bill of quantities): every work item with quantity and rate. The price is negotiated or bid.</td><td>A rate set too low loses money before the first brick.</td></tr>
+      <tr><td><b>2 Set up</b></td><td>The estimate becomes the budget; team, suppliers and subcontractors are lined up; the site is prepared.</td><td>A budget nobody tracks against is just a document.</td></tr>
+      <tr><td><b>3 Execute</b></td><td>Daily: work done, labour, material in and out, issues. Most of the money is spent here.</td><td>Leaks of material, idle labour, rework and delays.</td></tr>
+      <tr><td><b>4 Bill and collect</b></td><td>Work done is measured and billed to the client as running-account (RA) bills, usually monthly.</td><td>Late or under-measured bills starve cash; disputes delay payment.</td></tr>
+      <tr><td><b>5 Hand over</b></td><td>Snags fixed, final bill, handover, closeout.</td><td>Unbilled extras (variations) are forgotten; leftover stock is lost.</td></tr>
+      <tr><td><b>6 Defects period</b></td><td>Often around a year in which the contractor fixes defects; part of each bill (retention) is held until it ends.</td><td>Retention never chased is money given away.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">3 · Who's who</p>
+  <h2>The people, what they own, and what keeps them awake</h2>
+  <table class="who">
+    <thead><tr><th style="width:20%">Who</th><th style="width:38%">Responsible for</th><th>Worries about</th></tr></thead>
+    <tbody>
+      <tr><td><b>Owner / MD</b></td><td>The company: winning work, cash, relationships, big decisions.</td><td>"Are we making money on this project? Will the client pay on time?"</td></tr>
+      <tr><td><b>GM</b></td><td>Running all projects; releasing payments.</td><td>"Was ₹15,000 of work done for the ₹15,000 we paid?" (the GM we met)</td></tr>
+      <tr><td><b>Project manager (PM)</b></td><td>One or more projects: schedule, cost, quality, team.</td><td>"Are we on time? Is material coming? Which site is slipping?"</td></tr>
+      <tr><td><b>Site engineer</b></td><td>Daily work on one site: what is built, measured, checked.</td><td>"Will the slab be ready Friday? Did the steel come?"</td></tr>
+      <tr><td><b>Supervisor / foreman</b></td><td>The workers: who does what today.</td><td>"Are my people here? Do we have what we need?"</td></tr>
+      <tr><td><b>Storekeeper</b></td><td>Material received, stored and issued.</td><td>"Does the lorry match the challan? Who took the cement?"</td></tr>
+      <tr><td><b>Quantity surveyor (QS)</b></td><td>Measuring work, preparing bills, checking cost against the estimate.</td><td>"Does the material used match the work done? Is the bill right?"</td></tr>
+      <tr><td><b>Purchase</b></td><td>Buying: suppliers, rates, orders, deliveries.</td><td>"Best rate? Will it arrive on time? Has someone already ordered?"</td></tr>
+      <tr><td><b>Accounts</b></td><td>Paying, collecting, recording; working with the CA.</td><td>"Which bills are due? Where is the bill for that delivery?"</td></tr>
+      <tr><td><b>CA (outside)</b></td><td>The company's books, GST, TDS, audit, usually in Tally.</td><td>"Are the books complete and filed on time?"</td></tr>
+      <tr><td><b>Subcontractor</b></td><td>A trade or a piece of work at an agreed rate.</td><td>"Will my bill be measured fairly and paid on time?"</td></tr>
+      <tr><td><b>Labour contractor</b></td><td>Supplies workers; paid per day or per week.</td><td>"Advances, wages, keeping my people busy."</td></tr>
+      <tr><td><b>Supplier</b></td><td>Material on credit.</td><td>"When will I be paid?"</td></tr>
+      <tr><td><b>Client, architect, consultant</b></td><td>Owns the building; approves work, quality and bills.</td><td>"Is it built right, on time, at the agreed price?"</td></tr>
+    </tbody>
+  </table>
+  <p class="note">In a small company one person wears several of these hats (the owner is also the GM and purchase; the engineer is also the storekeeper). The jobs still exist.</p>
+
+  <p class="eyebrow">4 · The rhythm: daily, weekly, monthly</p>
+  <table>
+    <thead><tr><th style="width:16%">When</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td><b>Daily</b></td><td>Work done and measured; attendance; deliveries and material used; issues raised; site photos; the daily progress report (DPR) to the office or owner; petty-cash spending.</td></tr>
+      <tr><td><b>Weekly</b></td><td>Labour paid (often weekly, in cash or UPI); site review with the PM; material requests and orders for the next week; subcontractor progress checked.</td></tr>
+      <tr><td><b>Monthly</b></td><td>RA bill to the client; subcontractor bills measured and paid; supplier bills matched and paid; physical stock check; cost vs budget review; books to the CA; GST and TDS filings.</td></tr>
+      <tr><td><b>Per project</b></td><td>Budget at the start; variations as they happen; closeout report and final bill at the end; retention released after the defects period.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 5 ===================== -->
+<section>
+  <p class="eyebrow">5 · How money flows</p>
+  <h2>Money goes out every day; it comes in once a month, late</h2>
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Money flow: the client pays RA bills monthly minus retention; the company pays suppliers on credit, labour weekly, subcontractors on measured bills, and overheads; the bank fills the gap.">
+    <defs><marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2f855a"/></marker>
+    <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a33a2c"/></marker></defs>
+    <g font-family="Noto Sans, sans-serif" font-size="12">
+      <rect x="20" y="115" width="170" height="70" rx="12" fill="#e9f6ee" stroke="#2f855a"/><text x="105" y="145" text-anchor="middle" font-weight="700">Client</text><text x="105" y="164" text-anchor="middle" fill="#3c4a42">pays RA bills</text>
+      <rect x="295" y="110" width="170" height="80" rx="12" fill="#fff" stroke="#1f1d1a" stroke-width="1.5"/><text x="380" y="145" text-anchor="middle" font-weight="700" font-size="14">The company</text><text x="380" y="165" text-anchor="middle" fill="#5f5a52">cash and bank</text>
+      <rect x="295" y="235" width="170" height="50" rx="12" fill="#e6eef8" stroke="#1f4f8a"/><text x="380" y="257" text-anchor="middle" font-weight="700">Bank</text><text x="380" y="274" text-anchor="middle" fill="#3c4a42">overdraft fills the gap</text>
+      <g fill="#fff" stroke="#c9c0b4"><rect x="570" y="10" width="175" height="54" rx="10"/><rect x="570" y="78" width="175" height="54" rx="10"/><rect x="570" y="146" width="175" height="54" rx="10"/><rect x="570" y="214" width="175" height="54" rx="10"/></g>
+      <g text-anchor="middle"><text x="657" y="33" font-weight="700">Suppliers</text><text x="657" y="51" fill="#5f5a52" font-size="11">on credit, often 30–60 days</text>
+      <text x="657" y="101" font-weight="700">Labour</text><text x="657" y="119" fill="#5f5a52" font-size="11">weekly, cash or UPI</text>
+      <text x="657" y="169" font-weight="700">Subcontractors</text><text x="657" y="187" fill="#5f5a52" font-size="11">measured bills − retention − TDS</text>
+      <text x="657" y="237" font-weight="700">Overheads &amp; equipment</text><text x="657" y="255" fill="#5f5a52" font-size="11">salaries, fuel, hire, rent</text></g>
+      <path d="M190 150 L 293 150" stroke="#2f855a" stroke-width="2.5" fill="none" marker-end="url(#m1)"/>
+      <text x="200" y="135" fill="#2f855a" font-size="11">monthly, late; minus retention</text>
+      <g stroke="#a33a2c" stroke-width="2" fill="none" marker-end="url(#m2)"><path d="M465 135 C 520 120, 520 37, 568 37"/><path d="M465 145 C 520 140, 525 105, 568 105"/><path d="M465 160 C 520 165, 525 173, 568 173"/><path d="M465 175 C 520 195, 525 241, 568 241"/></g>
+      <path d="M380 233 L 380 192" stroke="#1f4f8a" stroke-width="1.8" fill="none" stroke-dasharray="4 3"/>
+    </g>
+  </svg>
+  <ul class="tight">
+    <li><b>The cash gap.</b> Labour is paid weekly and material often before the client pays for the work it went into. A contractor funds the work for one or two months, with its own money, supplier credit or a bank overdraft.</li>
+    <li><b>Retention.</b> The client often holds back a share of each bill (commonly around 5%) until the defects period ends. It is real money owed and easy to forget.</li>
+    <li><b>Advances.</b> Some clients pay a mobilisation advance, recovered from later bills; contractors often give advances to labour contractors and subcontractors too. Every advance must be tracked until it is recovered.</li>
+    <li><b>Why bills matter so much.</b> Every week an RA bill is late, or under-measured, is a week the company finances the client's building.</li>
+  </ul>
+
+  <p class="eyebrow">6 · The ten biggest money leaks</p>
+  <table class="leaks">
+    <thead><tr><th style="width:4%">#</th><th style="width:38%">Leak</th><th style="width:36%">Example</th><th>Stopped by (guide)</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><b>Material paid for, not received</b></td><td>Short lorries accepted by the challan.</td><td>Procurement (04), Materials (03)</td></tr>
+      <tr><td>2</td><td><b>Material used beyond the work</b></td><td>9 bags of cement where the work needed 7.</td><td>Materials (03), Cost control (06)</td></tr>
+      <tr><td>3</td><td><b>Labour cost not matched by output</b></td><td>₹6,400 of masons, ₹4,000 of plastering done.</td><td>Labour (05), Cost control (06)</td></tr>
+      <tr><td>4</td><td><b>Subcontractors overpaid</b></td><td>₹15,000 paid, 2.4 m³ measured at ₹6,000.</td><td>Labour &amp; subcontract (05)</td></tr>
+      <tr><td>5</td><td><b>Bills to the client late or short</b></td><td>October's work billed in December; extra work never billed.</td><td>Client billing (08)</td></tr>
+      <tr><td>6</td><td><b>Supplier bills paid twice or wrong</b></td><td>Bill at ₹420 a bag for cement ordered at ₹400.</td><td>Procurement (04), Finance (07)</td></tr>
+      <tr><td>7</td><td><b>Idle time and delays</b></td><td>Team waiting a day for cement that ran out.</td><td>Site (01), Materials (03)</td></tr>
+      <tr><td>8</td><td><b>Rework</b></td><td>A slab broken and redone after a failed check.</td><td>Site (01): quality checks</td></tr>
+      <tr><td>9</td><td><b>Petty cash and small expenses</b></td><td>Hundreds of small payments with no bill.</td><td>Finance &amp; accounts (07)</td></tr>
+      <tr><td>10</td><td><b>Retention and advances forgotten</b></td><td>5% retention never chased after handover.</td><td>Client billing (08), Finance (07)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 7 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">7 · The information problem</p>
+  <h2>Everything is recorded somewhere; nothing is known in time</h2>
+  <p>A typical mid-size contractor already has the information. It is just in the wrong places, in the wrong form, too late:</p>
+  <table class="pairs">
+    <thead><tr><th>Where it lives today</th><th>What goes wrong</th></tr></thead>
+    <tbody>
+      <tr><td><b>Paper registers on site</b> (attendance, stock, deliveries)</td><td>Reach the office days later, if ever; can't be added up across sites.</td></tr>
+      <tr><td><b>WhatsApp chats and photos</b></td><td>Everything is there, and nothing can be found or totalled.</td></tr>
+      <tr><td><b>Excel</b> (estimates, bills, stock sheets)</td><td>One person's file, many versions, not linked to anything else.</td></tr>
+      <tr><td><b>Tally</b> (the CA's books)</td><td>Accurate but after the fact, and by account, not by project or work item.</td></tr>
+      <tr><td><b>Phone calls</b></td><td>The MD calls the engineer to ask what happened; the answer is from memory.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>The result:</b> decisions are made on old information or none. Problems are found at month end, at closeout, or by the CA, when nothing can be done about them. What the GM asked for is the opposite: <b>know the same day, while it can still be fixed.</b></div>
+
+  <p class="eyebrow">8 · The module map: how everything connects</p>
+  <h2>Nine parts of one business</h2>
+  <svg class="diagram" viewBox="0 0 760 330" role="img" aria-label="Module map: Planning sets the budget; Procurement buys; Materials, Site and Labour and subcontract record the work and its cost; Cost control compares cost with the budget; Finance and accounts pay and record; Client billing collects.">
+    <defs><marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8178"/></marker></defs>
+    <g font-family="Noto Sans, sans-serif" font-size="12">
+      <g stroke="#c9c0b4"><rect x="20" y="20" width="200" height="56" rx="10" fill="#e8f4f2"/><rect x="280" y="20" width="200" height="56" rx="10" fill="#e6eef8"/><rect x="540" y="20" width="200" height="56" rx="10" fill="#e9f6ee"/>
+      <rect x="20" y="137" width="200" height="56" rx="10" fill="#fdeee6"/><rect x="540" y="137" width="200" height="56" rx="10" fill="#fbf0d9"/>
+      <rect x="20" y="254" width="200" height="56" rx="10" fill="#efe9f6"/><rect x="280" y="254" width="200" height="56" rx="10" fill="#efe9f6"/><rect x="540" y="254" width="200" height="56" rx="10" fill="#e9f6ee"/></g>
+      <rect x="280" y="128" width="200" height="74" rx="12" fill="#1f1d1a"/>
+      <g text-anchor="middle">
+        <text x="120" y="44" font-weight="700">02 Planning &amp; BOQ</text><text x="120" y="62" fill="#5f5a52" font-size="11">what to build, at what cost</text>
+        <text x="380" y="44" font-weight="700">04 Procurement</text><text x="380" y="62" fill="#5f5a52" font-size="11">order · receive · bill</text>
+        <text x="640" y="44" font-weight="700">03 Materials</text><text x="640" y="62" fill="#5f5a52" font-size="11">stock · use · reconcile</text>
+        <text x="120" y="161" font-weight="700">01 Site</text><text x="120" y="179" fill="#5f5a52" font-size="11">work done · issues · equipment</text>
+        <text x="640" y="161" font-weight="700">05 Labour &amp; subcontract</text><text x="640" y="179" fill="#5f5a52" font-size="11">attendance · output · bills</text>
+        <text x="380" y="160" font-weight="700" fill="#fff" font-size="14">06 Cost control</text><text x="380" y="180" fill="#f2b705" font-size="11.5">cost vs budget · green / red</text>
+        <text x="120" y="278" font-weight="700">07 Finance &amp; accounts</text><text x="120" y="296" fill="#5f5a52" font-size="11">pay · record · books · tax</text>
+        <text x="380" y="278" font-weight="700">08 Client billing</text><text x="380" y="296" fill="#5f5a52" font-size="11">RA bills · variations · collect</text>
+        <text x="640" y="278" font-weight="700">00 Owner's view</text><text x="640" y="296" fill="#5f5a52" font-size="11">project profit, cash, risks</text>
+      </g>
+      <g stroke="#8a8178" stroke-width="1.4" fill="none" marker-end="url(#m3)">
+        <path d="M220 48 L 278 48"/><path d="M480 48 L 538 48"/>
+        <path d="M120 76 C 120 110, 250 120, 290 132"/>
+        <path d="M640 76 C 640 110, 510 120, 470 132"/>
+        <path d="M220 165 L 278 165"/><path d="M540 165 L 482 165"/>
+        <path d="M380 202 L 380 252"/><path d="M330 202 C 300 230, 200 240, 150 252"/><path d="M430 202 C 470 230, 580 240, 620 252"/>
+        <path d="M380 76 C 330 150, 170 200, 110 252" stroke-dasharray="4 3"/>
+      </g>
+      <text x="168" y="230" fill="#8a8178" font-size="10.5">supplier bills to pay</text>
+    </g>
+  </svg>
+  <table>
+    <thead><tr><th style="width:26%">Guide</th><th>What it does for the business, in one line</th></tr></thead>
+    <tbody>
+      <tr><td>01 Site</td><td>Records what happened each day: work, issues, quality, safety, machines.</td></tr>
+      <tr><td>02 Planning &amp; BOQ</td><td>Sets what is to be built and what it should cost: the yardstick for everything else.</td></tr>
+      <tr><td>03 Materials</td><td>Knows what is on site, what came, what was used, and whether it matches the work.</td></tr>
+      <tr><td>04 Procurement</td><td>Buys right: orders, receives against the order, matches the bill.</td></tr>
+      <tr><td>05 Labour &amp; subcontract</td><td>Knows who worked, what they produced, and pays them correctly.</td></tr>
+      <tr><td>06 Cost control</td><td>Compares every day's cost with the value of work done: green or red.</td></tr>
+      <tr><td>07 Finance &amp; accounts</td><td>Pays, records and keeps the books by project and by party.</td></tr>
+      <tr><td>08 Client billing</td><td>Turns measured work into bills and collects the money, including retention.</td></tr>
+      <tr><td>09 Glossary</td><td>Every term, A to Z.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">9 · One load of cement through the whole business</p>
+  <h2>Follow 200 bags and you have seen every module</h2>
+  <ol class="story">
+    <li><b>Planning.</b> The BOQ has 120 m³ of M20 concrete. At roughly 8 bags per m³, the project needs about 960 bags of cement, budgeted at ₹400 a bag.</li>
+    <li><b>Site.</b> The engineer sees the first-floor slab is due next Friday and only 30 bags are left.</li>
+    <li><b>Materials.</b> A request: 200 bags by Friday, for the first-floor slab.</li>
+    <li><b>Procurement.</b> Purchase orders 200 bags from Malabar Hardware at ₹400 + GST. A warning shows that nobody else has ordered cement this week.</li>
+    <li><b>Procurement / Materials.</b> Tuesday, the lorry brings 200; 3 bags are torn and rejected. 197 accepted on the GRN; stock rises.</li>
+    <li><b>Site / Labour.</b> Friday, 4 masons and 6 helpers pour 24 m³. The engineer reports the work and 200 bags used.</li>
+    <li><b>Cost control.</b> 24 m³ should have used about 192 bags; 200 were used: 4% over, against a 2% allowance. Amber. Labour cost for the pour is within budget.</li>
+    <li><b>Procurement / Finance.</b> Malabar's bill says 200 bags at ₹420. It doesn't match the order (₹400) or the delivery (197): flagged, corrected to 197 × ₹400, then paid on the due date.</li>
+    <li><b>Accounts.</b> The payment lands in Malabar's ledger and in the villa's project cost.</li>
+    <li><b>Client billing.</b> At month end the 24 m³ is measured and billed to the client at the BOQ rate, minus 5% retention.</li>
+    <li><b>Owner's view.</b> The villa's profit so far, cash in and out, and the one amber item to look at.</li>
+  </ol>
+  <div class="callout">Without connected modules, each of these steps happens in a different notebook, file or person's head, and nobody can see that the cement was 4% over, the bill was ₹5,200 too high, and 3 bags never arrived.</div>
+
+  <p class="eyebrow">10 · The software market</p>
+  <table>
+    <thead><tr><th style="width:24%">Kind</th><th style="width:30%">Examples</th><th>Strength · weakness for a mid-size contractor</th></tr></thead>
+    <tbody>
+      <tr><td><b>Paper, Excel, WhatsApp</b></td><td>Registers, sheets, group chats</td><td>Free and familiar · nothing adds up, nothing is found, office learns late</td></tr>
+      <tr><td><b>Indian site apps</b></td><td>Powerplay, Onsite</td><td>Built for construction, attendance, materials, petty cash · every site person must install and use an app; data entry is forms</td></tr>
+      <tr><td><b>Indian construction ERPs</b></td><td>NWAY, eResource, SyvaSoft and similar; ERPNext set up for construction</td><td>Complete: tenders, RA bills, subcontracts, GST · heavy setup, office-only, expensive, needs trained users</td></tr>
+      <tr><td><b>Global platforms</b></td><td>Procore, Buildertrend</td><td>Deep project management · built for other markets and much larger projects</td></tr>
+      <tr><td><b>Accounting</b></td><td>Tally</td><td>The CA's standard, statutory books · knows accounts, not sites, work items or material on the ground</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Why so many contractors still use paper: the software is made for the office, while the information starts on site with people who will not fill forms. Our own team found the site apps too much effort to even try.</p>
+</section>
+
+<!-- ===================== 11 ===================== -->
+<section>
+  <p class="eyebrow">11 · Where Mesiri fits</p>
+  <h2>Capture where the work happens; answer where decisions are made</h2>
+  <div class="rules">
+    <div><b>Capture: WhatsApp and voice.</b> The engineer, supervisor or storekeeper sends a voice note or a line in Malayalam, Manglish or English. Mesiri turns it into a delivery, a use, attendance, work done or an issue, and asks them to confirm. Nothing to install.</div>
+    <div><b>Answer: the dashboard and evening messages.</b> The GM and owner see the answers, not the registers: what is short, what is over budget, what is owed, which project is red.</div>
+  </div>
+  <table>
+    <thead><tr><th style="width:30%">Where Mesiri is today</th><th>Numbers (module map, 7 Nov 2026)</th></tr></thead>
+    <tbody>
+      <tr><td>Pages in the full map</td><td><b>74</b> across Site and 10 modules</td></tr>
+      <tr><td>Working</td><td><b>15</b>: daily reports, issues, site log, attendance, materials (stock, movements, items), expenses, money, vendors, BOQ, and more</td></tr>
+      <tr><td>Planned for V1</td><td><b>17</b>: mostly cost control, procurement and materials control</td></tr>
+      <tr><td>Planned for V1.5</td><td><b>21</b></td></tr>
+      <tr><td>Planned for Later</td><td><b>21</b>: statutory accounts, tendering, schedules and other larger-company needs</td></tr>
+    </tbody>
+  </table>
+  <h3>Suggested order to build (from the leaks in part 6)</h3>
+  <ol class="tight">
+    <li><b>Cost control loop:</b> BOQ (done) → work and labour linked to BOQ lines → daily green/red → evening message. Answers the GM's main question.</li>
+    <li><b>Materials and procurement control:</b> orders, GRN against orders, bill matching, reconciliation with the BOQ. Stops leaks 1, 2 and 6.</li>
+    <li><b>Supplier and subcontractor money:</b> payables, party ledgers, subcontract bills against measured work. Stops leaks 4 and 6.</li>
+    <li><b>Client billing:</b> RA bills from measured work, variations, retention. Stops leaks 5 and 10.</li>
+    <li><b>Books and statutory:</b> sync to Tally first; full accounts much later.</li>
+  </ol>
+  <p class="note">Each later guide ends with its own gap list: the detailed build list for that module.</p>
+</section>
+
+<!-- ===================== 12 ===================== -->
+<section>
+  <p class="eyebrow">12 · Key terms</p>
+  <dl class="terms">
+    <dt>BOQ</dt><dd>Bill of quantities: every work item with quantity and rate; the project's price and budget.</dd>
+    <dt>RA bill</dt><dd>Running-account bill: a stage bill to the client for work measured so far.</dd>
+    <dt>Retention</dt><dd>A share of each bill held back until the defects period ends.</dd>
+    <dt>Defects period</dt><dd>The time after handover when the contractor must fix defects.</dd>
+    <dt>Variation</dt><dd>Work added or changed by the client, priced and approved separately.</dd>
+    <dt>Mobilisation advance</dt><dd>Money paid by the client at the start, recovered from later bills.</dd>
+    <dt>DPR</dt><dd>Daily progress report from a site.</dd>
+    <dt>QS</dt><dd>Quantity surveyor: measures work, prepares and checks bills and costs.</dd>
+    <dt>GRN</dt><dd>Goods receipt note: the record of material accepted at site.</dd>
+    <dt>Margin</dt><dd>What is left of the contract value after all costs.</dd>
+  </dl>
+  <p class="note">The full list is in Guide 09, Glossary.</p>
+
+  <p class="eyebrow">Check yourself</p>
+  <ol class="quiz">
+    <li>Name the six phases of a project and where profit is most often lost.</li>
+    <li>Why is a contractor usually short of cash even on a profitable project?</li>
+    <li>With a 10% margin, what does losing 3% of material do to profit?</li>
+    <li>Which module compares the day's cost with the value of the work done?</li>
+    <li>In the cement story, which three problems would nobody have seen without connected modules?</li>
+  </ol>
+  <p class="answers"><b>Answers:</b> 1. Win, set up, execute, bill and collect, hand over, defects period; most money is lost during execution and in late or short billing. 2. Labour and material are paid before the client pays for the work, and retention is held back. 3. With material around half of cost, a 3% loss takes roughly a quarter or more of the profit. 4. Cost control (Guide 06). 5. Cement used 4% over the work, a bill ₹5,200 too high, and 3 bags that never arrived.</p>
+</section>
+
+</body>
+</html>

@@ -8,23 +8,20 @@ experience before they are used with customers.
 Build: `node docs/learning/build.js [filter]` (Playwright, A4, page numbers) turns `src/*.html`
 into `pdf/*.pdf`. Any screenshots in `img/` come from the demo company on a local copy, never production.
 
-## The set (agreed 7 Nov 2026)
+## The set (agreed 7 Nov 2026: 10 guides)
 
 | # | Guide | Status |
 |---|---|---|
-| 00 | The big picture: how a construction company runs, where money leaks, one load of cement from order to payment, how every module connects | to do |
-| 01 | Site | to do |
-| 02 | Planning | to do |
+| 00 | The big picture: how a construction company runs and makes money, the life of a project, who's who, money flow, the biggest leaks, how every module connects | draft, 7 Nov |
+| 01 | Site: daily reports, issues, quality, safety, equipment | to do |
+| 02 | Planning & BOQ | to do |
 | 03 | Materials | draft, 7 Nov |
 | 04 | Procurement | to do |
-| 05 | Labour | to do |
-| 06 | Subcontract | to do |
-| 07 | Cost control | to do |
-| 08 | Finance | to do |
-| 09 | Accounts | to do |
-| 10 | Client billing | to do |
-| 11 | Equipment | to do |
-| 12 | Glossary | to do |
+| 05 | Labour & subcontract | to do |
+| 06 | Cost control | to do |
+| 07 | Finance & accounts | to do |
+| 08 | Client billing | to do |
+| 09 | Glossary | to do |
 
 ## What every module guide contains, in this order (domain first, 7 Nov 2026)
 

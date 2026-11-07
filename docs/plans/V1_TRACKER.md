@@ -509,9 +509,8 @@ Plan and template: [docs/learning/README.md](../learning/README.md). Internal ed
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | LRN-03 | Guide 03 Materials (sample for the format) | S | Should | — | in-progress | Claude (session 7 Nov) | Rewritten domain-first (7 Nov): process, leaks, controls, requirements checklist, gap list. Waiting for the team's feedback before the other 12 |
-| LRN-00 | Guide 00 The big picture | S | Should | LRN-03 | todo | — | |
-| LRN-07 | Guide 07 Cost control | S | Should | LRN-03 | todo | — | |
-| LRN-RST | Guides 01, 02, 04, 05, 06, 08, 09, 10, 11, 12 | L | Should | LRN-03 | todo | — | |
+| LRN-00 | Guide 00 The big picture | S | Should | LRN-03 | in-progress | Claude (session 7 Nov) | Draft built (11 pages): business and contracts, project life, who's who, rhythm, money flow, ten leaks mapped to guides, information problem, module map, one load of cement end to end, software market, where Mesiri fits (74 pages: 15 working, 59 planned) and build order. Waiting for review |
+| LRN-RST | Guides 01 Site, 02 Planning & BOQ, 04 Procurement, 05 Labour & subcontract, 06 Cost control, 07 Finance & accounts, 08 Client billing, 09 Glossary (10 guides in all, agreed 7 Nov) | L | Should | LRN-03 | todo | — | |
 ---
 
 ## TM — AI teammate (reusable, `teammate/`)
