@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | **Owner / MD** | "Am I making or losing money on each site, and when does the client pay me?" | DPR on WhatsApp, Expenses, Money | **Client billing**: RA bills, payments received, receivables (NXT-01..04). Mesiri only tracks money going out | Project P&L; the evening cost card (CC-11) |
 | **GM / Project manager** | "Which site is behind, what is waiting on me?" | DPRs, issues, BOQ, requests, orders | **Approvals inbox**: one "waiting for you" list, yes on WhatsApp (NXT-08) | Weekly lookahead (NXT-10) |
-| **Site engineer / supervisor** | "Tell Mesiri once and be done." "₹15,000 to the concrete team: was the work done?" | Nearly everything on WhatsApp | **Subcontractors**: work orders, measurement, bill checks (NXT-05..07) | Equipment (WA-68, blocked) |
+| **Site engineer / supervisor** | "Tell Mesiri once and be done." "₹15,000 to the concrete team: was the work done?" "JCB 6 hrs, 30 L diesel" | Nearly everything on WhatsApp | **Subcontractors**: work orders, measurement, bill checks (NXT-05..07); **machines** (NXT-11) | Shuttering by site (NXT-14) |
 | **Accountant / finance** | "Who do we owe, what is paid, does it match Tally?" | Expenses, vendors, money accounts | **Supplier ledger and payables** (CC-09, CC-10, PRC-11: already planned) | Tally export (NXT-12) |
 | **Storekeeper / purchase** | "What comes today, what did it cost last time, what went back?" | Stock, requests, orders, GRN | **Rates** (PRC-14, PRC-16), pending deliveries | Returns to supplier, central store |
 | **Whoever pays labour** | "How much advance did Ravi take this week?" | Attendance, workers | **Wages and advances** (NXT-09): today a notebook | Weekly wage sheet |
@@ -28,8 +28,11 @@
 2. **Subcontractors** (NXT-05..07). A daily pain on every Indian site; extends CC-06 and the supplier ledger
    (CC-09) instead of building a second ledger.
 3. **Approvals inbox** (NXT-08). Reads what is already pending; no new approval system.
-4. **Wages and advances** (NXT-09). As soon as Alan approves the Workforce / Payroll change.
-5. **Lookahead tasks** (NXT-10), **Tally export** (NXT-12).
+4. **Equipment and machinery** (NXT-11, NXT-13; added 7 Nov). Machine hire and diesel are a big cost the
+   cost centres cannot show until it is recorded; the DPR's Machinery section is empty today.
+5. **Wages and advances** (NXT-09). As soon as Alan approves the Workforce / Payroll change.
+6. **Lookahead tasks** (NXT-10), **Tally export** (NXT-12), **shuttering by site** (NXT-14); vehicles and fixed
+   assets later (NXT-15).
 
 ## 3. Investigation: what exists (Phase 1 findings, 7 Nov, `main` at `929e2bd`)
 
@@ -42,7 +45,7 @@
 | Workforce | `workforce_workers` with `WorkerType.CONTRACTOR`; `labour_attendance_lines` | Labour contractor teams stay in Workforce; NXT-05 links a work order to a vendor, not to workers |
 | Advances | `AccountType.EMPLOYEE_ADVANCE` money accounts (finance) | NXT-09 records worker advances against these, not a new money system |
 | Requests / orders | `material_requests` status waiting; `purchase_orders` | Approvals inbox lists them |
-| Equipment | `equipment_events` table (migration 0110); `domains/equipment/` empty | WA-68 (blocked); not repeated here |
+| Equipment | `equipment_events` (migration 0110: arrived / departed / usage / moved / refuelled, hours, diesel and its cost and paying account; RLS in 0484); **no code reads or writes it**; `domains/equipment/` empty; DPR `equipment_items` always `[]` (`domains/dpr/router.py`) | NXT-11 builds on it with additive columns; WA-68 closes with NXT-11 |
 | Approvals | `domains/approvals/` empty | NXT-08 is a read model over existing statuses, not a new table |
 | Clients | only `projects.client_logo` (0467) | NXT-01 is new |
 | Module map | Clients, RA bills, Variations, Payments received, Receivables, Subcontractors, Work orders, Bills & checks, Wages & advances, Approvals, Tasks, Tally sync: all `planned` pages | Each item turns its planned page into a working one |
@@ -77,6 +80,24 @@ decide stays each module's existing rule.
 Advance given to a worker or a labour contractor (WhatsApp: "gave Ravi 500 advance"), weekly sheet: days from
 attendance × wage − advances = to pay; paid / unpaid. **Workforce and Payroll: needs Alan's approval.**
 
+### Equipment and machinery (NXT-11, NXT-13..15; added 7 Nov)
+Content decided by Ilan, 7 Nov (unblocks WA-68): **per machine per day: name, owned or hired, hours worked,
+idle / breakdown hours, diesel, hire rate.**
+- **NXT-11 machines every day:** a machine register per company (name, type, owned / hired, the hire vendor,
+  rate per hour or day); one WhatsApp line ("JCB 6 hrs, 2 hrs breakdown, 30 L diesel") saves the day's usage
+  and fuel as `equipment_events`; the DPR Machinery section; hire and diesel cost in the cost centres (CC-01).
+- **NXT-13 hire check:** the hire bill against the hours recorded on site, as NXT-06 does for subcontractors.
+- **NXT-14 shuttering, scaffolding, tools:** returnable items held per site, moved with the existing material
+  transfer flow (BE-32), lost / damaged recorded.
+- **NXT-15 later:** vehicles and trips, owned machines as fixed assets with depreciation, service due.
+
+| Who | Says |
+|---|---|
+| Owner / GM | "The JCB bill says 8 hours a day; how many did it work?" "Why is diesel ₹18,000 this month?" |
+| Site engineer | "JCB 6 hrs, breakdown 2 hrs, 30 L diesel" once, and it is in the DPR |
+| Client | The DPR has a Machinery section, as every DPR they receive does |
+| Storekeeper | "How many plates are at the villa, and how many went to Chennai?" |
+
 ### Lookahead (NXT-10), Tally export (NXT-12)
 - Weekly lookahead per site: the PM lists this week's tasks (BOQ lines or free text); the engineer's work
   updates tick them; the evening review names what slipped.
@@ -87,7 +108,7 @@ attendance × wage − advances = to pay; paid / unpaid. **Workforce and Payroll
 
 - **Database (all additive):** `clients`, `project_contracts`, `client_bills` + `client_bill_lines`,
   `client_receipts`, `variations`; `vendors.kind`; `work_orders` + `work_order_lines`, `expenses.work_order_id`;
-  worker advances on the existing advance accounts (shape decided in NXT-09). RLS on every company table, as
+  worker advances on the existing advance accounts (shape decided in NXT-09); `equipment` register + idle hours / reason on `equipment_events` (NXT-11). RLS on every company table, as
   0503 onwards. Check the migration head (0514 on 7 Nov) right before writing one.
 - **API:** routes the dashboard uses, then `agent_api/tools.py` `ALLOWED` lines and SOP rules (assistant v3).
   Money figures only for `may_view_expenses` roles (SEC-01).
@@ -102,6 +123,7 @@ attendance × wage − advances = to pay; paid / unpaid. **Workforce and Payroll
 | D-N2 | Subcontractor: a vendor kind, or a Workforce contractor? | **Vendor kind** (no Workforce change); Workforce contractor teams link to it later |
 | D-N3 | Who sees client bills and receivables? | **Owner, admin, finance** (needs Alan: permissions) |
 | D-N4 | Wages and advances: in Mesiri, or left to payroll? | Needs Alan (Workforce / Payroll) |
+| D-N5 | Equipment: what to record per machine per day | **Decided 7 Nov (Ilan):** name, owned or hired, hours worked, idle / breakdown hours, diesel, hire rate |
 
 ## 7. Risks
 
@@ -121,4 +143,5 @@ attendance × wage − advances = to pay; paid / unpaid. **Workforce and Payroll
 - **Labour isolation:** only NXT-09 touches Workforce / Payroll and waits for approval. NXT-05 links to vendors,
   not workers.
 - **Success:** the owner sees what each client owes; the PM sees one "waiting for you" list; the engineer
-  checks a subcontract bill against the work recorded, from WhatsApp.
+  checks a subcontract bill against the work recorded, from WhatsApp; the DPR shows each machine's hours and
+  diesel, and the owner sees hire and fuel cost per site.
