@@ -64,3 +64,37 @@ def test_guard_the_note_is_built_one_way_for_both() -> None:
     # a text list that is also passed is noted once
     sent = "Ok.\n\n*Ready to save:*\n1. 50 bags cement"
     assert wa.for_memory(sent, ["50 bags cement"]) == wa.for_memory(sent)
+
+
+# PRC-32 (7 Nov 23:06, 23:08: "What is still to come?" / "is PO-0001 late?" -> "I could not get the purchase orders
+# right now. Please try again in a minute." with no tool called). One real outage at 19:01; the sentence was then copied
+# from the conversation seven times, each copy feeding the next. A "could not / cannot" reply is remembered marked.
+
+OUTAGE = "I could not get the purchase orders right now. Please try again in a minute."
+
+
+def test_a_could_not_reply_is_read_back_as_a_passing_problem() -> None:
+    from agent_api.memory import PASSING_NOTE, _read
+
+    kept = _read("model", OUTAGE, None).text
+    assert kept.startswith(PASSING_NOTE) and kept.endswith(OUTAGE)
+    issues = "I could not check for open issues right now, so please try again in a minute if it is still open."
+    assert _read("model", issues, None).text.startswith(PASSING_NOTE)
+    assert _read("user", OUTAGE, None).text == OUTAGE  # only Mesiri's own replies
+
+
+async def test_a_reply_stored_before_the_fix_is_marked_when_read() -> None:
+    from agent_api.memory import PASSING_NOTE
+
+    service, _ = _service(two_receipts_model(), Cards(), [])
+    await service._memory.remember(CTX, "What is still to come?", OUTAGE)  # stored as it was, unmarked
+    (kept,) = await _remembered(service)
+    assert kept.startswith(PASSING_NOTE) and kept.endswith(OUTAGE)
+
+
+def test_guard_ordinary_answers_and_other_peoples_could_not_are_read_word_for_word() -> None:
+    from agent_api.memory import _read
+
+    for said in ("asus aanu Green Villa-yile Steel order cheythathu.", "The supplier could not come today.",
+                 "Could you send the bill photo?"):
+        assert _read("model", said, None).text == said

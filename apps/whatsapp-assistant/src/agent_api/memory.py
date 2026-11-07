@@ -24,6 +24,8 @@ from zoneinfo import ZoneInfo
 
 from mesiri_ai.models import ChatMessage
 
+from .reply_guard import claims_cannot
+
 _log = logging.getLogger(__name__)
 
 APP_NAME = "mesiri_api"
@@ -46,6 +48,10 @@ def _days(timezone: str | None, now: dt.datetime | None = None) -> list[dt.date]
 #: is read back with a note, so an old "I can't" is never taken as true now.
 _TAG = re.compile(r"\n?\u2063\[tools:([0-9a-f]{8})\]$")
 OLDER_NOTE = "(said by an older version of Mesiri, with fewer tools: anything it said it couldn't do may work now) "
+#: PRC-32 (7 Nov: one real outage at 19:01, then "I could not ... right now. Please try again in a minute." seven times
+#: with no tool called, each copy feeding the next): a remembered "could not / cannot" reply is read back as what it was,
+#: a problem of that moment, never the answer for now. Applied when read, so replies stored before are covered too.
+PASSING_NOTE = "(a problem at that moment, not an answer for now: for the same question, use the tools again) "
 
 
 def tools_version(names: Any) -> str:
@@ -60,11 +66,13 @@ def _tagged(text: str, version: str | None) -> str:
 def _read(role: str, text: str, version: str | None) -> ChatMessage:
     """One remembered message as the model sees it: the tag gone; an older version's reply marked."""
     m = _TAG.search(text or "")
-    if role != "model" or version is None:
-        return ChatMessage(role=role, text=_TAG.sub("", text or ""))
-    if m and m.group(1) == version:
-        return ChatMessage(role=role, text=_TAG.sub("", text))
-    return ChatMessage(role=role, text=OLDER_NOTE + _TAG.sub("", text or ""))
+    plain = _TAG.sub("", text or "")
+    if role != "model":
+        return ChatMessage(role=role, text=plain)
+    passing = PASSING_NOTE if claims_cannot(plain) else ""
+    if version is None or (m and m.group(1) == version):
+        return ChatMessage(role=role, text=passing + plain)
+    return ChatMessage(role=role, text=OLDER_NOTE + plain)  # WA-157's note already says it may work now
 
 
 def _marker(text: str) -> list[ChatMessage]:
