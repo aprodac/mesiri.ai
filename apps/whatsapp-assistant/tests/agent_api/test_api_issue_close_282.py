@@ -63,17 +63,28 @@ async def _turn(app: FastAPI, model: FakeToolCallingProvider):  # noqa: ANN202
         await client.close()
 
 
-async def test_a_lower_case_status_is_explained_and_the_retry_finds_the_leak() -> None:
+async def test_a_lower_case_status_finds_the_leak_in_the_same_call() -> None:
+    """Live, 7 Nov 19:20: the API answered 422 "Did you mean 'OPEN'?" and the model gave up. The model calls ONCE
+    with "open"; the code asks again with the meant value and the model gets the leak."""
     model = FakeToolCallingProvider([
         [("list_issues", {"site_id": SITE, "status": "open"})],
-        [("list_issues", {"site_id": SITE, "status": "OPEN"})],
         "Bathroom leak close cheyyatte?",
     ])
     turn = await _turn(_issues_api(), model)
-    first, second = turn.calls
-    assert first["result"]["status"] == 422
-    assert "Did you mean 'OPEN'?" in first["result"]["result"]
-    assert second["result"]["status"] == 200 and LEAK["id"] in second["result"]["result"]
+    (call,) = turn.calls
+    assert call["result"]["status"] == 200 and LEAK["id"] in call["result"]["result"]
+
+
+def test_the_retry_only_takes_a_value_the_api_named() -> None:
+    """Guard: a 422 that names no meant value, or a value the query did not send, asks nothing again."""
+    from agent_api.agent import meant_params
+
+    said = {"status": "open", "site_id": SITE}
+    meant = {"detail": "'open' is not a valid site_issue_status value (values are upper case). Did you mean 'OPEN'?"}
+    assert meant_params(said, meant) == {"status": "OPEN", "site_id": SITE}
+    assert meant_params(said, {"detail": "'x' is not a valid id. Use an id exactly as it was given."}) is None
+    assert meant_params({"status": "closed"}, meant) is None
+    assert meant_params(said, [{"loc": ["query", "status"]}]) is None
 
 
 async def test_a_crashed_read_is_a_code_written_note_never_tool_failed() -> None:

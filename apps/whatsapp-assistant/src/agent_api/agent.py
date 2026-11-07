@@ -94,6 +94,20 @@ MAX_STEPS = 8
 TIMEOUT_SECONDS = 40.0
 #: A read's JSON is cut to this many characters before the model sees it.
 READ_LIMIT = 8000
+_MEANT = re.compile(r"'(?P<bad>[^']*)' is not a valid \w+ value \(values are upper case\)\. Did you mean '(?P<meant>[^']*)'\?")
+
+
+def meant_params(params: dict[str, Any] | None, body: Any) -> dict[str, Any] | None:
+    """[282] The read's query with the value the API's 422 names instead of the one sent (mesiri.http.db_errors:
+    "'open' is not a valid site_issue_status value (values are upper case). Did you mean 'OPEN'?"), or None when the
+    422 names no meant value or no query value matches it."""
+    match = _MEANT.search(str((body or {}).get("detail", "")) if isinstance(body, dict) else "")
+    if match is None or not params:
+        return None
+    hits = [k for k, v in params.items() if isinstance(v, str) and v == match["bad"]]
+    return {**params, **{k: match["meant"] for k in hits}} if hits else None
+
+
 #: [282] What the model is told when a read crashed on the API side (5xx). Written by the code so
 #: the reply never shows the person a tool, an error or a status ("The tool failed", 7 Nov).
 UNAVAILABLE_NOTE = (
@@ -1056,6 +1070,10 @@ class ApiAgent:
                              "prepare them now, in this turn; they save after it.")
                 return ToolOutcome(content={"status": "ready, NOT saved", "note": note + size_hint + account_note})
             response = await client.call(tool.method, path, params=params)
+            if response.status == 422 and (fixed_params := meant_params(params, response.body)) is not None:
+                # [282] (live, 7 Nov 19:20): the API said which value was meant ("open" -> "OPEN") and the model gave
+                # up instead of asking again. The code knows the answer, so the code asks again, once.
+                response = await client.call(tool.method, path, params=fixed_params)
             if response.status >= 500:
                 # [282]: the person never reads a crash; the code words what the model is told.
                 logging.getLogger("agent_api").warning("agent_api.read_unavailable tool=%s status=%s", name, response.status)
