@@ -157,9 +157,22 @@ The first step of the process (request → order → delivery/GRN → bill → p
   Materials is now a sidebar group (Stock, Movements, Items, Requests) like Finance.
 - **WhatsApp (v3):** `material_requests`, `ask_for_material` (one material per request, source fixed to whatsapp),
   `decide_material_request`, `cancel_material_request`; an SOP rule: a need is a request, never a receipt.
-- **Not built:** turning a request into a purchase order (PRC-06/PRC-10); "Mark received" does not add stock (the
+- **Since built:** a request turns into a purchase order (4d); "Mark received" does not add stock (the
   delivery is still recorded in Materials; PRC-08 links the two); BOQ quantity left per line (the BOQ holds work
   items, not materials, today); a reminder when a request waits too long; comments on a request.
+
+### 4d. As built: purchase orders (PRC-06, PRC-07, PRC-08 part, PRC-10, 7 Nov 2026)
+
+- **Tables (migration 0511, additive):** `purchase_orders`, `purchase_order_lines` (a line may cover a request line),
+  `material_receipts.purchase_order_line_id`. Received and still to come are read from deliveries (one taken back
+  no longer counts); only open / closed / cancelled is stored.
+- **Routes** (`domains/procurement/orders_router.py`): list, one, create (duplicate check, D2's default), edit,
+  cancel, close short, receive (records the deliveries through the Materials delivery path).
+- **Loop:** request → Create order (filled with what is still to buy) → request ordered, engineer told → Material
+  came (part or all) → stock up → request received, engineer told.
+- **Not built:** WhatsApp tools for orders (PRC-09); suggesting the open line when a delivery is recorded elsewhere;
+  GRN details (challan photo, rejected quantity); sending the PO to the supplier (PDF / WhatsApp); bills matched to
+  orders (PRC-11).
 
 ---
 

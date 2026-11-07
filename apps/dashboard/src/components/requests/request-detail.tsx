@@ -20,6 +20,7 @@ import {
   type RequestLine,
 } from '@/lib/requests'
 import { Avatar, CategoryTile, CoverBar, ProjectDot, StatusChip } from './parts'
+import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
 
 // PRC-22: one request, as the office acts on it: what is asked, what is here / ordered / still to buy, other sites
 // that hold some, the last rate (money roles only), what happened so far, and the one next step.
@@ -37,6 +38,15 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
   const first = request.lines[0]
   const main = request.lines.length === 1 ? first?.main_category ?? null : null
   const [decision, setDecision] = React.useState<Decision | null>(null)
+  // PRC-06: a purchase order made from this request, filled in with what is still to buy at its site.
+  const [ordering, setOrdering] = React.useState(false)
+  const prefill = React.useMemo<OrderPrefill>(() => ({
+    project_id: request.project_id,
+    site_id: request.site_id,
+    site_name: request.site_name,
+    request_ref: request.ref,
+    lines: request.lines.map((l) => ({ material_id: l.material_id, quantity: Number(l.to_buy) > 0 ? l.to_buy : l.quantity, request_line_id: l.id })),
+  }), [request])
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -126,8 +136,8 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
         <div className="mt-auto flex flex-wrap gap-2 border-t px-5 py-4">
           {request.may_act && request.status === 'waiting' && (
             <>
-              <Button className="h-11 basis-full gap-2 font-semibold" onClick={() => setDecision('ordered')}>
-                <ShoppingCart className="size-4" /> Mark ordered{buyWords}
+              <Button className="h-11 basis-full gap-2 font-semibold" onClick={() => setOrdering(true)}>
+                <ShoppingCart className="size-4" /> Create order{buyWords}
               </Button>
               <Button variant="outline" className="h-11 flex-1 gap-2 border-fuchsia-300 bg-fuchsia-50 font-semibold text-fuchsia-900 hover:bg-fuchsia-100 dark:bg-fuchsia-950 dark:text-fuchsia-100" onClick={() => setDecision('sent')}>
                 <ArrowRight className="size-4" /> Sent from a site
@@ -135,6 +145,9 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
               <Button variant="outline" size="icon" className="size-11 border-destructive/30 text-destructive" title="Not ordering it" aria-label="Not ordering it" onClick={() => setDecision('rejected')}>
                 <X className="size-4" strokeWidth={2.6} />
               </Button>
+              <button type="button" className="basis-full text-left text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setDecision('ordered')}>
+                Ordered outside Mesiri? Mark it ordered
+              </button>
             </>
           )}
           {request.may_act && (request.status === 'ordered' || request.status === 'sent') && (
@@ -155,6 +168,7 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
         </div>
       )}
 
+      <NewOrderDialog open={ordering} onOpenChange={setOrdering} scope={{ mode: 'portfolio' }} prefill={prefill} />
       <DecisionDialog
         request={request}
         action={decision}

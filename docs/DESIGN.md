@@ -30,6 +30,7 @@ a view switch (`Segmented`), not several sidebar entries.
 | **Labour** (module) | `/labour` (`?view=workers`) | Attendance · Workers (was 7 pages, WEB-22) |
 | **Materials** (module) | `/materials` | Ledger · Catalogue; Stock now panel (WEB-30) |
 | **Materials › Requests** (module) | `/materials/requests` | what the sites asked for, before it is ordered (PRC-22): tiles, status tabs, filter dropdowns, list + detail panel (a sheet on a phone), new request |
+| **Procurement › Purchase orders** (Materials module) | `/procurement/orders` | orders to suppliers and what came against them (PRC-06/10): tiles, tabs, filter dropdowns, list + detail (a sheet on a phone), new order, material came |
 | *Setup* **Projects & Sites** | `/projects`, `/projects/:id` | |
 | **Team** | `/team`, `/team/:id` | |
 | **Company** | `/company` | details, letterhead |

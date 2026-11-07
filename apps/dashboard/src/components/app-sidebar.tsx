@@ -457,6 +457,8 @@ export function AppSidebar() {
   const financeCategory = isModuleEnabled('finance') ? toCategory(groupByKey('finance')) : null
   // PRC-22: Materials opens like Finance (Stock, Movements, Items, Requests), from the same module map.
   const materialsCategory = isModuleEnabled('materials') ? toCategory(groupByKey('materials')) : null
+  // PRC-10: Procurement opens the same way (Purchase orders, Suppliers; more as they are built).
+  const procurementCategory = isModuleEnabled('materials') ? toCategory(groupByKey('procurement')) : null
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -610,6 +612,7 @@ export function AppSidebar() {
                   {RECORD_ITEMS.map(renderLink)}
                   {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
                   {materialsCategory && renderCategory(materialsCategory)}
+                  {procurementCategory && renderCategory(procurementCategory)}
                   {financeCategory && renderCategory(financeCategory)}
                 </SidebarMenu>
               </SidebarGroupContent>
