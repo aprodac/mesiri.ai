@@ -104,8 +104,7 @@ async def test_whole_journey_work_update_without_narrative_saves_with_their_word
     await service.handle(_message("Save", tap=card.buttons[0].id), CTX)
     by = dict(posted)
     assert by["work"]["narrative"] == "Plastering done on 2nd floor"  # their words, without the site
-    assert by["work"]["activity_date"] == dt.datetime.now(dt.UTC).astimezone(
-        __import__("zoneinfo").ZoneInfo("Asia/Kolkata")).date()
+    assert by["work"]["activity_date"] == __import__("mesiri.domains.organizations.settings", fromlist=["working_day"]).working_day(dt.datetime.now(__import__("zoneinfo").ZoneInfo("Asia/Kolkata")))  # fix 2: the working day
     assert by["attendance"]["lines"][0]["headcount"] == 6
     assert "❌" not in sent[-1].text and not sent[-1].buttons
 

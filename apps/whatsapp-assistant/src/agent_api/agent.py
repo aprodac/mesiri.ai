@@ -78,6 +78,15 @@ from .units import (
 SOP = (Path(__file__).with_name("SOP.md")).read_text(encoding="utf-8")
 
 
+def without_earlier_replies(messages: list[ChatMessage]) -> list[ChatMessage]:
+    """Fix 1 (sweep 7 Nov: "scaffolding sheriyaakki, close cheyyu" and "3 electricians came to Site B today" got NO tool
+    call, twice each, then "send it again"): the corrective retry used the same conversation, full of Mesiri's own
+    "press Save" / "could not" replies, so it copied them again. The retry keeps the person's own messages (their
+    context) and leaves Mesiri's earlier replies out; what is waiting or saved reaches the model through the code's
+    lists, not the history."""
+    return [m for m in messages if m.role == "user"][-12:]
+
+
 def check_note(text: str) -> ChatMessage:
     """[265] (5 Nov, Sahal: a voice note gave the client, 2.5 crore, the signing date and the payment terms; the
     "every number is kept" check asked once more, written as the person ("My message also said 2026-05-21"), and the
@@ -615,7 +624,7 @@ class ApiAgent:
                   repeat_ok: list[str] | None = None, places: Places | None = None,
                   open_question: dict[str, Any] | None = None, sizes: dict[str, Any] | None = None,
                   may_set_sizes: bool = True, language_chosen: bool = False,
-                  size_open: list[dict[str, Any]] | None = None) -> ApiTurn:
+                  size_open: list[dict[str, Any]] | None = None, day_starts_at: str | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -626,7 +635,11 @@ class ApiAgent:
         drops it ([219]). ``sizes``: the sizes this person told before (WA-166); ``may_set_sizes``: whether they may
         set a size for the whole company (an admin or a project manager); if not, their size converts their own lines."""
         channel = channel if channel in CHANNELS else TEXT_CHANNEL
-        today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
+        from mesiri.domains.organizations.settings import WORKING_DAY_STARTS_DEFAULT, working_day
+
+        # Fix 2: the working day, not the calendar day ("innu 4 mason" at 00:05 is about the day that just ended).
+        today = working_day(dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")),
+                            day_starts_at or WORKING_DAY_STARTS_DEFAULT)
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
         new: list[PendingWrite] = []
         saved_list = correctable_saves(recent_saves)  # item 3: what was saved in this chat, correctable by talking
@@ -1300,7 +1313,7 @@ class ApiAgent:
         if not result.calls and SAVE_WORD in (result.text or "").casefold() and nothing_done():
             # 2 Nov (Ilan, 23:10, three times): "ready, tap Save" with no tool called, so nothing was prepared.
             # The code checks: one more try, told plainly that nothing is in the list.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
+            again = await ask_model([*without_earlier_replies(messages), ChatMessage(role="model", text=result.text or ""), check_note(text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
                                   "message asks now with the tools, or say plainly what you need.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
             again_asked = True
@@ -1328,7 +1341,7 @@ class ApiAgent:
         if not result.calls and not again_asked and claims_cannot(result.text) and not told(result.calls):
             # WA-199 (basic 10, never a dead end): "I can't" from memory, with no tool looked at (the same refusal went
             # out four times on 3 Nov, WA-196). One more try: the tools first; if none does it, the team builds it.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text="(You said it can't be done, but you looked at no tool. Check your tools first: if one "
+            again = await ask_model([*without_earlier_replies(messages), ChatMessage(role="model", text=result.text or ""), check_note(text="(You said it can't be done, but you looked at no tool. Check your tools first: if one "
                                   "does what I asked, do it now" + hint_reads(read_tools_for(f"{text} {result.text}", self._tools))
                                   + ". If none does, call tell_the_team (missing_feature) and "
                                   "tell me the way for now, or what you can do instead. Never just say no.)")])

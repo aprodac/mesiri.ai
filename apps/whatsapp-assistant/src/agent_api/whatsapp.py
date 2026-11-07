@@ -553,6 +553,7 @@ class ApiWhatsApp:
                 text=(_edit_note(editing) if editing else "") + kept_note(answered) + text,
                 history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
+                day_starts_at=await self._day_starts(ctx),
                 facts=facts + _working_fact(places), photo_key=photo_key, language=_turn_language(text, state),
                 language_chosen=bool(_chosen(state)),
                 channel=_channel(message),
@@ -980,15 +981,46 @@ class ApiWhatsApp:
         catalog, today = await asyncio.gather(self._catalog_for(ctx, client), self._today(ctx, client, sites))
         return "\n".join(lines) + "\n\n" + catalog + "\n\n" + today
 
+    async def _day_starts(self, ctx: Any) -> str:
+        """Fix 2: the company's working-day start (organization setting ``working_day_starts_at``), cached 10 minutes;
+        the default when it cannot be read."""
+        from mesiri.domains.organizations.settings import (
+            WORKING_DAY_STARTS_AT,
+            WORKING_DAY_STARTS_DEFAULT,
+        )
+
+        org = str(getattr(ctx, "organization_id", "") or "")
+        cache = self.__dict__.setdefault("_day_starts_cache", {})
+        hit = cache.get(org)
+        if hit and time.time() - hit[1] < 600:
+            return hit[0]
+        value = WORKING_DAY_STARTS_DEFAULT
+        try:
+            from mesiri.infrastructure.postgres.repositories.organization_settings import (
+                PostgresOrganizationSettingsRepository,
+            )
+
+            async with self._database.transaction() as conn:
+                value = str(await PostgresOrganizationSettingsRepository(conn).get(
+                    uuid.UUID(org), WORKING_DAY_STARTS_AT) or WORKING_DAY_STARTS_DEFAULT)
+        except Exception:  # noqa: BLE001 -- the default keeps every update on a sensible day
+            pass
+        cache[org] = (value, time.time())
+        return value
+
     async def _today(self, ctx: Any, client: ApiClient, sites: list[Any]) -> str:
         """WA-127: what is already recorded today (the timeline, newest last), so "did anyone report
         X?" needs no lookup and a second entry of the same delivery can be pointed out. Never cached."""
+        from mesiri.domains.organizations.settings import working_day
+
         zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
         now = dt.datetime.now(zone)
-        day = now.date().isoformat()
+        starts_at = await self._day_starts(ctx)
+        work_day = working_day(now, starts_at)
+        day = work_day.isoformat()  # fix 2: today's records are the working day's
         # WA-209 (4 Nov: 12:27 pm read as "yesterday morning"): the model is told the company's time, and every time
         # it reads in a tool result is UTC, to be said in this time.
-        clock = now_line(now, zone)
+        clock = now_line(now, zone, work_day, starts_at)
         try:
             got = await client.call("GET", "/timeline", params={"date_from": day, "date_to": day, "limit": TODAY_ENTRIES})
         except Exception:  # noqa: BLE001 -- the model can still look it up
@@ -1940,9 +1972,14 @@ def local_clock(value: Any, zone: dt.tzinfo) -> str:
     return moment.astimezone(zone).strftime("%H:%M")
 
 
-def now_line(now: dt.datetime, zone: dt.tzinfo) -> str:
-    """WA-209: the company's date and time now, and how to read the times tools return."""
+def now_line(now: dt.datetime, zone: dt.tzinfo, working: dt.date | None = None, starts_at: str = "") -> str:
+    """WA-209: the company's date and time now, and how to read the times tools return. Fix 2: before the company's
+    working day starts, "today" is still the day that just ended."""
     offset = now.strftime("%z")
-    return (f"It is now {now:%A %d %b %Y, %H:%M} in the company's time (UTC{offset[:3]}:{offset[3:]}). Every time "
+    line = (f"It is now {now:%A %d %b %Y, %H:%M} in the company's time (UTC{offset[:3]}:{offset[3:]}). Every time "
             "in a tool result is UTC (+00:00): turn it into the company's time before you say it, and say "
             "today / yesterday from the company's date.")
+    if working is not None and working != now.date():
+        line += (f" The working day is still {working:%A %d %b} (the company's day starts at {starts_at}): 'today' / "
+                 f"'innu' in a message means {working:%d %b}, and entries are dated {working.isoformat()}.")
+    return line

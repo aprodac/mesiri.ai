@@ -32,7 +32,8 @@ from runtime.agent.wording import LANGUAGES, say
 
 TOOLS = {"list_projects", "list_sites", "search_materials", "list_units", "record_receipt",
          "record_attendance", "record_work"}
-TODAY = dt.datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
+TODAY = __import__("mesiri.domains.organizations.settings", fromlist=["working_day"]).working_day(
+    dt.datetime.now(ZoneInfo("Asia/Kolkata"))).isoformat()  # fix 2: the working day
 VOICE = "20 bag cement Tower A-il vannu, 5 mason pani eduthu, slab pani kazhinju"
 
 

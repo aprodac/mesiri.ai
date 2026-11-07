@@ -18,7 +18,7 @@ from agent_api.tools import ALLOWED, CONFIRM_ARG
 from mesiri.domains.shared.auth import get_current_user
 from mesiri_ai.fakes import FakeToolCallingProvider
 
-TODAY = dt.datetime.now(dt.UTC).astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata")).date().isoformat()
+TODAY = __import__("mesiri.domains.organizations.settings", fromlist=["working_day"]).working_day(dt.datetime.now(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))).isoformat()  # fix 2: the working day
 NAMES = {"record_receipt", "record_attendance", "record_work", "list_projects", "list_sites",
          "search_materials", "list_units"}
 
