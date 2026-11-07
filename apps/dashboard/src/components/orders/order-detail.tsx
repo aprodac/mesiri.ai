@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, CalendarDays, Check, ClipboardList, Clock, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
+import { Ban, CalendarDays, Check, ClipboardList, Clock, FileText, MessageCircle, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useAuth } from '@/lib/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -8,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { cn } from '@/lib/utils'
 import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
-import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
+import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, orderMessage, whatsappUrl, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import { NewOrderDialog } from './new-order-dialog'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 
@@ -53,6 +55,7 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
   // The list row first, then the order read on its own: its history and the deliveries here on no order.
   const full = useQuery({ queryKey: ['procurement', 'orders', 'one', listed.id], queryFn: () => fetchOrder(listed.id), staleTime: 15_000 })
   const order = full.data && full.data.id === listed.id ? full.data : listed
+  const { me } = useAuth()
   const [dialog, setDialog] = React.useState<'receive' | 'cancel' | 'close' | 'edit' | null>(null)
   const [date, setDate] = React.useState(order.expected_date ?? '')
   React.useEffect(() => setDate(order.expected_date ?? ''), [order.id, order.expected_date])
@@ -188,6 +191,13 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
 
       {open && (
         <div className="flex flex-col gap-2 border-t px-5 py-4">
+          {/* PRC-26: the order for the supplier, as a document or on WhatsApp; the person sends it. */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button asChild variant="outline" className="h-10 gap-2"><Link to={`/procurement/orders/${order.id}/document`}><FileText className="size-4" /> PO document</Link></Button>
+            <Button asChild variant="outline" className="h-10 gap-2 border-green-600/40 text-green-800 dark:text-green-300">
+              <a href={whatsappUrl(order.vendor_phone, orderMessage(order, me?.org_name || me?.organization_name))} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send on WhatsApp</a>
+            </Button>
+          </div>
           {order.may_receive && (
             <Button className="h-11 gap-2 font-semibold" onClick={() => setDialog('receive')}><Truck className="size-4" /> Material came</Button>
           )}

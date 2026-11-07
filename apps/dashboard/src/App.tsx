@@ -25,6 +25,7 @@ import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
 import RequestsPage from '@/pages/RequestsPage'
 import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage'
+import PurchaseOrderDocumentPage from './pages/PurchaseOrderDocumentPage'
 import ExpensesPage from '@/pages/ExpensesPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
 import FinanceSettingsPage from '@/pages/FinanceSettingsPage'
@@ -73,6 +74,8 @@ export default function App() {
         <Route path="/welcome" element={<RequireAuth><WelcomePage /></RequireAuth>} />
         {/* The report writing itself as messages arrive (WEB-37): full screen, for demos too. */}
         <Route path="/live" element={<RequireAuth><LivePage /></RequireAuth>} />
+        {/* PRC-26: the purchase order for the supplier, full screen so it prints clean. */}
+        <Route path="/procurement/orders/:id/document" element={<RequireAuth><PurchaseOrderDocumentPage /></RequireAuth>} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Moved to="/today" />} />
 

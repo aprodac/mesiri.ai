@@ -37,6 +37,10 @@ export interface PurchaseOrder {
   vendor_id: string
   vendor_name: string
   vendor_phone: string | null
+  /** PRC-26: for the PO document. */
+  vendor_gstin?: string | null
+  vendor_address?: string | null
+  project_location?: string | null
   status: OrderStatus
   urgency: Urgency
   expected_date: string | null
@@ -172,4 +176,29 @@ export function dueWords(o: Pick<PurchaseOrder, 'expected_date' | 'status'>, tod
   if (days === 0) return 'Due today'
   if (days === 1) return 'Due tomorrow'
   return `Due ${due.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}`
+}
+
+/** PRC-26: the order as a WhatsApp message to the supplier (sent by the person, from their own WhatsApp). */
+export function orderMessage(o: PurchaseOrder, company?: string | null): string {
+  const day = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+  const n = (v: string) => Number(v).toLocaleString('en-IN', { maximumFractionDigits: 3 })
+  const lines = o.lines.map((l) => `• ${l.material}: ${n(l.quantity)} ${l.unit}${l.rate ? ` @ ₹${n(l.rate)} = ${rupees(l.amount)}` : ''}`)
+  return [
+    `*Purchase order ${o.ref}*${o.their_ref ? ` (your ref ${o.their_ref})` : ''}`,
+    company ? `From: ${company}` : null,
+    `Deliver to: ${o.project_name} › ${o.site_name}${o.project_location ? `, ${o.project_location}` : ''}`,
+    o.expected_date ? `By: ${day(o.expected_date)}` : null,
+    '',
+    ...lines,
+    o.value && o.value_complete ? `Total: ${rupees(o.value)}` : null,
+    o.notes ? `\nNote: ${o.notes}` : null,
+    o.created_by_name ? `\n${o.created_by_name}` : null,
+  ].filter((x) => x !== null).join('\n')
+}
+
+/** A wa.me link: to the supplier's number when we have it (Indian 10-digit numbers get 91), else WhatsApp asks whom. */
+export function whatsappUrl(phone: string | null | undefined, text: string): string {
+  let digits = (phone ?? '').replace(/\D/g, '')
+  if (digits.length === 10) digits = `91${digits}`
+  return `https://wa.me/${digits.length >= 11 ? digits : ''}?text=${encodeURIComponent(text)}`
 }

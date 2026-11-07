@@ -293,8 +293,9 @@ async def set_status(conn: AsyncConnection, order_id: uuid.UUID, status: str, us
 
 
 _SELECT = """
-    SELECT o.id, o.number, o.project_id, p.name AS project_name, o.site_id, s.name AS site_name, o.vendor_id,
-           v.name AS vendor_name, v.phone AS vendor_phone, o.status, o.expected_date, o.notes, o.status_note, o.their_ref,
+    SELECT o.id, o.number, o.project_id, p.name AS project_name, p.location AS project_location, o.site_id,
+           s.name AS site_name, o.vendor_id, v.name AS vendor_name, v.phone AS vendor_phone, v.gstin AS vendor_gstin,
+           v.address AS vendor_address, o.status, o.expected_date, o.notes, o.status_note, o.their_ref,
            o.raised_over_duplicate, o.created_by, cu.full_name AS created_by_name, o.created_at, o.updated_at,
            su.full_name AS status_by_name, o.status_at
       FROM purchase_orders o
@@ -449,6 +450,9 @@ def describe(rows: list[dict[str, Any]], *, today: datetime.date, with_money: bo
             "project_id": str(row["project_id"]), "project_name": row["project_name"],
             "site_id": str(row["site_id"]), "site_name": row["site_name"],
             "vendor_id": str(row["vendor_id"]), "vendor_name": row["vendor_name"], "vendor_phone": row["vendor_phone"],
+            # PRC-26: for the PO document.
+            "vendor_gstin": row["vendor_gstin"], "vendor_address": row["vendor_address"],
+            "project_location": row["project_location"],
             "status": status, "urgency": urgency(status, row["expected_date"], today),
             "expected_date": str(row["expected_date"]) if row["expected_date"] else None,
             "notes": row["notes"], "status_note": row["status_note"], "status_by_name": row["status_by_name"],
