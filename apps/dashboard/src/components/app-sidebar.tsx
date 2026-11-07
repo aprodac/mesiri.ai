@@ -10,14 +10,8 @@ import {
   Activity,
   BarChart3,
   FileText,
-  DollarSign,
-  Wallet,
   Boxes,
-  Landmark,
-  Store,
-  SlidersHorizontal,
   ChevronRight,
-  ChevronDown,
   CalendarDays,
   Sun,
   Moon,
@@ -27,8 +21,9 @@ import {
   AlertCircle,
   Palette,
   ListChecks,
+  Map as MapIcon,
 } from 'lucide-react'
-import { NavLink, Link, useLocation } from 'react-router-dom'
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Sidebar,
   SidebarContent,
@@ -53,10 +48,8 @@ import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
 import { useNavCounts } from '@/lib/nav-counts'
-
-// Mirrors backend mesiri/authorization/roles.py EXPENSE_VIEW_ROLES (SEC-01);
-// the API refuses everyone else, this only keeps the link out of their way.
-const EXPENSE_VIEW_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE', 'PROJECT_MANAGER'] as const
+import { MODULE_GROUPS, PAGE_ICONS, findPage, type ModuleGroup } from '@/lib/module-map'
+import { usePlannedPreview } from '@/lib/preview'
 
 type NavItem = {
   title: string
@@ -74,30 +67,18 @@ type NavItem = {
   badge?: 'drafts' | 'issues'
   // Small text at the row's end, e.g. "3/6" on Finish setup (SS-19).
   note?: string
+  // A planned page (WEB-72), shown only with the preview on.
+  soon?: boolean
 }
 
+// A collapsible module in the sidebar (WEB-72): its pages come from lib/module-map.ts.
+type SubItem = { title: string; url: string; soon?: boolean }
 type NavCategory = {
+  key: string
   title: string
   icon: React.ElementType
-  tone: SectionTone
-  items: NavItem[]
-  requiredRole?: string
-  module?: ModuleKey
-}
-
-const FINANCE_CATEGORY: NavCategory = {
-  title: 'Finance',
-  module: 'finance',
-  icon: Landmark,
-  tone: 'finance',
-  items: [
-    // WEB-51: four pages. Who sees what is unchanged: Expenses for the roles that see spending (SEC-01); the
-    // rest as Accounts / Petty cash / Vendors / Settings were.
-    { title: 'Expenses', url: '/finance/expenses', icon: DollarSign, allowedRoles: EXPENSE_VIEW_ROLES },
-    { title: 'Money', url: '/finance/money', icon: Wallet },
-    { title: 'Vendors', url: '/finance/vendors', icon: Store },
-    { title: 'Settings', url: '/finance/settings', icon: SlidersHorizontal },
-  ],
+  tone: NavTone
+  items: SubItem[]
 }
 
 // Labour is one page since WEB-22 (Attendance | Workers).
@@ -170,6 +151,7 @@ const SIDEBAR_THEMES = {
     groupIdle: 'text-white/65 hover:text-white',
     groupActive: 'text-white font-semibold',
     card: 'border-white/10 bg-white/[0.06]',
+    soon: 'bg-white/10 text-white/60',
     // Header band above the wedge: light band, charcoal ink.
     headerBg: '[--sidebar-header:#EEF1F6]',
     headerText: 'text-[#3E3C3D]',
@@ -198,6 +180,7 @@ const SIDEBAR_THEMES = {
     groupIdle: 'text-foreground/70 hover:text-foreground',
     groupActive: 'text-foreground font-semibold',
     card: 'border-black/[0.06] bg-white dark:border-border dark:bg-background',
+    soon: 'bg-black/[0.06] text-foreground/60 dark:bg-muted dark:text-muted-foreground',
     headerBg: '[--sidebar-header:#FFFFFF] dark:[--sidebar-header:var(--background)]',
     headerText: 'text-foreground',
     headerBtn: 'text-muted-foreground hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-muted',
@@ -208,15 +191,6 @@ const SIDEBAR_THEMES = {
     scrollbar: 'sidebar-scrollbar-light',
   },
 } as const
-
-// Each More section keeps its own icon colour, in the shade that reads on the
-// theme's background (on-dark for charcoal, on-light for light).
-const SECTION_TONES = {
-  labour: { charcoal: 'text-amber-300', light: 'text-amber-700 dark:text-amber-300' },
-  finance: { charcoal: 'text-violet-300', light: 'text-violet-700 dark:text-violet-300' },
-} as const
-
-type SectionTone = keyof typeof SECTION_TONES
 
 // Main navigation icon colours (WEB-20): the same treatment as the More
 // sections -- a coloured icon, no background -- in the shade that reads on
@@ -255,91 +229,86 @@ function checkIsItemActive(pathname: string, itemUrl: string): boolean {
   return false
 }
 
+/** Is this sub-item the page on screen? Views (?view=) of one page count separately. */
+function isSubItemActive(pathname: string, search: string, url: string): boolean {
+  const hit = findPage(pathname, search)
+  if (hit) return hit.page.url === url
+  return checkIsItemActive(pathname, url.split('?')[0])
+}
+
 function CollapsibleNavCategory({
   category,
   getUrlWithScope,
   pathname,
-  allowedScopes,
-  userRole,
+  search,
   theme,
 }: {
   category: NavCategory
   getUrlWithScope: (url: string) => string
   pathname: string
-  allowedScopes: ScopeKind[]
-  userRole?: string
+  search: string
   theme: SidebarTheme
 }) {
   const S = SIDEBAR_THEMES[theme]
-  const { state } = useSidebar()
-  const isCollapsedMode = state === 'collapsed'
-
-  const filteredItems = category.items.filter(
-    (item) =>
-      (!item.requiredScope || allowedScopes.includes(item.requiredScope)) &&
-      (!item.requiredRole || userRole === item.requiredRole)
-  )
-
-  const isChildActive = filteredItems.some((item) => checkIsItemActive(pathname, item.url))
-
+  const { state, isMobile } = useSidebar()
+  const navigate = useNavigate()
+  const isCollapsedMode = state === 'collapsed' && !isMobile
+  const isChildActive = category.items.some((item) => isSubItemActive(pathname, search, item.url))
   const [isOpen, setIsOpen] = useState(isChildActive)
 
   useEffect(() => {
-    if (isChildActive) {
-      setIsOpen(true)
-    }
+    if (isChildActive) setIsOpen(true)
   }, [pathname, isChildActive])
 
-  if (filteredItems.length === 0) return null
-
+  if (category.items.length === 0) return null
   const IconComp = category.icon
+  const allSoon = category.items.every((i) => i.soon)
 
   return (
     <SidebarMenuItem>
-      {/* Category Toggle Header */}
       <SidebarMenuButton
-        onClick={() => setIsOpen((prev) => !prev)}
-        tooltip={category.title}
+        // Icons only: open the module's first page instead of a list nobody can see.
+        onClick={() => (isCollapsedMode ? navigate(getUrlWithScope(category.items[0].url)) : setIsOpen((prev) => !prev))}
+        tooltip={allSoon ? `${category.title} · planned` : category.title}
+        aria-label={category.title}
         aria-expanded={isOpen}
         className={cn(
-          'w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-sm transition-colors',
+          'relative flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm transition-colors',
           S.hoverBg,
           S.ring,
-          isChildActive ? S.groupActive : S.groupIdle
+          isChildActive ? S.groupActive : S.groupIdle,
         )}
       >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <IconComp className={cn('size-4 shrink-0', SECTION_TONES[category.tone][theme])} />
-          <span className="truncate group-data-[collapsible=icon]:hidden">{category.title}</span>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <IconComp className={cn('size-4 shrink-0', NAV_TONES[category.tone][theme])} />
+          <span className={cn('truncate group-data-[collapsible=icon]:hidden', allSoon && !isChildActive && 'opacity-70')}>{category.title}</span>
         </div>
-        <span className={cn('group-data-[collapsible=icon]:hidden', S.chevron)}>
-          {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+        <span className={cn('flex items-center gap-1.5 group-data-[collapsible=icon]:hidden', S.chevron)}>
+          <ChevronRight className={cn('size-3.5 transition-transform duration-200', isOpen && 'rotate-90')} />
         </span>
       </SidebarMenuButton>
 
-      {/* Submenu Items */}
       {isOpen && !isCollapsedMode && (
-        <div className={cn('ml-4 pl-2.5 border-l my-0.5 flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden', S.guide)}>
-          {filteredItems.map((item) => {
-            const ItemIcon = item.icon
-            const targetUrl = getUrlWithScope(item.url)
-            const isActive = checkIsItemActive(pathname, item.url)
-
+        <div className={cn('my-0.5 ml-4 flex flex-col gap-0.5 border-l pl-2.5 group-data-[collapsible=icon]:hidden', S.guide)}>
+          {category.items.map((item) => {
+            const active = isSubItemActive(pathname, search, item.url)
             return (
-              <NavLink
-                key={item.title}
-                to={targetUrl}
-                className={({ isActive: isLinkActive }) =>
-                  cn(
-                    'group/row flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors',
-                    S.ring,
-                    isLinkActive || isActive ? S.rowActive : S.rowIdle
-                  )
-                }
+              <Link
+                key={item.url}
+                to={getUrlWithScope(item.url)}
+                title={item.soon ? `${item.title} · planned, not built yet` : undefined}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'group/row relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                  S.ring,
+                  active ? S.rowActive : S.rowIdle,
+                  item.soon && !active && 'opacity-75',
+                )}
               >
-                <ItemIcon className={cn('size-3.5 shrink-0', isActive ? S.iconActive : S.icon)} />
+                {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full bg-orange-400" />}
                 <span className="truncate">{item.title}</span>
-              </NavLink>
+                {item.soon && <SoonDot className="ml-auto" />}
+              </Link>
             )
           })}
         </div>
@@ -347,6 +316,14 @@ function CollapsibleNavCategory({
     </SidebarMenuItem>
   )
 }
+
+/** A planned page (WEB-72): a small hollow dot, named for screen readers. */
+function SoonDot({ className }: { className?: string }) {
+  return <span role="img" aria-label="planned" className={cn('size-1.5 shrink-0 rounded-full border border-current opacity-60', className)} />
+}
+
+const GROUP_LABEL = 'px-2.5 text-[11px] font-semibold uppercase tracking-wider'
+const SOON_PILL = 'shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide'
 
 export function AppSidebar() {
   const { me } = useAuth()
@@ -425,7 +402,7 @@ export function AppSidebar() {
   }
 
   const getUrlWithScope = (baseUrl: string) => {
-    const isOperational = !['/projects', '/team', '/company', '/whatsapp'].includes(baseUrl)
+    const isOperational = !['/projects', '/team', '/company', '/whatsapp'].includes(baseUrl.split('?')[0])
     if (!isOperational) return baseUrl
 
     const params = new URLSearchParams()
@@ -436,7 +413,8 @@ export function AppSidebar() {
       params.set('site', scope.siteId)
     }
     const qs = params.toString()
-    return qs ? `${baseUrl}?${qs}` : baseUrl
+    if (!qs) return baseUrl
+    return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${qs}`
   }
 
   const showBackButton = location.pathname.startsWith('/projects/') || location.pathname.startsWith('/team/')
@@ -466,25 +444,32 @@ export function AppSidebar() {
     setup.isCompanyAdmin && !trial.readOnly && setupDone && setupDone.done < setupDone.total
       ? { title: 'Finish setup', url: SETUP_URL, icon: ListChecks, tone: 'orange', note: `${setupDone.done}/${setupDone.total}` }
       : null
-  // Module sections (Finance) with only the items this role may see.
-  const moduleCategories = [FINANCE_CATEGORY]
-    .filter((category) => isModuleEnabled(category.module))
-    .map((category) => ({
-      ...category,
-      items: category.items.filter(
-        (item) =>
-          isModuleEnabled(item.module) &&
-          (!item.allowedRoles || item.allowedRoles.includes((me?.role || '').toUpperCase()))
-      ),
-    }))
+  // WEB-72: modules from lib/module-map.ts, each with only the pages this role may see. Without
+  // the preview, only working pages; with it, planned ones too, marked Soon.
+  const [showPlanned, setShowPlanned] = usePlannedPreview()
+  const role = (me?.role || '').toUpperCase()
+  const toCategory = (group: ModuleGroup): NavCategory => ({
+    key: group.key,
+    title: group.title,
+    icon: group.icon,
+    tone: group.tone,
+    items: group.pages
+      .filter((p) => (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)))
+      .map((p) => ({ title: p.title, url: p.url, soon: p.status === 'planned' })),
+  })
+  const groupByKey = (key: string) => MODULE_GROUPS.find((g) => g.key === key)!
+  const financeCategory = isModuleEnabled('finance') ? toCategory(groupByKey('finance')) : null
+  const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
+  const previewRecords: NavItem[] = groupByKey('site')
+    .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
+    .map((p) => ({ title: p.title, url: p.url, icon: PAGE_ICONS[p.url] ?? Activity, tone: p.status === 'planned' ? undefined : RECORD_ITEMS.find((r) => r.url === p.url)?.tone, soon: p.status === 'planned' }))
   const renderCategory = (category: NavCategory) => (
     <CollapsibleNavCategory
-      key={category.title}
+      key={category.key}
       category={category}
       getUrlWithScope={getUrlWithScope}
       pathname={location.pathname}
-      allowedScopes={allowed}
-      userRole={me?.role}
+      search={location.search}
       theme={sidebarTheme}
     />
   )
@@ -514,6 +499,7 @@ export function AppSidebar() {
               )}
             </span>
             <span className="truncate">{item.title}</span>
+            {item.soon && <SoonDot className="ml-auto group-data-[collapsible=icon]:hidden" />}
             {item.note && (
               <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden">{item.note}</span>
             )}
@@ -600,27 +586,41 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          <SidebarGroup className="p-1">
-            <SidebarGroupLabel className={cn('px-2.5 text-[11px] font-semibold uppercase tracking-wider', S.label)}>
-              Site records
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">
-                {RECORD_ITEMS.map(renderLink)}
-                {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
-                {isModuleEnabled(MATERIALS_ITEM.module) && renderLink(MATERIALS_ITEM)}
-                {moduleCategories.map(renderCategory)}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          {showPlanned ? (
+            <>
+              <SidebarGroup className="p-1">
+                <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>Site records</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu className="gap-0.5">{previewRecords.map(renderLink)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+              <SidebarGroup className="p-1">
+                <SidebarGroupLabel className={cn(GROUP_LABEL, 'flex items-center justify-between', S.label)}>
+                  Modules
+                  <span className={cn(SOON_PILL, 'normal-case tracking-normal', S.soon)}>Preview</span>
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu className="gap-0.5">{previewModules.map(renderCategory)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </>
+          ) : (
+            <SidebarGroup className="p-1">
+              <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>Site records</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {RECORD_ITEMS.map(renderLink)}
+                  {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
+                  {isModuleEnabled(MATERIALS_ITEM.module) && renderLink(MATERIALS_ITEM)}
+                  {financeCategory && renderCategory(financeCategory)}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
 
           {visibleManagementItems.length > 0 && (
             <SidebarGroup className="p-1">
-              <SidebarGroupLabel
-                className={cn('px-2.5 text-[11px] font-semibold uppercase tracking-wider', S.label)}
-              >
-                Setup
-              </SidebarGroupLabel>
+              <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>Setup</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5">
                   {finishSetup && renderLink(finishSetup)}
@@ -649,6 +649,16 @@ export function AppSidebar() {
               </span>
               <span className={cn('text-xs truncate', S.role)}>{roleLabel(me?.role)}</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowPlanned(!showPlanned)}
+              title={showPlanned ? 'Hide planned modules' : 'Show planned modules (preview)'}
+              aria-label={showPlanned ? 'Hide planned modules' : 'Show planned modules'}
+              aria-pressed={showPlanned}
+              className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', S.iconBtn, S.ring, showPlanned && 'text-orange-400 hover:text-orange-300')}
+            >
+              <MapIcon className="size-4" />
+            </button>
           </div>
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">

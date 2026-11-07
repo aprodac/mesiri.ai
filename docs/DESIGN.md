@@ -46,7 +46,15 @@ Rules:
   company has not bought is hidden by the module switch (WEB-02).
 - Moving a page means a redirect from the old address (`App.tsx`, "Old
   addresses"); unknown addresses land on Today.
-- No "coming soon" placeholder pages.
+- No "coming soon" placeholder pages **for customers**. Planned module pages (WEB-72, decided
+  7 Nov 2026) exist only behind the **Show planned modules** preview (the map icon on the
+  sidebar's name row; off by default, kept per browser). With it on, the sidebar shows the
+  construction-ERP modules (Planning, Cost control, Materials, Procurement, Labour, Subcontract,
+  Finance, Client billing, Equipment) with planned pages marked by a hollow dot; with it off,
+  the sidebar is the V1 one above and a planned address goes to Today. One list,
+  `apps/dashboard/src/lib/module-map.ts`, names every module and page and drives the preview
+  sidebar, the routes, the top-bar breadcrumb and the placeholder page (`PlannedPage`).
+  Building a page = set its `status` to `'built'` and point its `url` at the real page.
 
 ---
 

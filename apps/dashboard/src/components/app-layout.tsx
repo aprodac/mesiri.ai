@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { AlertCircle, CalendarDays } from 'lucide-react'
+import { AlertCircle, CalendarDays, ChevronRight, Map as MapIcon } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ScopeBar } from '@/components/scope-bar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
@@ -8,13 +8,39 @@ import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
 import { useNavCounts } from '@/lib/nav-counts'
+import { findPage } from '@/lib/module-map'
+import { usePlannedPreview } from '@/lib/preview'
 import { routeTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
 // Top bar (WEB-20): stays put while the page scrolls; a thin site-colour
 // stripe on top, the scope picker, today's date and the open-issues count.
+/** Where you are (WEB-72): "Materials › Movements", from lib/module-map.ts. */
+function Breadcrumb() {
+  const { pathname, search } = useLocation()
+  const hit = findPage(pathname, search)
+  if (!hit) return null
+  const showModule = hit.group.title !== hit.page.title && hit.group.key !== 'site'
+  return (
+    <nav aria-label="You are here" className="hidden min-w-0 items-center gap-1 text-sm md:flex">
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
+      {showModule && (
+        <>
+          <span className="truncate text-muted-foreground">{hit.group.title}</span>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+        </>
+      )}
+      <span className="truncate font-medium">{hit.page.title}</span>
+      {hit.page.status === 'planned' && (
+        <span className="ml-1 shrink-0 rounded-full bg-draft-soft px-2 py-px text-[11px] font-semibold text-draft">Planned</span>
+      )}
+    </nav>
+  )
+}
+
 function TopBar() {
   const { drafts, openIssues } = useNavCounts()
+  const [showPlanned, setShowPlanned] = usePlannedPreview()
   const today = new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
   return (
     <header className="sticky top-0 z-20 shrink-0 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
@@ -23,7 +49,18 @@ function TopBar() {
         <SidebarTrigger />
         <Separator orientation="vertical" className="mr-1 h-4" />
         <ScopeBar />
+        <Breadcrumb />
         <div className="ml-auto flex items-center gap-1.5">
+          {showPlanned && (
+            <button
+              type="button"
+              onClick={() => setShowPlanned(false)}
+              className="hidden items-center gap-1.5 rounded-full border border-orange-300/60 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 sm:inline-flex dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-300"
+              title="Planned modules are shown. Click to hide them."
+            >
+              <MapIcon className="size-3.5" /> Preview
+            </button>
+          )}
           <Link
             to="/today"
             className="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium text-foreground/80 hover:bg-muted sm:inline-flex"

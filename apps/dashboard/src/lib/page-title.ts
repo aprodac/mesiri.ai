@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { findPage } from './module-map'
 
 const APP = 'Mesiri'
 
@@ -30,6 +31,9 @@ const ROUTE_TITLES: [string, string][] = [
 
 /** Default tab title for a path; see usePageTitle. */
 export function routeTitle(pathname: string): string {
+  // Planned module pages (WEB-72) are named by lib/module-map.ts.
+  const page = findPage(pathname)
+  if (page?.page.status === 'planned') return `${page.page.title} · ${APP}`
   const hit = ROUTE_TITLES.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))
-  return hit ? `${hit[1]} · ${APP}` : APP
+  return hit ? `${hit[1]} · ${APP}` : page ? `${page.page.title} · ${APP}` : APP
 }

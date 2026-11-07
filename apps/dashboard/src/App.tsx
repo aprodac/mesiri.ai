@@ -18,6 +18,9 @@ import SiteLogPage from '@/pages/SiteLogPage'
 import Projects from '@/pages/Projects'
 import ProjectDetails from '@/pages/ProjectDetails'
 import ProjectBoqPage from '@/pages/ProjectBoqPage'
+import BoqIndexPage from '@/pages/BoqIndexPage'
+import PlannedPage from '@/pages/PlannedPage'
+import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
 import ExpensesPage from '@/pages/ExpensesPage'
@@ -98,6 +101,12 @@ export default function App() {
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
           <Route path="projects/:id/boq" element={<ProjectBoqPage />} />
+          <Route path="boq" element={<BoqIndexPage />} />
+          {/* WEB-72: planned module pages (lib/module-map.ts). Only shown while "Show planned
+              modules" is on; otherwise PlannedPage sends the address to Today. */}
+          {PLANNED_PAGES.map(({ page }) => (
+            <Route key={page.url} path={page.url.slice(1)} element={<PlannedPage />} />
+          ))}
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="company" element={<CompanyDetails />} />
