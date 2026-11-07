@@ -510,6 +510,7 @@ class PostgresMaterialReadRepository:
         material_id: uuid.UUID | None = None,
         category_id: uuid.UUID | None = None,
         with_money: bool = False,
+        on_order: dict | None = None,
     ) -> list[dict]:
         """``with_money`` (PRC-17d): also ``spend`` (the known cost of what was delivered in the period),
         ``spend_complete`` (every delivery in it had a cost) and ``last_rate`` (the latest rate paid for the material,
@@ -609,7 +610,8 @@ class PostgresMaterialReadRepository:
                 continue  # nothing held and nothing moved: not part of this period
             if not with_money:
                 data.update(spend=None, spend_complete=None, last_rate=None)
-            out.append(finish_row(data))
+            key = (str(data.get("site_id")), str(data.get("material_id")))
+            out.append(finish_row(data, (on_order or {}).get(key, Decimal(0))))
         return out
 
     async def get_last_purchase_price(

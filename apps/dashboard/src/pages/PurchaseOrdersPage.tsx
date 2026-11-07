@@ -74,7 +74,7 @@ export default function PurchaseOrdersPage() {
 
   const [tab, setTab] = useUrlState<Tab>('tab', 'open')
   const [tile, setTile] = useUrlState<Tile>('show', '')
-  const [site, setSite] = useUrlState<string>('site', '')
+  const [site, setSite] = useUrlState<string>('at', '')  // PRC-27: not 'site' (the scope's own key, as WEB-34)
   const [vendor, setVendor] = useUrlState<string>('vendor', '')
   const [category, setCategory] = useUrlState<string>('category', '')
   const [due, setDue] = useUrlState<string>('due', '')

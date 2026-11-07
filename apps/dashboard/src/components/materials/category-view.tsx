@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Boxes, Filter, Search, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -98,6 +99,8 @@ export function CategoryView({
   const showSite = !siteId && new Set((rows ?? []).map((r) => r.site_id)).size > 1
   const low = (rows ?? []).filter((r) => r.running_low)
   const other = shown.some((g) => g.list.some((r) => Number(r.adjusted) !== 0))
+  // PRC-27: the "On order" column only when something is on order.
+  const coming = shown.some((g) => g.list.some((r) => Number(r.on_order) > 0))
   const filtered = category !== 'all' || show !== 'all' || !!needle
 
   const toolbar = (
@@ -261,6 +264,7 @@ export function CategoryView({
                                   Number(r.received) ? `${signed(r.received, '+')} in` : null,
                                   Number(r.used) ? `${signed(r.used, '−')} used` : null,
                                   Number(r.adjusted) ? `${signed(r.adjusted, Number(r.adjusted) > 0 ? '+' : '−')} other` : null,
+                                  Number(r.on_order) > 0 ? `+${qty(r.on_order ?? '0')} on order` : null,
                                 ]
                                   .filter(Boolean)
                                   .join(' · ')}
@@ -301,6 +305,7 @@ export function CategoryView({
                         )}
                         <th className="px-3 py-2 text-right font-semibold">Used</th>
                         <th className="px-3 py-2 text-right font-semibold">In stock</th>
+                        {coming && <th className="px-3 py-2 text-right font-semibold" title="Still to come on open purchase orders">On order</th>}
                         <th className="px-3 py-2 font-semibold">Lasts</th>
                         {money && <th className="px-3 py-2 text-right font-semibold">Last rate</th>}
                         {money && <th className="px-3 py-2 text-right font-semibold">Spend</th>}
@@ -329,6 +334,11 @@ export function CategoryView({
                               <td className={cn('px-3 py-2 text-right font-semibold tabular-nums', Number(r.closing) < 0 && 'text-destructive')}>
                                 {qty(r.closing)} <span className="font-normal text-muted-foreground">{r.unit}</span>
                               </td>
+                              {coming && (
+                                <td className="px-3 py-2 text-right tabular-nums text-info">
+                                  {Number(r.on_order) > 0 ? <Link to={`/procurement/orders?at=${r.site_id}`} onClick={(e) => e.stopPropagation()} className="hover:underline">+{qty(r.on_order ?? '0')}</Link> : <span className="text-muted-foreground">—</span>}
+                                </td>
+                              )}
                               <td className="px-3 py-2">
                                 {r.running_low ? (
                                   <span className={cn(CHIP, 'bg-draft-soft text-draft')}>{Number(r.closing) <= 0 ? 'Out' : lasts(r.days_left ?? 0)}</span>

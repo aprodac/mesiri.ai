@@ -1107,13 +1107,20 @@ async def list_inventory(
         return []
 
     repo = PostgresMaterialReadRepository(conn)
-    return await repo.get_stock_levels(
+    rows = await repo.get_stock_levels(
         organization_id=auth_context.organization_id,
         project_ids=project_ids,
         site_id=site_id,
         material_id=material_id,
         category_id=category_id,
     )
+    # PRC-27: what is still to come on open purchase orders, beside what the site holds.
+    from mesiri.domains.procurement.orders import on_order_by_site
+
+    coming = await on_order_by_site(conn, auth_context.organization_id)
+    for row in rows:
+        row["on_order"] = coming.get((str(row.get("site_id")), str(row.get("material_id"))), Decimal(0))
+    return rows
 
 
 @router.get("/stock-summary", response_model=list[MaterialStockSummaryResponse])
@@ -1155,7 +1162,18 @@ async def stock_summary(
         category_id=category_id,
         # PRC-17d: money only for the roles that see the company's spending (SEC-01), as on the expenses pages.
         with_money=may_view_expenses(auth_context.role),
+        # PRC-27: what is still to come counts for "running low", for a period that reaches today.
+        on_order=await _on_order_now(conn, auth_context.organization_id, date_to),
     )
+
+
+async def _on_order_now(conn: AsyncConnection, organization_id: uuid.UUID, date_to: datetime.date) -> dict:
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.procurement.orders import on_order_by_site
+
+    if date_to < await project_day.company_today(conn, organization_id):
+        return {}  # a past period: what is on order now says nothing about it
+    return await on_order_by_site(conn, organization_id)
 
 
 @router.get("/stock-check")

@@ -172,6 +172,8 @@ export interface MaterialStock {
   total_received: string
   total_used: string
   current_stock: string
+  /** PRC-27: still to come on open purchase orders for this site and material. */
+  on_order?: string
   last_movement_at: string | null
   stock_state: StockState
 }
@@ -916,6 +918,9 @@ export interface StockSummaryRow {
   adjusted: string
   closing: string
   days_left: number | null
+  /** PRC-27: still to come on open purchase orders (for a period that reaches today). */
+  on_order?: string
+  /** Counts what is on order: stock already ordered is not "what to order". */
   running_low: boolean
   // Only for roles that see the company's spending; null for the rest.
   spend: string | null

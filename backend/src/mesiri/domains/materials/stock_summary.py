@@ -26,8 +26,11 @@ RECEIVED_REASONS = ("RECEIVED", "RETURN_IN", "TRANSFER_IN")
 USED_REASONS = ("CONSUMED", "WASTAGE", "RETURN_TO_VENDOR", "TRANSFER_OUT")
 
 
-def finish_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Add ``adjusted``, ``days_left`` and ``running_low`` to one site+material row of sums."""
+def finish_row(row: dict[str, Any], on_order: Decimal = Decimal(0)) -> dict[str, Any]:
+    """Add ``adjusted``, ``days_left``, ``on_order`` and ``running_low`` to one site+material row of sums.
+
+    PRC-27: ``on_order`` (still to come on open purchase orders) counts towards running low: stock that is already
+    ordered is not "what to order". ``days_left`` stays what the site holds now."""
     opening = Decimal(str(row.get("opening") or 0))
     closing = Decimal(str(row.get("closing") or 0))
     received = Decimal(str(row.get("received") or 0))
@@ -43,5 +46,6 @@ def finish_row(row: dict[str, Any]) -> dict[str, Any]:
         "adjusted": closing - opening - received + used,
         "closing": closing,
         "days_left": days_left,
-        "running_low": closing <= 0 or (days_left is not None and closing / daily < LOW_DAYS),
+        "on_order": on_order,
+        "running_low": (closing + on_order) <= 0 or (daily > 0 and (closing + on_order) / daily < LOW_DAYS),
     }

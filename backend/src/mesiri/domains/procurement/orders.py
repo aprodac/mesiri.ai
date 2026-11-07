@@ -174,6 +174,20 @@ async def unlinked_deliveries(conn: AsyncConnection, organization_id: uuid.UUID,
              "unit": r.unit, "date": str(r.occurred_date), "supplier": r.supplier, "by_name": r.by_name} for r in rows]
 
 
+async def on_order_by_site(conn: AsyncConnection, organization_id: uuid.UUID) -> dict[tuple[str, str], Decimal]:
+    """PRC-27: what is still to come on open orders, per (site, material): Materials > Stock's "on order"."""
+    rows = (await conn.execute(text(
+        f"""
+        SELECT o.site_id, l.material_id,
+               SUM(GREATEST(l.quantity - COALESCE((SELECT SUM(r.quantity) FROM material_receipts r
+                                                    WHERE r.purchase_order_line_id = l.id AND {_COUNTED}), 0), 0)) AS pending
+          FROM purchase_order_lines l JOIN purchase_orders o ON o.id = l.purchase_order_id
+         WHERE l.organization_id = :org AND o.status = 'open'
+         GROUP BY o.site_id, l.material_id
+        """), {"org": organization_id})).all()
+    return {(str(r.site_id), str(r.material_id)): Decimal(r.pending) for r in rows if r.pending and r.pending > 0}
+
+
 def order_shown_status(lines: list[dict[str, Any]], status: str) -> str:
     """open / part / received for an open order from its lines (as ``shown_status``); closed, cancelled as stored."""
     if status != "open":

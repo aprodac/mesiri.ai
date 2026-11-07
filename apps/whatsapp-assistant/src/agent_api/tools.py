@@ -94,7 +94,8 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed(
         "stock_summary", "GET", "/materials/stock-summary",
         "Stock for a period per site and material: opening (before the period), received, used, adjusted, closing, "
-        "days left at the last week's use, and running_low. Default period: the last 7 days to today. Filter by "
+        "days left at the last week's use, on_order (still to come on open purchase orders) and running_low (which "
+        "counts what is on order). Default period: the last 7 days to today. Filter by "
         "project, site, material or category (a main category includes its sub-categories). Each row names its "
         "category.",
     ),

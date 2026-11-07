@@ -82,7 +82,7 @@ export default function RequestsPage() {
 
   const [tab, setTab] = useUrlState<Tab>('tab', 'waiting')
   const [tile, setTile] = useUrlState<Tile>('show', '')
-  const [site, setSite] = useUrlState<string>('site', '')
+  const [site, setSite] = useUrlState<string>('at', '')  // PRC-27: not 'site' (the scope's own key, as WEB-34)
   const [by, setBy] = useUrlState<string>('by', '')
   const [category, setCategory] = useUrlState<string>('category', '')
   const [due, setDue] = useUrlState<string>('due', '')

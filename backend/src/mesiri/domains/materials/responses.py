@@ -113,6 +113,8 @@ class MaterialStockResponse(BaseModel):
     current_stock: Decimal
     last_movement_at: datetime.datetime | None
     stock_state: str
+    #: PRC-27: still to come on open purchase orders for this site and material.
+    on_order: Decimal = Decimal(0)
 
 
 class MaterialCatalogResponse(BaseModel):
@@ -219,7 +221,9 @@ class MaterialStockSummaryResponse(BaseModel):
     closing: Decimal
     #: Days the closing stock lasts at the last 7 days' use; None when nothing was used or nothing is left.
     days_left: int | None = None
-    #: At or below zero, or under 3 days left at that use.
+    #: PRC-27: still to come on open purchase orders (counted only for a period that reaches today).
+    on_order: Decimal = Decimal(0)
+    #: At or below zero, or under 3 days left at that use, counting what is still to come on open orders.
     running_low: bool
     #: PRC-17d, only for roles that see expenses (SEC-01); None for the rest: the known cost of what was delivered
     #: in the period, whether every delivery had a cost, and the latest rate paid (any site).
