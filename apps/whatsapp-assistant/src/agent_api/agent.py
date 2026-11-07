@@ -244,14 +244,69 @@ def create_fingerprint(tool: str, method: str, path: str, body: dict[str, Any]) 
     return json.dumps([tool, path, norm(body)], sort_keys=True, default=str, ensure_ascii=False)
 
 
+#: Saved records a person can correct by talking (correct_saved_entry): one write that REPLACES the saved one.
+#: Labour: a new report naming the one it corrects (corrects_report_id; BE-10 counts the latest).
+CORRECTABLE = frozenset({"record_attendance"})
+CORRECT_SAVED = "correct_saved_entry"
+
+
 def remember_saves(recent: list[dict[str, Any]] | None, results: list[WriteResult], now: float) -> list[dict[str, Any]]:
-    """The person's saved creates of the last REPEAT_WINDOW_S, newest last (kept in the conversation state)."""
+    """The person's saved creates of the last REPEAT_WINDOW_S, newest last (kept in the conversation state). A
+    correctable one also keeps what was saved and its id (item 3, 7 Nov: "alla, 6 mason aanu" after Save had no way to
+    reach the saved report); one a correction replaced is forgotten, so the next correction finds the new one."""
     kept = [r for r in (recent or []) if now - float(r.get("at") or 0) < REPEAT_WINDOW_S]
     for r in results:
         fp = create_fingerprint(r.pending.tool, r.pending.method, r.pending.path, r.pending.body) if r.ok else None
-        if fp:
-            kept.append({"fp": fp, "summary": r.pending.summary, "at": now})
+        if not fp:
+            continue
+        if replaced := str(r.pending.body.get("corrects_report_id") or ""):
+            kept = [k for k in kept if str(k.get("id") or "") != replaced]
+        entry: dict[str, Any] = {"fp": fp, "summary": r.pending.summary, "at": now}
+        saved_id = r.body.get("id") if isinstance(r.body, dict) else None
+        if r.pending.tool in CORRECTABLE and saved_id:
+            entry.update({"tool": r.pending.tool, "path": r.pending.path, "body": r.pending.body, "id": str(saved_id)})
+        kept.append(entry)
     return kept[-30:]
+
+
+def correctable_saves(recent: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The saved records correct_saved_entry can reach, newest last (at most 5)."""
+    return [r for r in (recent or []) if r.get("tool") in CORRECTABLE and r.get("id")][-5:]
+
+
+def corrected_attendance(saved: dict[str, Any], lines: list[dict[str, Any]]) -> tuple[dict[str, Any], str] | str:
+    """The labour report that replaces ``saved`` with ``lines`` changed (same trade: new count; 0 removes it; a new
+    trade is added), and the card line drawn by the code ("✏️ Mason 8 → 6 · Helper 5"); or why it cannot."""
+    old = [dict(line) for line in (saved.get("body") or {}).get("lines") or []]
+    merged = [dict(line) for line in old]
+    changes: list[str] = []
+    for change in lines or []:
+        trade = str(change.get("trade") or "").strip()
+        try:
+            count = int(change.get("headcount"))
+        except (TypeError, ValueError):
+            return f"headcount for {trade or 'a trade'} must be a whole number."
+        if not trade or count < 0:
+            return "each change needs its trade and a headcount (0 removes the trade)."
+        same = next((m for m in merged if str(m.get("trade") or "").casefold() == trade.casefold()), None)
+        before = int(same.get("headcount") or 0) if same else 0
+        if same is None:
+            if count:
+                merged.append({"trade": trade, "headcount": count})
+        elif count:
+            same["headcount"] = count
+        else:
+            merged.remove(same)
+        if before != count:
+            changes.append(f"{same['trade'] if same else trade} {before} → {count}")  # the saved spelling
+    if not changes:
+        return "nothing changes: those are the numbers already saved."
+    if not merged or not any(int(m.get("headcount") or 0) for m in merged):
+        return "that would leave nobody on the report: say who came, or cancel it on the dashboard."
+    changed = {c.rsplit(" ", 3)[0].casefold() for c in changes}
+    kept = [f"{m['trade']} {m['headcount']}" for m in merged if str(m["trade"]).casefold() not in changed]
+    body = {**saved["body"], "lines": merged, "corrects_report_id": saved["id"]}
+    return body, "✏️ " + ", ".join(changes) + (" · " + ", ".join(kept) if kept else "")
 
 
 @dataclass(frozen=True)
@@ -497,6 +552,20 @@ _CHANGE = {
         "confirm_line": {"type": "string", "description": "The entry's new one-line summary in their words."},
     },
 }
+_CORRECT_SAVED = {
+    "type": "object", "required": ["number"],
+    "properties": {
+        "number": {"type": "integer", "description": "The saved record's number from 'Saved earlier in this chat'."},
+        "lines": {"type": "array", "description": "Labour: only the trades that change, with their right count "
+                  "(\"alla, 6 mason\" -> Mason 6; 0 removes a trade).",
+                  "items": {"type": "object", "required": ["trade", "headcount"],
+                            "properties": {"trade": {"type": "string"}, "headcount": {"type": "integer"}}}},
+    },
+}
+_CORRECT_SAVED_SPEC = ToolSpec(name=CORRECT_SAVED, parameters=_CORRECT_SAVED, description=(
+    "Correct a record ALREADY SAVED in this chat (listed under 'Saved earlier in this chat'): only what changes. It "
+    "goes on the card and, on Save, replaces the saved one (never a second record). Use it for a correction right after "
+    "a save (\"alla, 6 mason aanu\"); never ask them to send the whole line again."))
 _NUMBERS = {
     "type": "object",
     "properties": {"numbers": {"type": "array", "items": {"type": "integer"},
@@ -560,6 +629,7 @@ class ApiAgent:
         today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
         new: list[PendingWrite] = []
+        saved_list = correctable_saves(recent_saves)  # item 3: what was saved in this chat, correctable by talking
         saved: list[WriteResult] = []
         asked: dict[str, Any] = {}
         #: WEB-68: the account question the code asked this turn (it is put in the reply if the model left it out).
@@ -615,6 +685,24 @@ class ApiAgent:
                     size_needed[:] = [x for x in size_needed if x["key"] != e.idempotency_key]
                     count += 1
             return count
+
+        def correct_saved(arguments: dict[str, Any]) -> dict[str, Any]:
+            """Item 3: a saved record corrected by talking, as ONE write that replaces it, on the card for one Save."""
+            try:
+                saved = saved_list[int(arguments.get("number")) - 1]
+            except (TypeError, ValueError, IndexError):
+                return {"error": f"number must be 1 to {len(saved_list)} from 'Saved earlier in this chat'."}
+            if saved.get("tool") == "record_attendance":
+                built = corrected_attendance(saved, list(arguments.get("lines") or []))
+                if isinstance(built, str):
+                    return {"error": f"Nothing is prepared: {built}"}
+                body, line = built
+                new.append(PendingWrite(tool="record_attendance", method="POST", path=str(saved["path"]), params={},
+                                        body=body, summary=line, idempotency_key=new_idempotency_key()))
+                return {"status": "ready, NOT saved", "note": (
+                    "On the card now; on Save it replaces the saved report (no second report). Say it in one short line "
+                    "in their language; do not repeat the card line.")}
+            return {"error": "That record cannot be corrected here yet: tell them it can be changed on the dashboard."}
 
         async def change_entry(arguments: dict) -> dict[str, Any]:
             try:
@@ -744,6 +832,13 @@ class ApiAgent:
                 return ToolOutcome(content={"dropped": numbers})
             if name == CHANGE_READY and waiting:
                 return ToolOutcome(content=await change_entry(arguments))
+            if name == CORRECT_SAVED and saved_list:
+                return ToolOutcome(content=correct_saved(arguments))
+            if name == CHANGE_READY and not waiting and saved_list:
+                # Live, 7 Nov 17:50: "alla, 6 mason aanu" after Save went to change_ready_entry with a made-up id.
+                return ToolOutcome(content={"error": (
+                    "Nothing is waiting: that record is already saved. Use correct_saved_entry with its number from "
+                    "'Saved earlier in this chat' and only what changes.")})
             if actions and name in actions:
                 acted.append(name)
                 return ToolOutcome(content=await actions[name][1](arguments))
@@ -1145,7 +1240,13 @@ class ApiAgent:
         specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, _EXPLAIN_TOOL, *feedback_specs(), web_link_spec()] + (
             list(_READY_TOOLS) if waiting else [])
         specs += [spec for spec, _ in (actions or {}).values()]
+        if saved_list:
+            specs.append(_CORRECT_SAVED_SPEC)
         system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
+        if saved_list:
+            listed = "\n".join(f"{i}. {without_ids(r.get('summary') or '')}" for i, r in enumerate(saved_list, 1))
+            system += ("\n\nSaved earlier in this chat (already saved; a correction of one is correct_saved_entry with its "
+                       f"number and only what changes, never a new entry and never 'send the whole line again'):\n{listed}")
         if language in LANGUAGE_LINES and language_chosen:
             # WA-169: the language they chose (users.reply_language) wins over the language of this message.
             system += (f"\n\nThis person chose to always get replies in {LANGUAGE_LINES[language]}. Reply in exactly "

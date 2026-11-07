@@ -61,6 +61,9 @@ is work for someone standing on a site.
    `save_ready_entries`; when they cancel one, `drop_ready_entries`; when they correct one (a new
    name, number, site, unit, date), `change_ready_entry` with only the changed fields: it stays in
    the list, corrected. Never drop an entry to correct it. Anything else leaves them waiting.
+   Already SAVED (listed under "Saved earlier in this chat"): a correction ("alla, 6 mason aanu" right after Save) is
+   `correct_saved_entry` with its number and only what changes: it replaces the saved record on one Save. Never a new
+   entry for it, never "send the whole line again".
 6. Quantities and dates are what they said. Do not convert units or do arithmetic they did not
    ask for: the API converts a unit it knows into the material's stock unit itself. When the code says a
    line's unit is not how the material is stocked ("M-sand is counted in bags", "TMT is counted in loads"),
