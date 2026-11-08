@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
-import { MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
+import { LinkNamesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
 import { UnbilledList } from '@/components/vendors/unbilled-list'
 import { useAuth } from '@/lib/AuthContext'
@@ -24,7 +24,7 @@ import { mayManageMoney, rupees } from '@/lib/expenses'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
-import { KINDS, day, deleteVendor, fetchPayables, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
+import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
 
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
@@ -65,6 +65,8 @@ export default function VendorsPage() {
   const [editing, setEditing] = React.useState<Vendor | null | undefined>(undefined)
   const [paying, setPaying] = React.useState<Row | null>(null)
   const [merging, setMerging] = React.useState<Vendor | null>(null)
+  const [linking, setLinking] = React.useState(false)
+  const unlinked = useQuery({ queryKey: ['vendors', 'unlinked'], queryFn: fetchUnlinkedNames, enabled: seesMoney, retry: false })
 
   const vendors = useQuery({ queryKey: ['vendors', 'all'], queryFn: fetchVendors })
   const payables = useQuery({
@@ -174,6 +176,12 @@ export default function VendorsPage() {
             </div>
           )}
         </>
+      )}
+
+      {canManage && (unlinked.data?.length ?? 0) > 0 && (
+        <Callout tone="info" icon={Store} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => setLinking(true)}>Link them</Button>}>
+          {unlinked.data!.length} supplier {unlinked.data!.length === 1 ? 'name' : 'names'} on {unlinked.data!.reduce((n, x) => n + x.deliveries, 0)} deliveries {unlinked.data!.length === 1 ? 'is' : 'are'} on no account yet.
+        </Callout>
       )}
 
       {seesMoney && (
@@ -293,6 +301,7 @@ export default function VendorsPage() {
       {paying && (
         <PayVendorDialog open onOpenChange={(o) => !o && setPaying(null)} vendor={paying} projectId={projectId} />
       )}
+      <LinkNamesDialog open={linking} onOpenChange={setLinking} names={unlinked.data ?? []} />
       {merging && <MergeVendorDialog open onOpenChange={(o) => !o && setMerging(null)} vendor={merging} onMerged={() => setMerging(null)} />}
     </div>
   )

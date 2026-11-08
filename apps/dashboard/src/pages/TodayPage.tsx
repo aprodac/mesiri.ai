@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Callout, DprAside, DprSection, PageHeader, StatStrip } from '@/components/dpr-page'
 import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
+import { SuppliersWaiting } from '@/components/vendors/vendor-parts'
 import {
   CHIP,
   FROZEN,
@@ -340,6 +341,7 @@ export default function TodayPage() {
       {isToday && <TimeSaved />}
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
+      {isToday && <SuppliersWaiting />}
 
       {daysQuery.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={refresh}>Try again</Button>}>

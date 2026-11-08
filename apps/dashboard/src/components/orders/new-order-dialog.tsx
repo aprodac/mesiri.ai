@@ -17,6 +17,7 @@ import { createOrder, rupees, updateOrder, type PurchaseOrder } from '@/lib/orde
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from '@/components/requests/parts'
+import { SupplierHint } from '@/components/vendors/vendor-parts'
 
 // PRC-06/07: place an order with a supplier. From a request (PRC-22) it opens filled in: the request's site and
 // what is still to buy, each line linked to the request so the request follows the order. The duplicate check
@@ -178,6 +179,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
               <input id="po-supplier" list="po-vendors" autoFocus className="h-10 flex-1 bg-transparent text-sm outline-none" placeholder="Malabar Hardware" value={supplier} onChange={(e) => { setSupplier(e.target.value); setDuplicate(null) }} />
             </div>
             <datalist id="po-vendors">{vendorNames.map((n) => <option key={n} value={n} />)}</datalist>
+            <SupplierHint name={supplier} />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

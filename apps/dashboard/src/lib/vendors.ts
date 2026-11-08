@@ -1,4 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
+import { useAuth } from './AuthContext'
+import { MONEY_ROLES } from './module-map'
 
 // CC-09 / CC-10: suppliers, what we owe them (the supplier ledger) and paying them. Rules live in the backend
 // (domains/vendors/ledger.py): a priced delivery is owed until its bill comes, then the bill; a payment leaves the
@@ -282,3 +285,22 @@ export interface UnbilledDelivery {
 export async function fetchUnbilled(params: { project_id?: string } = {}): Promise<{ as_of: string; deliveries: UnbilledDelivery[]; totals: { count: number; amount: string; unpriced: number; no_order: number; no_supplier: number } }> {
   return (await api.get('/finance/vendors/unbilled', { params })).data
 }
+
+// Supplier names typed on deliveries that point at no supplier record: on no account until linked.
+export interface UnlinkedName { name: string; deliveries: number; last: string | null; amount: string | null; likely: { id: string; name: string } | null }
+
+export async function fetchUnlinkedNames(): Promise<UnlinkedName[]> {
+  return (await api.get('/finance/vendors/unlinked-names')).data
+}
+
+export async function linkName(body: { name: string; vendor_id?: string; create?: boolean }): Promise<{ vendor: Vendor; deliveries: number }> {
+  return (await api.post('/finance/vendors/link-name', body)).data
+}
+
+/** The company's payables, read once and shared by every place that names a supplier (roles that see spending). */
+export function usePayables() {
+  const { me } = useAuth()
+  const allowed = (MONEY_ROLES as readonly string[]).includes((me?.role || '').toUpperCase())
+  return useQuery({ queryKey: ['finance', 'payables', ''], queryFn: () => fetchPayables({ include_settled: true }), enabled: allowed, staleTime: 60_000, retry: false })
+}
+

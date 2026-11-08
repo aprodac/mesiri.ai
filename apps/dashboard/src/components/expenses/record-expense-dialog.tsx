@@ -22,6 +22,7 @@ import {
 import type { AppScope } from '@/lib/scope-types'
 import { useToast } from '@/components/ui/toast-notification'
 import { toLocalISODate } from '@/lib/utils'
+import { SupplierHint } from '@/components/vendors/vendor-parts'
 import {
   recordExpenseApi,
   fetchAccountsApi,
@@ -338,6 +339,7 @@ export function RecordExpenseDialog({
                   onChange={(e) => setVendor(e.target.value)}
                   className="h-9 text-xs"
                 />
+                <SupplierHint name={vendor} />
               </div>
 
               <div className="space-y-1.5">
