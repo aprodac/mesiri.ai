@@ -11,8 +11,9 @@ import { useToast } from '@/components/ui/toast-notification'
 import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
-import { MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
+import { LinkNamesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
+import { UnbilledList } from '@/components/vendors/unbilled-list'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { useReadOnly } from '@/lib/trial'
@@ -23,7 +24,7 @@ import { mayManageMoney, rupees } from '@/lib/expenses'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
-import { KINDS, day, deleteVendor, fetchPayables, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
+import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
 
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
@@ -60,9 +61,12 @@ export default function VendorsPage() {
   const [kind, setKind] = useUrlState<string>('kind', 'all')
   const [tile, setTile] = useUrlState<Tile>('show', '')
   const [sort, setSort] = useUrlState<Sort>('sort', seesMoney ? 'owed' : 'name')
+  const [view, setView] = useUrlState<'suppliers' | 'unbilled'>('view', 'suppliers')
   const [editing, setEditing] = React.useState<Vendor | null | undefined>(undefined)
   const [paying, setPaying] = React.useState<Row | null>(null)
   const [merging, setMerging] = React.useState<Vendor | null>(null)
+  const [linking, setLinking] = React.useState(false)
+  const unlinked = useQuery({ queryKey: ['vendors', 'unlinked'], queryFn: fetchUnlinkedNames, enabled: seesMoney, retry: false })
 
   const vendors = useQuery({ queryKey: ['vendors', 'all'], queryFn: fetchVendors })
   const payables = useQuery({
@@ -151,7 +155,7 @@ export default function VendorsPage() {
             {tiles.map((x) => {
               const on = tile === x.value
               return (
-                <button key={x.value} type="button" aria-pressed={on} onClick={() => setTile(on ? '' : x.value)}
+                <button key={x.value} type="button" aria-pressed={on} onClick={() => (x.value === 'unbilled' ? setView('unbilled') : setTile(on ? '' : x.value))}
                   className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:p-3.5', on && cn('ring-2', x.ring))}>
                   <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', x.tone)}><x.icon className="size-4 sm:size-5" /></span>
                   <span className="flex min-w-0 flex-col">
@@ -174,6 +178,24 @@ export default function VendorsPage() {
         </>
       )}
 
+      {canManage && (unlinked.data?.length ?? 0) > 0 && (
+        <Callout tone="info" icon={Store} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => setLinking(true)}>Link them</Button>}>
+          {unlinked.data!.length} supplier {unlinked.data!.length === 1 ? 'name' : 'names'} on {unlinked.data!.reduce((n, x) => n + x.deliveries, 0)} deliveries {unlinked.data!.length === 1 ? 'is' : 'are'} on no account yet.
+        </Callout>
+      )}
+
+      {seesMoney && (
+        <div role="tablist" aria-label="View" className="flex w-fit gap-0.5 rounded-xl bg-muted p-1">
+          {([['suppliers', 'Suppliers'], ['unbilled', 'Delivered, no bill']] as const).map(([v, l]) => (
+            <button key={v} role="tab" type="button" aria-selected={view === v} onClick={() => setView(v)}
+              className={cn('inline-flex h-8 items-center rounded-lg px-3 text-sm', view === v ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {seesMoney && view === 'unbilled' ? <UnbilledList projectId={projectId} /> : (<>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
@@ -272,12 +294,14 @@ export default function VendorsPage() {
         </ul>
       )}
       {shown.length > 0 && <p className="text-xs text-muted-foreground">{shown.length} of {all.length} suppliers{payables.data ? ` · as of ${day(payables.data.as_of)}` : ''}</p>}
+      </>)}
 
       <VendorFormDialog open={editing !== undefined} onOpenChange={(o) => !o && setEditing(undefined)} vendor={editing ?? null} canSetOpening={canManage}
         onSaved={(v) => editing === null && navigate(vendorUrl(v.id))} />
       {paying && (
         <PayVendorDialog open onOpenChange={(o) => !o && setPaying(null)} vendor={paying} projectId={projectId} />
       )}
+      <LinkNamesDialog open={linking} onOpenChange={setLinking} names={unlinked.data ?? []} />
       {merging && <MergeVendorDialog open onOpenChange={(o) => !o && setMerging(null)} vendor={merging} onMerged={() => setMerging(null)} />}
     </div>
   )

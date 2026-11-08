@@ -61,6 +61,7 @@ RECORD_PAGES: dict[str, str | None] = {
     "add_bill_photo": None,  # WEB-65: the bill goes on an expense already linked when it was saved
     "pay_expense": "expense",  # PRC-35: the expense it paid, its id in the path
     "pay_supplier": "supplier",  # CC-10: the supplier's account, its id in the path
+    "link_bill_deliveries": "expense",  # PRC-11: the bill (expense) the deliveries went on, its id in the path
     "set_reply_language": None,
     # NXT-11: machines.
     "log_machines": "machine_log",
@@ -79,6 +80,7 @@ _BODY_KEYS = {
 _ANSWER_ID = {"record_expense": "expense_id", "create_project": "project_id"}
 _PATH_IDS = (("project_id", r"/projects/([^/]+)"), ("site_id", r"/site-days/([^/]+)"),
              ("expense_id", r"/expenses/([0-9a-f-]{36})/payments"),
+             ("expense_id", r"/bills/([0-9a-f-]{36})/deliveries"),
              ("vendor_id", r"/finance/vendors/([0-9a-f-]{36})"))
 #: More distinct links than this become one link to a list.
 MAX_LINKS = 3

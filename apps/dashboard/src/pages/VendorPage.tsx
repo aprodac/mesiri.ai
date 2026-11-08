@@ -386,6 +386,11 @@ export default function VendorPage() {
                         {num(b.paid) > 0 ? ` · ${rupees(num(b.paid))} of ${rupees(num(b.amount))} paid` : ''}
                       </span>
                     </Link>
+                    {b.mismatches > 0 && (
+                      <span className="hidden shrink-0 rounded bg-draft-soft px-1.5 py-0.5 text-xs font-medium text-draft sm:inline" title="Open the bill to see what differs">
+                        ⚠ {b.mismatches} not as delivered
+                      </span>
+                    )}
                     <span className="flex shrink-0 flex-col items-end">
                       <span className="font-semibold tabular-nums">{rupees(num(b.left))}</span>
                       {b.overdue_days > 0 ? <span className="text-xs font-semibold text-destructive">{b.overdue_days} days late</span> : <span className="text-xs text-muted-foreground">{b.age_days} days old</span>}

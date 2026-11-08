@@ -117,7 +117,11 @@ async def fetch_entries(
         "(SELECT string_agg(DISTINCT i.invoice_number, ', ') FROM material_invoices i WHERE i.expense_id = e.id) "
         "AS bill_number, "
         "(SELECT COUNT(*) FROM material_receipts mr JOIN material_invoices mi ON mi.id = mr.invoice_id "
-        " WHERE mi.expense_id = e.id) AS deliveries "
+        " WHERE mi.expense_id = e.id) AS deliveries, "
+        # PRC-11: deliveries on this bill whose quantity or rate differs from what the bill said.
+        "(SELECT COUNT(*) FROM material_receipts mr JOIN material_invoices mi ON mi.id = mr.invoice_id "
+        " WHERE mi.expense_id = e.id AND ((mr.billed_quantity IS NOT NULL AND mr.billed_quantity <> mr.quantity) "
+        " OR (mr.billed_rate IS NOT NULL AND mr.unit_cost IS NOT NULL AND mr.billed_rate <> mr.unit_cost))) AS mismatches "
         "FROM expenses e LEFT JOIN projects pr ON pr.id = e.project_id LEFT JOIN sites s ON s.id = e.site_id "
         "LEFT JOIN expense_categories c ON c.id = e.category_id LEFT JOIN users cb ON cb.id = e.created_by "
         "WHERE e.organization_id = :org AND e.workflow_status = 'confirmed'" + vfilter.format(col="e.vendor_id")
@@ -178,6 +182,10 @@ async def fetch_entries(
             "links": {"receipt_id": str(r["id"]), **({"order_id": str(r["order_id"])} if r["order_id"] else {})},
         })
 
+    # A bill paid by staff from their own pocket is settled with the supplier; payments on it repay the staff member,
+    # not the supplier, so they are not supplier payments (8 Nov 2026).
+    staff_bills = {r["id"] for r in bills if (r["payment_status"] or "") in ("reimbursable", "reimbursed")}
+    payments = [r for r in payments if r["expense_id"] not in staff_bills]
     paid_on: dict = defaultdict(Decimal)
     applied_of: dict = defaultdict(Decimal)
     for r in payments:
@@ -189,13 +197,14 @@ async def fetch_entries(
     bill_state: dict = {}
     for r in bills:
         amount = Decimal(r["amount"])
-        own_pocket = (r["payment_status"] or "") == "reimbursable"
+        own_pocket = r["id"] in staff_bills
         paid = amount if own_pocket else min(amount, paid_on.get(r["id"], Decimal(0)))
         bill_state[r["id"]] = {
             "id": str(r["id"]), "vendor_id": r["vendor_id"], "date": r["d"], "number": r["expense_number"],
             "bill_number": r["bill_number"], "description": r["description"], "amount": amount, "paid": paid,
             "left": amount - paid, "project_id": r["project_id"], "project": r["project"], "site": r["site"],
             "payment_status": r["payment_status"], "deliveries": int(r["deliveries"] or 0),
+            "mismatches": int(r["mismatches"] or 0),
             "in_window": after_start(r["vendor_id"], r["d"]),
         }
         if not after_start(r["vendor_id"], r["d"]):
@@ -207,10 +216,11 @@ async def fetch_entries(
             "detail": " · ".join(x for x in (
                 f"Bill {r['bill_number']}" if r["bill_number"] else None, r["category"],
                 f"GST ₹{money(r['tax_amount'])}" if r["tax_amount"] else None,
-                f"{r['deliveries']} deliveries" if r["deliveries"] else None) if x),
+                f"{r['deliveries']} deliveries" if r["deliveries"] else None,
+                f"⚠ {r['mismatches']} not as delivered" if r["mismatches"] else None) if x),
             "owe": amount, "paid": Decimal(0), "project_id": r["project_id"], "project": r["project"],
             "site": r["site"], "ref": r["expense_number"], "links": {"expense_id": str(r["id"])},
-            "bill_left": money(amount - paid),
+            "bill_left": money(amount - paid), "mismatches": int(r["mismatches"] or 0),
         })
         if own_pocket:
             who = r["recorded_by"] or "staff"
@@ -314,7 +324,7 @@ def entry_out(e: dict, balance: Decimal) -> dict:
         "owe": money(e["owe"]) if e["owe"] else None, "paid": money(e["paid"]) if e["paid"] else None,
         "balance": money(balance), "project_id": str(e["project_id"]) if e["project_id"] else None,
         "project": e["project"], "site": e["site"], "ref": e["ref"], "links": e["links"],
-        **({"bill_left": e["bill_left"]} if "bill_left" in e else {}),
+        **({"bill_left": e["bill_left"], "mismatches": e.get("mismatches", 0)} if "bill_left" in e else {}),
         **({"on_account": e["on_account"], "advance_left": e["advance_left"], "recorded_by": e.get("recorded_by")}
            if e["kind"] == "payment" else {}),
     }

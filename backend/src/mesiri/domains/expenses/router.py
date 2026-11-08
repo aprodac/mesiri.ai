@@ -222,10 +222,16 @@ async def record_expense(
         raise HTTPException(status_code=422, detail=result.rejection_reasons)
 
     status_code = 201 if result.status == ExecutionStatus.SUCCEEDED else 200
-    return JSONResponse(
-        status_code=status_code,
-        content={"id": result.material_row_id, "status": result.status.value},
-    )
+    content: dict = {"id": result.material_row_id, "status": result.status.value}
+    if result.status == ExecutionStatus.SUCCEEDED and result.material_row_id:
+        # PRC-11: a supplier's bill typed as an expense -- the deliveries it is for, linked when certain, else offered
+        # (domains/vendors/matching.py), so a delivery and its bill are owed and cost once.
+        from mesiri.domains.vendors import matching
+
+        found = await matching.for_expense(conn, auth_context.organization_id, uuid.UUID(str(result.material_row_id)))
+        if found:
+            content["unbilled_deliveries"] = found
+    return JSONResponse(status_code=status_code, content=content)
 
 
 class CategoryResponse(BaseModel):

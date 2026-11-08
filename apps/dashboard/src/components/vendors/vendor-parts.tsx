@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
+import { HandCoins } from 'lucide-react'
 import { rupees } from '@/lib/expenses'
 import { cn } from '@/lib/utils'
-import { BUCKETS, num, vendorUrl, type Buckets } from '@/lib/vendors'
+import { BUCKETS, num, usePayables, vendorUrl, type Buckets } from '@/lib/vendors'
 
 // CC-09: small pieces of the supplier pages, and the link every other page uses to open a supplier's account.
 
@@ -39,6 +40,48 @@ export function VendorLink({ id, name, tab, className, onClick }: { id: string |
   return (
     <Link to={vendorUrl(id, tab)} onClick={(e) => { e.stopPropagation(); onClick?.() }} className={cn('relative z-10 underline-offset-2 hover:underline', className)} title={`Open ${name}'s account`}>
       {name}
+    </Link>
+  )
+}
+
+/** Under a supplier picked or typed (an order, an expense): what stands with them today, and their account. */
+export function SupplierHint({ name, className }: { name: string; className?: string }) {
+  const payables = usePayables()
+  const key = name.trim().toLowerCase()
+  const v = key ? payables.data?.vendors.find((x) => x.name.toLowerCase() === key) : undefined
+  if (!v) return null
+  const bal = num(v.balance)
+  const parts = [
+    bal > 0 ? `You owe them ${rupees(bal)}` : bal < 0 ? `They hold ${rupees(-bal)} of yours as advance` : null,
+    num(v.overdue) > 0 ? `${rupees(num(v.overdue))} overdue` : null,
+    v.unbilled_count ? `${v.unbilled_count} ${v.unbilled_count === 1 ? 'delivery' : 'deliveries'} not billed` : null,
+  ].filter(Boolean)
+  if (!parts.length) return null
+  return (
+    <p className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', className)}>
+      <HandCoins className="size-3.5 shrink-0" />
+      <span className={cn(num(v.overdue) > 0 && 'text-draft')}>{parts.join(' · ')}</span>
+      <Link to={vendorUrl(v.id)} target="_blank" className="ml-auto shrink-0 font-semibold text-foreground underline-offset-2 hover:underline">Account</Link>
+    </p>
+  )
+}
+
+/** Today: supplier money that needs a look (overdue bills, deliveries long without a bill), for who sees spending. */
+export function SuppliersWaiting() {
+  const payables = usePayables()
+  const t = payables.data?.totals
+  if (!t) return null
+  const overdue = num(t.overdue)
+  const late = payables.data!.vendors.filter((v) => num(v.overdue) > 0).length
+  const unbilled = num(t.unbilled)
+  if (overdue <= 0 && unbilled <= 0) return null
+  return (
+    <Link to="/finance/vendors" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-card px-3 py-2.5 text-sm hover:bg-muted/30">
+      <HandCoins className="size-4 text-muted-foreground" />
+      <span className="font-medium">Suppliers</span>
+      {overdue > 0 && <span className="text-draft">{rupees(overdue)} overdue to {late} {late === 1 ? 'supplier' : 'suppliers'}</span>}
+      {unbilled > 0 && <span className="text-muted-foreground">{rupees(unbilled)} delivered with no bill</span>}
+      <span className="ml-auto text-xs font-semibold">Open</span>
     </Link>
   )
 }

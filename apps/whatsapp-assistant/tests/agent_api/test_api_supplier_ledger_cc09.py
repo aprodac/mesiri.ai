@@ -41,3 +41,18 @@ def test_after_save_the_link_opens_the_supplier_account() -> None:
     url = record_link("pay_supplier", f"/finance/vendors/{vendor}/payments", {"account_id": str(uuid.uuid4()), "amount": "50000"},
                       {"payment_id": "p"}, today="2026-11-08")
     assert url and url.endswith(f"/finance/vendors/{vendor}")
+
+
+def test_prc11_a_bill_saved_as_an_expense_offers_its_deliveries_and_links_on_yes() -> None:
+    by = {a.name: a for a in ALLOWED}
+    link = by["link_bill_deliveries"]
+    assert (link.method, link.path) == ("POST", "/finance/vendors/{vendor_id}/bills/{expense_id}/deliveries")
+    assert "Saved only after the person confirms." in link.description
+    assert "`unbilled_deliveries`" in SOP and "`link_bill_deliveries`" in SOP and "Never a second expense" in SOP
+    vendor, bill = str(uuid.uuid4()), str(uuid.uuid4())
+    url = record_link("link_bill_deliveries", f"/finance/vendors/{vendor}/bills/{bill}/deliveries", {"receipt_ids": []}, {}, today="2026-11-08")
+    assert url and url.endswith(f"/finance/expenses/{bill}")
+
+
+def test_prc11_guard_taking_a_delivery_off_a_bill_stays_on_the_dashboard() -> None:
+    assert not any(a.method == "DELETE" and "/deliveries/" in a.path for a in ALLOWED)

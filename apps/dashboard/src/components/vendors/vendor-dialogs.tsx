@@ -20,12 +20,14 @@ import {
   day,
   fetchLedger,
   fetchVendors,
+  linkName,
   matchDeliveries,
   mergeVendor,
   num,
   payVendor,
   updateVendor,
   type LedgerLine,
+  type UnlinkedName,
   type Vendor,
   type VendorKind,
 } from '@/lib/vendors'
@@ -484,6 +486,59 @@ export function MergeVendorDialog({ open, onOpenChange, vendor, onMerged }: { op
             {merge.isPending ? 'Merging…' : target ? `Merge into ${target.name}` : 'Merge'}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// --- Supplier names on no account ----------------------------------------------------------------------------------
+
+export function LinkNamesDialog({ open, onOpenChange, names }: { open: boolean; onOpenChange: (o: boolean) => void; names: UnlinkedName[] }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const vendors = useQuery({ queryKey: ['vendors', 'all'], queryFn: fetchVendors, enabled: open })
+  const [choice, setChoice] = React.useState<Record<string, string>>({})
+  React.useEffect(() => {
+    if (open) setChoice(Object.fromEntries(names.map((n) => [n.name, n.likely?.id ?? 'new'])))
+  }, [open, names])
+  const save = useMutation({
+    mutationFn: async (name: string) => {
+      const pick = choice[name]
+      return linkName(pick === 'new' ? { name, create: true } : { name, vendor_id: pick })
+    },
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['finance'] })
+      queryClient.invalidateQueries({ queryKey: ['vendors'] })
+      toast.success(`${r.deliveries} ${r.deliveries === 1 ? 'delivery' : 'deliveries'} now on ${r.vendor.name}'s account`)
+    },
+    onError: (e) => toast.error('Not linked', apiErrorMessage(e)),
+  })
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Supplier names on no account</DialogTitle>
+          <DialogDescription>Deliveries saved with these names point at no supplier, so they are on nobody's account, rates or bills. Pick the supplier each is, or add it.</DialogDescription>
+        </DialogHeader>
+        <ul className="divide-y rounded-lg border">
+          {names.map((n) => (
+            <li key={n.name} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">“{n.name}”</span>
+                <span className="block text-xs text-muted-foreground">{n.deliveries} {n.deliveries === 1 ? 'delivery' : 'deliveries'}{n.amount ? ` · ${rupees(num(n.amount))}` : ''}{n.last ? ` · last ${day(n.last)}` : ''}</span>
+              </span>
+              <Select value={choice[n.name] ?? 'new'} onValueChange={(v) => setChoice((c) => ({ ...c, [n.name]: v }))}>
+                <SelectTrigger className="h-8 w-[180px]" aria-label={`Supplier for ${n.name}`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new">Add “{n.name}” as a supplier</SelectItem>
+                  {(vendors.data ?? []).map((v) => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(n.name)}>Link</Button>
+            </li>
+          ))}
+        </ul>
+        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Done</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   )

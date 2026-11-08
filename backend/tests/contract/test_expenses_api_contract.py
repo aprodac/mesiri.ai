@@ -540,8 +540,13 @@ async def test_repay_someone_who_paid_from_their_pocket(client, test_engine, tes
                              headers={**h, "Idempotency-Key": str(uuid.uuid4())})).json()["id"]
     async with test_engine.begin() as conn:
         await conn.execute(sa.text("UPDATE expenses SET payment_status = 'reimbursable' WHERE id = :id"), {"id": eid})
+    # A part repayment: still owed to them (8 Nov 2026: it read "partially paid", as if owed to the supplier).
+    part = await client.post(f"/expenses/{eid}/payments", json={"account_id": str(box), "amount": "100"}, headers=h)
+    assert part.status_code == 201 and part.json()["payment_status"] == "reimbursable" and part.json()["left"] == "150.00"
+    row = next(r for r in (await client.get("/expenses", headers=h)).json() if r["id"] == eid)
+    assert row["paid_via"] == "own_pocket"
     paid = await client.post(f"/expenses/{eid}/payments", json={"account_id": str(box)}, headers=h)
-    assert paid.status_code == 201 and paid.json()["payment_status"] == "paid"
+    assert paid.status_code == 201 and paid.json()["payment_status"] == "reimbursed"
     row = next(r for r in (await client.get("/expenses", headers=h)).json() if r["id"] == eid)
     assert row["paid_via"] == "petty_cash"
 
