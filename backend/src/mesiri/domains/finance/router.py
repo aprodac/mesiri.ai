@@ -519,6 +519,11 @@ async def generate_financial_report_statement(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Generate executive financial statement report with calculated line items."""
+    # 8 Nov 2026: had no role check (every expense, account and vendor of the company to any user with Finance).
+    from mesiri.authorization.roles import may_view_expenses
+
+    if not may_view_expenses(auth_context.role) or not auth_context.project_scope.grants_all_org_projects:
+        raise HTTPException(status_code=403, detail="Company reports are for the roles that see all spending.")
     exp_repo = PostgresExpenseRepository(conn)
     acc_repo = PostgresMoneyAccountRepository(conn)
     cat_repo = PostgresExpenseCategoryRepository(conn)
@@ -741,6 +746,39 @@ def _paid(expense_of: dict, source_id) -> dict:  # noqa: ANN001
     return {"expense_id": r.expense_id, "vendor_id": r.vendor_id, "vendor_name": r.vendor_name} if r else {}
 
 
+def _sees_all_money(auth: AuthorizationContext) -> bool:
+    from mesiri.authorization.roles import may_view_expenses
+
+    return may_view_expenses(auth.role)
+
+
+def _visible_account(auth: AuthorizationContext, acc) -> bool:  # noqa: ANN001
+    """8 Nov 2026 (owner, in session: "all missing u do"): the roles that see spending see every account; anyone else
+    sees the cash boxes and advances they hold or that belong to their projects (what they pay from on site), never a
+    bank account or another site's cash. Writes keep their own rule (SEC-03)."""
+    if _sees_all_money(auth):
+        return True
+    if acc.owner_user_id is not None and acc.owner_user_id == auth.user_id:
+        return True
+    kind = str(getattr(acc.account_type, "value", acc.account_type))
+    if kind not in ("cash", "employee_advance") or acc.project_id is None:
+        return False
+    scope = auth.project_scope
+    return scope.grants_all_org_projects or acc.project_id in set(scope.project_ids)
+
+
+async def _visible_ids(conn: AsyncConnection, auth: AuthorizationContext) -> set[uuid.UUID] | None:
+    """None: every account; else the ids of the accounts this person may see."""
+    if _sees_all_money(auth):
+        return None
+    accounts = await PostgresMoneyAccountRepository(conn).list_accounts(auth.organization_id)
+    return {a.id for a in accounts if _visible_account(auth, a)}
+
+
+def _touches(t, ids: set[uuid.UUID] | None) -> bool:  # noqa: ANN001
+    return ids is None or t.from_account_id in ids or t.to_account_id in ids
+
+
 def _require(allowed: bool, detail: str) -> None:
     """SEC-03 (7 Nov 2026): money writes are for the roles in authorization/roles.py; reads keep their scope."""
     if not allowed:
@@ -761,6 +799,7 @@ async def list_accounts(
         account_type=account_type,
         status=status,
     )
+    accounts = [a for a in accounts if _visible_account(auth_context, a)]
     names = await _holder_names(conn, auth_context.organization_id, accounts)
     return [await _account_response(conn, repo, auth_context.organization_id, acc, names) for acc in accounts]
 
@@ -773,7 +812,7 @@ async def get_account(
 ):
     repo = PostgresMoneyAccountRepository(conn)
     acc = await repo.get_by_id(auth_context.organization_id, account_id)
-    if acc is None:
+    if acc is None or not _visible_account(auth_context, acc):
         raise HTTPException(status_code=404, detail="Account not found")
     return await _account_response(conn, repo, auth_context.organization_id, acc)
 
@@ -812,6 +851,9 @@ async def list_account_transactions(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """List transactions (inbound & outbound ledger) for a given account."""
+    acc = await PostgresMoneyAccountRepository(conn).get_by_id(auth_context.organization_id, account_id)
+    if acc is None or not _visible_account(auth_context, acc):
+        raise HTTPException(status_code=404, detail="Account not found")
     tx_repo = PostgresMoneyTransactionRepository(conn)
     txs = await tx_repo.list_by_account(auth_context.organization_id, account_id, limit=limit)
     expense_of = await _expense_of_payments(conn, auth_context.organization_id, txs)
@@ -845,6 +887,8 @@ async def list_petty_cash_vouchers(
     """List petty cash voucher transactions."""
     tx_repo = PostgresMoneyTransactionRepository(conn)
     txs = await tx_repo.list_vouchers(auth_context.organization_id, cash_box_id=cash_box_id, limit=limit)
+    ids = await _visible_ids(conn, auth_context)
+    txs = [t for t in txs if _touches(t, ids)]
     expense_of = await _expense_of_payments(conn, auth_context.organization_id, txs)
     return [
         MoneyTransactionResponse(
@@ -888,6 +932,8 @@ async def list_transactions(
         end_date=end_date,
         limit=limit,
     )
+    ids = await _visible_ids(conn, auth_context)
+    txs = [t for t in txs if _touches(t, ids)]
 
     # Batch lookup account names for from_account_id and to_account_id
     acc_ids: set[uuid.UUID] = set()

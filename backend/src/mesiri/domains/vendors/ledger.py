@@ -182,6 +182,10 @@ async def fetch_entries(
             "links": {"receipt_id": str(r["id"]), **({"order_id": str(r["order_id"])} if r["order_id"] else {})},
         })
 
+    # A bill paid by staff from their own pocket is settled with the supplier; payments on it repay the staff member,
+    # not the supplier, so they are not supplier payments (8 Nov 2026).
+    staff_bills = {r["id"] for r in bills if (r["payment_status"] or "") in ("reimbursable", "reimbursed")}
+    payments = [r for r in payments if r["expense_id"] not in staff_bills]
     paid_on: dict = defaultdict(Decimal)
     applied_of: dict = defaultdict(Decimal)
     for r in payments:
@@ -193,7 +197,7 @@ async def fetch_entries(
     bill_state: dict = {}
     for r in bills:
         amount = Decimal(r["amount"])
-        own_pocket = (r["payment_status"] or "") == "reimbursable"
+        own_pocket = r["id"] in staff_bills
         paid = amount if own_pocket else min(amount, paid_on.get(r["id"], Decimal(0)))
         bill_state[r["id"]] = {
             "id": str(r["id"]), "vendor_id": r["vendor_id"], "date": r["d"], "number": r["expense_number"],

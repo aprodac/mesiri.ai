@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from contract.test_rates_api_contract import (  # noqa: F401 -- fixtures
     _TABLES,
+    TODAY,
     _came,
     _day,
     _exec,
@@ -36,7 +37,7 @@ async def _wipe(engine: AsyncEngine) -> None:
         await conn.execute(sa.text("UPDATE material_invoices SET expense_id = NULL"))
         await conn.execute(sa.text("UPDATE expense_payments SET advance_id = NULL"))
         for table in _TABLES:
-            if table == "users":
+            if table == "sites":  # accounts point at sites and users
                 await conn.execute(sa.text("DELETE FROM money_accounts"))
             await conn.execute(sa.text(f"DELETE FROM {table}"))  # noqa: S608 -- fixed names
 
@@ -359,3 +360,58 @@ async def test_a_bill_typed_as_an_expense_links_its_deliveries_when_certain_else
 
     listed = (await client.get("/finance/vendors/unbilled", headers=h)).json()
     assert listed["totals"]["count"] == 1 and listed["deliveries"][0]["order_id"] is None and listed["totals"]["no_order"] == 1
+
+
+# --- 8 Nov 2026: money reads by role, supplier names on no account, the daily supplier note -------------------------
+
+
+async def test_a_site_engineer_sees_their_sites_cash_box_never_the_bank(client, world):
+    w = world
+    h = w["admin"]["h"]
+    bank = await _account(client, h, "HDFC current", "bank")
+    villa_box = (await client.post("/finance/accounts", headers=h, json={"name": "Villa box", "account_type": "cash",
+                 "opening_balance": "20000", "project_id": str(w["villa"]), "site_id": str(w["block_a"])})).json()["id"]
+    flats_box = (await client.post("/finance/accounts", headers=h, json={"name": "Flats box", "account_type": "cash",
+                 "opening_balance": "20000", "project_id": str(w["flats"]), "site_id": str(w["tower"])})).json()["id"]
+    arun = w["arun"]["h"]                                                     # site engineer on Villa
+    assert {a["name"] for a in (await client.get("/finance/accounts", headers=arun)).json()} == {"Villa box"}
+    assert (await client.get(f"/finance/accounts/{bank}", headers=arun)).status_code == 404
+    assert (await client.get(f"/finance/accounts/{flats_box}/transactions", headers=arun)).status_code == 404
+    assert (await client.get(f"/finance/accounts/{villa_box}/transactions", headers=arun)).status_code == 200
+    await client.post("/finance/transfers", headers=h, json={"from_account_id": bank, "to_account_id": flats_box, "amount": "500"})
+    assert all(t["to_account_id"] != flats_box for t in (await client.get("/finance/transactions", headers=arun)).json())
+    assert (await client.get("/finance/reports/statement", headers=arun)).status_code == 403
+    assert len((await client.get("/finance/accounts", headers=h)).json()) == 3   # the owner's view is unchanged
+
+
+async def test_supplier_names_on_no_account_are_listed_and_linked(client, world):
+    w = world
+    h = w["admin"]["h"]
+    malabar = await _vendor(client, h, "Malabar Hardware")
+    await _came(client, w, "cement", "10", "400", days_ago=3, supplier="Malabar Hardware")
+    # an old delivery typed before vendors were linked
+    eng = create_async_engine(Settings().postgres.dsn())
+    async with eng.begin() as conn:
+        await conn.execute(sa.text("UPDATE material_receipts SET vendor_id = NULL, supplier = 'malabar hardware '"))
+    await eng.dispose()
+    names = (await client.get("/finance/vendors/unlinked-names", headers=h)).json()
+    assert names[0]["name"].strip().lower() == "malabar hardware" and names[0]["likely"]["id"] == malabar
+    linked = await client.post("/finance/vendors/link-name", headers=h, json={"name": names[0]["name"], "vendor_id": malabar})
+    assert linked.json()["deliveries"] == 1
+    assert (await _ledger(client, h, malabar))["summary"]["unbilled"] == "4000.00"
+    assert (await client.get("/finance/vendors/unlinked-names", headers=h)).json() == []
+
+
+async def test_overdue_bills_are_told_once_a_day_to_who_pays(client, world, test_engine):
+    from mesiri.domains.vendors.reminders import queue_supplier_reminders
+
+    w = world
+    h = w["admin"]["h"]
+    v = await _vendor(client, h, "Concrete team", credit_days=7)
+    await _bill(client, w, v, "27000", days_ago=20)
+    async with test_engine.begin() as conn:
+        first = await queue_supplier_reminders(conn, w["org"], TODAY)
+        again = await queue_supplier_reminders(conn, w["org"], TODAY)
+        note = (await conn.execute(sa.text("SELECT payload->>'message' FROM notifications WHERE rule_key = 'suppliers_waiting'"))).scalar()
+    assert (first, again) == (1, 0)                                           # the admin only (engineers not told)
+    assert "₹27,000 of supplier bills is overdue (Concrete team ₹27,000)" in note

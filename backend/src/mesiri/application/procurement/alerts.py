@@ -167,6 +167,11 @@ async def queue_reminders(conn: AsyncConnection, organization_id: uuid.UUID, *, 
         queued += await _claim(conn, organization_id, rule_key="purchase_order_late", subject_id=str(order["id"]),
                                recipient=order["created_by"], project_id=order["project_id"],
                                site_id=order["site_id"], message=message, today=today)
+    # PRC-11 / CC-09: overdue supplier bills and deliveries long without a bill, to whoever pays suppliers.
+    from mesiri.domains.vendors.reminders import queue_supplier_reminders
+
+    async with conn.begin_nested():
+        queued += await queue_supplier_reminders(conn, organization_id, today)
     return queued
 
 
