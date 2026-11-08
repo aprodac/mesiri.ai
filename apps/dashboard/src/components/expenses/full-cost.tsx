@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Boxes, HardHat, Info, Receipt } from 'lucide-react'
+import { Boxes, HardHat, Info, Receipt, Truck } from 'lucide-react'
 import { compact, fetchCosts, type ExpenseFilters } from '@/lib/expenses'
 import { cn } from '@/lib/utils'
 
@@ -12,13 +12,15 @@ const PARTS = [
   { key: 'expenses', label: 'Expenses', icon: Receipt, bar: 'bg-indigo-500', to: null },
   { key: 'materials', label: 'Materials delivered', icon: Boxes, bar: 'bg-emerald-500', to: '/materials?view=movements&dir=in' },
   { key: 'labour', label: 'Labour', icon: HardHat, bar: 'bg-amber-500', to: '/labour' },
+  // NXT-11: hire earned by hired machines and diesel priced on their day logs.
+  { key: 'machines', label: 'Machines', icon: Truck, bar: 'bg-teal-500', to: '/equipment' },
 ] as const
 
 export function FullCost({ filters }: { filters: ExpenseFilters }) {
   const { data, isLoading, isError } = useQuery({ queryKey: ['finance', 'costs', filters], queryFn: () => fetchCosts(filters), retry: false })
   if (isError) return null
   const total = Number(data?.total ?? 0)
-  const amount = (k: (typeof PARTS)[number]['key']) => Number(data?.[k].amount ?? 0)
+  const amount = (k: (typeof PARTS)[number]['key']) => Number(data?.[k]?.amount ?? 0)
   const notes = [
     data && data.materials.unpriced > 0 ? `${data.materials.unpriced} ${data.materials.unpriced === 1 ? 'delivery has' : 'deliveries have'} no price` : null,
     data && Number(data.labour.man_days) > Number(data.labour.priced_man_days)
@@ -33,7 +35,7 @@ export function FullCost({ filters }: { filters: ExpenseFilters }) {
           <p className="text-3xl font-semibold tabular-nums">{isLoading ? '–' : compact(total)}</p>
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {PARTS.map((p) => {
+          {PARTS.filter((p) => p.key !== 'machines' || amount('machines') > 0).map((p) => {
             const body = (
               <span className="flex items-center gap-2">
                 <span className={cn('size-2.5 rounded-full', p.bar)} />
@@ -43,6 +45,7 @@ export function FullCost({ filters }: { filters: ExpenseFilters }) {
                     {p.label}
                     {data && p.key === 'labour' && Number(data.labour.man_days) > 0 ? ` · ${data.labour.man_days} man-days` : ''}
                     {data && p.key === 'materials' && data.materials.deliveries > 0 ? ` · ${data.materials.deliveries}` : ''}
+                    {data?.machines && p.key === 'machines' && Number(data.machines.hours) > 0 ? ` · ${data.machines.hours} hrs` : ''}
                   </span>
                 </span>
               </span>
@@ -72,8 +75,8 @@ export function FullCost({ filters }: { filters: ExpenseFilters }) {
               <li key={`${s.project_id}:${s.site_id}`} className="flex items-center gap-2 text-sm">
                 <span className="w-32 shrink-0 truncate font-medium sm:w-40">{s.site_name ?? `${s.project_name} (no site)`}</span>
                 <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                  {(['expenses', 'materials', 'labour'] as const).map((k, i) => (
-                    <span key={k} className={PARTS[i].bar} style={{ width: `${total > 0 ? (Number(s[k]) / total) * 100 : 0}%` }} />
+                  {(['expenses', 'materials', 'labour', 'machines'] as const).map((k, i) => (
+                    <span key={k} className={PARTS[i].bar} style={{ width: `${total > 0 ? (Number(s[k] ?? 0) / total) * 100 : 0}%` }} />
                   ))}
                 </span>
                 <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{compact(t)}</span>

@@ -145,15 +145,18 @@ export async function undoExpensePayment(expenseId: string, paymentId: string): 
   return (await api.post(`/expenses/${expenseId}/payments/${paymentId}/reverse`)).data
 }
 
-// CC-01: a period's full cost -- expenses + priced deliveries without a bill + labour (backend domains/finance/costs.py).
+// CC-01: a period's full cost -- expenses + priced deliveries without a bill + labour + machines (hire earned and diesel,
+// NXT-11) (backend domains/finance/costs.py).
 export interface ProjectCosts {
   date_from: string
   date_to: string
   expenses: { amount: string; count: number }
   materials: { amount: string; deliveries: number; unpriced: number }
   labour: { amount: string; man_days: string; priced_man_days: string }
+  /** NXT-11; absent from an older API. */
+  machines?: { amount: string; hire: string; fuel: string; hours: string; litres: string }
   total: string
-  by_site: { project_id: string; project_name: string; site_id: string | null; site_name: string | null; expenses: string; materials: string; labour: string; total: string }[]
+  by_site: { project_id: string; project_name: string; site_id: string | null; site_name: string | null; expenses: string; materials: string; labour: string; machines?: string; total: string }[]
 }
 
 export async function fetchCosts(filters: ExpenseFilters = {}): Promise<ProjectCosts> {

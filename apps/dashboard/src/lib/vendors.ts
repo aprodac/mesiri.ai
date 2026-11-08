@@ -135,6 +135,9 @@ export interface VendorLinks {
   bills: number
   orders: number
   payments: number
+  /** NXT-11 / NXT-13; absent from an older API. */
+  machines?: number
+  'hire bills'?: number
 }
 
 export const LINE_LOOK: Record<LineKind, { label: string; dot: string }> = {

@@ -27,11 +27,12 @@ export function SiteDayMoney({ siteId, date }: { siteId: string; date: string })
         <span className="text-lg font-semibold tabular-nums">{c ? compact(Number(c.total)) : '–'}</span>
       </div>
       {c && (
-        <dl className="grid grid-cols-3 gap-2 text-xs">
+        <dl className={cn('grid gap-2 text-xs', Number(c.machines?.amount ?? 0) > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
           {([
             ['Expenses', c.expenses.amount, null],
             ['Materials', c.materials.amount, '/materials?view=movements&dir=in'],
             ['Labour', c.labour.amount, '/labour'],
+            ...(Number(c.machines?.amount ?? 0) > 0 ? [['Machines', c.machines!.amount, '/equipment'] as const] : []),
           ] as const).map(([label, value, to]) => (
             <div key={label} className="rounded-lg bg-muted/60 px-2 py-1.5">
               <dt className="text-muted-foreground">{to ? <Link to={to} className="hover:underline">{label}</Link> : label}</dt>
