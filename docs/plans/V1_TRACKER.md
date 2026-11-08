@@ -594,6 +594,7 @@ Plan: [project-start-plan.md](project-start-plan.md). Asked by Ilan 8 Nov: the m
 | ST-10 | Weekly lookahead from the schedule (replaces NXT-10's free-text list) | M | Should | ST-04 | todo | — | The Monday note (ST-06) is its first half |
 | ST-11 | Delay and "this week" notes in Malayalam / Manglish / Hindi like the other reminders | S | Should | ST-06 | todo | — | |
 | ST-12 | Resize a bar by dragging its end; baseline (first plan) kept to compare against | M | Later | ST-04 | todo | — | Today a bar moves whole; the length changes in the panel |
+| ST-13 | **Sales training video: from drawing to bill** (Malayalam voice, English subtitles, 6 min): how a building job works in plain words, Drawing check on a real set, draft schedule and BOQ, Gantt, materials per unit, material plan and order-by, WhatsApp note, contract terms, RA bill on the letterhead, value per role, how to demo | S | Should | DR-06, MP-03, NXT-02 | done (sent in session 8 Nov) | Claude (session 8 Nov) | Screen recording of the real dashboard on demo data ("Thanal Constructions"); narration translated with Sarvam mayura (colloquial) and voiced with bulbul:v3 `priya`; 14 lines reworded by hand. Shows the Kondotty drawing and its client and architect names: for internal use unless re-cut with an anonymised set |
 
 ---
 
