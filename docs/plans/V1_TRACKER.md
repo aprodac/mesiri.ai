@@ -589,11 +589,28 @@ Plan: [project-start-plan.md](project-start-plan.md). Asked by Ilan 8 Nov: the m
 | ST-05 | **Project start page:** stage track, contract dates, a checklist (BOQ, schedule, sites, team on WhatsApp, suppliers, work orders) with the next step highlighted | M | Must | ST-01 | done (`5967627`, `9b32fed`, `1e063c3`, `6f96cf2`) | Claude (session 8 Nov) | Planning › Project start (`/planning/setup`) |
 | ST-06 | **Schedule on WhatsApp:** daily delay note to owner / admin / PM (what is late, what it pushes, forecast handover); Monday "this week" note to the site team; v3 `schedule` + `update_schedule_activity`, SOP rule 15 | M | Must | ST-04 | done (`5967627`, `9b32fed`, `1e063c3`, `6f96cf2`) | Claude (session 8 Nov) | English only for now (the other reminders are translated by `words()`; follow-up ST-11) |
 | ST-07 | **Walkthrough video** of the start of a project, with the value for each role | S | Should | ST-05 | done (videos sent in session 8 Nov: English voice, Malayalam voice + English subtitles) | Claude (session 8 Nov) | Captioned screen recording of the real dashboard on demo data |
-| ST-08 | Documents and drawing register per project (contract PDF, permits, latest drawing revision), findable from WhatsApp | M | Should | ST-01 | todo | — | Drawings → progress stays V2 (DRW) |
+| ST-08 | Documents and drawing register per project (contract PDF, permits, latest drawing revision), findable from WhatsApp | M | Should | ST-01 | todo | — | Planned 8 Nov as DOC-01..DOC-08 ([plan](project-documents-plan.md)). Drawings → progress stays V2 (DRW) |
 | ST-09 | Tender pricing from a rate library (the Tender stage's own screen) | L | Later | CC-03 | todo | — | |
 | ST-10 | Weekly lookahead from the schedule (replaces NXT-10's free-text list) | M | Should | ST-04 | todo | — | The Monday note (ST-06) is its first half |
 | ST-11 | Delay and "this week" notes in Malayalam / Manglish / Hindi like the other reminders | S | Should | ST-06 | todo | — | |
 | ST-12 | Resize a bar by dragging its end; baseline (first plan) kept to compare against | M | Later | ST-04 | todo | — | Today a bar moves whole; the length changes in the panel |
+
+---
+
+## DOC — Project documents and drawings (8 Nov 2026)
+
+Plan: [project-documents-plan.md](project-documents-plan.md). One register per project that the schedule, project start, BOQ, work orders and WhatsApp use: the current drawing one message away, revisions announced, permits reminded. Decisions D-DOC1..D-DOC4 in the plan; each row uses the plan's default until answered.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| DOC-01 | **Register:** `project_documents` (folders, number, revision, status, links), storage under `documents/`, multipart upload (25 MB), list / detail / archive API, Planning › Documents page (folders, search, preview, drag-and-drop upload with guessed number / title / revision) | L | Must | — | blocked | | Who sees what (D-DOC1) is a permissions decision: needs Ilan. Storage space check (D-DOC2) before shipping |
+| DOC-02 | **Revisions:** a new revision supersedes the old (history kept); WhatsApp alert to the site team and PM with the PDF | M | Must | DOC-01 | todo | | |
+| DOC-03 | **Connections:** schedule activity panel shows its drawings; Project start step "Contract and drawings"; the BOQ import keeps its source Excel; work order documents | M | Must | DOC-01 | todo | | |
+| DOC-04 | **PDFs on WhatsApp saved** (v3 companies): `save_document` held for Save; title block read from page 1 | M | Must | DOC-01 | blocked | | Changes the shared ingress normaliser (D-DOC3): needs Ilan |
+| DOC-05 | **"Send me the latest X drawing"** on WhatsApp: `find_documents` + `send_document`, current revisions only, restricted papers only to their roles | M | Must | DOC-01 | todo | | |
+| DOC-06 | **Expiry reminders** for permits, insurance, guarantees (15 and 3 days before) | S | Should | DOC-01 | todo | | |
+| DOC-07 | **Handover pack:** as-built drawings, warranties, test reports gathered for the client at handover | M | Should | DOC-01 | todo | | With the end-of-project plan |
+| DOC-08 | Search inside documents (PDF text) | M | Later | DOC-01 | todo | | BE-52 semantic search is blocked; plain PDF text search first |
 
 ---
 

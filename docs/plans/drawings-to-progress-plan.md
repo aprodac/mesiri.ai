@@ -116,6 +116,10 @@ side panel with photo history, pour readiness card. Same design system tokens.
 
 ## Database work (additive only)
 
+> **8 Nov 2026:** the drawing register (step 1, DRW-02) is built as the general project documents register,
+> [project-documents-plan.md](project-documents-plan.md) (DOC-01/02): `project_documents` with folder `drawing` replaces
+> `project_drawings` below; `drawing_sheets` will reference `project_documents.id`.
+
 - `project_drawings` (file, hash, uploaded by, status).
 - `drawing_sheets` (drawing, page, sheet number, title, revision, date, level, page image
   key, review status).
