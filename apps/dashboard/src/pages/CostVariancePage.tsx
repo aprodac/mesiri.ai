@@ -2,6 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, HardHat, Package, Ruler, TrafficCone } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip, type StatTone } from '@/components/dpr-page'
+import { CostExportButton } from '@/components/cost/export-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { formatQuantity, formatRupees, maySeeBoq } from '@/lib/boq'
@@ -216,7 +217,15 @@ export default function CostVariancePage() {
     )
   }
   const title = scope.mode === 'site' ? `${scope.projectName} · ${scope.siteName}` : scope.mode === 'project' ? scope.projectName : 'Pick a project'
-  const header = <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Green / red" date={title} />
+  const header = (
+    <DprHeader
+      back={{ to: '/cost', label: 'Overview' }}
+      crumb="Cost control"
+      title="Green / red"
+      date={title}
+      action={projectId ? <CostExportButton projectId={projectId} projectName={scope.mode !== 'portfolio' ? scope.projectName : undefined} period={{ date_from: dateFrom, date_to: dateTo }} /> : undefined}
+    />
+  )
   if (!projectId) {
     return (
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">

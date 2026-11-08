@@ -276,6 +276,21 @@ export async function fetchProjectMaterials(projectId: string): Promise<ProjectM
   return (await api.get<ProjectMaterials>(`/cost/projects/${projectId}/materials`)).data
 }
 
+/** CC-21: Summary, BOQ lines, Green-red (for the period; default the last 7 days) and Materials as one workbook. */
+export async function downloadCostExcel(
+  projectId: string,
+  period?: { date_from: string; date_to: string },
+  projectName?: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await api.get(`/cost/projects/${projectId}/export`, { params: period, responseType: 'blob' })
+  // The API's own name when the browser may read it (same origin); else the same name made here, since the
+  // dashboard's API host does not expose Content-Disposition to the page.
+  const match = /filename="([^"]+)"/.exec(String(res.headers['content-disposition'] ?? ''))
+  const slug = (projectName ?? 'project').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project'
+  const day = period?.date_to ?? new Date().toISOString().slice(0, 10)
+  return { blob: res.data as Blob, filename: match?.[1] ?? `mesiri-cost-${slug}-${day}.xlsx` }
+}
+
 // Mirrors backend MONEY_MANAGE_ROLES: who may change a category's cost centre.
 export const mayManageMoney = (role: string | null | undefined) =>
   ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'].includes(String(role ?? '').toUpperCase())

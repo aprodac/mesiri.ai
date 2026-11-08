@@ -652,13 +652,19 @@ async def project_materials(
 
     The same inputs as the material plan (MP-02: the lines' norms, work done per line, stock and open orders), so the
     two never disagree. Lines with no norms are counted (``lines_without_norms``): their materials are not here."""
+    await _project_repo(auth, conn, project_id)
+    return await materials_for(conn, auth.organization_id, project_id)
+
+
+async def materials_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> dict:
+    """The materials read itself, for the route and the Excel export (CC-21)."""
     from mesiri.domains.costing.materials import reconcile
     from mesiri.domains.materials.plan_router import _lines, _stock
     from mesiri.domains.schedule.store import measured_by_line
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
     from mesiri.infrastructure.postgres.repositories.materials import PostgresMaterialReadRepository
 
-    repo = await _project_repo(auth, conn, project_id)
-    org = auth.organization_id
+    repo = PostgresBoqRepository(conn)
     today = await _today(conn, org)
     lines = await _lines(conn, org, project_id, None)
     done = await measured_by_line(conn, org, project_id)
@@ -675,7 +681,7 @@ async def project_materials(
     all_lines = await repo.list_lines(org, project_id)
 
     def out(v):
-        return str(v) if isinstance(v, Decimal) else (str(v) if isinstance(v, uuid.UUID) else v)
+        return str(v) if isinstance(v, Decimal | uuid.UUID) else v
 
     return {
         "project_id": str(project_id), "date": str(today),
@@ -684,3 +690,40 @@ async def project_materials(
         "summary": {c: sum(1 for r in rows if r["colour"] == c) for c in ("red", "amber", "green", "grey")},
         "short_at_completion": sum(1 for r in rows if r["short_by"] is not None and r["short_by"] > 0),
     }
+
+
+
+# -- CC-21: Excel export --------------------------------------------------------------------------------------------
+
+
+@router.get("/projects/{project_id}/export")
+async def export_project(
+    project_id: uuid.UUID,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Budget vs actual, green / red for a period (default the last 7 days) and materials vs BOQ as one Excel
+    workbook for the CA or the MD: the same reads as the pages (``budget_for``, ``variance_for``,
+    ``materials_for``), written by ``domains/costing/export.py``."""
+    from fastapi.responses import Response
+
+    from mesiri.domains.costing.export import workbook
+
+    await _project_repo(auth, conn, project_id)
+    org = auth.organization_id
+    date_to = date_to or await _today(conn, org)
+    date_from = date_from or date_to - datetime.timedelta(days=6)
+    if date_from > date_to or (date_to - date_from).days > 731:
+        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
+    name = (await conn.execute(text("SELECT name FROM projects WHERE id = :p"), {"p": project_id})).scalar() or "Project"
+    data = workbook(
+        name,
+        await budget_for(conn, org, project_id, _scope(auth, project_id, None)),
+        await variance_for(conn, org, project_id, date_from, date_to, None, _scope(auth, project_id, None)),
+        await materials_for(conn, org, project_id),
+    )
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in name).strip("-")[:40] or "project"
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="mesiri-cost-{safe}-{date_to}.xlsx"'})

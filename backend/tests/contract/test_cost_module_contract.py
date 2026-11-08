@@ -474,3 +474,30 @@ async def test_materials_used_are_set_against_what_the_work_needed(client, ctx, 
     assert (row["received"], row["used"], row["on_hand"]) == ("60.00", "4.00", "56.00")
     assert (row["colour"], row["used_over_work"], row["short_by"]) == ("red", "0.98", "26.03")
     assert body["lines_without_norms"] == 1 and body["short_at_completion"] == 1
+
+
+# -- CC-21: Excel export --------------------------------------------------------------------------------------------
+
+
+async def test_the_excel_export_has_the_same_figures_as_the_pages(client, ctx, test_engine):
+    import io
+
+    from openpyxl import load_workbook
+
+    h, p = _h(ctx["admin"]), ctx["project"]
+    plaster, _ = await _boq_lines(client, ctx)
+    await _attendance(test_engine, ctx, [("mason", 4, "1100", None)], days_ago=1)
+    await _work(test_engine, ctx, plaster["id"], "sqft", "300", 1)
+    day = (await client.get(f"/cost/projects/{p}/labour", headers=h)).json()["groups"][0]["date"]
+    await client.put(f"/cost/projects/{p}/labour", headers=h, json={
+        "site_id": str(ctx["site"]), "date": day, "trade": "mason", "lines": [{"line_id": plaster["id"], "man_days": "4"}]})
+    r = await client.get(f"/cost/projects/{p}/export", headers=h)
+    assert r.status_code == 200 and r.headers["content-disposition"].startswith('attachment; filename="mesiri-cost-Villa-')
+    book = load_workbook(io.BytesIO(r.content))
+    assert book.sheetnames == ["Summary", "BOQ lines", "Green-red", "Materials"]
+    labour = next(row for row in book["Summary"].iter_rows(values_only=True) if row[0] == "Labour")
+    assert (labour[2], labour[3]) == (4200, 4400)  # earned, spent: numbers Excel can add
+    first = next(book["Green-red"].iter_rows(min_row=2, values_only=True))
+    assert first[:3] == ("amber", "near budget", "Internal plastering 12mm")
+    _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
+    assert (await client.get(f"/cost/projects/{p}/export", headers=_h(engineer))).status_code == 403

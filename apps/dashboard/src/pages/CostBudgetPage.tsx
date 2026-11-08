@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calculator, ChevronRight, ClipboardCheck, HardHat, Scale } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
+import { CostExportButton } from '@/components/cost/export-button'
 import { LabourGroupRow } from '@/components/cost/labour-to-lines'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
@@ -172,7 +173,7 @@ export default function CostBudgetPage() {
     )
   }
   const header = (
-    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Budget vs actual" date={projectId ? scope.mode !== 'portfolio' ? scope.projectName : '' : 'Pick a project'} />
+    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Budget vs actual" date={projectId ? scope.mode !== 'portfolio' ? scope.projectName : '' : 'Pick a project'} action={projectId ? <CostExportButton projectId={projectId} projectName={scope.mode !== 'portfolio' ? scope.projectName : undefined} /> : undefined} />
   )
   if (!projectId) {
     return (
