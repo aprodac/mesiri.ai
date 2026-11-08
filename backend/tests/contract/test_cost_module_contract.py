@@ -501,3 +501,20 @@ async def test_the_excel_export_has_the_same_figures_as_the_pages(client, ctx, t
     assert first[:3] == ("amber", "near budget", "Internal plastering 12mm")
     _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
     assert (await client.get(f"/cost/projects/{p}/export", headers=_h(engineer))).status_code == 403
+
+
+# -- SEC-04: who may add or rename an expense category --------------------------------------------------------------
+
+
+async def test_only_money_roles_add_or_rename_expense_categories(client, ctx, test_engine):
+    tea = ctx["cats"]["Tea and snacks"]
+    for role in ("SITE_ENGINEER", "PROJECT_MANAGER", "SUPERVISOR"):
+        _, token = await _user(test_engine, ctx["org"], role)
+        h = _h(token)
+        assert (await client.post("/expenses/categories", json={"name": f"Diesel {role}"}, headers=h)).status_code == 403
+        assert (await client.patch(f"/expenses/categories/{tea}", json={"name": "Food"}, headers=h)).status_code == 403
+        assert (await client.get("/expenses/categories", headers=h)).status_code == 200  # reading stays open
+    _, finance = await _user(test_engine, ctx["org"], "FINANCE")
+    r = await client.post("/expenses/categories", json={"name": "Diesel"}, headers=_h(finance))
+    assert r.status_code == 201
+    assert (await client.patch(f"/expenses/categories/{tea}", json={"name": "Tea"}, headers=_h(ctx["admin"]))).status_code == 200

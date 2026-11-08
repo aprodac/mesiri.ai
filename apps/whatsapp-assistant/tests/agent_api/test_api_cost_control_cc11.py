@@ -44,3 +44,8 @@ def test_guard_rates_centres_and_categories_are_not_changed_on_whatsapp() -> Non
     paths = {(a.method, a.path) for a in ALLOWED}
     assert ("PATCH", "/cost/categories/{category_id}") not in paths
     assert not any(p.startswith("/projects/{project_id}/boq") and m != "GET" for m, p in paths)
+
+
+def test_sec04_a_new_category_is_for_money_roles_and_an_unknown_one_is_uncategorized() -> None:
+    assert "`add_expense_category`" in SOP and "only the owner, an admin or finance may" in SOP
+    assert "a category it does not know is kept under Uncategorized" in SOP

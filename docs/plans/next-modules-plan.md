@@ -136,7 +136,7 @@ idle / breakdown hours, diesel, hire rate.**
 |---|---|---|
 | D-N1 | RA bill quantity: from site-measured quantities, or typed by the office? | **Measured, editable by the office before submit, change recorded** |
 | D-N2 | Subcontractor: a vendor kind, or a Workforce contractor? | **Vendor kind** (no Workforce change); Workforce contractor teams link to it later |
-| D-N3 | Who sees client bills and receivables? | **Owner, admin, finance** (needs Ilan: permissions) |
+| D-N3 | Who sees client bills and receivables? | **Decided 8 Nov (Ilan, the default): owner, admin, finance** |
 | D-N4 | Wages and advances: in Mesiri, or left to payroll? | Needs Ilan (Workforce / Payroll) |
 | D-N5 | Equipment: what to record per machine per day | **Decided 7 Nov (Ilan):** name, owned or hired, hours worked, idle / breakdown hours, diesel, hire rate |
 
