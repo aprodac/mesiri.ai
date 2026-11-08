@@ -78,7 +78,7 @@ def test_the_reported_material_request_slip_is_structured_not_the_models_sentenc
     slip = slip_for([entry], _ctx(), ({CEMENT_ID: "Cement"}, {BAGS: "bags"}))
     (line,) = slip.lines
     assert (line.title, line.quantity, line.unit) == ("Cement", "50", "bags")
-    assert line.note == "Material request · Main block" and "venam" not in line.note
+    assert line.kind == "request" and line.note == "Main block" and "venam" not in line.note
 
 
 def test_siblings_close_issue_and_order_are_structured_too() -> None:
@@ -89,10 +89,11 @@ def test_siblings_close_issue_and_order_are_structured_too() -> None:
                                "material_id": CEMENT_ID, "quantity": 100, "unit_id": BAGS, "rate": 380},
                          summary="ABC Traders-inu order", idempotency_key="o1")
     slip = slip_for([close, order], _ctx(), ({CEMENT_ID: "Cement"}, {BAGS: "bags"}),
-                    targets={ISSUE: "Equipment · Water tank leak"})
+                    targets={ISSUE: "Water tank leak"})
     first, second = slip.lines
-    assert first.title == "Close issue" and first.kind == "issue" and first.note == "Equipment · Water tank leak · fixed"
-    assert second.title == "Cement" and second.note == "Purchase order · ABC Traders · ₹380 each · Main block"
+    assert (first.title, first.kind, first.note) == ("Water tank leak", "issue_close", "fixed")
+    assert (second.title, second.kind) == ("Cement", "order")
+    assert second.note == "ABC Traders · ₹380 each · Main block"
     assert "cheyyan" not in first.note and "order" not in second.title
 
 
@@ -102,7 +103,7 @@ def test_the_text_under_the_slip_is_structured_then_one_human_line() -> None:
                                "unit_id": BAGS}, summary="x", idempotency_key="r1")
     lines = caption_lines(slip_for([entry], _ctx(), ({CEMENT_ID: "Cement"}, {BAGS: "bags"})))
     text = with_structured(lines, "Ithu sheri aanenkil *Save* amarthuka.")
-    assert text == "1. *Cement* · Material request · Main block · 50 bags\n\nIthu sheri aanenkil *Save* amarthuka."
+    assert text == "1. 📝 Request: *Cement* · Main block · 50 bags\n\nIthu sheri aanenkil *Save* amarthuka."
 
 
 def test_guard_a_long_list_fits_whatsapps_limit_and_keeps_the_human_line() -> None:

@@ -105,7 +105,7 @@ def test_the_slip_carries_every_line_so_the_text_keeps_none() -> None:
     assert wa.without_listed_lines(text, entries, "english") == "Ithaa."
     slip = slip_for(entries, CTX, ({}, {}))
     assert [(ln.number, ln.kind, ln.title, ln.new) for ln in slip.lines] == [
-        (1, "list", "Wash Basin", True), (2, "material", "Material", False)]
+        (1, "list", "Wash Basin", True), (2, "receipt", "Material", False)]  # WA-262: a delivery has its own kind
 
 
 def test_slip_rows_in_plain_words() -> None:

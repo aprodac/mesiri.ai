@@ -96,7 +96,7 @@ async def test_a_previewed_send_card_is_captioned_with_the_send_line() -> None:
     assert reply.header_image == b"PREVIEW"
     # WA-259: the structured line as on the slip, then the Send line (the human line when the model said nothing else).
     structured, human = reply.text.strip().split("\n\n")
-    assert structured.startswith("1. *Send today's report*") and "Green Villa" in structured
+    assert structured.startswith("1. 📤 Send: *Send today's report*") and "Green Villa" in structured
     assert human in (wa.PRESS_SEND, say("api.press_send", "manglish"))
 
 

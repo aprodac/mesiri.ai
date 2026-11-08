@@ -73,9 +73,8 @@ async def preview_slip(entries: list[PendingWrite], ctx: Any, client: ApiClient)
 
 
 #: WA-259: the lists a line's record is named from (by the path it acts on) and how a row is named.
-_TARGET_LISTS = (("/progress/issues/", "/progress/issues", lambda r: " · ".join(
-                     p for p in (str(r.get("issue_type") or "").replace("_", " ").title(),
-                                 _clean(r.get("narrative"), 40)) if p)),
+_TARGET_LISTS = (("/progress/issues/", "/progress/issues", lambda r: _clean(r.get("narrative"), 40) or str(
+                     r.get("issue_type") or "").replace("_", " ").title()),
                  ("/procurement/requests/", "/procurement/requests", lambda r: str(r.get("ref") or "")),
                  ("/procurement/orders/", "/procurement/orders", lambda r: " · ".join(
                      p for p in (str(r.get("ref") or ""), str(r.get("vendor_name") or "")) if p)))
@@ -141,14 +140,14 @@ def _line(number: int, entry: PendingWrite, material: dict[str, str], unit: dict
     body, tool = entry.body, entry.tool
     if tool in _MATERIAL_TOOLS:
         raw = str(body.get("material_id") or "")
-        note = {"record_receipt": "came to site", "record_usage": "used"}.get(tool, "moved")
+        note = ""  # WA-262: the row's tag says delivery / used / transfer
         if tool == "record_receipt" and body.get("supplier"):
             note = f"from {_clean(body['supplier'], 30)}"
         elif tool == "record_usage" and body.get("work_item"):
             note = f"used for {_clean(body['work_item'], 30)}"
         elif tool == "record_transfer":
             note = f"to {sites.get(str(body.get('to_site_id')), 'another site')}"
-        return SlipLine(number, "material", _material_name(raw, material), note, _amount(body.get("quantity")),
+        return SlipLine(number, kind_of(tool), _material_name(raw, material), note, _amount(body.get("quantity")),
                         unit.get(str(body.get("unit_id")), ""), new=raw.startswith(NEW))
     if tool == "record_attendance":
         rows = [ln for ln in body.get("lines") or [] if isinstance(ln, dict)]
@@ -202,6 +201,23 @@ TITLES: dict[str, str] = {
     "add_person": "Add person",
 }
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+#: WA-262: each tool's look on the slip (channel/receipt/draft_slip.KINDS): its own colour, icon and label.
+_KIND_BY_TOOL = {
+    "record_receipt": "receipt", "record_usage": "usage", "record_transfer": "transfer",
+    "ask_for_material": "request", "change_material_request": "request", "cancel_material_request": "request",
+    "decide_material_request": "request", "place_order": "order", "change_order": "order", "cancel_order": "order",
+    "close_order": "order", "delivery_order": "order", "report_issue": "issue", "acknowledge_issue": "issue",
+    "wont_fix_issue": "issue", "resolve_issue": "issue_close", "record_expense": "expense",
+    "pay_expense": "payment", "pay_supplier": "payment", "send_dpr": "send", "record_attendance": "labour",
+    "record_work": "work", "correct_work": "work",
+}
+
+
+def kind_of(tool: str) -> str:
+    """WA-262: the slip kind of a tool; a take-back has its own; anything else is a setting."""
+    return _KIND_BY_TOOL.get(tool) or ("undo" if tool.startswith("undo_") else "list")
+
+
 #: Lines the CODE wrote in English (a size, a correction): their own words are already structured.
 _CODE_DRAWN = ("📏", "✏️", "📤")
 #: Body fields that say which / who / why, in the order shown.
@@ -214,7 +230,7 @@ def _structured(number: int, entry: PendingWrite, material: dict[str, str], unit
     title = TITLES.get(tool) or tool.replace("_", " ").capitalize()
     summary = without_ids(entry.summary or "").strip()
     if summary.startswith(_CODE_DRAWN):
-        return SlipLine(number, "list", title, _clean(summary.lstrip("".join(_CODE_DRAWN)).strip(), 70))
+        return SlipLine(number, kind_of(tool), title, _clean(summary.lstrip("".join(_CODE_DRAWN)).strip(), 70))
     place = sites.get(str(body.get("site_id") or ""), "")
     items = [ln for ln in body.get("lines") or [] if isinstance(ln, dict) and ln.get("material_id")]
     if body.get("material_id") and body.get("quantity") is not None:
@@ -228,28 +244,43 @@ def _structured(number: int, entry: PendingWrite, material: dict[str, str], unit
         details.append(f"by {body['needed_by']}")
     if place:
         details.append(place)
-    note = " · ".join(dict.fromkeys(d for d in [title, *details] if d))
+    # WA-262: the row's tag says what it is (REQUEST, ORDER, ISSUE CLOSED): the note keeps only which / who / where.
+    note = " · ".join(dict.fromkeys(d for d in details if d))
+    kind = kind_of(tool)
+    target = next((targets[v] for v in _UUID.findall(entry.path or "") if v in targets), "")
+    if target and not items:
+        rest = [d for d in dict.fromkeys(details) if d and d != target]
+        return SlipLine(number, kind, _clean(target, 40), _clean(" · ".join(rest), 70))
     if len(items) == 1:
         one = items[0]
-        return SlipLine(number, "material", _material_name(one.get("material_id"), material), _clean(note, 70),
+        return SlipLine(number, kind, _material_name(one.get("material_id"), material), _clean(note, 70),
                         _amount(one.get("quantity")), unit.get(str(one.get("unit_id")), ""))
     if items:
         listed = ", ".join(f"{_material_name(i.get('material_id'), material)} {_amount(i.get('quantity'))} "
                            f"{unit.get(str(i.get('unit_id')), '')}".strip() for i in items[:3])
-        return SlipLine(number, "material", title, _clean(" · ".join([listed, *details]), 70))
-    kind = "issue" if (entry.path or "").startswith("/progress/issues") else "list"
+        return SlipLine(number, kind, title, _clean(" · ".join([listed, *details]), 70))
     return SlipLine(number, kind, title, _clean(" · ".join(dict.fromkeys(details)), 70))
 
 
 def caption_lines(slip: Slip) -> list[str]:
     """WA-259: the slip's lines as text, the same structured words the picture shows (English, numbered as ✏️ Edit
     numbers them), for the message the picture rides on."""
+    from channel.receipt.draft_slip import KINDS
+
     out = []
     for line in slip.lines:
         amount = " ".join(p for p in (line.quantity, line.unit) if p)
+        label = KINDS.get(line.kind, KINDS["list"])[3].capitalize()
         parts = [f"*{line.title}*", line.note, amount]
-        out.append(f"{line.number}. " + " · ".join(p for p in parts if p))
+        # WA-262: the kind first, as on the picture ("📝 Request: *Cement* · Main block · 50 bags").
+        out.append(f"{line.number}. {KIND_EMOJI.get(line.kind, '⚙️')} {label}: " + " · ".join(p for p in parts if p))
     return out
+
+
+#: WA-262: each kind's mark in the text lines (the picture has its colour and icon).
+KIND_EMOJI = {"receipt": "📥", "usage": "🏗️", "transfer": "🔁", "request": "📝", "order": "🛒", "labour": "👷",
+              "work": "🛠️", "issue": "⚠️", "issue_close": "✔️", "expense": "💸", "payment": "💰", "undo": "↩️",
+              "send": "📤", "list": "⚙️", "material": "📦"}
 
 
 async def saved_card(builder: Any, results: list[WriteResult], ctx: Any, client: ApiClient,
