@@ -10,6 +10,8 @@ export interface BoqTotals {
   margin: string | null
   lines_without_client_rate: number
   lines_without_budget_rate: number
+  /** CC-04: budget earned by the work done; null when no priced line has work. */
+  earned?: string | null
 }
 
 export interface BoqLine {
@@ -30,6 +32,32 @@ export interface BoqLine {
   margin: string | null
   revision_no: number
   sort_order: number
+  // CC-04: work done against the line, in its own unit, and the budget it earned.
+  done_quantity: string
+  remaining_quantity: string
+  percent_done: string | null
+  over_planned: boolean
+  earned_labour: string | null
+  earned_material: string | null
+  earned_subcontract: string | null
+  earned: string | null
+  /** Work put on the line in another unit: never added in, said instead. */
+  done_in_other_unit: number
+}
+
+/** A recorded work quantity (a site's work update) and the BOQ line it is counted on. */
+export interface BoqWork {
+  id: string
+  date: string
+  site_id: string | null
+  site_name: string | null
+  work: string | null
+  quantity: string
+  unit: string
+  line_id: string | null
+  on_work_order: boolean
+  /** Offered for a person to confirm; never saved by itself. */
+  suggested_line_id: string | null
 }
 
 export interface BoqSection {
@@ -93,6 +121,15 @@ export async function updateLine(projectId: string, lineId: string, body: Partia
 
 export async function deleteLine(projectId: string, lineId: string) {
   await api.delete(`${base(projectId)}/lines/${lineId}`)
+}
+
+export async function fetchBoqWork(projectId: string, unlinked = true): Promise<BoqWork[]> {
+  return (await api.get<{ work: BoqWork[] }>(`${base(projectId)}/work`, { params: { unlinked } })).data.work
+}
+
+/** Count a work quantity on a BOQ line, or take it off (null). */
+export async function putWorkOnLine(projectId: string, quantityId: string, lineId: string | null) {
+  await api.put(`${base(projectId)}/work/${quantityId}`, { line_id: lineId })
 }
 
 /** "18,000" for a quantity; trailing zeros of the 3 decimals dropped. */

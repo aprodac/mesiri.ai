@@ -206,9 +206,11 @@ async def test_progress_comes_from_site_reports_and_late_work_pushes_what_follow
     assert f["pushed_days"] > 0
     assert sched["summary"]["slip_days"] > 0 and sched["summary"]["counts"]["late"] == 1
 
-    # "Total so far is 100" replaces the daily figures: it is done.
-    await _measure(test_engine, ctx, line, "100", today, kind="CUMULATIVE")
+    # The rest measured: it is done, and the BOQ page's "Done" says the same (one rule, CC-04).
+    await _measure(test_engine, ctx, line, "40", today)
     assert _act(await _schedule(client, ctx), exc)["state"] == "done"
+    boq = (await client.get(f"/projects/{ctx['project']}/boq", headers=_h(ctx["admin"]))).json()
+    assert boq["sections"][0]["lines"][0]["done_quantity"].startswith("100")
 
 
 async def test_mark_done_and_quick_plan(client, ctx):

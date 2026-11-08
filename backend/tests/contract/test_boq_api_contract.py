@@ -245,3 +245,140 @@ async def test_who_may_see_the_boq(client, ctx, test_engine):
     other_org = await _org(test_engine)
     stranger = await _user(test_engine, other_org, "admin")
     assert (await client.get(url, headers=_h(stranger))).status_code == 404
+
+
+# -- CC-04: work done against the lines -----------------------------------------------------------
+
+
+async def _work(engine, ctx, *, quantity: str, unit: str, work: str = "M20 concrete slab", project=None) -> str:
+    """A site's work update with one quantity, as the DPR saves it; returns the quantity's id."""
+    project = project or ctx["project"]
+    activity_id, quantity_id = uuid.uuid4(), uuid.uuid4()
+    async with engine.begin() as conn:
+        site_id = (await conn.execute(sa.text("SELECT id FROM sites WHERE project_id = :p"), {"p": project})).scalar_one()
+        unit_id = (await conn.execute(sa.text("SELECT id FROM units_of_measure WHERE code = :u"), {"u": unit})).scalar_one()
+        await conn.execute(
+            sa.text(
+                "INSERT INTO activities (id, organization_id, project_id, site_id, work_type, activity_date, source) "
+                "VALUES (:id, :org, :p, :s, :w, current_date, 'dashboard')"
+            ),
+            {"id": activity_id, "org": ctx["org"], "p": project, "s": site_id, "w": work},
+        )
+        await conn.execute(
+            sa.text("INSERT INTO activity_quantities (id, activity_id, unit_id, quantity) VALUES (:id, :a, :u, :q)"),
+            {"id": quantity_id, "a": activity_id, "u": unit_id, "q": Decimal(quantity)},
+        )
+    return str(quantity_id)
+
+
+async def _concrete(client, ctx) -> tuple[dict, str]:
+    section = await _section(client, ctx, name="Concrete work")
+    line = await _add_line(
+        client, ctx, section["id"], work="M20 concrete in slab", unit="cum", planned_quantity="100",
+        labour_rate="1500", material_rate="3500",
+    )
+    return line, f"/projects/{ctx['project']}/boq"
+
+
+def _line_in(boq: dict, line_id: str) -> dict:
+    return next(ln for s in boq["sections"] for ln in s["lines"] if ln["id"] == line_id)
+
+
+async def test_work_put_on_a_line_counts_once_and_earns_by_kind(client, ctx, test_engine):
+    line, url = await _concrete(client, ctx)
+    q = await _work(test_engine, ctx, quantity="8", unit="cum")
+    h = _h(ctx["admin"])
+
+    listed = (await client.get(f"{url}/work?unlinked=true", headers=h)).json()["work"]
+    assert [w["id"] for w in listed] == [q]
+    assert listed[0]["suggested_line_id"] == line["id"]  # offered, not saved
+    assert _line_in((await client.get(url, headers=h)).json(), line["id"])["done_quantity"] == "0"
+
+    for _ in range(2):  # put on the line twice: still counted once
+        assert (await client.put(f"{url}/work/{q}", json={"line_id": line["id"]}, headers=h)).status_code == 204
+    got = _line_in((await client.get(url, headers=h)).json(), line["id"])
+    assert Decimal(got["done_quantity"]) == 8 and Decimal(got["remaining_quantity"]) == 92
+    assert got["earned_labour"] == "12000.00" and got["earned_material"] == "28000.00" and got["earned"] == "40000.00"
+    assert (await client.get(f"{url}/work?unlinked=true", headers=h)).json()["work"] == []
+
+    assert (await client.put(f"{url}/work/{q}", json={"line_id": None}, headers=h)).status_code == 204
+    assert Decimal(_line_in((await client.get(url, headers=h)).json(), line["id"])["done_quantity"]) == 0
+
+
+async def test_work_stays_on_the_line_through_a_quantity_revision(client, ctx, test_engine):
+    line, url = await _concrete(client, ctx)
+    q = await _work(test_engine, ctx, quantity="8", unit="cum")
+    h = _h(ctx["admin"])
+    await client.put(f"{url}/work/{q}", json={"line_id": line["id"]}, headers=h)
+    revised = await client.patch(f"{url}/lines/{line['id']}", json={"planned_quantity": "120", "revision_reason": "Balcony"}, headers=h)
+    got = _line_in((await client.get(url, headers=h)).json(), revised.json()["id"])
+    assert Decimal(got["done_quantity"]) == 8 and Decimal(got["remaining_quantity"]) == 112
+    work = (await client.get(f"{url}/work", headers=h)).json()["work"]
+    assert work[0]["line_id"] == revised.json()["id"]
+
+
+async def test_removed_work_and_other_units_are_not_added(client, ctx, test_engine):
+    line, url = await _concrete(client, ctx)
+    h = _h(ctx["admin"])
+    sqft = await _work(test_engine, ctx, quantity="400", unit="sqft")
+    r = await client.put(f"{url}/work/{sqft}", json={"line_id": line["id"]}, headers=h)
+    assert r.status_code == 422 and "cum" in r.json()["detail"]
+
+    q = await _work(test_engine, ctx, quantity="5", unit="cum")
+    await client.put(f"{url}/work/{q}", json={"line_id": line["id"]}, headers=h)
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE activities SET deleted_at = now() FROM activity_quantities q WHERE q.activity_id = activities.id AND q.id = :q"),
+            {"q": q},
+        )
+    assert Decimal(_line_in((await client.get(url, headers=h)).json(), line["id"])["done_quantity"]) == 0
+    assert (await client.put(f"{url}/work/{q}", json={"line_id": None}, headers=h)).status_code == 404
+
+
+async def test_work_of_another_project_or_a_line_elsewhere_is_refused(client, ctx, test_engine):
+    line, url = await _concrete(client, ctx)
+    h = _h(ctx["admin"])
+    other = await _project(test_engine, ctx["org"])
+    elsewhere = await _work(test_engine, ctx, quantity="3", unit="cum", project=other)
+    assert (await client.put(f"{url}/work/{elsewhere}", json={"line_id": line["id"]}, headers=h)).status_code == 404
+    other_url = f"/projects/{other}/boq"
+    assert (await client.put(f"{other_url}/work/{elsewhere}", json={"line_id": line["id"]}, headers=h)).status_code == 422
+
+
+async def test_engineers_do_not_see_or_change_work_on_lines(client, ctx, test_engine):
+    line, url = await _concrete(client, ctx)
+    q = await _work(test_engine, ctx, quantity="8", unit="cum")
+    engineer = _h(await _user(test_engine, ctx["org"], "SITE_ENGINEER"))
+    assert (await client.get(f"{url}/work", headers=engineer)).status_code == 403
+    assert (await client.put(f"{url}/work/{q}", json={"line_id": line["id"]}, headers=engineer)).status_code == 403
+
+
+async def test_work_order_measurements_count_on_the_boq_line_once(client, ctx, test_engine):
+    """A confirmed measurement on a work-order line that is a BOQ line counts; one taken from a
+    site work update does not count again (the work update itself is already on the line)."""
+    line, url = await _concrete(client, ctx)
+    h = _h(ctx["admin"])
+    q = await _work(test_engine, ctx, quantity="4", unit="cum")
+    async with test_engine.begin() as conn:
+        vendor = (await conn.execute(sa.text(
+            "INSERT INTO vendors (id, organization_id, name, status, created_by) VALUES (gen_random_uuid(), :org, 'Concrete team', "
+            "'active', (SELECT id FROM users WHERE organization_id = :org LIMIT 1)) RETURNING id"), {"org": ctx["org"]})).scalar_one()
+        wo = (await conn.execute(sa.text(
+            "INSERT INTO work_orders (organization_id, number, vendor_id, project_id, status) VALUES (:org, 1, :v, :p, 'issued') "
+            "RETURNING id"), {"org": ctx["org"], "v": vendor, "p": ctx["project"]})).scalar_one()
+        wol = (await conn.execute(sa.text(
+            "INSERT INTO work_order_lines (organization_id, work_order_id, planned_item_id, description, unit, quantity, rate) "
+            "VALUES (:org, :wo, :pi, 'M20 concrete in slab', 'm3', 100, 1400) RETURNING id"),
+            {"org": ctx["org"], "wo": wo, "pi": line["id"]})).scalar_one()
+        for qty, status, source, aq in (("6", "confirmed", "web", None), ("9", "proposed", "web", None),
+                                        ("4", "confirmed", "activity", q)):
+            await conn.execute(sa.text(
+                "INSERT INTO work_order_measurements (organization_id, work_order_id, line_id, measured_on, quantity, status, source, "
+                "activity_quantity_id) VALUES (:org, :wo, :l, current_date, :q, :st, :src, :aq)"),
+                {"org": ctx["org"], "wo": wo, "l": wol, "q": Decimal(qty), "st": status, "src": source, "aq": aq})
+        await conn.execute(sa.text("UPDATE activity_quantities SET work_order_line_id = :l, planned_item_id = :pi WHERE id = :q"),
+                           {"l": wol, "pi": line["id"], "q": q})
+    # 6 measured on the web + 4 from the work update; the proposed 9 is not confirmed yet.
+    assert Decimal(_line_in((await client.get(url, headers=h)).json(), line["id"])["done_quantity"]) == 10
+    r = await client.put(f"{url}/work/{q}", json={"line_id": None}, headers=h)
+    assert r.status_code == 409  # changed on the work order, so the two never disagree

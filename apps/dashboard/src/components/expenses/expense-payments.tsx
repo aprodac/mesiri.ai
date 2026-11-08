@@ -20,7 +20,7 @@ export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expe
   const queryClient = useQueryClient()
   const data = useQuery({ queryKey: ['finance', 'expense-payments', expenseId], queryFn: () => fetchExpensePayments(expenseId) })
   const accounts = useQuery({ queryKey: ['finance', 'accounts', 'payable'], queryFn: () => fetchAccountsApi(), enabled: canPay, staleTime: 30_000 })
-  const active = ((accounts.data ?? []) as any[]).filter((a) => a.status !== 'inactive') // eslint-disable-line @typescript-eslint/no-explicit-any
+  const active = ((accounts.data ?? []) as any[]).filter((a) => a.status !== 'inactive' && !String(a.name).startsWith('TDS payable')) // eslint-disable-line @typescript-eslint/no-explicit-any
   const [paying, setPaying] = React.useState(!!startOpen)
   const [account, setAccount] = React.useState('')
   const [amount, setAmount] = React.useState('')

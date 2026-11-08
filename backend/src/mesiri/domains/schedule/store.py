@@ -36,39 +36,15 @@ async def project(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) 
 
 
 async def measured_by_line(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> dict[uuid.UUID, Decimal]:
-    """Quantity measured to date on each current BOQ line of the project (CC-04).
+    """Quantity done to date on each current BOQ line: CC-04's own count (``boq_router.done_by_line``: work updates
+    put on a line, any revision, plus confirmed work-order measurements not from an update; another unit is never
+    added in). One rule, so the BOQ page's "Done" and the Gantt's bars never disagree."""
+    from mesiri.domains.progress.boq_router import done_by_line
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
-    Two sources, never counted twice: work updates counted on a line (``activity_quantities.planned_item_id``, any
-    revision of the line), and confirmed subcontract measurements on a work-order line of that BOQ line that did
-    not come from a work update (``activity_quantity_id`` empty). A work update saying "total so far" (CUMULATIVE)
-    replaces what came before it; updates saying "done today" (ACHIEVED) add up after it.
-    """
-    rev_sql = (
-        "WITH cur AS (SELECT i.id, i.work_package_id, i.work_type, i.unit_id FROM work_package_planned_items i "
-        "  JOIN work_packages w ON w.id = i.work_package_id "
-        "  WHERE w.organization_id = :org AND w.project_id = :p AND i.superseded_by_id IS NULL), "
-        "rev AS (SELECT cur.id AS line_id, any_rev.id AS rev_id FROM cur JOIN work_package_planned_items any_rev "
-        "  ON any_rev.work_package_id = cur.work_package_id AND any_rev.work_type = cur.work_type "
-        "  AND any_rev.unit_id = cur.unit_id) ")
-    one = {"org": org, "p": project_id}
-    updates = (await conn.execute(text(
-        rev_sql + "SELECT rev.line_id, aq.measurement_type::text AS kind, aq.quantity, a.activity_date, aq.created_at "
-        "FROM rev JOIN activity_quantities aq ON aq.planned_item_id = rev.rev_id "
-        "JOIN activities a ON a.id = aq.activity_id AND a.deleted_at IS NULL "
-        "ORDER BY rev.line_id, a.activity_date, aq.created_at"), one)).mappings().all()
-    out: dict[uuid.UUID, Decimal] = defaultdict(Decimal)
-    for r in updates:
-        if r["kind"] == "CUMULATIVE":
-            out[r["line_id"]] = Decimal(r["quantity"])
-        else:
-            out[r["line_id"]] += Decimal(r["quantity"])
-    for line_id, q in (await conn.execute(text(
-            rev_sql + "SELECT rev.line_id, COALESCE(SUM(m.quantity), 0) FROM rev "
-            "JOIN work_order_lines wl ON wl.planned_item_id = rev.rev_id "
-            "JOIN work_order_measurements m ON m.line_id = wl.id "
-            "WHERE m.status = 'confirmed' AND m.activity_quantity_id IS NULL GROUP BY rev.line_id"), one)).all():
-        out[line_id] += Decimal(q)
-    return dict(out)
+    repo = PostgresBoqRepository(conn)
+    lines = await repo.list_lines(org, project_id)
+    return {line_id: v["done"] for line_id, v in (await done_by_line(repo, org, project_id, lines)).items()}
 
 
 async def _sections(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:

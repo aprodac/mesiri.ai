@@ -614,6 +614,8 @@ async def record_bill(wo_id: uuid.UUID, body: BillIn, auth_context: Authorizatio
                     auth_context.user_id, who)
     if not result["flags"]:
         await _settle(conn, auth_context, wo_id, bill_id, body)
+    else:
+        await hold_expense(conn, org, expense_id)
     return {"bill": (await store.fetch_bills(conn, org, bill_id=bill_id))[0], "check": result,
             "work_order": _shown(auth_context, await _one(conn, auth_context, wo_id))}
 
@@ -640,6 +642,13 @@ async def _bill_expense(conn: AsyncConnection, org: uuid.UUID, user_id: uuid.UUI
     if result.status is ExecutionStatus.REJECTED or not result.material_row_id:
         raise HTTPException(status_code=422, detail=f"The bill could not be saved: {result.rejection_reasons}")
     return uuid.UUID(result.material_row_id)
+
+
+async def hold_expense(conn: AsyncConnection, org: uuid.UUID, expense_id: uuid.UUID) -> None:
+    """A bill waiting for its check is not yet owed or a cost: its expense waits for confirmation (Expenses,
+    the supplier ledger, the cost page and payments all count confirmed expenses only)."""
+    await conn.execute(text("UPDATE expenses SET workflow_status = 'pending_confirmation' WHERE id = :e AND organization_id = :org"),
+                       {"e": expense_id, "org": org})
 
 
 async def _settle(conn: AsyncConnection, auth: AuthorizationContext, wo_id: uuid.UUID, bill_id: uuid.UUID,
@@ -717,8 +726,13 @@ async def _decide(conn: AsyncConnection, auth: AuthorizationContext, bill_id: uu
         raise HTTPException(status_code=409, detail=f"{bill['ref']} is {bill['check_status']} already.")
     await conn.execute(text("UPDATE work_order_bills SET check_status = :s, decided_by = :u, decided_at = now(), "
                             "decision_reason = :r WHERE id = :id"), {"s": to, "u": auth.user_id, "r": reason.strip(), "id": bill_id})
+    pending = (await conn.execute(text("SELECT workflow_status FROM expenses WHERE id = :e"), {"e": bill["expense_id"]})).scalar() == "pending_confirmation"
     if to == "approved":
+        if pending:
+            await conn.execute(text("UPDATE expenses SET workflow_status = 'confirmed', updated_at = now() WHERE id = :e"), {"e": bill["expense_id"]})
         await _settle(conn, auth, uuid.UUID(bill["work_order_id"]), bill_id)
+    elif pending:  # never owed: turned down, nothing to take back
+        await conn.execute(text("UPDATE expenses SET workflow_status = 'rejected', updated_at = now() WHERE id = :e"), {"e": bill["expense_id"]})
     else:
         from mesiri.application.finance.reverse_commands import ReverseTransactionCommand
         from mesiri.application.finance.reverse_handler import ReverseTransactionHandler
@@ -791,6 +805,7 @@ async def give_advance(wo_id: uuid.UUID, body: AdvanceIn, auth_context: Authoriz
     wo = await _one(conn, auth_context, wo_id)
     if wo["status"] not in ("draft", "issued"):
         raise HTTPException(status_code=409, detail=f"{wo['ref']} is {wo['status']}.")
+    await store.refuse_tds_account(conn, auth_context.organization_id, body.account_id)
     acc = (await conn.execute(text("SELECT name, status FROM money_accounts WHERE id = :a AND organization_id = :org"),
                               {"a": body.account_id, "org": auth_context.organization_id})).mappings().first()
     if acc is None:
@@ -871,6 +886,56 @@ async def statement_for(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.U
             "as_of": (await _today(conn, org)).isoformat(), "totals": {**totals, "tds": tds},
             "work_orders": [{k: w[k] for k in ("id", "ref", "status", "title", "project_name", "site_name", "lines", "totals", "bills",
                                                 "retention_pct", "start_date", "end_date", "completed_on")} for w in wos]}
+
+
+@router.get("/value")
+async def value(
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    project_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """What checking subcontract bills protected, for a period (default: this month) and since the start: over-billing
+    caught (what flagged bills asked for work not measured or above the agreed rate), stopped (on bills rejected),
+    accepted with a reason, still waiting; bills checked and how many passed first time; advance recovered by itself;
+    retention held. Every figure is read from the bills, never estimated."""
+    _money(auth_context, "see what subcontract checks protected")
+    scope = _scope(auth_context)
+    if project_id is not None:
+        if scope is not None and project_id not in scope:
+            raise HTTPException(status_code=404, detail="Project not found")
+        scope = {project_id}
+    today = await _today(conn, auth_context.organization_id)
+    date_to = date_to or today
+    date_from = date_from or date_to.replace(day=1)
+    wos = await store.fetch(conn, auth_context.organization_id, project_ids=scope)
+    bills = [{**b, "vendor_name": w["vendor_name"], "wo_ref": w["ref"]} for w in wos for b in w["bills"]]
+
+    def figures(rows: list[dict]) -> dict:
+        def total(xs, key="caught"):
+            return store._m(sum((Decimal(b[key]) for b in xs), Decimal(0)))
+        flagged = [b for b in rows if b["flags"]]
+        return {
+            "bills": len(rows), "passed_first_time": len([b for b in rows if not b["flags"]]),
+            "flagged": len(flagged), "billed": total(rows, "gross"),
+            "caught": total(flagged),
+            "stopped": total([b for b in flagged if b["check_status"] == "rejected"]),
+            "accepted": total([b for b in flagged if b["check_status"] == "approved"]),
+            "waiting": total([b for b in flagged if b["check_status"] in ("waiting", "flagged")]),
+            "advance_recovered": total(rows, "advance_recovered"), "tds": total(rows, "tds_amount"),
+        }
+
+    in_period = [b for b in bills if date_from.isoformat() <= b["bill_date"] <= date_to.isoformat()]
+    biggest = sorted((b for b in in_period if b["flags"]), key=lambda b: -Decimal(b["caught"]))[:3]
+    return {
+        "date_from": date_from.isoformat(), "date_to": date_to.isoformat(),
+        "period": figures(in_period), "all_time": figures(bills),
+        "retention_held": store._m(sum((Decimal(w["totals"]["retention_held"]) for w in wos), Decimal(0))),
+        "examples": [{"bill_id": b["id"], "ref": b["ref"], "wo_ref": b["wo_ref"], "work_order_id": b["work_order_id"],
+                      "vendor": b["vendor_name"], "gross": b["gross"], "caught": b["caught"], "status": b["check_status"],
+                      "why": b["flags"][0]["words"] if b["flags"] else None} for b in biggest],
+    }
 
 
 @router.get("/bills/waiting")

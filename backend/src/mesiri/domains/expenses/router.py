@@ -201,6 +201,9 @@ async def record_expense(
         media_object_key=body.media_object_key,
     )
 
+    from mesiri.domains.subcontracts.store import refuse_tds_account
+
+    await refuse_tds_account(conn, auth_context.organization_id, body.account_id)
     if body.media_object_key and not await _photo_is_ours(
         conn, auth_context.organization_id, body.media_object_key
     ):
@@ -879,6 +882,8 @@ async def _payable_expense(conn: AsyncConnection, auth_context: AuthorizationCon
     expense = await PostgresExpenseRepository(conn).get_by_id(auth_context.organization_id, expense_id)
     if expense is None or not _in_scope(expense.project_id, scope):
         raise HTTPException(status_code=404, detail="Expense not found")
+    if expense.workflow_status == "pending_confirmation":
+        raise HTTPException(status_code=409, detail="This bill waits for its check: approve it first (it is not owed yet).")
     if expense.workflow_status != "confirmed":
         raise HTTPException(status_code=409, detail="This expense was taken back.")
     return expense
@@ -953,12 +958,14 @@ async def pay_expense(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Pay an expense (or repay who paid it) from one of the company's accounts."""
+    from mesiri.domains.subcontracts.store import refuse_tds_account
     from mesiri.infrastructure.postgres.repositories.expenses import (
         PostgresExpensePaymentRepository,
     )
     from mesiri.infrastructure.postgres.repositories.finance import PostgresMoneyAccountRepository
 
     expense = await _payable_expense(conn, auth_context, expense_id)
+    await refuse_tds_account(conn, auth_context.organization_id, body.account_id)
     account = await PostgresMoneyAccountRepository(conn).get_by_id(auth_context.organization_id, body.account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")

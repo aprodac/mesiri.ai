@@ -86,7 +86,8 @@ async def fetch(conn: AsyncConnection, org: uuid.UUID, *, project_ids: set[uuid.
     billed = {r["line_id"]: (Decimal(r["q"]), Decimal(r["a"])) for r in (await conn.execute(text(
         "SELECT bl.line_id, SUM(bl.quantity) AS q, SUM(bl.quantity * bl.rate) AS a FROM work_order_bill_lines bl "
         "JOIN work_order_bills b ON b.id = bl.bill_id JOIN expenses e ON e.id = b.expense_id "
-        "WHERE b.work_order_id = ANY(:ids) AND b.check_status <> 'rejected' AND e.workflow_status = 'confirmed' "
+        "WHERE b.work_order_id = ANY(:ids) AND b.check_status <> 'rejected' "
+        "AND e.workflow_status IN ('confirmed', 'pending_confirmation') "
         "GROUP BY bl.line_id"), {"ids": ids})).mappings()}
     bills = await fetch_bills(conn, org, wo_ids=ids)
     advance = {r["work_order_id"]: Decimal(r["given"] or 0) for r in (await conn.execute(text(
@@ -172,8 +173,12 @@ async def fetch_bills(conn: AsyncConnection, org: uuid.UUID, *, wo_ids: list | N
         "SELECT b.*, e.workflow_status, e.payment_status, e.description, w.number AS wo_number, w.vendor_id, "
         "d.full_name AS decided_by_name, sb.full_name AS submitted_by_name, "
         "COALESCE((SELECT SUM(x.amount) FROM expense_payments x WHERE x.expense_id = b.expense_id AND x.status = 'confirmed'), 0) AS paid_all, "
+        # Paid in money: direct payments and payments to the supplier applied to this bill -- not TDS, and not the work
+        # order's advance being recovered (8 Nov 2026: payments made with "Pay supplier" were left out, so paid read 0).
         "COALESCE((SELECT SUM(x.amount) FROM expense_payments x JOIN money_accounts a ON a.id = x.account_id "
-        "  WHERE x.expense_id = b.expense_id AND x.status = 'confirmed' AND x.advance_id IS NULL AND a.name <> :tds), 0) AS paid_cash "
+        "  LEFT JOIN expense_payments adv ON adv.id = x.advance_id "
+        "  WHERE x.expense_id = b.expense_id AND x.status = 'confirmed' AND a.name <> :tds "
+        "  AND (x.advance_id IS NULL OR adv.work_order_id IS NULL)), 0) AS paid_cash "
         "FROM work_order_bills b JOIN expenses e ON e.id = b.expense_id JOIN work_orders w ON w.id = b.work_order_id "
         "LEFT JOIN users d ON d.id = b.decided_by LEFT JOIN users sb ON sb.id = b.submitted_by "
         f"WHERE {' AND '.join(where)} ORDER BY b.number"), {**p, "tds": TDS_ACCOUNT})).mappings()]  # noqa: S608
@@ -189,7 +194,9 @@ async def fetch_bills(conn: AsyncConnection, org: uuid.UUID, *, wo_ids: list | N
                                      "agreed_rate": _m(r["agreed_rate"]), "amount": _m(Decimal(r["quantity"]) * Decimal(r["rate"]))})
     out = []
     for r in rows:
-        status = r["check_status"] if r["workflow_status"] == "confirmed" else "rejected"
+        # A bill waiting for its check is an expense waiting for confirmation: not owed, not a cost, not payable
+        # until it passes or is approved (8 Nov 2026). Taken back (voided / rejected): rejected.
+        status = "rejected" if r["workflow_status"] in ("voided", "rejected") else r["check_status"]
         gross = Decimal(r["gross"])
         left = max(gross - Decimal(r["paid_all"]), Decimal(0))
         held = Decimal(r["retention_amount"]) - Decimal(r["retention_released"])
@@ -198,7 +205,8 @@ async def fetch_bills(conn: AsyncConnection, org: uuid.UUID, *, wo_ids: list | N
             "id": str(r["id"]), "work_order_id": str(r["work_order_id"]), "wo_ref": ref(r["wo_number"]),
             "vendor_id": str(r["vendor_id"]), "expense_id": str(r["expense_id"]), "number": r["number"],
             "ref": bill_ref(r["number"]), "their_bill_no": r["their_bill_no"], "bill_date": r["bill_date"].isoformat(),
-            "gross": _m(gross), "check_status": status, "flags": r["flags"] if isinstance(r["flags"], list) else json.loads(r["flags"] or "[]"),
+            "gross": _m(gross), "check_status": status, "flags": (flags := r["flags"] if isinstance(r["flags"], list) else json.loads(r["flags"] or "[]")),
+            "caught": _m(rules.caught(flags, gross)),
             "retention_amount": _m(r["retention_amount"]), "retention_released": _m(r["retention_released"]),
             "retention_held": _m(held if status in PAYABLE else 0),
             "advance_recovered": _m(r["advance_recovered"]), "tds_pct": _m(r["tds_pct"]) if r["tds_pct"] is not None else None,
@@ -265,3 +273,16 @@ async def tds_account(conn: AsyncConnection, org: uuid.UUID, user_id: uuid.UUID)
         organization_id=org, name=TDS_ACCOUNT, account_type="other", currency="INR", opening_balance=Decimal(0),
         opening_balance_date=datetime.date.today(), created_by=user_id)
     return acc.id
+
+
+async def refuse_tds_account(conn: AsyncConnection, org: uuid.UUID, account_id: Any) -> None:
+    """The TDS payable account only collects TDS deducted (and is paid off by a transfer into it): nothing is paid
+    from it, so money owed to the government is never spent on a supplier."""
+    from fastapi import HTTPException
+
+    if account_id is None:
+        return
+    name = (await conn.execute(text("SELECT name FROM money_accounts WHERE id = :a AND organization_id = :org"),
+                               {"a": account_id, "org": org})).scalar()
+    if name == TDS_ACCOUNT:
+        raise HTTPException(status_code=409, detail="The TDS payable account only collects TDS: pay from a bank or cash account.")

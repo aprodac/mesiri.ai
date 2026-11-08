@@ -1,12 +1,13 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Calculator, CalendarRange, FileSpreadsheet, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Calculator, CalendarRange, ClipboardCheck, FileSpreadsheet, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
@@ -19,15 +20,18 @@ import {
   deleteLine,
   deleteSection,
   fetchBoq,
+  fetchBoqWork,
   formatQuantity,
   formatRupees,
   maySeeBoq,
+  putWorkOnLine,
   updateLine,
   updateSection,
   type Boq,
   type BoqLine,
   type BoqSection,
   type BoqTotals,
+  type BoqWork,
   type LineInput,
 } from '@/lib/boq'
 import { apiErrorMessage } from '@/lib/logo-upload'
@@ -36,8 +40,9 @@ import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 
 // CC-02: a project's Bill of Quantities. Every work item with its quantity, what the client
-// pays per unit, and what it should cost us per unit. Later items (CC-04..07) count the work
-// done and the money spent against these lines, to show green or red each day.
+// pays per unit, and what it should cost us per unit. CC-04: the work done on each line (site
+// work updates put on it, work-order measurements) and the budget that work earned. Later items
+// (CC-05..07) put the money spent against it, to show green or red each day.
 
 const NUM = 'text-right tabular-nums'
 
@@ -55,10 +60,13 @@ function TotalsStrip({ totals }: { totals: BoqTotals }) {
     { label: 'Contract value', hint: 'What the client pays', value: formatRupees(totals.contract_value), cls: '' },
     { label: 'Budget cost', hint: 'What it should cost us', value: formatRupees(totals.budget_cost), cls: '' },
     { label: 'Margin', hint: 'Contract value − budget cost', value: formatRupees(totals.margin), cls: marginClass(totals.margin) },
+    ...(totals.earned !== undefined
+      ? [{ label: 'Earned so far', hint: 'Budget earned by the work done', value: formatRupees(totals.earned), cls: '' }]
+      : []),
   ]
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={cn('grid gap-3', tiles.length > 3 ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3')}>
         {tiles.map((t) => (
           <div key={t.label} className="rounded-lg border px-4 py-3">
             <p className="text-xs text-muted-foreground">{t.label}</p>
@@ -244,17 +252,19 @@ function SectionTable({
     )
   }
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full min-w-[820px] text-sm">
+    <div className="overflow-x-auto rounded-lg border [contain:inline-size]">
+      <table className="w-full min-w-[1040px] text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
             <th className="px-3 py-2 text-left font-medium">No.</th>
             <th className="px-3 py-2 text-left font-medium">Work</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Quantity</th>
+            <th className="px-3 py-2 text-left font-medium">Done</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Client rate</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Budget rate</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Contract value</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Budget cost</th>
+            <th className={cn('px-3 py-2 font-medium', NUM)}>Earned</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Margin</th>
             {!readOnly && <th className="w-10" aria-label="Actions" />}
           </tr>
@@ -270,12 +280,21 @@ function SectionTable({
               <td className={cn('px-3 py-2', NUM)}>
                 {formatQuantity(line.planned_quantity)} <span className="text-muted-foreground">{line.unit}</span>
               </td>
+              <td className="px-3 py-2">
+                <DoneCell line={line} />
+              </td>
               <td className={cn('px-3 py-2', NUM)}>{formatRupees(line.client_rate)}</td>
               <td className={cn('px-3 py-2', NUM)} title={[line.labour_rate && `Labour ₹${line.labour_rate}`, line.material_rate && `Material ₹${line.material_rate}`, line.subcontract_rate && `Subcontract ₹${line.subcontract_rate}`].filter(Boolean).join(' + ')}>
                 {formatRupees(line.budget_rate)}
               </td>
               <td className={cn('px-3 py-2', NUM)}>{formatRupees(line.contract_value)}</td>
               <td className={cn('px-3 py-2', NUM)}>{formatRupees(line.budget_cost)}</td>
+              <td
+                className={cn('px-3 py-2', NUM)}
+                title={[line.earned_labour && `Labour ₹${line.earned_labour}`, line.earned_material && `Material ₹${line.earned_material}`, line.earned_subcontract && `Subcontract ₹${line.earned_subcontract}`].filter(Boolean).join(' + ')}
+              >
+                {Number(line.done_quantity) > 0 ? formatRupees(line.earned) : '—'}
+              </td>
               <td className={cn('px-3 py-2', NUM, marginClass(line.margin))}>{formatRupees(line.margin)}</td>
               {!readOnly && (
                 <td className="px-1 py-1">
@@ -302,17 +321,104 @@ function SectionTable({
         </tbody>
         <tfoot className="border-t bg-muted/30 text-sm">
           <tr>
-            <td className="px-3 py-2" colSpan={5}>
+            <td className="px-3 py-2" colSpan={6}>
               <span className="font-medium">Section total</span>
             </td>
             <td className={cn('px-3 py-2 font-semibold', NUM)}>{formatRupees(section.totals.contract_value)}</td>
             <td className={cn('px-3 py-2 font-semibold', NUM)}>{formatRupees(section.totals.budget_cost)}</td>
+            <td className={cn('px-3 py-2 font-semibold', NUM)}>{formatRupees(section.totals.earned)}</td>
             <td className={cn('px-3 py-2', NUM, marginClass(section.totals.margin))}>{formatRupees(section.totals.margin)}</td>
             {!readOnly && <td />}
           </tr>
         </tfoot>
       </table>
     </div>
+  )
+}
+
+function DoneCell({ line }: { line: BoqLine }) {
+  const done = Number(line.done_quantity)
+  const pct = Math.min(Number(line.percent_done ?? 0), 100)
+  return (
+    <div className="flex min-w-[120px] flex-col gap-1">
+      <span className="tabular-nums">
+        {done > 0 ? formatQuantity(line.done_quantity) : <span className="text-muted-foreground">Nothing yet</span>}
+        {done > 0 && <span className="text-muted-foreground"> · {line.percent_done}%</span>}
+      </span>
+      {done > 0 && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          <div className={cn('h-full rounded-full', line.over_planned ? 'bg-amber-500' : 'bg-primary')} style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {line.over_planned && <span className="text-xs text-amber-700 dark:text-amber-400">More than planned</span>}
+      {line.done_in_other_unit > 0 && (
+        <span className="text-xs text-muted-foreground">{line.done_in_other_unit} in another unit, not added</span>
+      )}
+    </div>
+  )
+}
+
+function formatDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+/** One recorded work quantity not yet on a BOQ line: pick the line (the suggestion is preselected) and confirm. */
+function WorkRow({
+  work,
+  lines,
+  readOnly,
+  saving,
+  onPut,
+}: {
+  work: BoqWork
+  lines: BoqLine[]
+  readOnly: boolean
+  saving: boolean
+  onPut: (lineId: string) => void
+}) {
+  const sameUnit = lines.filter((l) => l.unit === work.unit)
+  const [lineId, setLineId] = React.useState(work.suggested_line_id ?? '')
+  return (
+    <li className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium">{work.work || 'Work update'}</p>
+        <p className="text-xs text-muted-foreground">
+          {formatDay(work.date)}
+          {work.site_name ? ` · ${work.site_name}` : ''} ·{' '}
+          <span className="tabular-nums">
+            {formatQuantity(work.quantity)} {work.unit}
+          </span>
+        </p>
+      </div>
+      {work.on_work_order ? (
+        <span className="text-xs text-muted-foreground">On a work order: change it there</span>
+      ) : sameUnit.length === 0 ? (
+        <span className="text-xs text-muted-foreground">No BOQ line in {work.unit}</span>
+      ) : (
+        !readOnly && (
+          <div className="flex items-center gap-2">
+            <Select value={lineId} onValueChange={setLineId}>
+              <SelectTrigger className="h-9 w-full sm:w-[260px]" aria-label={`BOQ line for ${work.work ?? 'this work'}`}>
+                <SelectValue placeholder="Pick the BOQ line" />
+              </SelectTrigger>
+              <SelectContent>
+                {sameUnit.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.boq_code ? `${l.boq_code} · ` : ''}
+                    {l.work}
+                    {l.id === work.suggested_line_id ? ' (suggested)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" disabled={!lineId || saving} onClick={() => onPut(lineId)}>
+              Count
+            </Button>
+          </div>
+        )
+      )}
+    </li>
   )
 }
 
@@ -331,6 +437,7 @@ export default function ProjectBoqPage() {
 
   const projectQuery = useQuery<Project>({ queryKey: ['project-details', id], queryFn: () => fetchProject(id), enabled: !!id })
   const boqQuery = useQuery<Boq>({ queryKey: ['boq', id], queryFn: () => fetchBoq(id), enabled: !!id && allowed })
+  const workQuery = useQuery<BoqWork[]>({ queryKey: ['boq-work', id], queryFn: () => fetchBoqWork(id), enabled: !!id && allowed })
   usePageTitle(`BOQ · ${projectQuery.data?.name ?? 'Project'}`)
 
   const [lineDialog, setLineDialog] = React.useState<LineDialogState>(null)
@@ -338,7 +445,10 @@ export default function ProjectBoqPage() {
   const [importing, setImporting] = React.useState(false)
   const [confirm, setConfirm] = React.useState<{ kind: 'line'; line: BoqLine } | { kind: 'section'; section: BoqSection } | null>(null)
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['boq', id] })
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['boq', id] })
+    queryClient.invalidateQueries({ queryKey: ['boq-work', id] })
+  }
   const fail = (title: string) => (err: unknown) => toast.error(title, apiErrorMessage(err))
 
   const saveLine = useMutation({
@@ -392,6 +502,15 @@ export default function ProjectBoqPage() {
       refresh()
     },
     onError: fail('Could not remove'),
+  })
+
+  const putWork = useMutation({
+    mutationFn: ({ work, lineId }: { work: BoqWork; lineId: string }) => putWorkOnLine(id, work.id, lineId),
+    onSuccess: () => {
+      toast.success('Counted on the BOQ line')
+      refresh()
+    },
+    onError: fail('Could not count the work'),
   })
 
   const project = projectQuery.data
@@ -450,7 +569,8 @@ export default function ProjectBoqPage() {
 
       <Callout tone="muted" icon={BookOpen}>
         The BOQ (Bill of Quantities) lists every work item in the project: how much, what the client pays per unit, and what it should cost
-        us per unit. Mesiri will compare each day's work and spending against these lines to show green or red.
+        us per unit. Work the site records is counted on its line (Done), with the budget it earned; next, each day's spending is set
+        against it to show green or red.
       </Callout>
 
       {boq.sections.length === 0 ? (
@@ -474,6 +594,26 @@ export default function ProjectBoqPage() {
       ) : (
         <>
           <TotalsStrip totals={boq.totals} />
+          {(workQuery.data?.length ?? 0) > 0 && (
+            <DprSection icon={ClipboardCheck} title="Work done, not on a BOQ line yet" meta={workQuery.data?.length}>
+              <p className="mb-2 text-sm text-muted-foreground">
+                Work the site recorded that isn't counted against the budget yet. Pick its line and press Count; Mesiri suggests one where the
+                words and unit match, but never counts it by itself.
+              </p>
+              <ul className="divide-y rounded-lg border text-sm">
+                {workQuery.data?.map((w) => (
+                  <WorkRow
+                    key={w.id}
+                    work={w}
+                    lines={boq.sections.flatMap((s) => s.lines)}
+                    readOnly={readOnly}
+                    saving={putWork.isPending}
+                    onPut={(lineId) => putWork.mutate({ work: w, lineId })}
+                  />
+                ))}
+              </ul>
+            </DprSection>
+          )}
           <div className="flex flex-col">
             {boq.sections.map((section) => (
               <DprSection

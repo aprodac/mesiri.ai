@@ -11,6 +11,7 @@ import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
 import { WorkOrderDialog } from '@/components/subcontracts/dialogs'
 import { Progress3 } from '@/components/subcontracts/parts'
+import { ValueStrip } from '@/components/subcontracts/value-strip'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { useReadOnly } from '@/lib/trial'
@@ -87,6 +88,8 @@ export default function WorkOrdersPage() {
           {office && <Button className="gap-1.5 font-semibold" onClick={() => setCreating(true)}><Plus className="size-4" /> <span className="hidden sm:inline">New work order</span><span className="sm:hidden">New</span></Button>}
         </div>
       </header>
+
+      {money && <ValueStrip projectId={projectId} />}
 
       <div className={cn('grid grid-cols-2 gap-2 sm:gap-3', money ? 'sm:grid-cols-5' : 'sm:grid-cols-3')}>
         {tiles.map((t) => (

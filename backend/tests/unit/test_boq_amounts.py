@@ -64,3 +64,71 @@ def test_totals_of_nothing():
     empty = totals([])
     assert empty["line_count"] == 0
     assert empty["contract_value"] is None and empty["budget_cost"] is None and empty["margin"] is None
+
+
+# -- CC-04: work done against a line --------------------------------------------------------------
+
+from mesiri.domains.progress.boq import line_progress, suggest_line  # noqa: E402
+
+
+def test_concrete_line_done_left_and_earned_by_kind():
+    # M20 concrete, 100 m³, budget ₹1,500 labour + ₹3,500 material; 8 m³ poured.
+    p = line_progress(_line("100", labour="1500", material="3500"), Decimal("8"))
+    assert p["remaining_quantity"] == Decimal("92")
+    assert p["percent_done"] == Decimal("8.0")
+    assert p["earned_labour"] == Decimal("12000.00")
+    assert p["earned_material"] == Decimal("28000.00")
+    assert p["earned_subcontract"] is None
+    assert p["earned"] == Decimal("40000.00")
+    assert p["over_planned"] is False
+
+
+def test_unpriced_line_earns_nothing_not_zero():
+    p = line_progress(_line("100"), Decimal("8"))
+    assert p["earned"] is None and p["earned_labour"] is None
+
+
+def test_more_done_than_planned_is_said_not_hidden():
+    p = line_progress(_line("10", labour="100"), Decimal("12"))
+    assert p["over_planned"] is True
+    assert p["remaining_quantity"] == Decimal("0")
+    assert p["earned"] == Decimal("1200.00")
+
+
+def test_totals_add_earned_only_when_lines_carry_it():
+    a = {**line_amounts(_line("100", labour="10")), **line_progress(_line("100", labour="10"), Decimal("5"))}
+    b = {**line_amounts(_line("50")), **line_progress(_line("50"), Decimal("5"))}
+    assert totals([a, b])["earned"] == Decimal("50.00")
+    assert "earned" not in totals([line_amounts(_line("100", labour="10"))])
+
+
+_SQFT, _CUM = "u-sqft", "u-cum"
+
+
+def _boq_line(id_, work, unit, section="s1"):
+    return {"id": id_, "work_type": work, "unit_id": unit, "work_package_id": section}
+
+
+def test_suggestion_is_the_same_unit_line_sharing_most_words():
+    lines = [
+        _boq_line("plaster-int", "Internal plastering 12 mm", _SQFT),
+        _boq_line("plaster-ext", "External plastering 20 mm", _SQFT),
+        _boq_line("concrete", "M20 concrete in columns", _CUM),
+    ]
+    assert suggest_line("internal plastering first floor", _SQFT, "s1", lines) == "plaster-int"
+    assert suggest_line("M20 concrete slab", _CUM, "s1", lines) == "concrete"
+
+
+def test_no_suggestion_across_units_or_on_a_tie_or_no_shared_word():
+    lines = [
+        _boq_line("a", "Plastering ceiling", _SQFT, "s1"),
+        _boq_line("b", "Plastering walls", _SQFT, "s1"),
+    ]
+    assert suggest_line("plastering", _CUM, "s1", lines) is None  # another unit: never
+    assert suggest_line("plastering", _SQFT, "s1", lines) is None  # tie: never a guess
+    assert suggest_line("brickwork", _SQFT, "s1", lines) is None
+
+
+def test_the_activitys_own_section_breaks_a_tie():
+    lines = [_boq_line("gf", "Plastering", _SQFT, "ground"), _boq_line("ff", "Plastering", _SQFT, "first")]
+    assert suggest_line("plastering", _SQFT, "first", lines) == "ff"

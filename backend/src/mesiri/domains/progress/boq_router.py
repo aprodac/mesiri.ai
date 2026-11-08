@@ -8,6 +8,12 @@ Mounted at /projects/{project_id}/boq:
   POST   /sections/{section_id}/lines  add a line
   PATCH  /lines/{line_id}         change a line; a new planned quantity is a new revision
   DELETE /lines/{line_id}         remove a line and its history
+  GET    /work                    the project's recorded work quantities and the line each is on (CC-04)
+  PUT    /work/{quantity_id}      put a work quantity on a line, or take it off (line_id null)
+
+Each line also carries the work done against it (CC-04): site work updates put on the line
+plus confirmed work-order measurements that did not come from one, each counted once, in the
+line's own unit; and the budget that work earned (``boq.line_progress``).
 
 The BOQ carries the company's rates and margins, so it is read and written by the
 roles that see the company's spending (``may_view_expenses``: owner, admin, finance,
@@ -21,13 +27,13 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
-from mesiri.domains.progress.boq import line_amounts, totals
+from mesiri.domains.progress.boq import line_amounts, line_progress, suggest_line, totals
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -154,9 +160,50 @@ def _line_out(line: dict) -> dict:
     }
 
 
+async def _done_by_line(
+    repo: PostgresBoqRepository, organization_id: uuid.UUID, project_id: uuid.UUID, lines: list[dict]
+) -> dict[uuid.UUID, dict]:
+    """Per current line: the quantity done in its own unit, and how many records were in another unit.
+
+    A record in another unit is never added in (no conversion): it is counted as "other unit"
+    so the page can say some work could not be added up.
+    """
+    from mesiri.infrastructure.postgres.repositories.materials import UnitsOfMeasureRepository
+
+    current = await repo.current_revision_of(organization_id, project_id)
+    unit_of = {ln["id"]: ln["unit_id"] for ln in lines}
+    units = UnitsOfMeasureRepository(repo.conn)
+    resolved: dict[str, uuid.UUID | None] = {}
+    out: dict[uuid.UUID, dict] = {ln["id"]: {"done": Decimal(0), "other_unit": 0} for ln in lines}
+    for row in await repo.work_done(organization_id, project_id):
+        line_id = current.get(row["item_id"], row["item_id"])
+        if line_id not in out:
+            continue
+        unit_id = row["unit_id"]
+        if unit_id is None:
+            if row["unit_text"] not in resolved:
+                found = await units.resolve_alias(row["unit_text"] or "")
+                resolved[row["unit_text"]] = found["id"] if found else None
+            unit_id = resolved[row["unit_text"]]
+        if unit_id == unit_of[line_id]:
+            out[line_id]["done"] += Decimal(row["quantity"])
+        else:
+            out[line_id]["other_unit"] += 1
+    return out
+
+
+#: ST-04: the schedule's progress reads the same "done" as this page (one rule for work done per line).
+done_by_line = _done_by_line
+
+
 async def _boq(repo: PostgresBoqRepository, organization_id: uuid.UUID, project_id: uuid.UUID) -> dict:
     sections = await repo.list_sections(organization_id, project_id)
-    lines = [_line_out(ln) for ln in await repo.list_lines(organization_id, project_id)]
+    raw = await repo.list_lines(organization_id, project_id)
+    done = await _done_by_line(repo, organization_id, project_id, raw)
+    lines = [
+        {**_line_out(ln), **line_progress(ln, done[ln["id"]]["done"]), "done_in_other_unit": done[ln["id"]]["other_unit"]}
+        for ln in raw
+    ]
     out = []
     for section in sections:
         own = [ln for ln in lines if ln["section_id"] == section["id"]]
@@ -306,6 +353,69 @@ async def delete_line(
     if await repo.get_line(auth.organization_id, project_id, line_id) is None:
         raise HTTPException(status_code=404, detail="Line not found")
     await repo.delete_line(line_id)
+    return Response(status_code=204)
+
+
+class WorkLine(BaseModel):
+    line_id: uuid.UUID | None = Field(description="The BOQ line this work is on; null takes it off")
+
+
+@router.get("/work")
+async def list_work(
+    project_id: uuid.UUID,
+    unlinked: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Recorded work quantities, newest first; each with its line, or a suggested one to confirm.
+
+    The suggestion is only offered, never saved: a person puts the work on a line.
+    """
+    repo = await _scope(project_id, auth, conn)
+    lines = await repo.list_lines(auth.organization_id, project_id)
+    current = await repo.current_revision_of(auth.organization_id, project_id)
+    out = []
+    for w in await repo.work_updates(auth.organization_id, project_id, unlinked_only=unlinked, limit=limit):
+        line_id = current.get(w["line_id"], w["line_id"]) if w["line_id"] else None
+        out.append({
+            "id": w["id"], "date": w["activity_date"], "site_id": w["site_id"], "site_name": w["site_name"],
+            "work": w["work"] or w["narrative"], "quantity": w["quantity"], "unit": w["unit"],
+            "line_id": line_id, "on_work_order": w["work_order_line_id"] is not None,
+            "suggested_line_id": None if line_id else suggest_line(w["work"] or w["narrative"], w["unit_id"], w["section_id"], lines),
+        })
+    return _exact({"project_id": project_id, "work": out})
+
+
+@router.put("/work/{quantity_id}", status_code=204)
+async def put_work_on_line(
+    project_id: uuid.UUID,
+    quantity_id: uuid.UUID,
+    body: WorkLine,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Count a recorded work quantity on a BOQ line (or take it off). One line per quantity, so never twice.
+
+    Refused when the line is in another unit (no conversion), and when the work is counted
+    through a work order (it is changed there, so the two never disagree).
+    """
+    repo = await _scope(project_id, auth, conn)
+    work = await repo.get_work_update(auth.organization_id, project_id, quantity_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="Work update not found")
+    if work["work_order_line_id"] is not None:
+        raise HTTPException(status_code=409, detail="This work is counted on a work order; change it on the work order.")
+    if body.line_id is not None:
+        line = await repo.get_line(auth.organization_id, project_id, body.line_id)
+        if line is None:
+            raise HTTPException(status_code=422, detail="That BOQ line is not in this project.")
+        if line["unit_id"] != work["unit_id"]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"That line is measured in {line['unit']}; this work is in another unit, so it can't be added to it.",
+            )
+    await repo.set_work_line(quantity_id, body.line_id)
     return Response(status_code=204)
 
 
