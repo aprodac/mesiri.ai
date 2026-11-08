@@ -253,6 +253,9 @@ async def checklist(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID
 
     return {
         "sections": await n("SELECT count(*) FROM work_packages WHERE organization_id = :org AND project_id = :p"),
+        # NXT-01: a contract counts once it names the client or the value (no money in the count).
+        "contract": await n("SELECT count(*) FROM project_contracts WHERE organization_id = :org AND project_id = :p "
+                            "AND (client_id IS NOT NULL OR contract_value IS NOT NULL)"),
         "lines": await n("SELECT count(*) FROM work_package_planned_items i JOIN work_packages w ON w.id = "
                          "i.work_package_id WHERE w.organization_id = :org AND w.project_id = :p "
                          "AND i.superseded_by_id IS NULL"),

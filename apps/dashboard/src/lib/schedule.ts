@@ -150,7 +150,7 @@ export async function sequenceActivities(
 // -- project start ----------------------------------------------------------------------------------------------
 
 export interface StartStep {
-  key: 'dates' | 'boq' | 'schedule' | 'sites' | 'team' | 'suppliers' | 'work_orders'
+  key: 'dates' | 'contract' | 'boq' | 'schedule' | 'sites' | 'team' | 'suppliers' | 'work_orders'
   title: string
   done: boolean
   detail: string

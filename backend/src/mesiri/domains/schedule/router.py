@@ -194,6 +194,11 @@ def _steps(proj: dict, c: dict) -> list[dict]:
     steps = [
         {"key": "dates", "title": "Contract dates", "done": dated,
          "detail": "Start and finish set" if dated else "When work starts and when the client expects handover"},
+        {"key": "contract", "title": "Client and contract", "done": c["contract"] > 0,
+         "detail": ("The client and the contract terms are set" if c["contract"]
+                    else "Who the client is, the contract value, retention and advance: the RA bills use them"),
+         # Optional: only the owner, an admin or finance can set it (D-N3), so it never becomes a PM's "next" step.
+         "optional": True},
         {"key": "boq", "title": "BOQ and budget", "done": c["lines"] > 0,
          "detail": (f"{c['lines']} lines in {c['sections']} sections, {c['priced_lines']} priced"
                     if c["lines"] else "Upload your estimate Excel: it becomes the BOQ, the budget and the schedule")},

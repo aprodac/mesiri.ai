@@ -21,6 +21,7 @@ import ProjectBoqPage from '@/pages/ProjectBoqPage'
 import BoqIndexPage from '@/pages/BoqIndexPage'
 import SchedulePage from '@/pages/SchedulePage'
 import MaterialPlanPage from '@/pages/MaterialPlanPage'
+import ClientsPage from '@/pages/ClientsPage'
 import ProjectStartPage from '@/pages/ProjectStartPage'
 import CostBudgetPage from '@/pages/CostBudgetPage'
 import CostCentresPage from '@/pages/CostCentresPage'
@@ -152,6 +153,7 @@ export default function App() {
           <Route path="planning/setup" element={<ProjectStartPage />} />
           <Route path="planning/schedule" element={<SchedulePage />} />
           <Route path="planning/materials" element={<MaterialPlanPage />} />
+          <Route path="billing/clients" element={<ClientsPage />} />
           {/* CC-01 / CC-04: the Cost control module. */}
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />

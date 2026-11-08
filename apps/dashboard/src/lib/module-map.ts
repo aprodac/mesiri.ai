@@ -35,6 +35,8 @@ import type { ModuleKey } from './modules'
 
 /** Mirrors backend EXPENSE_VIEW_ROLES: pages that show rates, margins or money owed. */
 export const MONEY_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE', 'PROJECT_MANAGER'] as const
+// NXT-01/02: client contracts and bills (D-N3 default; backend may_manage_money).
+const BILLING_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'] as const
 const MANAGERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER'] as const
 
 export type PageStatus = 'built' | 'planned'
@@ -240,7 +242,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'green',
     about: 'Money you collect from the client, in stages against measured work.',
     pages: [
-      { title: 'Clients', url: '/billing/clients', status: 'planned', phase: 'V1.5', about: 'Each client, their projects, what they were billed and what they paid.', example: 'Mr. Thomas: villa, ₹62 L billed, ₹50 L received.', roles: MONEY_ROLES },
+      { title: 'Clients', url: '/billing/clients', status: 'built', phase: 'V1', about: 'Each client, their projects and contract values; the terms each RA bill uses.', example: 'Mr. Thomas: villa, ₹62 L contract, 5% retention.', tracker: 'NXT-01', roles: BILLING_ROLES },
       { title: 'RA bills', url: '/billing/ra-bills', status: 'planned', phase: 'V1.5', about: 'Stage bills: work measured this period × BOQ rates.', example: 'RA bill 4: ₹12.6 L for work done in October.', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }] },
       { title: 'Variations', url: '/billing/variations', status: 'planned', phase: 'Later', about: 'Extra or changed work the client asked for, priced and approved before it is built.', example: 'Client adds a balcony: ₹1.8 L approved on 3 Nov.', roles: MONEY_ROLES },
       { title: 'Payments received', url: '/billing/receipts', status: 'planned', phase: 'Later', about: 'Money in from clients, and the share held back until handover (retention).', example: 'Received ₹12 L of RA bill 4; 5% (₹63,000) held.', roles: MONEY_ROLES },

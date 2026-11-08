@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight, Bell, CalendarDays, CalendarRange, Check, CheckCircle2, ChevronRight, FileSpreadsheet, Handshake, HardHat, MapPin,
-  MessageCircle, Rocket, Store, TrendingUp, type LucideIcon,
+  MessageCircle, Rocket, ScrollText, Store, TrendingUp, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,9 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { PageError } from '@/components/dpr-page'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
+import { ContractDialog } from '@/components/billing/contract-dialog'
+import { useAuth } from '@/lib/AuthContext'
+import { mayBill } from '@/lib/billing'
 import { ProjectPickList, StageChip, usePlanningProject } from '@/components/schedule/project-picker'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
@@ -24,11 +27,12 @@ import { cn } from '@/lib/utils'
 // highlighted. Everything set here is used later by the DPR, purchasing, subcontracts and cost control.
 
 const ICONS: Record<StartStep['key'], LucideIcon> = {
-  dates: CalendarDays, boq: FileSpreadsheet, schedule: CalendarRange, sites: MapPin, team: HardHat, suppliers: Store, work_orders: Handshake,
+  dates: CalendarDays, contract: ScrollText, boq: FileSpreadsheet, schedule: CalendarRange, sites: MapPin, team: HardHat, suppliers: Store, work_orders: Handshake,
 }
 
 const WHY: Record<StartStep['key'], string> = {
   dates: 'The handover date is what the forecast is measured against.',
+  contract: 'Retention, advance recovery, GST and TDS are worked out on every RA bill from these.',
   boq: 'Every work update, purchase and bill is checked against these lines.',
   schedule: 'Fills itself from site updates; delays reach you the same morning.',
   sites: 'Each site gets its own daily report.',
@@ -192,6 +196,8 @@ function StepCard({
   onImport: () => void
 }) {
   const Icon = ICONS[step.key]
+  const { me } = useAuth()
+  const [contractOpen, setContractOpen] = React.useState(false)
   const [startDate, setStartDate] = React.useState(data.project.start_date ?? '')
   const [finish, setFinish] = React.useState(data.project.planned_finish ?? '')
   React.useEffect(() => { setStartDate(data.project.start_date ?? ''); setFinish(data.project.planned_finish ?? '') }, [data.project.start_date, data.project.planned_finish])
@@ -199,6 +205,13 @@ function StepCard({
 
   const actions: Record<StartStep['key'], React.ReactNode> = {
     dates: null,
+    contract: mayBill(me?.role) ? (
+      <>
+        <Button size="sm" variant={step.done ? 'outline' : 'default'} onClick={() => setContractOpen(true)} className="gap-1.5"><ScrollText className="size-4" /> {step.done ? 'Contract terms' : 'Set the client and contract'}</Button>
+        {step.done && <Button size="sm" variant="ghost" asChild><Link to={`/billing/ra-bills?project=${projectId}`}>RA bills <ArrowRight className="size-3.5" /></Link></Button>}
+        <ContractDialog projectId={projectId} open={contractOpen} onOpenChange={setContractOpen} />
+      </>
+    ) : <span className="text-xs text-muted-foreground">Set by the owner, an admin or finance.</span>,
     boq: (
       <>
         {canEdit && <Button size="sm" variant={step.done ? 'outline' : 'default'} onClick={onImport} className="gap-1.5"><FileSpreadsheet className="size-4" /> {step.done ? 'Import more' : 'Upload the BOQ Excel'}</Button>}
