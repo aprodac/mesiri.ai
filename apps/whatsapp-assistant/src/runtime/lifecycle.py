@@ -481,6 +481,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.procurement.rates_router", "Rates"),
         ("mesiri.domains.progress.boq_router", "BOQ"),
         ("mesiri.domains.equipment.router", "Equipment"),  # NXT-11
+        ("mesiri.domains.costing.router", "Cost control"),  # CC-01: the cost module (web)
     ):
         try:
             import importlib
