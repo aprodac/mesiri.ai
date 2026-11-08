@@ -307,6 +307,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("boq router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.materials.plan_router import router as material_plan_router
+
+        app.include_router(material_plan_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("material plan router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.schedule.router import router as schedule_router
 
         app.include_router(schedule_router)

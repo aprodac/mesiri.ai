@@ -480,3 +480,50 @@ async def test_norms_copy_to_the_same_work_on_other_floors(client, ctx, test_eng
     by_id = {ln["id"]: ln for s in boq["sections"] for ln in s["lines"]}
     assert by_id[own["id"]]["materials"][0]["quantity_per_unit"] == "8.0000"
     assert by_id[other_unit["id"]]["materials"] == []
+
+
+# -- MP-02: the material plan --------------------------------------------------------------------------------------
+
+async def test_material_plan_from_boq_norms_schedule_and_stock(client, ctx, test_engine):
+    import datetime
+
+    url, h = f"/projects/{ctx['project']}", _h(ctx["admin"])
+    empty = (await client.get(f"{url}/material-plan", headers=h)).json()
+    assert empty["materials"] == [] and empty["lines_with_norms"] == 0
+    today = datetime.date.fromisoformat(empty["today"])
+
+    cement = await _material(test_engine, ctx["org"], "Cement")
+    async with test_engine.begin() as conn:
+        site = (await conn.execute(sa.text("SELECT id FROM sites WHERE project_id = :p"), {"p": ctx["project"]})).scalar_one()
+        bags = (await conn.execute(sa.text("SELECT id FROM units_of_measure WHERE code = 'bags'"))).scalar_one()
+    r = await client.post("/materials/inflows", json={
+        "project_id": str(ctx["project"]), "site_id": str(site), "material_id": cement, "unit_id": str(bags),
+        "quantity": "100", "movement_reason": "RECEIVED", "occurred_date": str(today)}, headers=h)
+    assert r.status_code == 201, r.text
+
+    section = await _section(client, ctx, name="Slab")
+    line = await _add_line(client, ctx, section["id"], work="M20 in slab", unit="cum", planned_quantity="30")
+    await _add_line(client, ctx, section["id"], work="Shuttering", unit="sqm", planned_quantity="10")
+    await client.put(f"{url}/boq/lines/{line['id']}/norms", json={"norms": [{"material_id": cement, "quantity_per_unit": "8"}]}, headers=h)
+
+    # No dates yet: all of it is unscheduled, in no week.
+    p = (await client.get(f"{url}/material-plan?weeks=4", headers=h)).json()
+    row = p["materials"][0]
+    assert (row["material"], row["unit"], row["still_needed"], row["unscheduled"]) == ("Cement", "bags", "240.000", "240.000")
+    assert row["on_hand"] == "100.000" and row["short_from"] is None
+    assert p["lines_with_norms"] == 1 and p["lines_without_norms"] == 1
+
+    async with test_engine.begin() as conn:
+        await conn.execute(sa.text("UPDATE work_packages SET planned_start = :s, planned_end = :e WHERE id = :id"),
+                           {"s": today, "e": today + datetime.timedelta(days=11), "id": section["id"]})
+    p = (await client.get(f"{url}/material-plan?weeks=4", headers=h)).json()
+    row = p["materials"][0]
+    assert len(p["weeks"]) == 4 and row["unscheduled"] == "0.000"
+    assert sum(Decimal(w) for w in row["weeks"]) + Decimal(row["later"]) == Decimal("240.000")
+    assert row["short_from"] is not None and Decimal(row["short_by"]) == Decimal("140.000")
+    assert row["lines"][0]["work"] == "M20 in slab"
+
+    # Another site of the project shows nothing; the BOQ's roles only.
+    assert (await client.get(f"{url}/material-plan?site_id={uuid.uuid4()}", headers=h)).status_code == 422
+    engineer = await _user(test_engine, ctx["org"], "site_engineer")
+    assert (await client.get(f"{url}/material-plan", headers=_h(engineer))).status_code == 403

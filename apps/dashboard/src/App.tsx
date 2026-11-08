@@ -20,6 +20,7 @@ import ProjectDetails from '@/pages/ProjectDetails'
 import ProjectBoqPage from '@/pages/ProjectBoqPage'
 import BoqIndexPage from '@/pages/BoqIndexPage'
 import SchedulePage from '@/pages/SchedulePage'
+import MaterialPlanPage from '@/pages/MaterialPlanPage'
 import ProjectStartPage from '@/pages/ProjectStartPage'
 import CostBudgetPage from '@/pages/CostBudgetPage'
 import CostCentresPage from '@/pages/CostCentresPage'
@@ -150,6 +151,7 @@ export default function App() {
           {/* ST-04 / ST-05: the start of a project and its schedule. */}
           <Route path="planning/setup" element={<ProjectStartPage />} />
           <Route path="planning/schedule" element={<SchedulePage />} />
+          <Route path="planning/materials" element={<MaterialPlanPage />} />
           {/* CC-01 / CC-04: the Cost control module. */}
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />
