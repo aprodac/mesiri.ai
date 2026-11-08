@@ -25,7 +25,7 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.domains.finance.costs import project_costs
+from mesiri.domains.finance.costs import EXPENSE_COST_SQL, project_costs
 
 CENTRES: dict[str, str] = {
     "materials": "Materials",
@@ -55,7 +55,8 @@ async def expenses_by_category(
     visible,
 ) -> list[dict]:
     """Confirmed expenses in the period per category, with the category's centre and whether it is a subcontract
-    bill. The same filter as ``finance.costs`` (confirmed, by occurred date, project, site, the caller's scope)."""
+    bill. The same filter and the same cost of an expense as ``finance.costs`` (confirmed, by occurred date, project,
+    site, the caller's scope; ``EXPENSE_COST_SQL``: before claimable GST, D-CC8)."""
     where = ["e.organization_id = :org", "e.workflow_status = 'confirmed'", "e.occurred_date BETWEEN :f AND :t"]
     params: dict = {"org": org, "f": date_from, "t": date_to}
     if project_ids is not None:
@@ -67,7 +68,8 @@ async def expenses_by_category(
     rows = (await conn.execute(text(
         "SELECT e.project_id, e.site_id, c.id AS category_id, c.name AS category, c.cost_centre, "
         "EXISTS (SELECT 1 FROM work_order_bills b WHERE b.expense_id = e.id) AS subcontract_bill, "
-        "COUNT(*) AS n, SUM(e.amount) AS amount FROM expenses e LEFT JOIN expense_categories c ON c.id = e.category_id "
+        f"COUNT(*) AS n, SUM({EXPENSE_COST_SQL}) AS amount FROM expenses e "
+        "LEFT JOIN expense_categories c ON c.id = e.category_id "
         f"WHERE {' AND '.join(where)} GROUP BY 1, 2, 3, 4, 5, 6"), params)).mappings().all()  # noqa: S608
     return [dict(r) for r in rows if r["site_id"] is None or visible(r["project_id"], r["site_id"])]
 
@@ -102,6 +104,7 @@ def split(costs: dict, expense_rows: list[dict]) -> dict:
     centres = [{"key": k, "label": label, "amount": _m(amount[k]), "parts": parts[k]} for k, label in CENTRES.items()]
     return {
         "total": costs["total"],
+        "gst": costs.get("gst"),
         "centres": centres,
         "not_set": {"amount": _m(amount[NOT_SET]), "parts": parts[NOT_SET]},
         "unpriced_deliveries": costs["materials"]["unpriced"],

@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
-import { maySeeBoq } from '@/lib/boq'
+import { formatRupees, maySeeBoq } from '@/lib/boq'
 import {
   CENTRE_COLOURS,
   fetchCentres,
@@ -117,6 +117,11 @@ export default function CostCentresPage() {
     d && d.unpriced_deliveries > 0 ? `${d.unpriced_deliveries} ${d.unpriced_deliveries === 1 ? 'delivery has' : 'deliveries have'} no price, so ${d.unpriced_deliveries === 1 ? 'it is' : 'they are'} not in Materials` : null,
     d && Number(d.man_days) > Number(d.priced_man_days)
       ? `${Number(d.man_days) - Number(d.priced_man_days)} of ${d.man_days} man-days have no wage, so they are not in Labour`
+      : null,
+    // D-CC8: cost is before GST that can be claimed back; GST that cannot is in the cost, and said.
+    d?.gst && Number(d.gst.claimable) > 0 ? `${formatRupees(d.gst.claimable)} of GST is left out of cost: it can be claimed back (the supplier has a GSTIN)` : null,
+    d?.gst && Number(d.gst.in_cost) > 0
+      ? `${formatRupees(d.gst.in_cost)} of GST on ${d.gst.in_cost_count} ${d.gst.in_cost_count === 1 ? 'expense is' : 'expenses is'} counted as cost: no GSTIN on the supplier, or not said as included`
       : null,
   ].filter(Boolean) as string[]
   const unset = (cats.data?.categories ?? []).filter((c) => !c.cost_centre && c.status === 'active')

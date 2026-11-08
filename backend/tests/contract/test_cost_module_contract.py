@@ -77,7 +77,32 @@ async def ctx(test_engine):
         await _run(test_engine, "INSERT INTO expense_categories (id, organization_id, name, code, cost_centre, created_by) "
                    "VALUES (:id, :org, :n, :c, :cc, :by)", id=cid, org=org, n=name, c=code, cc=centre, by=admin_id)
         cats[name] = cid
-    return {"org": org, "project": project, "site": site, "admin": admin, "admin_id": admin_id, "cats": cats}
+    yield {"org": org, "project": project, "site": site, "admin": admin, "admin_id": admin_id, "cats": cats}
+    # Leave nothing behind for the suites after this one (CI runs the money paths in one database, in order).
+    await _cleanup(test_engine, org)
+
+
+async def _cleanup(engine, org) -> None:
+    async with engine.begin() as conn:
+        for sql in (
+            "DELETE FROM progress_updates WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :org)",
+            "DELETE FROM activity_quantities WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :org)",
+            "DELETE FROM activities WHERE organization_id = :org",
+            "DELETE FROM material_movements WHERE organization_id = :org",
+            "DELETE FROM material_usage WHERE organization_id = :org",
+            "DELETE FROM material_receipts WHERE organization_id = :org",
+            "DELETE FROM purchase_orders WHERE organization_id = :org",
+            "DELETE FROM boq_material_norms WHERE planned_item_id IN (SELECT id FROM work_package_planned_items "
+            "WHERE organization_id = :org)",
+            "DELETE FROM materials_catalog WHERE organization_id = :org",
+            "DELETE FROM expense_payments WHERE organization_id = :org",
+            "DELETE FROM expenses WHERE organization_id = :org",
+            "DELETE FROM labour_attendance_reports WHERE organization_id = :org",
+            "DELETE FROM work_packages WHERE organization_id = :org",
+            "DELETE FROM notifications WHERE organization_id = :org",
+            "DELETE FROM organizations WHERE id = :org",
+        ):
+            await conn.execute(sa.text(sql), {"org": org})
 
 
 def _h(token: str) -> dict:
@@ -518,3 +543,27 @@ async def test_only_money_roles_add_or_rename_expense_categories(client, ctx, te
     r = await client.post("/expenses/categories", json={"name": "Diesel"}, headers=_h(finance))
     assert r.status_code == 201
     assert (await client.patch(f"/expenses/categories/{tea}", json={"name": "Tea"}, headers=_h(ctx["admin"]))).status_code == 200
+
+
+# -- D-CC8: cost before claimable GST -------------------------------------------------------------------------------
+
+
+async def test_cost_is_before_claimable_gst_and_gst_that_stays_in_cost_is_said(client, ctx, test_engine):
+    registered, unregistered = uuid.uuid4(), uuid.uuid4()
+    for vid, name, gstin in ((registered, "Malabar", "32ABCDE1234F1Z5"), (unregistered, "Local shop", None)):
+        await _run(test_engine, "INSERT INTO vendors (id, organization_id, name, gstin, created_by) VALUES (:id, :org, :n, :g, :u)",
+                   id=vid, org=ctx["org"], n=name, g=gstin, u=ctx["admin_id"])
+    for vendor, inclusive in ((registered, True), (unregistered, True), (registered, False)):
+        await _run(test_engine, "INSERT INTO expenses (id, organization_id, project_id, site_id, amount, occurred_date, "
+                   "created_by, category_id, workflow_status, vendor_id, tax_amount, is_tax_inclusive) VALUES "
+                   "(gen_random_uuid(), :org, :p, :s, 11800, current_date - 1, :u, :c, 'confirmed', :v, 1800, :inc)",
+                   org=ctx["org"], p=ctx["project"], s=ctx["site"], u=ctx["admin_id"], c=ctx["cats"]["Materials"],
+                   v=vendor, inc=inclusive)
+    h = _h(ctx["admin"])
+    full = (await client.get(f"/finance/costs?project_id={ctx['project']}", headers=h)).json()
+    # 10,000 (GSTIN, GST included: 1,800 claimed back) + 11,800 (no GSTIN) + 11,800 (GST said as not included).
+    assert full["expenses"]["amount"] == "33600.00"
+    assert full["gst"] == {"claimable": "1800.00", "in_cost": "3600.00", "in_cost_count": 2}
+    centres = (await client.get(f"/cost/centres?project_id={ctx['project']}", headers=h)).json()
+    assert Decimal(centres["total"]) == Decimal(full["total"]) and _centre(centres, "materials") == 33600
+    assert centres["gst"]["claimable"] == "1800.00"

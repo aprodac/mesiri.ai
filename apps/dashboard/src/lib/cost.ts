@@ -23,6 +23,8 @@ export interface CostCentres {
   unpriced_deliveries: number
   man_days: string
   priced_man_days: string
+  /** D-CC8: claimable GST left out of cost; GST counted as cost (no GSTIN, or not said as included). */
+  gst: { claimable: string; in_cost: string; in_cost_count: number } | null
 }
 
 export interface CostCategory {

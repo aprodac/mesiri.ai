@@ -101,7 +101,7 @@ jobs:
             --rootdir=/tmp \
             --import-mode=importlib \
             -o asyncio_mode=auto
-      - name: BOQ, schedule, billing and drawing contract tests
+      - name: BOQ, schedule, billing, drawing, cost control and Tally contract tests
         # The money paths (BOQ, material norms and plan, RA bills, contracts) and the drawing reader against a real
         # Postgres. Before the integration lane, so its older failures can't hide these. Order matters: each file
         # cleans what it leaves behind for the next (bills before BOQ rows).
@@ -116,6 +116,8 @@ jobs:
             "$GITHUB_WORKSPACE/backend/tests/contract/test_drawings_contract.py" \
             "$GITHUB_WORKSPACE/backend/tests/contract/test_places_contract.py" \
             "$GITHUB_WORKSPACE/backend/tests/contract/test_documents_contract.py" \
+            "$GITHUB_WORKSPACE/backend/tests/contract/test_cost_module_contract.py" \
+            "$GITHUB_WORKSPACE/backend/tests/contract/test_tally_export_contract.py" \
             -m integration \
             --rootdir=/tmp \
             --import-mode=importlib \
