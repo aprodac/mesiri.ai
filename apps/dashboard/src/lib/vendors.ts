@@ -75,6 +75,8 @@ export interface OpenBill {
   site: string | null
   payment_status: string
   deliveries: number
+  /** PRC-11: deliveries on it whose quantity or rate differs from the bill. */
+  mismatches: number
   amount: string
   paid: string
   left: string
@@ -110,6 +112,7 @@ export interface LedgerLine {
   ref: string | null
   links: { expense_id?: string; receipt_id?: string; order_id?: string; payment_id?: string; account_id?: string }
   bill_left?: string
+  mismatches?: number
   on_account?: boolean
   advance_left?: string | null
   recorded_by?: string | null
@@ -211,7 +214,7 @@ export async function matchDeliveries(id: string, expenseId: string, receiptIds:
   return (await api.post(`/finance/vendors/${id}/bills/${expenseId}/deliveries`, { receipt_ids: receiptIds })).data
 }
 
-export async function billDeliveryList(id: string, expenseId: string): Promise<{ receipt_id: string; date: string; material: string; quantity: string; unit: string; site: string | null; amount: string | null }[]> {
+export async function billDeliveryList(id: string, expenseId: string): Promise<{ receipt_id: string; date: string; material: string; quantity: string; unit: string; site: string | null; amount: string | null; billed_quantity: string | null; billed_rate: string | null; flags: string[] }[]> {
   return (await api.get(`/finance/vendors/${id}/bills/${expenseId}/deliveries`)).data
 }
 
@@ -255,4 +258,27 @@ export function allocate(amount: number, bills: OpenBill[]): { bill: OpenBill; p
     left -= part
   }
   return out
+}
+
+// PRC-11: every delivery with no bill yet, across suppliers.
+export interface UnbilledDelivery {
+  receipt_id: string
+  date: string
+  days: number
+  material: string
+  quantity: string
+  unit: string
+  rate: string | null
+  amount: string | null
+  project_id: string
+  project: string | null
+  site: string | null
+  vendor_id: string | null
+  supplier: string | null
+  order_id: string | null
+  order_ref: string | null
+}
+
+export async function fetchUnbilled(params: { project_id?: string } = {}): Promise<{ as_of: string; deliveries: UnbilledDelivery[]; totals: { count: number; amount: string; unpriced: number; no_order: number; no_supplier: number } }> {
+  return (await api.get('/finance/vendors/unbilled', { params })).data
 }

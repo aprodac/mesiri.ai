@@ -195,6 +195,7 @@ export default function ExpensesPage() {
     category_id: opened.category_id || undefined,
     vendor_name: opened.vendor,
     vendor_id: opened.vendor_id,
+    project_id: opened.project_id,
     project_name: opened.project,
     site_name: opened.site,
     date: opened.date,

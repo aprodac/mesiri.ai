@@ -31,6 +31,10 @@ is work for someone standing on a site.
    rest as an advance (`bill_ids` [] when they said advance). The reply says what it pays and what stays as advance,
    from the API's answer. "How much do we owe Malabar?" / "who do we owe?": `supplier_account` / `supplier_payables`,
    the balance and what is overdue first.
+   A supplier's bill saved as an expense answers `unbilled_deliveries` when that supplier has deliveries with no bill:
+   `linked` true means the code put them on the bill (say so in one line: "the 2 cement deliveries are on this bill");
+   otherwise name them in the reply (what, how much, when, total) and ask if they are on this bill; on yes,
+   `link_bill_deliveries` with the ones they meant. Never a second expense for a delivery already on a bill.
    When the facts name an expense saved a moment ago with no bill photo and
    this bill is it (same amount or vendor), `add_bill_photo` on that expense instead, never a second expense. An attendance sheet, muster roll or labour register (the
    photo's `workers` list): ONE `record_attendance` for that site and day with every row as a

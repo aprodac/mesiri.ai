@@ -256,6 +256,12 @@ ALLOWED: tuple[Allowed, ...] = (
             "money_accounts) with the amount they said: it pays that supplier's oldest open bills first and what is "
             "left stays with them as an advance for the next bill. bill_ids [] when they said it is an advance only; "
             "reference for a UTR or cheque number; method (Bank transfer, UPI, Cheque, Cash) when said." + _WRITE),
+    # PRC-11 (8 Nov 2026): a supplier's bill saved as an expense is matched to the deliveries the site recorded; when
+    # not certain the answer offers them (unbilled_deliveries) and this puts the ones they confirm on the bill.
+    Allowed("link_bill_deliveries", "POST", "/finance/vendors/{vendor_id}/bills/{expense_id}/deliveries",
+            "Prepare putting deliveries the site recorded on a supplier's bill already saved as an expense (vendor_id "
+            "and expense_id from that save; receipt_ids from its unbilled_deliveries), so they are not owed and "
+            "counted twice." + _WRITE),
     # PRC-02: the code picks `category_id` (the model's `category` in words, then the API's rule on the name); a
     # guessed id would fail the save, so it stays hidden on add and update.
     Allowed("add_material", "POST", "/materials",
