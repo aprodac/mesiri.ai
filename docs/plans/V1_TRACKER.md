@@ -633,7 +633,7 @@ Plan: [drawing-reader-plan.md](drawing-reader-plan.md). **Independent** of MP an
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DR-01 | **Reader:** per-page title block (title, no., scale, date, architect, client, units), kind and level of each sheet | M | Should | — | todo | | Kondotty architectural set as the first fixture |
+| DR-01 | **Reader:** per-page title block (title, no., scale, date, architect, client, units), kind and level of each sheet | M | Should | — | in-progress | Claude (session 8 Nov) | Kondotty architectural set as the first fixture |
 | DR-02 | **Facts:** levels, rooms with sizes, stated areas, fixture counts, each with page + position | M | Should | DR-01 | todo | | |
 | DR-03 | **Checks:** area label vs dimensions, levels differing between sheets, missing scale / date / no. / revision, typical floors differing | M | Should | DR-02 | todo | | Kondotty: ROOM-1 1740 × 590 labelled 1217 sq ft (is 1,105) |
 | DR-04 | **Read a drawing set:** `POST /drawings/read` (nothing stored); Planning › Drawing check page | M | Should | DR-03 | todo | | |
