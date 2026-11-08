@@ -366,6 +366,27 @@ function MaterialsNote({ line, readOnly, onNorms }: { line: BoqLine; readOnly: b
 const sameWork = (a: BoqLine, b: BoqLine) =>
   a.id !== b.id && a.unit === b.unit && a.work.trim().replace(/\s+/g, ' ').toLowerCase() === b.work.trim().replace(/\s+/g, ' ').toLowerCase()
 
+/** Schedule activities with no BOQ lines (site clearing, handover, a drawing's draft schedule): listed together,
+ * closed, instead of one empty section each. Adding a line makes one a normal section again. */
+function ScheduleOnly({ sections, readOnly, onAdd }: { sections: BoqSection[]; readOnly: boolean; onAdd: (s: BoqSection) => void }) {
+  if (!sections.length) return null
+  return (
+    <details className="mt-2 rounded-lg border">
+      <summary className="cursor-pointer px-3 py-2 text-sm text-muted-foreground">
+        {sections.length} schedule activit{sections.length > 1 ? 'ies' : 'y'} with no BOQ lines
+      </summary>
+      <ul className="divide-y border-t text-sm">
+        {sections.map((s) => (
+          <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-1.5">
+            <span>{s.name}</span>
+            {!readOnly && <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => onAdd(s)}><Plus className="size-3" /> Add line</Button>}
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
 function DoneCell({ line }: { line: BoqLine }) {
   const done = Number(line.done_quantity)
   const pct = Math.min(Number(line.percent_done ?? 0), 100)
@@ -537,13 +558,17 @@ export default function ProjectBoqPage() {
 
   const saveNorms = useMutation({
     mutationFn: async ({ norms, copy }: { norms: NormInput[]; copy: boolean }) => {
-      if (!normsLine) return 0
+      if (!normsLine) return null
       await putLineNorms(id, normsLine.id, norms)
-      if (copy && norms.length > 0) return (await copyLineNorms(id, normsLine.id, true)).copied_to.length
-      return 0
+      // Never over another line's own materials: those lines are kept and counted (the toast says how many).
+      if (copy && norms.length > 0) return copyLineNorms(id, normsLine.id, false)
+      return null
     },
-    onSuccess: (copied) => {
-      toast.success(copied ? `Materials saved, and on ${copied} more line${copied > 1 ? 's' : ''}` : 'Materials saved')
+    onSuccess: (r) => {
+      const copied = r?.copied_to.length ?? 0
+      const kept = r?.kept.length ?? 0
+      toast.success(copied ? `Materials saved, and on ${copied} more line${copied > 1 ? 's' : ''}` : 'Materials saved',
+        kept ? `${kept} line${kept > 1 ? 's' : ''} with ${kept > 1 ? 'their' : 'its'} own materials kept as ${kept > 1 ? 'they were' : 'it was'}.` : undefined)
       setNormsLine(null)
       refresh()
     },
@@ -661,7 +686,7 @@ export default function ProjectBoqPage() {
             </DprSection>
           )}
           <div className="flex flex-col">
-            {boq.sections.map((section) => (
+            {boq.sections.filter((s) => s.lines.length > 0 || !s.scheduled).map((section) => (
               <DprSection
                 key={section.id}
                 icon={Calculator}
@@ -703,6 +728,7 @@ export default function ProjectBoqPage() {
                 />
               </DprSection>
             ))}
+            <ScheduleOnly sections={boq.sections.filter((s) => s.lines.length === 0 && s.scheduled)} readOnly={readOnly} onAdd={(section) => setLineDialog({ section, line: null })} />
           </div>
         </>
       )}

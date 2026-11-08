@@ -25,6 +25,10 @@ router = APIRouter(prefix="/drawings", tags=["drawings"], dependencies=[Depends(
 
 #: The biggest drawing PDF read (a large architectural set is 20-40 MB).
 MAX_BYTES = 50 * 1024 * 1024
+#: Seconds a read may take (a 9-sheet set takes 0.3 s); a file that takes longer is refused, not waited on.
+TIME_LIMIT = 45
+#: Reads at once per server process, so a few big files never take every worker.
+_reads = asyncio.Semaphore(2)
 
 
 @router.post("/read")
@@ -41,9 +45,15 @@ async def read_drawing(request: Request, auth: AuthorizationContext = Depends(ge
     if not data.startswith(b"%PDF"):
         raise HTTPException(status_code=422, detail="That file is not a PDF. Send the drawing as a PDF (from CAD, "
                                                     "not a photo).")
-    try:
-        result = await asyncio.to_thread(read_pdf, bytes(data))
-    except pdf_text.NotAPdf as exc:
-        raise HTTPException(status_code=422, detail=f"The PDF could not be read: {exc}") from exc
+    if _reads.locked():
+        raise HTTPException(status_code=429, detail="Other drawings are being read right now: try again in a minute")
+    async with _reads:
+        try:
+            result = await asyncio.wait_for(asyncio.to_thread(read_pdf, bytes(data)), timeout=TIME_LIMIT)
+        except pdf_text.NotAPdf as exc:
+            raise HTTPException(status_code=422, detail=f"The PDF could not be read: {exc}") from exc
+        except TimeoutError as exc:
+            raise HTTPException(status_code=422, detail="This PDF takes too long to read. Send the sheets in smaller "
+                                                        "sets.") from exc
     result["file_name"] = request.headers.get("x-file-name")
     return result

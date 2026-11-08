@@ -22,8 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 RULE = "material_order_by"
 #: Materials whose order-by day is within this many days are in the note.
 SOON_DAYS = 2
-#: The plan looks this many weeks ahead for the note.
-WEEKS = 4
+#: The plan looks this many weeks ahead for the note: the same as the dashboard's Material plan page (its default),
+#: so the note and the page show the same "more needed" for a material.
+WEEKS = 8
 MANAGER_ROLES = ("ADMIN", "OWNER", "SUPER_ADMIN", "PROJECT_MANAGER")
 
 

@@ -69,7 +69,7 @@ export async function readDrawing(file: File): Promise<DrawingReadWithDrafts> {
 // DR-05 / DR-06: the drafts in a read result, and adding them to a project (never overwrites).
 export interface DraftActivity { name: string; days: number }
 export interface DraftBoqLine { work: string; unit: string; quantity: number; basis: string }
-export interface DraftBoq { clear_height_m: number; height_note: string; sections: { name: string; page: number; lines: DraftBoqLine[] }[] }
+export interface DraftBoq { clear_height_m: number; height_note: string; sections: { name: string; page: number; lines: DraftBoqLine[]; area_sqm: number; warning: string | null }[] }
 
 export interface DrawingReadWithDrafts extends DrawingRead {
   draft_schedule: DraftActivity[]

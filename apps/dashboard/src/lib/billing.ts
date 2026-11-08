@@ -117,6 +117,8 @@ export interface RaBill {
   notes: string | null
   submitted_at: string | null
   previous_billed?: string
+  /** What the bill can't show by itself: unpriced work, work in another unit, billed more than measured. */
+  warnings?: { kind: 'unpriced' | 'other_unit' | 'overbilled'; work: string; message: string }[]
   lines?: RaBillLine[]
 }
 

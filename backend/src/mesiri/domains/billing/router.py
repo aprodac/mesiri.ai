@@ -272,6 +272,11 @@ async def create_ra_bill(project_id: uuid.UUID, body: BillCreate,
     _require(auth, project_id)
     org = auth.organization_id
     await _project_name(conn, org, project_id)
+    # The deductions come from the contract: without terms a bill would go out with no GST, retention or TDS.
+    if not (await conn.execute(text("SELECT 1 FROM project_contracts WHERE organization_id = :org AND project_id = :p"),
+                               {"org": org, "p": project_id})).scalar():
+        raise HTTPException(status_code=422, detail="Set the client and the contract terms first (retention, advance, "
+                                                    "GST, TDS; 0 where none): every bill works them out from these.")
     draft = (await conn.execute(text(
         "SELECT number FROM ra_bills WHERE organization_id = :org AND project_id = :p AND status = 'draft'"),
         {"org": org, "p": project_id})).scalar()

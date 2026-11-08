@@ -127,11 +127,53 @@ async def get(conn: AsyncConnection, org: uuid.UUID, bill_id: uuid.UUID) -> dict
     if bill["status"] == "draft":
         left = await advance_left(conn, org, bill["project_id"], exclude_bill=bill_id)
         bill.update(ra.totals(bill["lines"], bill, left))
+    bill["warnings"] = await gaps(conn, org, bill["project_id"], bill_id) if bill["status"] in ("draft", "submitted") else []
     bill["previous_billed"] = (await conn.execute(text(
         "SELECT COALESCE(SUM(gross), 0) FROM ra_bills WHERE organization_id = :org AND project_id = :p "
         "AND status IN ('submitted', 'certified') AND number < :n"),
         {"org": org, "p": bill["project_id"], "n": bill["number"]})).scalar_one()
     return bill
+
+
+async def gaps(conn: AsyncConnection, org: uuid.UUID, project_id: Any, bill_id: Any) -> list[dict[str, Any]]:
+    """What the bill can't show by itself, so nobody is billed wrong without knowing:
+
+    - **unpriced**: work measured on a BOQ line with no client rate: it is not on any bill;
+    - **other_unit**: work updates on a line in another unit (sq ft on a sq m line): never added in;
+    - **overbilled**: the bills (this one included, withdrawn ones not) hold more than is measured now, e.g. a site
+      update was removed after a bill went out.
+    """
+    from mesiri.domains.progress.boq_router import done_by_line
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+    repo = PostgresBoqRepository(conn)
+    lines = await repo.list_lines(org, project_id)
+    done = await done_by_line(repo, org, project_id, lines)
+    billed = await previous_by_line(conn, org, project_id)  # every non-withdrawn bill, this one included
+    out = []
+    for ln in lines:
+        measured = done[ln["id"]]["done"]
+        on_bills = billed.get(ln["id"], Decimal(0))
+        unit = ln["unit"]
+        if ln["client_rate"] is None and measured > on_bills:
+            out.append({"kind": "unpriced", "work": ln["work_type"],
+                        "message": f"{ln['work_type']}: {_q(measured - on_bills)} {unit} measured but the line has no "
+                                   "client rate, so it is not billed. Add the rate on the BOQ, then make the bill again."})
+        if done[ln["id"]]["other_unit"]:
+            n = done[ln["id"]]["other_unit"]
+            out.append({"kind": "other_unit", "work": ln["work_type"],
+                        "message": f"{ln['work_type']}: {n} work update{'s' if n > 1 else ''} recorded in another unit "
+                                   f"(not {unit}) {'are' if n > 1 else 'is'} not counted. Put them right on the BOQ page."})
+        if on_bills > measured:
+            out.append({"kind": "overbilled", "work": ln["work_type"],
+                        "message": f"{ln['work_type']}: {_q(on_bills)} {unit} billed so far but only {_q(measured)} "
+                                   f"measured now (a site update was changed or removed?). Check before sending."})
+    return out
+
+
+def _q(v: Decimal) -> str:
+    v = Decimal(v)
+    return f"{v.normalize():f}" if v == v.to_integral_value() else f"{v.quantize(Decimal('0.001')).normalize():f}"
 
 
 async def list_bills(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None) -> list[dict[str, Any]]:

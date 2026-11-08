@@ -195,3 +195,19 @@ def test_draft_boq_from_rooms_with_the_clear_height_from_the_levels():
     assert ground["Wall plaster 12 mm (inside)"]["quantity"] == round(46.6 * 3.9, 2)
     assert ground["WC with fittings"]["quantity"] == 4 and "Urinal with fittings" not in ground
     assert drafts.clear_height_m({"levels": [], "units": "cm"})[0] == drafts.DEFAULT_CLEAR_M
+
+
+def test_a_note_mentioning_a_toilet_is_not_a_toilet_but_labels_side_by_side_count():
+    note = [w("Toilet", 10, 400), w("sinking", 32, 400), w("5", 55, 400), w("cm's", 60, 400)]
+    labels = [w("TOILET", 10, 200), w("TOILET", 38, 200), w("FIRE", 80, 200), w("STAIR", 95, 200)]
+    assert facts.fixtures(note) == {"toilet": 0, "urinal": 0, "wash": 0, "lift": 0, "stair": 0}
+    assert facts.fixtures(labels)["toilet"] == 2 and facts.fixtures(labels)["stair"] == 1
+
+
+def test_a_floor_whose_big_areas_have_no_size_is_warned_not_guessed():
+    from mesiri.domains.drawings import drafts
+
+    b = drafts.boq(_read_like_kondotty())
+    basement, ground = b["sections"]
+    assert basement["area_sqm"] == 1.8 and "not included" in basement["warning"]
+    assert ground["warning"] is None

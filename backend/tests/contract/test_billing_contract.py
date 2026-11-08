@@ -294,3 +294,36 @@ async def test_certify_cancel_remove_and_the_boq_keeps_billed_lines(client, ctx,
     assert [b["ref"] for b in listed] == ["RA-03", "RA-02", "RA-01"] and listed[0]["net"] is not None
     pm = await _user(test_engine, ctx["org"], "project_manager")
     assert (await client.get(f"/billing/ra-bills/{bill['id']}", headers=_h(pm))).status_code == 403
+
+
+async def test_bill_needs_contract_terms_and_says_what_it_cannot_bill(client, ctx, test_engine):
+    """A bill is never made without the contract's terms; unpriced work, work in another unit and billing more
+    than is measured are said on the bill, never dropped silently."""
+    h, base = _h(ctx["admin"]), f"/projects/{ctx['project']}/boq"
+    sec = (await client.post(f"{base}/sections", json={"name": "Finishes"}, headers=h)).json()
+    tiles = (await client.post(f"{base}/sections/{sec['id']}/lines", json={
+        "work": "Floor tiles", "unit": "sqm", "planned_quantity": "500", "client_rate": "950"}, headers=h)).json()
+    paint = (await client.post(f"{base}/sections/{sec['id']}/lines", json={
+        "work": "Painting", "unit": "sqm", "planned_quantity": "900"}, headers=h)).json()
+    await _measured(client, ctx, test_engine, tiles["id"], "40", "sqm")
+    await _measured(client, ctx, test_engine, tiles["id"], "100", "sqft")  # another unit
+    await _measured(client, ctx, test_engine, paint["id"], "120", "sqm")  # no client rate
+    r = await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)
+    assert r.status_code == 422 and "contract terms" in r.json()["detail"]
+
+    await client.put(f"/projects/{ctx['project']}/contract", json={"gst_pct": "18"}, headers=h)
+    bill = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    assert [ln["work"] for ln in bill["lines"]] == ["Floor tiles"]
+    kinds = {w["kind"]: w["message"] for w in bill["warnings"]}
+    assert "Painting: 120 sqm measured but the line has no client rate" in kinds["unpriced"]
+    assert "Floor tiles: 1 work update recorded in another unit" in kinds["other_unit"]
+    await client.post(f"/billing/ra-bills/{bill['id']}/submit", headers=h)
+
+    # A site update removed after the bill went out: the bill says it now holds more than is measured.
+    async with test_engine.begin() as conn:
+        await conn.execute(sa.text(
+            "UPDATE activities SET deleted_at = now() WHERE id IN (SELECT q.activity_id FROM activity_quantities q "
+            "WHERE q.planned_item_id = :l AND q.quantity = 40)"), {"l": tiles["id"]})
+    after = (await client.get(f"/billing/ra-bills/{bill['id']}", headers=h)).json()
+    over = [w for w in after["warnings"] if w["kind"] == "overbilled"]
+    assert over and "40 sqm billed so far but only 0 measured now" in over[0]["message"]

@@ -101,6 +101,23 @@ jobs:
             --rootdir=/tmp \
             --import-mode=importlib \
             -o asyncio_mode=auto
+      - name: BOQ, schedule, billing and drawing contract tests
+        # The money paths (BOQ, material norms and plan, RA bills, contracts) and the drawing reader against a real
+        # Postgres. Before the integration lane, so its older failures can't hide these. Order matters: each file
+        # cleans what it leaves behind for the next (bills before BOQ rows).
+        env:
+          PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
+        run: |
+          cd /tmp
+          "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
+            "$GITHUB_WORKSPACE/backend/tests/contract/test_boq_api_contract.py" \
+            "$GITHUB_WORKSPACE/backend/tests/contract/test_schedule_contract.py" \
+            "$GITHUB_WORKSPACE/backend/tests/contract/test_billing_contract.py" \
+            "$GITHUB_WORKSPACE/backend/tests/contract/test_drawings_contract.py" \
+            -m integration \
+            --rootdir=/tmp \
+            --import-mode=importlib \
+            -o asyncio_mode=auto
       - name: Integration tests
         # Target the path directly — a whole-tree collection imports the repo's
         # top-level `platform/` dir as a namespace package, shadowing stdlib

@@ -85,6 +85,8 @@ export interface BoqSection {
   code: string | null
   name: string
   sort_order: number
+  /** Has schedule dates: an empty one is a schedule activity, not a BOQ section waiting for lines. */
+  scheduled?: boolean
   lines: BoqLine[]
   totals: BoqTotals
 }

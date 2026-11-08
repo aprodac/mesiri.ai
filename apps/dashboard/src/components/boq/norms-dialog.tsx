@@ -105,7 +105,7 @@ export function NormsDialog({
           {similar > 0 && (
             <label className="mt-2 flex items-center gap-2 text-sm">
               <input type="checkbox" className="size-4" checked={copy} onChange={(e) => setCopy(e.target.checked)} />
-              Use the same for the {similar} other line{similar > 1 ? 's' : ''} with this work (other floors or sections)
+              Use the same for the {similar} other line{similar > 1 ? 's' : ''} with this work (other floors or sections); lines that already have their own materials are kept
             </label>
           )}
           {invalid && <p className="text-xs text-destructive">Amounts must be more than 0; wastage between 0 and 100.</p>}

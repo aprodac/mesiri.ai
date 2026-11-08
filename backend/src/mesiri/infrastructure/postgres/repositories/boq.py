@@ -51,7 +51,8 @@ class PostgresBoqRepository:
     async def list_sections(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
         res = await self.conn.execute(
             text(
-                "SELECT id, project_id, site_id, code, name, sort_order FROM work_packages "
+                "SELECT id, project_id, site_id, code, name, sort_order, planned_start IS NOT NULL AS scheduled "
+                "FROM work_packages "
                 "WHERE organization_id = :org AND project_id = :p ORDER BY sort_order, created_at"
             ),
             {"org": organization_id, "p": project_id},

@@ -100,6 +100,7 @@ export function DraftBoq({ read }: { read: DrawingReadWithDrafts }) {
       {sections.map((s, si) => (
         <div key={s.name} className="overflow-x-auto rounded-lg border [contain:inline-size]">
           <p className="border-b bg-muted/40 px-3 py-1.5 text-sm font-medium">{s.name} <span className="text-xs font-normal text-muted-foreground">page {s.page}</span></p>
+          {s.warning && <p className="border-b bg-draft-soft px-3 py-1.5 text-xs text-draft">{s.warning}</p>}
           <table className="w-full min-w-[560px] text-sm">
             <tbody className="divide-y">
               {s.lines.map((ln, li) => (

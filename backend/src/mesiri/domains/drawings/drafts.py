@@ -34,6 +34,8 @@ _UP = {"basement": 0, "cellar": 0, "stilt": 1, "lower ground": 1, "ground": 2, "
 #: Rooms that get no flooring, plaster or paint in the draft.
 _NOT_ROOMS = ("LIFT", "STAIR", "DUCT", "SHAFT", "RAMP")
 SLAB_CM = 15.0
+#: A floor with sized rooms under this share of the biggest floor's gets a warning.
+COVERAGE = 0.4
 DEFAULT_CLEAR_M = 3.0
 
 
@@ -128,5 +130,13 @@ def boq(read: Mapping[str, Any]) -> dict[str, Any]:
                 lines.append({"work": work, "unit": "nos", "quantity": fx[key],
                               "basis": f"{fx[key]} labelled on the plan"})
         sections.append({"name": sheet.get("level") or sheet.get("title") or f"Page {sheet['page']}",
-                         "page": sheet["page"], "lines": lines})
+                         "page": sheet["page"], "lines": lines, "area_sqm": round(floor_area, 2), "warning": None})
+    # A floor whose sized rooms cover much less than the biggest floor: its halls or parking have no printed size,
+    # so the quantities above leave them out. Said, never filled in by guess.
+    biggest = max((s["area_sqm"] for s in sections), default=0)
+    for s in sections:
+        if biggest and s["area_sqm"] < COVERAGE * biggest:
+            s["warning"] = (f"Only {s['area_sqm']:.0f} m² of rooms have a printed size on this floor (the largest floor "
+                            f"has {biggest:.0f} m²). Areas without a size, such as halls or parking, are not included: "
+                            "add them by hand.")
     return {"clear_height_m": clear, "height_note": note, "sections": sections}

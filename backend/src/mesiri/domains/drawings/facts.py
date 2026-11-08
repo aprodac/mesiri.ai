@@ -153,7 +153,7 @@ def fixtures(words: Iterable[Word]) -> dict[str, int]:
     """How many of each fixture the sheet labels (a two-word label such as "FIRE STAIR" counts once)."""
     counts = {k: 0 for k in FIXTURES}
     rotated = [[w] for w in words if not w.get("upright", True)]
-    for row in lines(words) + rotated:
+    for row in [p for r in lines(words) for p in _labels(r)] + rotated:
         texts = [w["text"].upper().strip(".,:") for w in row]
         i = 0
         while i < len(texts):
@@ -171,6 +171,29 @@ def fixtures(words: Iterable[Word]) -> dict[str, int]:
             else:
                 i += 1
     return counts
+
+
+#: Words that may stand beside a fixture name in a label ("M. TOILET", "FIRE STAIR", "GENTS TOILET").
+_LABEL_WORDS = {"M.", "F.", "D.", "M", "F", "D", "GENTS", "LADIES", "COMMON", "ACCESSIBLE", "DISABLED", "UP", "DN",
+                "BASIN", "FIRE", "LIFT", "WC", "W.C", "W.C."}
+
+
+def _labels(row: list[Word]) -> list[list[Word]]:
+    """A text line cut where the words are far apart; a piece counts only when every word in it is label-like
+    (fixture names, M. / F. / D., sizes). A sentence such as "Toilet sinking 5 cm" in the notes is not a toilet."""
+    pieces: list[list[Word]] = []
+    for w in row:
+        if pieces and w["x0"] - pieces[-1][-1]["x1"] <= 1.2 * max(w.get("size") or 0, w["bottom"] - w["top"], 1):
+            pieces[-1].append(w)
+        else:
+            pieces.append([w])
+    names = {n for ns in FIXTURES.values() for n in ns for n in n.split()}
+
+    def label_like(w: Word) -> bool:
+        t = w["text"].upper().strip(",:")
+        return t in names or t in _LABEL_WORDS or bool(_SIZE_ONE.match(t)) or bool(_NUMBER.match(t)) or t in ("X", "×")
+
+    return [p for p in pieces if all(label_like(w) for w in p)]
 
 
 def area_of(a: float, b: float, units: str | None) -> dict[str, float]:

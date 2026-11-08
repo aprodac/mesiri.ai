@@ -594,3 +594,17 @@ async def test_drawing_quantities_are_added_unpriced_per_floor_and_never_overwri
     bad = await client.post(f"{url}/from-drawing", json={"sections": [{"name": "X", "lines": [
         {"work": "Y", "unit": "furlongs", "quantity": "1"}]}]}, headers=h)
     assert bad.status_code == 422
+
+
+async def test_a_drawings_floor_section_takes_the_dates_of_that_floors_finishing_work(client, ctx):
+    """DR-06 with DR-05: "First floor" quantities sit on the Gantt over First floor masonry .. flooring."""
+    h = _h(ctx["admin"])
+    r = await client.post(f"/projects/{ctx['project']}/schedule/from-drawing", json={"start": "2027-01-04", "activities": [
+        {"name": "First floor: masonry", "days": 10}, {"name": "First floor: plastering", "days": 10},
+        {"name": "First floor: flooring", "days": 8}]}, headers=h)
+    assert r.status_code == 200, r.text
+    await client.post(f"/projects/{ctx['project']}/boq/from-drawing", json={"sections": [
+        {"name": "First floor", "lines": [{"work": "Skirting", "unit": "rm", "quantity": "40"}]}]}, headers=h)
+    sched = (await client.get(f"/projects/{ctx['project']}/schedule", headers=h)).json()
+    ff = next(a for a in sched["activities"] if a["name"] == "First floor")
+    assert (ff["start"], ff["end"]) == ("2027-01-04", "2027-01-31")

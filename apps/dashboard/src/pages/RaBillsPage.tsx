@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -92,7 +92,7 @@ function ProjectBills({ projectId }: { projectId: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setContractOpen(true)}><ScrollText className="size-4" /> Contract terms</Button>
-          <Button size="sm" className="gap-1.5" disabled={create.isPending || hasDraft} onClick={() => create.mutate()} title={hasDraft ? 'Submit or remove the draft first' : undefined}>
+          <Button size="sm" className="gap-1.5" disabled={create.isPending || hasDraft || !c} onClick={() => create.mutate()} title={!c ? 'Set the contract terms first' : hasDraft ? 'Submit or remove the draft first' : undefined}>
             <FilePlus2 className="size-4" /> New RA bill
           </Button>
         </div>
@@ -183,6 +183,11 @@ function BillView({ billId, onRemoved }: { billId: string; onRemoved: () => void
           {b.status === 'submitted' && <Button size="sm" variant="ghost" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate('cancel')}><Undo2 className="size-4" /> Withdraw</Button>}
         </div>
       </div>
+      {!!b.warnings?.length && (
+        <Callout tone="draft" icon={AlertTriangle}>
+          <ul className="flex flex-col gap-1">{b.warnings.map((w, i) => <li key={i}>{w.message}</li>)}</ul>
+        </Callout>
+      )}
       {draft && <p className="text-xs text-muted-foreground">Quantities are what site measured since the last bill. Change one if the client's engineer measured differently; the measured figure stays shown.</p>}
 
       <div className="overflow-x-auto rounded-lg border [contain:inline-size]">
