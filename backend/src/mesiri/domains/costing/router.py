@@ -146,33 +146,41 @@ async def project_budget(
 
     Per BOQ line: planned, done, left and the budget earned (the BOQ's own read, CC-04). For the project, per kind
     (labour, materials, subcontract): the budget, the budget earned by the work done, and the money spent in that
-    cost centre since the first record. Spending in other centres (equipment, fuel, overhead, other, not set) has no
-    BOQ rate to be set against and is listed apart. Earned only counts work put on a BOQ line, so the work not on one
-    yet is counted and said: a low earned figure may mean work is waiting to be put on its line.
+    cost centre since the first record; what is committed and not spent yet, and the forecast at completion
+    (CC-18, ``forecast.py``). Spending in other centres (equipment, fuel, overhead, other, not set) has no BOQ rate
+    to be set against and is listed apart. Earned only counts work put on a BOQ line, so the work not on one yet is
+    counted and said: a low earned figure may mean work is waiting to be put on its line.
     """
+    await _project_repo(auth, conn, project_id)
+    return await budget_for(conn, auth.organization_id, project_id, _scope(auth, project_id, None))
+
+
+async def budget_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, scope: dict) -> dict:
+    """The budget read itself, for the route and the portfolio (CC-19): one answer for both."""
+    from mesiri.domains.costing.forecast import committed_materials, committed_subcontract, forecast
+    from mesiri.domains.procurement.orders import fetch_orders
     from mesiri.domains.progress.boq_router import _boq
+    from mesiri.domains.subcontracts.store import fetch as fetch_work_orders
     from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
-    _may_see(auth)
-    if not auth.project_scope.grants_all_org_projects and project_id not in auth.project_scope.project_ids:
-        raise HTTPException(status_code=403, detail="Not authorized for this project")
     repo = PostgresBoqRepository(conn)
-    if not await repo.project_exists(auth.organization_id, project_id):
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    boq = await _boq(repo, auth.organization_id, project_id)
+    boq = await _boq(repo, org, project_id)
     lines = [ln for s in boq["sections"] for ln in s["lines"]]
     # To date: from two years back, or earlier when the project's expenses or work go back further. Attendance and
     # deliveries have no cheap project-wide minimum, so the two-year floor is what keeps them from being missed.
-    today = await _today(conn, auth.organization_id)
+    today = await _today(conn, org)
     start = (await conn.execute(text(
         "SELECT LEAST((SELECT MIN(occurred_date) FROM expenses WHERE project_id = :p), "
         "(SELECT MIN(activity_date) FROM activities WHERE project_id = :p))"), {"p": project_id})).scalar()
     floor = today - datetime.timedelta(days=730)
-    centres = await cost_centres(conn, auth.organization_id, date_from=min(start or floor, floor), date_to=today,
-                                 **_scope(auth, project_id, None))
+    centres = await cost_centres(conn, org, date_from=min(start or floor, floor), date_to=today,
+                                 **scope)
     spent = {c["key"]: Decimal(c["amount"]) for c in centres["centres"]}
 
+    committed = {
+        "material": committed_materials(await fetch_orders(conn, org, project_ids={project_id})),
+        "subcontract": committed_subcontract(await fetch_work_orders(conn, org, project_ids={project_id})),
+    }
     kinds = []
     for kind, label in _KINDS:
         rate = f"{kind}_rate"
@@ -187,10 +195,14 @@ async def project_budget(
             "actual": _m(actual),
             "difference": _m(earned_total - actual) if earned else None,
             "lines_priced": len(budget),
+            "committed": _m(committed[kind]["amount"]) if kind in committed else None,
+            "committed_detail": {k: v for k, v in committed[kind].items() if k != "amount"} if kind in committed else None,
+            **{k: (_m(v) if isinstance(v, Decimal) else v) for k, v in forecast(
+                sum(budget, Decimal(0)) if budget else None, earned_total if earned else None, actual).items()},
         })
-    unlinked = len(await repo.work_updates(auth.organization_id, project_id, unlinked_only=True, limit=500))
+    unlinked = len(await repo.work_updates(org, project_id, unlinked_only=True, limit=500))
     # CC-05: the labour put on each line, set against the labour budget the line earned.
-    labour = await _labour(conn, repo, auth.organization_id, project_id,
+    labour = await _labour(conn, repo, org, project_id,
                            datetime.date.fromisoformat(str(centres["date_from"])), today)
     for section in boq["sections"]:
         for ln in section["lines"]:
@@ -564,3 +576,62 @@ async def variance_for(
                   for v in period_lines],
         "days": days,
     }
+
+
+# -- CC-19: the portfolio -------------------------------------------------------------------------------------------
+
+
+@router.get("/portfolio")
+async def portfolio(
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Every project the caller can see that has a BOQ: budget, earned, spent, committed, the forecast at completion
+    against the budget (and its colour), and the last 7 days' green / amber / red; worst forecast first.
+
+    The same reads as Budget vs actual (``budget_for``) and Green / red (``variance_for``), so a project's row and
+    its pages never disagree. Totals add only figures that exist; a project with no forecast yet says so."""
+    from mesiri.domains.costing.variance import COLOUR_ORDER, colour_of
+
+    _may_see(auth)
+    org = auth.organization_id
+    rows = (await conn.execute(text(
+        "SELECT p.id, p.name FROM projects p WHERE p.organization_id = :org AND COALESCE(p.status, '') <> 'archived' "
+        "AND EXISTS (SELECT 1 FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
+        "WHERE w.project_id = p.id AND i.superseded_by_id IS NULL) ORDER BY p.name"), {"org": org})).mappings().all()
+    today = await _today(conn, org)
+    out = []
+    for p in rows:
+        if not auth.project_scope.grants_all_org_projects and p["id"] not in auth.project_scope.project_ids:
+            continue
+        b = await budget_for(conn, org, p["id"], _scope(auth, p["id"], None))
+        week = await variance_for(conn, org, p["id"], today - datetime.timedelta(days=6), today, None,
+                                  _scope(auth, p["id"], None))
+
+        def total(key: str, kinds: list[dict]) -> Decimal | None:
+            values = [Decimal(k[key]) for k in kinds if k.get(key) is not None]
+            return sum(values, Decimal(0)) if values else None
+
+        kinds = b["kinds"]
+        with_forecast = [k for k in kinds if k["forecast"] is not None]
+        budget, earned = total("budget", kinds), total("earned", kinds)
+        fc_budget, fc = total("budget", with_forecast), total("forecast", with_forecast)
+        colour, _ = colour_of(fc_budget, fc) if with_forecast else ("grey", None)
+        spent = Decimal(b["total_spent"])
+        out.append({
+            "project_id": str(p["id"]), "name": p["name"],
+            "budget": _money_or_none(budget), "earned": _money_or_none(earned), "spent": _m(spent),
+            "committed": _m(total("committed", kinds) or Decimal(0)),
+            "percent_done": str((earned * 100 / budget).quantize(Decimal("0.1"))) if budget and earned is not None else None,
+            "percent_spent": str((spent * 100 / budget).quantize(Decimal("0.1"))) if budget else None,
+            "forecast": _money_or_none(fc), "forecast_budget": _money_or_none(fc_budget),
+            "forecast_difference": _money_or_none(fc_budget - fc) if fc is not None else None,
+            "forecast_kinds": [k["kind"] for k in with_forecast],
+            "colour": colour,
+            "week": {"colour": week["summary"]["colour"], "difference": week["summary"]["difference"],
+                     "red_lines": week["summary"]["lines"]["red"]},
+            "work_not_on_a_line": b["work_not_on_a_line"],
+            "labour_not_on_a_line": b["labour_not_on_a_line"]["cost"],
+        })
+    out.sort(key=lambda r: (COLOUR_ORDER[r["colour"]], Decimal(r["forecast_difference"] or 0)))
+    return {"date": str(today), "projects": out}

@@ -399,3 +399,49 @@ async def test_no_card_when_the_company_has_cost_control_off(client, ctx, test_e
                "CAST(:v AS jsonb))", o=ctx["org"], v=json.dumps(["dpr", "finance"]))
     async with test_engine.begin() as conn:
         assert await queue_cost_cards(conn, ctx["org"], dt.date.today(), dt.datetime.now(tz=dt.UTC)) == 0
+
+
+# -- CC-18 / CC-19: committed, forecast, portfolio ------------------------------------------------------------------
+
+
+async def test_budget_says_what_is_committed_and_the_forecast_and_the_portfolio_agrees(client, ctx, test_engine):
+    h, p = _h(ctx["admin"]), ctx["project"]
+    plaster, _ = await _boq_lines(client, ctx)
+    # Labour: 640 sq ft earned 8,960 for 8,800 of masons (CC-05). The labour budget is plastering 2,52,000 +
+    # brickwork 1,00,000: forecast 8,800 + 3,43,040 x 8,800 / 8,960 = 3,45,714.29, 6,285.71 under.
+    await _attendance(test_engine, ctx, [("mason", 8, "1100", None)], days_ago=1)
+    await _work(test_engine, ctx, plaster["id"], "sqft", "640", 1)
+    day = (await client.get(f"/cost/projects/{p}/labour", headers=h)).json()["groups"][0]["date"]
+    await client.put(f"/cost/projects/{p}/labour", headers=h, json={
+        "site_id": str(ctx["site"]), "date": day, "trade": "mason", "lines": [{"line_id": plaster["id"], "man_days": "8"}]})
+    # Materials: an open order for 100 bags at 410, 40 delivered -> 24,600 still to come.
+    vendor, material, order = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    await _run(test_engine, "INSERT INTO vendors (id, organization_id, name, created_by) VALUES (:id, :org, 'Malabar', :u)",
+               id=vendor, org=ctx["org"], u=ctx["admin_id"])
+    await _run(test_engine, "INSERT INTO materials_catalog (id, organization_id, name, default_unit_id, is_active, created_by) "
+               "VALUES (:id, :org, 'Cement', (SELECT id FROM units_of_measure WHERE code = 'bags'), true, :u)",
+               id=material, org=ctx["org"], u=ctx["admin_id"])
+    await _run(test_engine, "INSERT INTO purchase_orders (id, organization_id, number, project_id, site_id, vendor_id) "
+               "VALUES (:id, :org, 99001, :p, :s, :v)", id=order, org=ctx["org"], p=p, s=ctx["site"], v=vendor)
+    line = uuid.uuid4()
+    await _run(test_engine, "INSERT INTO purchase_order_lines (id, organization_id, purchase_order_id, material_id, unit_id, "
+               "quantity, rate) VALUES (:id, :org, :o, :m, (SELECT id FROM units_of_measure WHERE code = 'bags'), 100, 410)",
+               id=line, org=ctx["org"], o=order, m=material)
+    await _run(test_engine, "INSERT INTO material_receipts (id, organization_id, project_id, site_id, material_id, unit_id, "
+               "material_name, unit, quantity, occurred_date, purchase_order_line_id, created_by) VALUES (gen_random_uuid(), "
+               ":org, :p, :s, :m, (SELECT id FROM units_of_measure WHERE code = 'bags'), 'Cement', 'bags', 40, current_date, "
+               ":l, :u)",
+               org=ctx["org"], p=p, s=ctx["site"], m=material, l=line, u=ctx["admin_id"])
+
+    kinds = {k["kind"]: k for k in (await client.get(f"/cost/projects/{p}/budget", headers=h)).json()["kinds"]}
+    assert kinds["material"]["committed"] == "24600.00"
+    assert kinds["subcontract"]["committed"] == "0.00" and kinds["labour"]["committed"] is None
+    assert (kinds["labour"]["forecast"], kinds["labour"]["forecast_difference"]) == ("345714.29", "6285.71")
+    assert kinds["material"]["forecast_basis"] == "no_budget"  # these lines have no material rate
+
+    rows = (await client.get("/cost/portfolio", headers=h)).json()["projects"]
+    row = next(r for r in rows if r["project_id"] == str(p))
+    assert row["forecast"] == "345714.29" and row["forecast_kinds"] == ["labour"] and row["colour"] == "green"
+    assert row["committed"] == "24600.00" and row["week"]["colour"] == "green"
+    _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
+    assert (await client.get("/cost/portfolio", headers=_h(engineer))).status_code == 403

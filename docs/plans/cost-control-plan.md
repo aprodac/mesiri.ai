@@ -214,6 +214,19 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
   after the attendance is saved, a split only with their numbers). Rates, centres and categories stay on the
   dashboard.
 
+### 4g. As built: committed, forecast, portfolio, Cost control home (CC-18, CC-19, CC-22, 8 Nov 2026)
+
+- **Committed** (`forecast.py`): materials = open purchase orders' quantity not delivered × the order rate (lines
+  with no rate counted, not valued); subcontract = issued / completed work orders' agreed value not billed. Labour
+  has none.
+- **Forecast at completion** per kind = spent + (budget − earned) × spent / earned; None with `too_early` (nothing
+  earned or spent yet) or `no_budget`. Labour spent includes labour on no BOQ line, so until it is put on its lines
+  the labour forecast leans pessimistic; the page says how much labour is on no line.
+- **`GET /cost/portfolio`**: one row per project with a BOQ, from `budget_for` and `variance_for` (the project pages'
+  own reads), worst forecast first.
+- **Dashboard:** Cost control > Overview at `/cost` (totals, what needs a person, projects worst first, the other
+  pages); Green / red at `/cost/green-red`; Budget vs actual's cards show committed and the forecast.
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |

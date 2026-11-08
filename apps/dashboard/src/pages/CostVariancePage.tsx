@@ -171,7 +171,7 @@ function ProjectPicker() {
     <ul className="divide-y rounded-lg border">
       {(projects.data ?? []).map((p) => (
         <li key={p.id}>
-          <Link to={`/cost?project=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
+          <Link to={`/cost/green-red?project=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
             <span className="flex size-8 items-center justify-center rounded-md bg-muted">
               <TrafficCone className="size-4" />
             </span>
@@ -228,7 +228,7 @@ export default function CostVariancePage() {
     )
   }
   const title = scope.mode === 'site' ? `${scope.projectName} · ${scope.siteName}` : scope.mode === 'project' ? scope.projectName : 'Pick a project'
-  const header = <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="Green / red" date={title} />
+  const header = <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Green / red" date={title} />
   if (!projectId) {
     return (
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">

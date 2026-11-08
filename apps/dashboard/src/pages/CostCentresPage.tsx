@@ -124,7 +124,7 @@ export default function CostCentresPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
-        back={{ to: '/today', label: 'Today' }}
+        back={{ to: '/cost', label: 'Overview' }}
         crumb="Cost control"
         title="Cost centres"
         date={scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'site' ? `${scope.projectName} · ${scope.siteName}` : scope.projectName}

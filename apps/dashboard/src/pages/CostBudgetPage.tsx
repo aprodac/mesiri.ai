@@ -59,6 +59,42 @@ function KindCard({ k }: { k: BudgetKind }) {
           <dd className="font-medium tabular-nums">{formatRupees(k.actual)}</dd>
         </div>
       </dl>
+      {(k.committed !== null || k.forecast !== null || k.forecast_basis === 'too_early') && (
+        <dl className="grid grid-cols-2 gap-2 border-t pt-2 text-sm">
+          {k.committed !== null && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Committed</dt>
+              <dd className="font-medium tabular-nums">
+                {formatRupees(k.committed)}
+                {k.committed_detail?.unpriced_lines ? (
+                  <span className="block text-xs font-normal text-muted-foreground">+ {k.committed_detail.unpriced_lines} order lines with no rate</span>
+                ) : null}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt className="text-xs text-muted-foreground">Forecast at completion</dt>
+            <dd className="font-medium tabular-nums">
+              {k.forecast !== null ? (
+                <>
+                  {formatRupees(k.forecast)}
+                  {k.forecast_difference !== null && (
+                    <span className={cn('block text-xs font-medium', Number(k.forecast_difference) < 0 ? 'text-destructive' : 'text-success')}>
+                      {Number(k.forecast_difference) < 0
+                        ? `${formatRupees(String(-Number(k.forecast_difference)))} over budget`
+                        : `${formatRupees(k.forecast_difference)} under budget`}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {k.forecast_basis === 'no_budget' ? 'No budget to forecast against' : 'Not enough work done and paid yet'}
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
+      )}
       {used !== null && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
@@ -72,7 +108,7 @@ function KindCard({ k }: { k: BudgetKind }) {
           ? 'No BOQ line has this rate, so there is nothing to set the spending against.'
           : k.earned === null
             ? 'No work is on a priced line yet, so nothing is earned.'
-            : 'Earned − spent: what the work done was worth against what it cost.'}
+            : 'Earned − spent: what the work done was worth against what it cost. Forecast: what is spent, plus the work left at the rate it has cost so far.'}
       </p>
     </div>
   )
@@ -136,7 +172,7 @@ export default function CostBudgetPage() {
     )
   }
   const header = (
-    <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="Budget vs actual" date={projectId ? scope.mode !== 'portfolio' ? scope.projectName : '' : 'Pick a project'} />
+    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Budget vs actual" date={projectId ? scope.mode !== 'portfolio' ? scope.projectName : '' : 'Pick a project'} />
   )
   if (!projectId) {
     return (

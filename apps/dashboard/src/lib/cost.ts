@@ -41,6 +41,14 @@ export interface BudgetKind {
   actual: string
   difference: string | null
   lines_priced: number
+  /** CC-18: ordered or agreed and not yet delivered or billed (materials, subcontract); null for labour. */
+  committed: string | null
+  committed_detail: { unpriced_lines?: number; work_orders?: number } | null
+  /** Forecast at completion at the rate so far; null with a basis saying why. */
+  forecast: string | null
+  /** Budget − forecast: negative is over. */
+  forecast_difference: string | null
+  forecast_basis: 'rate_so_far' | 'too_early' | 'no_budget'
 }
 
 /** CC-05: a BOQ line in Budget vs actual also carries the labour put on it. */
@@ -205,6 +213,30 @@ export async function fetchProjectVariance(
   params: { date_from?: string; date_to?: string; site_id?: string } = {},
 ): Promise<ProjectVariance> {
   return (await api.get<ProjectVariance>(`/cost/projects/${projectId}/variance`, { params })).data
+}
+
+/** CC-19: one row per project with a BOQ, worst forecast first. */
+export interface PortfolioRow {
+  project_id: string
+  name: string
+  budget: string | null
+  earned: string | null
+  spent: string
+  committed: string
+  percent_done: string | null
+  percent_spent: string | null
+  forecast: string | null
+  forecast_budget: string | null
+  forecast_difference: string | null
+  forecast_kinds: string[]
+  colour: VarianceColour
+  week: { colour: VarianceColour; difference: string | null; red_lines: number }
+  work_not_on_a_line: number
+  labour_not_on_a_line: string
+}
+
+export async function fetchPortfolio(): Promise<{ date: string; projects: PortfolioRow[] }> {
+  return (await api.get('/cost/portfolio')).data
 }
 
 // Mirrors backend MONEY_MANAGE_ROLES: who may change a category's cost centre.

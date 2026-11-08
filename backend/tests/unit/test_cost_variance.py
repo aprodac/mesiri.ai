@@ -58,3 +58,35 @@ def test_quantities_are_never_written_with_an_exponent():
 
     assert [_q(Decimal(x)) for x in ("20.00", "2.50", "0", "24")] == ["20", "2.5", "0", "24"]
     assert [_q3(Decimal(x)) for x in ("250", "700.000", "12.125", "100.5")] == ["250", "700", "12.125", "100.5"]
+
+
+# -- CC-18: committed and forecast ----------------------------------------------------------------------------------
+
+
+def test_the_forecast_is_the_rate_so_far_applied_to_the_work_left():
+    from mesiri.domains.costing.forecast import forecast
+
+    # Plastering labour: 2,52,000 budget, 8,960 earned for 8,800 spent.
+    f = forecast(Decimal("252000"), Decimal("8960"), Decimal("8800"))
+    assert (f["forecast"], f["forecast_difference"], f["forecast_basis"]) == (
+        Decimal("247500.00"), Decimal("4500.00"), "rate_so_far")
+    assert forecast(Decimal("1000"), Decimal("1200"), Decimal("900"))["forecast"] == Decimal("900.00")  # all earned
+    assert forecast(Decimal("1000"), None, Decimal("500"))["forecast_basis"] == "too_early"
+    assert forecast(Decimal("1000"), Decimal("100"), Decimal("0"))["forecast"] is None
+    assert forecast(None, Decimal("100"), Decimal("50"))["forecast_basis"] == "no_budget"
+
+
+def test_committed_is_what_is_ordered_or_agreed_and_not_yet_delivered_or_billed():
+    from mesiri.domains.costing.forecast import committed_materials, committed_subcontract
+
+    orders = [
+        {"status": "open", "lines": [{"quantity": "100", "received": "40", "rate": "410"},
+                                     {"quantity": "10", "received": "10", "rate": "99"},
+                                     {"quantity": "5", "received": "0", "rate": None}]},
+        {"status": "closed", "lines": [{"quantity": "100", "received": "0", "rate": "1"}]},
+    ]
+    assert committed_materials(orders) == {"amount": Decimal("24600.00"), "unpriced_lines": 1}
+    wos = [{"status": "issued", "totals": {"value": "756000", "billed": "200000"}},
+           {"status": "draft", "totals": {"value": "99", "billed": "0"}},
+           {"status": "completed", "totals": {"value": "100", "billed": "150"}}]
+    assert committed_subcontract(wos) == {"amount": Decimal("556000.00"), "work_orders": 1}

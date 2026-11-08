@@ -56,7 +56,7 @@ PAGES: dict[str, tuple[str, str]] = {
     "material_plan": ("/planning/materials?project={project_id}", "what to order and by when, from the BOQ and schedule"),
     "hire_check": ("/equipment/hire", "hire bills checked against the hours recorded"),
     # CC-11: cost control.
-    "cost_today": ("/cost?project={project_id}", "green / amber / red per BOQ line: labour against the work it earned"),
+    "cost_today": ("/cost/green-red?project={project_id}", "green / amber / red per BOQ line: labour against the work it earned"),
     "budget_vs_actual": ("/cost/budget?project={project_id}", "budget against actual, and labour to put on BOQ lines"),
 }
 
