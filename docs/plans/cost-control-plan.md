@@ -118,6 +118,25 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 - **Not built yet:** Excel import (CC-13), cost centre per line (CC-01), material norms (CC-03), work
   done against lines (CC-04), WhatsApp access (later, through v3 `ALLOWED`).
 
+### 4b. As built: work done against the BOQ, web (CC-04, 8 Nov 2026)
+
+- **No migration.** Reuses `activity_quantities.planned_item_id` and the work-order tables (0519).
+- **Done on a line** (`boq_router._done_by_line`): site work updates put on the line, plus confirmed
+  work-order measurements on a work-order line that points at the BOQ line and did not come from a work
+  update (`source <> 'activity'`; that update is already counted). Each quantity counts once. Only the
+  line's own unit is added; work in another unit is counted as `done_in_other_unit`, never converted.
+  Work counted before a quantity revision stays on the line (revision chain followed). Removed work
+  (`activities.deleted_at`) is left out.
+- **Earned** (`boq.line_progress`, pure): done x labour / material / subcontract budget rate, kept apart,
+  so CC-07 can set labour cost against labour earned. A rate not given earns None, never zero. More done
+  than planned is said (`over_planned`).
+- **Putting work on a line:** `GET /projects/{id}/boq/work?unlinked=true` lists recorded quantities with a
+  suggested line (`boq.suggest_line`: same unit, most shared words, the activity's section breaks a tie,
+  none on a tie); `PUT .../boq/work/{quantity_id}` `{line_id | null}` saves it. A person always confirms.
+  Same roles as the BOQ (money roles, D-CC4 open).
+- **Web:** BOQ page Done (quantity, %, bar) and Earned columns, "Earned so far" tile, a "Work done, not
+  on a BOQ line yet" list with a line picker and Count.
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |
