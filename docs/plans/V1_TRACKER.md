@@ -620,7 +620,7 @@ Plan: [material-plan-plan.md](material-plan-plan.md). **Independent** of DR and 
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| MP-01 | **Material norms per BOQ line** (was CC-03): `boq_material_norms`, routes, copy to similar lines, BOQ page row | S | Must | — | todo | | |
+| MP-01 | **Material norms per BOQ line** (was CC-03): `boq_material_norms`, routes, copy to similar lines, BOQ page row | S | Must | — | in-progress | Claude (session 8 Nov) | |
 | MP-02 | **Weekly material plan:** `GET /projects/{id}/material-plan`; per material required / still needed / weekly need / on hand / on order / short from; Planning › Material plan page | M | Must | MP-01 | todo | | CC-08's shortage forecast, with dates |
 | MP-03 | **Order-by:** `vendors.lead_time_days`; order-by date; one grouped note a day in the reminder pass; Draft PO button | M | Must | MP-02 | todo | | D-MP2 default 3 days |
 | MP-04 | **Material plan on WhatsApp:** v3 `material_plan` in `ALLOWED` + SOP rule | S | Must | MP-02 | todo | | |
