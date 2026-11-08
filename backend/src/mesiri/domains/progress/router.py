@@ -22,11 +22,13 @@ below already use for their own dashboard-direct writes.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -37,6 +39,7 @@ from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.progress import PostgresProgressReadRepository
+from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.common.storage import ObjectStoragePort
 
 from .responses import (
@@ -117,6 +120,11 @@ class RecordActivityRequest(BaseModel):
     ended_at: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     quantities: list[RecordActivityQuantity] = Field(default_factory=list)
     source: Literal["dashboard", "whatsapp_text", "whatsapp_voice", "whatsapp_image"] = "dashboard"
+    #: LP-02: where on site, in words ("first floor Room-2", "FF R2", "onnam nila kitchen"), or the place's id.
+    place: str | None = Field(default=None, max_length=120)
+    place_id: uuid.UUID | None = None
+    #: LP-02: the work is finished at that place ("plastering done in R2"): saved as the work's completion.
+    finished: bool = False
 
 
 @router.post("/activities", status_code=201)
@@ -152,6 +160,7 @@ async def record_activity(
     if denied or _site_filter_denied(auth_context, body.project_id, body.site_id):
         raise HTTPException(status_code=403, detail="Not authorized for this project or site")
     await assert_site_in_project(conn, auth_context.organization_id, body.project_id, body.site_id)
+    location_id, place_label = await _place_for(conn, auth_context.organization_id, body)
     key = idempotency_uuid(auth_context.organization_id, idempotency_key)
     cmd = CreateActivityCommand(
         command_id=f"cmd_{uuid.uuid4()}",
@@ -176,13 +185,69 @@ async def record_activity(
         occurred_date_source="stated_by_user",
         source=body.source,
         created_by=str(auth_context.user_id),
+        location_id=str(location_id) if location_id else None,
     )
-    handler = ExecuteConfirmedCreateActivityHandler(
-        db=handler_database(request),
-        repo=PostgresProgressExecutionRepository(),
-        resolver=PostgresProgressUnitResolver(),
+    database = handler_database(request)
+    repo = PostgresProgressExecutionRepository()
+    handler = ExecuteConfirmedCreateActivityHandler(db=database, repo=repo, resolver=PostgresProgressUnitResolver())
+    result = await handler.execute(cmd)
+    if body.finished and result.material_row_id and result.status in (ExecutionStatus.SUCCEEDED,
+                                                              ExecutionStatus.ALREADY_EXECUTED):
+        await _mark_finished(database, repo, auth_context, result.material_row_id, key, body)
+    response = execution_response(result)
+    if place_label and response.status_code in (200, 201):
+        payload = json.loads(response.body)
+        payload["place"] = place_label
+        payload["finished"] = body.finished
+        return JSONResponse(status_code=response.status_code, content=payload)
+    return response
+
+
+async def _place_for(conn: AsyncConnection, org: uuid.UUID,
+                     body: RecordActivityRequest) -> tuple[uuid.UUID | None, str | None]:
+    """LP-02: the place the work is at, from its id or the words (one resolver: domains/places/names.py). Words that
+    fit several places, or none, are refused with the places to choose from, so the person is asked once."""
+    if body.place_id is None and not (body.place or "").strip():
+        return None, None
+    from mesiri.domains.places import names
+    from mesiri.domains.places import store as places
+
+    rows = await places.places(conn, org, body.project_id)
+    if body.place_id is not None:
+        row = next((r for r in rows if r["id"] == body.place_id), None)
+        if row is None:
+            raise HTTPException(status_code=422, detail=["That place is not in this project"])
+        return row["id"], row["label"]
+    if not rows:
+        # No floors or rooms set up for this project: the work is saved without a place (never refused for it).
+        return None, None
+    match = names.resolve(body.place or "", places.as_names(rows))
+    if match.place is None:
+        labels = {r["id"]: r["label"] for r in rows}
+        options = [labels[o.id] for o in match.options if o.id in labels] or \
+                  [r["label"] for r in rows if r["parent_id"] is None]
+        raise HTTPException(status_code=422, detail=[
+            f"Which place is '{body.place}'? It could be: " + ", ".join(options[:12])
+            + ". Prepare it again with the place as written here."])
+    label = next(r["label"] for r in rows if r["id"] == match.place.id)
+    return match.place.id, label
+
+
+async def _mark_finished(database, repo, auth_context: AuthorizationContext, activity_id: str, key: str,
+                         body: RecordActivityRequest) -> None:
+    """The work is finished: a COMPLETED update on it (the same as a WhatsApp "done"), so places show it done."""
+    from mesiri_contracts.application.commands.progress import AddProgressUpdateCommand
+
+    done_key = str(uuid.uuid5(uuid.UUID(key), "finished"))
+    cmd = AddProgressUpdateCommand(
+        command_id=f"cmd_{uuid.uuid4()}", idempotency_key=done_key, correlation_id=key,
+        organization_id=str(auth_context.organization_id), activity_id=activity_id, update_kind="COMPLETED",
+        occurred_at=datetime.datetime.combine(body.activity_date, datetime.time(12), tzinfo=datetime.UTC),
+        source=body.source, created_by=str(auth_context.user_id),
     )
-    return execution_response(await handler.execute(cmd))
+    async with database.transaction() as conn:
+        if await repo.check_idempotency(conn, done_key) is None:
+            await repo.persist_add_progress_update_success(conn, cmd)
 
 
 @router.get("/activities", response_model=ActivitiesListResponse)

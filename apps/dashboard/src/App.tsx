@@ -21,6 +21,7 @@ import ProjectBoqPage from '@/pages/ProjectBoqPage'
 import BoqIndexPage from '@/pages/BoqIndexPage'
 import SchedulePage from '@/pages/SchedulePage'
 import MaterialPlanPage from '@/pages/MaterialPlanPage'
+import PlacesPage from '@/pages/PlacesPage'
 import ClientsPage from '@/pages/ClientsPage'
 import DrawingCheckPage from '@/pages/DrawingCheckPage'
 import RaBillsPage from '@/pages/RaBillsPage'
@@ -158,6 +159,7 @@ export default function App() {
           <Route path="planning/setup" element={<ProjectStartPage />} />
           <Route path="planning/schedule" element={<SchedulePage />} />
           <Route path="planning/materials" element={<MaterialPlanPage />} />
+          <Route path="planning/places" element={<PlacesPage />} />
           <Route path="planning/drawing-check" element={<DrawingCheckPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
           <Route path="billing/ra-bills" element={<RaBillsPage />} />

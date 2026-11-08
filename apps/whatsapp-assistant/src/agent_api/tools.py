@@ -184,7 +184,9 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("work_progress", "GET", "/progress/activities", "Work done / in progress per site, with dates and quantities."),
     Allowed(
         "record_work", "POST", "/progress/activities",
-        "Prepare work done at a site on a day: what was done, and quantities in the unit they said." + _WRITE,
+        "Prepare work done at a site on a day: what was done, and quantities in the unit they said. place: the "
+        "floor / room in their words when they said one ('first floor Room-2', 'FF R2', 'onnam nila kitchen'); "
+        "finished true only when they said that work is finished there ('plastering done in R2')." + _WRITE,
         hide=("source",), fixed=(("source", "whatsapp_text"),),
     ),
     Allowed("list_issues", "GET", "/progress/issues", "Site issues (problems, delays), open or closed."),
@@ -304,6 +306,11 @@ ALLOWED: tuple[Allowed, ...] = (
             "narrow): per material still_needed, weeks (need per week from this Monday), on_hand, on_order, "
             "short_day (the day it runs short), short_by, supplier and lead_days, order_by, order_now, and lines "
             "(the BOQ work it is for). Empty materials: no BOQ line has its materials set yet."),
+    # LP-04 (8 Nov 2026): progress by place. Read by everyone on the project; places are set up on the dashboard.
+    Allowed("place_progress", "GET", "/projects/{project_id}/places/progress",
+            "Progress floor by floor and room by room (place: a floor or room in their words, e.g. 'first floor'): "
+            "per place, each kind of work done / in_progress / not_started, left (work not done there), done, photos, "
+            "last_update. No match: options (the places to choose from). set_up false: no floors or rooms yet."),
     # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
     # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
     Allowed("list_work_orders", "GET", "/subcontracts/work-orders",
