@@ -298,6 +298,56 @@ async def payables(
             "vendors": rows}
 
 
+@router.get("/unbilled")
+async def unbilled_deliveries(
+    project_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-11: every delivery with no bill yet, oldest first -- with a rate or without, from a supplier on the list or
+    only named, or with no supplier at all -- and whether it came against an order. What the office chases."""
+    projects = _narrow(_view_scope(auth_context), project_id)
+    from mesiri.domains.procurement.rates import BILLED_SQL
+
+    sql = (
+        "SELECT r.id, r.occurred_date, r.quantity, r.unit_cost, r.total_cost, mc.name AS material, "
+        "COALESCE(u.code, r.unit) AS unit, r.project_id, p.name AS project, s.name AS site, r.vendor_id, "
+        "v.name AS vendor, NULLIF(trim(r.supplier), '') AS supplier, po.id AS order_id, po.number AS order_number "
+        "FROM material_receipts r JOIN materials_catalog mc ON mc.id = r.material_id "
+        "LEFT JOIN units_of_measure u ON u.id = mc.default_unit_id LEFT JOIN projects p ON p.id = r.project_id "
+        "LEFT JOIN sites s ON s.id = r.site_id LEFT JOIN vendors v ON v.id = r.vendor_id "
+        "LEFT JOIN purchase_order_lines pol ON pol.id = r.purchase_order_line_id "
+        "LEFT JOIN purchase_orders po ON po.id = pol.purchase_order_id "
+        "WHERE r.organization_id = :org AND r.quantity > 0 AND r.movement_reason = 'RECEIVED' AND r.transfer_id IS NULL "
+        "AND r.reverses_movement_id IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM material_usage x WHERE x.reverses_movement_id = r.id) "
+        "AND NOT EXISTS (SELECT 1 FROM material_receipts y WHERE y.reverses_movement_id = r.id) "
+        "AND NOT " + BILLED_SQL
+    )
+    params: dict = {"org": auth_context.organization_id}
+    sql = ledger._scope(sql, params, "r.project_id", projects)
+    rows = (await conn.execute(text(sql + " ORDER BY r.occurred_date, r.created_at"), params)).mappings().all()
+    today = await _today(conn, auth_context.organization_id)
+    from mesiri.domains.procurement.orders import ref as order_ref
+    from mesiri.domains.vendors.matching import value
+
+    out = []
+    for r in rows:
+        v = value(r)
+        out.append({"receipt_id": str(r["id"]), "date": r["occurred_date"].isoformat(), "days": (today - r["occurred_date"]).days,
+                    "material": r["material"], "quantity": format(Decimal(r["quantity"]).normalize(), "f"), "unit": r["unit"],
+                    "rate": ledger.money(r["unit_cost"]) if r["unit_cost"] is not None else None,
+                    "amount": ledger.money(v) if v is not None else None, "project_id": str(r["project_id"]),
+                    "project": r["project"], "site": r["site"], "vendor_id": str(r["vendor_id"]) if r["vendor_id"] else None,
+                    "supplier": r["vendor"] or r["supplier"], "order_id": str(r["order_id"]) if r["order_id"] else None,
+                    "order_ref": order_ref(r["order_number"]) if r["order_number"] else None})
+    return {"as_of": today.isoformat(), "deliveries": out,
+            "totals": {"count": len(out), "amount": ledger.money(sum((Decimal(d["amount"]) for d in out if d["amount"]), Decimal(0))),
+                       "unpriced": sum(1 for d in out if d["amount"] is None),
+                       "no_order": sum(1 for d in out if not d["order_id"]),
+                       "no_supplier": sum(1 for d in out if not d["supplier"])}}
+
+
 @router.get("/{vendor_id}")
 async def get_vendor(
     vendor_id: uuid.UUID,
@@ -553,9 +603,10 @@ async def _link(conn: AsyncConnection, auth: AuthorizationContext, v: dict, expe
             {"id": inv, "org": auth.organization_id, "p": project_id, "v": v["id"], "name": v["name"],
              "no": bill_number, "d": bill_date or expense["occurred_date"],
              "total": expense["amount"] if len(by_project) == 1 else None, "e": expense["id"], "by": auth.user_id})
-        await conn.execute(text(
-            "UPDATE material_receipts SET invoice_id = :inv WHERE organization_id = :org AND id = ANY(:ids)"),
-            {"inv": inv, "org": auth.organization_id, "ids": [uuid.UUID(e["links"]["receipt_id"]) for e in group]})
+        from mesiri.domains.vendors.matching import link
+
+        await link(conn, auth.organization_id, inv, [{"id": uuid.UUID(e["links"]["receipt_id"]), "quantity": None}
+                                                     for e in group], v["id"], None, None)
         ids.append(str(inv))
     return ids
 
@@ -661,13 +712,20 @@ async def bill_delivery_list(
     _view_scope(auth_context)
     await _bill(conn, auth_context, vendor_id, expense_id)
     rows = (await conn.execute(text(
-        "SELECT r.id, r.occurred_date, r.quantity, r.unit_cost, r.total_cost, mc.name AS material, "
-        "COALESCE(u.code, r.unit) AS unit, s.name AS site FROM material_receipts r "
+        "SELECT r.id, r.occurred_date, r.quantity, r.unit_cost, r.total_cost, r.billed_quantity, r.billed_rate, "
+        "mc.name AS material, COALESCE(u.code, r.unit) AS unit, s.name AS site FROM material_receipts r "
         "JOIN material_invoices i ON i.id = r.invoice_id JOIN materials_catalog mc ON mc.id = r.material_id "
         "LEFT JOIN units_of_measure u ON u.id = mc.default_unit_id LEFT JOIN sites s ON s.id = r.site_id "
         "WHERE i.expense_id = :e AND r.organization_id = :org ORDER BY r.occurred_date"),
         {"e": expense_id, "org": auth_context.organization_id})).mappings().all()
+    from mesiri.domains.vendors.matching import flags
+
     return [{"receipt_id": str(r["id"]), "date": r["occurred_date"].isoformat(), "material": r["material"],
+             "billed_quantity": format(Decimal(r["billed_quantity"]).normalize(), "f") if r["billed_quantity"] is not None else None,
+             "billed_rate": ledger.money(r["billed_rate"]) if r["billed_rate"] is not None else None,
+             "flags": flags(Decimal(r["quantity"]), Decimal(r["billed_quantity"]) if r["billed_quantity"] is not None else None,
+                            Decimal(r["unit_cost"]) if r["unit_cost"] is not None else None,
+                            Decimal(r["billed_rate"]) if r["billed_rate"] is not None else None, r["unit"]),
              "quantity": format(Decimal(r["quantity"]).normalize(), "f"), "unit": r["unit"], "site": r["site"],
              "amount": ledger.money(r["total_cost"] if r["total_cost"] is not None
                                     else (Decimal(r["unit_cost"]) * Decimal(r["quantity"]) if r["unit_cost"] is not None else None))

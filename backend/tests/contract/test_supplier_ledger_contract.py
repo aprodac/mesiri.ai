@@ -158,13 +158,13 @@ async def test_a_typed_bill_and_its_deliveries_are_linked_and_counted_once(clien
     h = w["admin"]["h"]
     v = await _vendor(client, h, "Edappally Stores")
     d = await _came(client, w, "cement", "20", "410", days_ago=3, vendor_id=v)
-    bill = await _bill(client, w, v, "8200", days_ago=2)
-    assert (await _ledger(client, h, v))["closing"] == "16400.00"                 # twice until linked
+    bill = await _bill(client, w, v, "8500", days_ago=2)                          # with freight: not certain, offered
+    assert (await _ledger(client, h, v))["closing"] == "16700.00"                 # twice until linked
     linked = await client.post(f"/finance/vendors/{v}/bills/{bill}/deliveries", headers=h, json={"receipt_ids": [d["id"]]})
-    assert linked.status_code == 200 and linked.json()["difference"] == "0.00"
-    assert (await _ledger(client, h, v))["closing"] == "8200.00"
+    assert linked.status_code == 200 and linked.json()["difference"] == "300.00"
+    assert (await _ledger(client, h, v))["closing"] == "8500.00"
     costs = (await client.get("/finance/costs", params={"project_id": str(w["villa"])}, headers=h)).json()
-    assert costs["total"] == "8200.00"
+    assert costs["total"] == "8500.00"
     again = await client.post(f"/finance/vendors/{v}/bills/{bill}/deliveries", headers=h, json={"receipt_ids": [d["id"]]})
     assert again.status_code == 409
 
@@ -275,3 +275,87 @@ async def test_the_money_summary_works_and_only_for_who_sees_all_spending(client
     assert summary.status_code == 200, summary.text          # failed with any vendor before (a missing key)
     assert next(t for t in summary.json()["top_vendors"] if t["name"] == "Malabar")["unpaid_amount"] in ("2500.00", "2500", 2500)
     assert (await client.get("/finance/summary", headers=w["arun"]["h"])).status_code == 403
+
+
+# --- PRC-11: a bill matched to the deliveries the site already recorded ------------------------------------------------
+
+
+async def _receipts(engine, material) -> list:
+    async with engine.begin() as conn:
+        return (await conn.execute(sa.text(
+            "SELECT quantity, invoice_id, billed_quantity, billed_rate, vendor_id FROM material_receipts "
+            "WHERE material_id = :m ORDER BY occurred_date, created_at"), {"m": material})).mappings().all()
+
+
+async def _invoice(client, w, lines, total=None, supplier="Malabar Hardware", days_ago=0, **extra):
+    r = await client.post("/materials/invoices", headers={**w["admin"]["h"], "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "supplier_name": supplier, "invoice_number": "MH/9",
+        "invoice_date": _day(days_ago), **({"invoice_total": total} if total else {}),
+        "lines": [{"material_id": w["cement"], "unit_id": w["units"]["bags"], "quantity": q, "unit_cost": rate} for q, rate in lines],
+        **extra})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+async def test_a_bill_for_a_delivery_already_recorded_is_linked_not_added_again(client, world, test_engine):
+    w = world
+    await _came(client, w, "cement", "100", None, days_ago=4, supplier="Malabar Hardware")   # site: no rate
+    preview = await client.post("/materials/invoices/match", headers=w["admin"]["h"], json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "supplier_name": "Malabar Hardware",
+        "invoice_date": _day(0), "lines": [{"material_id": w["cement"], "unit_id": w["units"]["bags"], "quantity": "100", "unit_cost": "413"}]})
+    assert preview.status_code == 200 and len(preview.json()["lines"][0]["deliveries"]) == 1
+    bill = await _invoice(client, w, [("100", "413")], total="41300")
+    assert len(bill["matched"]) == 1 and bill["matched"][0]["flags"] == []
+    rows = await _receipts(test_engine, w["cement"])
+    assert len(rows) == 1                                               # stock counted once
+    assert rows[0]["invoice_id"] is not None and rows[0]["billed_rate"] == 413
+    v = rows[0]["vendor_id"]
+    led = await _ledger(client, w["admin"]["h"], str(v))
+    assert led["closing"] == "41300.00" and [x["kind"] for x in led["lines"]] == ["bill"]
+
+
+async def test_a_bill_saying_more_or_a_different_rate_is_flagged(client, world, test_engine):
+    w = world
+    await _came(client, w, "cement", "150", "400", days_ago=3, supplier="Malabar Hardware")
+    bill = await _invoice(client, w, [("200", "420")])
+    assert bill["matched"][0]["flags"] == ["billed 50 bags more than delivered", "rate ₹420 on the bill, ₹400 on site"]
+    rows = await _receipts(test_engine, w["cement"])
+    assert [r["quantity"] for r in rows] == [150]                       # the site's count stays
+    led = await _ledger(client, w["admin"]["h"], str(rows[0]["vendor_id"]))
+    assert led["summary"]["open_bills"][0]["mismatches"] == 1
+    on = (await client.get(f"/finance/vendors/{rows[0]['vendor_id']}/bills/{bill['expense_id']}/deliveries", headers=w["admin"]["h"])).json()
+    assert on[0]["billed_quantity"] == "200" and len(on[0]["flags"]) == 2
+
+
+async def test_two_deliveries_on_one_bill_line_and_a_new_line_with_the_bill(client, world, test_engine):
+    w = world
+    await _came(client, w, "cement", "100", None, days_ago=6, supplier="Malabar Hardware")
+    await _came(client, w, "cement", "100", None, days_ago=2, supplier="Malabar Hardware")
+    await _invoice(client, w, [("200", "410")])
+    assert len(await _receipts(test_engine, w["cement"])) == 2          # both linked, none added
+    await _invoice(client, w, [("50", "410")])                          # came with the bill: a new delivery
+    rows = await _receipts(test_engine, w["cement"])
+    assert len(rows) == 3 and all(r["invoice_id"] for r in rows)
+    await _invoice(client, w, [("50", "410")], match_deliveries=False)  # said new: never matched
+    assert len(await _receipts(test_engine, w["cement"])) == 4
+
+
+async def test_a_bill_typed_as_an_expense_links_its_deliveries_when_certain_else_offers(client, world):
+    w = world
+    h = w["admin"]["h"]
+    v = await _vendor(client, h, "Edappally Stores")
+    await _came(client, w, "cement", "20", "410", days_ago=3, vendor_id=v)
+    exact = await client.post("/expenses", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "amount": "8200", "category_text": "Materials", "vendor_text": "Edappally Stores",
+        "occurred_date": _day(1)})
+    assert exact.status_code == 201 and exact.json()["unbilled_deliveries"]["linked"] is True
+    assert (await _ledger(client, h, v))["closing"] == "8200.00"        # once
+
+    await _came(client, w, "cement", "10", "410", days_ago=1, vendor_id=v)
+    other = await client.post("/expenses", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "amount": "5000", "category_text": "Materials", "vendor_id": v, "occurred_date": _day(0)})
+    offer = other.json()["unbilled_deliveries"]
+    assert offer["linked"] is False and offer["count"] == 1 and offer["total"] == "4100.00"
+
+    listed = (await client.get("/finance/vendors/unbilled", headers=h)).json()
+    assert listed["totals"]["count"] == 1 and listed["deliveries"][0]["order_id"] is None and listed["totals"]["no_order"] == 1
