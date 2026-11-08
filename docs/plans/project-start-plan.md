@@ -6,6 +6,9 @@
 > in [V1_TRACKER.md](V1_TRACKER.md). The ending (billing, handover, closeout, defect period) is the next
 > plan.
 
+> **Next (8 Nov 2026):** material plan from BOQ + schedule, schedule from drawing levels:
+> [connected-project-plan.md](connected-project-plan.md).
+
 ---
 
 ## 1. The problem, in the contractor's words

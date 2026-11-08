@@ -1,6 +1,10 @@
 > **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [../architecture/assistant-v2.md](../architecture/assistant-v2.md).
 > This document describes the classic chain (classifier / planner / workflows), now retiring; the body is unchanged.
 
+> **Related (8 Nov 2026):** the architectural, text-layer-only first slice (sheets, levels, rooms, drawing checks) and
+> rooms as progress locations are planned in [connected-project-plan.md](connected-project-plan.md) (CP-05..CP-12);
+> they share this plan's extraction pipeline, facts and `location_nodes`.
+
 # Drawings → Progress: plan
 
 > **Status:** **V2** (decided by Ilan, 23 Oct 2026), so V1 reaches clients first. Nothing

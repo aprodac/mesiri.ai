@@ -5,6 +5,9 @@
 > Tracker items `DOC-01`..`DOC-08` in [V1_TRACKER.md](V1_TRACKER.md). Decisions D-DOC1..D-DOC4 below; each item uses the
 > proposed default until Ilan answers.
 
+> **Next:** per-sheet split, drawing checks, levels and room sizes on WhatsApp, and the material plan are in
+> [connected-project-plan.md](connected-project-plan.md) (CP-01..CP-14).
+
 ---
 
 ## 1. The problem, in the contractor's words
