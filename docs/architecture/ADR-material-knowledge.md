@@ -2,7 +2,7 @@
 
 > Status: **proposed** by Claude, 7 Nov 2026; asked for by Ilan ("write the design and start with TMT and
 > M-sand", "let's not go for hardcoded solutions"). Slice 1 (below) is additive and was started on Ilan's go.
-> **Needs Alan's review**: the resolver becomes a shared component (dashboard + WhatsApp), and change C3 alters a
+> **Needs Ilan's review**: the resolver becomes a shared component (dashboard + WhatsApp), and change C3 alters a
 > rule Alan approved on 3 Nov ([units-and-sizes.md](units-and-sizes.md) rule 4).
 > Extends [units-and-sizes.md](units-and-sizes.md); fits [assistant-v3.md](assistant-v3.md) (a business rule lives
 > in the API); not an architecture change.
@@ -68,7 +68,7 @@ Sources recorded on each row: IS 1786 (bar mass), supplier practice (Kerala 150 
    the size, with the company's own sizes as buttons, remembered per site.
 2. **C2 Refuse the impossible, politely, with the plausible range** (A ranges): "1 load = 60 cum is about 2,100 cft;
    a load is usually 100-600 cft. How many cft?" Never silently saved.
-3. **C3 Save what was said; a missing size never holds a line** (*changes units-and-sizes rule 4; needs Alan*). "3
+3. **C3 Save what was said; a missing size never holds a line** (*changes units-and-sizes rule 4; needs Ilan*). "3
    load M-sand" saves 3 loads; stock shows "3 loads" until the company's load size is known (from setup, a bill, a
    GRN or an admin), then converts. Today the line is held on a size request.
 4. **C4 Learn once.** Every confirmation, correction or bill writes to B with its source; the same question is never

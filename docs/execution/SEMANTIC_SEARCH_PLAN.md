@@ -1,6 +1,6 @@
 # Semantic search over saved records (BE-52)
 
-> Plan, 2 Nov 2026 (Claude, session with Adarsh). **Status: blocked, waiting for Alan's approval**
+> Plan, 2 Nov 2026 (Claude, session with Adarsh). **Status: blocked, waiting for Ilan's approval**
 > (security-sensitive: a new read path over every company's records; and an ops change to the
 > Postgres image for step 2). Nothing here is built yet.
 > Based on `main` at `faf869a8`. Production and the WhatsApp groups were **not** read (the ops and

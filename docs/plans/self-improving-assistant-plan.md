@@ -137,7 +137,7 @@ they got worse, the commit is reverted automatically (`git revert`, verified, pu
   existing table's columns; new tables only. Never anything that sends messages on its own
   schedule (templates, automations) without approval.
 
-## Ship tiers (needs Alan's explicit override of CLAUDE.md for tier A)
+## Ship tiers (needs Ilan's explicit override of CLAUDE.md for tier A)
 
 | Tier | Covers | How it ships |
 | --- | --- | --- |
@@ -146,7 +146,7 @@ they got worse, the commit is reverted automatically (`git revert`, verified, pu
 | **C — always a person** | Labour/Attendance/Payroll/Workforce, money calculations, auth/tenancy, deletes, outbound template sends | Report only |
 
 CLAUDE.md today requires approval at every phase and before touching shared components. Tier A
-is an **exception to that rule** and only takes effect if Alan approves it in writing (to be
+is an **exception to that rule** and only takes effect if Ilan approves it in writing (to be
 recorded in CLAUDE.md). Without it, everything runs as tier B: still automatic up to "ready
 fix + evidence", with a human pressing go.
 

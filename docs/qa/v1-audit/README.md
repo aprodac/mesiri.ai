@@ -66,6 +66,9 @@ chat. The `#` numbers in the original Claude Doc sheets match the ID numbers.
 
 ### Approval labels (from [CLAUDE.md](../../../CLAUDE.md))
 
+> **8 Nov 2026:** Alan has left the company. Read every "Alan:" label below and in the audit
+> files as "Ilan:". Labour and Attendance need no approval since 3 Nov.
+
 - **Alan: Labour** — changes Labour, Attendance, Payroll or Workforce behaviour.
 - **Alan: security** — auth, tokens, tenant isolation, permissions.
 - **Alan: data rewrite** — a migration that rewrites existing rows.

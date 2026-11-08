@@ -146,7 +146,7 @@ The reviewer should not dictate internal implementation details unless those det
 
 ## SHARED ARCHITECTURE APPROVAL
 
-The following require approval from both Ilan and Alan:
+The following require approval from Ilan (Alan has left the company, 8 Nov 2026; until then, both Ilan and Alan):
 
 * frozen contract changes,
 * repository boundary changes,

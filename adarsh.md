@@ -37,8 +37,8 @@ fixes in section 2. Items marked **(R)** come from the
 | 5 | P0 items in no order, some missing | Put them in order; add duplicate handling and failed jobs |
 | 6 | "Replace fake photo storage" is outdated | Update it to match the tracker (INF-09) |
 | 7 | Identity drawn before the queue; no deduplication | Queue → worker → sender lookup; add deduplication |
-| 8 | No approvals named | Tenant rules, ordering and pipeline changes need Alan's approval; backup storage needs owner credentials |
-| 9 | Project rules still say "v2 skills, no router" | Alan or Ilan update `CLAUDE.md` |
+| 8 | No approvals named | Tenant rules, ordering and pipeline changes need Ilan's approval (Alan has left, 8 Nov 2026); backup storage needs owner credentials |
+| 9 | Project rules still say "v2 skills, no router" | Ilan updates `CLAUDE.md` |
 | 10 | No rule for building the second industry | Don't copy construction code |
 
 ## 3. What's strong in the current architecture

@@ -106,7 +106,7 @@ Site-update photos already attach the whole batch.
 time stays about that of one photo. The same bill seen twice (same amount, date and vendor) is one
 line. A different bill is its own line. It works with 151 (a typed purpose such as "Tea bill").
 
-**⚠️ Needs Alan:** attendance register pages read together changes Labour/Attendance behaviour.
+**⚠️ Needs Ilan:** attendance register pages read together changes Labour/Attendance behaviour.
 Expense photos ship first. Attendance stays on the current path until approved.
 
 ## E. Amounts never dropped; Cancel tells the truth (was 157) 🟠
@@ -124,7 +124,7 @@ Expense photos ship first. Attendance stays on the current path until approved.
   "❓ Not kept: ₹3000. Wage?", using the WAITING question from A. Nothing is dropped silently.
 - **Cancel:** when the card is the rest of a partly saved draft, say "Cancelled the rest. Already
   saved: 30 workers."
-- **⚠️ Needs Alan (Labour/Payroll):** a group total wage on labour, asked as
+- **⚠️ Needs Ilan (Labour/Payroll):** a group total wage on labour, asked as
   [₹3000 total] [₹3000 each]. Until approved, the amount is asked about and kept on the line's note,
   not written to wages. He also needs to decide whether today's ₹3000 is added to midlaj's 30 saved
   workers.
@@ -168,7 +168,7 @@ push. Then a live re-test on WhatsApp by the team.
 `git revert <part commit>`. The aliases migration has a downgrade that drops the table. The material
 rights setting reverts with `c5b9691`.
 
-## Needs Alan before building
+## Needs Ilan before building
 
 - **B:** attendance register pages read together (Labour/Attendance).
 - **E:** labour group total wage, and whether to add ₹3000 to midlaj's 30 workers (Labour/Payroll).

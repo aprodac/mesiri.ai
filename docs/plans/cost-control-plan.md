@@ -188,7 +188,7 @@ answers to "Malabar balance?", "how much plastering left?", "metal enough for th
 | D-CC1 | Material cost: when bought or when consumed? | **Both, shown separately:** spend = receipts; cost of work = consumed × weighted average rate | CC-07 |
 | D-CC2 | Labour on a day with several work items and no split said | **Ask once with buttons; if no answer, split by man-days the engineer named, else mark "unallocated"** (never guessed) | CC-05 |
 | D-CC3 | Supplier liability from deliveries or bills? A material bill paid as an expense must not count twice | **Deliveries create the liability; bills confirm it; payments reduce it; an expense linked to a material bill is a payment, not a second cost** | CC-01, CC-09 |
-| D-CC4 | Who sees rates, margins, profit/loss, supplier balances | **Owner, Admin, Finance, PM; engineers see quantities and their own site's green/red, no client rate** — **needs Alan (permissions)** | CC-07, CC-09, CC-12 |
+| D-CC4 | Who sees rates, margins, profit/loss, supplier balances | **Owner, Admin, Finance, PM; engineers see quantities and their own site's green/red, no client rate** — **needs Ilan (permissions)** | CC-07, CC-09, CC-12 |
 | D-CC5 | Restructure the dashboard navigation around the five screens | **Yes, registers become drill-downs** — product decision, shared layout | CC-12, CC-15 |
 | D-CC6 | Green/red threshold | **Green ≥ 100% of benchmark, amber 90–100%, red < 90%**, per company setting | CC-07 |
 | D-CC7 | Dedicated hosting for clients who ask | **Dedicated cloud instance (own DB, backups), no on-premise in V1**; priced separately | CC-16 |

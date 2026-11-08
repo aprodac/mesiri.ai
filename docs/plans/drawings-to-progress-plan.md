@@ -210,7 +210,7 @@ jobs today must be checked before DRW-03 places it.
 | `runtime/send_pending_notifications.py` | extend | Evening card in the existing evening flow |
 
 Photos were kept out of the agent by the ADR; pinning a photo to an element changes that and
-needs Alan's approval.
+needs Ilan's approval.
 
 **Dashboard:** `apps/dashboard/src/`: `pages/DrawingsPage.tsx` (register, upload),
 `pages/DrawingReviewPage.tsx` (overlay, confirm/fix), `pages/BuildingPage.tsx` plus a plan tab
@@ -274,7 +274,7 @@ count from the existing DPR data, read only.
   without a follow-up question.
 - An owner can tell where the building is from one image.
 
-## Decisions needed (Alan / Ilan)
+## Decisions needed (Ilan)
 
 1. ~~Scope~~ **Decided 23 Oct: V2.**
 2. **Drawings:** can we collect 5–10 real structural sets from customers for the golden set?

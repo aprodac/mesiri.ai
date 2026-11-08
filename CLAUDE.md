@@ -1,7 +1,7 @@
 # Mesiri Development Protocol — Global Rule
 
 > **This is the governing protocol for every development task in this repository.**
-> It applies to every feature, every bug fix, and every enhancement, unless Alan explicitly
+> It applies to every feature, every bug fix, and every enhancement, unless Ilan explicitly
 > overrides it for a specific task.
 >
 > Read this **before** `AGENTS.md`'s task-level conventions. Where the two overlap, this
@@ -9,7 +9,8 @@
 >
 > **Authority:** set by Alan, 2026-07-30; autonomous mode added by Alan, 2026-10-19; Labour and
 > Attendance no longer need approval (Alan and Ilan, 2026-11-03, relayed in session).
-> Do not amend without his approval.
+> **Alan has left the company (Ilan, 2026-11-08):** every approval below that was Alan's is now
+> Ilan's. Do not amend without Ilan's approval.
 
 ---
 
@@ -242,7 +243,7 @@ phases or between tracker items. At the end of every phase:
 7. Continue: claim the next unblocked `todo` item in
    [docs/plans/V1_TRACKER.md](docs/plans/V1_TRACKER.md) (`Must` before `Later`) and carry on.
 
-**Stop and wait for Alan's approval only when an item:**
+**Stop and wait for Ilan's approval only when an item:**
 
 1. Changes Payroll or Workforce behaviour, or a shared component (Module Isolation still
    applies). Labour and Attendance do not need approval (3 Nov 2026).
@@ -258,4 +259,4 @@ and move on to the next item that does not need approval.
 
 ---
 
-*This workflow applies to every development task unless Alan explicitly instructs otherwise.*
+*This workflow applies to every development task unless Ilan explicitly instructs otherwise.*

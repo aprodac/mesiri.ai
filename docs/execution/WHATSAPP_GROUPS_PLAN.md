@@ -207,7 +207,7 @@ preselected through `WorkSite.preselect` instead of a resolver change; one modul
 | Wrong company or site: tenant isolation | A group belongs to one company; the sender must be a member of that company **and** the site; otherwise ignored |
 | 8-person limit is too small for a real site team | Confirmed in step 0 before building; product decision |
 | Buttons / Save cards don't work in groups | Step 0 checks it; fallback: the Save card goes 1-on-1 to the sender, the group gets the ✅ |
-| Labour attendance photos sent in the group | Labour behaviour unchanged; its replies stay 1-on-1. Needs Alan's ok (Module Isolation) |
+| Labour attendance photos sent in the group | Labour behaviour unchanged; its replies stay 1-on-1. Needs Ilan's ok (Module Isolation) |
 | Group messages billed differently | Step 0 reads pricing; BE-25 already logs Meta's pricing per message |
 | Spam: Mesiri talking too much in a busy group | Quiet mode (point 3) |
 
@@ -232,7 +232,7 @@ preselected through `WorkSite.preselect` instead of a resolver change; one modul
 
 No Labour, Attendance, Payroll or Workforce code changes. Their replies are on the private
 side of the allowlist. Attendance photos sent in a group follow the normal labour flow with
-replies 1-on-1. This still changes where labour messages *come from*, so it needs Alan's ok.
+replies 1-on-1. This still changes where labour messages *come from*, so it needs Ilan's ok.
 
 ## Steps
 

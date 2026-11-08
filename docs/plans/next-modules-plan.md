@@ -30,7 +30,7 @@
 3. **Approvals inbox** (NXT-08). Reads what is already pending; no new approval system.
 4. **Equipment and machinery** (NXT-11, NXT-13; added 7 Nov). Machine hire and diesel are a big cost the
    cost centres cannot show until it is recorded; the DPR's Machinery section is empty today.
-5. **Wages and advances** (NXT-09). As soon as Alan approves the Workforce / Payroll change.
+5. **Wages and advances** (NXT-09). As soon as Ilan approves the Workforce / Payroll change.
 6. **Lookahead tasks** (NXT-10), **Tally export** (NXT-12), **shuttering by site** (NXT-14); vehicles and fixed
    assets later (NXT-15).
 
@@ -79,7 +79,7 @@ decide stays each module's existing rule.
 
 ### Wages and advances (NXT-09)
 Advance given to a worker or a labour contractor (WhatsApp: "gave Ravi 500 advance"), weekly sheet: days from
-attendance × wage − advances = to pay; paid / unpaid. **Workforce and Payroll: needs Alan's approval.**
+attendance × wage − advances = to pay; paid / unpaid. **Workforce and Payroll: needs Ilan's approval.**
 
 ### Equipment and machinery (NXT-11, NXT-13..15; added 7 Nov)
 Content decided by Ilan, 7 Nov (unblocks WA-68): **per machine per day: name, owned or hired, hours worked,
@@ -122,8 +122,8 @@ idle / breakdown hours, diesel, hire rate.**
 |---|---|---|
 | D-N1 | RA bill quantity: from site-measured quantities, or typed by the office? | **Measured, editable by the office before submit, change recorded** |
 | D-N2 | Subcontractor: a vendor kind, or a Workforce contractor? | **Vendor kind** (no Workforce change); Workforce contractor teams link to it later |
-| D-N3 | Who sees client bills and receivables? | **Owner, admin, finance** (needs Alan: permissions) |
-| D-N4 | Wages and advances: in Mesiri, or left to payroll? | Needs Alan (Workforce / Payroll) |
+| D-N3 | Who sees client bills and receivables? | **Owner, admin, finance** (needs Ilan: permissions) |
+| D-N4 | Wages and advances: in Mesiri, or left to payroll? | Needs Ilan (Workforce / Payroll) |
 | D-N5 | Equipment: what to record per machine per day | **Decided 7 Nov (Ilan):** name, owned or hired, hours worked, idle / breakdown hours, diesel, hire rate |
 
 ## 7. Risks
@@ -133,7 +133,7 @@ idle / breakdown hours, diesel, hire rate.**
 - Subcontract checks depend on CC-04 (quantities linked to BOQ lines); without it the check has nothing to
   compare.
 - Approvals inbox could duplicate each module's buttons; it must only link to them.
-- Workforce / Payroll (NXT-09) is isolated by CLAUDE.md: no change until Alan approves.
+- Workforce / Payroll (NXT-09) is isolated by CLAUDE.md: no change until Ilan approves.
 
 ## 8. Testing, rollback, labour isolation, success
 
