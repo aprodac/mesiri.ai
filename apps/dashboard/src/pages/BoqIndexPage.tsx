@@ -27,7 +27,7 @@ export default function BoqIndexPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Planning" title="BOQ & budget" date="Pick a project" />
+      <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="BOQ & budget" date="Pick a project" />
       {projects.isLoading ? (
         <Skeleton className="h-32 rounded-lg" />
       ) : (projects.data ?? []).length === 0 ? (

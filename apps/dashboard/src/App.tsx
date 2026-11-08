@@ -21,6 +21,8 @@ import ProjectBoqPage from '@/pages/ProjectBoqPage'
 import BoqIndexPage from '@/pages/BoqIndexPage'
 import SchedulePage from '@/pages/SchedulePage'
 import ProjectStartPage from '@/pages/ProjectStartPage'
+import CostBudgetPage from '@/pages/CostBudgetPage'
+import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
@@ -77,6 +79,7 @@ const fin = (page: React.ReactNode) => <RequireModule module="finance">{page}</R
 const lab = (page: React.ReactNode) => <RequireModule module="labour">{page}</RequireModule>
 const mat = (page: React.ReactNode) => <RequireModule module="materials">{page}</RequireModule>
 const eqp = (page: React.ReactNode) => <RequireModule module="equipment">{page}</RequireModule>
+const cst = (page: React.ReactNode) => <RequireModule module="cost">{page}</RequireModule>
 
 export default function App() {
   return (
@@ -147,6 +150,9 @@ export default function App() {
           {/* ST-04 / ST-05: the start of a project and its schedule. */}
           <Route path="planning/setup" element={<ProjectStartPage />} />
           <Route path="planning/schedule" element={<SchedulePage />} />
+          {/* CC-01 / CC-04: the Cost control module. */}
+          <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
+          <Route path="cost/centres" element={cst(<CostCentresPage />)} />
           {/* WEB-72: planned module pages (lib/module-map.ts). Only shown while "Show planned
               modules" is on; otherwise PlannedPage sends the address to Today. */}
           {PLANNED_PAGES.map(({ page }) => (

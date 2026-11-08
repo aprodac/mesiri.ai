@@ -15,8 +15,8 @@ The schedule's own dates were already on ``work_packages`` (0420: planned / actu
 manual %), never used until now. Every new table has row-level security like 0519. Downgrade refuses while
 contracts exist.
 
-Revision ID: 0521
-Revises: 0520
+Revision ID: 0522
+Revises: 0521
 Create Date: 2026-11-08
 """
 
@@ -24,8 +24,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0521"
-down_revision = "0520"
+revision = "0522"
+down_revision = "0521"
 branch_labels = None
 depends_on = None
 

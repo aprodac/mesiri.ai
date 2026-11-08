@@ -465,6 +465,8 @@ export function AppSidebar() {
   const subcontractCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('subcontract')))
   // ST-04/05: Planning (Project start, Schedule, BOQ & budget): the start of a project; hidden when the role has none.
   const planningCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('planning')))
+  // CC-01: Cost control opens the same way (BOQ & budget, Budget vs actual, Cost centres); money roles only, so hidden when empty.
+  const costCategory = isModuleEnabled('cost') ? ((c) => (c.items.length ? c : null))(toCategory(groupByKey('cost'))) : null
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -623,6 +625,7 @@ export function AppSidebar() {
                   {equipmentCategory && renderCategory(equipmentCategory)}
                   {subcontractCategory && renderCategory(subcontractCategory)}
                   {financeCategory && renderCategory(financeCategory)}
+                  {costCategory && renderCategory(costCategory)}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

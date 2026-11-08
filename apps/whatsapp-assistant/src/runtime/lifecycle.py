@@ -482,6 +482,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.progress.boq_router", "BOQ"),
         ("mesiri.domains.equipment.router", "Equipment"),  # NXT-11
         ("mesiri.domains.schedule.router", "Schedule"),  # ST-01/04/05: project start, the Gantt, the lifecycle list
+        ("mesiri.domains.costing.router", "Cost control"),  # CC-01: the cost module (web)
     ):
         try:
             import importlib

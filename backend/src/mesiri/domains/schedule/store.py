@@ -1,7 +1,7 @@
 """PostgreSQL reads and writes for a project's schedule (ST-04) and its start checklist (ST-05).
 
 An activity is a ``work_packages`` row (the BOQ's section): its dates (0420), ``is_milestone`` and the
-``work_package_links`` between them (0521). Progress is never typed: it is measured from what site recorded on
+``work_package_links`` between them (0522). Progress is never typed: it is measured from what site recorded on
 the section's BOQ lines (``measured_by_line``), so the bars fill themselves from the daily WhatsApp updates.
 
 Every function takes the request's connection and never commits.

@@ -60,7 +60,7 @@ the schedule then keeps itself up to date from site reports.
 **Scope.** ST-01..ST-07. Not in scope: tender pricing, documents, client billing (next plan), resource
 levelling, baselines beyond "planned vs actual" dates.
 
-**Database (one additive migration, 0521).**
+**Database (one additive migration, 0522).**
 - `projects.stage` text (tender / won / running / handover / defects / closed, default `running` so every
   existing project keeps working), `projects.start_date`, `projects.planned_finish`.
 - `clients` (per company: name, contact person, phone, email, GSTIN, address).
@@ -90,7 +90,7 @@ the BOQ (D-N3 default, Ilan to confirm). (4) Excel files vary: unknown columns a
 BOQ sheet reader; real-Postgres contract tests for every route and role; v3 tool test for the new `ALLOWED`
 line; dashboard type check, lint, build, and a browser check at 1440 and 390 px.
 
-**Rollback.** Revert the commits and `alembic downgrade 0520`; the migration only adds, and its downgrade
+**Rollback.** Revert the commits and `alembic downgrade 0521`; the migration only adds, and its downgrade
 drops only what it added (refuses while contracts exist, so no contract data is lost by accident).
 
 **Labour isolation.** Nothing in Labour, Attendance, Workforce or Payroll changes.
@@ -112,7 +112,7 @@ section is late on the morning after a site report; the engineer asks "what's pl
 ## 6. What was built (8 Nov 2026)
 
 - **Backend:** `domains/schedule/` (`logic.py` pure maths, `store.py`, `router.py`, `reminders.py`),
-  `domains/progress/boq_import.py`; migration 0521. Progress per BOQ line = work updates counted on the line
+  `domains/progress/boq_import.py`; migration 0522. Progress per BOQ line = work updates counted on the line
   (CUMULATIVE replaces, ACHIEVED adds) + confirmed subcontract measurements not from a work update: the same
   "measured to date" for the Gantt and later for RA bills.
 - **Rules settled while building:** a milestone may fall on the day its predecessor ends; "mark finished" on past
