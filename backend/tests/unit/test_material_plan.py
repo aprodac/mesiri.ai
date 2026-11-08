@@ -78,3 +78,24 @@ def test_materials_add_up_across_lines_and_sort_short_soonest_first():
     assert [r["material"] for r in rows] == ["M-sand", "Steel", "Cement"]
     assert rows[2]["still_needed"] == Decimal("336.000") and rows[2]["short_from"] is None
     assert len(rows[2]["lines"]) == 2
+
+
+def test_order_by_is_the_short_day_less_the_suppliers_lead_time():
+    stock = {"c": {"unit": "bags", "on_hand": "100", "on_order": "0"}}
+    row = plan.build([_line()], stock, D(2026, 11, 10), weeks=4)["materials"][0]
+    # 12 bags a day from Wed 11 Nov: 96 by Wed 18, 108 on Thu 19 > 100.
+    assert row["short_day"] == D(2026, 11, 19) and row["short_from"] == D(2026, 11, 16)
+    assert row["lead_days"] == plan.DEFAULT_LEAD_DAYS == 3 and row["lead_known"] is False
+    assert row["order_by"] == D(2026, 11, 16) and row["order_now"] is False
+
+    stock["c"].update(lead_days=7, supplier="Malabar Traders")
+    row = plan.build([_line()], stock, D(2026, 11, 10), weeks=4)["materials"][0]
+    assert row["order_by"] == D(2026, 11, 12) and row["supplier"] == "Malabar Traders" and row["lead_known"] is True
+    row = plan.build([_line()], stock, D(2026, 11, 12), weeks=4)["materials"][0]
+    assert row["order_now"] is True
+
+
+def test_nothing_short_means_no_order_by_and_the_soonest_order_sorts_first():
+    cement_ok = {"c": {"unit": "bags", "on_hand": "1000", "on_order": "0"}}
+    row = plan.build([_line()], cement_ok, D(2026, 11, 10), weeks=4)["materials"][0]
+    assert row["short_day"] is None and row["order_by"] is None and row["order_now"] is False

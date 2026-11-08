@@ -177,6 +177,11 @@ async def queue_reminders(conn: AsyncConnection, organization_id: uuid.UUID, *, 
 
     async with conn.begin_nested():
         queued += await queue_schedule_reminders(conn, organization_id, today)
+    # MP-03: materials the BOQ and schedule need soon that stock and open orders don't cover, with the order-by day.
+    from mesiri.domains.materials.plan_reminders import queue_material_reminders
+
+    async with conn.begin_nested():
+        queued += await queue_material_reminders(conn, organization_id, today)
     return queued
 
 

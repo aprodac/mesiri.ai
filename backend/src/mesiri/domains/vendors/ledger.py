@@ -52,7 +52,7 @@ def _bucket(days: int) -> str:
 
 
 async def vendors_of(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.UUID | None = None) -> dict:
-    sql = ("SELECT id, name, code, status, phone, gstin, address, kind, credit_days, opening_balance, "
+    sql = ("SELECT id, name, code, status, phone, gstin, address, kind, credit_days, lead_time_days, opening_balance, "
            "opening_balance_date, contact_person, notes FROM vendors WHERE organization_id = :org")
     params: dict = {"org": org}
     if vendor_id is not None:
@@ -343,6 +343,7 @@ def vendor_out(v: dict) -> dict:
     return {
         "id": str(v["id"]), "name": v["name"], "code": v["code"], "status": v["status"], "phone": v["phone"],
         "gstin": v["gstin"], "address": v["address"], "kind": v["kind"], "credit_days": v["credit_days"],
+        "lead_time_days": v.get("lead_time_days"),
         "opening_balance": money(v["opening_balance"]) if v["opening_balance"] is not None else None,
         "opening_balance_date": v["opening_balance_date"].isoformat() if v["opening_balance_date"] else None,
         "contact_person": v["contact_person"], "notes": v["notes"],

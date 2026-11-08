@@ -65,13 +65,14 @@ export function VendorFormDialog({ open, onOpenChange, vendor, canSetOpening, on
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const [f, setF] = React.useState({ name: '', kind: 'supplier' as VendorKind, phone: '', gstin: '', address: '', contact_person: '', credit_days: '', notes: '', opening: '', opening_side: 'owe' as 'owe' | 'ahead', opening_date: todayIso() })
+  const [f, setF] = React.useState({ name: '', kind: 'supplier' as VendorKind, phone: '', gstin: '', address: '', contact_person: '', credit_days: '', lead_time_days: '', notes: '', opening: '', opening_side: 'owe' as 'owe' | 'ahead', opening_date: todayIso() })
   React.useEffect(() => {
     if (!open) return
     const ob = num(vendor?.opening_balance)
     setF({
       name: vendor?.name ?? initialName ?? '', kind: vendor?.kind ?? 'supplier', phone: vendor?.phone ?? '', gstin: vendor?.gstin ?? '',
       address: vendor?.address ?? '', contact_person: vendor?.contact_person ?? '', credit_days: vendor?.credit_days != null ? String(vendor.credit_days) : '',
+      lead_time_days: vendor?.lead_time_days != null ? String(vendor.lead_time_days) : '',
       notes: vendor?.notes ?? '', opening: ob ? String(Math.abs(ob)) : '', opening_side: ob < 0 ? 'ahead' : 'owe', opening_date: vendor?.opening_balance_date ?? todayIso(),
     })
   }, [open, vendor, initialName])
@@ -81,7 +82,8 @@ export function VendorFormDialog({ open, onOpenChange, vendor, canSetOpening, on
     mutationFn: () => {
       const body = {
         name: f.name.trim(), kind: f.kind, phone: f.phone.trim() || null, gstin: f.gstin.trim() || null, address: f.address.trim() || null,
-        contact_person: f.contact_person.trim() || null, credit_days: f.credit_days === '' ? null : Number(f.credit_days), notes: f.notes.trim() || null,
+        contact_person: f.contact_person.trim() || null, credit_days: f.credit_days === '' ? null : Number(f.credit_days),
+        lead_time_days: f.lead_time_days === '' ? null : Number(f.lead_time_days), notes: f.notes.trim() || null,
         ...(canSetOpening
           ? f.opening === ''
             ? vendor?.opening_balance != null ? { opening_balance: null, opening_balance_date: null } : {}
@@ -124,6 +126,9 @@ export function VendorFormDialog({ open, onOpenChange, vendor, canSetOpening, on
             <Field label="GSTIN" htmlFor="v-gstin"><Input id="v-gstin" value={f.gstin} maxLength={20} className="uppercase" onChange={(e) => setF((x) => ({ ...x, gstin: e.target.value.toUpperCase() }))} placeholder="32ABCDE1234F1Z5" /></Field>
             <Field label="Credit (days to pay)" htmlFor="v-credit" hint="A bill is overdue after this many days.">
               <Input id="v-credit" type="number" min={0} max={365} inputMode="numeric" value={f.credit_days} onChange={set('credit_days')} placeholder="30" />
+            </Field>
+            <Field label="Delivery time (days)" htmlFor="v-lead" hint="From order to delivery; the material plan says when to order.">
+              <Input id="v-lead" type="number" min={0} max={120} inputMode="numeric" value={f.lead_time_days} onChange={set('lead_time_days')} placeholder="3" />
             </Field>
           </div>
           <Field label="Address" htmlFor="v-address"><Input id="v-address" value={f.address} onChange={set('address')} placeholder="Edappally, Kochi" /></Field>

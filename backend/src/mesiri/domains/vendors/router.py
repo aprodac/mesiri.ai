@@ -49,6 +49,8 @@ class VendorResponse(BaseModel):
     #: CC-09: what kind of vendor, the credit they give, a contact, notes, the opening balance.
     kind: str = "supplier"
     credit_days: int | None = None
+    #: MP-03: days from order to delivery; the material plan's order-by date (3 when not set).
+    lead_time_days: int | None = None
     contact_person: str | None = None
     notes: str | None = None
     opening_balance: Decimal | None = None
@@ -67,6 +69,7 @@ class CreateVendorRequest(BaseModel):
     address: str | None = None
     kind: str | None = None
     credit_days: int | None = Field(default=None, ge=0, le=365)
+    lead_time_days: int | None = Field(default=None, ge=0, le=120)
     contact_person: str | None = None
     notes: str | None = None
     opening_balance: Decimal | None = None
@@ -82,6 +85,7 @@ class UpdateVendorRequest(BaseModel):
     address: str | None = None
     kind: str | None = None
     credit_days: int | None = Field(default=None, ge=0, le=365)
+    lead_time_days: int | None = Field(default=None, ge=0, le=120)
     contact_person: str | None = None
     notes: str | None = None
     opening_balance: Decimal | None = None
@@ -109,6 +113,8 @@ def _details(body: BaseModel, auth_context: AuthorizationContext | None = None) 
         out["kind"] = kind
     if "credit_days" in sent:
         out["credit_days"] = body.credit_days
+    if "lead_time_days" in sent:
+        out["lead_time_days"] = body.lead_time_days
     if {"opening_balance", "opening_balance_date"} & sent:
         if auth_context is not None and not may_manage_money(auth_context.role):
             raise HTTPException(status_code=403, detail="Only the owner, an admin or finance can set an opening balance.")
@@ -139,7 +145,7 @@ async def _with_extras(conn: AsyncConnection, org: uuid.UUID, responses: list[Ve
     for r in responses:
         v = extra.get(r.id)
         if v:
-            r = r.model_copy(update={k: v[k] for k in ("kind", "credit_days", "contact_person", "notes",
+            r = r.model_copy(update={k: v[k] for k in ("kind", "credit_days", "lead_time_days", "contact_person", "notes",
                                                         "opening_balance", "opening_balance_date")})
         out.append(r)
     return out
@@ -890,7 +896,7 @@ async def merge_vendor(
         await conn.execute(text(
             f"UPDATE {table} SET {col} = :dst WHERE {_OWNED.get(table, 'organization_id = :org')} AND {col} = :src"),  # noqa: S608
             {"dst": dst["id"], "src": src["id"], "org": org})
-    fill = {k: src[k] for k in ("phone", "gstin", "address", "contact_person", "credit_days")
+    fill = {k: src[k] for k in ("phone", "gstin", "address", "contact_person", "credit_days", "lead_time_days")
             if dst[k] is None and src[k] is not None}
     ob = [x for x in (src, dst) if x["opening_balance"] is not None]
     if ob:

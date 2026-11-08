@@ -26,6 +26,8 @@ export interface Vendor {
   address: string | null
   kind: VendorKind
   credit_days: number | null
+  /** MP-03: days from order to delivery (the material plan's order-by day; 3 when not set). */
+  lead_time_days?: number | null
   opening_balance: string | null
   opening_balance_date: string | null
   contact_person: string | null
@@ -175,7 +177,7 @@ export async function fetchLedger(id: string, params: { project_id?: string; dat
   return (await api.get(`/finance/vendors/${id}/ledger`, { params })).data
 }
 
-export type VendorInput = Partial<Pick<Vendor, 'name' | 'phone' | 'gstin' | 'address' | 'kind' | 'credit_days' | 'contact_person' | 'notes' | 'opening_balance' | 'opening_balance_date' | 'status'>>
+export type VendorInput = Partial<Pick<Vendor, 'name' | 'phone' | 'gstin' | 'address' | 'kind' | 'credit_days' | 'lead_time_days' | 'contact_person' | 'notes' | 'opening_balance' | 'opening_balance_date' | 'status'>>
 
 export async function createVendor(body: VendorInput & { name: string }): Promise<Vendor> {
   return (await api.post('/finance/vendors', body)).data

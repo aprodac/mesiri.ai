@@ -527,3 +527,46 @@ async def test_material_plan_from_boq_norms_schedule_and_stock(client, ctx, test
     assert (await client.get(f"{url}/material-plan?site_id={uuid.uuid4()}", headers=h)).status_code == 422
     engineer = await _user(test_engine, ctx["org"], "site_engineer")
     assert (await client.get(f"{url}/material-plan", headers=_h(engineer))).status_code == 403
+
+
+# -- MP-03: order-by ---------------------------------------------------------------------------------------------------
+
+async def test_order_by_uses_the_last_suppliers_lead_time_and_queues_one_note_a_day(client, ctx, test_engine):
+    import datetime
+
+    from mesiri.domains.materials.plan_reminders import queue_material_reminders
+
+    url, h = f"/projects/{ctx['project']}", _h(ctx["admin"])
+    today = datetime.date.fromisoformat((await client.get(f"{url}/material-plan", headers=h)).json()["today"])
+    cement = await _material(test_engine, ctx["org"], "Cement")
+    vendor = (await client.post("/finance/vendors", json={"name": "Malabar Traders", "lead_time_days": 2}, headers=h)).json()
+    assert vendor["lead_time_days"] == 2
+    async with test_engine.begin() as conn:
+        site = (await conn.execute(sa.text("SELECT id FROM sites WHERE project_id = :p"), {"p": ctx["project"]})).scalar_one()
+        bags = (await conn.execute(sa.text("SELECT id FROM units_of_measure WHERE code = 'bags'"))).scalar_one()
+        await conn.execute(sa.text("UPDATE users SET whatsapp_number = :wa WHERE organization_id = :o"),
+                           {"o": ctx["org"], "wa": f"+9198{uuid.uuid4().int % 10**8:08d}"})
+    r = await client.post("/materials/inflows", json={
+        "project_id": str(ctx["project"]), "site_id": str(site), "material_id": cement, "unit_id": str(bags),
+        "quantity": "40", "movement_reason": "RECEIVED", "occurred_date": str(today), "vendor_id": vendor["id"]}, headers=h)
+    assert r.status_code == 201, r.text
+    section = await _section(client, ctx, name="Slab")
+    line = await _add_line(client, ctx, section["id"], work="M20 in slab", unit="cum", planned_quantity="10")
+    await client.put(f"{url}/boq/lines/{line['id']}/norms", json={"norms": [{"material_id": cement, "quantity_per_unit": "8"}]}, headers=h)
+    async with test_engine.begin() as conn:
+        # 80 bags over 4 days from today: 20 a day; 40 in stock runs out on the 3rd day.
+        await conn.execute(sa.text("UPDATE work_packages SET planned_start = :s, planned_end = :e WHERE id = :id"),
+                           {"s": today, "e": today + datetime.timedelta(days=3), "id": section["id"]})
+    row = (await client.get(f"{url}/material-plan?weeks=2", headers=h)).json()["materials"][0]
+    assert row["short_day"] == str(today + datetime.timedelta(days=2))
+    assert (row["supplier"], row["lead_days"], row["lead_known"]) == ("Malabar Traders", 2, True)
+    assert row["order_by"] == str(today) and row["order_now"] is True
+
+    async with test_engine.begin() as conn:
+        first = await queue_material_reminders(conn, ctx["org"], today)
+        again = await queue_material_reminders(conn, ctx["org"], today)
+    assert first == 1 and again == 0
+    async with test_engine.begin() as conn:
+        note = (await conn.execute(sa.text("SELECT payload FROM notifications WHERE organization_id = :o AND rule_key = 'material_order_by'"),
+                                   {"o": ctx["org"]})).scalar_one()["message"]
+    assert "*Cement*: 40 bags more needed" in note and "Malabar Traders takes 2 days" in note

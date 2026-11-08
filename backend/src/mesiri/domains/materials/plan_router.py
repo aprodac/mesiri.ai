@@ -84,6 +84,41 @@ async def _stock(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, s
     return out
 
 
+async def _suppliers(conn: AsyncConnection, org: uuid.UUID, material_ids: list) -> dict[Any, dict]:
+    """MP-03: per material, the supplier who last delivered it (any project) and their lead time, if set."""
+    if not material_ids:
+        return {}
+    rows = (await conn.execute(text(
+        "SELECT DISTINCT ON (r.material_id) r.material_id, v.id AS vendor_id, v.name, v.lead_time_days "
+        "FROM material_receipts r JOIN vendors v ON v.id = r.vendor_id "
+        "WHERE r.organization_id = :org AND r.material_id = ANY(:ids) AND r.movement_reason = 'RECEIVED' "
+        "ORDER BY r.material_id, r.occurred_date DESC, r.created_at DESC"),
+        {"org": org, "ids": list(material_ids)})).mappings().all()
+    return {r["material_id"]: dict(r) for r in rows}
+
+
+async def load_plan(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, today: datetime.date,
+                    weeks: int = 8, site_id: uuid.UUID | None = None) -> dict[str, Any]:
+    """The plan with its inputs gathered: used by the route, the order-by note (MP-03) and WhatsApp (MP-04)."""
+    from mesiri.domains.schedule.store import measured_by_line
+
+    lines = await _lines(conn, org, project_id, site_id)
+    if not lines:
+        return plan.build([], {}, today, weeks)
+    done = await measured_by_line(conn, org, project_id)
+    for line in lines:
+        line["done"] = done.get(line["id"], Decimal(0))
+    stock = await _stock(conn, org, project_id, site_id, today)
+    ids = {n["material_id"] for line in lines for n in line["norms"]}
+    for material_id, sup in (await _suppliers(conn, org, list(ids))).items():
+        held = stock.setdefault(material_id, {"unit": None, "on_hand": Decimal(0), "on_order": Decimal(0)})
+        held.update(supplier=sup["name"], supplier_id=sup["vendor_id"], lead_days=sup["lead_time_days"])
+    result = plan.build(lines, stock, today, weeks)
+    for row in result["materials"]:
+        row["supplier_id"] = (stock.get(row["material_id"]) or {}).get("supplier_id")
+    return result
+
+
 @router.get("/projects/{project_id}/material-plan")
 async def material_plan(
     project_id: uuid.UUID,
@@ -93,23 +128,22 @@ async def material_plan(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     from mesiri.application.dpr import project_day
-    from mesiri.domains.schedule.store import measured_by_line
 
     repo = await _scope(project_id, auth, conn)
     if site_id is not None and not await repo.site_in_project(project_id, site_id):
         raise HTTPException(status_code=422, detail="site_id is not a site of this project")
     org = auth.organization_id
     today = await project_day.company_today(conn, org)
-    lines = await _lines(conn, org, project_id, site_id)
-    done = await measured_by_line(conn, org, project_id) if lines else {}
-    for line in lines:
-        line["done"] = done.get(line["id"], Decimal(0))
-    stock = await _stock(conn, org, project_id, site_id, today) if lines else {}
-    result = plan.build(lines, stock, today, weeks)
+    result = await load_plan(conn, org, project_id, today, weeks, site_id)
+    with_norms = (await conn.execute(text(
+        "SELECT count(DISTINCT n.planned_item_id) FROM boq_material_norms n "
+        "JOIN work_package_planned_items i ON i.id = n.planned_item_id JOIN work_packages w ON w.id = i.work_package_id "
+        "WHERE n.organization_id = :org AND w.project_id = :p AND i.superseded_by_id IS NULL"),
+        {"org": org, "p": project_id})).scalar_one()
     without = (await conn.execute(text(
         "SELECT count(*) FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
         "WHERE i.organization_id = :org AND w.project_id = :p AND i.superseded_by_id IS NULL "
         "AND NOT EXISTS (SELECT 1 FROM boq_material_norms n WHERE n.planned_item_id = i.id)"),
         {"org": org, "p": project_id})).scalar_one()
     return _exact({"project_id": project_id, "today": today, "site_id": site_id, **result,
-                   "lines_with_norms": len(lines), "lines_without_norms": without})
+                   "lines_with_norms": with_norms, "lines_without_norms": without})
