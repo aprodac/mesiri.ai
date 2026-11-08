@@ -194,6 +194,10 @@ async def fetch_entries(
         if r["advance_id"] is not None:
             applied_of[r["advance_id"]] += Decimal(r["amount"])
 
+    # NXT-06/07: a subcontract bill is payable only once checked, and never its retention held.
+    from mesiri.domains.subcontracts.store import fetch_bills as wo_bills
+
+    wo = {uuid.UUID(b["expense_id"]): b for b in await wo_bills(conn, org, expense_ids=[r["id"] for r in bills])} if bills else {}
     bill_state: dict = {}
     for r in bills:
         amount = Decimal(r["amount"])
@@ -205,6 +209,10 @@ async def fetch_entries(
             "left": amount - paid, "project_id": r["project_id"], "project": r["project"], "site": r["site"],
             "payment_status": r["payment_status"], "deliveries": int(r["deliveries"] or 0),
             "mismatches": int(r["mismatches"] or 0),
+            "payable": (min(amount - paid, Decimal(wo[r["id"]]["payable_now"])) if r["id"] in wo else amount - paid),
+            "work_order": ({"ref": wo[r["id"]]["wo_ref"], "bill": wo[r["id"]]["ref"], "id": wo[r["id"]]["work_order_id"],
+                            "check_status": wo[r["id"]]["check_status"], "retention_held": wo[r["id"]]["retention_held"]}
+                           if r["id"] in wo else None),
             "in_window": after_start(r["vendor_id"], r["d"]),
         }
         if not after_start(r["vendor_id"], r["d"]):
@@ -284,10 +292,11 @@ def summarise(vendor: dict, entries: list[dict], state: dict, today: datetime.da
         age = (today - b["date"]).days
         late = due is not None and today > due
         if late:
-            overdue += b["left"]
+            overdue += b["payable"]
         buckets[_bucket(age)] += b["left"]
         open_bills.append({**{k: v for k, v in b.items() if k not in ("vendor_id", "in_window", "amount", "paid", "left",
-                                                                      "project_id")},
+                                                                      "project_id", "payable")},
+                           "payable": money(b["payable"]),
                            "project_id": str(b["project_id"]) if b["project_id"] else None,
                            "date": b["date"].isoformat(), "amount": money(b["amount"]), "paid": money(b["paid"]),
                            "left": money(b["left"]), "due": due.isoformat() if due else None, "age_days": age,

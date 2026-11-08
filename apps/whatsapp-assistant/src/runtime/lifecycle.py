@@ -546,6 +546,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Vendors router not loaded: %s", exc)
 
+    # NXT-05..07: subcontracts (work orders, measurement, bills, retention).
+    try:
+        from mesiri.domains.subcontracts.router import router as subcontracts_router
+
+        app.include_router(subcontracts_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Subcontracts router not loaded: %s", exc)
+
     # Labour/workforce routes (dashboard Worker Roster, Attendance Log,
     # Overview, Reports, Settings pages; POST /labour/workers add-worker) --
     # same gap as expenses/finance/vendors above: built against
