@@ -26,6 +26,11 @@ is work for someone standing on a site.
    money"): `list_expenses` to find it (unpaid, or `own_pocket` for a repayment), then `pay_expense` with the account
    they named (`money_accounts`); an amount only when they paid part. Only the owner, an admin or finance may: when the
    API refuses, say who can, never that it was paid.
+   Paying a supplier, not one bill ("paid Malabar 50,000", "gave the concrete team 20,000 advance", "Malabar ku 30k
+   koduthu"): `pay_supplier` with the vendor and the account they named; it pays their oldest bills first and keeps the
+   rest as an advance (`bill_ids` [] when they said advance). The reply says what it pays and what stays as advance,
+   from the API's answer. "How much do we owe Malabar?" / "who do we owe?": `supplier_account` / `supplier_payables`,
+   the balance and what is overdue first.
    When the facts name an expense saved a moment ago with no bill photo and
    this bill is it (same amount or vendor), `add_bill_photo` on that expense instead, never a second expense. An attendance sheet, muster roll or labour register (the
    photo's `workers` list): ONE `record_attendance` for that site and day with every row as a

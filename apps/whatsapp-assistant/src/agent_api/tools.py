@@ -242,6 +242,20 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare paying an expense, or repaying the person who paid it from their own pocket, from one of the company's "
             "accounts (account_id from money_accounts; amount only when they paid part, else what is unpaid is paid). Find "
             "the expense with list_expenses (its paid_via says unpaid or own_pocket)." + _WRITE),
+    # CC-09 / CC-10 (8 Nov 2026): what the company owes its suppliers, and paying one. The API shows balances only to
+    # the roles that see spending, and lets only the owner, an admin or finance pay.
+    Allowed("supplier_payables", "GET", "/finance/vendors/payables",
+            "Who the company owes and how much: per supplier the balance (below zero: they hold our advance), what is "
+            "overdue, deliveries not billed yet, open bills, unused advance, last payment; totals and how long it waited."),
+    Allowed("supplier_account", "GET", "/finance/vendors/{vendor_id}/ledger",
+            "One supplier's account (vendor_id from list_vendors): balance, open bills with due date and days late, "
+            "deliveries not billed, advances not used, and every line with the running balance (date_from / date_to "
+            "for a period)."),
+    Allowed("pay_supplier", "POST", "/finance/vendors/{vendor_id}/payments",
+            "Prepare paying a supplier (vendor_id from list_vendors) from one of the company's accounts (account_id from "
+            "money_accounts) with the amount they said: it pays that supplier's oldest open bills first and what is "
+            "left stays with them as an advance for the next bill. bill_ids [] when they said it is an advance only; "
+            "reference for a UTR or cheque number; method (Bank transfer, UPI, Cheque, Cash) when said." + _WRITE),
     # PRC-02: the code picks `category_id` (the model's `category` in words, then the API's rule on the name); a
     # guessed id would fail the save, so it stays hidden on add and update.
     Allowed("add_material", "POST", "/materials",
