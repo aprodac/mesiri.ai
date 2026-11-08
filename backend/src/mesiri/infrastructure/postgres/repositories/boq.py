@@ -133,6 +133,97 @@ class PostgresBoqRepository:
         )
         return res.first() is not None
 
+    # -- CC-04: work done against the lines -------------------------------------
+
+    async def current_revision_of(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
+        """Every revision of every line, mapped to the line's current revision.
+
+        Work counted on a line before its quantity was revised still counts on the line.
+        """
+        res = await self.conn.execute(
+            text(
+                "SELECT i.id, i.superseded_by_id FROM work_package_planned_items i "
+                "JOIN work_packages w ON w.id = i.work_package_id WHERE i.organization_id = :org AND w.project_id = :p"
+            ),
+            {"org": organization_id, "p": project_id},
+        )
+        nxt = {r["id"]: r["superseded_by_id"] for r in res.mappings().all()}
+        out = {}
+        for start in nxt:
+            cur, seen = start, set()
+            while nxt.get(cur) is not None and nxt[cur] != cur and cur not in seen:
+                seen.add(cur)
+                cur = nxt[cur]
+            out[start] = cur
+        return out
+
+    async def work_done(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
+        """Every quantity counted on a BOQ line, once each, with its unit.
+
+        Two sources: a site's work update put on a line (``activity_quantities.planned_item_id``,
+        removed work left out), and a confirmed work-order measurement on a line that points at
+        the BOQ, unless it came from a work update (that update is already counted above).
+        ``unit_id`` is None for a measurement whose free-text unit is resolved by the caller.
+        """
+        updates = await self.conn.execute(
+            text(
+                "SELECT q.planned_item_id AS item_id, q.unit_id, NULL AS unit_text, q.quantity "
+                "FROM activity_quantities q JOIN activities a ON a.id = q.activity_id "
+                "WHERE a.organization_id = :org AND a.project_id = :p AND a.deleted_at IS NULL "
+                "AND q.planned_item_id IS NOT NULL"
+            ),
+            {"org": organization_id, "p": project_id},
+        )
+        measured = await self.conn.execute(
+            text(
+                "SELECT l.planned_item_id AS item_id, NULL AS unit_id, l.unit AS unit_text, m.quantity "
+                "FROM work_order_measurements m JOIN work_order_lines l ON l.id = m.line_id "
+                "JOIN work_orders o ON o.id = m.work_order_id "
+                "WHERE m.organization_id = :org AND o.project_id = :p AND m.status = 'confirmed' "
+                "AND m.source <> 'activity' AND l.planned_item_id IS NOT NULL"
+            ),
+            {"org": organization_id, "p": project_id},
+        )
+        return [dict(r) for r in updates.mappings().all()] + [dict(r) for r in measured.mappings().all()]
+
+    async def work_updates(
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, *, unlinked_only: bool, limit: int
+    ) -> list[dict]:
+        """The project's recorded work quantities, newest first, with the line each is on."""
+        res = await self.conn.execute(
+            text(
+                "SELECT q.id, a.activity_date, a.site_id, s.name AS site_name, a.work_package_id AS section_id, "
+                "COALESCE(q.work_type, a.work_type) AS work, a.narrative, q.quantity, q.unit_id, u.code AS unit, "
+                "q.planned_item_id AS line_id, q.work_order_line_id "
+                "FROM activity_quantities q JOIN activities a ON a.id = q.activity_id "
+                "JOIN units_of_measure u ON u.id = q.unit_id LEFT JOIN sites s ON s.id = a.site_id "
+                "WHERE a.organization_id = :org AND a.project_id = :p AND a.deleted_at IS NULL "
+                "AND (NOT :unlinked OR q.planned_item_id IS NULL) "
+                "ORDER BY a.activity_date DESC, q.created_at DESC LIMIT :n"
+            ),
+            {"org": organization_id, "p": project_id, "unlinked": unlinked_only, "n": limit},
+        )
+        return [dict(r) for r in res.mappings().all()]
+
+    async def get_work_update(
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, quantity_id: uuid.UUID
+    ) -> dict | None:
+        res = await self.conn.execute(
+            text(
+                "SELECT q.id, q.unit_id, q.planned_item_id, q.work_order_line_id FROM activity_quantities q "
+                "JOIN activities a ON a.id = q.activity_id WHERE q.id = :q AND a.organization_id = :org "
+                "AND a.project_id = :p AND a.deleted_at IS NULL"
+            ),
+            {"q": quantity_id, "org": organization_id, "p": project_id},
+        )
+        row = res.mappings().first()
+        return dict(row) if row else None
+
+    async def set_work_line(self, quantity_id: uuid.UUID, line_id: uuid.UUID | None) -> None:
+        await self.conn.execute(
+            text("UPDATE activity_quantities SET planned_item_id = :l WHERE id = :q"), {"l": line_id, "q": quantity_id}
+        )
+
     # -- writes --------------------------------------------------------------
 
     async def create_section(

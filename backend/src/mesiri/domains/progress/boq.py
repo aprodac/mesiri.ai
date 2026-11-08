@@ -70,7 +70,12 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     contract_value = sum(contract, Decimal(0)) if contract else None
     budget_cost = sum(budget, Decimal(0)) if budget else None
     complete = lines and missing_client == 0 and missing_budget == 0
+    progress = {}
+    if any("earned" in ln for ln in lines):  # CC-04: lines that carry the work done
+        earned = [ln["earned"] for ln in lines if ln.get("earned") is not None]
+        progress = {"earned": sum(earned, Decimal(0)) if earned else None}
     return {
+        **progress,
         "line_count": len(lines),
         "contract_value": contract_value,
         "budget_cost": budget_cost,
@@ -78,3 +83,65 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         "lines_without_client_rate": missing_client,
         "lines_without_budget_rate": missing_budget,
     }
+
+
+# -- CC-04: the work done against a line ----------------------------------------------------------
+
+
+def line_progress(line: Mapping[str, Any], done: Decimal) -> dict[str, Any]:
+    """Done, left and earned on one line, given the quantity done in the line's own unit.
+
+    Earned is the budget the work done has *earned*: done x each budget rate, kept apart
+    (labour, material, subcontract), so a day's labour can be compared with the labour it
+    earned (the GM's "₹6,400 of labour: was the work done?"). A rate not given earns None,
+    never zero. Done can pass the planned quantity: that is said (``over_planned``), not hidden.
+
+    Worked example: M20 concrete, 100 m³ planned, budget ₹1,500 labour + ₹3,500 material per
+    m³; 8 m³ done -> 92 left, 8% done, earned ₹12,000 labour + ₹28,000 material = ₹40,000.
+    """
+    planned = Decimal(line["planned_quantity"])
+    earned = {
+        k.removesuffix("_rate"): _money(done * Decimal(line[k])) if line.get(k) is not None else None
+        for k in BUDGET_RATES
+    }
+    given = [v for v in earned.values() if v is not None]
+    return {
+        "done_quantity": done,
+        "remaining_quantity": max(planned - done, Decimal(0)),
+        "percent_done": (done * 100 / planned).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if planned else None,
+        "over_planned": done > planned,
+        "earned_labour": earned["labour"],
+        "earned_material": earned["material"],
+        "earned_subcontract": earned["subcontract"],
+        "earned": sum(given, Decimal(0)) if given else None,
+    }
+
+
+def _words(value: str | None) -> set[str]:
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in (value or "").lower())
+    return {w for w in cleaned.split() if len(w) > 2 or any(ch.isdigit() for ch in w)}
+
+
+def suggest_line(
+    work: str | None, unit_id: Any, section_id: Any, lines: Iterable[Mapping[str, Any]]
+) -> Any | None:
+    """The BOQ line a site's work update most likely belongs to, for a person to confirm.
+
+    Only lines in the same unit are candidates (a quantity is never counted in another unit);
+    the one sharing the most words with the work wins, a line in the activity's own section
+    first. None when nothing shares a word or two lines tie: a guess is never made.
+    """
+    said = _words(work)
+    scored = []
+    for line in lines:
+        if line["unit_id"] != unit_id:
+            continue
+        shared = len(said & _words(line["work_type"]))
+        if shared:
+            scored.append((shared, line["work_package_id"] == section_id, line["id"]))
+    if not scored:
+        return None
+    scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
+    if len(scored) > 1 and scored[0][:2] == scored[1][:2]:
+        return None
+    return scored[0][2]
