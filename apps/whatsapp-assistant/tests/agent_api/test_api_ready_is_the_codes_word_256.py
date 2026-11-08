@@ -91,7 +91,7 @@ def test_siblings_close_issue_and_order_are_structured_too() -> None:
     slip = slip_for([close, order], _ctx(), ({CEMENT_ID: "Cement"}, {BAGS: "bags"}),
                     targets={ISSUE: "Equipment · Water tank leak"})
     first, second = slip.lines
-    assert first.title == "Close issue" and first.note == "Equipment · Water tank leak · fixed"
+    assert first.title == "Close issue" and first.kind == "issue" and first.note == "Equipment · Water tank leak · fixed"
     assert second.title == "Cement" and second.note == "Purchase order · ABC Traders · ₹380 each · Main block"
     assert "cheyyan" not in first.note and "order" not in second.title
 

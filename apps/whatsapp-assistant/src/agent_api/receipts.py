@@ -237,7 +237,8 @@ def _structured(number: int, entry: PendingWrite, material: dict[str, str], unit
         listed = ", ".join(f"{_material_name(i.get('material_id'), material)} {_amount(i.get('quantity'))} "
                            f"{unit.get(str(i.get('unit_id')), '')}".strip() for i in items[:3])
         return SlipLine(number, "material", title, _clean(" · ".join([listed, *details]), 70))
-    return SlipLine(number, "list", title, _clean(" · ".join(dict.fromkeys(details)), 70))
+    kind = "issue" if (entry.path or "").startswith("/progress/issues") else "list"
+    return SlipLine(number, kind, title, _clean(" · ".join(dict.fromkeys(details)), 70))
 
 
 def caption_lines(slip: Slip) -> list[str]:
