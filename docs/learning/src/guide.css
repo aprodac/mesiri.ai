@@ -111,3 +111,4 @@ code { font-size: 8.6pt; background: var(--soft); padding: 0 1mm; border-radius:
 .bars i { display: block; height: 4mm; border-radius: 1mm; background: #c9c0b4; }
 .bars .profit i { background: var(--ok); }
 .bars b { font-weight: 600; color: var(--muted); font-size: 8.8pt; }
+td code { word-break: break-all; }
