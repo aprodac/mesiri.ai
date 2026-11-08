@@ -153,3 +153,45 @@ def test_not_a_pdf_and_page_rotation():
     assert pdf_text._shown(90, 842, 595, (0, 0, 10, 5)) == (0, 5, 0, 10)
     assert pdf_text._shown(0, 595, 842, (10, 832, 20, 842)) == (10, 20, 0, 10)
     assert pdf_text.turned("LANIRU") == "URINAL" and pdf_text.turned("URINAL") == "URINAL"
+
+
+# -- DR-05 / DR-06: drafts --------------------------------------------------------------------------------------------
+
+def _read_like_kondotty() -> dict:
+    room = lambda label, a, b: {"label": label, "a": a, "b": b, "size_text": f"{a} x {b}"}  # noqa: E731
+    plan = lambda page, level, rooms, fx: {"page": page, "kind": "plan", "level": level, "title": f"{level} plan",  # noqa: E731
+                                           "rooms": rooms, "fixtures": fx}
+    return {
+        "units": "cm",
+        "floors": ["Basement", "Ground floor", "First floor"],
+        "levels": [{"value": v} for v in (1270, 1167.5, 855, 805, 450, 400, 45, 0, -5, -265)],
+        "sheets": [
+            plan(2, "Ground floor", [room("ROOM-1", 1740, 590), room("LIFT", 180, 240)],
+                 {"toilet": 4, "urinal": 0, "wash": 0}),
+            plan(1, "Basement", [room("M. TOILET", 120, 150)], {"toilet": 4, "urinal": 3, "wash": 1}),
+        ],
+    }
+
+
+def test_draft_schedule_goes_up_floor_by_floor_then_finishes():
+    from mesiri.domains.drawings import drafts
+
+    acts = [a["name"] for a in drafts.schedule(_read_like_kondotty())]
+    assert acts[:3] == ["Site clearing and setting out", "Excavation", "Basement retaining wall"]
+    assert acts.index("Basement: slab and beams") < acts.index("Ground floor: columns") < acts.index(
+        "First floor: slab and beams") < acts.index("Basement: masonry")
+    assert acts[-1] == "Handover" and drafts.schedule({"floors": []})[2]["name"] == "Footings and columns up to plinth"
+
+
+def test_draft_boq_from_rooms_with_the_clear_height_from_the_levels():
+    from mesiri.domains.drawings import drafts
+
+    b = drafts.boq(_read_like_kondotty())
+    assert b["clear_height_m"] == 3.9 and "4.05 m" in b["height_note"]  # -5 to +400, less a 15 cm slab
+    assert [s["name"] for s in b["sections"]] == ["Basement", "Ground floor"]
+    ground = {ln["work"]: ln for ln in b["sections"][1]["lines"]}
+    assert ground["Flooring (vitrified tiles)"]["quantity"] == 102.66  # ROOM-1 only: the lift gets no flooring
+    assert ground["Skirting"]["quantity"] == 46.6  # 2 × (17.40 + 5.90)
+    assert ground["Wall plaster 12 mm (inside)"]["quantity"] == round(46.6 * 3.9, 2)
+    assert ground["WC with fittings"]["quantity"] == 4 and "Urinal with fittings" not in ground
+    assert drafts.clear_height_m({"levels": [], "units": "cm"})[0] == drafts.DEFAULT_CLEAR_M

@@ -5,14 +5,16 @@ import { Callout, StatStrip, type Stat } from '@/components/dpr-page'
 import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
 import { maySeeBoq } from '@/lib/boq'
-import { readDrawing, type DrawingCheck, type DrawingRead, type DrawingSheet } from '@/lib/drawings'
+import { readDrawing, type DrawingCheck, type DrawingReadWithDrafts as DrawingRead, type DrawingSheet } from '@/lib/drawings'
+import { DraftBoq, DraftSchedule } from '@/components/drawings/drafts'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
 // DR-04: Planning › Drawing check. Drop the architect's PDF: Mesiri reads its own text (title blocks, levels, room
 // sizes, fixtures) in a second and lists what to ask the architect before the drawing reaches site, such as an area
-// label that does not match the room's size. Nothing is saved and nothing is sent to anyone.
+// label that does not match the room's size. Nothing is saved and nothing is sent to anyone. DR-05/06: a draft
+// schedule from the floors and draft BOQ quantities from the rooms, edited here and added to a project on request.
 
 /** What the production server accepts today (nginx); the reader itself takes up to 50 MB. */
 const MAX_MB = 8
@@ -197,6 +199,8 @@ function Result({ r }: { r: DrawingRead }) {
           </section>
         </aside>
       </div>
+      <DraftSchedule read={r} />
+      <DraftBoq read={r} />
     </>
   )
 }

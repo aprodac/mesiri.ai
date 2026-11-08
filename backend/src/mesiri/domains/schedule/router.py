@@ -8,6 +8,7 @@
   PATCH  /projects/{id}/schedule/activities/{aid}  dates, milestone, done, "starts after"; pushes what follows
   DELETE /projects/{id}/schedule/activities/{aid}  remove an activity with no BOQ lines and no site reports
   POST   /projects/{id}/schedule/sequence          place activities one after another from a day ("quick plan")
+  POST   /projects/{id}/schedule/from-drawing      DR-05: add a drawing's draft activities, one after another
 
 Reading the schedule needs no money role: it carries names, dates and quantities, never rates. Anyone on the
 project sees it (the site engineer asks "what is planned this week?"). Changing it is for the roles that edit the
@@ -472,3 +473,53 @@ async def sequence(project_id: uuid.UUID, body: SequenceBody, auth: Authorizatio
         prev = item.id
         day = end if milestone else end + logic.DAY
     return await _respond(conn, auth, project_id, moved=[], focus=None)
+
+
+class DraftActivity(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    days: int = Field(ge=0, le=365)
+
+    _clean_name = field_validator("name")(_clean)
+
+
+class FromDrawing(BaseModel):
+    start: datetime.date
+    activities: list[DraftActivity] = Field(min_length=1, max_length=120)
+    site_id: uuid.UUID | None = None
+
+
+@router.post("/projects/{project_id}/schedule/from-drawing")
+async def schedule_from_drawing(project_id: uuid.UUID, body: FromDrawing,
+                                auth: AuthorizationContext = Depends(get_auth_context),
+                                conn: AsyncConnection = Depends(get_db_conn)):
+    """DR-05: the draft from a drawing set (Planning > Drawing check), as edited by the person, added to the
+    schedule one after another from ``start`` and linked in that order. Never overwrites: an activity whose name the
+    schedule already has is left as it is and reported as skipped (D-DR2)."""
+    from sqlalchemy import text
+
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+    await _project(conn, auth, project_id)
+    _require_edit(auth)
+    await _check_site(conn, project_id, body.site_id)
+    have = {n.lower() for n in (await conn.execute(text(
+        "SELECT name FROM work_packages WHERE organization_id = :org AND project_id = :p"),
+        {"org": auth.organization_id, "p": project_id})).scalars()}
+    repo = PostgresBoqRepository(conn)
+    day, prev, added, skipped = body.start, None, [], []
+    for act in body.activities:
+        if act.name.lower() in have:
+            skipped.append(act.name)
+            continue
+        have.add(act.name.lower())
+        new_id = await repo.create_section(auth.organization_id, project_id, act.name, body.site_id, None, auth.user_id)
+        milestone = act.days == 0
+        end = day if milestone else day + logic.DAY * (act.days - 1)
+        await store.update_section(conn, new_id, {"planned_start": day, "planned_end": end, "is_milestone": milestone})
+        if prev is not None:
+            await store.replace_predecessors(conn, auth.organization_id, new_id, [(prev, 0)])
+        prev, day = new_id, (end if milestone else end + logic.DAY)
+        added.append(act.name)
+    out = await _respond(conn, auth, project_id, moved=[], focus=None)
+    out.update(added=added, skipped=skipped)
+    return out

@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from typing import Any
 
-from mesiri.domains.drawings import checks, facts, reader
+from mesiri.domains.drawings import checks, drafts, facts, reader
 
 FIXTURE_ORDER = ("toilet", "urinal", "wash", "lift", "stair")
 
@@ -34,7 +34,7 @@ def read_pages(pages: list[Mapping[str, Any]]) -> dict[str, Any]:
             level_pages[lv["value"]].append(s["page"])
     totals = {k: sum(s["fixtures"].get(k, 0) for s in sheets) for k in FIXTURE_ORDER}
     first = next((s for s in sheets if s["has_text"]), {})
-    return {
+    result = {
         "pages": len(pages),
         "project": first.get("project"),
         "client": first.get("client"),
@@ -46,6 +46,10 @@ def read_pages(pages: list[Mapping[str, Any]]) -> dict[str, Any]:
         "fixtures": totals,
         "checks": checks.run(sheets),
     }
+    # DR-05 / DR-06: drafts the person edits and confirms (never saved from here).
+    result["draft_schedule"] = drafts.schedule(result)
+    result["draft_boq"] = drafts.boq(result)
+    return result
 
 
 def read_pdf(data: bytes) -> dict[str, Any]:

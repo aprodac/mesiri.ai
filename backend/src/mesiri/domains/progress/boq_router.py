@@ -12,6 +12,7 @@ Mounted at /projects/{project_id}/boq:
   PUT    /work/{quantity_id}      put a work quantity on a line, or take it off (line_id null)
   PUT    /lines/{line_id}/norms   the materials one unit of the line uses (MP-01), replacing the line's set
   POST   /lines/{line_id}/norms/copy  the same norms onto the project's other lines of the same work and unit
+  POST   /from-drawing            DR-06: a drawing's draft quantities added as unpriced lines (never overwrites)
 
 Each line carries ``materials``: its norms (material, quantity per unit of the line, wastage %), read by the
 material plan (MP-02, docs/plans/material-plan-plan.md).
@@ -595,3 +596,54 @@ async def boq_import(project_id: uuid.UUID, body: BoqImportFile,
 
     await _scope(project_id, auth, conn)
     return await run(conn, auth.organization_id, project_id, auth.user_id, _sheet(body))
+
+
+class DraftLine(BaseModel):
+    work: str = Field(min_length=1, max_length=300)
+    unit: str = Field(min_length=1, max_length=40)
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+
+    _clean_text = field_validator("work", "unit")(_clean)
+
+
+class DraftSection(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    lines: list[DraftLine] = Field(default_factory=list, max_length=200)
+
+    _clean_text = field_validator("name")(_clean)
+
+
+class FromDrawing(BaseModel):
+    sections: list[DraftSection] = Field(min_length=1, max_length=50)
+
+
+@router.post("/from-drawing")
+async def boq_from_drawing(
+    project_id: uuid.UUID,
+    body: FromDrawing,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """DR-06: quantities drafted from a drawing set (Planning > Drawing check), as edited, added to the BOQ: a
+    section per floor (the existing one when the name matches), each line unpriced. A line whose work and unit the
+    section already has is left as it is and reported as skipped (D-DR2: never overwrites)."""
+    from sqlalchemy import text
+
+    repo = await _scope(project_id, auth, conn)
+    org = auth.organization_id
+    added = skipped = 0
+    for sec in body.sections:
+        section_id = (await conn.execute(text(
+            "SELECT id FROM work_packages WHERE organization_id = :org AND project_id = :p AND lower(name) = lower(:n) "
+            "ORDER BY created_at LIMIT 1"), {"org": org, "p": project_id, "n": sec.name})).scalar()
+        if section_id is None:
+            section_id = await repo.create_section(org, project_id, sec.name, None, None, auth.user_id)
+        for ln in sec.lines:
+            unit_id = await _unit_id(conn, ln.unit)
+            if await repo.current_line_with(section_id, ln.work, unit_id):
+                skipped += 1
+                continue
+            await repo.create_line(org, section_id, {"work_type": ln.work, "unit_id": unit_id,
+                                                     "planned_quantity": ln.quantity}, auth.user_id)
+            added += 1
+    return {"added": added, "skipped": skipped, **_exact(await _boq(repo, org, project_id))}

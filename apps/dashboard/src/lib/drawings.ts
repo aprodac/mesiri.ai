@@ -58,10 +58,28 @@ export interface DrawingRead {
   checks: DrawingCheck[]
 }
 
-export async function readDrawing(file: File): Promise<DrawingRead> {
-  const res = await api.post<DrawingRead>('/drawings/read', file, {
+export async function readDrawing(file: File): Promise<DrawingReadWithDrafts> {
+  const res = await api.post<DrawingReadWithDrafts>('/drawings/read', file, {
     headers: { 'Content-Type': 'application/pdf', 'X-File-Name': encodeURIComponent(file.name) },
     timeout: 120_000,
   })
   return res.data
+}
+
+// DR-05 / DR-06: the drafts in a read result, and adding them to a project (never overwrites).
+export interface DraftActivity { name: string; days: number }
+export interface DraftBoqLine { work: string; unit: string; quantity: number; basis: string }
+export interface DraftBoq { clear_height_m: number; height_note: string; sections: { name: string; page: number; lines: DraftBoqLine[] }[] }
+
+export interface DrawingReadWithDrafts extends DrawingRead {
+  draft_schedule: DraftActivity[]
+  draft_boq: DraftBoq
+}
+
+export async function addDraftSchedule(projectId: string, start: string, activities: DraftActivity[]) {
+  return (await api.post<{ added: string[]; skipped: string[] }>(`/projects/${projectId}/schedule/from-drawing`, { start, activities })).data
+}
+
+export async function addDraftBoq(projectId: string, sections: { name: string; lines: { work: string; unit: string; quantity: number }[] }[]) {
+  return (await api.post<{ added: number; skipped: number }>(`/projects/${projectId}/boq/from-drawing`, { sections })).data
 }

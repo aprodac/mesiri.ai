@@ -422,3 +422,22 @@ async def test_nothing_is_sent_for_a_schedule_on_time_or_a_tender(client, test_e
     await client.patch(f"/projects/{ctx['project']}/start", json={"stage": "tender"}, headers=_h(ctx["admin"]))
     async with test_engine.begin() as conn:
         assert await queue_schedule_reminders(conn, ctx["org"], today + D) == 0
+
+
+async def test_a_drawings_draft_schedule_is_added_in_order_and_never_overwrites(client, ctx, test_engine):
+    """DR-05: activities from Planning > Drawing check, one after another and linked; existing names skipped."""
+    url, h = f"/projects/{ctx['project']}/schedule", _h(ctx["admin"])
+    await _section(client, ctx, "Excavation")
+    r = await client.post(f"{url}/from-drawing", json={"start": "2026-12-01", "activities": [
+        {"name": "Excavation", "days": 7}, {"name": "Ground floor: columns", "days": 6},
+        {"name": "Ground floor: slab and beams", "days": 12}, {"name": "Handover", "days": 0}]}, headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["skipped"] == ["Excavation"] and len(body["added"]) == 3
+    acts = {a["name"]: a for a in body["schedule"]["activities"]}
+    assert (acts["Ground floor: columns"]["start"], acts["Ground floor: columns"]["end"]) == ("2026-12-01", "2026-12-06")
+    assert acts["Ground floor: slab and beams"]["start"] == "2026-12-07" and acts["Handover"]["milestone"] is True
+    assert acts["Excavation"]["start"] is None  # left as it was
+    _, engineer = await _user(test_engine, ctx["org"], "site_engineer")
+    assert (await client.post(f"{url}/from-drawing", json={"start": "2026-12-01", "activities": [
+        {"name": "X", "days": 1}]}, headers=_h(engineer))).status_code == 403

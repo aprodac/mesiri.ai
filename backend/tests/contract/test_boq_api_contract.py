@@ -572,3 +572,25 @@ async def test_order_by_uses_the_last_suppliers_lead_time_and_queues_one_note_a_
         note = (await conn.execute(sa.text("SELECT payload FROM notifications WHERE organization_id = :o AND rule_key = 'material_order_by'"),
                                    {"o": ctx["org"]})).scalar_one()["message"]
     assert "*Cement*: 40 bags more needed" in note and "Malabar Traders takes 2 days" in note
+
+
+# -- DR-06: draft quantities from a drawing ------------------------------------------------------------------------
+
+async def test_drawing_quantities_are_added_unpriced_per_floor_and_never_overwrite(client, ctx):
+    url, h = f"/projects/{ctx['project']}/boq", _h(ctx["admin"])
+    ground = await _section(client, ctx, name="Ground floor")
+    await _add_line(client, ctx, ground["id"], work="Skirting", unit="rm", planned_quantity="50", client_rate="90")
+    r = await client.post(f"{url}/from-drawing", json={"sections": [
+        {"name": "ground floor", "lines": [{"work": "Skirting", "unit": "rm", "quantity": "46.6"},
+                                           {"work": "Flooring (vitrified tiles)", "unit": "sqm", "quantity": "102.66"}]},
+        {"name": "First floor", "lines": [{"work": "WC with fittings", "unit": "nos", "quantity": "4"}]}]}, headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["added"], body["skipped"]) == (2, 1)
+    by_section = {s["name"]: {ln["work"]: ln for ln in s["lines"]} for s in body["sections"]}
+    assert by_section["Ground floor"]["Skirting"]["planned_quantity"] == "50.000"  # kept, with its rate
+    assert by_section["Ground floor"]["Flooring (vitrified tiles)"]["client_rate"] is None
+    assert by_section["First floor"]["WC with fittings"]["unit"] == "nos"
+    bad = await client.post(f"{url}/from-drawing", json={"sections": [{"name": "X", "lines": [
+        {"work": "Y", "unit": "furlongs", "quantity": "1"}]}]}, headers=h)
+    assert bad.status_code == 422
