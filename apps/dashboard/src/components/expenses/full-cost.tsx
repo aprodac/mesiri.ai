@@ -85,8 +85,8 @@ export function FullCost({ filters }: { filters: ExpenseFilters }) {
       {notes.length > 0 && (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          {notes.join(' · ')}: not in the total. A delivery priced on site and also paid by an expense typed without its bill counts twice until the supplier ledger
-          matches them.
+          {notes.join(' · ')}: not in the total. A delivery priced on site and also typed as an expense counts twice until it is put on that bill: the
+          supplier's page › Not billed (Finance › Suppliers).
         </p>
       )}
     </section>

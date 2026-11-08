@@ -25,6 +25,7 @@ import { exportCsv } from '@/lib/export'
 import { CHIP } from '@/lib/site-day'
 import { swatch } from '@/lib/requests'
 import { cn } from '@/lib/utils'
+import { vendorUrl } from '@/lib/vendors'
 import { fetchAllExpenseAttachmentsApi, reverseExpenseApi } from '@/lib/api'
 import { PAID_VIA, compact, fetchExpenses, mayManageMoney, paidWords, rupees, type Expense, type PaidVia } from '@/lib/expenses'
 import { useAuth } from '@/lib/AuthContext'
@@ -193,6 +194,7 @@ export default function ExpensesPage() {
     category_name: opened.category,
     category_id: opened.category_id || undefined,
     vendor_name: opened.vendor,
+    vendor_id: opened.vendor_id,
     project_name: opened.project,
     site_name: opened.site,
     date: opened.date,
@@ -438,6 +440,7 @@ export default function ExpensesPage() {
                               !readOnly && <DropdownMenuItem onClick={() => open(e)}>Add bill</DropdownMenuItem>
                             )}
                             {e.vendor_id && <DropdownMenuItem onClick={() => setVendor(e.vendor_id!)}>Only {e.vendor}</DropdownMenuItem>}
+                            {e.vendor_id && <DropdownMenuItem onClick={() => navigate(vendorUrl(e.vendor_id!))}>{e.vendor}'s account</DropdownMenuItem>}
                             {canPay && (
                               <>
                                 <DropdownMenuSeparator />
