@@ -15,17 +15,10 @@ _log = logging.getLogger("mesiri.trace_logger")
 
 
 def _build_engine():
-    import os
+    # 8 Nov 2026: one pool per process (backend/postgres/shared_engine.py), never one per object.
+    from backend.postgres.shared_engine import shared_engine
 
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    host = os.environ.get("MESIRI_POSTGRES__HOST", "localhost")
-    port = os.environ.get("MESIRI_POSTGRES__PORT", "5432")
-    user = os.environ.get("MESIRI_POSTGRES__USER", "mesiri")
-    password = os.environ.get("MESIRI_POSTGRES__PASSWORD", "mesiri_local_dev")
-    database = os.environ.get("MESIRI_POSTGRES__DATABASE", "mesiri")
-    dsn = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}"
-    return create_async_engine(dsn, echo=False, pool_pre_ping=True)
+    return shared_engine()
 
 
 class PostgresTraceLogger:
