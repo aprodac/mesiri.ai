@@ -150,7 +150,6 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { title: 'Movements', url: '/materials?view=movements', status: 'built', phase: 'V1', about: 'The register: every delivery, use and move.', example: '+100 bags cement from Malabar Hardware, ₹41,400.' },
       { title: 'Items', url: '/materials?view=items', status: 'built', phase: 'V1', about: 'Your list of materials, with category and unit.', example: 'Cement OPC 53 · Structural › Concrete · bags.', roles: MANAGERS },
       { title: 'Requests', url: '/materials/requests', status: 'built', phase: 'V1', about: 'What the site asks for, before anyone orders it.', example: 'Engineer: need 200 bags cement by Friday for the first-floor slab.', tracker: 'PRC-22', related: [{ title: 'Stock', url: '/materials' }] },
-      { title: 'Reconciliation', url: '/materials/reconciliation', status: 'planned', phase: 'V1', about: 'Required by the BOQ vs received vs used vs left, so a shortage shows early.', example: 'BOQ needs 960 bags; 700 received, 610 used, 90 left: short in 6 days.', tracker: 'CC-08', related: [{ title: 'Stock', url: '/materials' }, { title: 'BOQ & budget', url: '/boq' }] },
       { title: 'Central store', url: '/materials/store', status: 'planned', phase: 'Later', about: 'A yard or godown that buys in bulk and sends to sites.', example: '20 tonnes of steel at the yard; 3 tonnes sent to the villa today.', related: [{ title: 'Movements', url: '/materials?view=movements' }] },
     ],
   },
