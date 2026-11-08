@@ -5,7 +5,11 @@ Mounted at /cost:
   GET   /categories                  the expense categories and the centre each counts in
   PATCH /categories/{category_id}    set or clear a category's centre
   GET   /projects/{project_id}/budget  budget against actual for a project, to date: the BOQ's budget and the
-                                       budget earned by the work done, set against what was spent, per kind
+                                       budget earned by the work done, set against what was spent, per kind;
+                                       per BOQ line the labour put on it (CC-05)
+  GET   /projects/{project_id}/labour  a period's attendance per site, day and trade, and the BOQ lines each is
+                                       on (CC-05), with a suggested line for what is on none
+  PUT   /projects/{project_id}/labour  put a site's day of one trade on BOQ lines by man-days (empty: take it off)
 
 Rates, earned value and money are shown to the roles that see spending (``may_view_expenses``: owner, admin,
 finance, project manager), within their projects; who else sees them is decision D-CC4, not settled here. Setting a
@@ -21,13 +25,14 @@ from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_manage_money, may_view_expenses
 from mesiri.domains.costing.centres import CENTRES, cost_centres
+from mesiri.domains.costing.labour import group_key, labour_by_line, share_group
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -181,6 +186,12 @@ async def project_budget(
             "lines_priced": len(budget),
         })
     unlinked = len(await repo.work_updates(auth.organization_id, project_id, unlinked_only=True, limit=500))
+    # CC-05: the labour put on each line, set against the labour budget the line earned.
+    labour = await _labour(conn, repo, auth.organization_id, project_id,
+                           datetime.date.fromisoformat(str(centres["date_from"])), today)
+    for section in boq["sections"]:
+        for ln in section["lines"]:
+            ln.update(_line_labour(ln, labour["lines"].get(uuid.UUID(str(ln["id"])))))
     other = [c for c in centres["centres"] if c["key"] not in _CENTRE_OF.values() and Decimal(c["amount"])]
     return {
         "project_id": str(project_id),
@@ -191,5 +202,217 @@ async def project_budget(
         "not_set": centres["not_set"]["amount"],
         "total_spent": centres["total"],
         "work_not_on_a_line": unlinked,
+        "labour_on_lines": {"man_days": _q(sum((v["man_days"] for v in labour["lines"].values()), Decimal(0))),
+                            "cost": _m(sum((v["cost"] for v in labour["lines"].values()), Decimal(0)))},
+        "labour_not_on_a_line": {"man_days": _q(labour["not_on_a_line"]["man_days"]),
+                                 "cost": _m(labour["not_on_a_line"]["cost"]),
+                                 "unpriced_man_days": _q(labour["not_on_a_line"]["unpriced_man_days"])},
         "boq": boq,
     }
+
+
+# -- CC-05: labour put on BOQ lines ---------------------------------------------------------------------------------
+
+
+def _q(v: Decimal) -> str:
+    """Man-days as an exact short string ("3", "2.5")."""
+    v = Decimal(v).quantize(_C)
+    return str(v.normalize()) if v == v.to_integral() else str(v)
+
+
+def _line_labour(line: dict, labour: dict | None) -> dict:
+    """A BOQ line's labour: man-days and cost put on it, and the labour budget it earned less that cost."""
+    if not labour:
+        return {"labour_man_days": "0", "labour_cost": None, "labour_unpriced_man_days": "0", "labour_difference": None}
+    cost = labour["cost"] if labour["man_days"] > labour["unpriced_man_days"] else None
+    earned = line.get("earned_labour")
+    return {
+        "labour_man_days": _q(labour["man_days"]),
+        "labour_cost": _m(cost) if cost is not None else None,
+        "labour_unpriced_man_days": _q(labour["unpriced_man_days"]),
+        "labour_difference": _m(Decimal(earned) - cost) if earned is not None and cost is not None else None,
+    }
+
+
+async def _labour(conn: AsyncConnection, repo, org: uuid.UUID, project_id: uuid.UUID,
+                  date_from: datetime.date, date_to: datetime.date) -> dict:
+    """The project's labour per BOQ line and not on a line, over the period (attendance counted by Labour)."""
+    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
+        PostgresLabourAllocationRepository,
+    )
+    from mesiri.infrastructure.postgres.repositories.workforce import (
+        PostgresWorkforceReadRepository,
+    )
+
+    groups = await PostgresWorkforceReadRepository(conn).attendance_by_site_day_trade(
+        organization_id=org, project_id=project_id, date_from=date_from, date_to=date_to)
+    allocations = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    return labour_by_line(groups, allocations, await repo.current_revision_of(org, project_id))
+
+
+async def _project_repo(auth: AuthorizationContext, conn: AsyncConnection, project_id: uuid.UUID):
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+    _may_see(auth)
+    if not auth.project_scope.grants_all_org_projects and project_id not in auth.project_scope.project_ids:
+        raise HTTPException(status_code=403, detail="Not authorized for this project")
+    repo = PostgresBoqRepository(conn)
+    if not await repo.project_exists(auth.organization_id, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return repo
+
+
+def _trade_key(trade: str | None) -> str:
+    """The trade as attendance groups it (trimmed, lower-cased; '' when none)."""
+    return (trade or "").strip().lower()
+
+
+async def _labour_groups(conn: AsyncConnection, repo, org: uuid.UUID, project_id: uuid.UUID,
+                         date_from: datetime.date, date_to: datetime.date) -> list[dict]:
+    """Attendance per site, day and trade, each with the lines it is on and a suggested line for the rest."""
+    from mesiri.domains.progress.boq import suggest_line
+    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
+        PostgresLabourAllocationRepository,
+    )
+    from mesiri.infrastructure.postgres.repositories.workforce import (
+        PostgresWorkforceReadRepository,
+    )
+
+    groups = await PostgresWorkforceReadRepository(conn).attendance_by_site_day_trade(
+        organization_id=org, project_id=project_id, date_from=date_from, date_to=date_to)
+    allocations = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    current = await repo.current_revision_of(org, project_id)
+    lines = await repo.list_lines(org, project_id)
+    line_by_id = {ln["id"]: ln for ln in lines}
+    by_group: dict[tuple, list[dict]] = {}
+    for a in allocations:
+        by_group.setdefault(group_key(a["site_id"], a["work_date"], a["trade_key"]), []).append(
+            {"line_id": current.get(a["planned_item_id"], a["planned_item_id"]), "man_days": a["man_days"]})
+    # The lines that got measured work on a site and day: when only one did, that day's labour most likely
+    # went into it (a suggestion only; a person confirms).
+    worked: dict[tuple, set] = {}
+    for w in await repo.work_updates(org, project_id, unlinked_only=False, limit=500):
+        if w["line_id"]:
+            worked.setdefault((str(w["site_id"]) if w["site_id"] else None, str(w["activity_date"])), set()).add(
+                current.get(w["line_id"], w["line_id"]))
+    sites = {r["id"]: r["name"] for r in (await conn.execute(
+        text("SELECT id, name FROM sites WHERE project_id = :p"), {"p": project_id})).mappings().all()}
+    out = []
+    for g in groups:
+        key = group_key(g["site_id"], g["work_date"], g["trade_key"])
+        shared = share_group(g, by_group.get(key, []))
+        suggestion = None
+        if shared["not_on_a_line"]["man_days"] > 0:
+            said = " ".join(g["activities"] or [])
+            suggestion = suggest_line(said, None, None, lines, any_unit=True) if said else None
+            same_day = worked.get(key[:2], set())
+            if suggestion is None and len(same_day) == 1:
+                suggestion = next(iter(same_day))
+        out.append({
+            "site_id": g["site_id"], "site_name": sites.get(g["site_id"]), "date": g["work_date"],
+            "trade": g["trade"] or None, "trade_key": g["trade_key"], "activities": g["activities"] or [],
+            "man_days": _q(shared["man_days"]),
+            "cost": _m(shared["cost"]) if shared["cost"] is not None else None,
+            "on_lines": [{
+                "line_id": p["line_id"], "work": (line_by_id.get(p["line_id"]) or {}).get("work_type"),
+                "unit": (line_by_id.get(p["line_id"]) or {}).get("unit"),
+                "man_days": _q(p["man_days"]), "cost": _m(p["cost"]) if p["cost"] is not None else None,
+            } for p in shared["on_lines"]],
+            "not_on_a_line": {"man_days": _q(shared["not_on_a_line"]["man_days"]),
+                              "cost": _m(shared["not_on_a_line"]["cost"])
+                              if shared["not_on_a_line"]["cost"] is not None else None},
+            "over_allocated": shared["over_allocated"],
+            "suggested_line_id": suggestion,
+        })
+    return out
+
+
+@router.get("/projects/{project_id}/labour")
+async def project_labour(
+    project_id: uuid.UUID,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    unallocated: bool = False,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """A period's attendance per site, day and trade (newest first), the BOQ lines each was put on, and what is on
+    none, with a suggested line (never saved by itself). ``unallocated``: only groups with man-days on no line."""
+    repo = await _project_repo(auth, conn, project_id)
+    date_to = date_to or await _today(conn, auth.organization_id)
+    date_from = date_from or date_to - datetime.timedelta(days=29)
+    if date_from > date_to or (date_to - date_from).days > 731:
+        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
+    groups = await _labour_groups(conn, repo, auth.organization_id, project_id, date_from, date_to)
+    summary = {"man_days": Decimal(0), "cost": Decimal(0), "left_man_days": Decimal(0), "left_cost": Decimal(0)}
+    for g in groups:
+        summary["man_days"] += Decimal(g["man_days"])
+        summary["cost"] += Decimal(g["cost"] or 0)
+        summary["left_man_days"] += Decimal(g["not_on_a_line"]["man_days"])
+        summary["left_cost"] += Decimal(g["not_on_a_line"]["cost"] or 0)
+    if unallocated:
+        groups = [g for g in groups if Decimal(g["not_on_a_line"]["man_days"]) > 0]
+    return {
+        "project_id": str(project_id), "date_from": str(date_from), "date_to": str(date_to),
+        "total": {"man_days": _q(summary["man_days"]), "cost": _m(summary["cost"])},
+        "not_on_a_line": {"man_days": _q(summary["left_man_days"]), "cost": _m(summary["left_cost"])},
+        "groups": [{**g, "site_id": str(g["site_id"]) if g["site_id"] else None, "date": str(g["date"]),
+                    "suggested_line_id": str(g["suggested_line_id"]) if g["suggested_line_id"] else None,
+                    "on_lines": [{**p, "line_id": str(p["line_id"])} for p in g["on_lines"]]} for g in groups],
+    }
+
+
+class LabourPart(BaseModel):
+    line_id: uuid.UUID
+    man_days: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+
+
+class LabourOnLines(BaseModel):
+    site_id: uuid.UUID | None = None
+    date: datetime.date
+    trade: str | None = Field(default=None, max_length=200, description="As attendance says it; empty when none")
+    lines: list[LabourPart] = Field(default_factory=list, max_length=50, description="Empty takes it off every line")
+
+
+@router.put("/projects/{project_id}/labour")
+async def put_labour_on_lines(
+    project_id: uuid.UUID,
+    body: LabourOnLines,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Put a site's day of one trade on BOQ lines by man-days, replacing what it was on.
+
+    Refused (422) for a line not in this project or given twice, and for more man-days than attendance counts
+    that day; 404 when attendance has no such site, day and trade. Returns the group as the list shows it.
+    """
+    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
+        PostgresLabourAllocationRepository,
+    )
+
+    repo = await _project_repo(auth, conn, project_id)
+    trade_key = _trade_key(body.trade)
+    groups = await _labour_groups(conn, repo, auth.organization_id, project_id, body.date, body.date)
+    key = group_key(body.site_id, body.date, trade_key)
+    group = next((g for g in groups if group_key(g["site_id"], g["date"], g["trade_key"]) == key), None)
+    if group is None:
+        raise HTTPException(status_code=404, detail="No attendance for that site, day and trade.")
+    seen: set[uuid.UUID] = set()
+    for part in body.lines:
+        if part.line_id in seen:
+            raise HTTPException(status_code=422, detail="A BOQ line is given twice; put its man-days together.")
+        seen.add(part.line_id)
+        if await repo.get_line(auth.organization_id, project_id, part.line_id) is None:
+            raise HTTPException(status_code=422, detail="That BOQ line is not in this project.")
+    put = sum((p.man_days for p in body.lines), Decimal(0))
+    if put > Decimal(group["man_days"]):
+        raise HTTPException(status_code=422, detail=(
+            f"That is {_q(put)} man-days; attendance has {group['man_days']} for this day and trade."))
+    await PostgresLabourAllocationRepository(conn).replace_group(
+        auth.organization_id, project_id, body.site_id, body.date, trade_key,
+        [(p.line_id, p.man_days) for p in body.lines], auth.user_id)
+    groups = await _labour_groups(conn, repo, auth.organization_id, project_id, body.date, body.date)
+    group = next(g for g in groups if group_key(g["site_id"], g["date"], g["trade_key"]) == key)
+    return {**group, "site_id": str(group["site_id"]) if group["site_id"] else None, "date": str(group["date"]),
+            "suggested_line_id": str(group["suggested_line_id"]) if group["suggested_line_id"] else None,
+            "on_lines": [{**p, "line_id": str(p["line_id"])} for p in group["on_lines"]]}
