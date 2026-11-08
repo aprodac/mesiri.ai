@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WhatsApp to the footing</title>
+<style>
+  html, body { margin: 0; width: 1600px; height: 900px; overflow: hidden; background: #f8fafc; color: #0f172a;
+    font-family: Inter, system-ui, sans-serif; }
+  .stripe { position: absolute; top: 0; left: 0; right: 0; height: 10px;
+    background: repeating-linear-gradient(-45deg, #facc15 0 18px, #111 18px 36px); }
+  .wrap { position: absolute; inset: 60px 90px 150px; display: grid; grid-template-columns: 1fr 430px; gap: 70px; align-items: center; }
+  .kicker { font-size: 22px; font-weight: 600; color: #64748b; letter-spacing: .04em; text-transform: uppercase; }
+  h2 { font-size: 44px; margin: 8px 0 26px; letter-spacing: -0.01em; }
+  .grid { display: grid; grid-template-columns: 40px repeat(4, 120px); grid-auto-rows: 92px; gap: 0; position: relative; }
+  .gh { display: grid; place-items: center; font-weight: 700; color: #64748b; font-size: 22px; }
+  .cell { display: grid; place-items: center; border-left: 2px dashed #cbd5e1; border-top: 2px dashed #cbd5e1; }
+  .ft { width: 70px; height: 70px; border: 3px solid #334155; background: #fff; display: grid; place-items: center; font-weight: 800;
+    font-size: 20px; border-radius: 6px; transition: background .6s, transform .6s, box-shadow .6s; }
+  .ft.named::after { content: attr(data-g); }
+  .ft.green { background: #10b981; color: #fff; border-color: #047857; transform: scale(1.12); box-shadow: 0 0 0 10px rgba(16,185,129,.25); }
+  .ft.amber { background: #fbbf24; }
+  [data-line] { opacity: 0; transform: translateY(14px); transition: opacity .5s, transform .5s; }
+  [data-line].on { opacity: 1; transform: none; }
+  /* phone */
+  .phone { width: 430px; height: 720px; border-radius: 46px; background: #111; padding: 14px; box-shadow: 0 30px 60px rgba(15,23,42,.25); }
+  .screen { width: 100%; height: 100%; border-radius: 34px; overflow: hidden; display: flex; flex-direction: column;
+    background: #efeae2; }
+  .top { background: #075e54; color: #fff; padding: 22px 18px 14px; display: flex; gap: 12px; align-items: center; }
+  .av { width: 42px; height: 42px; border-radius: 50%; background: #facc15; color: #111; display: grid; place-items: center; font-weight: 800; }
+  .top b { font-size: 19px; display: block; } .top span { font-size: 14px; opacity: .8; }
+  .msgs { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .m { max-width: 82%; padding: 10px 13px; border-radius: 12px; font-size: 18px; line-height: 1.35; box-shadow: 0 1px 1px rgba(0,0,0,.1); }
+  .me { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 3px; }
+  .bot { align-self: flex-start; background: #fff; border-top-left-radius: 3px; }
+  .time { font-size: 12px; color: #667781; text-align: right; margin-top: 3px; }
+  .btns { display: flex; gap: 6px; margin-top: 8px; }
+  .btn { flex: 1; text-align: center; background: #fff; border: 1px solid #d1d7db; border-radius: 8px; padding: 8px; color: #027eb5; font-weight: 600; font-size: 16px; transition: background .3s; }
+  .btn.tap { background: #d1fae5; }
+  .typing { font-size: 15px; color: #667781; padding: 0 14px 10px; }
+  .internal { position: absolute; right: 24px; bottom: 18px; font-size: 16px; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="stripe"></div>
+<div class="wrap">
+  <div>
+    <div class="kicker">The drawing comes alive</div>
+    <h2>One message from site → one footing on the plan</h2>
+    <div class="grid" id="grid"></div>
+  </div>
+  <div class="phone"><div class="screen">
+    <div class="top"><div class="av">M</div><div><b>Mesiri</b><span>Site: Commercial building, Kondotty</span></div></div>
+    <div class="msgs">
+      <div class="m me" data-line="2">B3 footing concreted 👍<div class="time">10:42 ✓✓</div></div>
+      <div class="m bot" data-line="3">📝 To save:<br><b>Footing concrete</b> at Foundation / <b>B3</b> (finished)
+        <div class="btns"><div class="btn" id="save">✅ Save</div><div class="btn">❌ Cancel</div></div><div class="time">10:42</div></div>
+      <div class="m bot" data-line="3b" id="saved">✅ Saved. B3 is done on the plan.<div class="time">10:42</div></div>
+      <div class="m me" data-line="3c">D5 footing PCC kazhinju<div class="time">10:51 ✓✓</div></div>
+    </div>
+  </div></div>
+</div>
+<div class="internal">Internal: sales team only</div>
+<script>
+  const q = new URLSearchParams(location.search)
+  const times = JSON.parse(q.get('t') || '[]')
+  const at = (i) => (times[i] ? times[i][0] : i * 4) * 1000
+  const dur = (i) => (times[i] ? times[i][1] : 4) * 1000
+  // A small footing plan: grid A-D across, 1-4 down; B3 and D5-like cells.
+  const g = document.getElementById('grid')
+  const letters = ['A', 'B', 'C', 'D'], nums = ['3', '4', '5', '6']
+  g.insertAdjacentHTML('beforeend', '<div></div>' + letters.map((l) => `<div class="gh">${l}</div>`).join(''))
+  nums.forEach((n) => {
+    g.insertAdjacentHTML('beforeend', `<div class="gh">${n}</div>` + letters.map((l) =>
+      `<div class="cell"><div class="ft" id="f-${l}${n}" data-g="${l}${n}"></div></div>`).join(''))
+  })
+  const on = (sel) => document.querySelectorAll(sel).forEach((el) => el.classList.add('on'))
+  window.__ready = performance.now()
+  setTimeout(() => {}, at(0))
+  setTimeout(() => document.querySelectorAll('.ft').forEach((el, k) => setTimeout(() => el.classList.add('named'), k * 90)), at(1))
+  setTimeout(() => on('[data-line="2"]'), at(2) + 600)
+  setTimeout(() => on('[data-line="3"]'), at(3) + 300)
+  setTimeout(() => document.getElementById('save').classList.add('tap'), at(3) + dur(3) * 0.45)
+  setTimeout(() => { on('[data-line="3b"]'); document.getElementById('f-B3').classList.add('green') }, at(3) + dur(3) * 0.55)
+  setTimeout(() => { on('[data-line="3c"]'); document.getElementById('f-D5').classList.add('amber') }, at(3) + dur(3) * 0.8)
+</script>
+</body>
+</html>

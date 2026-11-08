@@ -1,0 +1,199 @@
+{
+  "title": "Mesiri: from the drawing to the site",
+  "subtitle": "Sales training: what Mesiri does with a building's drawings, and why a contractor pays for it",
+  "note": "Internal use: shows a real customer's structural set (Kondotty). Narration is written in plain English and voiced in Malayalam (Sarvam mayura + bulbul:v3); technical words stay in English, as sites say them.",
+  "keep_english": [
+    "Mesiri",
+    "WhatsApp",
+    "PDF",
+    "footing",
+    "footings",
+    "column",
+    "columns",
+    "beam",
+    "beams",
+    "slab",
+    "BOQ",
+    "B3",
+    "D5",
+    "C5",
+    "C6",
+    "S-101",
+    "Documents",
+    "Drawing check",
+    "Places",
+    "dashboard",
+    "revision",
+    "PCC"
+  ],
+  "scenes": [
+    {
+      "id": "intro",
+      "visual": "card_intro",
+      "part": null,
+      "lines": [
+        "In this video you will learn what Mesiri does with a building's drawings, in simple words, and why a contractor will pay for it.",
+        "No civil engineering background is needed. We go step by step."
+      ]
+    },
+    {
+      "id": "how_a_job_works",
+      "visual": "card_people",
+      "part": "The basics",
+      "lines": [
+        "Every building starts as drawings.",
+        "The architect draws the rooms: where the kitchen, the bedrooms and the toilets go.",
+        "Then a structural engineer draws the skeleton that holds the building up, and the steel inside it.",
+        "The contractor builds from these drawings, and the site engineer and workers follow them every day."
+      ]
+    },
+    {
+      "id": "parts",
+      "visual": "card_parts",
+      "part": "The basics",
+      "lines": [
+        "Four words are enough.",
+        "A footing is the wide concrete block buried under each pillar. It spreads the building's weight on the ground.",
+        "A column is the pillar standing on the footing.",
+        "Beams join the columns, and the slab is the floor and the roof.",
+        "All of it is concrete with steel bars inside. Concrete is bought in cubic metres, steel in kilos and cement in bags."
+      ]
+    },
+    {
+      "id": "problems",
+      "visual": "card_problems",
+      "part": "The problem",
+      "lines": [
+        "Today, three things go wrong on most sites.",
+        "One. The site builds from an old drawing, because the new revision was lost in a WhatsApp group. Breaking it and building again costs lakhs.",
+        "Two. A mistake in the drawing is found only after the concrete is poured.",
+        "Three. The owner does not know how far the work has reached, without going to the site."
+      ]
+    },
+    {
+      "id": "documents",
+      "visual": "rec_documents",
+      "part": "1 · Documents",
+      "value": "Site never builds from an old drawing",
+      "lines": [
+        "Mesiri fixes all three. First, the office drops the drawing PDF into Documents.",
+        "Mesiri reads the drawing number and the revision by itself, and files it under drawings.",
+        "When a new revision comes, the old one is marked out of date, and the history is kept.",
+        "Contracts and money papers are seen only by the office.",
+        "And anyone on site can ask on WhatsApp: send me the latest drawing. The right one comes back in seconds."
+      ]
+    },
+    {
+      "id": "check",
+      "visual": "rec_check",
+      "part": "2 · Drawing check",
+      "value": "Mistakes caught before the concrete is poured",
+      "lines": [
+        "Second, Mesiri checks the drawings before they reach the site. This is a real fifteen page structural set.",
+        "It reads every sheet, and compares the sheets with each other.",
+        "Here it found a real mistake. The detail of one footing calls both its columns C5, but the plan shows C5 and C6, and they have different steel.",
+        "Asking the engineer now costs one phone call. Finding it after the pour costs a demolition."
+      ]
+    },
+    {
+      "id": "quantities",
+      "visual": "rec_quantities",
+      "part": "3 · Materials from the drawing",
+      "value": "Order the right materials, without a quantity surveyor",
+      "lines": [
+        "Third, Mesiri adds up the materials from the drawing.",
+        "For this building: twenty three footings, forty two cubic metres of concrete, one point eight tonnes of steel, and about three hundred and eighty bags of cement.",
+        "It shows every footing, with its size and the bars inside it. This usually takes a quantity surveyor days. Mesiri does it in seconds.",
+        "These numbers go into the BOQ and the material plan, so the contractor knows what to order, and by when."
+      ]
+    },
+    {
+      "id": "whatsapp",
+      "visual": "chat_footings",
+      "part": "4 · The drawing comes alive",
+      "value": "No extra work for site: one WhatsApp message",
+      "lines": [
+        "Fourth, and this is what customers love most. The drawing comes alive.",
+        "Every footing on the plan gets its grid name, like B3 or D5.",
+        "The site engineer sends one WhatsApp message, the same way they report work today: B3 footing concreted.",
+        "Mesiri understands it, even in Malayalam or Manglish, and saves it to footing B3 after one tap."
+      ]
+    },
+    {
+      "id": "live",
+      "visual": "rec_live",
+      "part": "4 · The drawing comes alive",
+      "value": "The owner sees progress on the drawing, from anywhere",
+      "lines": [
+        "On the dashboard, footing B3 now turns green, on the engineer's own drawing. Yellow means work has started.",
+        "At the top: footings done, concrete placed and steel tied, out of the total.",
+        "Tap any footing to see who did what, and when, with the photos.",
+        "The owner sees the progress from anywhere, without going to the site."
+      ]
+    },
+    {
+      "id": "places",
+      "visual": "rec_places",
+      "part": "5 · Floors and rooms",
+      "value": "Anyone can ask what is left, floor by floor",
+      "lines": [
+        "The same works for floors and rooms.",
+        "First floor room two plastering done lands on that room, and the grid colours itself.",
+        "So the owner can simply ask on WhatsApp: what is left on the first floor? Mesiri answers room by room."
+      ]
+    },
+    {
+      "id": "value",
+      "visual": "card_value",
+      "part": "What each person gets",
+      "lines": [
+        "So, what does each person get?",
+        "The owner sees progress on the drawing, and stops losing money to rework.",
+        "The project manager always has the right drawing on site, and knows what to order.",
+        "The site engineer does nothing extra: one WhatsApp message, as today.",
+        "And the office keeps drawings, permits and contracts in one place."
+      ]
+    },
+    {
+      "id": "demo",
+      "visual": "card_demo",
+      "part": "How to demo",
+      "lines": [
+        "How to demo it. Ask the customer for one structural drawing PDF, and drop it into Drawing check in front of them.",
+        "Show the mistakes it finds, and the steel and concrete it adds up.",
+        "Then send B3 footing concreted from your phone, and let them watch it turn green.",
+        "One thing to remember: Mesiri reads and adds up what is drawn. It never replaces the structural engineer's design."
+      ]
+    },
+    {
+      "id": "end",
+      "visual": "card_end",
+      "part": null,
+      "lines": [
+        "Mesiri. From the drawing to the site, in one WhatsApp message."
+      ]
+    }
+  ],
+  "ml_overrides": {
+    "parts-4": "എല്ലാം concrete ആണ്, അതിനുള്ളിൽ steel bars ഉണ്ട്. Concrete cubic metre-ൽ, steel kilo-യിൽ, cement bag-ൽ ആണ് വാങ്ങുന്നത്.",
+    "problems-1": "One. Site-ൽ old drawing നോക്കി പണിയും, കാരണം new revision ഏതോ WhatsApp group-ൽ lost ആയിപ്പോയി. പൊളിച്ച് വീണ്ടും പണിയാൻ lakhs ആകും.",
+    "problems-2": "Two. Concrete ഒഴിച്ച ശേഷമാണ് drawing-ലെ mistake കണ്ടുപിടിക്കുന്നത്.",
+    "problems-3": "Three. Site-ൽ പോകാതെ, work എവിടം വരെ എത്തി എന്ന് owner-ന് അറിയില്ല.",
+    "documents-1": "Drawing number-ഉം revision-ഉം Mesiri തനിയെ വായിച്ച്, drawings-ൽ file ചെയ്യും.",
+    "documents-2": "New revision വന്നാൽ, പഴയത് out of date ആയി mark ചെയ്യും. History കളയില്ല.",
+    "documents-3": "Contracts-ഉം money papers-ഉം office-ന് മാത്രമേ കാണാൻ പറ്റൂ.",
+    "documents-4": "Site-ൽ ഉള്ള ആർക്കും WhatsApp-ൽ ചോദിക്കാം: latest drawing അയക്കൂ. ശരിയായ drawing seconds-നുള്ളിൽ കിട്ടും.",
+    "check-1": "എല്ലാ sheet-ഉം വായിച്ച്, sheets തമ്മിൽ compare ചെയ്യും.",
+    "check-3": "ഇപ്പോൾ engineer-നോട് ചോദിച്ചാൽ ഒരു phone call മതി. Pour കഴിഞ്ഞിട്ടാണ് കണ്ടുപിടിക്കുന്നതെങ്കിൽ, പൊളിക്കേണ്ടി വരും.",
+    "quantities-1": "ഈ building-ന്: twenty three footings, forty two cubic metre concrete, one point eight tonne steel, ഏകദേശം three hundred and eighty bags cement.",
+    "whatsapp-0": "നാലാമതായി, customers-ന് ഏറ്റവും ഇഷ്ടപ്പെടുന്നത് ഇതാണ്. Drawing alive ആകുന്നു.",
+    "whatsapp-3": "Malayalam-ലോ Manglish-ലോ പറഞ്ഞാലും Mesiri-ക്ക് മനസ്സിലാകും. ഒരു tap-ൽ footing B3-ൽ save ചെയ്യും.",
+    "live-1": "മുകളിൽ: footings done, concrete placed, steel tied. Total-ൽ എത്ര ആയി എന്ന്.",
+    "places-1": "First floor room two plastering done എന്ന് അയച്ചാൽ, അത് ആ room-ൽ save ആകും, grid തനിയെ colour ആകും.",
+    "value-1": "Owner-ന് drawing-ൽ തന്നെ progress കാണാം. Rework കൊണ്ട് പൈസ പോകുന്നത് നിൽക്കും.",
+    "value-2": "Project manager-ന്റെ site-ൽ എപ്പോഴും correct drawing ഉണ്ടാകും, എന്ത് order ചെയ്യണമെന്നും അറിയാം.",
+    "value-3": "Site engineer-ന് extra പണി ഒന്നുമില്ല: ഇന്നത്തെ പോലെ ഒരു WhatsApp message മതി.",
+    "value-4": "Office-ന് drawings-ഉം permits-ഉം contracts-ഉം ഒരിടത്ത് കിട്ടും.",
+    "demo-3": "ഒരു കാര്യം ഓർക്കണം: drawing-ൽ ഉള്ളത് Mesiri വായിച്ച് കൂട്ടുകയാണ് ചെയ്യുന്നത്. Structural engineer-ന്റെ design-ന് പകരമല്ല."
+  }
+}
