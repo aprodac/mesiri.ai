@@ -485,15 +485,69 @@ async def project_variance(
     day's colour, the labour not on a line (not coloured, said), and materials for the project (earned against
     bought; not per line until the consumption register, CC-08). ``site_id``: one site's lines and labour.
     """
+    if not may_view_expenses(auth.role):
+        return await _site_variance(auth, conn, project_id, date_from, date_to, site_id)
     repo = await _project_repo(auth, conn, project_id)
     if site_id is not None and not await repo.site_in_project(project_id, site_id):
         raise HTTPException(status_code=422, detail="site_id is not a site of this project")
+    date_from, date_to = await _variance_period(conn, auth, date_from, date_to)
+    return await variance_for(conn, auth.organization_id, project_id, date_from, date_to, site_id,
+                              _scope(auth, project_id, site_id))
+
+
+async def _variance_period(conn: AsyncConnection, auth: AuthorizationContext, date_from, date_to):
     date_to = date_to or await _today(conn, auth.organization_id)
     date_from = date_from or date_to - datetime.timedelta(days=6)
     if date_from > date_to or (date_to - date_from).days > 731:
         raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
-    return await variance_for(conn, auth.organization_id, project_id, date_from, date_to, site_id,
-                              _scope(auth, project_id, site_id))
+    return date_from, date_to
+
+
+#: D-CC4 (decided 8 Nov): a site engineer sees their own site's green / red and quantities, never rupees or rates.
+SITE_COLOUR_ROLES = frozenset({"SITE_ENGINEER"})
+_LINE_KEEP = ("line_id", "boq_code", "work", "unit", "section", "done_quantity", "labour_man_days", "colour", "reason")
+
+
+def without_money(v: dict) -> dict:
+    """The variance answer with every rupee, rate and ratio taken out: colours, reasons, quantities, man-days."""
+    return {
+        "project_id": v["project_id"], "site_id": v["site_id"], "date_from": v["date_from"], "date_to": v["date_to"],
+        "money_hidden": True,
+        "summary": {"colour": v["summary"]["colour"], "lines": v["summary"]["lines"]},
+        "labour": {"man_days": v["labour"]["man_days"],
+                   "not_on_a_line": {"man_days": v["labour"]["not_on_a_line"]["man_days"]}},
+        "work_in_other_unit": v["work_in_other_unit"],
+        "lines": [{k: ln[k] for k in _LINE_KEEP} for ln in v["lines"]],
+        "days": [{"date": d["date"], "colour": d["colour"], "lines": d["lines"]} for d in v["days"]],
+    }
+
+
+async def _site_variance(auth: AuthorizationContext, conn: AsyncConnection, project_id: uuid.UUID,
+                         date_from, date_to, site_id: uuid.UUID | None) -> dict:
+    """D-CC4: a site engineer's own site, without money. Their site: the one asked for (it must be theirs), or the
+    only one they have on the project; with several, they say which (422)."""
+    from mesiri.domains.procurement.router import _visible
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+    if str(auth.role or "").upper() not in SITE_COLOUR_ROLES:
+        raise HTTPException(status_code=403, detail="Cost control is shown to the roles that see spending.")
+    if not auth.project_scope.grants_all_org_projects and project_id not in auth.project_scope.project_ids:
+        raise HTTPException(status_code=403, detail="Not authorized for this project")
+    if not await PostgresBoqRepository(conn).project_exists(auth.organization_id, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    sites = [r for r in (await conn.execute(text("SELECT id FROM sites WHERE project_id = :p AND organization_id = :org"),
+                                            {"p": project_id, "org": auth.organization_id})).scalars()
+             if _visible(auth, project_id, r)]
+    if site_id is not None and site_id not in sites:
+        raise HTTPException(status_code=403, detail="Not your site")
+    if site_id is None:
+        if len(sites) != 1:
+            raise HTTPException(status_code=422, detail="Say which of your sites (site_id).")
+        site_id = sites[0]
+    date_from, date_to = await _variance_period(conn, auth, date_from, date_to)
+    return without_money(await variance_for(conn, auth.organization_id, project_id, date_from, date_to, site_id,
+                                            {"project_ids": {project_id}, "site_id": site_id,
+                                             "visible": lambda p, s: True}))
 
 
 async def variance_for(

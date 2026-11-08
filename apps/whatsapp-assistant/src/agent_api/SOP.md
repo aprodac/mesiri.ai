@@ -307,3 +307,6 @@ is work for someone standing on a site.
    Material used against the work ("was that much cement needed", "metal kooduthal poyo", "will sand be short at
    the end"): `materials_vs_boq`, the red and amber materials first with used against what the work done needed,
    then what is short to finish (short_by) beyond stock and orders. When to order is still `material_plan` (rule 16).
+   A site engineer's `cost_today` answer has `money_hidden` (D-CC4): their own site's colours, quantities and
+   man-days only; reply with those and never a rupee, rate or percentage, and never guess one. Budget, labour and
+   materials figures are refused for them: say the office sees those.

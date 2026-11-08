@@ -100,6 +100,8 @@ async def _cleanup(engine, org) -> None:
             "DELETE FROM labour_attendance_reports WHERE organization_id = :org",
             "DELETE FROM work_packages WHERE organization_id = :org",
             "DELETE FROM notifications WHERE organization_id = :org",
+            "DELETE FROM site_members WHERE site_id IN (SELECT id FROM sites WHERE organization_id = :org)",
+            "DELETE FROM project_members WHERE project_id IN (SELECT id FROM projects WHERE organization_id = :org)",
             "DELETE FROM organizations WHERE id = :org",
         ):
             await conn.execute(sa.text(sql), {"org": org})
@@ -358,8 +360,11 @@ async def test_variance_for_one_site_and_who_sees_it(client, ctx, test_engine):
     assert [(ln["done_quantity"], ln["reason"]) for ln in body["lines"]] == [("250", "no_labour")]
     assert (await client.get(f"/cost/projects/{p}/variance?site_id={uuid.uuid4()}", headers=h)).status_code == 422
     assert (await client.get(f"/cost/projects/{p}/variance?date_from=2026-02-01&date_to=2026-01-01", headers=h)).status_code == 422
+    # D-CC4: an engineer on two sites says which; never a page of money.
     _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
-    assert (await client.get(f"/cost/projects/{p}/variance", headers=_h(engineer))).status_code == 403
+    assert (await client.get(f"/cost/projects/{p}/variance", headers=_h(engineer))).status_code == 422
+    seen = (await client.get(f"/cost/projects/{p}/variance?site_id={other}", headers=_h(engineer))).json()
+    assert seen["money_hidden"] is True and seen["lines"][0]["reason"] == "no_labour"
 
 
 # -- CC-11: the evening cost card -----------------------------------------------------------------------------------
@@ -567,3 +572,47 @@ async def test_cost_is_before_claimable_gst_and_gst_that_stays_in_cost_is_said(c
     centres = (await client.get(f"/cost/centres?project_id={ctx['project']}", headers=h)).json()
     assert Decimal(centres["total"]) == Decimal(full["total"]) and _centre(centres, "materials") == 33600
     assert centres["gst"]["claimable"] == "1800.00"
+
+
+
+# -- D-CC4: a site engineer sees their site's colours, never money --------------------------------------------------
+
+
+async def test_a_site_engineer_sees_their_sites_colours_and_quantities_never_rupees(client, ctx, test_engine):
+    import json
+
+    h, p = _h(ctx["admin"]), ctx["project"]
+    plaster, _ = await _boq_lines(client, ctx)
+    await _attendance(test_engine, ctx, [("mason", 4, "1100", None)], days_ago=1)
+    await _work(test_engine, ctx, plaster["id"], "sqft", "300", 1)
+    day = (await client.get(f"/cost/projects/{p}/labour", headers=h)).json()["groups"][0]["date"]
+    await client.put(f"/cost/projects/{p}/labour", headers=h, json={
+        "site_id": str(ctx["site"]), "date": day, "trade": "mason", "lines": [{"line_id": plaster["id"], "man_days": "4"}]})
+    other = uuid.uuid4()
+    await _run(test_engine, "INSERT INTO sites (id, project_id, organization_id, name, status, created_at, updated_at) "
+               "VALUES (:id, :p, :org, 'Block B', 'active', now(), now())", id=other, p=p, org=ctx["org"])
+    engineer_id = uuid.uuid4()
+    policy = {"mode": "custom_projects", "projects": [
+        {"projectId": str(p), "siteAccess": {"mode": "custom_sites", "siteIds": [str(ctx["site"])]}}]}
+    await _run(test_engine,
+               "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role, status, access_policy, "
+               "created_at, updated_at) VALUES (:id, :org, :e, 'hash', 'Eng', 'SITE_ENGINEER', 'active', CAST(:pol AS jsonb), "
+               "now(), now())", id=engineer_id, org=ctx["org"], e=f"{uuid.uuid4().hex[:8]}@example.com", pol=json.dumps(policy))
+    await _run(test_engine, "INSERT INTO project_members (id, project_id, user_id, role, site_access_mode) "
+               "VALUES (gen_random_uuid(), :p, :u, 'SITE_ENGINEER', 'custom_sites')", p=p, u=engineer_id)
+    await _run(test_engine, "INSERT INTO site_members (id, site_id, user_id) VALUES (gen_random_uuid(), :s, :u)",
+               s=ctx["site"], u=engineer_id)
+    eh = _h(create_access_token(data={"sub": str(engineer_id), "org": str(ctx["org"]), "role": "SITE_ENGINEER"}))
+
+    r = await client.get(f"/cost/projects/{p}/variance", headers=eh)  # their only site, found for them
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["money_hidden"] is True and body["site_id"] == str(ctx["site"])
+    [line] = body["lines"]
+    assert (line["colour"], line["reason"], line["done_quantity"], line["labour_man_days"]) == ("amber", "near_budget", "300", "4")
+    text = json.dumps(body)
+    for money in ("earned", "cost", "rate", "difference", "ratio", "materials", "4200", "4400"):
+        assert money not in text, money
+    assert (await client.get(f"/cost/projects/{p}/variance?site_id={other}", headers=eh)).status_code == 403
+    for url in (f"/cost/projects/{p}/budget", f"/cost/projects/{p}/labour", f"/cost/projects/{p}/materials", "/cost/portfolio"):
+        assert (await client.get(url, headers=eh)).status_code == 403, url

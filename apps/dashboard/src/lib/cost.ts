@@ -201,10 +201,12 @@ export interface ProjectVariance {
   site_id: string | null
   date_from: string
   date_to: string
-  thresholds: { green_at: string; amber_at: string }
+  /** D-CC4: a site engineer's answer, with every rupee, rate and ratio left out. */
+  money_hidden?: boolean
+  thresholds?: { green_at: string; amber_at: string }
   summary: VarianceSummary
-  labour: { attendance_cost: string; man_days: string; not_on_a_line: { man_days: string; cost: string } }
-  materials: { earned: string; bought: string }
+  labour: { attendance_cost?: string; man_days: string; not_on_a_line: { man_days: string; cost?: string } }
+  materials?: { earned: string; bought: string }
   work_in_other_unit: number
   lines: VarianceLine[]
   days: VarianceDay[]
