@@ -319,6 +319,11 @@ ALLOWED: tuple[Allowed, ...] = (
             "The project's budget against actual to date: kinds (labour, material, subcontract: budget, earned, actual "
             "spent, difference), and every BOQ line with planned_quantity, done_quantity, remaining_quantity, "
             "percent_done, budget_cost, earned, labour_cost; labour_not_on_a_line; work_not_on_a_line."),
+    Allowed("materials_vs_boq", "GET", "/cost/projects/{project_id}/materials",
+            "Per material with a norm on a BOQ line (CC-08): required_total (the whole BOQ), should_have_used (by the "
+            "work done so far), received, used, on_hand, on_order, used_over_work (above zero: more used than the "
+            "work accounts for), still_needed, short_by (to finish beyond on hand and on order), colour and reason; "
+            "worst first. lines_without_norms: BOQ lines whose materials are not set."),
     Allowed("labour_not_on_boq", "GET", "/cost/projects/{project_id}/labour",
             "The project's attendance per site, day and trade (date_from / date_to, default the last 30 days; "
             "unallocated=true for only what is on no BOQ line): man_days, cost, on_lines (the BOQ lines it is on), "

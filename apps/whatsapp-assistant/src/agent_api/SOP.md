@@ -302,3 +302,6 @@ is work for someone standing on a site.
    that trade; a split only when they gave the numbers ("3 on plastering, 1 on brickwork"). When the line is not
    clear, ask once naming the BOQ lines that fit. When these are refused (their role, or the company has no Cost
    control), say who can see it or that it is not switched on; never make up a figure, a rate or a colour.
+   Material used against the work ("was that much cement needed", "metal kooduthal poyo", "will sand be short at
+   the end"): `materials_vs_boq`, the red and amber materials first with used against what the work done needed,
+   then what is short to finish (short_by) beyond stock and orders. When to order is still `material_plan` (rule 16).

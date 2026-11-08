@@ -227,6 +227,18 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 - **Dashboard:** Cost control > Overview at `/cost` (totals, what needs a person, projects worst first, the other
   pages); Green / red at `/cost/green-red`; Budget vs actual's cards show committed and the forecast.
 
+### 4h. As built: materials against the BOQ (CC-08, 8 Nov 2026)
+
+- **`domains/costing/materials.py`:** per material with a norm on a BOQ line: required in all (planned × norm ×
+  (1 + wastage)) and by the work done so far; against received, used and on hand (the stock ledger, PRC-17, project
+  to date) and on open orders. Colour: what the work done needed against what was used (labour's thresholds); grey
+  with the reason when nothing is used yet, nothing is recorded as used, or the stock unit differs from the norm's
+  (never converted). Short to finish = still needed − on hand − on order.
+- **`GET /cost/projects/{id}/materials`**, from the material plan's own inputs (`plan_router._lines`, `_stock`,
+  `measured_by_line`). Cost control > Materials vs BOQ; v3 `materials_vs_boq`.
+- **Not yet:** consumption put on a BOQ line (`material_usage.planned_item_id`) for a per-line material colour; it
+  changes the Materials write path.
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |

@@ -31,6 +31,7 @@ import ProjectStartPage from '@/pages/ProjectStartPage'
 import CostBudgetPage from '@/pages/CostBudgetPage'
 import CostVariancePage from '@/pages/CostVariancePage'
 import CostHomePage from '@/pages/CostHomePage'
+import CostMaterialsPage from '@/pages/CostMaterialsPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
@@ -170,6 +171,7 @@ export default function App() {
           {/* CC-01 / CC-04 / CC-07: the Cost control module. */}
           <Route path="cost" element={cst(<CostHomePage />)} />
           <Route path="cost/green-red" element={cst(<CostVariancePage />)} />
+          <Route path="cost/materials" element={cst(<CostMaterialsPage />)} />
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />
           {/* WEB-72: planned module pages (lib/module-map.ts). Only shown while "Show planned

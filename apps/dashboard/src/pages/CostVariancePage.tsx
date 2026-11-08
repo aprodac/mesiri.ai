@@ -9,6 +9,7 @@ import { fetchProjectVariance, type VarianceColour, type VarianceDay, type Varia
 import { usePageTitle } from '@/lib/page-title'
 import { fetchProjects } from '@/lib/projects'
 import { useScope } from '@/lib/ScopeContext'
+import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours'
 import { cn } from '@/lib/utils'
 
 // CC-07: green / amber / red per BOQ line. For a period, each line's labour budget earned by the work measured
@@ -16,19 +17,6 @@ import { cn } from '@/lib/utils'
 // amber within 10%, red below. A line that cannot be judged is grey and says why, never coloured. Worst first.
 // Backend: GET /cost/projects/{id}/variance (domains/costing/variance.py).
 
-const DOT: Record<VarianceColour, string> = {
-  green: 'bg-success',
-  amber: 'bg-draft',
-  red: 'bg-destructive',
-  grey: 'bg-muted-foreground/40',
-}
-const TEXT: Record<VarianceColour, string> = {
-  green: 'text-success',
-  amber: 'text-draft',
-  red: 'text-destructive',
-  grey: 'text-muted-foreground',
-}
-const WORD: Record<VarianceColour, string> = { green: 'Green', amber: 'Amber', red: 'Red', grey: 'Not judged' }
 const TONE: Record<VarianceColour, StatTone> = { green: 'good', amber: 'warn', red: 'bad', grey: 'default' }
 
 function isoDay(d: Date): string {
@@ -87,11 +75,11 @@ function Difference({ value }: { value: string | null }) {
 function LineRow({ line, projectId }: { line: VarianceLine; projectId: string }) {
   return (
     <li className="flex gap-3 px-3 py-3">
-      <span className={cn('mt-1 h-auto w-1 shrink-0 rounded-full', DOT[line.colour])} aria-hidden="true" />
+      <span className={cn('mt-1 h-auto w-1 shrink-0 rounded-full', COLOUR_DOT[line.colour])} aria-hidden="true" />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
           <p className="min-w-0 font-medium">
-            <span className={cn('mr-2 text-xs font-semibold uppercase tracking-wide', TEXT[line.colour])}>{WORD[line.colour]}</span>
+            <span className={cn('mr-2 text-xs font-semibold uppercase tracking-wide', COLOUR_TEXT[line.colour])}>{COLOUR_WORD[line.colour]}</span>
             {line.boq_code ? `${line.boq_code} · ` : ''}
             {line.work}
           </p>
@@ -142,10 +130,10 @@ function DayStrip({ days, onPick, picked }: { days: VarianceDay[]; onPick: (d: s
             )}
           >
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={cn('size-2 rounded-full', DOT[d.colour])} aria-hidden="true" />
+              <span className={cn('size-2 rounded-full', COLOUR_DOT[d.colour])} aria-hidden="true" />
               {formatDay(d.date)}
             </span>
-            <span className={cn('text-sm font-semibold', TEXT[d.colour])}>{WORD[d.colour]}</span>
+            <span className={cn('text-sm font-semibold', COLOUR_TEXT[d.colour])}>{COLOUR_WORD[d.colour]}</span>
             {d.labour_cost !== null ? (
               <span className="flex flex-col text-xs tabular-nums text-muted-foreground">
                 <span>Earned {formatRupees(d.earned_labour)}</span>
@@ -269,7 +257,7 @@ export default function CostVariancePage() {
         <>
           <StatStrip
             stats={[
-              { label: 'Overall', value: WORD[v.summary.colour], tone: TONE[v.summary.colour], icon: TrafficCone, hint: single ? formatDay(dateFrom) : `${formatDay(v.date_from)} – ${formatDay(v.date_to)}` },
+              { label: 'Overall', value: COLOUR_WORD[v.summary.colour], tone: TONE[v.summary.colour], icon: TrafficCone, hint: single ? formatDay(dateFrom) : `${formatDay(v.date_from)} – ${formatDay(v.date_to)}` },
               { label: 'Labour earned', value: formatRupees(v.summary.earned_labour), hint: 'work done × labour rate' },
               { label: 'Labour spent', value: formatRupees(v.summary.labour_cost), hint: 'on those lines' },
               {

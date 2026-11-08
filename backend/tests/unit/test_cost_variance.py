@@ -90,3 +90,33 @@ def test_committed_is_what_is_ordered_or_agreed_and_not_yet_delivered_or_billed(
            {"status": "draft", "totals": {"value": "99", "billed": "0"}},
            {"status": "completed", "totals": {"value": "100", "billed": "150"}}]
     assert committed_subcontract(wos) == {"amount": Decimal("556000.00"), "work_orders": 1}
+
+
+# -- CC-08: material reconciliation ---------------------------------------------------------------------------------
+
+
+def test_cement_used_beyond_what_the_work_needed_is_red_and_the_shortage_at_completion_is_said():
+    from mesiri.domains.costing.materials import reconcile
+
+    cement = "cement-id"
+    lines = [{"planned": "18000", "done": "640", "norms": [
+        {"material_id": cement, "material": "Cement", "unit": "bags", "per_unit": "0.0045", "wastage_pct": "5"}]}]
+    stock = {cement: {"unit": "bags", "received": "60", "used": "4", "on_hand": "56", "on_order": "20"}}
+    [row] = reconcile(lines, stock)
+    assert (row["required_total"], row["should_have_used"]) == (Decimal("85.05"), Decimal("3.02"))
+    assert (row["colour"], row["reason"], row["used_over_work"]) == ("red", "over_norm", Decimal("0.98"))
+    # Still needed 82.03; 56 on hand + 20 coming: 6.03 bags short at completion.
+    assert row["short_by"] == Decimal("6.03")
+
+
+def test_materials_never_compared_across_units_or_coloured_without_usage():
+    from mesiri.domains.costing.materials import reconcile
+
+    lines = [{"planned": "10", "done": "2", "norms": [
+        {"material_id": "m", "material": "Metal", "unit": "cft", "per_unit": "20", "wastage_pct": None}]}]
+    [row] = reconcile(lines, {"m": {"unit": "loads", "used": "1"}})
+    assert (row["colour"], row["reason"], row["short_by"]) == ("grey", "unit_differs", None)
+    [row] = reconcile(lines, {})
+    assert (row["colour"], row["reason"]) == ("grey", "no_usage_recorded")
+    used_no_work = [{**lines[0], "done": "0"}]
+    assert reconcile(used_no_work, {"m": {"unit": "cft", "used": "5"}})[0]["reason"] == "used_no_work"

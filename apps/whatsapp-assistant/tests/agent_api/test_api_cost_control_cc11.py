@@ -19,6 +19,7 @@ def test_reads_are_gets_on_the_cost_routes_and_the_router_is_mounted() -> None:
     assert (by["cost_today"].method, by["cost_today"].path) == ("GET", "/cost/projects/{project_id}/variance")
     assert (by["budget_vs_actual"].method, by["budget_vs_actual"].path) == ("GET", "/cost/projects/{project_id}/budget")
     assert (by["labour_not_on_boq"].method, by["labour_not_on_boq"].path) == ("GET", "/cost/projects/{project_id}/labour")
+    assert (by["materials_vs_boq"].method, by["materials_vs_boq"].path) == ("GET", "/cost/projects/{project_id}/materials")
     assert "mesiri.domains.costing.router" in API_ROUTERS
 
 
@@ -33,7 +34,7 @@ def test_putting_labour_on_a_line_waits_for_save_and_links_to_budget_vs_actual()
 
 def test_the_sop_says_how_to_answer_and_never_to_make_up_a_colour() -> None:
     rule = SOP[SOP.index("20. Cost:"):]
-    for tool in ("`cost_today`", "`budget_vs_actual`", "`labour_not_on_boq`", "`put_labour_on_boq`"):
+    for tool in ("`cost_today`", "`budget_vs_actual`", "`labour_not_on_boq`", "`put_labour_on_boq`", "`materials_vs_boq`"):
         assert tool in rule
     assert "never coloured" in rule and "never make up a figure, a rate or a colour" in rule
     assert "after the attendance is saved" in rule  # attendance is still record_attendance first

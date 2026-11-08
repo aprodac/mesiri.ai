@@ -239,6 +239,43 @@ export async function fetchPortfolio(): Promise<{ date: string; projects: Portfo
   return (await api.get('/cost/portfolio')).data
 }
 
+/** CC-08: a material with a norm on a BOQ line, against what the work needed. Quantities in the stock unit. */
+export interface MaterialReconciliation {
+  material_id: string
+  material: string
+  unit: string
+  stock_unit: string | null
+  lines: number
+  required_total: string
+  should_have_used: string
+  received: string
+  used: string
+  on_hand: string
+  on_order: string
+  /** Used − what the work done needed: above zero is more than the work accounts for. null when units differ. */
+  used_over_work: string | null
+  still_needed: string
+  /** Needed to finish beyond on hand + on order. null when units differ. */
+  short_by: string | null
+  ratio: string | null
+  colour: VarianceColour
+  reason: 'within_norm' | 'near_norm' | 'over_norm' | 'used_no_work' | 'no_usage_recorded' | 'nothing_yet' | 'unit_differs'
+}
+
+export interface ProjectMaterials {
+  project_id: string
+  date: string
+  materials: MaterialReconciliation[]
+  lines_with_norms: number
+  lines_without_norms: number
+  summary: Record<VarianceColour, number>
+  short_at_completion: number
+}
+
+export async function fetchProjectMaterials(projectId: string): Promise<ProjectMaterials> {
+  return (await api.get<ProjectMaterials>(`/cost/projects/${projectId}/materials`)).data
+}
+
 // Mirrors backend MONEY_MANAGE_ROLES: who may change a category's cost centre.
 export const mayManageMoney = (role: string | null | undefined) =>
   ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'].includes(String(role ?? '').toUpperCase())

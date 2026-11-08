@@ -445,3 +445,32 @@ async def test_budget_says_what_is_committed_and_the_forecast_and_the_portfolio_
     assert row["committed"] == "24600.00" and row["week"]["colour"] == "green"
     _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
     assert (await client.get("/cost/portfolio", headers=_h(engineer))).status_code == 403
+
+
+# -- CC-08: material reconciliation ---------------------------------------------------------------------------------
+
+
+async def test_materials_used_are_set_against_what_the_work_needed(client, ctx, test_engine):
+    h, p = _h(ctx["admin"]), ctx["project"]
+    plaster, _ = await _boq_lines(client, ctx)
+    cement = uuid.uuid4()
+    await _run(test_engine, "INSERT INTO materials_catalog (id, organization_id, name, default_unit_id, is_active, created_by) "
+               "VALUES (:id, :org, 'Cement', (SELECT id FROM units_of_measure WHERE code = 'bags'), true, :u)",
+               id=cement, org=ctx["org"], u=ctx["admin_id"])
+    r = await client.put(f"/projects/{p}/boq/lines/{plaster['id']}/norms", headers=h, json={
+        "norms": [{"material_id": str(cement), "quantity_per_unit": "0.0045", "wastage_pct": "5"}]})
+    assert r.status_code == 200, r.text
+    await _work(test_engine, ctx, plaster["id"], "sqft", "640", 1)
+    bags = str((await _run(test_engine, "SELECT id FROM units_of_measure WHERE code = 'bags'")).scalar())
+    day = str((await _run(test_engine, "SELECT current_date - 1")).scalar())
+    for route, qty, reason in (("/materials/inflows", "60", "RECEIVED"), ("/materials/outflows", "4", "CONSUMED")):
+        r = await client.post(route, headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+            "project_id": str(p), "site_id": str(ctx["site"]), "material_id": str(cement), "unit_id": bags,
+            "quantity": qty, "movement_reason": reason, "occurred_date": day})
+        assert r.status_code == 201, r.text
+    body = (await client.get(f"/cost/projects/{p}/materials", headers=h)).json()
+    [row] = body["materials"]
+    assert (row["material"], row["required_total"], row["should_have_used"]) == ("Cement", "85.05", "3.02")
+    assert (row["received"], row["used"], row["on_hand"]) == ("60.00", "4.00", "56.00")
+    assert (row["colour"], row["used_over_work"], row["short_by"]) == ("red", "0.98", "26.03")
+    assert body["lines_without_norms"] == 1 and body["short_at_completion"] == 1

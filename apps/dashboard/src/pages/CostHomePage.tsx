@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, ClipboardCheck, HardHat, Landmark, PieChart, Scale, TrafficCone } from 'lucide-react'
+import { ChevronRight, ClipboardCheck, HardHat, Landmark, Package, PieChart, Scale, TrafficCone } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { formatRupees, maySeeBoq } from '@/lib/boq'
 import { fetchPortfolio, type PortfolioRow, type VarianceColour } from '@/lib/cost'
 import { usePageTitle } from '@/lib/page-title'
+import { COLOUR_DOT, COLOUR_TEXT } from '@/lib/cost-colours'
 import { cn } from '@/lib/utils'
 
 // CC-22: the Cost control home. Every project with a BOQ, worst forecast first (CC-19): budget, % done against
@@ -14,18 +15,6 @@ import { cn } from '@/lib/utils'
 // needs a person (labour and work not on a BOQ line). Each row opens the project's Green / red; the other pages are
 // one tap away. Backend: GET /cost/portfolio (the same reads as Budget vs actual and Green / red).
 
-const DOT: Record<VarianceColour, string> = {
-  green: 'bg-success',
-  amber: 'bg-draft',
-  red: 'bg-destructive',
-  grey: 'bg-muted-foreground/40',
-}
-const TEXT: Record<VarianceColour, string> = {
-  green: 'text-success',
-  amber: 'text-draft',
-  red: 'text-destructive',
-  grey: 'text-muted-foreground',
-}
 const FORECAST_WORD: Record<VarianceColour, string> = {
   green: 'On budget',
   amber: 'Watch',
@@ -53,10 +42,10 @@ function ProjectRow({ p }: { p: PortfolioRow }) {
     <li>
       <Link to={`/cost/green-red?project=${p.project_id}`} className="flex flex-col gap-2 px-4 py-3 hover:bg-muted/60 sm:flex-row sm:items-center sm:gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', DOT[p.colour])} aria-hidden="true" />
+          <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', COLOUR_DOT[p.colour])} aria-hidden="true" />
           <div className="min-w-0">
             <p className="truncate font-medium">{p.name}</p>
-            <p className={cn('text-xs font-medium', TEXT[p.colour])}>
+            <p className={cn('text-xs font-medium', COLOUR_TEXT[p.colour])}>
               {FORECAST_WORD[p.colour]}
               {diff !== null && <> · {diff < 0 ? `${formatRupees(String(-diff))} over` : `${formatRupees(String(diff))} under`} at completion</>}
               {p.forecast_kinds.length > 0 && p.forecast_kinds.length < 3 && (
@@ -79,8 +68,8 @@ function ProjectRow({ p }: { p: PortfolioRow }) {
           </div>
           <div>
             <p className="text-muted-foreground">Last 7 days</p>
-            <p className={cn('flex items-center gap-1.5 font-medium', TEXT[p.week.colour])}>
-              <span className={cn('size-2 rounded-full', DOT[p.week.colour])} aria-hidden="true" />
+            <p className={cn('flex items-center gap-1.5 font-medium', COLOUR_TEXT[p.week.colour])}>
+              <span className={cn('size-2 rounded-full', COLOUR_DOT[p.week.colour])} aria-hidden="true" />
               {p.week.colour === 'grey' ? 'Not judged' : p.week.colour === 'red' ? `${p.week.red_lines} red` : p.week.colour === 'amber' ? 'Amber' : 'Green'}
             </p>
           </div>
@@ -94,6 +83,7 @@ function ProjectRow({ p }: { p: PortfolioRow }) {
 const PAGES = [
   { to: '/cost/green-red', icon: TrafficCone, title: 'Green / red', about: "Each BOQ line's labour against the work it earned, by day." },
   { to: '/cost/budget', icon: Scale, title: 'Budget vs actual', about: 'Budget, earned, spent, committed and forecast; put labour on lines.' },
+  { to: '/cost/materials', icon: Package, title: 'Materials vs BOQ', about: 'Used against what the work needed; what is short to finish.' },
   { to: '/cost/centres', icon: PieChart, title: 'Cost centres', about: 'Where the money went: materials, labour, subcontract, fuel.' },
   { to: '/boq', icon: ClipboardCheck, title: 'BOQ & budget', about: "Each project's BOQ, rates and work done per line." },
 ]

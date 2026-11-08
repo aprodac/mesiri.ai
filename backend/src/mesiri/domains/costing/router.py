@@ -635,3 +635,52 @@ async def portfolio(
         })
     out.sort(key=lambda r: (COLOUR_ORDER[r["colour"]], Decimal(r["forecast_difference"] or 0)))
     return {"date": str(today), "projects": out}
+
+
+# -- CC-08: material reconciliation ---------------------------------------------------------------------------------
+
+
+@router.get("/projects/{project_id}/materials")
+async def project_materials(
+    project_id: uuid.UUID,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Per material with a norm on a BOQ line: what the BOQ needs in all, what the work done so far should have used,
+    against received, used and on hand to date and on open orders; the colour (used against the work) and how much
+    is short at completion beyond what is in stock and coming (``domains/costing/materials.py``). Worst first.
+
+    The same inputs as the material plan (MP-02: the lines' norms, work done per line, stock and open orders), so the
+    two never disagree. Lines with no norms are counted (``lines_without_norms``): their materials are not here."""
+    from mesiri.domains.costing.materials import reconcile
+    from mesiri.domains.materials.plan_router import _lines, _stock
+    from mesiri.domains.schedule.store import measured_by_line
+    from mesiri.infrastructure.postgres.repositories.materials import PostgresMaterialReadRepository
+
+    repo = await _project_repo(auth, conn, project_id)
+    org = auth.organization_id
+    today = await _today(conn, org)
+    lines = await _lines(conn, org, project_id, None)
+    done = await measured_by_line(conn, org, project_id)
+    for line in lines:
+        line["done"] = done.get(line["id"], Decimal(0))
+    held = await _stock(conn, org, project_id, None, today)
+    since = today - datetime.timedelta(days=730)
+    for r in await PostgresMaterialReadRepository(conn).get_stock_summary(
+            org, date_from=since, date_to=today, project_ids={project_id}):
+        row = held.setdefault(r["material_id"], {"unit": r["unit"], "on_hand": Decimal(0), "on_order": Decimal(0)})
+        row["received"] = row.get("received", Decimal(0)) + Decimal(str(r["received"] or 0))
+        row["used"] = row.get("used", Decimal(0)) + Decimal(str(r["used"] or 0))
+    rows = reconcile(lines, held)
+    all_lines = await repo.list_lines(org, project_id)
+
+    def out(v):
+        return str(v) if isinstance(v, Decimal) else (str(v) if isinstance(v, uuid.UUID) else v)
+
+    return {
+        "project_id": str(project_id), "date": str(today),
+        "materials": [{k: out(v) for k, v in r.items()} for r in rows],
+        "lines_with_norms": len(lines), "lines_without_norms": len(all_lines) - len(lines),
+        "summary": {c: sum(1 for r in rows if r["colour"] == c) for c in ("red", "amber", "green", "grey")},
+        "short_at_completion": sum(1 for r in rows if r["short_by"] is not None and r["short_by"] > 0),
+    }
