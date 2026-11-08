@@ -250,6 +250,12 @@ async def get_finance_summary(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Return executive-level financial summary metrics for the organization."""
+    # 8 Nov 2026: this read had no role check (any user with Finance saw every balance and the company's spending).
+    # Company-wide money is for the roles that see spending (SEC-01) with every project in their scope.
+    from mesiri.authorization.roles import may_view_expenses
+
+    if not may_view_expenses(auth_context.role) or not auth_context.project_scope.grants_all_org_projects:
+        raise HTTPException(status_code=403, detail="The company's money summary is for the roles that see all spending.")
     acc_repo = PostgresMoneyAccountRepository(conn)
     cat_repo = PostgresExpenseCategoryRepository(conn)
     vendor_repo = PostgresVendorRepository(conn)
@@ -270,14 +276,21 @@ async def get_finance_summary(
     total_expenses = sum((e.amount for e in expenses), Decimal("0"))
     unpaid_expenses = sum((e.amount for e in expenses if e.payment_status == "unpaid"), Decimal("0"))
 
-    # 3. Vendors & Top Vendors
+    # 3. Vendors & Top Vendors. 8 Nov 2026: read ``unpaid_amount``, a key list_with_metrics never had (the route
+    # failed with any vendor); what is unpaid to a supplier is now the supplier ledger's balance (CC-09), one rule.
+    from mesiri.domains.vendors import ledger as supplier_ledger
+
     vendor_metrics = await vendor_repo.list_with_metrics(auth_context.organization_id)
+    entries, state = await supplier_ledger.fetch_entries(conn, auth_context.organization_id, vendor_id=None, projects=None)
+    owed = {}
+    for e in entries:
+        owed[e["vendor_id"]] = owed.get(e["vendor_id"], Decimal("0")) + e["owe"] - e["paid"]
     top_vendors = [
         TopVendorItem(
             id=v["vendor"].id,
             name=v["vendor"].name,
             total_spent=v["total_amount"],
-            unpaid_amount=v["unpaid_amount"],
+            unpaid_amount=max(owed.get(v["vendor"].id, Decimal("0")), Decimal("0")),
         )
         for v in vendor_metrics[:5]
     ]

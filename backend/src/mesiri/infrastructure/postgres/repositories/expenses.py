@@ -706,7 +706,7 @@ class PostgresExpensePaymentRepository:
             await self.conn.execute(
                 sa.select(_expenses.c.amount).where(
                     _expenses.c.id == expense_id, _expenses.c.organization_id == organization_id
-                )
+                ).with_for_update()  # two payments at once must not both fit under the amount
             )
         ).mappings().one()
         paid_total = await self._confirmed_paid_total(expense_id)
@@ -738,7 +738,7 @@ class PostgresExpensePaymentRepository:
             await self.conn.execute(
                 sa.select(_expenses.c.amount).where(
                     _expenses.c.id == expense_id, _expenses.c.organization_id == organization_id
-                )
+                ).with_for_update()  # two payments at once must not both fit under the amount
             )
         ).mappings().first()
         if expense_row is None:
@@ -904,7 +904,7 @@ class PostgresExpensePaymentRepository:
             await self.conn.execute(
                 sa.select(_expense_payments).where(
                     _expense_payments.c.id == advance_id, _expense_payments.c.organization_id == organization_id
-                )
+                ).with_for_update()  # one advance used by two requests at once must not be spent twice
             )
         ).mappings().first()
         if adv is None or adv["expense_id"] is not None:
@@ -916,7 +916,7 @@ class PostgresExpensePaymentRepository:
             await self.conn.execute(
                 sa.select(_expenses.c.amount).where(
                     _expenses.c.id == expense_id, _expenses.c.organization_id == organization_id
-                )
+                ).with_for_update()  # two payments at once must not both fit under the amount
             )
         ).mappings().first()
         if bill is None:

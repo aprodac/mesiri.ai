@@ -245,3 +245,33 @@ async def test_delete_and_merge_know_every_table_that_points_at_a_vendor(test_en
             "ON a.attrelid = k.conrelid AND a.attnum = ANY(k.conkey) "
             "WHERE k.confrelid = 'vendors'::regclass AND k.contype = 'f'"))).all()
     assert {(t, c) for t, c in rows} == {(t, c) for t, c, _ in VENDOR_LINKS}
+
+
+async def test_a_payment_for_one_project_pays_only_that_projects_bills(client, world):
+    """8 Nov 2026: a payment made for Edappally paid Villa's older bill first."""
+    w = world
+    h = w["admin"]["h"]
+    bank = await _account(client, h, "SBI", "bank")
+    v = await _vendor(client, h, "Kerala Steel")
+    villa_bill = await _bill(client, w, v, "10000", days_ago=20)
+    flats_bill = await _bill(client, w, v, "4000", days_ago=2, project="flats")
+    paid = await client.post(f"/finance/vendors/{v}/payments", headers=h,
+                             json={"account_id": bank, "amount": "6000", "project_id": str(w["flats"])})
+    assert paid.status_code == 201, paid.text
+    assert [b["expense_id"] for b in paid.json()["bills_paid"]] == [flats_bill]
+    assert paid.json()["advance_left"] == "2000.00"
+    assert (await client.get(f"/expenses/{villa_bill}/payments", headers=h)).json()["payment_status"] == "unpaid"
+    # Its advance stays with that project: using it never reaches Villa's bill.
+    nothing = await client.post(f"/finance/vendors/{v}/payments/{paid.json()['payment_id']}/apply", headers=h, json={})
+    assert nothing.status_code == 409
+
+
+async def test_the_money_summary_works_and_only_for_who_sees_all_spending(client, world):
+    w = world
+    h = w["admin"]["h"]
+    v = await _vendor(client, h, "Malabar")
+    await _bill(client, w, v, "2500", days_ago=1)
+    summary = await client.get("/finance/summary", headers=h)
+    assert summary.status_code == 200, summary.text          # failed with any vendor before (a missing key)
+    assert next(t for t in summary.json()["top_vendors"] if t["name"] == "Malabar")["unpaid_amount"] in ("2500.00", "2500", 2500)
+    assert (await client.get("/finance/summary", headers=w["arun"]["h"])).status_code == 403

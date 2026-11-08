@@ -366,9 +366,11 @@ class PayVendorRequest(BaseModel):
 
 
 async def _open_bills(conn: AsyncConnection, auth: AuthorizationContext, vendor_id: uuid.UUID,
-                      bill_ids: list[uuid.UUID] | None) -> list[dict]:
-    """The bills a payment may go to: open, this vendor's, in the caller's projects; oldest first unless named."""
-    scope = _view_scope(auth)
+                      bill_ids: list[uuid.UUID] | None, project_id: uuid.UUID | None = None) -> list[dict]:
+    """The bills a payment may go to: open, this vendor's, in the caller's projects -- and in the payment's project
+    when it has one (8 Nov 2026: a payment made for one project paid another project's older bills); oldest first
+    unless named."""
+    scope = _narrow(_view_scope(auth), project_id)
     entries, state = await ledger.fetch_entries(conn, auth.organization_id, vendor_id=vendor_id, projects=scope)
     open_ = {b["id"]: b for b in state["bills"].values() if b["left"] > 0}
     if bill_ids is None:
@@ -427,7 +429,7 @@ async def pay_vendor(
         raise HTTPException(status_code=404, detail="Account not found")
     if str(getattr(account.status, "value", account.status)) != "active":
         raise HTTPException(status_code=409, detail=f"{account.name} is closed.")
-    bills = await _open_bills(conn, auth_context, vendor_id, body.bill_ids)
+    bills = await _open_bills(conn, auth_context, vendor_id, body.bill_ids, body.project_id)
     amount = body.amount.quantize(Decimal("0.01"))
     payment = await PostgresExpensePaymentRepository(conn).record_on_account(
         organization_id=org, vendor_id=vendor_id, account_id=body.account_id, amount=amount,
@@ -465,7 +467,9 @@ async def apply_advance(
     left = await PostgresExpensePaymentRepository(conn).advance_left(auth_context.organization_id, payment_id)
     if left <= 0:
         raise HTTPException(status_code=409, detail="Nothing of this payment is left to use.")
-    bills = await _open_bills(conn, auth_context, vendor_id, body.bill_ids)
+    advance_project = (await conn.execute(text("SELECT project_id FROM expense_payments WHERE id = :p"),
+                                          {"p": payment_id})).scalar()
+    bills = await _open_bills(conn, auth_context, vendor_id, body.bill_ids, advance_project)
     if not bills:
         raise HTTPException(status_code=409, detail="No open bill to use it on.")
     used = await _apply(conn, auth_context, payment_id, bills)
