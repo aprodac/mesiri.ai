@@ -95,7 +95,7 @@ export function MachinePanel({ machine: m, inSheet }: { machine: Machine; inShee
               {t.fuel_litres && <span className="inline-flex items-center gap-1"><Fuel className="size-3.5" />{Number(t.fuel_litres)} L</span>}
               {t.trips ? <span>{t.trips} trips</span> : null}
             </div>
-            {t.issue_id && <Link to="/issues" className="text-xs font-medium text-red-700 hover:underline dark:text-red-300">Breakdown on Issues ({(t.issue_status ?? 'open').toLowerCase()}) →</Link>}
+            {t.issue_id && <Link to={`/issues?project=${t.project_id}&site=${t.site_id}`} className="text-xs font-medium text-red-700 hover:underline dark:text-red-300">Breakdown on Issues ({(t.issue_status ?? 'open').toLowerCase()}) →</Link>}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">{m.status === 'active' && m.site_id ? `Tap Log today, or the site sends "${m.name} 6 hrs, 30 L diesel" on WhatsApp.` : m.status === 'off_hire' ? `Off hire since ${m.off_hire_on ?? '–'}.` : 'Put it at a site to log its days.'}</p>

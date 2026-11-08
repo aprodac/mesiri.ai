@@ -194,7 +194,7 @@ export default function MachinePage() {
           )}
           {m.breakdowns.length > 0 && (
             <section aria-label="Breakdowns" className="overflow-hidden rounded-xl border">
-              <h2 className="flex items-center justify-between border-b bg-muted/30 px-4 py-2 text-sm font-semibold">Breakdowns <Link to="/issues" className="text-xs font-normal text-primary hover:underline">Issues</Link></h2>
+              <h2 className="flex items-center justify-between border-b bg-muted/30 px-4 py-2 text-sm font-semibold">Breakdowns <Link to={m.project_id ? `/issues?project=${m.project_id}${m.site_id ? `&site=${m.site_id}` : ''}` : '/issues'} className="text-xs font-normal text-primary hover:underline">Issues</Link></h2>
               {m.breakdowns.map((b) => (
                 <div key={b.id} className="flex items-center gap-3 border-b px-4 py-2.5 text-sm last:border-b-0">
                   <span className="w-16 shrink-0 text-xs text-muted-foreground tabular-nums">{b.date.slice(5)}</span>
