@@ -30,6 +30,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.finance.router",
     "mesiri.domains.vendors.router",  # WA-201: the vendor list, so a known vendor is never added twice
     "mesiri.domains.subcontracts.router",  # NXT-05..07: work orders, measurement, subcontract bills
+    "mesiri.domains.partner.router",  # NXT-16: the subcontractor's own routes (partner tools only)
     "mesiri.domains.dpr.router",
     "mesiri.domains.equipment.router",  # NXT-11: machines, their day logs, hire check
     "mesiri.domains.admin.my_requests_router",  # request 230: the person's own requests

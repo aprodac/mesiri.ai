@@ -36,12 +36,14 @@ async def _wipe(engine: AsyncEngine) -> None:
         await conn.execute(sa.text("UPDATE material_receipts SET reverses_movement_id = NULL, invoice_id = NULL"))
         await conn.execute(sa.text("UPDATE material_invoices SET expense_id = NULL"))
         await conn.execute(sa.text("UPDATE expense_payments SET advance_id = NULL"))
+        await conn.execute(sa.text("DELETE FROM partner_audit"))
         for t in ("work_order_bill_lines", "work_order_bills", "work_order_measurements", "work_order_events",
                   "work_order_lines"):
             await conn.execute(sa.text(f"DELETE FROM {t}"))  # noqa: S608
         await conn.execute(sa.text("UPDATE expense_payments SET work_order_id = NULL"))
         await conn.execute(sa.text("UPDATE activity_quantities SET work_order_line_id = NULL"))
         await conn.execute(sa.text("DELETE FROM work_orders"))
+        await conn.execute(sa.text("DELETE FROM vendor_contacts"))
         await conn.execute(sa.text("DELETE FROM activity_quantities"))
         await conn.execute(sa.text("DELETE FROM activities"))
         await conn.execute(sa.text("DELETE FROM organization_settings"))
