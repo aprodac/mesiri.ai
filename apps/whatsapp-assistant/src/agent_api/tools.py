@@ -304,6 +304,32 @@ ALLOWED: tuple[Allowed, ...] = (
             "narrow): per material still_needed, weeks (need per week from this Monday), on_hand, on_order, "
             "short_day (the day it runs short), short_by, supplier and lead_days, order_by, order_now, and lines "
             "(the BOQ work it is for). Empty materials: no BOQ line has its materials set yet."),
+    # END-05 (8 Nov 2026): the snag list. Anyone on the project raises one and says it is fixed; closing is the PM's,
+    # on the dashboard (a person checks the fix).
+    Allowed("snags", "GET", "/snags",
+            "The snag list (defects to put right before handover or in the defect period): project_id to narrow, "
+            "status pending (not closed: the default to ask for), open, fixed or closed. Each has ref (SN-004), "
+            "place, description, trade, status (open / fixed: waiting for the PM's check / closed), due_on, phase "
+            "(defects = raised after handover); counts per status."),
+    Allowed("raise_snag", "POST", "/projects/{project_id}/snags",
+            "Prepare a snag: description (what is wrong, their words), place (where: 'Bedroom 2', 'first floor "
+            "toilet') when said, trade (who fixes it: plumber, tiler...) when said, site_id when the project has more "
+            "than one site and they named it, due_on only when said, found_by client only when the client reported it."
+            + _WRITE, hide=("vendor_id",)),
+    Allowed("snag_fixed", "POST", "/snags/{snag_id}/fixed",
+            "Prepare marking a snag fixed (snag_id from `snags`, matched by its SN number or place and words): note = "
+            "what was done, when said. The PM checks and closes it." + _WRITE),
+    # END-06 (8 Nov 2026): money from the client. The API lets only the owner, an admin or finance (D-N3 default).
+    Allowed("receivables", "GET", "/billing/receivables",
+            "Money still owed to the company on its RA bills (project_id to narrow): per project each bill's due, "
+            "received, outstanding and "
+            "age_days, oldest first; retention_left and retention_due_on; advance_left; totals."),
+    Allowed("client_payment", "POST", "/projects/{project_id}/client-payments",
+            "Prepare a payment received FROM THE CLIENT (money in, not a payment to a supplier): amount in rupees "
+            "(6 lakh = 600000), kind bill (default) with bill_ref as they said it ('RA-3') when named, advance, "
+            "retention (released) or other; received_on only when not today; mode (bank, cheque, UPI, cash) and "
+            "reference (UTR / cheque no.) when said. The answer's receivable says what is still owed." + _WRITE,
+            hide=("bill_id",)),
     # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
     # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
     Allowed("list_work_orders", "GET", "/subcontracts/work-orders",

@@ -199,6 +199,7 @@ TITLES: dict[str, str] = {
     "create_project": "New project", "update_project": "Change project", "add_site": "New site",
     "update_site": "Change site", "add_project_member": "Add to project", "add_material_alias": "Other name",
     "add_person": "Add person",
+    "raise_snag": "Snag", "snag_fixed": "Snag fixed", "client_payment": "Payment received",
 }
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 #: WA-262: each tool's look on the slip (channel/receipt/draft_slip.KINDS): its own colour, icon and label.
@@ -212,6 +213,7 @@ _KIND_BY_TOOL = {
     "record_work": "work", "correct_work": "work",
     "log_machines": "machine", "add_machine": "machine", "move_machine": "machine", "off_hire_machine": "machine",
     "update_schedule_activity": "schedule",
+    "raise_snag": "snag", "snag_fixed": "snag", "client_payment": "payment",
 }
 
 

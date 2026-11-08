@@ -76,6 +76,10 @@ RECORD_PAGES: dict[str, str | None] = {
     "off_hire_machine": "machines",
     # ST-04: the schedule, the activity's project in the path.
     "update_schedule_activity": "schedule",
+    # END-05 / END-06: the snag list and the client's payments, the project in the path or the answer.
+    "raise_snag": "snags",
+    "snag_fixed": "snags",
+    "client_payment": "payments_received",
 }
 
 #: Where a page's placeholder is read from, in order: the saved request body, then the API's answer.
@@ -111,6 +115,10 @@ def _arguments(tool: str, page: str, path: str, body: dict[str, Any], answer: An
         m = re.search(pattern, path or "")
         if m and not args.get(name):
             args[name] = m.group(1)
+    if isinstance(answer, dict):  # END-05: a route on the record's own id (/snags/{id}/fixed) answers its project
+        for name in _BODY_KEYS:
+            if not args.get(name) and isinstance(answer.get(name), str):
+                args[name] = answer[name]
     if tool in _ANSWER_ID and isinstance(answer, dict) and answer.get("id"):
         args[_ANSWER_ID[tool]] = str(answer["id"])
     return args
