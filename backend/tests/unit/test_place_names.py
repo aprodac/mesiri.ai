@@ -101,3 +101,13 @@ def test_a_footing_by_its_grid(words):
     tree = [root, floor, names.Place(uuid.uuid4(), "Kitchen", floor.id)] + [
         names.Place(uuid.uuid4(), g, root.id) for g in ("A1", "A3", "B3", "B5", "D3")]
     assert names.resolve(words, tree).place.name == "B3"
+
+
+def test_left_counts_only_the_work_of_its_own_floor_or_foundation():
+    """Found making the sales video: "what's left on the first floor" listed footing concrete in every room."""
+    ff, room, found, b3 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    places = [{"id": ff, "parent_id": None}, {"id": room, "parent_id": ff},
+              {"id": found, "parent_id": None}, {"id": b3, "parent_id": found}]
+    out = progress.roll_up(places, [_w(room, "Brickwork"), _w(b3, "Footing concrete", True)])
+    assert out["places"][room]["left"] == ["Brickwork"]  # never "Footing concrete"
+    assert out["places"][found]["left"] == [] and out["places"][found]["done"] == ["Footing concrete"]

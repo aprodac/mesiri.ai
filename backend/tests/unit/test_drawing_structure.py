@@ -174,3 +174,11 @@ def test_each_footing_gets_its_grid():
     assert found == {("F1", "B2"), ("F2", "C3"), ("F1", "A1")}
     t = structure.takeoff([plan], [reader.sheet(plan)])
     assert {f["grid"] for f in t["plan"]["footings"]} == {"A1", "B2", "C3"}
+
+
+def test_a_value_stops_at_a_two_word_label_beside_it():
+    """Found making the sales video: "REV" with "DWG NO" beside it on the same line read the revision as "DWG"."""
+    block = page(9, [w("REV", 250, 722), w("DWG", 300, 722), w("NO", 318, 722), w("C", 250, 734), w("S-101", 300, 734),
+                     w("DWG.TITLE:", 409, 722), w("COLUMN", 469, 734), w("LAYOUT", 495, 734)])
+    s = reader.sheet(block)
+    assert (s["revision"], s["number"]) == ("C", "S-101")

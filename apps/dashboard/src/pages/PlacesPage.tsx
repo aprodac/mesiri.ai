@@ -65,11 +65,12 @@ export default function PlacesPage() {
 
 function PlacesView({ projectId }: { projectId: string }) {
   const list = useQuery<PlacesList>({ queryKey: ['places', projectId], queryFn: () => fetchPlaces(projectId) })
-  const grid = useQuery<PlacesProgress>({ queryKey: ['places-progress', projectId], queryFn: () => fetchPlacesProgress(projectId) })
+  const grid = useQuery<PlacesProgress>({ queryKey: ['places-progress', projectId], queryFn: () => fetchPlacesProgress(projectId), staleTime: 0, refetchInterval: 30_000 })
   const [editing, setEditing] = React.useState(false)
   const [open, setOpen] = React.useState<PlaceProgressRow | null>(null)
   // DR-10: the project's structural drawing, coloured by the work at each footing.
-  const live = useQuery({ queryKey: ['live-plan', projectId], queryFn: () => fetchProjectLivePlan(projectId) })
+  // Live: site's WhatsApp updates show by themselves (every 20 s, and when the tab is opened again).
+  const live = useQuery({ queryKey: ['live-plan', projectId], queryFn: () => fetchProjectLivePlan(projectId), staleTime: 0, refetchInterval: 20_000 })
 
   if (list.isError || grid.isError) {
     return <PageError message="The places did not load." onRetry={() => { list.refetch(); grid.refetch() }} back={{ to: '/planning/places', label: 'All projects' }} />

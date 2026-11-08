@@ -307,6 +307,6 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
 
 /** DR-10: a structural drawing's footing plan, coloured by the work at each footing. */
 function DocLive({ id }: { id: string }) {
-  const live = useQuery({ queryKey: ['document-live', id], queryFn: () => fetchDocumentLivePlan(id) })
+  const live = useQuery({ queryKey: ['document-live', id], queryFn: () => fetchDocumentLivePlan(id), staleTime: 0, refetchInterval: 20_000 })
   return live.data ? <LiveFootingPlan live={live.data} refreshKey={['document-live', id]} /> : null
 }

@@ -8,13 +8,14 @@ grouped without case or extra spaces, in the order they were first reported. A c
 - **in_progress** when any work of that kind was recorded at the place or any room in it;
 - **not_started** otherwise.
 
-"What's left" at a place is every kind of work not done there.
+"What's left" at a place is every kind of work reported under its own floor (or the Foundation) not done there.
 """
 
 from __future__ import annotations
 
 import datetime
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 
 DONE, IN_PROGRESS, NOT_STARTED = "done", "in_progress", "not_started"
@@ -61,6 +62,21 @@ def roll_up(places: list[dict], works: list[Work]) -> dict:
     for w in works:
         photos[w.location_id] = photos.get(w.location_id, 0) + w.photos
 
+    # "Left" at a place counts only the kinds of work reported under its own top place (a floor's rooms are
+    # compared with that floor's work, the Foundation's footings with foundation work): never "footing concrete" in
+    # a bedroom.
+    parent_of = {p["id"]: p["parent_id"] for p in places}
+
+    def top(pid: uuid.UUID) -> uuid.UUID:
+        while parent_of.get(pid) is not None:
+            pid = parent_of[pid]
+        return pid
+
+    kinds_at: dict[uuid.UUID, set[str]] = defaultdict(set)
+    for w in works:
+        if w.location_id in parent_of:
+            kinds_at[top(w.location_id)].add(work_key(w.work_type))
+
     out: dict[uuid.UUID, dict] = {}
 
     def visit(pid: uuid.UUID) -> dict:
@@ -83,7 +99,7 @@ def roll_up(places: list[dict], works: list[Work]) -> dict:
             "cells": cells,
             "photos": photos.get(pid, 0) + sum(k["photos"] for k in kids),
             "last_update": max([c["last"] for c in cells.values() if c["last"]], default=None),
-            "left": [names[k] for k in kinds if cells[k]["state"] != DONE],
+            "left": [names[k] for k in kinds if cells[k]["state"] != DONE and k in kinds_at[top(pid)]],
             "done": [names[k] for k in kinds if cells[k]["state"] == DONE],
         }
         out[pid] = result

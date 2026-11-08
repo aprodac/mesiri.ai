@@ -97,10 +97,13 @@ def _label_at(row: list[Word], i: int, names: tuple[str, ...]) -> int:
 
 
 def _starts_label(row: list[Word], j: int) -> bool:
-    """Whether ``row[j]`` starts another field: a known label, or a word followed by one that opens with ":"
-    ("Mob :+91 ...", "Tel :...")."""
+    """Whether ``row[j]`` starts another field: a known label of one to three words ("DWG NO" beside "REV"), or a
+    word followed by one that opens with ":" ("Mob :+91 ...", "Tel :...")."""
     if _is_label(row[j]["text"]):
         return True
+    for n in (2, 3):
+        if j + n <= len(row) and _norm(" ".join(w["text"] for w in row[j:j + n])).rstrip(".") in ALL_LABELS:
+            return True
     word = row[j]["text"].strip()
     nxt = row[j + 1]["text"].strip() if j + 1 < len(row) else ""
     return bool(word) and word[0].isalpha() and nxt.startswith(":") and len(word) <= 12
@@ -126,7 +129,7 @@ def _value_after(rows: list[list[Word]], names: tuple[str, ...]) -> tuple[str, W
             for j in range(i + n, len(row)):
                 w = row[j]
                 gap = w["x0"] - (right[-1]["x1"] if right else label[-1]["x1"])
-                if (right and _starts_label(row, j)) or _is_label(w["text"]) or gap > (40 if right else 90):
+                if _starts_label(row, j) or gap > (40 if right else 90):
                     break
                 if not _noise(w) and w["text"].strip() != ":":
                     right.append(w)
@@ -134,7 +137,7 @@ def _value_after(rows: list[list[Word]], names: tuple[str, ...]) -> tuple[str, W
             if value:
                 return value, label[0]
             x0 = label[0]["x0"]
-            nxt = next((w["x0"] for w in row[i + n:] if _is_label(w["text"])), x0 + 220)
+            nxt = next((row[j]["x0"] for j in range(i + n, len(row)) if _starts_label(row, j)), x0 + 220)
             for below in rows[r + 1:]:
                 # Bigger sheets print bigger: the reach grows with the label's own height.
                 reach = max(BELOW, 3 * (label[0].get("bottom", label[0]["top"]) - label[0]["top"]))
