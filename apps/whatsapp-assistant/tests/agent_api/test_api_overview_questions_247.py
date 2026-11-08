@@ -76,9 +76,11 @@ async def test_a_project_with_nothing_recorded_gets_the_read_and_no_cant() -> No
 
 
 async def test_guard_a_really_missing_feature_still_reaches_the_team() -> None:
-    team = ("tell_the_team", {"kind": "missing_feature", "about": "send my invoice to the client by email"})
-    model = Runs([[team], "Mesiri cannot email invoices yet; passed to the team."], ["never reached"])
-    turn, _ = await _turn(model, "send my invoice to the client by email")
+    # NXT-03 (8 Nov): "send my invoice to the client by email" now shares its topic with ra_bills / receivables (they
+    # are about a client's bills), so it is looked at once (below); this guard keeps a topic no tool covers.
+    team = ("tell_the_team", {"kind": "missing_feature", "about": "post our brochure on instagram"})
+    model = Runs([[team], "Mesiri cannot post on Instagram; passed to the team."], ["never reached"])
+    turn, _ = await _turn(model, "post our brochure on instagram")
     assert model.calls == 1 and _tools_called(turn) == ["tell_the_team"]
 
 
@@ -128,4 +130,6 @@ def test_topic_comes_from_the_tools_not_a_word_list() -> None:
     tools = _real_tools()
     assert "work_progress" in read_tools_for("Answer questions about project progress", tools)
     assert "stock_levels" in read_tools_for("how much cement stock is left", tools)
-    assert read_tools_for("send my invoice to the client by email", tools) == []
+    assert read_tools_for("post our brochure on instagram", tools) == []
+    # NXT-03: a client's bills are a topic Mesiri reads now; emailing one is still a missing feature after the look.
+    assert set(read_tools_for("send my invoice to the client by email", tools)) == {"ra_bills", "receivables"}

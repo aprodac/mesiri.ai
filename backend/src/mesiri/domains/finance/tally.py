@@ -14,8 +14,14 @@ and Mesiri's supplier balances agree:
   accounts under Bank Accounts or Cash-in-Hand, the others under Current Liabilities / Duties & Taxes) so an import
   into a company that lacks one does not fail on it. The CA can move a ledger to another group in Tally.
 
-Not included yet: client RA bills and money received (NXT-03, waiting for D-N3), deliveries not billed (no bill yet,
-nothing to book), opening balances (Tally holds its own). Each voucher carries Mesiri's id (``REMOTEID``) and its
+- **An RA bill sent to the client** (submitted or certified, by its bill date) is a *Sales* voucher (NXT-03, 8 Nov):
+  debit the client its net payable, debit "TDS receivable" the TDS they deduct, "Retention receivable" what they
+  hold back and "Mobilisation advance received" the advance it recovers; credit "Contract revenue" the gross and
+  "Output GST" the GST. Gross + GST = net + TDS + retention + recovery, so it balances.
+- **Money received from a client** is a *Receipt*: debit the account it came into, credit the client (against a bill
+  or on account) or "Mobilisation advance received" (an advance).
+
+Not included: deliveries not billed (no bill yet, nothing to book), opening balances (Tally holds its own). Each voucher carries Mesiri's id (``REMOTEID``) and its
 number, so the CA can tell what was imported. Tally's sign convention: a debit is ``ISDEEMEDPOSITIVE Yes`` with a
 negative amount.
 """
@@ -32,6 +38,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 EXPENSES_PAYABLE = "Expenses payable"
+CONTRACT_REVENUE = "Contract revenue"
+OUTPUT_GST = "Output GST"
+TDS_RECEIVABLE = "TDS receivable"
+RETENTION_RECEIVABLE = "Retention receivable"
+ADVANCE_RECEIVED = "Mobilisation advance received"
+NO_CLIENT = "Client (not set)"
 INPUT_GST = "Input GST"
 UNCATEGORISED = "Site expenses (no category)"
 _CASH_TYPES = frozenset({"cash", "employee_advance"})
@@ -74,8 +86,10 @@ def party_of(row: dict[str, Any]) -> str:
     return EXPENSES_PAYABLE
 
 
-def build(company: str, expenses: list[dict[str, Any]], payments: list[dict[str, Any]]) -> tuple[str, dict]:
-    """The XML and a count of what is in it. ``expenses`` / ``payments`` as ``fetch`` returns them."""
+def build(company: str, expenses: list[dict[str, Any]], payments: list[dict[str, Any]],
+          sales: list[dict[str, Any]] | None = None, receipts: list[dict[str, Any]] | None = None) -> tuple[str, dict]:
+    """The XML and a count of what is in it. Lists as ``fetch`` returns them."""
+    sales, receipts = sales or [], receipts or []
     ledgers: dict[str, str] = {}
     vouchers: list[str] = []
     split, not_split = 0, 0
@@ -115,6 +129,32 @@ def build(company: str, expenses: list[dict[str, Any]], payments: list[dict[str,
         number = p.get("reference_number") or str(p["id"])[:8]
         vouchers.append(_voucher("Payment", f"mesiri-payment-{p['id']}", p["paid_date"], number, party, narration,
                                  [_entry(party, amount, True), _entry(account, amount, False)]))
+    for b in sales:
+        client = b.get("client") or NO_CLIENT
+        ledgers[client] = "Sundry Debtors"
+        parts = {k: Decimal(b[k] or 0) for k in ("gross", "gst", "net", "tds", "retention", "advance_recovery")}
+        debits = [(client, parts["net"]), (TDS_RECEIVABLE, parts["tds"]), (RETENTION_RECEIVABLE, parts["retention"]),
+                  (ADVANCE_RECEIVED, parts["advance_recovery"])]
+        credits = [(CONTRACT_REVENUE, parts["gross"]), (OUTPUT_GST, parts["gst"])]
+        for name, group in ((TDS_RECEIVABLE, "Current Assets"), (RETENTION_RECEIVABLE, "Current Assets"),
+                            (ADVANCE_RECEIVED, "Current Liabilities"), (CONTRACT_REVENUE, "Sales Accounts"),
+                            (OUTPUT_GST, "Duties & Taxes")):
+            if any(n == name and v > 0 for n, v in debits + credits):
+                ledgers[name] = group
+        entries = ([_entry(n, v, True) for n, v in debits if v > 0] + [_entry(n, v, False) for n, v in credits if v > 0])
+        vouchers.append(_voucher("Sales", f"mesiri-ra-bill-{b['id']}", b["bill_date"], b["ref"], client,
+                                 " · ".join(x for x in (f"{b['ref']} running bill", b.get("project")) if x), entries))
+    for r in receipts:
+        amount = Decimal(r["amount"])
+        party = ADVANCE_RECEIVED if r["kind"] == "advance" else (r.get("client") or NO_CLIENT)
+        ledgers[party] = "Current Liabilities" if r["kind"] == "advance" else "Sundry Debtors"
+        ledgers[r["account"]] = "Cash-in-Hand" if r.get("account_type") in _CASH_TYPES else "Bank Accounts"
+        what = {"bill": f"against {r.get('bill_ref')}", "on_account": "on account", "advance": "mobilisation advance"}
+        narration = " · ".join(x for x in (f"Received {what[r['kind']]}", r.get("client"), r.get("method"),
+                                           r.get("reference"), r.get("project")) if x)
+        vouchers.append(_voucher("Receipt", f"mesiri-receipt-{r['id']}", r["received_on"],
+                                 r.get("reference") or str(r["id"])[:8], party, narration,
+                                 [_entry(r["account"], amount, True), _entry(party, amount, False)]))
     masters = [_ledger(name, parent) for name, parent in sorted(ledgers.items())]
     xml = ("<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA>"
            "<REQUESTDESC><REPORTNAME>All Masters</REPORTNAME>"
@@ -122,7 +162,22 @@ def build(company: str, expenses: list[dict[str, Any]], payments: list[dict[str,
            "<REQUESTDATA>" + "".join(masters) + "".join(vouchers) + "</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>")
     return xml, {"ledgers": len(masters), "journals": sum(1 for e in expenses if Decimal(e["amount"]) > 0),
                  "payments": sum(1 for p in payments if Decimal(p["amount"]) > 0),
+                 "sales": len(sales), "receipts": len(receipts),
                  "gst_split": split, "gst_not_split": not_split}
+
+
+async def fetch_clients(conn: AsyncConnection, org: uuid.UUID, date_from: datetime.date, date_to: datetime.date
+                        ) -> tuple[list[dict], list[dict]]:
+    """RA bills sent (submitted or certified, by bill date) and money received (confirmed) in the period."""
+    from mesiri.domains.billing import bills as bill_store
+    from mesiri.domains.billing import receipts as receipt_store
+
+    sales = [{**b, "client": b.get("client_name"), "project": b.get("project_name")}
+             for b in await bill_store.list_bills(conn, org, None)
+             if b["status"] in ("submitted", "certified") and date_from <= b["bill_date"] <= date_to]
+    received = await receipt_store.list_receipts(conn, org, None, date_from=date_from, date_to=date_to,
+                                                 confirmed_only=True)
+    return sales, received
 
 
 async def fetch(conn: AsyncConnection, org: uuid.UUID, date_from: datetime.date, date_to: datetime.date

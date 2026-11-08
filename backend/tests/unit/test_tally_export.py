@@ -70,7 +70,8 @@ def test_a_payment_debits_the_party_and_credits_the_account_it_left():
     assert _entries(second)[0][0] == EXPENSES_PAYABLE and "against EXP-7" in second.findtext("NARRATION")
     ledgers = {ledger.get("NAME"): ledger.findtext("PARENT") for ledger in root.iter("LEDGER")}
     assert ledgers["SBI current"] == "Bank Accounts" and ledgers["Site cash"] == "Cash-in-Hand"
-    assert counts == {"ledgers": 4, "journals": 0, "payments": 2, "gst_split": 0, "gst_not_split": 0}
+    assert counts == {"ledgers": 4, "journals": 0, "payments": 2, "sales": 0, "receipts": 0, "gst_split": 0,
+                      "gst_not_split": 0}
 
 
 def test_names_with_xml_characters_are_escaped():
@@ -78,3 +79,25 @@ def test_names_with_xml_characters_are_escaped():
     root = ET.fromstring(xml)  # parses: nothing broke the XML
     assert root.findtext(".//SVCURRENTCOMPANY") == "A & B <Builders>"
     assert next(root.iter("VOUCHER")).findtext("PARTYLEDGERNAME") == "Shah & Sons"
+
+
+def test_an_ra_bill_is_a_balanced_sales_voucher_and_money_received_a_receipt():
+    bill = {"id": uuid.uuid4(), "ref": "RA-01", "bill_date": DAY, "client": "Mr. Thomas", "project": "Villa",
+            "gross": "1116000", "gst": "200880", "net": "1127160", "tds": "22320", "retention": "55800",
+            "advance_recovery": "111600"}
+    got = {"id": uuid.uuid4(), "kind": "bill", "amount": "1000000", "received_on": DAY, "client": "Mr. Thomas",
+           "bill_ref": "RA-01", "account": "HDFC current", "account_type": "bank", "reference": "NEFT778",
+           "method": None, "project": "Villa"}
+    advance = {**got, "id": uuid.uuid4(), "kind": "advance", "amount": "850000", "reference": None, "bill_ref": None}
+    xml, counts = build("C", [], [], [bill], [got, advance])
+    root = ET.fromstring(xml)
+    sale, receipt, adv = list(root.iter("VOUCHER"))
+    assert sale.get("VCHTYPE") == "Sales" and sale.findtext("VOUCHERNUMBER") == "RA-01"
+    assert sum(a for _, _, a in _entries(sale)) == 0
+    assert ("Mr. Thomas", "Yes", Decimal("-1127160.00")) in _entries(sale)
+    assert ("Contract revenue", "No", Decimal("1116000.00")) in _entries(sale)
+    assert _entries(receipt) == [("HDFC current", "Yes", Decimal("-1000000.00")), ("Mr. Thomas", "No", Decimal("1000000.00"))]
+    assert _entries(adv)[1][0] == "Mobilisation advance received"
+    ledgers = {ledger.get("NAME"): ledger.findtext("PARENT") for ledger in root.iter("LEDGER")}
+    assert ledgers["Mr. Thomas"] == "Sundry Debtors" and ledgers["Output GST"] == "Duties & Taxes"
+    assert (counts["sales"], counts["receipts"]) == (1, 2)

@@ -62,7 +62,7 @@ export default function TallyExportPage() {
     }
   }
   const s = q.data
-  const empty = s && s.journals + s.payments === 0
+  const empty = s && s.journals + s.payments + s.sales + s.receipts === 0
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
@@ -109,6 +109,7 @@ export default function TallyExportPage() {
             stats={[
               { label: 'Expenses', value: String(s.journals), hint: 'Journal vouchers' },
               { label: 'Payments', value: String(s.payments), hint: 'Payment vouchers' },
+              { label: 'RA bills / received', value: `${s.sales} / ${s.receipts}`, hint: 'Sales / Receipt vouchers' },
               { label: 'Ledgers', value: String(s.ledgers), hint: 'created if missing' },
               { label: 'GST split out', value: String(s.gst_split), hint: s.gst_not_split ? `${s.gst_not_split} said as not included` : 'to Input GST' },
             ]}
@@ -128,6 +129,11 @@ export default function TallyExportPage() {
             left is credited. Advances paid to a supplier come in once, when paid.
           </li>
           <li>
+            <span className="font-medium text-foreground">Each RA bill sent</span> is a Sales voucher: the client is debited what they pay, with TDS,
+            retention and the advance recovered on their own ledgers; contract revenue and output GST are credited.{' '}
+            <span className="font-medium text-foreground">Money received</span> is a Receipt into the bank or cash account.
+          </li>
+          <li>
             <span className="font-medium text-foreground">Ledgers</span> come first: suppliers under Sundry Creditors, categories under Indirect
             Expenses, bank and cash under their groups. Your CA can move any of them in Tally.
           </li>
@@ -135,7 +141,7 @@ export default function TallyExportPage() {
       </DprSection>
       <Callout tone="muted" icon={Info}>
         One way: nothing comes back from Tally. Each voucher carries Mesiri's number, so importing the same period twice makes duplicates; import each
-        period once. Money received from clients is not in it yet.
+        period once.
       </Callout>
     </div>
   )

@@ -33,6 +33,7 @@ import CostVariancePage from '@/pages/CostVariancePage'
 import CostHomePage from '@/pages/CostHomePage'
 import CostMaterialsPage from '@/pages/CostMaterialsPage'
 import TallyExportPage from '@/pages/TallyExportPage'
+import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
@@ -196,6 +197,7 @@ export default function App() {
           <Route path="finance/money" element={fin(<MoneyPage />)} />
           <Route path="finance/vendors" element={fin(<VendorsPage />)} />
           <Route path="accounts/tally" element={fin(<TallyExportPage />)} />
+          <Route path="accounts/receivables" element={fin(<ReceivablesPage />)} />
           <Route path="finance/vendors/:id" element={fin(<VendorPage />)} />
           <Route path="finance/settings" element={fin(<FinanceSettingsPage />)} />
           <Route path="finance/reports" element={fin(<FinanceReportsPage />)} />

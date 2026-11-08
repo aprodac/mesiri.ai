@@ -1,4 +1,5 @@
-"""NXT-12: GET /finance/tally/export?date_from&date_to -- a period's expenses and payments as Tally XML (``tally.py``).
+"""NXT-12: GET /finance/tally/export?date_from&date_to -- a period's expenses, payments, RA bills and money received
+from clients as Tally XML (``tally.py``).
 
 For the roles that manage money (owner, admin, finance): it is the company's books leaving Mesiri. Company-wide
 (Tally keeps one set of books per company); a period of at most a year.
@@ -45,7 +46,8 @@ async def tally_summary(
     """What the export for the period would hold (vouchers, ledgers, GST split), before downloading it."""
     date_from, date_to = await _period(conn, auth, date_from, date_to)
     expenses, payments = await tally.fetch(conn, auth.organization_id, date_from, date_to)
-    _, counts = tally.build("", expenses, payments)
+    sales, received = await tally.fetch_clients(conn, auth.organization_id, date_from, date_to)
+    _, counts = tally.build("", expenses, payments, sales, received)
     return {"date_from": str(date_from), "date_to": str(date_to), **counts}
 
 
@@ -60,6 +62,7 @@ async def tally_export(
     company = (await conn.execute(text("SELECT name FROM organizations WHERE id = :o"),
                                   {"o": auth.organization_id})).scalar() or "Company"
     expenses, payments = await tally.fetch(conn, auth.organization_id, date_from, date_to)
-    xml, _ = tally.build(company, expenses, payments)
+    sales, received = await tally.fetch_clients(conn, auth.organization_id, date_from, date_to)
+    xml, _ = tally.build(company, expenses, payments, sales, received)
     return Response(content=xml, media_type="application/xml", headers={
         "Content-Disposition": f'attachment; filename="mesiri-tally-{date_from}-to-{date_to}.xml"'})

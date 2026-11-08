@@ -8,6 +8,8 @@ export interface TallySummary {
   ledgers: number
   journals: number
   payments: number
+  sales: number
+  receipts: number
   gst_split: number
   gst_not_split: number
 }

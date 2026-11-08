@@ -306,6 +306,19 @@ ALLOWED: tuple[Allowed, ...] = (
             "narrow): per material still_needed, weeks (need per week from this Monday), on_hand, on_order, "
             "short_day (the day it runs short), short_by, supplier and lead_days, order_by, order_now, and lines "
             "(the BOQ work it is for). Empty materials: no BOQ line has its materials set yet."),
+    # NXT-03 (8 Nov 2026): money from clients. Owner, admin and finance only (D-N3; the API checks).
+    Allowed("ra_bills", "GET", "/billing/ra-bills",
+            "The RA (running) bills of the company's projects (project_id to narrow): ref (RA-03), status (draft, "
+            "submitted, certified, cancelled), bill_date, client_name, gross, net (what the client pays)."),
+    Allowed("receivables", "GET", "/billing/receivables",
+            "What each client owes, most first: outstanding, by age (buckets 0_30, 31_60, 61_90, 90_plus), open_bills "
+            "(ref, bill_date, due, received, left, days), unapplied (money received not on a bill yet), "
+            "advance_received, last_received_on."),
+    Allowed("record_client_receipt", "POST", "/billing/receipts",
+            "Prepare recording money a client paid into one of the company's accounts (account_id from "
+            "money_accounts): kind bill with ra_bill_id (from ra_bills) when they named a bill; advance for a "
+            "mobilisation advance; on_account otherwise (project_id for those two). amount as they said it; "
+            "received_on when not today; reference for a UTR or cheque number." + _WRITE),
     # CC-11 (8 Nov 2026): cost control. Read and written only by the roles that see the BOQ's rates (the API checks,
     # D-CC4) and only when the company has the Cost control module.
     Allowed("cost_today", "GET", "/cost/projects/{project_id}/variance",
