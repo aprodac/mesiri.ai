@@ -113,6 +113,11 @@ idle / breakdown hours, diesel, hire rate.**
   updates tick them; the evening review names what slipped.
 - Tally: export of expenses, supplier bills, payments and receipts as Tally vouchers (XML) for the CA; no
   two-way sync in the first step.
+- **As built (8 Nov 2026), part:** `GET /finance/tally/export` (owner / admin / finance): confirmed expenses as
+  Journal vouchers (category Dr; supplier, the staff member who paid, or "Expenses payable" Cr; GST said as included
+  to "Input GST"), payments with money as Payment vouchers (party Dr, bank / cash Cr), ledger masters first, each
+  voucher with Mesiri's id. Accounts › Tally export. Client bills and receipts wait for NXT-03 (D-N3). Not yet
+  imported into a real Tally: the CA's first import is the check.
 
 ## 5. Database, API, frontend (outline; each item writes its own detail when built)
 
