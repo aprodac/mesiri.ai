@@ -105,7 +105,7 @@ def test_the_slip_carries_every_line_so_the_text_keeps_none() -> None:
     assert wa.without_listed_lines(text, entries, "english") == "Ithaa."
     slip = slip_for(entries, CTX, ({}, {}))
     assert [(ln.number, ln.kind, ln.title, ln.new) for ln in slip.lines] == [
-        (1, "list", "Wash Basin", True), (2, "material", "Material", False)]
+        (1, "list", "Wash Basin", True), (2, "receipt", "Material", False)]  # WA-262: a delivery has its own kind
 
 
 def test_slip_rows_in_plain_words() -> None:
@@ -218,7 +218,7 @@ async def test_removing_the_last_line_leaves_nothing_waiting() -> None:
 async def test_a_remove_tap_on_an_old_list_does_nothing() -> None:
     service, sent, _, _ = await _previewed()
     await service.handle(_message("Remove", tap=f"{wa.REMOVE_PREFIX}oldbatch:1"), CTX)
-    assert sent[-1].text == wa.NOTHING_WAITING
+    assert sent[-1].text in wa.NOTHING_ON_CARD_WORDS
     assert len((await service._state(CTX))["pending"]) == 2
 
 

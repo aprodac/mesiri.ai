@@ -94,7 +94,10 @@ async def test_a_previewed_send_card_is_captioned_with_the_send_line() -> None:
     _s, sent, _ = await _held(preview=True)
     reply = sent[-1]
     assert reply.header_image == b"PREVIEW"
-    assert reply.text.strip() in (wa.PRESS_SEND, say("api.press_send", "manglish"))
+    # WA-259: the structured line as on the slip, then the Send line (the human line when the model said nothing else).
+    structured, human = reply.text.strip().split("\n\n")
+    assert structured.startswith("1. 📤 Send: *Send today's report*") and "Green Villa" in structured
+    assert human in (wa.PRESS_SEND, say("api.press_send", "manglish"))
 
 
 async def test_the_send_tap_says_the_report_went_out_not_saved() -> None:

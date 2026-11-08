@@ -162,7 +162,9 @@ async def test_case3_bill_after_the_save_is_added_to_that_expense() -> None:
                          {"data_base64": None, "content_type": None, "media_object_key": KEY})
     # once the bill is on it, the next photo is not offered for it again
     model = await _say(service, ["ok"], _message(None, photo=True))
-    assert SAVED_ID not in model.last_system_prompt
+    # (WA-261: the saved expense is still listed with its id among the records saved in this chat; it is no longer
+    # offered for a bill.)
+    assert f"expense_id {SAVED_ID}" not in model.last_system_prompt
 
 
 async def test_guard_a_photo_that_asked_nothing_is_not_carried_into_a_later_expense() -> None:

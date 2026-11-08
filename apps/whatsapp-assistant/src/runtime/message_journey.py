@@ -20,6 +20,7 @@ import asyncio
 import dataclasses
 import logging
 import time
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from channel.replies import (
@@ -114,6 +115,18 @@ RECEIPT_TIMEOUT_S = 4.0
 # See _fire_processing_ack below. text/interactive deliberately absent --
 # they already reply in under ~2s (measured), where an ack would just add noise.
 _PROCESSING_ACK_MODALITIES = frozenset({InputModality.IMAGE, InputModality.DOCUMENT, InputModality.VOICE})
+#: WA-258: Meta's message types for those modalities: their ✅ goes at the webhook, before "typing...".
+_EARLY_ACK_TYPES = frozenset({"audio", "image", "document"})
+
+
+def early_ack(raw: Any) -> bool:
+    """WA-258: the raw webhook message gets its ✅ the moment it is claimed: a voice note, photo or document that was
+    not forwarded (a forwarded batch gets one summary, no acks: WA-02)."""
+    if not isinstance(raw, Mapping) or raw.get("type") not in _EARLY_ACK_TYPES or not raw.get("from"):
+        return False
+    return not (raw.get("context") or {}).get("forwarded")
+
+
 #: WA-210: "typing..." is shown again this often after the ✅ (WhatsApp drops it after ~25 s), for at most this long.
 TYPING_REFRESH_S = 20.0
 TYPING_MAX_S = 90.0
@@ -241,13 +254,25 @@ def build_message_handlers(
                 _log.exception("inbound.unhandled_reply_failed")
             raise
 
-    async def _mark_read_on_claim(message_id: str) -> None:
+    async def _mark_read_on_claim(message_id: str, raw: Any = None) -> None:
         """Blue tick + "typing..." -- wired into WhatsAppReceiver as
         on_message_claimed so it fires the instant the webhook lands, in
         parallel with processing. It used to run here at the top of
         _run_journey, which for voice/image meant the sender saw no blue
         tick until the Meta media download (~1.5-1.7s measured), upload and
-        normalization had all finished first."""
+        normalization had all finished first.
+
+        WA-258 (Ilan, 8 Nov: "typing" showed, then the ✅ on the voice note, then no typing until the reply): a
+        reaction ends WhatsApp's "typing...", and showing it again on a message already marked read did not bring it
+        back (WA-210's keep_typing, after the ✅). So a voice note, photo or document gets its ✅ HERE, first, and
+        the read + "typing..." call goes after it: the last thing the sender sees before the reply is "typing..."."""
+        if early_ack(raw or {}):
+            react = getattr(sender, "send_reaction", None)
+            if react is not None:
+                try:
+                    await react(str((raw or {}).get("from")), message_id, "✅")
+                except Exception:  # noqa: BLE001 -- the ✅ never blocks the read receipt
+                    _log.warning("reaction.claim_failed message_id=%s", message_id)
         await sender.mark_as_read(message_id)
 
     # Held so a fire-and-forget ack task can't be garbage-collected mid-flight
@@ -521,11 +546,14 @@ def build_message_handlers(
         if react is None:
             return
         since = time.monotonic()
-        try:
-            await react(wa_id, message.message_id, "✅")
-        except Exception:  # noqa: BLE001 -- never blocks the reply
-            _log.warning("reaction.failed wa_id=%s", wa_id)
-            return
+        # WA-258: a voice note / photo / document had its ✅ at the webhook (``early_ack``), maybe in another process;
+        # a second reaction here would end "typing..." again. Only the keeper below runs for it.
+        if message.modality not in _PROCESSING_ACK_MODALITIES or forward_batch.is_forwarded(message):
+            try:
+                await react(wa_id, message.message_id, "✅")
+            except Exception:  # noqa: BLE001 -- never blocks the reply
+                _log.warning("reaction.failed wa_id=%s", wa_id)
+                return
         # WA-210: the reaction ends WhatsApp's "typing..."; it comes back at once and stays until the reply.
         keep = getattr(sender, "keep_typing", None)
         if keep is not None and not forward_batch.is_capturing() and message.correlation_id not in _typing:

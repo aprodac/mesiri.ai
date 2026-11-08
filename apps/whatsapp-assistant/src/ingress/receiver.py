@@ -153,7 +153,7 @@ class WhatsAppReceiver:
         on_normalized: (
             Callable[[NormalizedMessage, Mapping[str, Any], str | None], Awaitable[None]] | None
         ) = None,
-        on_message_claimed: Callable[[str], Awaitable[None]] | None = None,
+        on_message_claimed: Callable[[str, Mapping[str, Any]], Awaitable[None]] | None = None,
         trace_logger: TraceLogger | None = None,
         enqueue: Callable[[MessageIngressContext], Awaitable[None]] | None = None,
         groups_enabled: bool = False,
@@ -231,7 +231,7 @@ class WhatsAppReceiver:
             # on, so awaiting it only delays the actual reply.
             if self._on_message_claimed is not None:
                 ack_task = asyncio.create_task(
-                    self._acknowledge(message_id, claimed_at=time.perf_counter())
+                    self._acknowledge(message_id, claimed_at=time.perf_counter(), raw=context.message)
                 )
                 self._background_tasks.add(ack_task)
                 ack_task.add_done_callback(self._background_tasks.discard)
@@ -251,7 +251,9 @@ class WhatsAppReceiver:
         logger.info("Scheduled %s WhatsApp message(s) for ingress processing", scheduled_count)
         return scheduled_count
 
-    async def _acknowledge(self, message_id: str, *, claimed_at: float | None = None) -> None:
+    async def _acknowledge(
+        self, message_id: str, *, claimed_at: float | None = None, raw: Mapping[str, Any] | None = None
+    ) -> None:
         """Read receipt / typing indicator. Best-effort by design: this runs
         detached, so an exception here would otherwise surface as an
         unretrieved task exception rather than anything actionable, and it
@@ -269,7 +271,8 @@ class WhatsAppReceiver:
         started = time.perf_counter()
         scheduling_ms = round((started - claimed_at) * 1000, 1) if claimed_at is not None else None
         try:
-            await self._on_message_claimed(message_id)
+            # WA-258: the raw message rides along, so a voice note's ✅ can go out before "typing...".
+            await self._on_message_claimed(message_id, raw or {})
         except Exception:  # noqa: BLE001
             logger.exception("Failed to acknowledge WhatsApp message %s", message_id)
         else:

@@ -82,9 +82,9 @@ from .agent import (
 from .app import build_api_app
 from .client import Actor, ApiClient, new_idempotency_key
 from .memory import DayMemory, tools_version
-from .receipts import preview_card
+from .receipts import caption_lines, preview_slip
 from .record_links import record_link, with_links
-from .reply_guard import without_ids
+from .reply_guard import without_ids, without_ready_claims, without_saved_claims
 from .tools import build_tools
 from .units import is_stock_unit_refusal, plain_refusal, unit_rows
 
@@ -359,6 +359,7 @@ class ApiWhatsApp:
             return False
         # WA-210: a ready list goes out on its TO SAVE card (the header of the Save / Edit / Cancel message).
         reply = await self._with_preview(reply, ctx, message.correlation_id)
+        reply = with_save_button(reply, await self._state(ctx))  # WA-263: "tap Save" always has its button
         _lap("v3_preview")
         heard_shown = self._heard_shown.pop(message.correlation_id, False)
         if message.modality is InputModality.VOICE and said and heard_shown:
@@ -554,7 +555,8 @@ class ApiWhatsApp:
                 history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 day_starts_at=await self._day_starts(ctx),
-                facts=facts + _working_fact(places), photo_key=photo_key, language=_turn_language(text, state),
+                facts=facts + _working_fact(places) + unsaved_fact(state, time.time()), photo_key=photo_key,
+                language=_turn_language(text, state),
                 language_chosen=bool(_chosen(state)),
                 channel=_channel(message),
                 # WA-154: the person's creates of the last day, and the ones they were just asked about.
@@ -624,12 +626,20 @@ class ApiWhatsApp:
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
         state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
+        remember_unsaved(state, turn.saved, turn.pending, time.time())  # WA-260
         bill_photo.remember_unbilled(state, turn.saved, time.time())  # WEB-65 case 3
         state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx), admin=_may_set_sizes(ctx)) if turn.saved else ""
         words = without_heard_echo(turn.reply or turn.question or saved_words)  # [258]: the code draws "🎤 ..." once
+        if any(not r.ok and not held(r) for r in turn.saved):
+            # WA-260 (Ilan, 8 Nov: two entries in one voice note, one saved, the other refused, and the reply spoke as if
+            # both were): when anything was refused, the code's ✅ / ❌ lines always go first; the model's words follow
+            # without any "saved" in them.
+            rest = without_saved_claims(without_heard_echo(turn.reply or turn.question or ""))
+            words = "\n\n".join(p for p in (saved_words, rest,
+                                             _in(state.get("language"), "api.refused_dropped", REFUSED_DROPPED)) if p)
         if got_why:
             words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
         passed_on = any(c.get("tool") == TELL_THE_TEAM for c in calls)
@@ -1073,12 +1083,21 @@ class ApiWhatsApp:
     async def _on_tap(self, tap: str, ctx: Any, correlation_id: str | None = None) -> ReplySpec:
         state = await self._state(ctx)
         batch = tap.split(":", 2)[2]
+        only: list[str] | None = None
+        if state.get("pending") and state.get("batch") != batch and (only := card_still_waiting(state, batch)):
+            # WA-263 (Aprodac 8 Nov 02:02:20 and 02:05:41: Save on the message before the newest one said "nothing
+            # waiting to save" while its lines were still waiting): a tap on an older card acts on ITS lines that are
+            # still on the list; the newer card stays as it is for the rest.
+            batch = state["batch"]
         if not state.get("pending") or state.get("batch") != batch:
-            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=nothing_on_card(tap, state))
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         entries = _without_stale_sends(entries)
+        others = [e for e in entries if only is not None and e.idempotency_key not in only]
+        entries = [e for e in entries if e not in others]
         if tap.startswith(CANCEL_PREFIX):
-            state["pending"], state["batch"] = [], None
+            state["pending"] = [e.to_json() for e in others]
+            state["batch"] = batch if others else None
             # WA-146: what was cancelled, so a reason tapped next tells the team which entries and tools.
             state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
             await self._save_state(ctx, state)
@@ -1102,9 +1121,11 @@ class ApiWhatsApp:
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
         # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
         left, dropped = _refused_to_keep(results, state)  # [233]: a refused line is never carried on unchanged
+        remember_unsaved(state, results, left, time.time())  # WA-260: what was refused is remembered, not lost
         previewed = state.pop("previewed", None) == batch
-        state["pending"] = [e.to_json() for e in left]
-        state["batch"] = uuid.uuid4().hex[:8] if left else None
+        state["pending"] = [e.to_json() for e in [*left, *others]]
+        # WA-263: lines another (newer) card still shows keep that card's buttons working.
+        state["batch"] = (batch if others else uuid.uuid4().hex[:8]) if (left or others) else None
         if previewed and results and all(r.ok and not held(r) and not order_note(r, None) for r in results):
             # WA-210: every line was on the preview card and all of them saved: "✅ Saved." and the links, no list.
             self._previewed_saves[correlation_id] = True
@@ -1125,13 +1146,16 @@ class ApiWhatsApp:
         await self._save_state(ctx, state)
         return _save_buttons(text, state["batch"], send=only_sends(left)) if left else ReplySpec(text=text)
 
+    # (WA-263: a tap on a card that is done says what happened to it, never "nothing waiting to save" for a Cancel.)
+
     async def _on_edit(self, tap: str, ctx: Any) -> ReplySpec:
         """WA-208: "✏️ Edit" on a ready list. One line: ask its right figure at once; several: pick the line first.
         The next message (typed or a voice note) changes only that line."""
         state = await self._state(ctx)
         batch, _, number = tap.split(":", 2)[2].partition(":")
+        batch = same_list_now(state, batch)  # WA-263: an older card of the very same list edits the list
         if not state.get("pending") or state.get("batch") != batch:
-            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=nothing_on_card(tap, state))
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         language = state.get("language")
         if not number and len(entries) > 1:
@@ -1162,8 +1186,9 @@ class ApiWhatsApp:
         on a new card with its own buttons."""
         state = await self._state(ctx)
         batch, _, number = tap[len(REMOVE_PREFIX):].partition(":")
+        batch = same_list_now(state, batch)  # WA-263
         if not state.get("pending") or state.get("batch") != batch or not number.isdigit():
-            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=nothing_on_card(tap, state))
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         line = int(number)
         if not 1 <= line <= len(entries):
@@ -1194,31 +1219,39 @@ class ApiWhatsApp:
             return []
 
     async def _with_preview(self, reply: ReplySpec, ctx: Any, correlation_id: str | None) -> ReplySpec:
-        """WA-210 / WA-215: the reply that carries the ready list's Save button gets the list's draft slip as its header
-        image, and its text loses the list (the slip shows every line, numbered) and the "tap Save" line (the button
-        is under the card). Drawn within
-        PREVIEW_SECONDS; when it can't be, the reply goes out exactly as before. Never raises."""
-        if self._receipts is None or reply.header_image is not None or not reply.buttons:
+        """WA-210 / WA-215: the reply that carries the ready list's buttons gets the list's draft slip as its header
+        image. WA-259 (Ilan, 8 Nov): the slip is structured (English, from the entries' fields, never the model's
+        sentence), and the text under it is the same structured lines, then ONE human line in the person's language
+        (the model's words, without the list again and without "ready"; else the code's "tap Save" line). Every
+        button reply with a list waiting gets it, a question's options too (WhatsApp shows a header image on up to 3
+        buttons). Drawn within PREVIEW_SECONDS; when it can't be, the reply goes out exactly as before. Never
+        raises."""
+        if self._receipts is None or reply.header_image is not None or not reply.buttons or len(reply.buttons) > 3:
             return reply
         try:
             state = await self._state(ctx)
             batch = state.get("batch")
-            if not batch or not state.get("pending") or not any(
-                    b.id == f"{SAVE_PREFIX}{batch}" for b in reply.buttons):
+            if not batch or not state.get("pending"):
                 return reply
             entries = [PendingWrite.from_json(e) for e in state["pending"]]
             client = ApiClient(_actor(ctx), app=self._app)
+
+            async def draw() -> tuple[bytes | None, list[str]]:
+                slip = await preview_slip(entries, ctx, client)
+                return await self._receipts.build_slip(slip), caption_lines(slip)
+
             try:
-                image = await asyncio.wait_for(
-                    preview_card(self._receipts, entries, ctx, client, correlation_id), timeout=PREVIEW_SECONDS)
+                image, lines = await asyncio.wait_for(draw(), timeout=PREVIEW_SECONDS)
             finally:
                 await client.close()
             if not image:
                 return reply
             state["previewed"] = batch
             await self._save_state(ctx, state)
-            return dataclasses.replace(reply, header_image=image,
-                                       text=without_listed_lines(reply.text, entries, state.get("language")))
+            language = state.get("language")
+            human = without_ready_claims(without_listed_lines(reply.text, entries, language)) or press_line(
+                entries, language)
+            return dataclasses.replace(reply, header_image=image, text=with_structured(lines, human))
         except Exception:  # noqa: BLE001 -- the list goes out as text
             _log.warning("agent_api.preview_not_sent user=%s", getattr(ctx, "user_id", None), exc_info=True)
             return reply
@@ -1315,8 +1348,9 @@ class ApiWhatsApp:
             return {}
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
+        remember_card(state)  # WA-263
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled",
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled", "unsaved", "cards",
                                                                "saved_batch")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
@@ -1622,7 +1656,47 @@ def _actor(ctx: Any) -> Actor:
                  role=str(ctx.role or ""), name=ctx.full_name or "")
 
 
-REFUSED_DROPPED = "I've taken the lines that could not be saved off the list. Send them again with what's missing."
+REFUSED_DROPPED = ("The ❌ lines are not saved yet. Just tell me what to change (only the missing part) and I'll put "
+                   "them back on the list.")
+#: WA-260: how long a refused line is remembered for the model, and how many.
+UNSAVED_SECONDS = 6 * 3600
+UNSAVED_MAX = 5
+
+
+def _what(entry: PendingWrite) -> str:
+    return f"{entry.tool}:{entry.body.get('material_id') or entry.path}"
+
+
+def remember_unsaved(state: dict, results: list[WriteResult], kept: list[PendingWrite], now: float) -> None:
+    """WA-260 (Ilan, 8 Nov: one of two entries refused at Save, and from then on Mesiri spoke as if it never existed):
+    a line refused at Save that is not kept on the list is remembered for UNSAVED_SECONDS, with the reason, so the
+    model sees it next turn and a short "5 kg anu" / "150 cft" puts it back, never "send it all again". Forgotten when
+    the same kind of line is saved or prepared again."""
+    keep_keys = {e.idempotency_key for e in kept}
+    again = {_what(e) for e in kept} | {_what(r.pending) for r in results if r.ok}
+    items = [u for u in state.get("unsaved") or []
+             if now - float(u.get("at") or 0) < UNSAVED_SECONDS and u.get("what") not in again]
+    for r in results:
+        if r.ok or held(r) or confirm_field(r) or r.pending.idempotency_key in keep_keys:
+            continue
+        items = [u for u in items if u.get("what") != _what(r.pending)]
+        items.append({"what": _what(r.pending), "summary": without_ids(r.pending.summary)[:160],
+                      "reason": plain_refusal(_detail(r.body), "english")[:240], "at": now})
+    if items:
+        state["unsaved"] = items[-UNSAVED_MAX:]
+    else:
+        state.pop("unsaved", None)
+
+
+def unsaved_fact(state: dict, now: float) -> str:
+    """WA-260: the lines refused at Save earlier in this chat, for the model."""
+    items = [u for u in state.get("unsaved") or [] if now - float(u.get("at") or 0) < UNSAVED_SECONDS]
+    if not items:
+        return ""
+    listed = "\n".join(f"- {u.get('summary')}: refused because {u.get('reason')}" for u in items)
+    return ("\nNOT SAVED earlier in this chat (refused at Save, NOT on the list now; never say these were saved). When "
+            "this message gives what was missing, prepare that line again with the fix at once, without asking them to "
+            "send it again; if they ask what happened, say plainly it is not saved and why:\n" + listed)
 
 
 def _refused_to_keep(results: list[WriteResult], state: dict) -> tuple[list[PendingWrite], bool]:
@@ -1725,6 +1799,101 @@ def without_listed_lines(text: str, entries: list[PendingWrite], language: str |
     words = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
     # [264]: with no words of its own, the card's caption is the Save / Send line, never a bare "OK.".
     return words or press
+
+
+#: WA-263: how many recent cards' lines are remembered (an older card's tap acts on its lines still waiting).
+CARDS_KEPT = 8
+NOTHING_ON_CARD = ("Nothing from that card is waiting any more: it was saved, cancelled or held already. Send what you "
+                   "need and I'll get it ready.")
+NOTHING_TO_CANCEL = "There is nothing waiting to cancel."
+
+
+def _all_languages(key: str, english: str) -> tuple[str, ...]:
+    from runtime.agent.wording import say
+
+    return (english, *(say(key, lang) for lang in ("manglish", "malayalam", "hindi", "hinglish")))
+
+
+#: The done-card line in every language (for checks that do not know the person's language).
+NOTHING_ON_CARD_WORDS = _all_languages("api.nothing_on_card", NOTHING_ON_CARD)
+
+
+def remember_card(state: dict) -> None:
+    """WA-263: the lines of the card now shown (``batch``), kept for its buttons and those of the cards before it."""
+    cards = dict(state.get("cards") or {})
+    batch, pending = state.get("batch"), state.get("pending") or []
+    if batch and pending:
+        cards.pop(batch, None)
+        cards[batch] = [str(e.get("idempotency_key")) for e in pending if isinstance(e, dict)]
+    state["cards"] = dict(list(cards.items())[-CARDS_KEPT:]) or None
+
+
+def card_still_waiting(state: dict, batch: str) -> list[str] | None:
+    """WA-263: the keys of an older card's lines that are still on the list; None when none are."""
+    current = {str(e.get("idempotency_key")) for e in state.get("pending") or [] if isinstance(e, dict)}
+    still = [k for k in (state.get("cards") or {}).get(batch) or [] if k in current]
+    return still or None
+
+
+def same_list_now(state: dict, batch: str) -> str:
+    """WA-263: an older card showing exactly the list now waiting stands for the current card (its line numbers are
+    the same); any other card stays as it is."""
+    current = [str(e.get("idempotency_key")) for e in state.get("pending") or [] if isinstance(e, dict)]
+    if batch != state.get("batch") and current and (state.get("cards") or {}).get(batch) == current:
+        return str(state["batch"])
+    return batch
+
+
+def nothing_on_card(tap: str, state: dict) -> str:
+    """WA-263: what a tap on a card that is done gets: never "nothing waiting to save" for a Cancel (test company,
+    3 Nov), and for a Save, what may have happened to the card's lines (cd, 6 Nov: the line was held for the size)."""
+    language = state.get("language")
+    if tap.startswith(CANCEL_PREFIX):
+        return _in(language, "api.nothing_to_cancel", NOTHING_TO_CANCEL)
+    return _in(language, "api.nothing_on_card", NOTHING_ON_CARD)
+
+
+_SAVE_WORD = re.compile(r"\*(?:save|send)\*", re.IGNORECASE)
+
+
+def with_save_button(reply: ReplySpec, state: dict) -> ReplySpec:
+    """WA-263 (Ilan, 8 Nov: "make sure always that button is there for save"): a reply that tells them to tap *Save*
+    carries the Save button of the list now waiting (added under buttons that leave room); with nothing waiting, the
+    line that says to tap Save comes out. Never touches a reply that has the button, or a pick-list."""
+    if reply.list_rows or not _SAVE_WORD.search(reply.text or ""):
+        return reply
+    buttons = tuple(reply.buttons or ())
+    if any(b.id.startswith(SAVE_PREFIX) for b in buttons):
+        return reply
+    batch, pending = state.get("batch"), state.get("pending") or []
+    if batch and pending:
+        entries = [PendingWrite.from_json(e) for e in pending]
+        if not buttons:
+            card = _save_buttons(reply.text, batch, send=only_sends(entries))
+            return dataclasses.replace(reply, buttons=card.buttons)
+        if len(buttons) < 3:
+            title = SEND_TITLE if only_sends(entries) else "Save"
+            return dataclasses.replace(reply, buttons=(*buttons, ListRow(id=f"{SAVE_PREFIX}{batch}", title=title)))
+        return reply
+    kept = [line for line in (reply.text or "").split("\n") if not _SAVE_WORD.search(line)]
+    return dataclasses.replace(reply, text="\n".join(kept).strip() or reply.text)
+
+
+#: WhatsApp's limit on a button message's text.
+BODY_LIMIT = 1024
+
+
+def with_structured(lines: list[str], human: str) -> str:
+    """WA-259: the structured lines (as on the slip), then the one human line. Lines that do not fit WhatsApp's body
+    limit are counted ("+2 more on the card"); the human line always fits."""
+    room = BODY_LIMIT - len(human) - 30
+    kept: list[str] = []
+    for line in lines:
+        if sum(len(k) + 1 for k in kept) + len(line) > room:
+            kept.append(f"+{len(lines) - len(kept)} more on the card")
+            break
+        kept.append(line)
+    return "\n\n".join(p for p in ("\n".join(kept), human.strip()) if p)
 
 
 def order_note(result: WriteResult, language: str | None) -> str:

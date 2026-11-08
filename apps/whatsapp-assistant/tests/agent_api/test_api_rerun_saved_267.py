@@ -124,7 +124,7 @@ async def test_guard_a_tap_on_a_card_never_saved_still_says_nothing_waiting() ->
     service, sent = _service(seen)
     await service.handle(_message(UPDATE), CTX)
     await service.handle(_message("Save", tap=f"{wa.SAVE_PREFIX}oldbatch"), CTX)
-    assert sent[-1].text == wa.NOTHING_WAITING
+    assert sent[-1].text in wa.NOTHING_ON_CARD_WORDS
     assert _writes(seen) == []
 
 

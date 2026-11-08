@@ -183,7 +183,7 @@ async def test_a_bill_photo_becomes_one_expense_with_the_photo_attached_by_the_c
 
 
 async def test_a_photo_is_read_first_and_the_model_gets_what_it_shows() -> None:
-    model = FakeToolCallingProvider(["Bill of ₹1,840 is ready."])
+    model = FakeToolCallingProvider(["Bill of ₹1,840 from Sri Hardwares: which site is it for?"])
 
     async def describe(message: Any, hint: str | None = None) -> str:
         return "A hardware bill: Sri Hardwares, ₹1,840, 1 Nov 2026"
@@ -316,14 +316,14 @@ async def test_a_model_error_before_anything_was_done_is_tried_once_more() -> No
             Flaky.calls += 1
             if Flaky.calls == 1:
                 raise RuntimeError("malformed function call")
-            return ToolRunResult(text="Ready.")
+            return ToolRunResult(text="Which site is the tea for?")
 
     client = ApiClient(ACTOR, app=stand_in_api([]))
     try:
         turn = await ApiAgent(Flaky(), {}).run(client, "tea 450")
     finally:
         await client.close()
-    assert turn.reply == "Ready." and Flaky.calls == 2
+    assert turn.reply == "Which site is the tea for?" and Flaky.calls == 2
 
 
 async def test_no_words_after_a_lookup_gets_one_more_ask_for_the_answer() -> None:

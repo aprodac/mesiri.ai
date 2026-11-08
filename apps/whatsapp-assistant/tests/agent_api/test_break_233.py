@@ -64,7 +64,7 @@ async def test_next_step_after_a_dropped_line_save_again_is_not_a_resend_and_lab
     card = sent[-1]
     await service.handle(_message("Save", tap=card.buttons[0].id), CTX)
     assert [k for k, _ in posted] == ["attendance"]
-    assert "Send them again" in sent[-1].text and not sent[-1].buttons
+    assert "not saved yet" in sent[-1].text and not sent[-1].buttons
     n = len(sent)
     # the old Save button tapped again, and a typed "save": nothing is re-sent, nothing resurrected
     await service.handle(_message("Save", tap=card.buttons[0].id), CTX)

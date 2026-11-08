@@ -57,12 +57,14 @@ from .materials import (
 )
 from .reply_guard import (
     claims_cannot,
+    claims_ready,
     claims_saved,
     read_tools_for,
     unbacked_figures,
     without_apology,
     without_ids,
     without_internals,
+    without_ready_claims,
     without_saved_claims,
 )
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool, what_mesiri_does
@@ -125,6 +127,34 @@ UNAVAILABLE_NOTE = (
     "plainly, in their language, that you could not check it right now and will try again if they send it in a "
     "minute; do every other part of their message. Never mention a tool, an error, a status or the team here."
 )
+
+
+async def record_exists(client: ApiClient, tools: dict[str, ApiTool], tool: ApiTool, param: str,
+                        value: str) -> tuple[bool | None, str | None]:
+    """WA-261: whether ``value`` is the id of a record of the collection a write's path names, read from that
+    collection's GET route (status all when it takes one). None when it cannot be told (no list route, the read
+    failed, or the list may be cut short): then the API decides at Save, as before."""
+    collection = tool.path.split("/{" + param + "}")[0]
+    lister = next((t for t in tools.values() if t.method == "GET" and t.path == collection and not t.path_params), None)
+    if lister is None:
+        return None, None
+    params: dict[str, Any] = {}
+    if "status" in lister.query_params:
+        # Only a route that names "all" among its statuses is asked for all; another one (issues: status = :status)
+        # is read without a status, which is every record.
+        status = (lister.spec.parameters.get("properties") or {}).get("status") or {}
+        if "all" in (status.get("enum") or []) or " or all" in (lister.spec.description or ""):
+            params["status"] = "all"
+    if "limit" in lister.query_params:
+        params["limit"] = 100
+    try:
+        got = await client.call("GET", collection, params=params or None)
+    except Exception:  # noqa: BLE001
+        return None, lister.name
+    rows = (got.body or {}).get("items") if isinstance(got.body, dict) else got.body
+    if not got.ok or not isinstance(rows, list) or not rows or len(rows) >= 100:
+        return None, lister.name  # nothing listed or maybe cut short: the API decides at Save
+    return any(isinstance(r, dict) and str(r.get("id")) == value for r in rows), lister.name
 
 
 def _is_uuid(value: Any) -> bool:
@@ -272,10 +302,24 @@ def remember_saves(recent: list[dict[str, Any]] | None, results: list[WriteResul
             kept = [k for k in kept if str(k.get("id") or "") != replaced]
         entry: dict[str, Any] = {"fp": fp, "summary": r.pending.summary, "at": now}
         saved_id = r.body.get("id") if isinstance(r.body, dict) else None
+        if saved_id:  # WA-261: every saved record keeps its id, so "that leak is fixed" reaches the one just saved
+            entry.update({"tool": r.pending.tool, "id": str(saved_id)})
         if r.pending.tool in CORRECTABLE and saved_id:
             entry.update({"tool": r.pending.tool, "path": r.pending.path, "body": r.pending.body, "id": str(saved_id)})
         kept.append(entry)
     return kept[-30:]
+
+
+def saved_records_note(recent: list[dict[str, Any]] | None) -> str:
+    """WA-261 (Ilan, 8 Nov: "Water tank leak" saved at 02:03, then "the leak is fixed, save it" was prepared with another
+    id and Save said "Issue not found"): the records saved in this chat with their ids, for a follow-up on one (close,
+    cancel, change, take back)."""
+    rows = [r for r in (recent or []) if r.get("id") and r.get("tool")][-8:]
+    if not rows:
+        return ""
+    listed = "\n".join(f"- {r['tool']}: {without_ids(str(r.get('summary') or ''))} (id {r['id']})" for r in rows)
+    return ("\n\nRecords saved earlier in this chat, with their ids: a follow-up on one of these (\"that leak is fixed\", "
+            "\"cancel that request\") uses its id; never another id:\n" + listed)
 
 
 def correctable_saves(recent: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -940,6 +984,7 @@ class ApiAgent:
             missing = [r for r in tool.required if arguments.get(r) in (None, "")]
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
+            found_now: set[str] = set()
             for p in [p for p in tool.uuid_path if tool.is_write and not _is_uuid(arguments[p])]:
                 # PRC-32 (7 Nov: "REQ-0001 cement athu 250 aakku" held request_id "REQ-0001" and the Save failed, 422;
                 # told to look it up, the model gave up): the code finds the record by the number people see, from
@@ -951,6 +996,17 @@ class ApiAgent:
                         + (f": call {lister} (status all) and use the id of {arguments[p]}" if lister else "")
                         + ". Then prepare this again.")})
                 arguments = {**arguments, p: found_id}
+                found_now.add(p)
+            for p in [p for p in tool.uuid_path if tool.is_write and _is_uuid(arguments[p]) and p not in found_now]:
+                # WA-261 (8 Nov: "the water tank leak is fixed" prepared resolve_issue with an id that was no issue, and
+                # Save said "Issue not found"): an id in a write's path must be a record of that collection, checked
+                # now from its own list route, so the model looks it up in this turn instead of the person at Save.
+                known, lister = await record_exists(client, self._tools, tool, p, str(arguments[p]))
+                if known is False:
+                    return ToolOutcome(content={"error": (
+                        f"{p} {arguments[p]} is not one of these records. Call {lister} (status all) and use the id "
+                        "of the one they mean (one saved earlier in this chat is listed with its id). Then prepare "
+                        "this again.")})
             path = tool.path
             for p in tool.path_params:
                 path = path.replace("{" + p + "}", str(arguments[p]))
@@ -1260,6 +1316,7 @@ class ApiAgent:
             listed = "\n".join(f"{i}. {without_ids(r.get('summary') or '')}" for i, r in enumerate(saved_list, 1))
             system += ("\n\nSaved earlier in this chat (already saved; a correction of one is correct_saved_entry with its "
                        f"number and only what changes, never a new entry and never 'send the whole line again'):\n{listed}")
+        system += saved_records_note(recent_saves)  # WA-261
         if language in LANGUAGE_LINES and language_chosen:
             # WA-169: the language they chose (users.reply_language) wins over the language of this message.
             system += (f"\n\nThis person chose to always get replies in {LANGUAGE_LINES[language]}. Reply in exactly "
@@ -1310,7 +1367,9 @@ class ApiAgent:
             if not nothing_done() or is_budget_error(exc):
                 raise
             result = await ask_model(messages)
-        if not result.calls and SAVE_WORD in (result.text or "").casefold() and nothing_done():
+        # WA-256 (Ilan, 8 Nov, six times in one chat): "... ready aanu" with no tool called and no list waiting.
+        if not result.calls and nothing_done() and (
+                SAVE_WORD in (result.text or "").casefold() or (claims_ready(result.text) and not ready)):
             # 2 Nov (Ilan, 23:10, three times): "ready, tap Save" with no tool called, so nothing was prepared.
             # The code checks: one more try, told plainly that nothing is in the list.
             again = await ask_model([*without_earlier_replies(messages), ChatMessage(role="model", text=result.text or ""), check_note(text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
@@ -1410,7 +1469,9 @@ class ApiAgent:
         if false_saved:  # WA-193: code decides; what is held stays held and the ready list says so
             result = result.model_copy(update={"text": without_saved_claims(result.text or "")})
             fixed.append("saved")
-        claimed_ready = nothing_done() and (false_saved or asks_to_tap_save(result.text or ""))  # [229]
+        tap_save = asks_to_tap_save(result.text or "")
+        ready_only = claims_ready(result.text) and not ready and not false_saved and not tap_save  # WA-256
+        claimed_ready = nothing_done() and (false_saved or tap_save or ready_only)  # [229]
         if (not (result.text or "").strip() and not new and not asked and not saved and not acted and not exists
                 and not false_saved):
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
@@ -1452,7 +1513,11 @@ class ApiAgent:
             if not busy:
                 asked.clear()
                 options = []
-        if claimed_ready and not still and not new and not asked and not exists and not options:
+        if not still and not new and claims_ready(reply):
+            reply = without_ready_claims(reply)  # WA-256: nothing is held, so nothing is "ready"
+            fixed.append("ready")
+        if (claimed_ready and not still and not new and not asked and not exists and not options
+                and not (ready_only and reply.strip())):  # WA-256: a question kept once "ready" is cut
             reply = ""  # [229]: "ready, tap Save" with nothing held: the code says what is true instead
         clean = without_internals(reply, frozenset(self._tools))  # WA-193: last, so a line the code added is checked too
         if clean != reply.strip():

@@ -881,6 +881,8 @@ async def test_a_voice_note_gets_the_check_mark_reaction_not_a_listening_message
     await on_normalized(_message(modality=InputModality.VOICE), {})
     await asyncio.sleep(0)
 
-    deps["sender"].send_reaction.assert_awaited_once_with("919876543210", "wamid.in.1", "✅")
+    # WA-258: its ✅ goes at the webhook, before "typing..." (tests/agent_api/test_typing_after_tick_258.py), so
+    # the journey does not react a second time.
+    deps["sender"].send_reaction.assert_not_awaited()
     texts = [str(c.args[1]) for c in deps["sender"].send_text.await_args_list]
     assert not any("listening" in t or "Got your" in t for t in texts)
