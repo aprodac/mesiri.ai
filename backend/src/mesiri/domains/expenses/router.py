@@ -870,7 +870,7 @@ async def _payments_out(conn: AsyncConnection, organization_id: uuid.UUID, expen
     rows = await conn.execute(
         text(
             "SELECT p.id, p.amount, p.paid_date, p.status, p.reference_number, p.payment_method, p.created_at, "
-            "a.id AS account_id, a.name AS account_name, a.account_type, u.full_name AS paid_by "
+            "p.advance_id, a.id AS account_id, a.name AS account_name, a.account_type, u.full_name AS paid_by "
             "FROM expense_payments p JOIN money_accounts a ON a.id = p.account_id "
             "LEFT JOIN users u ON u.id = p.created_by "
             "WHERE p.organization_id = :org AND p.expense_id = :eid ORDER BY p.paid_date, p.created_at"
@@ -880,9 +880,30 @@ async def _payments_out(conn: AsyncConnection, organization_id: uuid.UUID, expen
     return [
         {"id": str(r["id"]), "amount": str(r["amount"]), "paid_date": r["paid_date"].isoformat(), "status": r["status"],
          "reference": r["reference_number"], "method": r["payment_method"], "account_id": str(r["account_id"]),
-         "account_name": r["account_name"], "account_type": r["account_type"], "recorded_by": r["paid_by"]}
+         "account_name": r["account_name"], "account_type": r["account_type"], "recorded_by": r["paid_by"],
+         # CC-10: paid from an advance given to the supplier earlier (no money moved now).
+         "from_advance": r["advance_id"] is not None}
         for r in rows.mappings()
     ]
+
+
+async def _vendor_advance(conn: AsyncConnection, organization_id: uuid.UUID, vendor_id: uuid.UUID | None) -> dict | None:
+    """CC-10: what the bill's supplier still holds of our advances, so paying the bill can use it first."""
+    if vendor_id is None:
+        return None
+    rows = (await conn.execute(text(
+        "SELECT p.id, p.paid_date, p.amount - COALESCE((SELECT SUM(x.amount) FROM expense_payments x "
+        "WHERE x.advance_id = p.id AND x.status = 'confirmed'), 0) AS left_, v.name "
+        "FROM expense_payments p JOIN vendors v ON v.id = p.vendor_id "
+        "WHERE p.organization_id = :org AND p.vendor_id = :v AND p.expense_id IS NULL AND p.status = 'confirmed' "
+        "ORDER BY p.paid_date, p.created_at"), {"org": organization_id, "v": vendor_id})).mappings().all()
+    open_ = [r for r in rows if r["left_"] > 0]
+    if not open_:
+        return None
+    return {"vendor_id": str(vendor_id), "vendor": open_[0]["name"],
+            "left": str(sum((Decimal(r["left_"]) for r in open_), Decimal(0)).quantize(Decimal("0.01"))),
+            "advances": [{"id": str(r["id"]), "date": r["paid_date"].isoformat(),
+                          "left": str(Decimal(r["left_"]).quantize(Decimal("0.01")))} for r in open_]}
 
 
 @router.get("/{expense_id}/payments")
@@ -901,7 +922,9 @@ async def list_expense_payments(
     left = max(Decimal(0), Decimal(expense.amount) - paid)
     return {"expense_id": str(expense_id), "amount": str(Decimal(expense.amount).quantize(cents)),
             "paid": str(paid.quantize(cents)), "left": str(left.quantize(cents)),
-            "payment_status": expense.payment_status, "payments": payments}
+            "payment_status": expense.payment_status, "payments": payments,
+            "vendor_advance": await _vendor_advance(conn, auth_context.organization_id, expense.vendor_id)
+            if left > 0 else None}
 
 
 @router.post("/{expense_id}/payments", status_code=201)

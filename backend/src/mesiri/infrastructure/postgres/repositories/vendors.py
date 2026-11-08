@@ -18,6 +18,12 @@ _vendors = sa.Table(
     sa.Column("phone", sa.String),
     sa.Column("gstin", sa.String),
     sa.Column("address", sa.String),
+    sa.Column("kind", sa.String),
+    sa.Column("credit_days", sa.Integer),
+    sa.Column("contact_person", sa.String),
+    sa.Column("notes", sa.String),
+    sa.Column("opening_balance", sa.Numeric),
+    sa.Column("opening_balance_date", sa.Date),
     sa.Column("created_at", sa.DateTime(timezone=True)),
     sa.Column("created_by", sa.UUID(as_uuid=True)),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
@@ -187,7 +193,8 @@ class PostgresVendorRepository:
         """``details`` (PRC-04): phone / gstin / address to write, already cleaned; a key with None clears it."""
         values: dict = {"updated_by": updated_by, "updated_at": sa.func.now()}
         for key, value in (details or {}).items():
-            if key in ("phone", "gstin", "address"):
+            if key in ("phone", "gstin", "address", "kind", "credit_days", "contact_person", "notes",
+                       "opening_balance", "opening_balance_date"):
                 values[key] = value
         if name is not None:
             values["name"] = name.strip()

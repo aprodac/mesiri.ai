@@ -6,7 +6,7 @@ Every method takes an externally-supplied connection.
 
 `persist_success` for `target_kind='expense'` composes
 `PostgresExpensePaymentRepository.reverse_payment` (same connection, same
-transaction) for whichever payment is still `confirmed` -- an expense may
+transaction) for every payment still `confirmed` -- an expense may
 have no confirmed payment at all (unpaid, or paid from own pocket, see
 Finance Module Slice 0), in which case there is nothing to reverse in the
 ledger and only the expense itself gets voided. `target_kind='transfer'`
@@ -93,16 +93,12 @@ class PostgresReverseExecutionRepository(ReverseExecutionRepository):
             assert cmd.expense_id is not None
             expense_id = uuid.UUID(cmd.expense_id)
             payments = PostgresExpensePaymentRepository(conn)
-            confirmed_payment = next(
-                (
-                    p
-                    for p in await payments.list_for_expense(organization_id, expense_id)
-                    if p.status == "confirmed"
-                ),
-                None,
-            )
-            if confirmed_payment is not None:
-                await payments.reverse_payment(organization_id, confirmed_payment.id, created_by)
+            # Every confirmed payment, not only the first (8 Nov 2026: since PRC-35 an expense can be paid in parts,
+            # and taking it back refunded only one of them). A part paid from a supplier advance (CC-10) moves no
+            # money back: reverse_payment frees it on the advance instead.
+            for p in await payments.list_for_expense(organization_id, expense_id):
+                if p.status == "confirmed":
+                    await payments.reverse_payment(organization_id, p.id, created_by)
             await conn.execute(
                 sa.text(
                     "UPDATE expenses SET workflow_status = 'voided', updated_by = :updated_by, "

@@ -98,6 +98,9 @@ class MoneyTransactionResponse(BaseModel):
     source_id: uuid.UUID | None = None
     #: For an expense payment: the expense it paid (source_id is the payment's id).
     expense_id: uuid.UUID | None = None
+    #: CC-10: the supplier a payment went to (a bill's vendor, or an on-account payment's), for "Paid to Malabar".
+    vendor_id: uuid.UUID | None = None
+    vendor_name: str | None = None
     description: str | None = None
     correlation_id: str | None = None
 
@@ -711,10 +714,18 @@ async def _expense_of_payments(conn: AsyncConnection, organization_id: uuid.UUID
     if not ids:
         return {}
     rows = await conn.execute(
-        sa.text("SELECT id, expense_id FROM expense_payments WHERE organization_id = :org AND id = ANY(:ids)"),
+        sa.text("SELECT p.id, p.expense_id, v.id AS vendor_id, v.name AS vendor_name FROM expense_payments p "
+                "LEFT JOIN expenses e ON e.id = p.expense_id "
+                "LEFT JOIN vendors v ON v.id = COALESCE(p.vendor_id, e.vendor_id) "
+                "WHERE p.organization_id = :org AND p.id = ANY(:ids)"),
         {"org": organization_id, "ids": ids},
     )
-    return {r.id: r.expense_id for r in rows}
+    return {r.id: r for r in rows}
+
+
+def _paid(expense_of: dict, source_id) -> dict:  # noqa: ANN001
+    r = expense_of.get(source_id)
+    return {"expense_id": r.expense_id, "vendor_id": r.vendor_id, "vendor_name": r.vendor_name} if r else {}
 
 
 def _require(allowed: bool, detail: str) -> None:
@@ -803,7 +814,7 @@ async def list_account_transactions(
             to_account_id=t.to_account_id,
             source_type=t.source_type,
             source_id=t.source_id,
-            expense_id=expense_of.get(t.source_id),
+            **_paid(expense_of, t.source_id),
             description=t.description,
             correlation_id=t.correlation_id,
         )
@@ -834,7 +845,7 @@ async def list_petty_cash_vouchers(
             to_account_id=t.to_account_id,
             source_type=t.source_type,
             source_id=t.source_id,
-            expense_id=expense_of.get(t.source_id),
+            **_paid(expense_of, t.source_id),
             description=t.description,
             correlation_id=t.correlation_id,
         )
@@ -894,7 +905,7 @@ async def list_transactions(
             to_account_name=acc_names.get(t.to_account_id) if t.to_account_id else None,
             source_type=t.source_type,
             source_id=t.source_id,
-            expense_id=expense_of.get(t.source_id),
+            **_paid(expense_of, t.source_id),
             description=t.description,
             correlation_id=t.correlation_id,
         )

@@ -277,18 +277,25 @@ async def test_full_cost_counts_each_rupee_once(client, world, test_engine):
         await _exec(test_engine, "INSERT INTO labour_attendance_lines (id, report_id, trade, headcount, daily_wage, created_at) "
                     "VALUES (:id, :r, :t, :n, :w, now())", id=uuid.uuid4(), r=report, t=trade, n=n, w=wage)
 
+    # A bill recorded without a price made no expense: its delivery is still owed and costs (8 Nov 2026: hidden before).
+    unbilled = (await client.get("/finance/costs", headers=h)).json()
+    assert unbilled["materials"]["amount"] == "53100.00"
+    bill = (await client.post("/expenses", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "amount": "4100", "category_text": "Materials", "occurred_date": _day(3)})).json()
+    await _exec(test_engine, "UPDATE material_invoices SET expense_id = :e WHERE id = :id", e=bill["id"], id=inv)
+
     resp = await client.get("/finance/costs", headers=h)
     assert resp.status_code == 200, resp.text
     c = resp.json()
-    assert c["expenses"] == {"amount": "1500.00", "count": 1}
+    assert c["expenses"] == {"amount": "5600.00", "count": 2}                      # the bill, once
     assert (c["materials"]["amount"], c["materials"]["deliveries"], c["materials"]["unpriced"]) == ("49000.00", 2, 1)
     assert (c["labour"]["amount"], c["labour"]["man_days"], c["labour"]["priced_man_days"]) == ("5400.00", "7", "6")
-    assert c["total"] == "55900.00"
+    assert c["total"] == "60000.00"
     block_a = next(s for s in c["by_site"] if s["site_name"] == "Block A")
     assert (block_a["expenses"], block_a["materials"], block_a["labour"], block_a["total"]) == ("1500.00", "40000.00", "5400.00", "46900.00")
 
     villa = (await client.get("/finance/costs", params={"project_id": str(w["villa"])}, headers=h)).json()
-    assert villa["total"] == "46900.00"
+    assert villa["total"] == "51000.00"
     assert (await client.get("/finance/costs", headers=w["arun"]["h"])).status_code == 403
 
 
