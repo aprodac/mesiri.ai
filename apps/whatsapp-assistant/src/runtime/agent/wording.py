@@ -561,6 +561,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "अगर यह अतिरिक्त है तो *Save* दबाइए, दर्ज हो जाएगा; नहीं तो *Cancel* दबाइए।",
         "hinglish": "Agar yeh extra hai to *Save* dabaiye, record ho jayega; nahi to *Cancel* dabaiye.",
     },
+    "api.nothing_on_card": {
+        "english": "Nothing from that card is waiting any more: it was saved, cancelled or held already. Send what you need and I'll get it ready.",
+        "manglish": "Aa card-il ullathonnum ippo save cheyyaan baakki illa: athu save aayo, cancel aayo, maatti vecho kazhinju. Vendathu ayachaal njan ready aakkaam.",
+        "malayalam": "ആ കാർഡിലുള്ളതൊന്നും ഇപ്പോൾ സേവ് ചെയ്യാൻ ബാക്കിയില്ല: അത് സേവ് ആയോ, ക്യാൻസൽ ആയോ, മാറ്റി വെച്ചോ കഴിഞ്ഞു. വേണ്ടത് അയച്ചാൽ ഞാൻ തയ്യാറാക്കാം.",
+        "hindi": "उस कार्ड में अब कुछ बाकी नहीं है: वह सेव, कैंसल या रोका जा चुका है। जो चाहिए भेजिए, मैं तैयार कर दूँगा।",
+        "hinglish": "Us card mein ab kuch baaki nahi hai: woh save, cancel ya hold ho chuka hai. Jo chahiye bhejiye, main ready kar dunga.",
+    },
+    "api.nothing_to_cancel": {
+        "english": "There is nothing waiting to cancel.",
+        "manglish": "Cancel cheyyaan onnum baakki illa.",
+        "malayalam": "ക്യാൻസൽ ചെയ്യാൻ ഒന്നും ബാക്കിയില്ല.",
+        "hindi": "कैंसल करने के लिए कुछ बाकी नहीं है।",
+        "hinglish": "Cancel karne ke liye kuch baaki nahi hai.",
+    },
     "api.refused_dropped": {
         "english": "The ❌ lines are not saved yet. Just tell me what to change (only the missing part) and I'll put them back on the list.",
         "manglish": "❌ ulla lines ithuvare save aayittilla. Enthaanu maattendathu ennu maathram paranjaal mathi, njan veendum list-il idaam.",

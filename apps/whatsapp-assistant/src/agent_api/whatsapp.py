@@ -359,6 +359,7 @@ class ApiWhatsApp:
             return False
         # WA-210: a ready list goes out on its TO SAVE card (the header of the Save / Edit / Cancel message).
         reply = await self._with_preview(reply, ctx, message.correlation_id)
+        reply = with_save_button(reply, await self._state(ctx))  # WA-263: "tap Save" always has its button
         _lap("v3_preview")
         heard_shown = self._heard_shown.pop(message.correlation_id, False)
         if message.modality is InputModality.VOICE and said and heard_shown:
@@ -1082,12 +1083,21 @@ class ApiWhatsApp:
     async def _on_tap(self, tap: str, ctx: Any, correlation_id: str | None = None) -> ReplySpec:
         state = await self._state(ctx)
         batch = tap.split(":", 2)[2]
+        only: list[str] | None = None
+        if state.get("pending") and state.get("batch") != batch and (only := card_still_waiting(state, batch)):
+            # WA-263 (Aprodac 8 Nov 02:02:20 and 02:05:41: Save on the message before the newest one said "nothing
+            # waiting to save" while its lines were still waiting): a tap on an older card acts on ITS lines that are
+            # still on the list; the newer card stays as it is for the rest.
+            batch = state["batch"]
         if not state.get("pending") or state.get("batch") != batch:
-            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=nothing_on_card(tap, state))
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         entries = _without_stale_sends(entries)
+        others = [e for e in entries if only is not None and e.idempotency_key not in only]
+        entries = [e for e in entries if e not in others]
         if tap.startswith(CANCEL_PREFIX):
-            state["pending"], state["batch"] = [], None
+            state["pending"] = [e.to_json() for e in others]
+            state["batch"] = batch if others else None
             # WA-146: what was cancelled, so a reason tapped next tells the team which entries and tools.
             state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
             await self._save_state(ctx, state)
@@ -1113,8 +1123,9 @@ class ApiWhatsApp:
         left, dropped = _refused_to_keep(results, state)  # [233]: a refused line is never carried on unchanged
         remember_unsaved(state, results, left, time.time())  # WA-260: what was refused is remembered, not lost
         previewed = state.pop("previewed", None) == batch
-        state["pending"] = [e.to_json() for e in left]
-        state["batch"] = uuid.uuid4().hex[:8] if left else None
+        state["pending"] = [e.to_json() for e in [*left, *others]]
+        # WA-263: lines another (newer) card still shows keep that card's buttons working.
+        state["batch"] = (batch if others else uuid.uuid4().hex[:8]) if (left or others) else None
         if previewed and results and all(r.ok and not held(r) and not order_note(r, None) for r in results):
             # WA-210: every line was on the preview card and all of them saved: "✅ Saved." and the links, no list.
             self._previewed_saves[correlation_id] = True
@@ -1135,13 +1146,16 @@ class ApiWhatsApp:
         await self._save_state(ctx, state)
         return _save_buttons(text, state["batch"], send=only_sends(left)) if left else ReplySpec(text=text)
 
+    # (WA-263: a tap on a card that is done says what happened to it, never "nothing waiting to save" for a Cancel.)
+
     async def _on_edit(self, tap: str, ctx: Any) -> ReplySpec:
         """WA-208: "✏️ Edit" on a ready list. One line: ask its right figure at once; several: pick the line first.
         The next message (typed or a voice note) changes only that line."""
         state = await self._state(ctx)
         batch, _, number = tap.split(":", 2)[2].partition(":")
+        batch = same_list_now(state, batch)  # WA-263: an older card of the very same list edits the list
         if not state.get("pending") or state.get("batch") != batch:
-            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=nothing_on_card(tap, state))
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         language = state.get("language")
         if not number and len(entries) > 1:
@@ -1172,8 +1186,9 @@ class ApiWhatsApp:
         on a new card with its own buttons."""
         state = await self._state(ctx)
         batch, _, number = tap[len(REMOVE_PREFIX):].partition(":")
+        batch = same_list_now(state, batch)  # WA-263
         if not state.get("pending") or state.get("batch") != batch or not number.isdigit():
-            return already_saved(state, batch) or ReplySpec(text=NOTHING_WAITING)
+            return already_saved(state, batch) or ReplySpec(text=nothing_on_card(tap, state))
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
         line = int(number)
         if not 1 <= line <= len(entries):
@@ -1333,8 +1348,9 @@ class ApiWhatsApp:
             return {}
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
+        remember_card(state)  # WA-263
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled", "unsaved",
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled", "unsaved", "cards",
                                                                "saved_batch")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
@@ -1783,6 +1799,84 @@ def without_listed_lines(text: str, entries: list[PendingWrite], language: str |
     words = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
     # [264]: with no words of its own, the card's caption is the Save / Send line, never a bare "OK.".
     return words or press
+
+
+#: WA-263: how many recent cards' lines are remembered (an older card's tap acts on its lines still waiting).
+CARDS_KEPT = 8
+NOTHING_ON_CARD = ("Nothing from that card is waiting any more: it was saved, cancelled or held already. Send what you "
+                   "need and I'll get it ready.")
+NOTHING_TO_CANCEL = "There is nothing waiting to cancel."
+
+
+def _all_languages(key: str, english: str) -> tuple[str, ...]:
+    from runtime.agent.wording import say
+
+    return (english, *(say(key, lang) for lang in ("manglish", "malayalam", "hindi", "hinglish")))
+
+
+#: The done-card line in every language (for checks that do not know the person's language).
+NOTHING_ON_CARD_WORDS = _all_languages("api.nothing_on_card", NOTHING_ON_CARD)
+
+
+def remember_card(state: dict) -> None:
+    """WA-263: the lines of the card now shown (``batch``), kept for its buttons and those of the cards before it."""
+    cards = dict(state.get("cards") or {})
+    batch, pending = state.get("batch"), state.get("pending") or []
+    if batch and pending:
+        cards.pop(batch, None)
+        cards[batch] = [str(e.get("idempotency_key")) for e in pending if isinstance(e, dict)]
+    state["cards"] = dict(list(cards.items())[-CARDS_KEPT:]) or None
+
+
+def card_still_waiting(state: dict, batch: str) -> list[str] | None:
+    """WA-263: the keys of an older card's lines that are still on the list; None when none are."""
+    current = {str(e.get("idempotency_key")) for e in state.get("pending") or [] if isinstance(e, dict)}
+    still = [k for k in (state.get("cards") or {}).get(batch) or [] if k in current]
+    return still or None
+
+
+def same_list_now(state: dict, batch: str) -> str:
+    """WA-263: an older card showing exactly the list now waiting stands for the current card (its line numbers are
+    the same); any other card stays as it is."""
+    current = [str(e.get("idempotency_key")) for e in state.get("pending") or [] if isinstance(e, dict)]
+    if batch != state.get("batch") and current and (state.get("cards") or {}).get(batch) == current:
+        return str(state["batch"])
+    return batch
+
+
+def nothing_on_card(tap: str, state: dict) -> str:
+    """WA-263: what a tap on a card that is done gets: never "nothing waiting to save" for a Cancel (test company,
+    3 Nov), and for a Save, what may have happened to the card's lines (cd, 6 Nov: the line was held for the size)."""
+    language = state.get("language")
+    if tap.startswith(CANCEL_PREFIX):
+        return _in(language, "api.nothing_to_cancel", NOTHING_TO_CANCEL)
+    return _in(language, "api.nothing_on_card", NOTHING_ON_CARD)
+
+
+_SAVE_WORD = re.compile(r"\*(?:save|send)\*", re.IGNORECASE)
+
+
+def with_save_button(reply: ReplySpec, state: dict) -> ReplySpec:
+    """WA-263 (Ilan, 8 Nov: "make sure always that button is there for save"): a reply that tells them to tap *Save*
+    carries the Save button of the list now waiting (added under buttons that leave room); with nothing waiting, the
+    line that says to tap Save comes out. Never touches a reply that has the button, or a pick-list."""
+    if reply.list_rows or not _SAVE_WORD.search(reply.text or ""):
+        return reply
+    buttons = tuple(reply.buttons or ())
+    if any(b.id.startswith(SAVE_PREFIX) for b in buttons):
+        return reply
+    batch, pending = state.get("batch"), state.get("pending") or []
+    if batch and pending:
+        entries = [PendingWrite.from_json(e) for e in pending]
+        if not buttons:
+            card = _save_buttons(reply.text, batch, send=only_sends(entries))
+            return dataclasses.replace(reply, buttons=card.buttons)
+        if len(buttons) < 3:
+            title = SEND_TITLE if only_sends(entries) else "Save"
+            return dataclasses.replace(reply, buttons=(*buttons, ListRow(id=f"{SAVE_PREFIX}{batch}", title=title)))
+        return reply
+    kept = [line for line in (reply.text or "").split("\n") if not _SAVE_WORD.search(line)]
+    return dataclasses.replace(reply, text="\n".join(kept).strip() or reply.text)
 
 
 #: WhatsApp's limit on a button message's text.

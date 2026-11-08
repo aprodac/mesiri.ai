@@ -141,7 +141,7 @@ async def test_cancel_and_an_older_lists_button_save_nothing() -> None:
     await h.service.handle(_message("Cancel", tap=cancel), CTX)
     assert h.sent[-1].buttons and h.sent[-1].buttons[0].id.startswith(wa.WHY_PREFIX) and h.posts() == 0  # WA-146
     await h.service.handle(_message("Save", tap=old_save), CTX)
-    assert h.sent[-1].text == wa.NOTHING_WAITING and h.posts() == 0
+    assert h.sent[-1].text in wa.NOTHING_ON_CARD_WORDS and h.posts() == 0
 
 
 async def test_saying_save_saves_through_the_model_and_says_what_the_api_answered() -> None:

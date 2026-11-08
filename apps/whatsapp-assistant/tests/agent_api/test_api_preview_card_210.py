@@ -218,7 +218,7 @@ async def test_removing_the_last_line_leaves_nothing_waiting() -> None:
 async def test_a_remove_tap_on_an_old_list_does_nothing() -> None:
     service, sent, _, _ = await _previewed()
     await service.handle(_message("Remove", tap=f"{wa.REMOVE_PREFIX}oldbatch:1"), CTX)
-    assert sent[-1].text == wa.NOTHING_WAITING
+    assert sent[-1].text in wa.NOTHING_ON_CARD_WORDS
     assert len((await service._state(CTX))["pending"]) == 2
 
 

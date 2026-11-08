@@ -125,7 +125,7 @@ async def test_an_old_edit_is_an_ordinary_message() -> None:
 async def test_edit_on_an_older_list_changes_nothing() -> None:
     h = await _listed([])
     await h.service.handle(_message("Edit", tap=f"{wa.EDIT_PREFIX}oldbatch"), CTX)
-    assert h.sent[-1].text == wa.NOTHING_WAITING
+    assert h.sent[-1].text in wa.NOTHING_ON_CARD_WORDS
 
 
 async def test_one_line_is_asked_at_once() -> None:
