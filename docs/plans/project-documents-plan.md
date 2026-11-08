@@ -122,7 +122,7 @@ work order page, `module-map.ts`, `App.tsx`, sidebar, tracker, this plan, `drawi
 
 | # | Question | Default |
 |---|---|---|
-| D-DOC1 | Who sees what | **Drawings, approvals, test reports: everyone on the project. Contract, BOQ / estimate, work orders and anything marked restricted: owner, admin, finance, PM (`may_view_expenses`).** Upload: anyone on the project; revise, archive, restrict: owner, admin, PM. *Permissions: needs Ilan* |
+| D-DOC1 (default **approved** in session, 8 Nov) | Who sees what | **Drawings, approvals, test reports: everyone on the project. Contract, BOQ / estimate, work orders and anything marked restricted: owner, admin, finance, PM (`may_view_expenses`).** Upload: anyone on the project; revise, archive, restrict: owner, admin, PM. *Permissions: needs Ilan* |
 | D-DOC2 | Where files live | **VPS disk now (decided 13 Oct for photos)**; switch the provider to R2 when the disk passes 70%. A drawing set is 20-80 MB per project; check free space before DOC-01 ships |
 | D-DOC3 | PDFs on WhatsApp | **v3 companies only**; classic keeps declining. Changes the shared ingress normaliser: *needs Ilan* |
 | D-DOC4 | Limits | **25 MB per file; PDF, images (JPG, PNG, HEIC), Office (DOCX, XLSX), DWG (download only, no preview)** |
