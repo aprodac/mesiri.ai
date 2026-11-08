@@ -61,6 +61,16 @@ remaining quantity drops; the schedule moves, the need moves.
   permissions decision). **Not yet:** the forecast finish (ST-04) instead of planned dates when site is slower.
   Dashboard: Planning › Material plan (`/planning/materials`), table on desktop, cards on phones.
 
+- **MP-03 (8 Nov, `8ee88d5`).** Migration **0524** `vendors.lead_time_days` (vendor API + supplier form "Delivery time
+  (days)"). The plan now gives the exact `short_day`, the supplier who last delivered the material (any project) and
+  their lead time (`DEFAULT_LEAD_DAYS` = 3 when not set, `lead_known` false), `order_by` = short day − lead time,
+  `order_now`. `plan_router.load_plan` gathers the inputs once for the route, the note and (next) WhatsApp.
+  `domains/materials/plan_reminders.py`: one grouped note a day per project, rule `material_order_by`, to owner /
+  admin / PM on the project, only for materials whose order-by is within 2 days (or passed); queued in
+  `alerts.queue_reminders` after the schedule notes. English only for now (ST-11 will translate). Dashboard: Order
+  column and an Order button that opens the existing purchase order form filled in (supplier, site, material,
+  shortfall rounded up).
+
 ## 4. Implementation plan (Phase 2)
 
 **Objective.** A PM sees, per project, what material is needed each week, which will run short, and the day to order
