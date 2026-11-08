@@ -152,6 +152,33 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 - **Not yet:** spending per BOQ line (needs CC-05 labour allocation), green / amber / red (CC-07, thresholds
   D-CC6), material norms (CC-03).
 
+### 4d. As built: labour put on BOQ lines (CC-05, 8 Nov 2026)
+
+- **Table `labour_boq_allocations`** (migration 0528, additive, RLS): project, site, day, trade (`trade_key`,
+  trimmed and lower-cased) → BOQ line, man-days. Not a column on attendance lines: a re-sent list replaces the
+  earlier lines (BE-10), so a link there would be lost on every correction. A split is several rows.
+- **Attendance is read, never re-counted:** `PostgresWorkforceReadRepository.attendance_by_site_day_trade`
+  (a read added to the Labour repository) applies the Labour aggregate's own rules: voided and corrected reports
+  out, the later figure of a day replaces the earlier, only saved reports, absent 0 / half day 0.5, the line's
+  own wage. Nothing in how attendance is recorded, counted or paid changed.
+- **Sharing (`domains/costing/labour.py`, pure):** a line's labour is its share of the group's cost by
+  man-days, rounded to the paisa, the part not on a line takes the rounding, so lines + not on a line = what
+  attendance cost. No wage: man-days, no cost. Attendance re-sent lower after a split: the lines share what it
+  costs now and the group says `over_allocated`; money never passes what attendance cost. A line revised later
+  keeps its labour (`current_revision_of`).
+- **API:** `GET /cost/projects/{id}/labour?date_from&date_to&unallocated` (per site, day and trade: man-days,
+  cost, the lines it is on, what is on none, a suggested line from what the attendance said or the one line
+  measured on that site that day; never saved by itself). `PUT /cost/projects/{id}/labour` replaces a group's
+  lines (empty list: off every line); 422 for a line not in the project, a line twice, or more man-days than
+  attendance has; 404 when attendance has no such site, day and trade. Money roles, within their projects.
+  `GET /cost/projects/{id}/budget` lines now carry `labour_man_days`, `labour_cost`, `labour_difference`
+  (labour earned − labour cost), and the project `labour_on_lines` / `labour_not_on_a_line`.
+- **Dashboard:** Budget vs actual shows Labour spent and Labour vs earned per BOQ line, a callout with labour
+  on lines and not on a line, and "Labour not on a BOQ line yet" (last 30 days): the suggestion preselected,
+  man-days to split, Put on line, a chip per line to take it off.
+- **Not yet:** the WhatsApp side (`record_attendance` naming the work, v3; CC-11), engineers putting labour on
+  lines (D-CC4), the green / amber / red colours (CC-07).
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |
