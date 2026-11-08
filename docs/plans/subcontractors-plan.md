@@ -1,6 +1,6 @@
 # Subcontractors: work orders, measurement, bill check, payments, and the subcontractor on WhatsApp
 
-> Plan, 8 Nov 2026. Asked in session ("what we going to start on subcontractors"; "alan approves lets do B ... make all of
+> Plan, 8 Nov 2026. **Built the same day (S1–S7, see V1_TRACKER NXT-05..07, CC-04, NXT-16..18); what was left out is listed there.** Asked in session ("what we going to start on subcontractors"; "alan approves lets do B ... make all of
 > it a plan"). Tracker rows: NXT-05, CC-04, NXT-06 (with CC-06), NXT-07, NXT-16, NXT-17, NXT-18 in
 > [V1_TRACKER.md](V1_TRACKER.md). Builds on the supplier ledger (CC-09/CC-10) and PRC-11 bill matching, built 8 Nov.
 > Decisions: section 10.
