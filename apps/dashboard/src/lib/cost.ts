@@ -140,6 +140,73 @@ export async function putLabourOnLines(
   ).data
 }
 
+/** CC-07: green / amber / red per BOQ line. Grey: cannot be judged (the reason says why), never a colour. */
+export type VarianceColour = 'green' | 'amber' | 'red' | 'grey'
+export type VarianceReason =
+  | 'within_budget'
+  | 'near_budget'
+  | 'over_budget'
+  | 'labour_no_work'
+  | 'no_labour'
+  | 'no_labour_rate'
+  | 'no_wage'
+
+export interface VarianceLine {
+  line_id: string
+  boq_code: string | null
+  work: string
+  unit: string
+  section: string | null
+  done_quantity: string
+  labour_man_days: string
+  labour_unpriced_man_days: string
+  labour_rate: string | null
+  earned_labour: string | null
+  labour_cost: string | null
+  /** Earned − cost: negative is over. */
+  difference: string | null
+  cost_per_unit: string | null
+  ratio: string | null
+  colour: VarianceColour
+  reason: VarianceReason
+}
+
+export interface VarianceSummary {
+  earned_labour: string | null
+  labour_cost: string | null
+  difference: string | null
+  ratio: string | null
+  colour: VarianceColour
+  lines: Record<VarianceColour, number>
+}
+
+export interface VarianceDay extends VarianceSummary {
+  date: string
+  attendance_cost: string
+  not_on_a_line_cost: string
+}
+
+export interface ProjectVariance {
+  project_id: string
+  site_id: string | null
+  date_from: string
+  date_to: string
+  thresholds: { green_at: string; amber_at: string }
+  summary: VarianceSummary
+  labour: { attendance_cost: string; man_days: string; not_on_a_line: { man_days: string; cost: string } }
+  materials: { earned: string; bought: string }
+  work_in_other_unit: number
+  lines: VarianceLine[]
+  days: VarianceDay[]
+}
+
+export async function fetchProjectVariance(
+  projectId: string,
+  params: { date_from?: string; date_to?: string; site_id?: string } = {},
+): Promise<ProjectVariance> {
+  return (await api.get<ProjectVariance>(`/cost/projects/${projectId}/variance`, { params })).data
+}
+
 // Mirrors backend MONEY_MANAGE_ROLES: who may change a category's cost centre.
 export const mayManageMoney = (role: string | null | undefined) =>
   ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'].includes(String(role ?? '').toUpperCase())
