@@ -90,3 +90,14 @@ def test_roll_up_work_on_the_floor_itself_counts():
     out = progress.roll_up(places, [_w(floor, "Slab", True)])
     assert out["places"][floor]["cells"]["slab"]["state"] == "done"
     assert out["places"][r1]["cells"]["slab"]["state"] == "not_started"
+
+
+@pytest.mark.parametrize("words", ["B3 footing concreted", "F1 B3 PCC done", "footing b3 kazhinju", "b-3 footing",
+                                   "grid B3"])
+def test_a_footing_by_its_grid(words):
+    """DR-10: footings tracked from a structural drawing are places named by their grid, under Foundation."""
+    root = names.Place(uuid.uuid4(), "Foundation", None)
+    floor = names.Place(uuid.uuid4(), "Ground Floor", None)
+    tree = [root, floor, names.Place(uuid.uuid4(), "Kitchen", floor.id)] + [
+        names.Place(uuid.uuid4(), g, root.id) for g in ("A1", "A3", "B3", "B5", "D3")]
+    assert names.resolve(words, tree).place.name == "B3"

@@ -20,7 +20,7 @@ Word = Mapping[str, Any]
 
 #: Words that start a title-block field; the value is to the right of the label or just below it.
 LABELS = {
-    "project": ("PROJECT", "PROJECT NAME", "NAME OF WORK", "WORK"),
+    "project": ("PROJECT", "PROJECT NAME", "NAME OF WORK", "WORK", "PROPOSED", "NAME OF PROJECT"),
     "client": ("CLIENT", "OWNER"),
     "title": ("DWG.TITLE", "DWG TITLE", "DRG. TITLE", "DRG.TITLE", "DRAWING TITLE", "TITLE", "SHEET TITLE"),
     "number": ("DWG.NO", "DWG NO", "DRG.NO", "DRG NO", "DRAWING NO", "SHEET NO", "DWG.NO.", "DRG. NO"),
@@ -29,12 +29,18 @@ LABELS = {
     "checked": ("CHECKED", "CHECKED BY"),
 }
 ALL_LABELS = {lab for labs in LABELS.values() for lab in labs} | {"ARCHITECTS", "ARCHITECT", "SCALE", "DATE",
-                                                                    "REMARKS", "NOTE", "APPROVED", "OFFICE SEAL"}
+                                                                    "REMARKS", "NOTE", "NOTES", "APPROVED",
+                                                                    "OFFICE SEAL", "PROJECT NO", "JOB NO",
+                                                                    "PREPARED", "PREPARED BY", "MOB", "TEL", "PH",
+                                                                    "EMAIL", "OWNER"}
+#: Labels longer than a field's own label that start with it: "PROJECT NO" is never the project's name.
+_LONGER = {"PROJECT NO", "PROJECT NO.", "JOB NO", "DRAWING TITLE", "DRAWING NO", "SHEET NO", "SHEET TITLE"}
 
 #: How far below a label its value may sit (points).
 BELOW = 14
 
-_SCALE = re.compile(r"\b1\s*:\s*(\d{1,4})\b")
+#: "1:100", never a mix ratio ("PCC 1:4:8", "1:1.5:3").
+_SCALE = re.compile(r"(?<![:\d.])\b1\s*:\s*(\d{1,4})\b(?!\s*[:.]\s*\d)")
 _DATE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b")
 _UNITS = re.compile(r"DIMENSIONS\s+(?:ARE\s+)?IN\s+(CM|MM|CENTIMETERS?|MILLIMETERS?|METERS?|M)\b", re.I)
 _LEVEL_WORDS = ("BASEMENT", "CELLAR", "STILT", "GROUND", "FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH",
@@ -43,7 +49,9 @@ _LEVEL_WORDS = ("BASEMENT", "CELLAR", "STILT", "GROUND", "FIRST", "SECOND", "THI
 _TITLE = re.compile(
     r"\b(?:(?:LOWER |UPPER )?(?:BASEMENT|CELLAR|STILT|GROUND|FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|TERRACE|ROOF|"
     r"MEZZANINE|TYPICAL|FOUNDATION|FOOTING|PLINTH|1ST|2ND|3RD|4TH|5TH|\d+(?:ST|ND|RD|TH))\s+(?:FLOOR\s+)?"
-    r"(?:PLAN|LAYOUT)|SITE\s+PLAN|KEY\s+PLAN|LOCATION\s+PLAN|SECTION[\s-]*[A-Z](?:\s?[A-Z])?|"
+    r"(?:PLAN|LAYOUT)|KEY\s+PLAN\s*-?\s*(?:LOWER |UPPER )?(?:BASEMENT|CELLAR|STILT|GROUND|FIRST|SECOND|THIRD|FOURTH|"
+    r"FIFTH|SIXTH|TERRACE|ROOF|MEZZANINE|TYPICAL|FOUNDATION|FOOTING|PLINTH)(?:\s+FLOOR)?|"
+    r"SITE\s+PLAN|KEY\s+PLAN|LOCATION\s+PLAN|SECTION[\s-]*[A-Z](?:\s?[A-Z])?|"
     r"(?:(?:FRONT|BACK|REAR|LEFT|RIGHT|SIDE|NORTH|SOUTH|EAST|WEST)\s+)+ELEVATION|"
     r"(?:COLUMN|FOOTING|BEAM|SLAB|DOOR|WINDOW)\s+(?:SCHEDULE|DETAILS?|LAYOUT))\b", re.I)
 
@@ -76,18 +84,32 @@ def _is_label(text: str) -> bool:
 
 def _label_at(row: list[Word], i: int, names: tuple[str, ...]) -> int:
     """How many words from ``row[i]`` make one of ``names`` (0 when none): "DWG.TITLE:" is one, "Drg. Title:" two."""
+    if row[i]["text"].strip(" .:").islower():
+        return 0  # "...should be checked and confirmed": a note's word, never a title-block label
     for n in (3, 2, 1):
         if i + n <= len(row):
             text = _norm(" ".join(w["text"] for w in row[i:i + n]))
             if text in names or text.rstrip(".") in names:
                 return n
+            if text in _LONGER and text not in names:
+                return 0  # "PROJECT NO": another field's label, not "PROJECT" + a value
     return 0
+
+
+def _starts_label(row: list[Word], j: int) -> bool:
+    """Whether ``row[j]`` starts another field: a known label, or a word followed by one that opens with ":"
+    ("Mob :+91 ...", "Tel :...")."""
+    if _is_label(row[j]["text"]):
+        return True
+    word = row[j]["text"].strip()
+    nxt = row[j + 1]["text"].strip() if j + 1 < len(row) else ""
+    return bool(word) and word[0].isalpha() and nxt.startswith(":") and len(word) <= 12
 
 
 def _noise(w: Word) -> bool:
     """A stray letter from rotated or overlapping text ("s"), or a lone punctuation mark."""
     t = w["text"].strip()
-    return not t or (len(t) == 1 and not t.isdigit() and not t.isupper())
+    return not t or (len(t) == 1 and not t.isdigit() and not t.isupper() and t != "&")
 
 
 def _value_after(rows: list[list[Word]], names: tuple[str, ...]) -> tuple[str, Word] | None:
@@ -101,18 +123,22 @@ def _value_after(rows: list[list[Word]], names: tuple[str, ...]) -> tuple[str, W
                 continue
             label = row[i:i + n]
             right: list[Word] = []
-            for w in row[i + n:]:
+            for j in range(i + n, len(row)):
+                w = row[j]
                 gap = w["x0"] - (right[-1]["x1"] if right else label[-1]["x1"])
-                if _is_label(w["text"]) or gap > (40 if right else 90):
+                if (right and _starts_label(row, j)) or _is_label(w["text"]) or gap > (40 if right else 90):
                     break
-                if not _noise(w):
+                if not _noise(w) and w["text"].strip() != ":":
                     right.append(w)
-            if right:
-                return " ".join(w["text"] for w in right).strip(), label[0]
+            value = " ".join(w["text"] for w in right).strip().lstrip(":").strip()
+            if value:
+                return value, label[0]
             x0 = label[0]["x0"]
             nxt = next((w["x0"] for w in row[i + n:] if _is_label(w["text"])), x0 + 220)
             for below in rows[r + 1:]:
-                if below[0]["top"] - label[0]["top"] > BELOW:
+                # Bigger sheets print bigger: the reach grows with the label's own height.
+                reach = max(BELOW, 3 * (label[0].get("bottom", label[0]["top"]) - label[0]["top"]))
+                if below[0]["top"] - label[0]["top"] > reach:
                     break
                 near = [w for w in below if x0 - 15 <= w["x0"] < nxt and not _is_label(w["text"]) and not _noise(w)]
                 text = " ".join(w["text"] for w in near).strip()
@@ -138,6 +164,8 @@ def kind_of(title: str | None) -> str | None:
     if not title:
         return None
     t = title.upper()
+    if re.search(r"KEY\s+PLAN\b", t) and any(re.search(rf"\b{w}\b", t) for w in _LEVEL_WORDS):
+        return "plan"
     for word, kind in (("ELEVATION", "elevation"), ("SECTION", "section"), ("SCHEDULE", "schedule"),
                        ("DETAIL", "detail"), ("SITE PLAN", "site_plan"), ("KEY PLAN", "site_plan"),
                        ("LOCATION PLAN", "site_plan"), ("PLAN", "plan"), ("LAYOUT", "plan")):
@@ -161,8 +189,12 @@ def level_of(title: str | None) -> str | None:
 
 
 def discipline_of(title: str | None, text: str) -> str:
-    t = f"{title or ''} {text}".upper()
-    if re.search(r"\b(STRUCTURAL|REINFORCEMENT|FOOTING SCHEDULE|COLUMN SCHEDULE|BAR BENDING)\b", t):
+    """``title``: the sheet's title and number ("S-101", "66/ST/01/02" say structural by themselves)."""
+    head = (title or "").upper()
+    t = f"{head} {text}".upper()
+    if re.search(r"(/ST/|\bST[-/]\d|\bS-\d)", head) or re.search(
+            r"\b(STRUCTURAL|REINFORCEMENT|REINF|FOOTING SCHEDULE|COLUMN SCHEDULE|BAR BENDING|CLEAR COVER|LAP LENGTH|"
+            r"GRADE OF STEEL|FOOTING DETAILS)\b", t):
         return "structural"
     if re.search(r"\b(ELECTRICAL|PLUMBING|DRAINAGE|HVAC|FIRE FIGHTING|SANITARY LAYOUT)\b", t):
         return "mep"
@@ -182,6 +214,10 @@ def sheet(page: Mapping[str, Any]) -> dict[str, Any]:
     if labelled:
         m = _TITLE.search(labelled[0].upper())
         title = re.sub(r"\s+", " ", m.group(0)).upper() if m else None
+        # The title box says it whole ("FOOTING & COLUMN DETAILS", "BASEMENT FLOOR DETAILS"): keep it whole.
+        whole = re.sub(r"\s+", " ", labelled[0]).strip(" :-").upper()
+        if whole and re.search(r"[A-Z]{3}", whole) and (title is None or len(whole) > len(title)):
+            title = whole
     if title is None and titles:
         # Near the title label when there is one; else the biggest title text on the sheet.
         if labelled:
@@ -193,30 +229,41 @@ def sheet(page: Mapping[str, Any]) -> dict[str, Any]:
     scale = _SCALE.search(text)
     date = _DATE.search(text)
     units = _UNITS.search(text)
-    # The practice's name as printed in capitals: "KALEIDO ARCHITECTS" (never a note such as "consult the architect").
-    architect = None
-    for row in rows:
-        m = re.search(r"\b((?:[A-Z][A-Z&.]+\s+){1,3}ARCHITECTS?)\b", " ".join(w["text"] for w in row))
-        if m:
-            architect = m.group(1).strip().title()
-            break
+    architect = _architect(rows)
 
     def val(key: str) -> str | None:
         v = found.get(key)
-        return v[0] if v else None
+        if not v:
+            return None
+        if key in ("drawn", "checked", "number", "revision"):
+            # Initials, a number, a letter: never the office's address printed beside them ("MJ Manjeri,Kerala").
+            words = []
+            for word in v[0].split():
+                if "," in word or "@" in word:
+                    break
+                words.append(word)
+            return " ".join(words) or None
+        return v[0]
 
     units_word = units.group(1).upper() if units else None
+    number = val("number")
+    # The floor: from the title, else from the sheet's big title ("KEY PLAN - BASEMENT FLOOR").
+    key_plans = [t for t in sorted(titles, key=lambda t: -t[1]) if t[0].startswith("KEY PLAN") and level_of(t[0])]
+    level = level_of(title) or (level_of(key_plans[0][0]) if key_plans else None)
+    kind = kind_of(title)
+    if kind in (None, "detail", "site_plan") and key_plans:
+        kind = "plan"  # a structural "KEY PLAN - FIRST FLOOR" is that floor's framing plan
     return {
         "page": page["number"],
         "has_text": bool(words),
         "title": title,
-        "kind": kind_of(title),
-        "level": level_of(title),
-        "discipline": discipline_of(title, text) if words else None,
+        "kind": kind,
+        "level": level,
+        "discipline": discipline_of(f"{title or ''} {number or ''}", text) if words else None,
         "project": val("project"),
         "client": val("client"),
         "architect": architect,
-        "number": val("number"),
+        "number": number,
         "revision": val("revision"),
         "drawn_by": val("drawn"),
         "checked_by": val("checked"),
@@ -225,3 +272,32 @@ def sheet(page: Mapping[str, Any]) -> dict[str, Any]:
         "units": {"CM": "cm", "CENTIMETER": "cm", "CENTIMETERS": "cm", "MM": "mm", "MILLIMETER": "mm",
                   "MILLIMETERS": "mm", "M": "m", "METER": "m", "METERS": "m"}.get(units_word or "", None),
     }
+
+
+#: Words in a title block that are labels or headings, never part of a practice's name.
+_NOT_A_NAME = {"DRAWING", "TITLE", "PROPOSED", "PROJECT", "CLIENT", "OWNER", "REMARKS", "NOTES", "NOTE", "SHEET",
+               "DWG", "DRG", "NAME", "OF", "THE", "CONSULT", "CONSULTANT", "SCALE", "DATE", "AND", "BY"}
+
+
+def _architect(rows: list[list[Word]]) -> str | None:
+    """The practice's name as printed in capitals: "KALEIDO ARCHITECTS", also when the name sits on the line above
+    "ARCHITECTS" (a logo block). Never a row of labels ("DRAWING TITLE PROPOSED ARCHITECT") or a note ("consult the
+    architect")."""
+    for r, row in enumerate(rows):
+        for i, w in enumerate(row):
+            if w["text"].strip(" .:").upper() not in ("ARCHITECTS", "ARCHITECT") or not w["text"][:1].isupper():
+                continue
+            name: list[str] = []
+            for prev in reversed(row[:i]):
+                t = prev["text"].strip(" .,")
+                if (not t.isupper() or t in _NOT_A_NAME or not t.replace("&", "").isalpha()
+                        or w["x0"] - prev["x1"] > 40 or len(name) == 3):
+                    break
+                name.insert(0, t)
+            if not name and r > 0:
+                above = [a for a in rows[r - 1] if abs(a["x0"] - w["x0"]) <= 6 and a["text"].isupper()
+                         and a["text"].isalpha() and a["text"] not in _NOT_A_NAME and w["top"] - a["top"] <= 12]
+                name = [above[0]["text"]] if above else []
+            if name:
+                return f"{' '.join(name)} {w['text'].strip(' .:')}".title()
+    return None

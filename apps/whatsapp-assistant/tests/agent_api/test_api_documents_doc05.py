@@ -139,3 +139,14 @@ def test_the_sop_rules_for_documents() -> None:
     assert "18. Project documents." in sop and "19. What the drawings say" in sop
     assert "never send an older revision" in sop and "never claim a file went" in sop
     assert "never converted to another unit" in sop and "never a guess or a typical value" in sop
+
+
+def test_the_sop_rule_for_a_structural_set() -> None:
+    """DR-09: steel and concrete from a structural set are read, never designed, and columns are per metre."""
+    sop = " ".join((Path(__file__).resolve().parents[2] / "src/agent_api/SOP.md").read_text(encoding="utf-8").split())
+    assert "From a structural set (`structure`)" in sop
+    assert "net quantities read from the drawing (add the usual wastage)" in sop
+    assert "Columns are per metre of height: multiply only by a height they give." in sop
+    assert "Never a design opinion (rule 14)." in sop
+    tools = _real_tools()
+    assert "structure (a structural set)" in tools["drawing_facts"].spec.description

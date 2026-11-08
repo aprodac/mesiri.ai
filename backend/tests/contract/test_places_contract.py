@@ -209,3 +209,50 @@ async def test_rename_move_and_archive_keeps_the_work(client, ctx, test_engine):
         kept = (await conn.execute(sa.text("SELECT count(*) FROM activities WHERE project_id = :p "
                                            "AND location_id IS NOT NULL"), {"p": ctx["project"]})).scalar()
     assert kept == 1
+
+
+def _structural_pdf() -> bytes:
+    """A footing plan on a grid (A-C across, 1-3 down) with a footing schedule, laid out like a consultant's set."""
+    from fpdf import FPDF
+
+    pdf = FPDF(unit="pt", format="A4")
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=6)
+    items = [(130, 89, "A"), (250, 89, "B"), (370, 89, "C"), (78, 143, "1"), (78, 228, "2"), (78, 313, "3")]
+    for x, y, col in ((130, 143, "C1"), (250, 143, "C1"), (370, 143, "C2"), (130, 228, "C1"), (250, 228, "C1"),
+                      (250, 313, "C2")):
+        items += [(x - 15, y - 15, "F1-250X250" if col == "C1" else "F2-220X220"), (x, y, col)]
+    items += [(90, 600, "1 F1 250X250 70 20 16 nos. 16 dia bars 16 nos. 16 dia bars"),
+              (90, 610, "2 F2 220X220 60 20 12 nos. 16 dia bars 12 nos. 16 dia bars"),
+              (90, 700, "Grade of Concrete: M20"), (90, 710, "Grade of Steel: Fe 500"),
+              (300, 700, "DWG NO :12/ST/01/01"), (300, 720, "DRAWING TITLE"), (300, 730, "FOOTING DETAILS")]
+    for x, y, t in items:
+        pdf.text(x, y, t)
+    return bytes(pdf.output())
+
+
+async def test_a_structural_drawing_becomes_a_live_footing_plan(client, ctx):
+    """DR-10: upload the set, track its footings, site's "B3 footing concreted" turns B3 done on the plan."""
+    r = await client.post(f"/projects/{ctx['project']}/documents", headers=_h(ctx["admin"]),
+                          files={"file": ("S-01 footing plan.pdf", _structural_pdf(), "application/pdf")})
+    assert r.status_code == 201, r.text
+    doc = r.json()["id"]
+    assert (await client.post(f"/documents/{doc}/track", headers=_h(ctx["engineer"]))).status_code == 403
+    tracked = (await client.post(f"/documents/{doc}/track", headers=_h(ctx["admin"]))).json()
+    assert tracked == {"made": 6, "tracked": 6, "untracked": 0}
+    assert (await client.post(f"/documents/{doc}/track", headers=_h(ctx["admin"]))).json()["made"] == 0
+
+    saved = await _work(client, ctx, "B3 footing concreted", work_type="Footing concrete", finished=True)
+    assert saved.status_code == 201 and saved.json()["place"] == "Foundation / B3"
+    await _work(client, ctx, "A1 PCC", work_type="PCC")
+
+    live = (await client.get(f"/projects/{ctx['project']}/live-plan", headers=_h(ctx["engineer"]))).json()["live"]
+    by = {m["grid"]: m for m in live["markers"]}
+    assert set(by) == {"A1", "B1", "C1", "A2", "B2", "B3"}
+    assert (by["B3"]["state"], by["B3"]["mark"], by["B3"]["last_work"]) == ("done", "F2", "Footing concrete")
+    assert by["A1"]["state"] == "in_progress" and by["C1"]["state"] == "not_started"
+    assert 0 < by["B3"]["x"] < 1 and 0 < by["B3"]["y"] < 1
+    s = live["summary"]
+    assert (s["done"], s["in_progress"], s["not_started"]) == (1, 1, 4)
+    # B3 is an F2: 12 bars of 16 mm each way, 220 − 2×5 + 2×(20 − 10) = 230 cm long.
+    assert s["steel_done_kg"] == pytest.approx(2 * 12 * 2.30 * 256 / 162, abs=0.2) and s["concrete_done_cum"] > 0

@@ -16,6 +16,8 @@ import {
 } from '@/lib/documents'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { LiveFootingPlan } from '@/components/drawings/live-plan'
+import { fetchDocumentLivePlan } from '@/lib/live-plan'
 
 // DOC-01: Planning › Documents. One place for a project's papers: drawings with their revision, permits with their
 // expiry, the contract and estimate (office only, D-DOC1). Drop files in: number, title, revision and folder are read
@@ -241,6 +243,7 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
             {doc.url && isImage && <img src={doc.url} alt={doc.title} className="max-h-[28rem] w-full rounded-md border object-contain" />}
             {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" className="text-sm underline underline-offset-2">Open / download</a>}
 
+            {doc.facts?.live_plan && <DocLive id={doc.id} />}
             {doc.facts && (
               <section className="rounded-md bg-muted/40 p-3 text-sm">
                 <p className="font-medium">Read from the drawing</p>
@@ -300,4 +303,10 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
       </SheetContent>
     </Sheet>
   )
+}
+
+/** DR-10: a structural drawing's footing plan, coloured by the work at each footing. */
+function DocLive({ id }: { id: string }) {
+  const live = useQuery({ queryKey: ['document-live', id], queryFn: () => fetchDocumentLivePlan(id) })
+  return live.data ? <LiveFootingPlan live={live.data} refreshKey={['document-live', id]} /> : null
 }

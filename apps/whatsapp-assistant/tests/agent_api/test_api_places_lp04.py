@@ -76,3 +76,10 @@ def test_the_sop_rule_for_places() -> None:
     # Guards: never ask a place for labour / material / expense, never guess between places.
     assert "never ask for a place for labour, material or an expense" in sop
     assert "never guess one" in sop
+
+
+def test_the_sop_names_footings_by_their_grid() -> None:
+    """DR-10: a footing tracked from a structural drawing is a place named by its grid."""
+    sop = " ".join((Path(__file__).resolve().parents[2] / "src/agent_api/SOP.md").read_text(encoding="utf-8").split())
+    assert "Footings tracked from a structural drawing are places named by their grid" in sop
+    assert '`place` is the grid in their words' in sop

@@ -320,7 +320,10 @@ ALLOWED: tuple[Allowed, ...] = (
             "What the project's current drawings say (q narrows: 'slab', 'first floor', 'kitchen'): levels (text as "
             "written on the drawing; value in the drawing's own units; sheet), rooms (label, size_text, area as "
             "written, computed sqft / sqm, floor), floors, fixtures, checks (things to ask the architect); each "
-            "names its drawing and revision."),
+            "names its drawing and revision. structure (a structural set): foundation (footings, concrete_cum, "
+            "pcc_cum, steel_kg, steel_by_dia, cement_bags), footings (mark, count, size, depth, bars, columns), "
+            "columns (mark, size, bars, ties, kg_per_m, count_on_plan), columns_kg_per_m, slabs (floor, mark, "
+            "thickness, bars, steel_kg_per_sqm), notes (grades, SBC, covers), assumptions."),
     # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
     # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
     Allowed("list_work_orders", "GET", "/subcontracts/work-orders",

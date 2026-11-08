@@ -55,7 +55,7 @@ export interface DocumentDetail extends ProjectDocument {
   url: string | null
   history: { id: string; revision: string | null; status: string; file_name: string; created_at: string }[]
   can_manage: boolean
-  facts?: { floors: string[]; levels: { value: number; pages: number[] }[]; checks: { message?: string; text?: string }[]; pages: number }
+  facts?: { floors: string[]; levels: { value: number; pages: number[] }[]; checks: { message?: string; text?: string }[]; pages: number; live_plan?: boolean }
 }
 
 export interface Uploaded extends ProjectDocument {

@@ -139,4 +139,20 @@ def boq(read: Mapping[str, Any]) -> dict[str, Any]:
             s["warning"] = (f"Only {s['area_sqm']:.0f} m² of rooms have a printed size on this floor (the largest floor "
                             f"has {biggest:.0f} m²). Areas without a size, such as halls or parking, are not included: "
                             "add them by hand.")
+    found = (read.get("structure") or {}).get("foundation") or {}
+    if found.get("footings"):
+        # DR-09: the foundation from the structural set's schedules, before the floors.
+        st = read["structure"]
+        lines = [
+            {"work": f"PCC {found['pcc_mix']} below footings", "unit": "cum", "quantity": found["pcc_cum"],
+             "basis": f"{found['footings']} footings, 10 cm thick, beyond each footing as the notes say"},
+            {"work": f"RCC {found['concrete_grade']} in footings", "unit": "cum", "quantity": found["concrete_cum"],
+             "basis": "; ".join(f"{f['mark']} × {f['count']}" for f in st["footings"] if f.get("concrete_cum"))},
+            {"work": f"Steel {st['notes'].get('steel') or 'Fe 500'} in footings", "unit": "kg",
+             "quantity": found["steel_kg"],
+             "basis": ", ".join(f"{d}: {kg:,.0f} kg" for d, kg in found["steel_by_dia"].items())
+                      + " (net cut lengths)"},
+        ]
+        sections.insert(0, {"name": "Foundation", "page": st.get("plan_page"), "lines": lines, "area_sqm": 0,
+                            "warning": None})
     return {"clear_height_m": clear, "height_note": note, "sections": sections}
