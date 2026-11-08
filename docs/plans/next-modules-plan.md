@@ -113,6 +113,11 @@ idle / breakdown hours, diesel, hire rate.**
   updates tick them; the evening review names what slipped.
 - Tally: export of expenses, supplier bills, payments and receipts as Tally vouchers (XML) for the CA; no
   two-way sync in the first step.
+- **As built (8 Nov 2026), part:** `GET /finance/tally/export` (owner / admin / finance): confirmed expenses as
+  Journal vouchers (category Dr; supplier, the staff member who paid, or "Expenses payable" Cr; GST said as included
+  to "Input GST"), payments with money as Payment vouchers (party Dr, bank / cash Cr), ledger masters first, each
+  voucher with Mesiri's id. Accounts › Tally export. With NXT-03 (8 Nov): RA bills sent as Sales vouchers and money
+  received as Receipts. Not yet imported into a real Tally: the CA's first import is the check.
 
 ## 5. Database, API, frontend (outline; each item writes its own detail when built)
 
@@ -131,7 +136,7 @@ idle / breakdown hours, diesel, hire rate.**
 |---|---|---|
 | D-N1 | RA bill quantity: from site-measured quantities, or typed by the office? | **Measured, editable by the office before submit, change recorded** |
 | D-N2 | Subcontractor: a vendor kind, or a Workforce contractor? | **Vendor kind** (no Workforce change); Workforce contractor teams link to it later |
-| D-N3 | Who sees client bills and receivables? | **Owner, admin, finance** (needs Ilan: permissions) |
+| D-N3 | Who sees client bills and receivables? | **Decided 8 Nov (Ilan, the default): owner, admin, finance** |
 | D-N4 | Wages and advances: in Mesiri, or left to payroll? | Needs Ilan (Workforce / Payroll) |
 | D-N5 | Equipment: what to record per machine per day | **Decided 7 Nov (Ilan):** name, owned or hired, hours worked, idle / breakdown hours, diesel, hire rate |
 

@@ -34,6 +34,7 @@ async def clean_db(test_engine: AsyncEngine):
     yield
     # Bills hold their BOQ lines (RESTRICT): other suites delete every BOQ row when they start.
     async with test_engine.begin() as conn:
+        await conn.execute(sa.text("DELETE FROM client_receipts"))  # NXT-03: they hold their bill (RESTRICT)
         await conn.execute(sa.text("DELETE FROM ra_bills"))
 
 
@@ -327,3 +328,62 @@ async def test_bill_needs_contract_terms_and_says_what_it_cannot_bill(client, ct
     after = (await client.get(f"/billing/ra-bills/{bill['id']}", headers=h)).json()
     over = [w for w in after["warnings"] if w["kind"] == "overbilled"]
     assert over and "40 sqm billed so far but only 0 measured now" in over[0]["message"]
+
+
+
+# -- NXT-03: money received and what clients owe --------------------------------------------------------------------
+
+
+async def _account(engine, org, user_id=None) -> str:
+    account = uuid.uuid4()
+    async with engine.begin() as conn:
+        creator = user_id or (await conn.execute(sa.text("SELECT id FROM users WHERE organization_id = :o LIMIT 1"),
+                                                 {"o": org})).scalar_one()
+        await conn.execute(sa.text(
+            "INSERT INTO money_accounts (id, organization_id, account_type, name, opening_balance, opening_balance_date, "
+            "created_by) VALUES (:id, :org, 'bank', 'HDFC current', 0, current_date - 90, :u)"),
+            {"id": account, "org": org, "u": creator})
+    return str(account)
+
+
+async def test_money_received_settles_bills_oldest_first_and_an_advance_never(client, ctx, test_engine):
+    h = _h(ctx["admin"])
+    m20, plaster = await _boq(client, ctx)
+    await _measured(client, ctx, test_engine, m20["id"], "120", "cum")
+    await _measured(client, ctx, test_engine, plaster["id"], "800", "sqm")
+    one = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={"bill_date": "2026-09-01"}, headers=h)).json()
+    assert (await client.post("/billing/receipts", headers=h, json={
+        "ra_bill_id": one["id"], "amount": "100", "account_id": await _account(test_engine, ctx["org"])})).status_code == 409
+    await client.post(f"/billing/ra-bills/{one['id']}/submit", headers=h)  # net 11,27,160
+    account = await _account(test_engine, ctx["org"])
+
+    r = await client.post("/billing/receipts", headers=h, json={
+        "ra_bill_id": one["id"], "amount": "1000000", "account_id": account, "reference": "NEFT 778"})
+    assert r.status_code == 201, r.text
+    assert (r.json()["bill_ref"], r.json()["bill_left"]) == ("RA-01", "127160.00")
+    too_much = await client.post("/billing/receipts", headers=h, json={
+        "ra_bill_id": one["id"], "amount": "200000", "account_id": account})
+    assert too_much.status_code == 422 and "on account" in too_much.json()["detail"]
+    # The mobilisation advance is never applied to a bill (each bill recovers it); money on account is.
+    await client.post("/billing/receipts", headers=h, json={
+        "project_id": str(ctx["project"]), "kind": "advance", "amount": "850000", "account_id": account})
+    on_acc = await client.post("/billing/receipts", headers=h, json={
+        "project_id": str(ctx["project"]), "kind": "on_account", "amount": "27160", "account_id": account})
+    assert on_acc.json()["project_left"] == "100000.00"
+
+    owed = (await client.get("/billing/receivables", headers=h)).json()
+    [row] = [c for c in owed["clients"] if c["outstanding"] != "0"]
+    assert (row["outstanding"], row["advance_received"]) == ("100000.00", "850000.00")
+    assert row["open_bills"][0]["ref"] == "RA-01" and row["open_bills"][0]["received"] == "1027160.00"
+    assert owed["buckets"]["61_90"] == "100000.00"
+
+    # Taking a receipt back puts it back on what is owed; the record stays.
+    receipts = (await client.get("/billing/receipts", headers=h)).json()["receipts"]
+    on_account = next(x for x in receipts if x["kind"] == "on_account")
+    assert (await client.post(f"/billing/receipts/{on_account['id']}/cancel", headers=h)).json()["status"] == "cancelled"
+    assert (await client.get("/billing/receivables", headers=h)).json()["outstanding"] == "127160.00"
+    assert len((await client.get("/billing/receipts", headers=h)).json()["receipts"]) == 3
+
+    pm = await _user(test_engine, ctx["org"], "PROJECT_MANAGER")
+    for method, url in (("get", "/billing/receivables"), ("get", "/billing/receipts")):
+        assert (await getattr(client, method)(url, headers=_h(pm))).status_code == 403

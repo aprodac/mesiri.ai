@@ -8,6 +8,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Callout, PageHeader } from '@/components/dpr-page'
 import { CreateCategoryDialog } from '@/components/categories/create-category-dialog'
+import { useAuth } from '@/lib/AuthContext'
+import { mayManageMoney } from '@/lib/cost'
 import { useReadOnly } from '@/lib/trial'
 import { usePageTitle } from '@/lib/page-title'
 import { CHIP } from '@/lib/site-day'
@@ -26,6 +28,9 @@ const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 export default function FinanceSettingsPage() {
   usePageTitle('Finance settings')
   const readOnly = useReadOnly()
+  const { me } = useAuth()
+  // SEC-04 (8 Nov): adding, renaming and switching off categories is for the owner, admins and finance (the API checks).
+  const canManage = !readOnly && mayManageMoney(me?.role)
   const queryClient = useQueryClient()
   const categories = useQuery({ queryKey: ['finance', 'categories'], queryFn: fetchCategoriesApi })
   const settings = useQuery({ queryKey: ['finance', 'settings'], queryFn: fetchFinanceSettingsApi })
@@ -55,7 +60,7 @@ export default function FinanceSettingsPage() {
           <h2 className="flex items-center gap-2 text-[15px] font-semibold">
             <Tags className="size-4 text-muted-foreground" aria-hidden="true" /> Expense categories
           </h2>
-          {!readOnly && (
+          {canManage && (
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing(null)}>
               <Plus className="size-3.5" /> Add category
             </Button>
@@ -68,9 +73,12 @@ export default function FinanceSettingsPage() {
         ) : categories.isLoading ? (
           <Skeleton className="h-32 rounded-lg" />
         ) : list.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No categories yet. Mesiri adds one when an expense names it.</p>
+          <p className="text-sm text-muted-foreground">No categories yet. An expense whose category is not here is kept under Uncategorized.</p>
         ) : (
           <ul className="divide-y rounded-lg border">
+            {!readOnly && !canManage && (
+              <li className="px-3 py-2 text-xs text-muted-foreground">Only the owner, an admin or finance can add or change categories.</li>
+            )}
             {list.map((c) => (
               <li key={c.id} className={cn('flex items-center gap-3 px-3 py-2', c.status !== 'active' && 'text-muted-foreground')}>
                 <span className="min-w-0 flex-1">
@@ -81,7 +89,7 @@ export default function FinanceSettingsPage() {
                 <span className="text-right text-xs text-muted-foreground tabular-nums">
                   {c.expense_count} {c.expense_count === 1 ? 'expense' : 'expenses'} · {rupees(Number(c.total_amount_spent) || 0)}
                 </span>
-                {!readOnly && (
+                {canManage && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`More for ${c.name}`}>

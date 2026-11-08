@@ -29,6 +29,11 @@ import RaBillsPage from '@/pages/RaBillsPage'
 import RaBillDocumentPage from '@/pages/RaBillDocumentPage'
 import ProjectStartPage from '@/pages/ProjectStartPage'
 import CostBudgetPage from '@/pages/CostBudgetPage'
+import CostVariancePage from '@/pages/CostVariancePage'
+import CostHomePage from '@/pages/CostHomePage'
+import CostMaterialsPage from '@/pages/CostMaterialsPage'
+import TallyExportPage from '@/pages/TallyExportPage'
+import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
@@ -165,7 +170,10 @@ export default function App() {
           <Route path="planning/drawing-check" element={<DrawingCheckPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
           <Route path="billing/ra-bills" element={<RaBillsPage />} />
-          {/* CC-01 / CC-04: the Cost control module. */}
+          {/* CC-01 / CC-04 / CC-07: the Cost control module. */}
+          <Route path="cost" element={cst(<CostHomePage />)} />
+          <Route path="cost/green-red" element={cst(<CostVariancePage />)} />
+          <Route path="cost/materials" element={cst(<CostMaterialsPage />)} />
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />
           {/* WEB-72: planned module pages (lib/module-map.ts). Only shown while "Show planned
@@ -188,6 +196,8 @@ export default function App() {
           <Route path="finance/expenses/:id" element={fin(<ExpensesPage />)} />
           <Route path="finance/money" element={fin(<MoneyPage />)} />
           <Route path="finance/vendors" element={fin(<VendorsPage />)} />
+          <Route path="accounts/tally" element={fin(<TallyExportPage />)} />
+          <Route path="accounts/receivables" element={fin(<ReceivablesPage />)} />
           <Route path="finance/vendors/:id" element={fin(<VendorPage />)} />
           <Route path="finance/settings" element={fin(<FinanceSettingsPage />)} />
           <Route path="finance/reports" element={fin(<FinanceReportsPage />)} />

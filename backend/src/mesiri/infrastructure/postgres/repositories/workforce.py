@@ -578,6 +578,64 @@ class PostgresWorkforceReadRepository:
 
         return [dict(row) for row in rows]
 
+    async def attendance_by_site_day_trade(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        date_from: datetime.date,
+        date_to: datetime.date,
+    ) -> list[dict[str, Any]]:
+        """A project's attendance per site, day and trade, for costing (CC-05: labour put on a BOQ line).
+
+        The same counting rule as `aggregate_attendance` (voided and corrected reports out, a figure re-sent
+        later the same day replaces the earlier one, only saved reports, absent 0 / half day 0.5, cost from
+        the line's own wage, a line with no wage gives man-days but no cost), so cost control and the
+        Labour pages cannot disagree on what a day cost. A read only: nothing in Labour changes.
+
+        `trade_key` is the trade trimmed and lower-cased ('' when none was said), the way the Labour reports
+        bucket trades; `activities` is what the lines said the people did, for suggesting a BOQ line.
+        """
+        lines, reports = _labour_attendance_lines, _labour_attendance_reports
+        headcount = sa.func.coalesce(lines.c.headcount, 1)
+        man_days = headcount * _day_fraction()
+        priced = lines.c.daily_wage.isnot(None)
+        trade_key = sa.func.coalesce(sa.func.lower(sa.func.trim(lines.c.trade)), "")
+        rows = (
+            await self._conn.execute(
+                sa.select(
+                    reports.c.site_id.label("site_id"),
+                    reports.c.occurred_date.label("work_date"),
+                    trade_key.label("trade_key"),
+                    sa.func.max(lines.c.trade).label("trade"),
+                    sa.func.sum(man_days).label("man_days"),
+                    sa.func.coalesce(sa.func.sum(sa.case((priced, man_days), else_=0)), 0).label(
+                        "priced_man_days"
+                    ),
+                    sa.func.coalesce(
+                        sa.func.sum(sa.case((priced, man_days * lines.c.daily_wage), else_=0)), 0
+                    ).label("cost"),
+                    sa.func.array_remove(sa.func.array_agg(sa.distinct(lines.c.activity)), None).label(
+                        "activities"
+                    ),
+                )
+                .select_from(lines.join(reports, reports.c.id == lines.c.report_id))
+                .where(
+                    reports.c.organization_id == organization_id,
+                    reports.c.project_id == project_id,
+                    reports.c.occurred_date >= date_from,
+                    reports.c.occurred_date <= date_to,
+                    reports.c.id.notin_(_superseded_report_ids()),
+                    reports.c.voided_at.is_(None),
+                    _counted_line_clause(),
+                )
+                .group_by(reports.c.site_id, reports.c.occurred_date, trade_key)
+                .having(sa.func.sum(man_days) > 0)
+                .order_by(reports.c.occurred_date.desc(), trade_key)
+            )
+        ).mappings().all()
+        return [dict(row) for row in rows]
+
     async def worker_statistics(
         self,
         *,

@@ -55,6 +55,10 @@ PAGES: dict[str, tuple[str, str]] = {
     "documents": ("/planning/documents?project={project_id}", "the project's drawings, permits and papers"),
     "material_plan": ("/planning/materials?project={project_id}", "what to order and by when, from the BOQ and schedule"),
     "hire_check": ("/equipment/hire", "hire bills checked against the hours recorded"),
+    "receivables": ("/accounts/receivables", "what each client owes, by age, and money received"),
+    # CC-11: cost control.
+    "cost_today": ("/cost/green-red?project={project_id}", "green / amber / red per BOQ line: labour against the work it earned"),
+    "budget_vs_actual": ("/cost/budget?project={project_id}", "budget against actual, and labour to put on BOQ lines"),
 }
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

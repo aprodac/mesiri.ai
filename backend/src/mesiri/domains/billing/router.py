@@ -15,6 +15,10 @@
   POST  /billing/ra-bills/{bill_id}/certify    what the client's engineer certified (may differ), and when
   POST  /billing/ra-bills/{bill_id}/cancel     a submitted bill withdrawn (its quantities go back to "not billed")
   DELETE /billing/ra-bills/{bill_id}           remove a draft
+  GET   /billing/receivables?project_id=       NXT-03: what each client owes, by age, with its open bills
+  GET   /billing/receipts?project_id=          money received from clients, newest first
+  POST  /billing/receipts                      record money received: against a bill, on account, or an advance
+  POST  /billing/receipts/{receipt_id}/cancel  take a receipt back (kept, marked cancelled)
 
 Who: the owner, an admin and finance (``may_manage_money``), within the projects they can reach: the plan's default
 for decision D-N3 (docs/plans/next-modules-plan.md), the narrowest existing money rule, until Ilan decides otherwise.
@@ -29,6 +33,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
@@ -376,3 +381,123 @@ async def delete_ra_bill(bill_id: uuid.UUID, auth: AuthorizationContext = Depend
     _draft(bill)
     await bills.delete_draft(conn, bill_id)
     return Response(status_code=204)
+
+
+
+# -- NXT-03: money received from clients, and what they owe ---------------------------------------------------------
+
+
+class ReceiptIn(BaseModel):
+    project_id: uuid.UUID | None = Field(default=None, description="Needed when no ra_bill_id is given")
+    ra_bill_id: uuid.UUID | None = Field(default=None, description="The RA bill it pays; none: on account or advance")
+    kind: str = Field(default="bill", description="bill (against ra_bill_id), on_account, or advance (mobilisation)")
+    amount: Decimal = Field(gt=0, max_digits=16, decimal_places=2)
+    received_on: datetime.date | None = None
+    account_id: uuid.UUID = Field(description="The company account it came into (money_accounts)")
+    method: str | None = Field(default=None, max_length=40)
+    reference: str | None = Field(default=None, max_length=80)
+    notes: str | None = Field(default=None, max_length=500)
+
+    _clean_text = field_validator("method", "reference", "notes")(_clean)
+
+
+def _scope_ids(auth: AuthorizationContext, project_id: uuid.UUID | None) -> set | None:
+    if project_id is not None:
+        return {project_id}
+    return None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
+
+
+@router.get("/billing/receivables")
+async def receivables(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                      conn: AsyncConnection = Depends(get_db_conn)):
+    """Per client, most owed first: outstanding (each bill sent, its net less the money received on it and the
+    on-account money applied oldest first), the age buckets, the open bills, money received not applied yet, and
+    mobilisation advances received (recovered through the bills, never applied). ``domains/billing/receivables.py``."""
+    from mesiri.domains.billing import receipts
+
+    _require(auth, project_id)
+    today = await _today(conn, auth.organization_id)
+    data = await receipts.owed(conn, auth.organization_id, _scope_ids(auth, project_id), today)
+    total = sum((c["outstanding"] for c in data["clients"]), Decimal(0))
+    buckets = {k: sum((c["buckets"][k] for c in data["clients"]), Decimal(0)) for k in ("0_30", "31_60", "61_90", "90_plus")}
+    return _out({"date": today, "outstanding": total, "buckets": buckets,
+                 "clients": [{**c, "open_bills": [{k: b[k] for k in ("id", "ref", "project_id", "project", "bill_date",
+                                                                      "due", "received", "left", "days", "bucket")}
+                                                  for b in c["open_bills"]]} for c in data["clients"]]})
+
+
+@router.get("/billing/receipts")
+async def list_client_receipts(project_id: uuid.UUID | None = None,
+                               auth: AuthorizationContext = Depends(get_auth_context),
+                               conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import receipts
+
+    _require(auth, project_id)
+    return _out({"receipts": await receipts.list_receipts(conn, auth.organization_id, _scope_ids(auth, project_id))})
+
+
+@router.post("/billing/receipts", status_code=201)
+async def record_client_receipt(body: ReceiptIn, auth: AuthorizationContext = Depends(get_auth_context),
+                                conn: AsyncConnection = Depends(get_db_conn)):
+    """Money a client paid. Against a bill (``ra_bill_id``): the bill must be sent (submitted or certified) and not
+    paid beyond what it has left (the rest is on account: say so, record it as such). On account / advance: the
+    project's. The account must be the company's. Answers the receipt and what the bill or project has left."""
+    from mesiri.domains.billing import contracts, receipts
+
+    _require(auth)
+    org = auth.organization_id
+    if body.kind not in ("bill", "on_account", "advance"):
+        raise HTTPException(status_code=422, detail="kind is bill, on_account or advance")
+    today = await _today(conn, org)
+    bill = None
+    if body.kind == "bill":
+        if body.ra_bill_id is None:
+            raise HTTPException(status_code=422, detail="Say which RA bill it pays (ra_bill_id), or record it on account")
+        bill = await _bill(conn, auth, body.ra_bill_id)
+        if bill["status"] not in ("submitted", "certified"):
+            raise HTTPException(status_code=409, detail=f"{bill['ref']} is {bill['status']}: only a bill sent to the "
+                                                        "client can be paid")
+        project_id = bill["project_id"]
+        settled = await receipts.owed(conn, org, {project_id}, today)
+        left = next((b["left"] for b in settled["bills"] if b["id"] == bill["id"]), Decimal(0))
+        if body.amount > left:
+            raise HTTPException(status_code=422, detail=(
+                f"{bill['ref']} has ₹{left:,.2f} left; record ₹{left:,.2f} against it and the rest on account."))
+    else:
+        if body.ra_bill_id is not None:
+            raise HTTPException(status_code=422, detail="Money on account or an advance is not for one bill")
+        if body.project_id is None:
+            raise HTTPException(status_code=422, detail="Say which project it is for (project_id)")
+        project_id = body.project_id
+        _require(auth, project_id)
+    account = (await conn.execute(text("SELECT id FROM money_accounts WHERE id = :a AND organization_id = :org "
+                                       "AND status = 'active'"), {"a": body.account_id, "org": org})).scalar()
+    if account is None:
+        raise HTTPException(status_code=422, detail="That account is not one of the company's active accounts")
+    contract = await contracts.get_contract(conn, org, project_id)
+    client_id = (bill or {}).get("client_id") or (contract or {}).get("client_id")
+    receipt_id = await receipts.record(conn, org, {
+        "project_id": project_id, "client_id": client_id, "ra_bill_id": body.ra_bill_id, "kind": body.kind,
+        "amount": body.amount, "received_on": body.received_on or today, "account_id": body.account_id,
+        "method": body.method, "reference": body.reference, "notes": body.notes}, auth.user_id)
+    settled = await receipts.owed(conn, org, {project_id}, today)
+    left = (next((b["left"] for b in settled["bills"] if b["id"] == body.ra_bill_id), None) if bill
+            else sum((b["left"] for b in settled["bills"]), Decimal(0)))
+    return _out({"receipt": await receipts.get_receipt(conn, org, receipt_id),
+                 "bill_left" if bill else "project_left": left, "bill_ref": bill["ref"] if bill else None})
+
+
+@router.post("/billing/receipts/{receipt_id}/cancel")
+async def cancel_client_receipt(receipt_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                                conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import receipts
+
+    _require(auth)
+    receipt = await receipts.get_receipt(conn, auth.organization_id, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    _require(auth, receipt["project_id"])
+    if receipt["status"] == "cancelled":
+        raise HTTPException(status_code=409, detail="Already cancelled")
+    await receipts.cancel(conn, receipt_id, auth.user_id)
+    return _out(await receipts.get_receipt(conn, auth.organization_id, receipt_id))

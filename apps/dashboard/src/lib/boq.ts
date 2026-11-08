@@ -173,6 +173,8 @@ export function formatRupees(value: string | null | undefined): string {
   if (value === null || value === undefined || value === '') return '—'
   const n = Number(value)
   if (Number.isNaN(n)) return '—'
-  const amount = `₹${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+  // Whole rupees stay whole (₹13,640); an amount with paise always shows two places (₹9,836.80, never ₹9,836.8).
+  const whole = Number.isInteger(Math.round(Math.abs(n) * 100) / 100)
+  const amount = `₹${Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })}`
   return n < 0 ? `−${amount}` : amount
 }

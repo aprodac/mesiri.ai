@@ -13,6 +13,12 @@ expenses typed in, but the materials delivered and the labour on site, each coun
   hire's minimum hours, never breakdown) and diesel priced on a log. A day on a hire bill that is an expense, and
   diesel on a log linked to its expense, are in Expenses already and are not counted again.
 
+**GST (D-CC8, decided 8 Nov 2026):** an expense costs its amount *before* GST the company can claim back, when the
+supplier has a GSTIN and the bill says its GST is included (``tax_amount``); otherwise the full amount, and the GST
+inside it is counted as cost and said (``gst.in_cost``). One SQL expression, ``EXPENSE_COST_SQL``, for every reader
+of expense cost (this file and ``costing/centres.py``), so the centres still add up to this total. What was paid
+(cash, the supplier ledger, Tally) is unchanged: it is what left the bank, GST included.
+
 Known overlap, said on the page: a delivery priced on site *and* paid later by an expense typed without the bill
 counts twice until someone says which bill it was on: the supplier ledger's "On this bill" (CC-09) links them, and
 from then on the delivery is billed and counted once.
@@ -32,6 +38,18 @@ from mesiri.domains.procurement import rates as purchases
 from mesiri.infrastructure.postgres.repositories.workforce import PostgresWorkforceReadRepository
 
 _C = Decimal("0.01")
+
+#: The GST in an expense the company can claim back (D-CC8): the supplier has a GSTIN, the bill says GST is included,
+#: and the tax is less than the amount. Expenses alias ``e``.
+CLAIMABLE_GST_SQL = (
+    "CASE WHEN COALESCE(e.is_tax_inclusive, true) AND e.tax_amount > 0 AND e.tax_amount < e.amount "
+    "AND EXISTS (SELECT 1 FROM vendors v_g WHERE v_g.id = e.vendor_id AND NULLIF(btrim(v_g.gstin), '') IS NOT NULL) "
+    "THEN e.tax_amount ELSE 0 END"
+)
+#: What an expense costs: its amount less the GST that can be claimed back.
+EXPENSE_COST_SQL = f"(e.amount - ({CLAIMABLE_GST_SQL}))"
+#: GST paid that cannot be claimed (no GSTIN on the supplier, or not said as included): it stays in the cost.
+GST_IN_COST_SQL = f"(CASE WHEN e.tax_amount > 0 AND ({CLAIMABLE_GST_SQL}) = 0 THEN e.tax_amount ELSE 0 END)"
 
 
 def _m(v: Decimal) -> str:
@@ -58,18 +76,24 @@ async def project_costs(
         where.append("e.site_id = :site")
         params["site"] = site_id
     rows = (await conn.execute(text(
-        "SELECT e.project_id, e.site_id, COUNT(*) AS n, SUM(e.amount) AS amount FROM expenses e "
+        f"SELECT e.project_id, e.site_id, COUNT(*) AS n, SUM({EXPENSE_COST_SQL}) AS amount, "
+        f"SUM({CLAIMABLE_GST_SQL}) AS gst_claimable, SUM({GST_IN_COST_SQL}) AS gst_in_cost, "
+        f"COUNT(*) FILTER (WHERE ({GST_IN_COST_SQL}) > 0) AS gst_in_cost_count FROM expenses e "
         f"WHERE {' AND '.join(where)} GROUP BY e.project_id, e.site_id"), params)).mappings().all()  # noqa: S608
 
     sites: dict[tuple, dict] = defaultdict(lambda: {"expenses": Decimal(0), "materials": Decimal(0), "labour": Decimal(0),
                                                     "machines": Decimal(0), "hire": Decimal(0), "fuel": Decimal(0),
                                                     "expense_count": 0, "deliveries": 0})
+    gst = {"claimable": Decimal(0), "in_cost": Decimal(0), "in_cost_count": 0}
     for r in rows:
         if r["site_id"] is not None and not visible(r["project_id"], r["site_id"]):
             continue
         s = sites[(r["project_id"], r["site_id"])]
         s["expenses"] += Decimal(r["amount"] or 0)
         s["expense_count"] += int(r["n"])
+        gst["claimable"] += Decimal(r["gst_claimable"] or 0)
+        gst["in_cost"] += Decimal(r["gst_in_cost"] or 0)
+        gst["in_cost_count"] += int(r["gst_in_cost_count"] or 0)
 
     # Materials: priced deliveries without a bill (a bill made an expense already), and how many had no price.
     delivered = await purchases.fetch_purchases(conn, org, project_ids=project_ids, date_from=date_from, date_to=date_to)
@@ -140,6 +164,8 @@ async def project_costs(
         "machines": {"amount": _m(total["machines"]), "hire": _m(total["hire"]), "fuel": _m(total["fuel"]),
                      "hours": str(machine_hours.normalize()), "litres": str(machine_litres.normalize())},
         "total": _m(total["expenses"] + total["materials"] + total["labour"] + total["machines"]),
+        # D-CC8: GST left out of cost (claimable) and GST that stays in it, said, with how many expenses.
+        "gst": {"claimable": _m(gst["claimable"]), "in_cost": _m(gst["in_cost"]), "in_cost_count": gst["in_cost_count"]},
         "by_site": by_site,
     }
 

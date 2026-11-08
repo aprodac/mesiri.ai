@@ -152,6 +152,93 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 - **Not yet:** spending per BOQ line (needs CC-05 labour allocation), green / amber / red (CC-07, thresholds
   D-CC6), material norms (CC-03).
 
+### 4d. As built: labour put on BOQ lines (CC-05, 8 Nov 2026)
+
+- **Table `labour_boq_allocations`** (migration 0528, additive, RLS): project, site, day, trade (`trade_key`,
+  trimmed and lower-cased) → BOQ line, man-days. Not a column on attendance lines: a re-sent list replaces the
+  earlier lines (BE-10), so a link there would be lost on every correction. A split is several rows.
+- **Attendance is read, never re-counted:** `PostgresWorkforceReadRepository.attendance_by_site_day_trade`
+  (a read added to the Labour repository) applies the Labour aggregate's own rules: voided and corrected reports
+  out, the later figure of a day replaces the earlier, only saved reports, absent 0 / half day 0.5, the line's
+  own wage. Nothing in how attendance is recorded, counted or paid changed.
+- **Sharing (`domains/costing/labour.py`, pure):** a line's labour is its share of the group's cost by
+  man-days, rounded to the paisa, the part not on a line takes the rounding, so lines + not on a line = what
+  attendance cost. No wage: man-days, no cost. Attendance re-sent lower after a split: the lines share what it
+  costs now and the group says `over_allocated`; money never passes what attendance cost. A line revised later
+  keeps its labour (`current_revision_of`).
+- **API:** `GET /cost/projects/{id}/labour?date_from&date_to&unallocated` (per site, day and trade: man-days,
+  cost, the lines it is on, what is on none, a suggested line from what the attendance said or the one line
+  measured on that site that day; never saved by itself). `PUT /cost/projects/{id}/labour` replaces a group's
+  lines (empty list: off every line); 422 for a line not in the project, a line twice, or more man-days than
+  attendance has; 404 when attendance has no such site, day and trade. Money roles, within their projects.
+  `GET /cost/projects/{id}/budget` lines now carry `labour_man_days`, `labour_cost`, `labour_difference`
+  (labour earned − labour cost), and the project `labour_on_lines` / `labour_not_on_a_line`.
+- **Dashboard:** Budget vs actual shows Labour spent and Labour vs earned per BOQ line, a callout with labour
+  on lines and not on a line, and "Labour not on a BOQ line yet" (last 30 days): the suggestion preselected,
+  man-days to split, Put on line, a chip per line to take it off.
+- **Not yet:** the WhatsApp side (`record_attendance` naming the work, v3; CC-11), engineers putting labour on
+  lines (D-CC4), the green / amber / red colours (CC-07).
+
+### 4e. As built: green / amber / red per BOQ line (CC-07, 8 Nov 2026)
+
+- **Rule (`domains/costing/variance.py`, pure):** per line over a period, labour earned (work done × the
+  line's labour rate) against the labour put on the line (CC-05). Ratio earned / cost: green ≥ 1.00, amber
+  ≥ 0.90, red below, and red when labour is on a line with no work measured. Grey, with the reason, when it
+  cannot be judged: no labour rate, work with no labour on the line, labour with no wage. Never a colour made up.
+  Thresholds are D-CC6's default as constants; a per-company setting is later (it changes shared settings).
+- **One count of work done:** `boq_router.counted_work` (per line, day and site) is what `done_by_line` now sums,
+  so the BOQ page, the schedule, RA bills and the colours read the same work. `repo.work_done` also returns the
+  day and site.
+- **API:** `GET /cost/projects/{id}/variance?date_from&date_to&site_id` (default last 7 days): summary (earned,
+  spent, over / under, colour, lines per colour), lines worst first with the reason and cost per unit against the
+  rate, each day's colour, labour not on a line (said, not coloured), materials for the project (earned against
+  bought; not coloured: bought is not used, CC-08). A site's day is this route with one date and `site_id`; the
+  plan's separate `/sites/{id}/cost/daily` was not needed.
+- **Dashboard:** Cost control > Green / red (`/cost`, first in the group): Yesterday / Today / Last 7 / Last 30
+  days, a strip of the period's figures, a card per day (tap: that day), BOQ lines worst first with the reason
+  in words ("₹8,800 of labour for 2.6 cum: ₹3,384.62 per cum against the budget ₹1,800"), links to put labour
+  on lines or set a missing rate. Follows the scope bar's site.
+- **Not yet:** materials per line (CC-08), the evening card on WhatsApp (CC-11), the per-company threshold
+  setting, engineers seeing their site's colours without rates (D-CC4).
+
+### 4f. As built: the evening cost card and cost on WhatsApp (CC-11, 8 Nov 2026)
+
+- **Card (`domains/costing/reminders.py`):** queued by `application/procurement/alerts.queue_reminders` (every 15
+  minutes), once a day per project after its `reporting_cutoff_time` in its zone (18:00 company zone when unset);
+  today's colour, earned against spent, up to four lines worst first with why, labour not on a line, one colour per
+  site when there are several, a pointer to Cost control › Green / red. To owner / admin / PM on the project. Held
+  for the 24-hour window (a Meta template to send outside it is the ops part, open). Nothing when nothing happened
+  or the company has Cost control off. English only, like the schedule and material notes.
+- **v3:** the costing router is in the agent API; tools `cost_today`, `budget_vs_actual`, `labour_not_on_boq`,
+  `put_labour_on_boq` (Save first); SOP rule 20 (answer from the API, never a made-up colour; labour goes on a line
+  after the attendance is saved, a split only with their numbers). Rates, centres and categories stay on the
+  dashboard.
+
+### 4g. As built: committed, forecast, portfolio, Cost control home (CC-18, CC-19, CC-22, 8 Nov 2026)
+
+- **Committed** (`forecast.py`): materials = open purchase orders' quantity not delivered × the order rate (lines
+  with no rate counted, not valued); subcontract = issued / completed work orders' agreed value not billed. Labour
+  has none.
+- **Forecast at completion** per kind = spent + (budget − earned) × spent / earned; None with `too_early` (nothing
+  earned or spent yet) or `no_budget`. Labour spent includes labour on no BOQ line, so until it is put on its lines
+  the labour forecast leans pessimistic; the page says how much labour is on no line.
+- **`GET /cost/portfolio`**: one row per project with a BOQ, from `budget_for` and `variance_for` (the project pages'
+  own reads), worst forecast first.
+- **Dashboard:** Cost control > Overview at `/cost` (totals, what needs a person, projects worst first, the other
+  pages); Green / red at `/cost/green-red`; Budget vs actual's cards show committed and the forecast.
+
+### 4h. As built: materials against the BOQ (CC-08, 8 Nov 2026)
+
+- **`domains/costing/materials.py`:** per material with a norm on a BOQ line: required in all (planned × norm ×
+  (1 + wastage)) and by the work done so far; against received, used and on hand (the stock ledger, PRC-17, project
+  to date) and on open orders. Colour: what the work done needed against what was used (labour's thresholds); grey
+  with the reason when nothing is used yet, nothing is recorded as used, or the stock unit differs from the norm's
+  (never converted). Short to finish = still needed − on hand − on order.
+- **`GET /cost/projects/{id}/materials`**, from the material plan's own inputs (`plan_router._lines`, `_stock`,
+  `measured_by_line`). Cost control > Materials vs BOQ; v3 `materials_vs_boq`.
+- **Not yet:** consumption put on a BOQ line (`material_usage.planned_item_id`) for a per-line material colour; it
+  changes the Materials write path.
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |
@@ -222,11 +309,11 @@ answers to "Malabar balance?", "how much plastering left?", "metal enough for th
 | D-CC1 | Material cost: when bought or when consumed? | **Both, shown separately:** spend = receipts; cost of work = consumed × weighted average rate | CC-07 |
 | D-CC2 | Labour on a day with several work items and no split said | **Ask once with buttons; if no answer, split by man-days the engineer named, else mark "unallocated"** (never guessed) | CC-05 |
 | D-CC3 | Supplier liability from deliveries or bills? A material bill paid as an expense must not count twice | **Deliveries create the liability; bills confirm it; payments reduce it; an expense linked to a material bill is a payment, not a second cost** | CC-01, CC-09 |
-| D-CC4 | Who sees rates, margins, profit/loss, supplier balances | **Owner, Admin, Finance, PM; engineers see quantities and their own site's green/red, no client rate** — **needs Ilan (permissions)** | CC-07, CC-09, CC-12 |
+| D-CC4 | Who sees rates, margins, profit/loss, supplier balances | **Decided 8 Nov (Ilan, the default): Owner, Admin, Finance, PM; engineers see quantities and their own site's green/red, no rupees or rates** | CC-07, CC-09, CC-12 |
 | D-CC5 | Restructure the dashboard navigation around the five screens | **Yes, registers become drill-downs** — product decision, shared layout | CC-12, CC-15 |
 | D-CC6 | Green/red threshold | **Green ≥ 100% of benchmark, amber 90–100%, red < 90%**, per company setting | CC-07 |
 | D-CC7 | Dedicated hosting for clients who ask | **Dedicated cloud instance (own DB, backups), no on-premise in V1**; priced separately | CC-16 |
-| D-CC8 | Cost before or after GST we can claim back | **Before claimable GST when the bill has a GSTIN and a tax amount, else the full amount, flagged** — needs Ilan | CC-25, CC-07 |
+| D-CC8 | Cost before or after GST we can claim back | **Decided 8 Nov (Ilan, the default): before claimable GST when the supplier has a GSTIN and the bill says GST is included; else the full amount, flagged** | CC-25, CC-07 |
 
 ## 10. Risks
 

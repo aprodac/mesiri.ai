@@ -37,6 +37,8 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.materials.plan_router",  # MP-04: the material plan (what to order and when)
     "mesiri.domains.places.router",  # LP-04: floors and rooms, what is left on a floor
     "mesiri.domains.documents.router",  # DOC-05, DR-08: find a document, what the drawings say
+    "mesiri.domains.costing.router",  # CC-11: cost control (green / red, budget vs actual, labour on BOQ lines)
+    "mesiri.domains.billing.router",  # NXT-03: RA bills, money received from clients, what they owe
     "mesiri.domains.admin.my_requests_router",  # request 230: the person's own requests
     "mesiri.domains.identity.preferences_router",  # WA-169: the reply language they chose
 )

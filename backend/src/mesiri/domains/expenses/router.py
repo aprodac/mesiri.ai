@@ -288,13 +288,23 @@ async def list_expense_categories(
     ]
 
 
+def _may_manage_categories(auth_context: AuthorizationContext) -> None:
+    """SEC-04: the roles that manage money, the same rule as ``PATCH /cost/categories`` (a category's cost centre)."""
+    from mesiri.authorization.roles import may_manage_money
+
+    if not may_manage_money(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin or finance can add or change expense categories.")
+
+
 @router.post("/categories", response_model=CategoryResponse, status_code=201)
 async def create_expense_category(
     body: CreateCategoryRequest,
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """Create a new expense category."""
+    """Create a new expense category (owner, admin or finance: a category decides the cost centre its spending counts
+    in, CC-01, and later its ledger; SEC-04, decided 8 Nov)."""
+    _may_manage_categories(auth_context)
     cat_repo = PostgresExpenseCategoryRepository(conn)
     existing = await cat_repo.find_by_name_exact_active(auth_context.organization_id, body.name)
     if existing:
@@ -322,7 +332,8 @@ async def update_expense_category(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """Update category name, code, or status."""
+    """Update category name, code, or status (owner, admin or finance, SEC-04)."""
+    _may_manage_categories(auth_context)
     cat_repo = PostgresExpenseCategoryRepository(conn)
     cat = await cat_repo.get_by_id(auth_context.organization_id, category_id)
     if not cat:

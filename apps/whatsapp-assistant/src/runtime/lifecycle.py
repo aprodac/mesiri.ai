@@ -488,6 +488,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.places.router", "Places"),  # LP-01..05: floors and rooms, progress by place
         ("mesiri.domains.documents.router", "Documents"),  # DOC-01, DR-07/08: documents and drawings register
         ("mesiri.domains.costing.router", "Cost control"),  # CC-01: the cost module (web)
+        ("mesiri.domains.finance.tally_router", "Tally export"),  # NXT-12: expenses and payments as Tally XML
     ):
         try:
             import importlib

@@ -123,18 +123,19 @@ def _words(value: str | None) -> set[str]:
 
 
 def suggest_line(
-    work: str | None, unit_id: Any, section_id: Any, lines: Iterable[Mapping[str, Any]]
+    work: str | None, unit_id: Any, section_id: Any, lines: Iterable[Mapping[str, Any]], *, any_unit: bool = False
 ) -> Any | None:
     """The BOQ line a site's work update most likely belongs to, for a person to confirm.
 
     Only lines in the same unit are candidates (a quantity is never counted in another unit);
     the one sharing the most words with the work wins, a line in the activity's own section
     first. None when nothing shares a word or two lines tie: a guess is never made.
+    ``any_unit``: for labour (CC-05), which is man-days on any line, so every unit is a candidate.
     """
     said = _words(work)
     scored = []
     for line in lines:
-        if line["unit_id"] != unit_id:
+        if not any_unit and line["unit_id"] != unit_id:
             continue
         shared = len(said & _words(line["work_type"]))
         if shared:
