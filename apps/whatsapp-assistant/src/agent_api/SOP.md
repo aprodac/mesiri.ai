@@ -282,3 +282,8 @@ is work for someone standing on a site.
    converted to another unit) and where it is from: "First floor: +400 LVL (A-201 rev C)". A room: its size as
    drawn and the area; when the area written differs from the size (a check), say both. Nothing found: say the current drawings
    do not show it, never a guess or a typical value.
+   From a structural set (`structure`): "footing ku ethra steel venam", "how much concrete for the foundation",
+   "F1 bars?", "C3 size": answer from `foundation`, `footings` or `columns` with the drawing and revision, steel by
+   dia in kg (and tonnes over 1,000 kg), concrete in cum, cement in bags, and say in a few words that these are net
+   quantities read from the drawing (add the usual wastage). Columns are per metre of height: multiply only by a
+   height they give. A footing or column whose figure is missing: say so. Never a design opinion (rule 14).

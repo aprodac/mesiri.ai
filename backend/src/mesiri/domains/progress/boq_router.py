@@ -639,11 +639,13 @@ async def boq_from_drawing(
         if section_id is None:
             section_id = await repo.create_section(org, project_id, sec.name, None, None, auth.user_id)
             # Dated like the floor's finishing work in the schedule (DR-05's "<floor>: masonry / plastering /
-            # flooring"), so it sits on the Gantt with them and the material plan can spread its need.
+            # flooring"), so it sits on the Gantt with them and the material plan can spread its need. DR-09: the
+            # "Foundation" section (a structural set's footings) takes the excavation and footings' dates.
             span = (await conn.execute(text(
                 "SELECT min(planned_start), max(planned_end) FROM work_packages WHERE organization_id = :org "
-                "AND project_id = :p AND lower(name) IN (lower(:n) || ': masonry', lower(:n) || ': plastering', "
-                "lower(:n) || ': flooring') AND planned_start IS NOT NULL"),
+                "AND project_id = :p AND (lower(name) IN (lower(:n) || ': masonry', lower(:n) || ': plastering', "
+                "lower(:n) || ': flooring') OR (lower(:n) = 'foundation' AND lower(name) IN ('excavation', "
+                "'footings and columns up to plinth'))) AND planned_start IS NOT NULL"),
                 {"org": org, "p": project_id, "n": sec.name})).one()
             if span[0] is not None:
                 await conn.execute(text("UPDATE work_packages SET planned_start = :s, planned_end = :e WHERE id = :id"),

@@ -112,8 +112,12 @@ def missing(sheets: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
         if pages:
             out.append({"kind": "missing", "severity": "low", "page": pages[0], "sheet": None,
                         "message": f"No {what} found on page{'s' if len(pages) > 1 else ''} "
-                                   f"{', '.join(map(str, pages))}.", "why": "A sheet without it can't be checked or "
-                                                                            "filed against the right revision."})
+                                   f"{', '.join(map(str, pages))}.",
+                        # Some offices draw the date or scale as lines, not text: say what to look for, not that
+                        # the sheet is wrong.
+                        "why": f"Check the {what} is printed on the sheet: a sheet without it can't be checked or "
+                               "filed against the right revision. (If it is printed, it is drawn as lines Mesiri "
+                               "cannot read.)"})
     for field, what in (("number", "drawing number"), ("revision", "revision")):
         if readable and not any(s.get(field) for s in readable):
             out.append({"kind": "missing", "severity": "low", "page": None, "sheet": None,
@@ -129,6 +133,11 @@ def missing(sheets: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
 
 def run(sheets: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """All checks, most serious first."""
-    order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     found = [c for s in sheets for c in area_labels(s)] + levels(sheets) + typical_floors(sheets) + missing(sheets)
+    return ordered(found)
+
+
+def ordered(found: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Most serious first, then by page."""
+    order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     return sorted(found, key=lambda c: (order[c["severity"]], c["page"] or 0))

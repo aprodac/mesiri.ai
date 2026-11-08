@@ -119,11 +119,12 @@ async def _up(client, ctx, name, data, who="pm", **form):
 
 
 async def test_a_drawing_pdf_is_kept_with_its_title_block_and_facts(client, ctx, storage):
-    r = await _up(client, ctx, "ground floor.pdf", _drawing())
+    # An architect's plan (A- number): its rooms are read. (An S- sheet is structural: no rooms, DR-09.)
+    r = await _up(client, ctx, "ground floor.pdf", _drawing(number="A-101"))
     assert r.status_code == 201, r.text
     doc = r.json()
-    assert (doc["folder"], doc["number"], doc["revision"], doc["discipline"]) == ("drawing", "S-101", "B",
-                                                                                  "structural")
+    assert (doc["folder"], doc["number"], doc["revision"], doc["discipline"]) == ("drawing", "A-101", "B",
+                                                                                  "architectural")
     assert set(doc["guessed"]) >= {"folder", "number", "revision", "title"} and doc["has_facts"] is True
     assert doc["checks"] >= 1  # ROOM-1 labelled 1217 sq ft, drawn 1,105
     assert any(k.startswith(f"documents/{ctx['org']}/{ctx['project']}/") for k in storage.files)

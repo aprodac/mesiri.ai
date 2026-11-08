@@ -56,6 +56,19 @@ export interface DrawingRead {
   floors: string[]
   fixtures: Record<string, number>
   checks: DrawingCheck[]
+  /** DR-09: a structural set's schedules and the foundation's quantities (null for other sets). */
+  structure?: StructureTakeoff | null
+}
+
+export interface StructureTakeoff {
+  notes: { concrete?: string; steel?: string; sbc_t_per_sqm?: number; designed_for?: string }
+  foundation: { footings: number; concrete_cum: number; concrete_grade: string; pcc_cum: number; pcc_mix: string; steel_kg: number; steel_by_dia: Record<string, number>; cement_bags: number }
+  footings: { mark: string; count: number; columns: string[]; size?: string; depth_cm?: number; concrete_cum?: number; pcc_cum?: number; steel_kg?: number; bars?: string; basis: string; combined?: boolean }[]
+  columns: { mark: string; size: string | null; bars: string | null; ties: string | null; kg_per_m: number; count_on_plan: number }[]
+  columns_kg_per_m: number
+  slabs: { floor: string | null; page: number; mark: string; kind: string; thickness_cm: number; steel_kg_per_sqm: number; basis: string }[]
+  assumptions: string[]
+  plan_page: number | null
 }
 
 export async function readDrawing(file: File): Promise<DrawingReadWithDrafts> {

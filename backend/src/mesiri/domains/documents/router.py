@@ -136,7 +136,7 @@ async def _read_drawing(data: bytes) -> dict[str, Any] | None:
 
 def _facts(read: dict[str, Any]) -> dict[str, Any]:
     """DR-07: what is kept of a read (the drafts are rebuilt on the Drawing check page when needed)."""
-    keep = ("pages", "project", "client", "architect", "units", "levels", "floors", "fixtures", "checks")
+    keep = ("pages", "project", "client", "architect", "units", "levels", "floors", "fixtures", "checks", "structure")
     sheets = [{k: s.get(k) for k in ("page", "title", "kind", "level", "discipline", "number", "revision", "scale",
                                       "date", "rooms", "levels", "fixtures")} for s in read.get("sheets") or []]
     return {**{k: read.get(k) for k in keep}, "sheets": sheets}
@@ -316,8 +316,15 @@ async def drawing_facts(project_id: uuid.UUID, q: str | None = Query(default=Non
         hay = " ".join(str(v) for v in item.values()).lower()
         return any(w in hay for w in words)
 
+    structures = [{**(d["facts"] or {}).get("structure"), "document_id": str(d["id"]),
+                   "drawing": " ".join(x for x in (d["number"], d["title"]) if x), "revision": d["revision"]}
+                  for d in drawings if (d["facts"] or {}).get("structure")]
     return {"drawings": [{"document_id": str(d["id"]), "number": d["number"], "title": d["title"],
                           "revision": d["revision"]} for d in drawings],
+            # DR-09: a structural set's foundation quantities, footings, columns and slab schedules.
+            "structure": [{k: s.get(k) for k in ("drawing", "revision", "document_id", "notes", "foundation",
+                                                 "footings", "columns", "columns_kg_per_m", "slabs", "assumptions")}
+                          for s in structures],
             "levels": [x for x in levels if fits(x)][:60], "rooms": [x for x in rooms if fits(x)][:80],
             "checks": checks[:30],
             "floors": sorted({f for d in drawings for f in (d["facts"] or {}).get("floors") or []})}
