@@ -34,6 +34,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.dpr.router",
     "mesiri.domains.equipment.router",  # NXT-11: machines, their day logs, hire check
     "mesiri.domains.schedule.router",  # ST-04: the project schedule (Gantt)
+    "mesiri.domains.materials.plan_router",  # MP-04: the material plan (what to order and when)
     "mesiri.domains.admin.my_requests_router",  # request 230: the person's own requests
     "mesiri.domains.identity.preferences_router",  # WA-169: the reply language they chose
 )

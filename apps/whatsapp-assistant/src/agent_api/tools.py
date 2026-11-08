@@ -297,6 +297,13 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare moving a schedule activity (activity_id from `schedule`): new start and/or end, or done=true when "
             "the PM says it is finished. The activities after it move with it." + _WRITE, hide=("preview", "push",
                                                                                                 "clear_dates")),
+    # MP-02/03 (8 Nov 2026): the material plan. Read only; the API lets only the roles that see the BOQ read it.
+    Allowed("material_plan", "GET", "/projects/{project_id}/material-plan",
+            "What the project will need of each material, from the BOQ work still to do x the materials per unit, "
+            "over the schedule's dates, against stock and open orders (weeks: how far ahead, default 8; site_id to "
+            "narrow): per material still_needed, weeks (need per week from this Monday), on_hand, on_order, "
+            "short_day (the day it runs short), short_by, supplier and lead_days, order_by, order_now, and lines "
+            "(the BOQ work it is for). Empty materials: no BOQ line has its materials set yet."),
     # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
     # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
     Allowed("list_work_orders", "GET", "/subcontracts/work-orders",
