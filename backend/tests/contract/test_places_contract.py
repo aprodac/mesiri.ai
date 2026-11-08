@@ -72,8 +72,14 @@ async def ctx(test_engine):
         await conn.execute(sa.text(
             "INSERT INTO sites (id, project_id, organization_id, name, status, created_at, updated_at) "
             "VALUES (:id, :p, :org, 'Main building', 'active', now(), now())"), {"id": site, "p": project, "org": org})
-    return {"org": org, "project": project, "site": site, "admin": await _user(test_engine, org, "admin"),
+    yield {"org": org, "project": project, "site": site, "admin": await _user(test_engine, org, "admin"),
             "engineer": await _user(test_engine, org, "site_engineer")}
+    # Leave nothing behind for the suites after this one (they delete users; places and documents point at them).
+    async with test_engine.begin() as conn:
+        await conn.execute(sa.text("DELETE FROM progress_updates WHERE activity_id IN (SELECT id FROM activities "
+                                   "WHERE organization_id = :org)"), {"org": org})
+        await conn.execute(sa.text("DELETE FROM activities WHERE organization_id = :org"), {"org": org})
+        await conn.execute(sa.text("DELETE FROM organizations WHERE id = :org"), {"org": org})
 
 
 def _h(token: str) -> dict:
