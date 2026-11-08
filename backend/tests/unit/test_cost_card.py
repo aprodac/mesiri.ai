@@ -47,7 +47,7 @@ def test_only_grey_lines_say_there_is_nothing_to_colour_never_a_colour():
 
 
 def test_several_sites_get_one_colour_each_and_rupees_are_indian():
-    a, b = _variance([_line("x", "red", "labour_no_work", labour_cost="100")]), _variance([])
+    a = _variance([_line("x", "red", "labour_no_work", labour_cost="100")])
     a2 = {**a, "summary": {**a["summary"], "colour": "green"}}
     card = card_message("Villa", DAY, a, [("Block A", a2), ("Block B", a)])
     assert "Sites: Block A 🟢, Block B 🔴" in card
