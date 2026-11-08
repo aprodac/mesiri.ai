@@ -266,3 +266,10 @@ export function statementText(s: Statement, company: string): string {
     `Paid ${rupees(n(t.paid))} · TDS ${rupees(n(t.tds))} · advance still to recover ${rupees(n(t.advance_left))}`,
     `Retention held ${rupees(n(t.retention_held))} · *payable now ${rupees(n(t.payable_now))}*`].join('\n')
 }
+
+// NXT-16: a subcontractor's people who may use Mesiri's WhatsApp (option B).
+export interface VendorContact { id: string; name: string; phone: string; language: string | null; status: 'active' | 'inactive'; last_seen_at: string | null; created_at: string }
+export const fetchContacts = async (vendorId: string): Promise<{ partner_access: boolean; contacts: VendorContact[] }> => (await api.get(`/finance/vendors/${vendorId}/contacts`)).data
+export const addContact = async (vendorId: string, body: { name: string; phone: string; language?: string }): Promise<VendorContact> => (await api.post(`/finance/vendors/${vendorId}/contacts`, body)).data
+export const editContact = async (vendorId: string, id: string, body: Partial<Pick<VendorContact, 'name' | 'phone' | 'language' | 'status'>>): Promise<VendorContact> =>
+  (await api.patch(`/finance/vendors/${vendorId}/contacts/${id}`, body)).data

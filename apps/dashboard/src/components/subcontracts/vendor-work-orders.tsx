@@ -7,17 +7,18 @@ import { Progress3 } from '@/components/subcontracts/parts'
 import { rupees } from '@/lib/expenses'
 import { cn } from '@/lib/utils'
 import { WO_LOOK, fetchWorkOrders, n, woUrl } from '@/lib/subcontracts'
+import { SubcontractorContacts } from '@/components/subcontracts/contacts'
 
 // NXT-05/18: a subcontractor's work orders on its supplier page, with the statement one tap away.
 
-export function VendorWorkOrders({ vendorId, vendorName }: { vendorId: string; vendorName: string }) {
+export function VendorWorkOrders({ vendorId, vendorName, canManage = false }: { vendorId: string; vendorName: string; canManage?: boolean }) {
   const navigate = useNavigate()
   const q = useQuery({ queryKey: ['subcontracts', 'list', 'vendor', vendorId], queryFn: () => fetchWorkOrders({ vendor_id: vendorId }) })
   if (q.isLoading) return <Skeleton className="h-40 rounded-xl" />
   const list = q.data?.work_orders ?? []
   const money = !!q.data?.with_money
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-3">
       <div className="flex flex-wrap justify-end gap-2">
         {money && <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate(`/subcontract/statement/${vendorId}`)}><FileText className="size-4" /> Statement</Button>}
         <Button size="sm" className="gap-1" onClick={() => navigate(`/subcontract/work-orders?vendor=${vendorId}`)}><Plus className="size-4" /> Work orders</Button>
@@ -40,6 +41,7 @@ export function VendorWorkOrders({ vendorId, vendorName }: { vendorId: string; v
           ))}
         </ul>
       )}
+      <SubcontractorContacts vendorId={vendorId} vendorName={vendorName} canManage={canManage} />
     </section>
   )
 }
