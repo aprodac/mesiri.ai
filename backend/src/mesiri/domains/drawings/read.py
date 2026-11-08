@@ -27,6 +27,7 @@ def read_pages(pages: list[Mapping[str, Any]]) -> dict[str, Any]:
         s["rooms"] = [{**r, "computed": facts.area_of(r["a"], r["b"], units)} for r in facts.rooms(words)] \
             if s["kind"] in ("plan", None) and s.get("discipline") != "structural" else []
         s["fixtures"] = facts.fixtures(words) if s["kind"] == "plan" and s.get("discipline") != "structural" else {}
+        s["width"], s["height"] = page.get("width"), page.get("height")  # where things sit on the page (live plans)
         sheets.append(s)
 
     level_pages: dict[float, list[int]] = defaultdict(list)

@@ -176,24 +176,25 @@ const SCENES = {
     ]
   },
   async rec_live(page, scene, L) {
-    // The structural set uploaded in the Documents scene: its footings tracked, some reported, B3 not yet.
-    const lp = (await api('GET', `/projects/${demo.project}/live-plan`)).live
-    if (!lp.tracked) await api('POST', `/documents/${lp.document.id}/track`)
-    if (lp.summary.done + lp.summary.in_progress <= 1) {
+    // The structural set uploaded in the Documents scene: tracked, some footings reported, B3 not yet.
+    const first = await api('GET', `/projects/${demo.project}/live-maps`)
+    for (const d of first.untracked) await api('POST', `/documents/${d.id}/track`)
+    const found = (await api('GET', `/projects/${demo.project}/live-maps`)).maps.find((m) => m.kind === 'foundation')
+    if (found.summary.done + found.summary.in_progress <= 1) {
       for (const g of ['A3', 'A5', 'A7', 'B5', 'B7', 'D3', 'D5', 'D7']) await work(`${g} footing concreted`, 'Footing concrete', true, 6)
       for (const g of ['E5 footing steel tied', 'E7 PCC done', 'A9 excavation']) await work(g, 'Footing work', false, 7)
     }
     await clear('Foundation / B3')
-    await page.goto(`${APP}/planning/places?project=${demo.project}`)
-    await page.getByText('Live foundation plan').waitFor({ timeout: 20000 })
+    await page.goto(`${APP}/planning/live?project=${demo.project}`)
+    await page.getByText(/footings done/).first().waitFor({ timeout: 20000 })
     await prep(page, scene)
-    const plan = page.getByText('Live foundation plan').locator('xpath=ancestor::section')
+    const canvas = page.locator('.touch-none').first()
+    const b3 = () => canvas.getByRole('button', { name: 'B3', exact: true })
     return [
-      [0.2, () => scrollTo(page, plan)],
       [L[0].start + 0.4, async () => { await work('B3 footing concreted', 'Footing concrete', true); await refetch(page) }],
-      [L[0].start + 1.6, () => hl(page, plan.getByRole('button', { name: 'B3', exact: true }))],
-      [L[1].start, async () => { await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' })); await sleep(500); await hl(page, plan.locator('> div').nth(1)) }],
-      [L[2].start, async () => { await scrollTo(page, plan); await plan.getByRole('button', { name: 'B3', exact: true }).click(); await sleep(900); await hl(page, plan.locator('aside').locator('> p').first().locator('..'), false) }],
+      [L[0].start + 1.6, () => hl(page, b3(), false)],
+      [L[1].start, () => hl(page, page.locator('aside section').first(), false)],
+      [L[2].start, async () => { await b3().click(); await sleep(900); await hl(page, page.locator('aside section').first(), false) }],
       [L[3].start, () => { hl(page, null); return value(page) }],
     ]
   },

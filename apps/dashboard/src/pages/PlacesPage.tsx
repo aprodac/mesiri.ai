@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, ChevronDown, ChevronRight, Layers, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, Layers, MapPinned, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,8 +16,8 @@ import {
   type CellState, type PlaceProgressRow, type PlacesList, type PlacesProgress,
 } from '@/lib/places'
 import { cn } from '@/lib/utils'
-import { LiveFootingPlan } from '@/components/drawings/live-plan'
-import { fetchProjectLivePlan } from '@/lib/live-plan'
+import { Link } from 'react-router-dom'
+import { fetchLiveMaps } from '@/lib/live-maps'
 
 // LP-01..05: Planning › Places. The project's floors and rooms, coloured by the work site has reported at each one
 // (done / in progress / not started), with the work and photos of a room one tap away. Nothing is typed to fill
@@ -68,9 +68,8 @@ function PlacesView({ projectId }: { projectId: string }) {
   const grid = useQuery<PlacesProgress>({ queryKey: ['places-progress', projectId], queryFn: () => fetchPlacesProgress(projectId), staleTime: 0, refetchInterval: 30_000 })
   const [editing, setEditing] = React.useState(false)
   const [open, setOpen] = React.useState<PlaceProgressRow | null>(null)
-  // DR-10: the project's structural drawing, coloured by the work at each footing.
-  // Live: site's WhatsApp updates show by themselves (every 20 s, and when the tab is opened again).
-  const live = useQuery({ queryKey: ['live-plan', projectId], queryFn: () => fetchProjectLivePlan(projectId), staleTime: 0, refetchInterval: 20_000 })
+  // DR-10 / DR-11: the drawings as live maps have their own page (Live plans); here, the way to them.
+  const live = useQuery({ queryKey: ['live-maps', projectId], queryFn: () => fetchLiveMaps(projectId), staleTime: 0, refetchInterval: 30_000 })
 
   if (list.isError || grid.isError) {
     return <PageError message="The places did not load." onRetry={() => { list.refetch(); grid.refetch() }} back={{ to: '/planning/places', label: 'All projects' }} />
@@ -104,7 +103,16 @@ function PlacesView({ projectId }: { projectId: string }) {
       <p className="max-w-3xl text-sm text-muted-foreground">
         Every floor and room, coloured by the work site has reported there. Site does nothing extra: “first floor Room-2 plastering done” on WhatsApp lands on that room.
       </p>
-      {live.data && <LiveFootingPlan live={live.data} refreshKey={['live-plan', projectId]} />}
+      {live.data && live.data.maps.length > 0 && (
+        <Link to={`/planning/live?project=${projectId}`} className="group flex items-center gap-4 rounded-2xl border bg-gradient-to-r from-[#0a1a33] to-indigo-950 p-4 text-white shadow-lg transition hover:shadow-sky-500/20">
+          <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/20 text-sky-300"><MapPinned className="size-5" /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">See it on the drawings</span>
+            <span className="block truncate text-sm text-slate-300">{live.data.maps.map((m) => `${m.name}: ${m.summary.done}/${m.summary.count}`).join(' · ')}</span>
+          </span>
+          <span className="text-sm text-sky-300 transition group-hover:translate-x-1">Live plans →</span>
+        </Link>
+      )}
       {places.length === 0 ? (
         list.data.can_edit ? <QuickSetup projectId={projectId} suggested={list.data.suggested} /> : (
           <Callout tone="info" icon={Layers}>Floors and rooms are not set up for this project yet. The owner, an admin or the project manager sets them up here.</Callout>

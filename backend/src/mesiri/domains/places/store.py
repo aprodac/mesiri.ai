@@ -219,3 +219,38 @@ async def set_activity_place(conn: AsyncConnection, org: uuid.UUID, activity_id:
         " AND n.archived_at IS NULL))"),
         {"place": place_id, "id": activity_id, "org": org})
     return result.rowcount > 0
+
+
+_PHOTOS = ("SELECT a.location_id, a.id AS activity_id, pa.media_object_key AS key, pa.created_at "
+           "FROM activities a JOIN progress_attachments pa ON (pa.parent_type = 'ACTIVITY' AND pa.parent_id = a.id) "
+           "OR (pa.parent_type = 'PROGRESS_UPDATE' AND pa.parent_id IN (SELECT u.id FROM progress_updates u "
+           "    WHERE u.activity_id = a.id AND u.deleted_at IS NULL)) "
+           "WHERE a.organization_id = :org AND a.project_id = :p AND a.deleted_at IS NULL "
+           "AND a.location_id IS NOT NULL")
+
+
+async def latest_photos(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID,
+                        per_place: int = 3) -> dict[uuid.UUID, list[str]]:
+    """Live plans: the newest photo keys of the work at each place (for the photo bubbles on the plan)."""
+    rows = (await conn.execute(text(
+        f"SELECT location_id, key FROM (SELECT location_id, key, row_number() OVER (PARTITION BY location_id "
+        f"ORDER BY created_at DESC) AS n FROM ({_PHOTOS}) ph) x WHERE n <= :per"),
+        {"org": org, "p": project_id, "per": per_place})).all()
+    out: dict[uuid.UUID, list[str]] = {}
+    for location_id, key in rows:
+        out.setdefault(location_id, []).append(key)
+    return out
+
+
+async def recent_work(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID,
+                      limit: int = 15) -> list[dict[str, Any]]:
+    """Live plans' feed: the newest work reported at a place, who sent it, and its first photo."""
+    rows = (await conn.execute(text(
+        "SELECT a.id, a.location_id, a.work_type, a.activity_date, a.created_at, a.source, u.full_name AS who, "
+        "  (a.status = 'COMPLETED' OR EXISTS (SELECT 1 FROM progress_updates c WHERE c.activity_id = a.id "
+        "   AND c.update_kind = 'COMPLETED' AND c.deleted_at IS NULL)) AS finished, "
+        f"  (SELECT ph.key FROM ({_PHOTOS}) ph WHERE ph.activity_id = a.id ORDER BY ph.created_at LIMIT 1) AS photo "
+        "FROM activities a LEFT JOIN users u ON u.id = a.reported_by_user_id "
+        "WHERE a.organization_id = :org AND a.project_id = :p AND a.deleted_at IS NULL AND a.location_id IS NOT NULL "
+        "ORDER BY a.created_at DESC LIMIT :limit"), {"org": org, "p": project_id, "limit": limit})).mappings().all()
+    return [dict(r) for r in rows]

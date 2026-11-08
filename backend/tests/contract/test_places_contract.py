@@ -246,13 +246,75 @@ async def test_a_structural_drawing_becomes_a_live_footing_plan(client, ctx):
     assert saved.status_code == 201 and saved.json()["place"] == "Foundation / B3"
     await _work(client, ctx, "A1 PCC", work_type="PCC")
 
-    live = (await client.get(f"/projects/{ctx['project']}/live-plan", headers=_h(ctx["engineer"]))).json()["live"]
-    by = {m["grid"]: m for m in live["markers"]}
+    maps = (await client.get(f"/projects/{ctx['project']}/live-maps", headers=_h(ctx["engineer"]))).json()
+    live = maps["maps"][0]
+    assert (live["kind"], live["name"], live["tracked"]) == ("foundation", "Foundation", True)
+    by = {m["label"]: m for m in live["markers"]}
     assert set(by) == {"A1", "B1", "C1", "A2", "B2", "B3"}
-    assert (by["B3"]["state"], by["B3"]["mark"], by["B3"]["last_work"]) == ("done", "F2", "Footing concrete")
+    assert (by["B3"]["state"], by["B3"]["sub"].split(" · ")[0], by["B3"]["last_work"]) == ("done", "F2",
+                                                                                          "Footing concrete")
+    assert by["B3"]["fresh"] is True and by["B3"]["cells"]["footing concrete"] == "done"
+    assert maps["feed"][0]["place"] == "Foundation / A1" and maps["feed"][0]["map_id"] == live["id"]
     assert by["A1"]["state"] == "in_progress" and by["C1"]["state"] == "not_started"
     assert 0 < by["B3"]["x"] < 1 and 0 < by["B3"]["y"] < 1
     s = live["summary"]
     assert (s["done"], s["in_progress"], s["not_started"]) == (1, 1, 4)
     # B3 is an F2: 12 bars of 16 mm each way, 220 − 2×5 + 2×(20 − 10) = 230 cm long.
     assert s["steel_done_kg"] == pytest.approx(2 * 12 * 2.30 * 256 / 162, abs=0.2) and s["concrete_done_cum"] > 0
+
+
+
+def _floor_plans_pdf() -> bytes:
+    """Two floors of an architect's plan on an A3 sheet (the page box set once for all pages, as fpdf writes it)."""
+    from fpdf import FPDF
+
+    pdf = FPDF(unit="pt", format="A3", orientation="L")
+    for title, number, rooms in (("GROUND FLOOR PLAN", "A-101", ["SHOP-1", "SHOP-2", "TOILET"]),
+                                 ("FIRST FLOOR PLAN", "A-102", ["OFFICE-1", "PANTRY", "TOILET"])):
+        pdf.add_page()
+        pdf.set_font("Helvetica", size=9)
+        for k, name in enumerate(rooms):
+            pdf.rect(150 + k * 200, 120, 190, 250)
+            pdf.text(200 + k * 200, 240, name)
+            pdf.text(200 + k * 200, 250, "450 x 600")
+        pdf.set_font("Helvetica", size=6)
+        for k, (label, value) in enumerate((("DWG.TITLE:", title), ("DWG NO", number), ("SCALE:", "1:100"))):
+            pdf.text(770, 716 + k * 17, label)
+            pdf.text(850, 716 + k * 17, value)
+    return bytes(pdf.output())
+
+
+async def test_floor_plans_become_live_rooms(client, ctx):
+    """DR-11: an architect's plans: each room a place on its floor; site's work colours the room, per trade."""
+    await _setup(client, ctx)  # the floors exist already: the drawing's rooms join them, nothing doubled
+    r = await client.post(f"/projects/{ctx['project']}/documents", headers=_h(ctx["admin"]),
+                          files={"file": ("A-101 plans.pdf", _floor_plans_pdf(), "application/pdf")})
+    assert r.status_code == 201, r.text
+    doc = r.json()["id"]
+    assert (await client.get(f"/documents/{doc}", headers=_h(ctx["admin"]))).json()["facts"]["live_plan"] is True
+    tracked = (await client.post(f"/documents/{doc}/track", headers=_h(ctx["admin"]))).json()
+    assert tracked == {"rooms": {"made": 6, "tracked": 6}}
+    labels = [p["label"] for p in (await client.get(f"/projects/{ctx['project']}/places", headers=_h(ctx["admin"])))
+              .json()["places"]]
+    assert "First Floor / Pantry" in labels and labels.count("First Floor") == 1  # joined the existing floor
+
+    assert (await _work(client, ctx, "first floor pantry plastering", work_type="Plastering", finished=True)).json()[
+        "place"] == "First Floor / Pantry"
+    await _work(client, ctx, "first floor office-1 plastering", work_type="Plastering")
+    await _work(client, ctx, "GF shop-1 brickwork", work_type="Brickwork", finished=True)
+
+    maps = (await client.get(f"/projects/{ctx['project']}/live-maps", headers=_h(ctx["engineer"]))).json()
+    names = [m["name"] for m in maps["maps"]]
+    assert names == ["Ground Floor", "First Floor"]
+    first = maps["maps"][1]
+    by = {m["label"]: m for m in first["markers"]}
+    assert set(by) == {"Office-1", "Pantry", "Toilet"}
+    assert (by["Pantry"]["state"], by["Office-1"]["state"], by["Toilet"]["state"]) == ("done", "in_progress",
+                                                                                     "not_started")
+    assert by["Pantry"]["sub"].startswith("450 x 600") and by["Pantry"]["area_sqm"] == 27
+    assert first["kinds"] == [{"key": "plastering", "name": "Plastering", "done": 1, "started": 1, "total": 3}]
+    # Where the room is drawn: Pantry's label is in the second room box of an A3 sheet (1190 x 842 points).
+    assert 350 / 1190.55 < by["Pantry"]["x"] < 540 / 1190.55 and 120 / 841.89 < by["Pantry"]["y"] < 370 / 841.89
+    ground = {m["label"]: m for m in maps["maps"][0]["markers"]}
+    assert ground["Shop-1"]["cells"] == {"brickwork": "done"} and ground["Shop-1"]["state"] == "done"
+    assert maps["untracked"] == []

@@ -111,3 +111,18 @@ def test_left_counts_only_the_work_of_its_own_floor_or_foundation():
     out = progress.roll_up(places, [_w(room, "Brickwork"), _w(b3, "Footing concrete", True)])
     assert out["places"][room]["left"] == ["Brickwork"]  # never "Footing concrete"
     assert out["places"][found]["left"] == [] and out["places"][found]["done"] == ["Footing concrete"]
+
+
+def test_rooms_from_a_drawing_are_named_as_people_write_them():
+    """DR-11: a floor plan's room labels become place names; the same name twice on a floor is numbered."""
+    from mesiri.domains.documents import live
+
+    assert live.room_name("M. TOILET") == "M. Toilet" and live.room_name("ROOM-1") == "Room-1"
+    assert live.room_name("Pooja room") == "Pooja room"  # already written by hand: kept as it is
+    sheet = {"rooms": [{"label": "TOILET", "x": 1, "top": 1}, {"label": "KITCHEN", "x": 2, "top": 1},
+                       {"label": "TOILET", "x": 3, "top": 1}]}
+    assert [n for n, _ in live._sheet_rooms(sheet)] == ["Toilet", "Kitchen", "Toilet 2"]
+    facts = {"sheets": [{"kind": "plan", "discipline": "architectural", "width": 1190, "rooms": sheet["rooms"]},
+                        {"kind": "plan", "discipline": "structural", "width": 842, "rooms": sheet["rooms"]},
+                        {"kind": "section", "discipline": "architectural", "width": 842, "rooms": sheet["rooms"]}]}
+    assert len(live.floor_sheets(facts)) == 1  # a structural sheet or a section is never a floor plan of rooms

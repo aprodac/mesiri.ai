@@ -143,7 +143,9 @@ def pages(data: bytes) -> list[dict[str, Any]]:
         for i in range(len(doc)):
             page = doc[i]
             rotation = page.get_rotation() % 360
-            left, bottom, right, top = page.get_mediabox()
+            # The page's box as shown, inherited from the page tree when the page has none of its own (the page's
+            # own MediaBox read alone falls back to US Letter: an A3 sheet read as 612 x 792 put every word wrong).
+            left, bottom, right, top = page.get_bbox()
             raw_w, raw_h = float(right - left), float(top - bottom)
             width, height = (raw_h, raw_w) if rotation in (90, 270) else (raw_w, raw_h)
             textpage = page.get_textpage()
