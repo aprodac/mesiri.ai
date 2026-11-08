@@ -2,7 +2,19 @@
 
 > **Status:** ideas turned into a plan, 8 Nov 2026 (asked in session: "ideate what all can be done, like material plan
 > from BOQ + schedule, drawings and all connecting, or progress updating automatically … put all of these in the
-> plan"). Tracker section **CP** in [V1_TRACKER.md](V1_TRACKER.md). Nothing here is built yet.
+> plan"). **Split the same day into three plans that do not wait on each other**, so separate sessions or accounts can
+> each take one ("split this into 3 plans where all 3 do not depend on each other's progress"):
+>
+> | Plan | Tracker | Needs from the other two |
+> |---|---|---|
+> | [Material plan](material-plan-plan.md): norms, weekly need, order-by, cash flow | **MP-01..MP-06** | nothing |
+> | [Drawing reader](drawing-reader-plan.md): sheets, levels, rooms, checks, drafts of schedule and BOQ | **DR-01..DR-08** | nothing |
+> | [Progress by place](location-progress-plan.md): rooms / floors as places, progress and photos per place, "what's left" | **LP-01..LP-07** | nothing |
+>
+> Where they meet later (drawings fill the places, the material plan reads a drawing-made BOQ) is a hand-off through
+> the existing tables (`location_nodes`, BOQ lines, schedule activities), never a wait. This page stays as the
+> overview: the idea, the worked example and the map of ideas. The CP ids below were renamed (CP-01..04 → MP,
+> CP-05..09 → DR, CP-10..14 → LP).
 >
 > Builds on, and does not duplicate: [project-start-plan.md](project-start-plan.md) (ST: BOQ import, Gantt),
 > [project-documents-plan.md](project-documents-plan.md) (DOC: the documents register),
