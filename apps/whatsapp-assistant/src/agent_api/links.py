@@ -44,6 +44,9 @@ PAGES: dict[str, tuple[str, str]] = {
     "accounts": ("/finance/accounts", "money accounts"),
     "vendors": ("/finance/vendors", "suppliers and what is owed to each"),
     "supplier": ("/finance/vendors/{vendor_id}", "one supplier's account: balance, bills to pay, payments"),
+    "work_orders": ("/subcontract/work-orders", "work orders given to subcontractors"),
+    "work_order": ("/subcontract/work-orders/{work_order_id}", "one work order: work done, bills, retention"),
+    "subcontract_bills": ("/subcontract/bills", "subcontract bills waiting for a check"),
     "analytics": ("/analytics", "charts across sites"),
     "machines": ("/equipment", "machines and vehicles: where each is, today's hours, diesel, hire cost"),
     "machine_log": ("/equipment/log?date={date}", "one day's log of every machine"),
@@ -89,6 +92,6 @@ def spec() -> ToolSpec:
         parameters={"type": "object", "required": ["page"], "properties": {
             "page": {"type": "string", "enum": list(PAGES)},
             "project_id": {"type": "string"}, "site_id": {"type": "string"},
-            "expense_id": {"type": "string"}, "vendor_id": {"type": "string"},
+            "expense_id": {"type": "string"}, "vendor_id": {"type": "string"}, "work_order_id": {"type": "string"},
             "date": {"type": "string", "description": "YYYY-MM-DD"},
         }})

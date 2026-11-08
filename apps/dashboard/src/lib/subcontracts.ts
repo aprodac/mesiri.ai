@@ -172,7 +172,7 @@ export interface WorkOrderIn {
   vendor_name?: string
   project_id: string
   site_id?: string | null
-  title?: string | null
+  name?: string | null
   start_date?: string | null
   end_date?: string | null
   retention_pct?: string | null

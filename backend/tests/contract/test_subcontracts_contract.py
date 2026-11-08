@@ -27,7 +27,7 @@ pytestmark = pytest.mark.integration
 
 async def _wo(client, w, **extra) -> dict:
     body = {"vendor_name": "Ravi Concrete Team", "project_id": str(w["villa"]), "site_id": str(w["block_a"]),
-            "title": "Slab concreting", "advance_agreed": "20000",
+            "name": "Slab concreting", "advance_agreed": "20000",
             "lines": [{"description": "Concreting M20", "unit": "m³", "quantity": "400", "rate": "380"},
                       {"description": "Shuttering", "unit": "sqm", "quantity": "1000", "rate": "45"}], **extra}
     r = await client.post("/subcontracts/work-orders", headers=w["admin"]["h"], json=body)

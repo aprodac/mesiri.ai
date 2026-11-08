@@ -288,6 +288,38 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare putting deliveries the site recorded on a supplier's bill already saved as an expense (vendor_id "
             "and expense_id from that save; receipt_ids from its unbilled_deliveries), so they are not owed and "
             "counted twice." + _WRITE),
+    # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
+    # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
+    Allowed("list_work_orders", "GET", "/subcontracts/work-orders",
+            "Work orders given to subcontractors (project_id / vendor_id to narrow): each with its lines (agreed, "
+            "measured, billed, left), status, bills waiting for a check, payable now, retention held, advance left."),
+    Allowed("work_order", "GET", "/subcontracts/work-orders/{wo_id}",
+            "One work order: lines with agreed / measured / billed, measurements (and ones waiting for confirmation), "
+            "bills with their check and deductions, history."),
+    Allowed("create_work_order", "POST", "/subcontracts/work-orders",
+            "Prepare a work order for a subcontractor: vendor_name (or vendor_id), project_id, site_id when said, name, "
+            "lines [{description, unit (cum, sqm, sqft, rmt, nos...), quantity, rate}], retention_pct / advance_agreed "
+            "only when said; issue true unless they said draft." + _WRITE),
+    Allowed("measure_work", "POST", "/subcontracts/work-orders/{wo_id}/measurements",
+            "Prepare work done on a work order line (line_id from work_order): quantity, measured_on when not today, "
+            "notes." + _WRITE),
+    Allowed("record_subcontract_bill", "POST", "/subcontracts/work-orders/{wo_id}/bills",
+            "Prepare a subcontractor's bill on their work order: lines [{line_id, quantity, rate only when it differs}], "
+            "amount when the bill's total is said, their_bill_no, bill_date. The API checks it against the work measured "
+            "and the agreed rates: the answer says passed (payable after retention / advance / TDS) or flagged (why)."
+            + _WRITE),
+    Allowed("subcontract_bills_waiting", "GET", "/subcontracts/bills/waiting",
+            "Subcontract bills waiting for a person (flagged by the check, or sent by the subcontractor), with why."),
+    Allowed("approve_subcontract_bill", "POST", "/subcontracts/bills/{bill_id}/approve",
+            "Prepare approving a flagged subcontract bill with the reason they gave (reason)." + _WRITE),
+    Allowed("reject_subcontract_bill", "POST", "/subcontracts/bills/{bill_id}/reject",
+            "Prepare rejecting a subcontract bill with the reason they gave (reason): nothing is owed for it." + _WRITE),
+    Allowed("give_subcontract_advance", "POST", "/subcontracts/work-orders/{wo_id}/advance",
+            "Prepare an advance to a subcontractor against a work order: account_id (money_accounts), amount; it is "
+            "recovered from their bills." + _WRITE),
+    Allowed("subcontractor_statement", "GET", "/subcontracts/vendors/{vendor_id}/statement",
+            "A subcontractor's statement: each work order's agreed, done, billed, paid, retention held, advance left, "
+            "and payable now."),
     # PRC-02: the code picks `category_id` (the model's `category` in words, then the API's rule on the name); a
     # guessed id would fail the save, so it stays hidden on add and update.
     Allowed("add_material", "POST", "/materials",

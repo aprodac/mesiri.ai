@@ -166,7 +166,8 @@ class WorkOrderIn(BaseModel):
     vendor_name: str | None = None
     project_id: uuid.UUID
     site_id: uuid.UUID | None = None
-    title: str | None = None
+    #: The work order's name ("First-floor slab"); `title` would clash with JSON-schema keywords in tool schemas.
+    name: str | None = None
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     retention_pct: Decimal | None = Field(default=None, ge=0, le=50)
@@ -183,7 +184,8 @@ class WorkOrderIn(BaseModel):
 
 class WorkOrderEdit(BaseModel):
     site_id: uuid.UUID | None = None
-    title: str | None = None
+    #: The work order's name ("First-floor slab"); `title` would clash with JSON-schema keywords in tool schemas.
+    name: str | None = None
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     retention_pct: Decimal | None = Field(default=None, ge=0, le=50)
@@ -268,7 +270,7 @@ async def create_work_order(body: WorkOrderIn, auth_context: AuthorizationContex
         "created_by, issued_at) VALUES (:id, :org, :n, :v, :p, :s, :title, :status, :sd, :ed, :ret, :dd, :adv, :rec, "
         ":tds, :ref, :terms, :notes, :by, :issued)"),
         {"id": wo_id, "org": org, "n": number, "v": vendor_id, "p": body.project_id, "s": body.site_id,
-         "title": (body.title or "").strip() or None, "status": "issued" if body.issue else "draft",
+         "title": (body.name or "").strip() or None, "status": "issued" if body.issue else "draft",
          "sd": body.start_date, "ed": body.end_date,
          "ret": body.retention_pct if body.retention_pct is not None else Decimal(str(settings.get("retention_default_pct", rules.DEFAULT_RETENTION_PCT))),
          "dd": body.defect_days or 0, "adv": body.advance_agreed, "rec": body.advance_recovery_pct, "tds": body.tds_pct,
@@ -302,7 +304,7 @@ async def edit_work_order(wo_id: uuid.UUID, body: WorkOrderEdit, auth_context: A
         raise HTTPException(status_code=409, detail=f"{wo['ref']} is {wo['status']}: reopen it first.")
     org = auth_context.organization_id
     changes: list[str] = []
-    fields = {"site_id": "site", "title": "title", "start_date": "start", "end_date": "end", "retention_pct": "retention %",
+    fields = {"site_id": "site", "name": "name", "start_date": "start", "end_date": "end", "retention_pct": "retention %",
               "defect_days": "defect days", "advance_agreed": "advance", "advance_recovery_pct": "advance recovery %",
               "tds_pct": "TDS %", "their_ref": "their reference", "terms": "terms", "notes": "notes"}
     sets, params = [], {"id": wo_id, "org": org}
@@ -311,9 +313,9 @@ async def edit_work_order(wo_id: uuid.UUID, body: WorkOrderEdit, auth_context: A
             val = getattr(body, key)
             if isinstance(val, str):
                 val = val.strip() or None
-            before = wo.get(key)
+            before = wo.get("title" if key == "name" else key)
             if str(before or "") != str(val if val is not None else ""):
-                sets.append(f"{key} = :{key}")
+                sets.append(f"{'title' if key == 'name' else key} = :{key}")
                 params[key] = val
                 changes.append(f"{label}: {before or '—'} → {val if val is not None else '—'}")
     if sets:

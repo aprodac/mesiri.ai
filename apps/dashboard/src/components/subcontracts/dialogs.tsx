@@ -110,7 +110,7 @@ export function WorkOrderDialog({ open, onOpenChange, editing, preset, onSaved }
   const save = useMutation({
     mutationFn: (issue: boolean) => {
       const body = {
-        project_id: projectId, site_id: siteId === 'all' ? null : siteId, title: title.trim() || null, start_date: start || null, end_date: end || null,
+        project_id: projectId, site_id: siteId === 'all' ? null : siteId, name: title.trim() || null, start_date: start || null, end_date: end || null,
         retention_pct: retention || '0', defect_days: defect ? Number(defect) : 0, advance_agreed: advance || null, tds_pct: tds || null,
         terms: terms.trim() || null,
         lines: ready.map((l) => ({ id: l.id, planned_item_id: l.planned_item_id ?? null, description: l.description, unit: l.unit, quantity: String(l.quantity), rate: String(l.rate) })),
