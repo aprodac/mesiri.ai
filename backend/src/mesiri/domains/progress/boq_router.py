@@ -166,6 +166,39 @@ def _line_out(line: dict) -> dict:
     }
 
 
+async def _counted_work(
+    repo: PostgresBoqRepository, organization_id: uuid.UUID, project_id: uuid.UUID, lines: list[dict]
+) -> list[dict]:
+    """Every quantity counted on a current line, once each: line, day, site, and the quantity in the line's own
+    unit, or None when it was recorded in another unit (never converted; counted as "other unit").
+
+    The one rule for work done per line: ``_done_by_line`` (to date) and cost control's daily variance (CC-07,
+    per day) both read it, so the two can never disagree.
+    """
+    from mesiri.infrastructure.postgres.repositories.materials import UnitsOfMeasureRepository
+
+    current = await repo.current_revision_of(organization_id, project_id)
+    unit_of = {ln["id"]: ln["unit_id"] for ln in lines}
+    units = UnitsOfMeasureRepository(repo.conn)
+    resolved: dict[str, uuid.UUID | None] = {}
+    out = []
+    for row in await repo.work_done(organization_id, project_id):
+        line_id = current.get(row["item_id"], row["item_id"])
+        if line_id not in unit_of:
+            continue
+        unit_id = row["unit_id"]
+        if unit_id is None:
+            if row["unit_text"] not in resolved:
+                found = await units.resolve_alias(row["unit_text"] or "")
+                resolved[row["unit_text"]] = found["id"] if found else None
+            unit_id = resolved[row["unit_text"]]
+        out.append({
+            "line_id": line_id, "work_date": row["work_date"], "site_id": row["site_id"],
+            "quantity": Decimal(row["quantity"]) if unit_id == unit_of[line_id] else None,
+        })
+    return out
+
+
 async def _done_by_line(
     repo: PostgresBoqRepository, organization_id: uuid.UUID, project_id: uuid.UUID, lines: list[dict]
 ) -> dict[uuid.UUID, dict]:
@@ -174,32 +207,19 @@ async def _done_by_line(
     A record in another unit is never added in (no conversion): it is counted as "other unit"
     so the page can say some work could not be added up.
     """
-    from mesiri.infrastructure.postgres.repositories.materials import UnitsOfMeasureRepository
-
-    current = await repo.current_revision_of(organization_id, project_id)
-    unit_of = {ln["id"]: ln["unit_id"] for ln in lines}
-    units = UnitsOfMeasureRepository(repo.conn)
-    resolved: dict[str, uuid.UUID | None] = {}
     out: dict[uuid.UUID, dict] = {ln["id"]: {"done": Decimal(0), "other_unit": 0} for ln in lines}
-    for row in await repo.work_done(organization_id, project_id):
-        line_id = current.get(row["item_id"], row["item_id"])
-        if line_id not in out:
-            continue
-        unit_id = row["unit_id"]
-        if unit_id is None:
-            if row["unit_text"] not in resolved:
-                found = await units.resolve_alias(row["unit_text"] or "")
-                resolved[row["unit_text"]] = found["id"] if found else None
-            unit_id = resolved[row["unit_text"]]
-        if unit_id == unit_of[line_id]:
-            out[line_id]["done"] += Decimal(row["quantity"])
+    for w in await _counted_work(repo, organization_id, project_id, lines):
+        if w["quantity"] is None:
+            out[w["line_id"]]["other_unit"] += 1
         else:
-            out[line_id]["other_unit"] += 1
+            out[w["line_id"]]["done"] += w["quantity"]
     return out
 
 
 #: ST-04: the schedule's progress reads the same "done" as this page (one rule for work done per line).
 done_by_line = _done_by_line
+#: CC-07: the same count, per line, day and site.
+counted_work = _counted_work
 
 
 def _norm_out(n: dict) -> dict:

@@ -10,6 +10,9 @@ Mounted at /cost:
   GET   /projects/{project_id}/labour  a period's attendance per site, day and trade, and the BOQ lines each is
                                        on (CC-05), with a suggested line for what is on none
   PUT   /projects/{project_id}/labour  put a site's day of one trade on BOQ lines by man-days (empty: take it off)
+  GET   /projects/{project_id}/variance  green / amber / red per BOQ line over a period (a day: the site's day),
+                                       labour earned against labour put on the line, with each day of the period
+                                       (CC-07)
 
 Rates, earned value and money are shown to the roles that see spending (``may_view_expenses``: owner, admin,
 finance, project manager), within their projects; who else sees them is decision D-CC4, not settled here. Setting a
@@ -214,10 +217,15 @@ async def project_budget(
 # -- CC-05: labour put on BOQ lines ---------------------------------------------------------------------------------
 
 
+def _plain(v: Decimal) -> str:
+    """A quantity as a short exact string with no exponent: 20 -> "20", 2.50 -> "2.5" (never "2E+1")."""
+    text = format(Decimal(v), "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 def _q(v: Decimal) -> str:
-    """Man-days as an exact short string ("3", "2.5")."""
-    v = Decimal(v).quantize(_C)
-    return str(v.normalize()) if v == v.to_integral() else str(v)
+    """Man-days as an exact short string ("3", "2.5", "20")."""
+    return _plain(Decimal(v).quantize(_C))
 
 
 def _line_labour(line: dict, labour: dict | None) -> dict:
@@ -416,3 +424,129 @@ async def put_labour_on_lines(
     return {**group, "site_id": str(group["site_id"]) if group["site_id"] else None, "date": str(group["date"]),
             "suggested_line_id": str(group["suggested_line_id"]) if group["suggested_line_id"] else None,
             "on_lines": [{**p, "line_id": str(p["line_id"])} for p in group["on_lines"]]}
+
+
+# -- CC-07: green / amber / red per BOQ line -------------------------------------------------------------------------
+
+
+def _money_or_none(v: Decimal | None) -> str | None:
+    return _m(v) if v is not None else None
+
+
+def _variance_out(v: dict, line: dict, section: str | None) -> dict:
+    return {
+        "line_id": str(v["line_id"]), "boq_code": line.get("boq_code"), "work": line["work_type"],
+        "unit": line["unit"], "section": section,
+        "done_quantity": _q3(v["done_quantity"]), "labour_man_days": _q(v["labour_man_days"]),
+        "labour_unpriced_man_days": _q(v["labour_unpriced_man_days"]),
+        "labour_rate": _money_or_none(v["labour_rate"]), "earned_labour": _money_or_none(v["earned_labour"]),
+        "labour_cost": _money_or_none(v["labour_cost"]), "difference": _money_or_none(v["difference"]),
+        "cost_per_unit": _money_or_none(v["cost_per_unit"]),
+        "ratio": str(v["ratio"]) if v["ratio"] is not None else None,
+        "colour": v["colour"], "reason": v["reason"],
+    }
+
+
+def _q3(v: Decimal) -> str:
+    """A work quantity (3 decimals at most) as a short exact string."""
+    return _plain(Decimal(v).quantize(Decimal("0.001")))
+
+
+def _summary_out(s: dict) -> dict:
+    return {**s, "earned_labour": _money_or_none(s["earned_labour"]), "labour_cost": _money_or_none(s["labour_cost"]),
+            "difference": _money_or_none(s["difference"]), "ratio": str(s["ratio"]) if s["ratio"] is not None else None}
+
+
+@router.get("/projects/{project_id}/variance")
+async def project_variance(
+    project_id: uuid.UUID,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    site_id: uuid.UUID | None = None,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Green / amber / red per BOQ line over a period (default: the last 7 days), worst first.
+
+    Per line: work done in the period, the labour budget it earned, the labour put on the line (CC-05), the cost
+    per unit against the rate, the colour and why (``domains/costing/variance.py``). The period's summary, each
+    day's colour, the labour not on a line (not coloured, said), and materials for the project (earned against
+    bought; not per line until the consumption register, CC-08). ``site_id``: one site's lines and labour.
+    """
+    from mesiri.domains.costing.variance import line_variance, sort_worst_first, summarise
+    from mesiri.domains.progress.boq_router import counted_work
+    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
+        PostgresLabourAllocationRepository,
+    )
+    from mesiri.infrastructure.postgres.repositories.workforce import (
+        PostgresWorkforceReadRepository,
+    )
+
+    repo = await _project_repo(auth, conn, project_id)
+    if site_id is not None and not await repo.site_in_project(project_id, site_id):
+        raise HTTPException(status_code=422, detail="site_id is not a site of this project")
+    org = auth.organization_id
+    date_to = date_to or await _today(conn, org)
+    date_from = date_from or date_to - datetime.timedelta(days=6)
+    if date_from > date_to or (date_to - date_from).days > 731:
+        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
+
+    lines = await repo.list_lines(org, project_id)
+    line_by_id = {ln["id"]: ln for ln in lines}
+    sections = {s["id"]: s["name"] for s in await repo.list_sections(org, project_id)}
+
+    def in_scope(site: uuid.UUID | None) -> bool:
+        return site_id is None or site == site_id
+
+    work = [w for w in await counted_work(repo, org, project_id, lines)
+            if date_from <= w["work_date"] <= date_to and in_scope(w["site_id"])]
+    groups = [g for g in await PostgresWorkforceReadRepository(conn).attendance_by_site_day_trade(
+        organization_id=org, project_id=project_id, date_from=date_from, date_to=date_to) if in_scope(g["site_id"])]
+    allocations = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    current = await repo.current_revision_of(org, project_id)
+
+    def judge(day: datetime.date | None) -> tuple[list[dict], dict]:
+        done: dict = {}
+        for w in work:
+            if (day is None or w["work_date"] == day) and w["quantity"] is not None:
+                done[w["line_id"]] = done.get(w["line_id"], Decimal(0)) + w["quantity"]
+        labour = labour_by_line([g for g in groups if day is None or g["work_date"] == day], allocations, current)
+        out = []
+        for line_id in set(done) | set(labour["lines"]):
+            if line_id not in line_by_id:
+                continue
+            v = line_variance(line_by_id[line_id], done.get(line_id, Decimal(0)), labour["lines"].get(line_id))
+            if v:
+                out.append(v)
+        return sort_worst_first(out), labour
+
+    period_lines, labour = judge(None)
+    days = []
+    for day in sorted({w["work_date"] for w in work} | {g["work_date"] for g in groups}, reverse=True):
+        day_lines, day_labour = judge(day)
+        days.append({"date": str(day), **_summary_out(summarise(day_lines)),
+                     "attendance_cost": _m(day_labour["total"]["cost"]),
+                     "not_on_a_line_cost": _m(day_labour["not_on_a_line"]["cost"])})
+
+    # Materials, for the project: the material budget the period's work earned against what was bought in the
+    # period (the cost read model's materials centre). Not coloured: bought is not used, the register (CC-08) is.
+    earned_material = sum((w["quantity"] * Decimal(line_by_id[w["line_id"]]["material_rate"]) for w in work
+                           if w["quantity"] is not None and line_by_id[w["line_id"]].get("material_rate") is not None),
+                          Decimal(0))
+    centres = await cost_centres(conn, org, date_from=date_from, date_to=date_to, **_scope(auth, project_id, site_id))
+    bought = next((Decimal(c["amount"]) for c in centres["centres"] if c["key"] == "materials"), Decimal(0))
+
+    return {
+        "project_id": str(project_id), "site_id": str(site_id) if site_id else None,
+        "date_from": str(date_from), "date_to": str(date_to),
+        "thresholds": {"green_at": "1.00", "amber_at": "0.90"},
+        "summary": _summary_out(summarise(period_lines)),
+        "labour": {"attendance_cost": _m(labour["total"]["cost"]), "man_days": _q(labour["total"]["man_days"]),
+                   "not_on_a_line": {"man_days": _q(labour["not_on_a_line"]["man_days"]),
+                                     "cost": _m(labour["not_on_a_line"]["cost"])}},
+        "materials": {"earned": _m(earned_material), "bought": _m(bought)},
+        "work_in_other_unit": sum(1 for w in work if w["quantity"] is None),
+        "lines": [_variance_out(v, line_by_id[v["line_id"]], sections.get(line_by_id[v["line_id"]]["work_package_id"]))
+                  for v in period_lines],
+        "days": days,
+    }

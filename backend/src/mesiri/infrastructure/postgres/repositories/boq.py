@@ -165,10 +165,12 @@ class PostgresBoqRepository:
         removed work left out), and a confirmed work-order measurement on a line that points at
         the BOQ, unless it came from a work update (that update is already counted above).
         ``unit_id`` is None for a measurement whose free-text unit is resolved by the caller.
+        ``work_date`` and ``site_id``: when and where (the work update's day, or the day measured) (CC-07).
         """
         updates = await self.conn.execute(
             text(
-                "SELECT q.planned_item_id AS item_id, q.unit_id, NULL AS unit_text, q.quantity "
+                "SELECT q.planned_item_id AS item_id, q.unit_id, NULL AS unit_text, q.quantity, "
+                "a.activity_date AS work_date, a.site_id "
                 "FROM activity_quantities q JOIN activities a ON a.id = q.activity_id "
                 "WHERE a.organization_id = :org AND a.project_id = :p AND a.deleted_at IS NULL "
                 "AND q.planned_item_id IS NOT NULL"
@@ -177,7 +179,8 @@ class PostgresBoqRepository:
         )
         measured = await self.conn.execute(
             text(
-                "SELECT l.planned_item_id AS item_id, NULL AS unit_id, l.unit AS unit_text, m.quantity "
+                "SELECT l.planned_item_id AS item_id, NULL AS unit_id, l.unit AS unit_text, m.quantity, "
+                "m.measured_on AS work_date, o.site_id "
                 "FROM work_order_measurements m JOIN work_order_lines l ON l.id = m.line_id "
                 "JOIN work_orders o ON o.id = m.work_order_id "
                 "WHERE m.organization_id = :org AND o.project_id = :p AND m.status = 'confirmed' "

@@ -267,3 +267,71 @@ async def test_labour_on_lines_is_refused_when_it_does_not_fit(client, ctx, test
     r = await client.put(f"/cost/projects/{p}/labour", headers=_h(engineer),
                          json={**put, "lines": [{"line_id": plaster["id"], "man_days": "1"}]})
     assert r.status_code == 403
+
+
+# -- CC-07: green / amber / red per BOQ line -------------------------------------------------------------------------
+
+
+async def _work(engine, ctx, line_id: str, unit: str, qty: str, days_ago: int, site=None) -> None:
+    activity = uuid.uuid4()
+    await _run(engine, "INSERT INTO activities (id, organization_id, project_id, site_id, work_type, activity_date, "
+               "source) VALUES (:id, :org, :p, :s, 'Work', current_date - CAST(:d AS integer), 'dashboard')",
+               id=activity, org=ctx["org"], p=ctx["project"], s=site or ctx["site"], d=days_ago)
+    await _run(engine, "INSERT INTO activity_quantities (id, activity_id, unit_id, quantity, planned_item_id) "
+               "VALUES (:id, :a, (SELECT id FROM units_of_measure WHERE code = :u), :q, :pi)",
+               id=uuid.uuid4(), a=activity, u=unit, q=Decimal(qty), pi=line_id)
+
+
+async def test_variance_colours_each_line_and_each_day(client, ctx, test_engine):
+    h, p = _h(ctx["admin"]), ctx["project"]
+    plaster, brick = await _boq_lines(client, ctx)
+    for days_ago, sqft in ((1, "300"), (2, "400")):
+        await _attendance(test_engine, ctx, [("mason", 4, "1100", None), ("helper", 2, "1000", None)], days_ago=days_ago)
+        await _work(test_engine, ctx, plaster["id"], "sqft", sqft, days_ago)
+    groups = (await client.get(f"/cost/projects/{p}/labour", headers=h)).json()["groups"]
+    for g in groups:
+        line = plaster if g["trade_key"] == "mason" else brick
+        if g["trade_key"] == "helper" and g["date"] != groups[0]["date"]:
+            continue  # one day of helpers stays off every line
+        await client.put(f"/cost/projects/{p}/labour", headers=h, json={
+            "site_id": g["site_id"], "date": g["date"], "trade": g["trade_key"],
+            "lines": [{"line_id": line["id"], "man_days": g["man_days"]}]})
+
+    body = (await client.get(f"/cost/projects/{p}/variance", headers=h)).json()
+    lines = {ln["line_id"]: ln for ln in body["lines"]}
+    # Plastering: 700 sq ft x 14 = 9,800 earned for 8,800 of masons: green.
+    assert (lines[plaster["id"]]["colour"], lines[plaster["id"]]["earned_labour"], lines[plaster["id"]]["labour_cost"]) == (
+        "green", "9800.00", "8800.00")
+    # Helpers on brickwork and no brickwork measured: red, said why.
+    assert (lines[brick["id"]]["colour"], lines[brick["id"]]["reason"]) == ("red", "labour_no_work")
+    assert body["lines"][0]["line_id"] == brick["id"]  # worst first
+    assert body["labour"]["not_on_a_line"]["cost"] == "2000.00"
+    assert body["labour"]["attendance_cost"] == "12800.00"
+    days = {d["date"]: d for d in body["days"]}
+    yesterday, before = sorted(days)[-1], sorted(days)[0]
+    # Yesterday: 300 x 14 = 4,200 for 4,400 of masons (amber) and 2,000 of helpers on brickwork, nothing measured.
+    assert days[yesterday]["colour"] == "red" and days[yesterday]["lines"]["red"] == 1
+    assert days[before]["earned_labour"] == "5600.00" and days[before]["colour"] == "green"
+
+    one_day = (await client.get(f"/cost/projects/{p}/variance?date_from={yesterday}&date_to={yesterday}", headers=h)).json()
+    plaster_day = next(ln for ln in one_day["lines"] if ln["line_id"] == plaster["id"])
+    assert (plaster_day["colour"], plaster_day["cost_per_unit"], plaster_day["labour_rate"]) == ("amber", "14.67", "14.00")
+    # The BOQ's own done-to-date is unchanged by the per-day count (one rule).
+    boq = (await client.get(f"/projects/{p}/boq", headers=h)).json()
+    assert next(ln for s in boq["sections"] for ln in s["lines"] if ln["id"] == plaster["id"])["done_quantity"] == "700.000"
+
+
+async def test_variance_for_one_site_and_who_sees_it(client, ctx, test_engine):
+    h, p = _h(ctx["admin"]), ctx["project"]
+    plaster, _ = await _boq_lines(client, ctx)
+    other = uuid.uuid4()
+    await _run(test_engine, "INSERT INTO sites (id, project_id, organization_id, name, status, created_at, updated_at) "
+               "VALUES (:id, :p, :org, 'Block B', 'active', now(), now())", id=other, p=p, org=ctx["org"])
+    await _work(test_engine, ctx, plaster["id"], "sqft", "100", 1)
+    await _work(test_engine, ctx, plaster["id"], "sqft", "250", 1, site=other)
+    body = (await client.get(f"/cost/projects/{p}/variance?site_id={other}", headers=h)).json()
+    assert [(ln["done_quantity"], ln["reason"]) for ln in body["lines"]] == [("250", "no_labour")]
+    assert (await client.get(f"/cost/projects/{p}/variance?site_id={uuid.uuid4()}", headers=h)).status_code == 422
+    assert (await client.get(f"/cost/projects/{p}/variance?date_from=2026-02-01&date_to=2026-01-01", headers=h)).status_code == 422
+    _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
+    assert (await client.get(f"/cost/projects/{p}/variance", headers=_h(engineer))).status_code == 403
