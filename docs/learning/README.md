@@ -16,6 +16,7 @@ into `pdf/*.pdf`. Any screenshots in `img/` come from the demo company on a loca
 | 01 | Site: daily reports, issues, quality, safety, equipment | to do |
 | 02 | Planning & BOQ | to do |
 | 03 | Materials | draft, 7 Nov |
+| 03a | Material categories (deep dive: business, how Mesiri does it in code, what to build next) | draft, 8 Nov |
 | 04 | Procurement | to do |
 | 05 | Labour & subcontract | to do |
 | 06 | Cost control | to do |

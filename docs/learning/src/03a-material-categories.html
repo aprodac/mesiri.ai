@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Material categories · Mesiri Field Guide 03a</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<section class="cover">
+  <div class="brand">Mesiri <span></span></div>
+  <p class="series">Field Guide · 03a · Deep dive inside Materials · Internal team edition</p>
+  <h1>Material categories</h1>
+  <p class="lede">Why a builder sorts hundreds of items into Structural, Electrical, Plumbing and the rest; what that sorting is used for; exactly how Mesiri does it in the database, the dashboard, WhatsApp and reports; and what to build next.</p>
+  <div class="draft">Draft, 8 Nov 2026. Parts 1 to 3 are about the business. Parts 4 to 8 describe Mesiri's code as it is on <code>main</code> today (PRC-01, 02, 02b, 02c, 03, 05, 17a to 17d). Business practices here should be checked by someone with site experience.</div>
+  <div class="toc">
+    <p class="toc-title">In this guide</p>
+    <ol>
+      <li>What a material category is</li>
+      <li>Why it is useful: ten jobs it does</li>
+      <li>How construction companies sort material</li>
+      <li>Mesiri's model: tables and rules</li>
+      <li>How a material gets its category</li>
+      <li>Where categories show up in the product</li>
+      <li>The code: files to read, in order</li>
+      <li>What to build next</li>
+      <li>Terms · Check yourself</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===================== 1 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">1 · What a material category is</p>
+  <h2>A shelf in the store, for hundreds of items</h2>
+  <p>A mid-size building project uses a few hundred different items: cement and steel, but also 2-way switches, 20 mm elbows, 6A sockets, CP taps, tile spacers. A <b>category</b> is the shelf an item sits on, so people can find it, count it, total it and give it to the right person. It does not change what the item is; it groups it.</p>
+
+  <h3>Four words that are easy to mix up</h3>
+  <table>
+    <thead><tr><th style="width:18%">Word</th><th style="width:44%">What it is</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><b>Main category</b></td><td>The trade or big group.</td><td>Electrical</td></tr>
+      <tr><td><b>Sub-category</b></td><td>A group inside it.</td><td>Electrical › Switches &amp; sockets</td></tr>
+      <tr><td><b>Item</b></td><td>One thing you buy, count and use. Each size or type is its own item.</td><td>2-way switch 6A · 1-way switch 6A</td></tr>
+      <tr><td><b>Unit</b></td><td>What one item is counted in.</td><td>nos, bags, cft, kg, rolls</td></tr>
+    </tbody>
+  </table>
+  <div class="callout">
+    <b>The rule that keeps it simple:</b> sizes and types are <b>items</b>, not categories. "2-way switch 6A" and "1-way switch 6A" are two items under one sub-category. If sizes became categories, the tree would grow to thousands of shelves with one item each.
+  </div>
+
+  <svg class="diagram" viewBox="0 0 760 200" role="img" aria-label="A category tree: main category Electrical with sub-categories Switches and sockets and Wires and cables, each holding items with their units.">
+    <g font-family="Noto Sans, sans-serif" font-size="12">
+      <rect x="20" y="80" width="140" height="44" rx="10" fill="#1f1d1a"/><text x="90" y="107" text-anchor="middle" fill="#fff" font-weight="700">Electrical</text>
+      <rect x="230" y="30" width="190" height="40" rx="10" fill="#fdeee6" stroke="#e9c8b7"/><text x="325" y="55" text-anchor="middle" font-weight="700">Switches &amp; sockets</text>
+      <rect x="230" y="134" width="190" height="40" rx="10" fill="#fdeee6" stroke="#e9c8b7"/><text x="325" y="159" text-anchor="middle" font-weight="700">Wires &amp; cables</text>
+      <g fill="#fff" stroke="#c9c0b4"><rect x="490" y="8" width="250" height="28" rx="7"/><rect x="490" y="42" width="250" height="28" rx="7"/><rect x="490" y="76" width="250" height="28" rx="7"/><rect x="490" y="126" width="250" height="28" rx="7"/><rect x="490" y="160" width="250" height="28" rx="7"/></g>
+      <g fill="#1f1d1a"><text x="502" y="27">2-way switch 6A</text><text x="502" y="61">1-way switch 6A</text><text x="502" y="95">Socket 16A</text><text x="502" y="145">Wire 1.5 sq mm</text><text x="502" y="179">Wire 2.5 sq mm</text></g>
+      <g fill="#8a8178" font-size="11" text-anchor="end"><text x="732" y="27">nos</text><text x="732" y="61">nos</text><text x="732" y="95">nos</text><text x="732" y="145">rolls</text><text x="732" y="179">rolls</text></g>
+      <g stroke="#8a8178" stroke-width="1.3" fill="none"><path d="M160 96 C 195 96, 195 50, 230 50"/><path d="M160 108 C 195 108, 195 154, 230 154"/>
+      <path d="M420 50 C 455 50, 455 22, 490 22"/><path d="M420 50 L 490 56"/><path d="M420 50 C 455 50, 455 90, 490 90"/><path d="M420 154 C 455 154, 455 140, 490 140"/><path d="M420 154 C 455 154, 455 174, 490 174"/></g>
+      <text x="90" y="150" text-anchor="middle" fill="#8a8178" font-size="11">main category</text><text x="325" y="96" text-anchor="middle" fill="#8a8178" font-size="11">sub-categories</text><text x="615" y="198" text-anchor="middle" fill="#8a8178" font-size="11">items (each size is its own item), with their unit</text>
+    </g>
+  </svg>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section>
+  <p class="eyebrow">2 · Why it is useful: ten jobs it does</p>
+  <h2>Sorting is not tidiness; it is how a builder controls what matters</h2>
+  <table>
+    <thead><tr><th style="width:4%">#</th><th style="width:26%">Job</th><th style="width:40%">Without categories</th><th>With categories</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><b>See stock at a glance</b></td><td>One list of 300 items; cement is lost among fittings.</td><td>"Structural: 5 items, 1 running low." Open only what you care about.</td></tr>
+      <tr><td>2</td><td><b>Know where the money went</b></td><td>"₹28 lakh on material this month." On what?</td><td>Structural ₹19 L, Electrical ₹4 L, Plumbing ₹3 L, Finishing ₹2 L.</td></tr>
+      <tr><td>3</td><td><b>Ask by trade</b></td><td>"Which electrical items are low?" means reading every row.</td><td>One question, one answer: "Electrical stock?"</td></tr>
+      <tr><td>4</td><td><b>Give work to the right person</b></td><td>Everything goes to the GM.</td><td>The MEP engineer owns Electrical and Plumbing; the site engineer owns Structural.</td></tr>
+      <tr><td>5</td><td><b>Buy from the right supplier</b></td><td>Any shop for anything.</td><td>Electrical shop for Electrical, cement dealer for Structural; rates compared within a category.</td></tr>
+      <tr><td>6</td><td><b>Readable reports</b></td><td>The daily report lists 40 materials in random order.</td><td>The daily report groups them: Structural, then Electrical, then Finishing.</td></tr>
+      <tr><td>7</td><td><b>Control by value</b></td><td>Every item checked the same way.</td><td>Tight control of Structural (expensive), lighter on Hardware (cheap).</td></tr>
+      <tr><td>8</td><td><b>Compare with the budget</b></td><td>Material spend can't be matched to the estimate.</td><td>Electrical material vs the electrical part of the BOQ.</td></tr>
+      <tr><td>9</td><td><b>Tax</b></td><td>GST rate looked up item by item.</td><td>Similar items share a GST rate and HSN code (planned).</td></tr>
+      <tr><td>10</td><td><b>Fast setup</b></td><td>Every new company starts from an empty list.</td><td>A standard builder list on day one; import your own items into it.</td></tr>
+    </tbody>
+  </table>
+  <blockquote>"Every item sits under a main category (Structural, Electrical, Plumbing, Fire, Gas, Lift…), with sub-categories (Switches, Pipes, CP fittings) and sizes or types."<cite>A builder customer, sales meeting, 5 Nov 2026 (why Mesiri built categories)</cite></blockquote>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">3 · How construction companies sort material</p>
+  <h2>By trade is the most common; companies change the names</h2>
+  <table>
+    <thead><tr><th style="width:22%">Scheme</th><th style="width:40%">Looks like</th><th>When it is used</th></tr></thead>
+    <tbody>
+      <tr><td><b>By trade</b> (Mesiri's default)</td><td>Structural · Electrical · Plumbing &amp; CP · Fire · Gas · Lift · Finishing</td><td>Most builders and contractors; matches who installs it and who sells it.</td></tr>
+      <tr><td><b>By work section</b></td><td>Earthwork · Concrete · Masonry · Plastering · Flooring · Painting</td><td>Companies that think in BOQ sections; good for cost comparison.</td></tr>
+      <tr><td><b>By stage</b></td><td>Foundation · Superstructure · Finishing · External works</td><td>Developers planning cash by stage.</td></tr>
+      <tr><td><b>By accounting group</b></td><td>Raw material · Consumables · Tools · Spares</td><td>Accounts and the CA; often in Tally.</td></tr>
+    </tbody>
+  </table>
+  <p>Trade is the best <b>starting point</b> because it matches three things at once: who supplies it, who installs it, and how people talk about it on site. A company can then rename, add and switch off categories to fit its own habits. The other schemes are usually needed <b>alongside</b> it (work section for cost, accounting group for the CA), which is why part 8 links categories to cost centres instead of replacing them.</p>
+
+  <h3>Good rules for a category list</h3>
+  <ul class="tight">
+    <li><b>Two levels are enough</b> for a mid-size builder: main and sub. A third level is where lists become unusable.</li>
+    <li><b>One item, one place.</b> An item sits in exactly one category; reports never double count.</li>
+    <li><b>The company owns the list.</b> Rename "Plumbing &amp; CP" to "Plumbing" if that is what they say.</li>
+    <li><b>Never delete a used category.</b> Switch it off: old items keep it, new items can't pick it.</li>
+    <li><b>"No category" is visible</b>, never hidden, so someone places those items.</li>
+    <li><b>Never guess.</b> A wrong category is worse than none: "Stainless steel sink" is not Steel, "Sand paper" is not Masonry.</li>
+  </ul>
+</section>
+
+<!-- ===================== 4 ===================== -->
+<section>
+  <p class="eyebrow">4 · Mesiri's model: tables and rules</p>
+  <h2>One table for the tree, one column on each item</h2>
+  <svg class="diagram" viewBox="0 0 760 230" role="img" aria-label="Data model: material_categories rows point to a parent row; materials_catalog rows point to a category; organizations own both.">
+    <g font-family="Noto Sans Mono, monospace" font-size="11.5">
+      <rect x="20" y="20" width="320" height="190" rx="10" fill="#fff" stroke="#1f1d1a"/>
+      <rect x="20" y="20" width="320" height="30" rx="10" fill="#1f1d1a"/><text x="34" y="40" fill="#fff" font-weight="700">material_categories</text>
+      <g fill="#1f1d1a"><text x="34" y="70">id</text><text x="34" y="90">organization_id  → organizations</text><text x="34" y="110">parent_id        → material_categories</text><text x="34" y="130">name</text><text x="34" y="150">sort_order</text><text x="34" y="170">is_active</text><text x="34" y="190">created_by, updated_by, …_at</text></g>
+      <rect x="420" y="20" width="320" height="170" rx="10" fill="#fff" stroke="#1f1d1a"/>
+      <rect x="420" y="20" width="320" height="30" rx="10" fill="#1f1d1a"/><text x="434" y="40" fill="#fff" font-weight="700">materials_catalog (items)</text>
+      <g fill="#1f1d1a"><text x="434" y="70">id, organization_id, name</text><text x="434" y="90">default_unit_id  (stock unit)</text><text x="434" y="110" font-weight="700">category_id      → material_categories</text><text x="434" y="130" fill="#8a8178">category  (old free text, kept)</text><text x="434" y="150">sku (item code), aliases…</text></g>
+      <path d="M420 106 L 340 120" stroke="#c2410c" stroke-width="1.8" fill="none"/>
+      <path d="M190 110 C 360 110, 360 210, 200 210 L 190 210" stroke="#8a8178" stroke-width="1.2" fill="none" stroke-dasharray="4 3"/>
+      <text x="356" y="200" fill="#8a8178" font-family="Noto Sans, sans-serif" font-size="10.5">parent_id empty = main; set = sub</text>
+    </g>
+  </svg>
+  <table>
+    <thead><tr><th style="width:30%">Rule</th><th>How it is enforced</th></tr></thead>
+    <tbody>
+      <tr><td><b>Per company</b></td><td>Every row has <code>organization_id</code>; row-level security (as every company table) keeps one company from seeing another's.</td></tr>
+      <tr><td><b>Two levels</b></td><td>A row with no parent is a main category; a sub's parent must be a main one. The API refuses a sub under a sub ("already a sub-category; add this under its main category").</td></tr>
+      <tr><td><b>Unique names per parent</b></td><td>A unique index on (company, parent, lower-case name): "Pipes" can exist under Plumbing and under Fire protection, but not twice under Plumbing.</td></tr>
+      <tr><td><b>Switch off, never lose</b></td><td><code>is_active = false</code>: items keep it, it is no longer offered. Delete works only for an empty category; otherwise 409 "move them out first, or switch it off".</td></tr>
+      <tr><td><b>Additive</b></td><td>Migration 0503 added the table and a nullable <code>category_id</code>; the old free-text <code>category</code> column was kept, not rewritten, and is now only a hint.</td></tr>
+      <tr><td><b>Main includes subs</b></td><td>Filtering by a main category (stock, deliveries, usage) includes every sub under it.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The standard builder list (every new company gets it)</h3>
+  <table class="req">
+    <thead><tr><th style="width:22%">Main category</th><th>Sub-categories</th></tr></thead>
+    <tbody>
+      <tr><td><b>Structural</b></td><td>Masonry · Concrete · Steel · Shuttering</td></tr>
+      <tr><td><b>Electrical</b></td><td>Wires &amp; cables · Switches &amp; sockets · Conduits &amp; boxes · DB &amp; MCBs · Lights &amp; fittings</td></tr>
+      <tr><td><b>Plumbing &amp; CP</b></td><td>Pipes · Pipe fittings · Valves · Sanitaryware · CP fittings &amp; accessories · Tanks</td></tr>
+      <tr><td><b>Fire protection</b></td><td>Pipes &amp; fittings · Sprinklers · Hydrants &amp; hoses · Extinguishers · Alarms &amp; detectors</td></tr>
+      <tr><td><b>Gas</b></td><td>Pipes &amp; fittings · Regulators &amp; valves</td></tr>
+      <tr><td><b>Lift</b></td><td>(none)</td></tr>
+      <tr><td><b>Finishing</b></td><td>Tiles &amp; flooring · Paint &amp; putty · Waterproofing · Doors &amp; windows · Hardware</td></tr>
+    </tbody>
+  </table>
+  <p class="note">7 main, 27 sub, in the order a builder works through a project. Existing companies are never changed silently: they get the list with one tap ("Add the standard builder list"), safe to repeat.</p>
+</section>
+
+<!-- ===================== 5 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">5 · How a material gets its category</p>
+  <h2>Four ways in, and one rule above them: never guess</h2>
+  <table>
+    <thead><tr><th style="width:24%">Way</th><th style="width:46%">What happens</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><b>1 Picked on the dashboard</b></td><td>Items tab: a category picker on each item; a "No category" list with a picker and the old free-text group shown as a hint.</td><td>Wash basin → Plumbing &amp; CP › Sanitaryware</td></tr>
+      <tr><td><b>2 Excel import</b></td><td>Columns Main category, Sub-category, Item, Unit, Item code, Other names. New sub-categories are added; existing items without a category get the one in the file.</td><td>A 400-row item list loaded at setup</td></tr>
+      <tr><td><b>3 Standard list for existing items</b></td><td>When a company adds the standard list, items are placed only by a starter name or an exact old group; anything else stays under No category.</td><td>"Masonry" (old group) → Structural › Masonry</td></tr>
+      <tr><td><b>4 Suggested for a new item</b></td><td>When someone adds a new material (dashboard or WhatsApp), Mesiri suggests its category; it shows on the card before Save.</td><td>"MCB 32A" → Electrical › DB &amp; MCBs</td></tr>
+    </tbody>
+  </table>
+
+  <h3>How the suggestion works (and why it is strict)</h3>
+  <svg class="diagram" viewBox="0 0 760 200" role="img" aria-label="Suggestion flow: the AI's category in words is read first against the company's own list; then the strict name rule; else no category.">
+    <defs><marker id="s1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8178"/></marker></defs>
+    <g font-family="Noto Sans, sans-serif" font-size="12">
+      <rect x="10" y="70" width="140" height="56" rx="10" fill="#fff" stroke="#c9c0b4"/><text x="80" y="94" text-anchor="middle" font-weight="700">New item</text><text x="80" y="112" text-anchor="middle" fill="#5f5a52">"Stainless steel sink"</text>
+      <rect x="200" y="10" width="250" height="70" rx="10" fill="#e6eef8" stroke="#1f4f8a"/><text x="325" y="34" text-anchor="middle" font-weight="700">1 The AI's hint, in words</text><text x="325" y="52" text-anchor="middle" fill="#3c4a42">read against the company's own list</text><text x="325" y="68" text-anchor="middle" fill="#3c4a42">"Sanitaryware" → found</text>
+      <rect x="200" y="116" width="250" height="70" rx="10" fill="#fbf0d9" stroke="#9a6200"/><text x="325" y="140" text-anchor="middle" font-weight="700">2 The strict name rule</text><text x="325" y="158" text-anchor="middle" fill="#3c4a42">whole name a starter item, or every</text><text x="325" y="174" text-anchor="middle" fill="#3c4a42">word belongs to one category only</text>
+      <rect x="520" y="10" width="230" height="56" rx="10" fill="#e9f6ee" stroke="#2f855a"/><text x="635" y="34" text-anchor="middle" font-weight="700">Category on the card</text><text x="635" y="52" text-anchor="middle" fill="#3c4a42">📂 Plumbing &amp; CP › Sanitaryware</text>
+      <rect x="520" y="130" width="230" height="56" rx="10" fill="#f2efe9" stroke="#c9c0b4"/><text x="635" y="154" text-anchor="middle" font-weight="700">No category</text><text x="635" y="172" text-anchor="middle" fill="#5f5a52">saved anyway; placed later</text>
+      <g stroke="#8a8178" stroke-width="1.4" fill="none" marker-end="url(#s1)"><path d="M150 90 L 198 50"/><path d="M450 45 L 518 40"/><path d="M325 80 L 325 114"/><path d="M450 145 C 485 145, 485 60, 518 52"/><path d="M450 165 L 518 160"/></g>
+      <text x="460" y="100" fill="#8a8178" font-size="10.5">rule settles it</text><text x="462" y="182" fill="#8a8178" font-size="10.5">nothing fits</text>
+    </g>
+  </svg>
+  <table>
+    <thead><tr><th style="width:30%">Name</th><th style="width:30%">Result</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Cement</td><td>Structural › Masonry</td><td>A starter item's name (the starter list files cement under Masonry)</td></tr>
+      <tr><td>Binding wire 18 gauge</td><td>Structural › Steel</td><td>A starter item; sizes ("18 gauge") are ignored</td></tr>
+      <tr><td>MCB 32A</td><td>Electrical › DB &amp; MCBs</td><td>Every meaningful word belongs to that one category</td></tr>
+      <tr><td>Stainless steel sink</td><td>Not Steel. Sanitaryware, from the AI's hint</td><td>"Stainless" is unknown to the rule, so the rule places nothing; the AI read the whole name</td></tr>
+      <tr><td>Sand paper</td><td>Not Masonry</td><td>"Paper" is unknown: the rule places nothing</td></tr>
+      <tr><td>GI pipe 1 inch</td><td>Only by the AI's hint, or none</td><td>"Pipe" is in Plumbing, Fire and Gas: a shared word places nothing</td></tr>
+    </tbody>
+  </table>
+  <p class="note">The order matters: the AI's hint first (it reads the whole name in context), then the strict rule, then nothing. The AI may only name one of the company's own switched-on categories; it can never create one. This was tightened on 5 Nov after real mistakes ("Stainless steel sink" went to Steel).</p>
+</section>
+
+<!-- ===================== 6 ===================== -->
+<section>
+  <p class="eyebrow">6 · Where categories show up in the product</p>
+  <h2>One column, used everywhere</h2>
+  <table>
+    <thead><tr><th style="width:22%">Where</th><th style="width:44%">What the user sees</th><th>Built in</th></tr></thead>
+    <tbody>
+      <tr><td><b>Materials › Items</b></td><td>Items grouped Main › Sub; a picker per item; a "No category" list; a Categories panel to add, rename, reorder, switch off; "Add the standard builder list".</td><td>PRC-01, PRC-03</td></tr>
+      <tr><td><b>Materials › Stock</b></td><td>A card per main category (items, running low, spend); items grouped by category; category filter.</td><td>PRC-17d</td></tr>
+      <tr><td><b>Deliveries and use</b></td><td>Every row names its category; filter by category.</td><td>PRC-17b</td></tr>
+      <tr><td><b>Daily report (DPR)</b></td><td>Materials grouped by main category, in the company's order ("Other" for the rest).</td><td>PRC-17c</td></tr>
+      <tr><td><b>Excel import</b></td><td>Main category and Sub-category columns.</td><td>PRC-05</td></tr>
+      <tr><td><b>WhatsApp: set up</b></td><td>"Set up categories" adds the standard list (admin or PM). "What categories do I have?" lists them.</td><td>PRC-02c</td></tr>
+      <tr><td><b>WhatsApp: new item</b></td><td>The card line shows "📂 Electrical › DB &amp; MCBs" before Save.</td><td>PRC-02, PRC-02b</td></tr>
+      <tr><td><b>WhatsApp: move an item</b></td><td>"Put wash basin in Sanitaryware" changes its category.</td><td>PRC-02b</td></tr>
+      <tr><td><b>WhatsApp: ask by category</b></td><td>"Electrical stock?", "What plumbing came this week?"; long answers grouped by main category.</td><td>PRC-17a, 17b</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The API (what the dashboard and the WhatsApp assistant both call)</h3>
+  <table class="req">
+    <thead><tr><th style="width:42%">Route</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /materials/categories</code></td><td>The company's tree in order, items per category, and the count with no category.</td></tr>
+      <tr><td><code>POST /materials/categories</code></td><td>Add a main category, or a sub with <code>parent_id</code>.</td></tr>
+      <tr><td><code>PATCH /materials/categories/{id}</code></td><td>Rename, reorder (<code>sort_order</code>), switch off (<code>is_active</code>).</td></tr>
+      <tr><td><code>DELETE /materials/categories/{id}</code></td><td>Delete only if empty; else 409.</td></tr>
+      <tr><td><code>POST /materials/categories/standard</code></td><td>Add the standard builder list and place items by fixed rules; safe to repeat.</td></tr>
+      <tr><td><code>GET /materials/categories/suggest?name&amp;hint</code></td><td>The suggestion of part 5, read-only.</td></tr>
+      <tr><td><code>POST/PATCH /materials</code> with <code>category_id</code></td><td>Put an item in a category, or take it out (null).</td></tr>
+      <tr><td><code>GET /materials/inventory|stock-summary|inflows|outflows?category_id=</code></td><td>Stock, period stock, deliveries, use filtered by category (main includes subs); rows carry <code>category</code> and <code>main_category</code>.</td></tr>
+    </tbody>
+  </table>
+  <p class="note">The assistant uses the same routes as tools (<code>material_categories</code>, <code>add_standard_categories</code>, <code>stock_levels</code> with <code>category_id</code>, <code>update_material</code> with a category in words). One rule in one place: the API decides; the dashboard and WhatsApp only show it.</p>
+</section>
+
+<!-- ===================== 7 ===================== -->
+<section>
+  <p class="eyebrow">7 · The code: files to read, in order</p>
+  <table class="req">
+    <thead><tr><th style="width:4%">#</th><th style="width:56%">File</th><th>What you learn there</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>backend/migrations/versions/0503_material_categories.py</code></td><td>The table, the unique index, row-level security, the new column.</td></tr>
+      <tr><td>2</td><td><code>backend/src/mesiri/domains/materials/categories.py</code></td><td>The standard list; placing rules; <code>suggest_path</code>, <code>read_hint</code>, <code>suggest</code>.</td></tr>
+      <tr><td>3</td><td><code>backend/src/mesiri/infrastructure/postgres/repositories/material_categories.py</code></td><td>The SQL: list with counts, find, in-use check.</td></tr>
+      <tr><td>4</td><td><code>backend/src/mesiri/domains/materials/router.py</code> (search "categories")</td><td>The routes and their rules (two levels, 409s, switch off).</td></tr>
+      <tr><td>5</td><td><code>backend/src/mesiri/application/materials/categories.py</code></td><td>Adding the standard list to an existing company.</td></tr>
+      <tr><td>6</td><td><code>backend/src/mesiri/domains/materials/stock_summary.py</code></td><td>Period stock, running low, category filter.</td></tr>
+      <tr><td>7</td><td><code>apps/dashboard/src/components/materials/categories-panel.tsx</code>, <code>catalogue-view.tsx</code>, <code>category-view.tsx</code></td><td>The dashboard: tree, picker, Stock by category.</td></tr>
+      <tr><td>8</td><td><code>apps/whatsapp-assistant/src/agent_api/materials.py</code> (<code>settle_category</code>)</td><td>How a WhatsApp card gets its category.</td></tr>
+      <tr><td>9</td><td><code>apps/whatsapp-assistant/src/agent_api/tools.py</code>, <code>SOP.md</code> rule 6</td><td>What the assistant may call and the rules it follows.</td></tr>
+      <tr><td>10</td><td><code>backend/tests/unit/test_material_category_suggest.py</code>, <code>backend/tests/contract/test_materials_api_contract.py</code></td><td>The behaviour, as tests: read these to see every case.</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Plans and decisions: <code>docs/plans/procurement-plan.md</code> (§4a, §4b, decision D5), tracker rows PRC-01 to PRC-03 and PRC-17a to 17d.</p>
+</section>
+
+<!-- ===================== 8 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">8 · What to build next</p>
+  <h2>Categories as the backbone for money, buying and control</h2>
+  <p>Today categories sort, filter, total spend and answer questions. The next steps make them drive decisions. Status: <span class="st have">Have</span> <span class="st part">Partly</span> <span class="st miss">Missing</span>.</p>
+  <table class="req gap">
+    <thead><tr><th style="width:30%">Capability</th><th style="width:9%">Priority</th><th style="width:9%">Mesiri</th><th>What to build, and where</th></tr></thead>
+    <tbody>
+      <tr><td>Role check on category and item writes</td><td><span class="pri must">Must</span></td><td><span class="st part">Partly</span></td><td>Only the dashboard tab is admin-only; the API itself does not check the role (known gap, PRC-01). Add the same check as <code>may_set_unit_conversions</code> to the category and catalogue routes. Security-sensitive: needs approval.</td></tr>
+      <tr><td>Spend by category over time</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Spend per category for a period exists (Stock tab). Add a month-by-month trend per project; feeds the weekly/monthly report (PRC-19).</td></tr>
+      <tr><td>Move many items at once</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>Select several items in Items › No category and place them together; a bulk <code>PATCH</code> or a loop in the panel.</td></tr>
+      <tr><td>Categories on requests, orders and bills</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>Comes free with procurement (PRC-06..11): order lines carry the item, so the category; "orders pending by category", "Electrical bills this month".</td></tr>
+      <tr><td>Suppliers by category</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>Which vendors supply which categories, from delivery history; rate comparison within a category (PRC-14, PRC-16).</td></tr>
+      <tr><td>Category → cost centre</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>Map each main category to a cost centre so material cost lands in the right bucket (CC-01) and can be compared with the BOQ section.</td></tr>
+      <tr><td>Owner per category</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>A person responsible for each main category (MEP engineer for Electrical/Plumbing): their alerts, their approvals.</td></tr>
+      <tr><td>Running-low alerts per category</td><td><span class="pri should">Should</span></td><td><span class="st part">Partly</span></td><td>Running low exists per item; send it to the category's owner, and allow a minimum level per item.</td></tr>
+      <tr><td>GST rate and HSN per category</td><td><span class="pri should">Should</span></td><td><span class="st miss">Missing</span></td><td>A default GST rate and HSN code on the category, inherited by its items, overridable per item; needed for bill matching and GST (Accounts).</td></tr>
+      <tr><td>Wastage allowance per category</td><td><span class="pri nice">Nice</span></td><td><span class="st miss">Missing</span></td><td>A default allowance (e.g. Structural 2%) inherited by items; used by reconciliation (CC-08).</td></tr>
+      <tr><td>Attribute templates per category</td><td><span class="pri nice">Nice</span></td><td><span class="st miss">Missing</span></td><td>Steel items have diameter and grade; pipes have size and class; tiles have size and finish. Structured fields instead of putting everything in the name.</td></tr>
+      <tr><td>Merge two categories</td><td><span class="pri nice">Nice</span></td><td><span class="st miss">Missing</span></td><td>Move everything from one into another, then switch the first off.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>Suggested order:</b> the role check first (small, closes a real gap), then cost-centre mapping and owner per category (they make categories drive cost control and alerts), then GST/HSN with procurement and bills. The rest follow procurement naturally.</div>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section>
+  <p class="eyebrow">9 · Terms</p>
+  <dl class="terms">
+    <dt>Main category</dt><dd>The top level: a trade or big group (Electrical).</dd>
+    <dt>Sub-category</dt><dd>A group under a main category (Switches &amp; sockets).</dd>
+    <dt>Item</dt><dd>One thing bought, counted and used; each size or type its own item.</dd>
+    <dt>Standard list</dt><dd>The 7 main and 27 sub-categories every new company starts with.</dd>
+    <dt>Switched off</dt><dd>A category no longer offered; items keep it.</dd>
+    <dt>No category</dt><dd>Items not yet placed; shown so someone places them.</dd>
+    <dt>Hint</dt><dd>The AI's category in words, checked against the company's own list.</dd>
+    <dt>HSN code</dt><dd>The tax classification code used on GST bills.</dd>
+    <dt>Cost centre</dt><dd>The bucket a cost is reported in (materials, labour, fuel); not the same as a material category.</dd>
+  </dl>
+
+  <p class="eyebrow">Check yourself</p>
+  <ol class="quiz">
+    <li>Is "TMT bar 12 mm" a category, a sub-category or an item? Why?</li>
+    <li>Why does Mesiri switch a used category off instead of deleting it?</li>
+    <li>Why does "Stainless steel sink" not go to Structural › Steel?</li>
+    <li>A GM asks "how much did we spend on electrical this month?" Which page and which route answer it today?</li>
+    <li>Which next step would let material cost be compared with the electrical part of the BOQ?</li>
+  </ol>
+  <p class="answers"><b>Answers:</b> 1. An item (Structural › Steel); sizes are items, not categories. 2. Its items keep their history and totals; it is simply no longer offered. 3. The strict rule places nothing when a word ("stainless") is unknown; the AI's hint, which reads the whole name, says Sanitaryware. 4. Materials › Stock (category cards, this month), from <code>GET /materials/stock-summary</code>. 5. Mapping each category to a cost centre, then to its BOQ section (CC-01, CC-08).</p>
+</section>
+
+</body>
+</html>

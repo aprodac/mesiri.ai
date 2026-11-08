@@ -571,6 +571,7 @@ Plan and template: [docs/learning/README.md](../learning/README.md). Internal ed
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | LRN-03 | Guide 03 Materials (sample for the format) | S | Should | — | in-progress | Claude (session 7 Nov) | Rewritten domain-first (7 Nov): process, leaks, controls, requirements checklist, gap list. Waiting for the team's feedback before the other 12 |
 | LRN-00 | Guide 00 The big picture | S | Should | LRN-03 | in-progress | Claude (session 7 Nov) | Draft built (11 pages): business and contracts, project life, who's who, rhythm, money flow, ten leaks mapped to guides, information problem, module map, one load of cement end to end, software market, where Mesiri fits (74 pages: 15 working, 59 planned) and build order. Waiting for review |
+| LRN-03a | Guide 03a Material categories (deep dive): what categories are and the ten jobs they do, how builders sort material, Mesiri's model (0503, two levels, standard list), how an item gets its category (suggestion rules checked against the code), where categories show up, files to read, what to build next | S | Should | LRN-03 | done (commit in report) | Claude (session 8 Nov) | Next-steps list: API role check on category writes (security, needs approval), category → cost centre, owner per category, GST/HSN, bulk move, suppliers by category |
 | LRN-RST | Guides 01 Site, 02 Planning & BOQ, 04 Procurement, 05 Labour & subcontract, 06 Cost control, 07 Finance & accounts, 08 Client billing, 09 Glossary (10 guides in all, agreed 7 Nov) | L | Should | LRN-03 | todo | — | |
 ---
 
