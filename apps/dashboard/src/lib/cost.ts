@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { Boq } from './boq'
+import type { Boq, BoqLine, BoqSection } from './boq'
 
 // The Cost control module (`cost`, CC-01 / CC-04). Backend: domains/costing/router.py.
 // Money arrives as exact strings; a figure that cannot be worked out is null, never ₹0.
@@ -43,6 +43,16 @@ export interface BudgetKind {
   lines_priced: number
 }
 
+/** CC-05: a BOQ line in Budget vs actual also carries the labour put on it. */
+export interface BudgetLine extends BoqLine {
+  labour_man_days: string
+  /** null: no labour on the line, or none of it has a wage. */
+  labour_cost: string | null
+  labour_unpriced_man_days: string
+  /** Labour earned − labour cost; negative is over. null when either is unknown. */
+  labour_difference: string | null
+}
+
 export interface ProjectBudget {
   project_id: string
   date_from: string
@@ -52,7 +62,36 @@ export interface ProjectBudget {
   not_set: string
   total_spent: string
   work_not_on_a_line: number
-  boq: Boq
+  labour_on_lines: { man_days: string; cost: string }
+  labour_not_on_a_line: { man_days: string; cost: string; unpriced_man_days: string }
+  boq: Omit<Boq, 'sections'> & { sections: (Omit<BoqSection, 'lines'> & { lines: BudgetLine[] })[] }
+}
+
+/** CC-05: a site's day of one trade, from attendance, and the BOQ lines it was put on. */
+export interface LabourGroup {
+  site_id: string | null
+  site_name: string | null
+  date: string
+  trade: string | null
+  trade_key: string
+  /** What the attendance lines said the people did. */
+  activities: string[]
+  man_days: string
+  cost: string | null
+  on_lines: { line_id: string; work: string | null; unit: string | null; man_days: string; cost: string | null }[]
+  not_on_a_line: { man_days: string; cost: string | null }
+  /** More man-days were put on lines than attendance now counts (the list was re-sent lower). */
+  over_allocated: boolean
+  suggested_line_id: string | null
+}
+
+export interface ProjectLabour {
+  project_id: string
+  date_from: string
+  date_to: string
+  total: { man_days: string; cost: string }
+  not_on_a_line: { man_days: string; cost: string }
+  groups: LabourGroup[]
 }
 
 export interface CentreFilters {
@@ -76,6 +115,29 @@ export async function setCategoryCentre(categoryId: string, centre: CentreKey | 
 
 export async function fetchProjectBudget(projectId: string): Promise<ProjectBudget> {
   return (await api.get<ProjectBudget>(`/cost/projects/${projectId}/budget`)).data
+}
+
+export async function fetchProjectLabour(
+  projectId: string,
+  params: { date_from?: string; date_to?: string; unallocated?: boolean } = {},
+): Promise<ProjectLabour> {
+  return (await api.get<ProjectLabour>(`/cost/projects/${projectId}/labour`, { params })).data
+}
+
+/** Replaces the lines a site's day of one trade is on; an empty list takes it off every line. */
+export async function putLabourOnLines(
+  projectId: string,
+  group: Pick<LabourGroup, 'site_id' | 'date' | 'trade_key'>,
+  lines: { line_id: string; man_days: string }[],
+): Promise<LabourGroup> {
+  return (
+    await api.put<LabourGroup>(`/cost/projects/${projectId}/labour`, {
+      site_id: group.site_id,
+      date: group.date,
+      trade: group.trade_key,
+      lines,
+    })
+  ).data
 }
 
 // Mirrors backend MONEY_MANAGE_ROLES: who may change a category's cost centre.
