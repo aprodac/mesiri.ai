@@ -226,6 +226,7 @@ answers to "Malabar balance?", "how much plastering left?", "metal enough for th
 | D-CC5 | Restructure the dashboard navigation around the five screens | **Yes, registers become drill-downs** — product decision, shared layout | CC-12, CC-15 |
 | D-CC6 | Green/red threshold | **Green ≥ 100% of benchmark, amber 90–100%, red < 90%**, per company setting | CC-07 |
 | D-CC7 | Dedicated hosting for clients who ask | **Dedicated cloud instance (own DB, backups), no on-premise in V1**; priced separately | CC-16 |
+| D-CC8 | Cost before or after GST we can claim back | **Before claimable GST when the bill has a GSTIN and a tax amount, else the full amount, flagged** — needs Ilan | CC-25, CC-07 |
 
 ## 10. Risks
 
@@ -259,9 +260,11 @@ Each CC item is its own commits; revert per item.
 
 ## 13. Labour isolation
 
-Labour and Attendance change by one nullable field (`planned_item_id` on attendance entries) and read access
-for costing; no change to how attendance is recorded, counted or paid. **Workforce and Payroll are not
-touched.** Stated in each phase report.
+Labour and Attendance are **not changed** (revised 8 Nov for CC-05): costing keeps its own table
+(`labour_boq_allocations`: site, day, trade → BOQ line, man-days) and reads attendance through the Labour
+module's own counted rule (`live_report_sql`, `counted_line_sql`). A column on attendance lines was the first
+idea and was dropped: a re-sent list replaces the earlier lines (BE-10), so the link would be lost on every
+correction. **Workforce and Payroll are not touched.** Stated in each phase report.
 
 ## 14. Success criteria
 
@@ -271,3 +274,28 @@ touched.** Stated in each phase report.
 - Supplier balances match accounts for every pilot supplier.
 - A material shortage against the BOQ is warned at least one delivery cycle before it runs out.
 - The engineer's typing does not grow: no more than one extra question per day on average.
+
+## 15. Order after 8 Nov, and a later Accounts module (Ilan, 8 Nov 2026)
+
+Cost control is finished before a Finance / Accounts module: it is what the client said he pays for, it is
+three items from the demo, and accounting is larger, riskier and compared with Tally.
+
+| Step | Items |
+|---|---|
+| 0 | SEC-04 (needs Ilan), CC-17 review (needs Ilan), D-CC8, CC-25 |
+| 1. Core | CC-05 labour → BOQ, CC-07 daily green / red, CC-11 evening card, CC-22 Cost control home |
+| 2. Depth | CC-08 material reconciliation, CC-18 committed + forecast, CC-19 portfolio, CC-21 export |
+| 3. Bridge | NXT-12 Tally export |
+| 4. Accounts (V1.1) | Chart of accounts, posting from site records, party ledgers (on CC-09), Project P&L (absorbs CC-20), GST / TDS, closed months |
+
+**Rules so Accounts reuses this work, not redoes it:**
+
+- Cost control reads costs only through `domains/finance/costs.py`; switching "actual" to posted books later is
+  one change there ("Site (live)" vs "Books (posted)", with the difference listed).
+- Each cost line carries project, cost centre, date, source type and id: what a journal entry needs.
+- No stored balances in cost control (CC-09 is a read model); the books own balances.
+- Cost centres stay as an analysis tag; Accounts maps each expense category to a ledger account beside it.
+- Committed cost, budget, earned and forecast stay cost control only; accounting has none of them.
+- Labour: cost control counts attendance × wage (as worked); the books count what Payroll pays. The difference
+  is shown, never hidden. Payroll is not changed for cost control.
+- Margin (CC-20) is built once, as Project P&L.
