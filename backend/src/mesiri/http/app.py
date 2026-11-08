@@ -335,6 +335,14 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("schedule router not loaded: %s", exc)
 
     try:
+        # END-01, END-03: snags, handover checklist
+        from mesiri.domains.closeout.router import router as closeout_router
+
+        app.include_router(closeout_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("closeout router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.dpr.router import router as dpr_router
 
         app.include_router(dpr_router)

@@ -16,6 +16,13 @@
   POST  /billing/ra-bills/{bill_id}/cancel     a submitted bill withdrawn (its quantities go back to "not billed")
   DELETE /billing/ra-bills/{bill_id}           remove a draft
 
+  GET   /billing/receivables?project_id=       END-02: what each client still owes, per bill, oldest first; retention
+                                               held and when it falls due; the advance still to come
+  GET   /billing/payments?project_id=          END-02: payments received from clients, newest first
+  POST  /projects/{project_id}/client-payments a payment received: against a bill (bill_id or bill_ref "RA-03"), an
+                                               advance, retention released, or other
+  DELETE /billing/payments/{payment_id}        remove a payment entered by mistake
+
 Who: the owner, an admin and finance (``may_manage_money``), within the projects they can reach: the plan's default
 for decision D-N3 (docs/plans/next-modules-plan.md), the narrowest existing money rule, until Ilan decides otherwise.
 """
@@ -356,6 +363,11 @@ async def cancel_ra_bill(bill_id: uuid.UUID, auth: AuthorizationContext = Depend
     if bill["status"] != "submitted":
         raise HTTPException(status_code=409, detail="Only a submitted bill can be withdrawn (a draft is removed, a "
                                                     "certified one stays)")
+    from mesiri.domains.billing import payments
+
+    if await payments.bill_has_payments(conn, bill_id):
+        raise HTTPException(status_code=409, detail=f"{bill['ref']} has payments recorded against it: remove them "
+                                                    "first, or keep the bill")
     await bills.set_status(conn, bill_id, "cancelled")
     return _out(await bills.get(conn, auth.organization_id, bill_id))
 
@@ -370,4 +382,142 @@ async def delete_ra_bill(bill_id: uuid.UUID, auth: AuthorizationContext = Depend
     bill = await _bill(conn, auth, bill_id)
     _draft(bill)
     await bills.delete_draft(conn, bill_id)
+    return Response(status_code=204)
+
+
+# -- payments received and receivables (END-02) ---------------------------------------------------------------------
+
+class PaymentIn(BaseModel):
+    kind: str = Field(default="bill", description="bill (against an RA bill), advance, retention (released) or other")
+    bill_id: uuid.UUID | None = None
+    bill_ref: str | None = Field(default=None, max_length=20, description='The bill as people say it: "RA-03", "3"')
+    amount: Decimal = Field(gt=0, max_digits=16, decimal_places=2)
+    received_on: datetime.date | None = None
+    mode: str | None = Field(default=None, max_length=40, description="bank, cheque, UPI, cash")
+    reference: str | None = Field(default=None, max_length=120, description="UTR / cheque number")
+    notes: str | None = Field(default=None, max_length=500)
+
+    _clean_text = field_validator("bill_ref", "mode", "reference", "notes")(_clean)
+
+    @field_validator("kind")
+    @classmethod
+    def _kind(cls, v: str) -> str:
+        from mesiri.domains.billing.payments import KINDS
+
+        v = (v or "").strip().lower()
+        if v not in KINDS:
+            raise ValueError(f"kind must be one of {', '.join(KINDS)}")
+        return v
+
+
+def _bill_number(said: str) -> int | None:
+    digits = "".join(ch for ch in said if ch.isdigit())
+    return int(digits) if digits else None
+
+
+@router.get("/billing/receivables")
+async def list_receivables(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                           conn: AsyncConnection = Depends(get_db_conn)):
+    """Per project: each submitted / certified bill with due, received, outstanding and age; retention held and its
+    due day (handover + defect liability months); the advance still to come. Projects owed the most first."""
+    from mesiri.domains.billing import payments
+
+    _require(auth, project_id)
+    org = auth.organization_id
+    scope = None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
+    if project_id is not None:
+        await _project_name(conn, org, project_id)
+        ids = [project_id]
+    else:
+        ids = await payments.projects_with_money(conn, org, scope)
+    today = await _today(conn, org)
+    projects = [await payments.project_money(conn, org, pid, today) for pid in ids]
+    projects.sort(key=lambda p: -p["outstanding"])
+    return _out({"today": today, "projects": projects,
+                 "outstanding": payments.total(projects, "outstanding"),
+                 "retention_left": payments.total(projects, "retention_left"),
+                 "received": payments.total(projects, "received")})
+
+
+@router.get("/billing/payments")
+async def list_client_payments(project_id: uuid.UUID | None = None,
+                               auth: AuthorizationContext = Depends(get_auth_context),
+                               conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import payments
+
+    _require(auth, project_id)
+    scope = None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
+    if project_id is not None:
+        scope = {project_id}
+    return _out(await payments.list_payments(conn, auth.organization_id, scope))
+
+
+@router.post("/projects/{project_id}/client-payments", status_code=201)
+async def record_client_payment(project_id: uuid.UUID, body: PaymentIn,
+                                auth: AuthorizationContext = Depends(get_auth_context),
+                                conn: AsyncConnection = Depends(get_db_conn)):
+    """A payment from the client. Against a bill it never takes the bill below zero; retention never more than is
+    held; an advance never more than the contract's advance still to come. The answer has the project's money after
+    it (``receivable``) so the person hears what is still owed."""
+    from mesiri.domains.billing import bills, payments, receivables
+
+    _require(auth, project_id)
+    org = auth.organization_id
+    await _project_name(conn, org, project_id)
+    today = await _today(conn, org)
+    if body.received_on and body.received_on > today:
+        raise HTTPException(status_code=422, detail="That day has not come yet: a payment is recorded when it arrives")
+    before = await payments.project_money(conn, org, project_id, today)
+    bill = None
+    bill_id = body.bill_id
+    if body.kind == "bill" and bill_id is None and body.bill_ref:
+        from sqlalchemy import text
+
+        number = _bill_number(body.bill_ref)
+        bill_id = number and (await conn.execute(text(
+            "SELECT id FROM ra_bills WHERE organization_id = :org AND project_id = :p AND number = :n"),
+            {"org": org, "p": project_id, "n": number})).scalar()
+        if not bill_id:
+            raise HTTPException(status_code=422, detail=f"No bill {body.bill_ref} on this project")
+    if body.kind == "bill" and bill_id is None:
+        open_bills = [b for b in before["bills"] if b["outstanding"] > 0]
+        if len(open_bills) != 1:
+            refs = ", ".join(b["ref"] for b in open_bills) or "none"
+            raise HTTPException(status_code=422, detail=f"Which bill was this for? Bills still owed: {refs}")
+        bill_id = open_bills[0]["id"]
+    if body.kind != "bill" and bill_id is not None:
+        raise HTTPException(status_code=422, detail="Only a payment against a bill names a bill")
+    outstanding = None
+    if bill_id is not None:
+        bill = await bills.get(conn, org, bill_id)
+        if bill is None or bill["project_id"] != project_id:
+            raise HTTPException(status_code=422, detail="That bill is not on this project")
+        row = next((b for b in before["bills"] if b["id"] == bill_id), None)
+        outstanding = row["outstanding"] if row else None
+    problem = receivables.payment_problem(
+        body.kind, body.amount, bill=bill, bill_outstanding=outstanding, retention_left=before["retention_left"],
+        advance_left=before["advance_left"] if before["has_advance"] else None)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+    values = body.model_dump(exclude={"bill_id", "bill_ref"})
+    values["ra_bill_id"] = bill_id
+    values["received_on"] = body.received_on or today
+    payment_id = await payments.add_payment(conn, org, project_id, values, auth.user_id)
+    return _out({"payment": await payments.get_payment(conn, org, payment_id),
+                 "receivable": await payments.project_money(conn, org, project_id, today)})
+
+
+@router.delete("/billing/payments/{payment_id}", status_code=204)
+async def delete_client_payment(payment_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                                conn: AsyncConnection = Depends(get_db_conn)):
+    from fastapi import Response
+
+    from mesiri.domains.billing import payments
+
+    _require(auth)
+    pay = await payments.get_payment(conn, auth.organization_id, payment_id)
+    if pay is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    _require(auth, pay["project_id"])
+    await payments.delete_payment(conn, payment_id)
     return Response(status_code=204)

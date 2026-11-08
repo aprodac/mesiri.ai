@@ -34,6 +34,7 @@ async def clean_db(test_engine: AsyncEngine):
     yield
     # Bills hold their BOQ lines (RESTRICT): other suites delete every BOQ row when they start.
     async with test_engine.begin() as conn:
+        await conn.execute(sa.text("DELETE FROM client_payments"))  # END-02: a payment holds its bill (RESTRICT)
         await conn.execute(sa.text("DELETE FROM ra_bills"))
 
 
