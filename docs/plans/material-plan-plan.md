@@ -52,6 +52,15 @@ remaining quantity drops; the schedule moves, the need moves.
   catalog delete (deactivate instead). Dashboard: materials under each BOQ line; "Materials per <unit>" dialog with
   "use the same for the N other lines with this work". Repository: `repositories/material_norms.py`.
 
+- **MP-02 (8 Nov, `3588edc`).** `GET /projects/{id}/material-plan?weeks=8&site_id=` (`domains/materials/plan_router.py`,
+  maths in `plan.py`, 7 unit tests + a contract test). Per material: required, still needed, per-week need (weeks
+  from Monday of today's week), unscheduled (lines with no dates), later (after the weeks shown), on hand (closing
+  today over the project's sites, or one site), on order (open POs, PRC-27), the short week and `short_by`; the lines
+  each need comes from. A late activity (end passed, not finished) needs the rest in the next 7 days. Stock held in
+  another unit is not counted and is flagged. Same roles as the BOQ (quantities to storekeeper / engineer later, a
+  permissions decision). **Not yet:** the forecast finish (ST-04) instead of planned dates when site is slower.
+  Dashboard: Planning › Material plan (`/planning/materials`), table on desktop, cards on phones.
+
 ## 4. Implementation plan (Phase 2)
 
 **Objective.** A PM sees, per project, what material is needed each week, which will run short, and the day to order
