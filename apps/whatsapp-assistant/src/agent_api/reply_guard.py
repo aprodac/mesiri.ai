@@ -66,6 +66,23 @@ def claims_cannot(text: str | None) -> bool:
     return any(_CANNOT.search(part) and not part.rstrip().endswith("?") for part in sentences(text or "") if part)
 
 
+#: WA-256 / WA-259 (Ilan, 8 Nov, six times in one chat: "Water tank leak ... issue aayitt ready aanu", "50 bags Cement
+#: venam ennu ready aanu" with no tool called): "ready" is the code's word. Only the code shows what is ready (the slip
+#: and the lines under it); the model saying it is either a copy of that or untrue.
+_READY = re.compile(r"\bready\b|\bthayy?aa?r\w*|\btaiy?aa?r\w*|തയ്യാറ|തയാറ|तैयार", re.IGNORECASE)
+
+
+def claims_ready(text: str | None) -> bool:
+    """The reply says, as a fact, that something is ready (prepared, waiting for Save)."""
+    return any(_READY.search(part) and not _NOT_A_CLAIM.search(part) for part in sentences(text or "") if part)
+
+
+def without_ready_claims(text: str) -> str:
+    """``text`` without its sentences that say something is ready: the list under it says what is."""
+    kept = [part for part in sentences(text or "") if part and not (_READY.search(part) and not _NOT_A_CLAIM.search(part))]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
 def without_saved_claims(text: str) -> str:
     """``text`` without the claim: "50 bag cement vannu, save cheythu." keeps "50 bag cement vannu."."""
     kept = [_cut(part) if _claims(part) else part for part in sentences(text or "") if part]

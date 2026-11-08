@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 import uuid
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -57,11 +58,38 @@ async def preview_card(builder: Any, entries: list[PendingWrite], ctx: Any, clie
     if builder is None or not entries or not hasattr(builder, "build_slip"):
         return None
     try:
-        names = await _names(client) if any(e.tool in _MATERIAL_TOOLS for e in entries) else ({}, {})
-        return await builder.build_slip(slip_for(entries, ctx, names))
+        return await builder.build_slip(await preview_slip(entries, ctx, client))
     except Exception:  # noqa: BLE001 -- the list still goes out as text
         _log.exception("agent_api.preview_card_failed user=%s", getattr(ctx, "user_id", None))
         return None
+
+
+async def preview_slip(entries: list[PendingWrite], ctx: Any, client: ApiClient) -> Slip:
+    """The slip of the ready list: material and unit names, and (WA-259) the records a line acts on by their name
+    ("Close issue · Leak · water tank leak"), looked up only when a line needs them."""
+    plain = all(e.tool in _MATERIAL_TOOLS or e.tool in CARD_TYPES for e in entries)
+    names = ({}, {}) if plain and not any(e.tool in _MATERIAL_TOOLS for e in entries) else await _names(client)
+    return slip_for(entries, ctx, names, targets=await _targets(client, entries))
+
+
+#: WA-259: the lists a line's record is named from (by the path it acts on) and how a row is named.
+_TARGET_LISTS = (("/progress/issues/", "/progress/issues", lambda r: " · ".join(
+                     p for p in (str(r.get("issue_type") or "").replace("_", " ").title(),
+                                 _clean(r.get("narrative"), 40)) if p)),
+                 ("/procurement/requests/", "/procurement/requests", lambda r: str(r.get("ref") or "")),
+                 ("/procurement/orders/", "/procurement/orders", lambda r: " · ".join(
+                     p for p in (str(r.get("ref") or ""), str(r.get("vendor_name") or "")) if p)))
+
+
+async def _targets(client: ApiClient, entries: list[PendingWrite]) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for prefix, path, label in _TARGET_LISTS:
+        if not any(e.path.startswith(prefix) for e in entries):
+            continue
+        listed = await client.call("GET", path, params={"limit": 100})
+        rows = listed.body.get("items", []) if listed.ok and isinstance(listed.body, dict) else []
+        found |= {str(r.get("id")): label(r) for r in rows if isinstance(r, dict) and r.get("id") and label(r)}
+    return found
 
 
 def _amount(value: Any) -> str:
@@ -77,14 +105,15 @@ def _clean(value: Any, limit: int = 60) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def slip_for(entries: list[PendingWrite], ctx: Any, names: tuple[dict, dict], now: dt.datetime | None = None) -> Slip:
+def slip_for(entries: list[PendingWrite], ctx: Any, names: tuple[dict, dict], now: dt.datetime | None = None,
+             targets: dict[str, str] | None = None) -> Slip:
     """WA-215: the slip's rows from the entries Save will send, in list order: what each one is, in plain words,
     and its quantity. Lines with no receipt card (a new material, a size, a project) get a row too, so the card
     is the whole list."""
     material, unit = names
     sites = {str(s.id): s.name for s in (getattr(ctx, "sites", None) or [])}
     projects = {str(p.id): p.name for p in (getattr(ctx, "projects", None) or [])}
-    lines = [_line(i, e, material, unit, sites) for i, e in enumerate(entries, 1)]
+    lines = [_line(i, e, material, unit, sites, targets) for i, e in enumerate(entries, 1)]
     places = {str(e.body.get("site_id") or e.body.get("from_site_id") or "") for e in entries} - {""}
     if len(places) == 1:
         site = sites.get(next(iter(places)), "")
@@ -108,7 +137,7 @@ def _plural(trade: str, count: int) -> str:
 
 
 def _line(number: int, entry: PendingWrite, material: dict[str, str], unit: dict[str, str],
-          sites: dict[str, str]) -> SlipLine:
+          sites: dict[str, str], targets: dict[str, str] | None = None) -> SlipLine:
     body, tool = entry.body, entry.tool
     if tool in _MATERIAL_TOOLS:
         raw = str(body.get("material_id") or "")
@@ -150,7 +179,76 @@ def _line(number: int, entry: PendingWrite, material: dict[str, str], unit: dict
     if tool == "add_material":
         return SlipLine(number, "list", _clean(body.get("name") or entry.summary, 40), "new on your material list",
                         new=True)
-    return SlipLine(number, "list", _clean(entry.summary, 70))
+    return _structured(number, entry, material, unit, sites, targets or {})
+
+
+#: WA-259 (Ilan, 8 Nov: a material request's slip showed the model's Manglish sentence): what a list line does, in
+#: English, for every write without its own row above. One entry per tool; the line's details come from the body
+#: (material, quantity, site, vendor, the record it acts on), never from the model's sentence.
+TITLES: dict[str, str] = {
+    "ask_for_material": "Material request", "change_material_request": "Change request",
+    "cancel_material_request": "Cancel request", "decide_material_request": "Decide request",
+    "place_order": "Purchase order", "change_order": "Change order", "cancel_order": "Cancel order",
+    "close_order": "Close order", "delivery_order": "Order for delivery",
+    "resolve_issue": "Close issue", "acknowledge_issue": "Issue seen", "wont_fix_issue": "Won't fix issue",
+    "send_dpr": "Send today's report", "correct_work": "Correct work",
+    "undo_receipt": "Take back delivery", "undo_usage": "Take back usage", "undo_transfer": "Take back transfer",
+    "undo_expense": "Take back expense", "pay_expense": "Pay expense",
+    "update_material": "Change material", "add_standard_categories": "Standard categories",
+    "set_unit_conversion": "Material size", "answer_size_request": "Material size",
+    "set_reply_language": "Reply language", "add_expense_category": "New expense category",
+    "create_project": "New project", "update_project": "Change project", "add_site": "New site",
+    "update_site": "Change site", "add_project_member": "Add to project", "add_material_alias": "Other name",
+    "add_person": "Add person",
+}
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+#: Lines the CODE wrote in English (a size, a correction): their own words are already structured.
+_CODE_DRAWN = ("📏", "✏️", "📤")
+#: Body fields that say which / who / why, in the order shown.
+_DETAILS = ("supplier", "vendor_name", "name", "full_name", "language", "reason", "resolution_notes", "purpose", "notes")
+
+
+def _structured(number: int, entry: PendingWrite, material: dict[str, str], unit: dict[str, str],
+                sites: dict[str, str], targets: dict[str, str]) -> SlipLine:
+    body, tool = entry.body, entry.tool
+    title = TITLES.get(tool) or tool.replace("_", " ").capitalize()
+    summary = without_ids(entry.summary or "").strip()
+    if summary.startswith(_CODE_DRAWN):
+        return SlipLine(number, "list", title, _clean(summary.lstrip("".join(_CODE_DRAWN)).strip(), 70))
+    place = sites.get(str(body.get("site_id") or ""), "")
+    items = [ln for ln in body.get("lines") or [] if isinstance(ln, dict) and ln.get("material_id")]
+    if body.get("material_id") and body.get("quantity") is not None:
+        items = [body]
+    details = [targets[v] for v in _UUID.findall(entry.path or "") if v in targets]
+    details += [targets[str(v)] for k, v in body.items() if k.endswith("_id") and str(v) in targets]
+    details += [_clean(body[k], 30) for k in _DETAILS if isinstance(body.get(k), str) and body.get(k).strip()]
+    if body.get("rate") is not None:
+        details.append(f"₹{_amount(body.get('rate'))} each")
+    if body.get("needed_by"):
+        details.append(f"by {body['needed_by']}")
+    if place:
+        details.append(place)
+    note = " · ".join(dict.fromkeys(d for d in [title, *details] if d))
+    if len(items) == 1:
+        one = items[0]
+        return SlipLine(number, "material", _material_name(one.get("material_id"), material), _clean(note, 70),
+                        _amount(one.get("quantity")), unit.get(str(one.get("unit_id")), ""))
+    if items:
+        listed = ", ".join(f"{_material_name(i.get('material_id'), material)} {_amount(i.get('quantity'))} "
+                           f"{unit.get(str(i.get('unit_id')), '')}".strip() for i in items[:3])
+        return SlipLine(number, "material", title, _clean(" · ".join([listed, *details]), 70))
+    return SlipLine(number, "list", title, _clean(" · ".join(dict.fromkeys(details)), 70))
+
+
+def caption_lines(slip: Slip) -> list[str]:
+    """WA-259: the slip's lines as text, the same structured words the picture shows (English, numbered as ✏️ Edit
+    numbers them), for the message the picture rides on."""
+    out = []
+    for line in slip.lines:
+        amount = " ".join(p for p in (line.quantity, line.unit) if p)
+        parts = [f"*{line.title}*", line.note, amount]
+        out.append(f"{line.number}. " + " · ".join(p for p in parts if p))
+    return out
 
 
 async def saved_card(builder: Any, results: list[WriteResult], ctx: Any, client: ApiClient,

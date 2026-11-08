@@ -154,7 +154,7 @@ async def test_a_refused_line_is_dropped_with_a_plain_sentence_and_never_on_the_
     await service.handle(_message("plastering done on 2nd floor"), CTX)
     await service.handle(_message("Save", tap=sent[-1].buttons[0].id), CTX)
     refused = sent[-1]
-    assert "❌" in refused.text and "Send them again" in refused.text and not refused.buttons
+    assert "❌" in refused.text and "not saved yet" in refused.text and not refused.buttons
     model._script = [[leak], "OK."]  # the model's next turn
     await service.handle(_message("water tank leak at Green Villa"), CTX)
     card = sent[-1]

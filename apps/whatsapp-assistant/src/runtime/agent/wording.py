@@ -562,11 +562,11 @@ LINES: dict[str, dict[str, str]] = {
         "hinglish": "Agar yeh extra hai to *Save* dabaiye, record ho jayega; nahi to *Cancel* dabaiye.",
     },
     "api.refused_dropped": {
-        "english": "I've taken the lines that could not be saved off the list. Send them again with what's missing.",
-        "manglish": "Save aavaatha lines list-il ninnu maatti. Illaathathu koode cherthu onnu koodi ayakkoo.",
-        "malayalam": "സേവ് ആകാത്ത വരികൾ ലിസ്റ്റിൽ നിന്ന് മാറ്റി. വിട്ടുപോയത് ചേർത്ത് ഒന്നുകൂടി അയക്കൂ.",
-        "hindi": "जो पंक्तियाँ सेव नहीं हुईं उन्हें सूची से हटा दिया। जो छूटा है उसके साथ फिर भेजिए।",
-        "hinglish": "Jo lines save nahi hui unhe list se hata diya. Jo chhoota hai uske saath phir bhejiye.",
+        "english": "The ❌ lines are not saved yet. Just tell me what to change (only the missing part) and I'll put them back on the list.",
+        "manglish": "❌ ulla lines ithuvare save aayittilla. Enthaanu maattendathu ennu maathram paranjaal mathi, njan veendum list-il idaam.",
+        "malayalam": "❌ ഉള്ള വരികൾ ഇതുവരെ സേവ് ആയിട്ടില്ല. എന്താണ് മാറ്റേണ്ടത് എന്ന് മാത്രം പറഞ്ഞാൽ മതി, ഞാൻ വീണ്ടും ലിസ്റ്റിൽ ഇടാം.",
+        "hindi": "❌ वाली पंक्तियाँ अभी सेव नहीं हुईं। बस बताइए क्या बदलना है (सिर्फ़ जो छूटा है), मैं उन्हें फिर से सूची में डाल दूँगा।",
+        "hinglish": "❌ wali lines abhi save nahi hui. Bas bataiye kya badalna hai (sirf jo chhoota hai), main unhe phir list mein daal dunga.",
     },
     "api.not_held": {
         "english": "⚠️ Not on the list, nothing saved for: {lines}. Please send these again.",

@@ -126,7 +126,7 @@ async def test_a_refused_entry_says_the_apis_reason_and_is_taken_off_the_list() 
     reply = h.sent[-1]
     assert reply.text.startswith("Not everything could be saved:")
     assert "✅ 50 bags cement" in reply.text and "❌ 50 TMT bars, Green Villa: Not authorized for this site" in reply.text
-    assert "list-il ninnu maatti" in reply.text and not reply.buttons  # [233]: said plainly; nothing to tap
+    assert "save aayittilla" in reply.text and not reply.buttons  # [233]: said plainly; nothing to tap
     state = await h.redis.get_json(f"agent_api:{ORG}:{USER}")
     assert state["pending"] == []
 
