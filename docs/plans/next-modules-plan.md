@@ -64,6 +64,15 @@
   "client paid 5 lakh for RA-03" on WhatsApp (v3 `ALLOWED` + SOP).
 - **Variations / extra items:** a line outside the BOQ, approved by the client, then billed like a BOQ line.
 
+**As built (8 Nov 2026).** NXT-01 (`10521db`): `domains/billing/contracts.py` + router on the 0522 tables;
+Client billing › Clients; contract dialog on Project start (optional step) and RA bills. NXT-02 (`b8f95f4`): migration
+0525 `ra_bills` / `ra_bill_lines`; `domains/billing/ra.py` (money: gross, GST on gross, retention and advance recovery
+on gross, recovery capped at the advance left, TDS on gross; net = gross + GST − retention − recovery − TDS) and
+`bills.py`; a draft takes every priced BOQ line's measured quantity (CC-04's count) less earlier non-withdrawn bills,
+the office may change a quantity (the measured one is kept and shown), submit freezes the money, certify records the
+client's amount; one draft per project; a withdrawn bill's quantities are billable again; a billed BOQ line can't be
+removed. Printable bill at `/billing/ra-bills/:id/document`. Access: owner, admin, finance (D-N3 default, to confirm).
+
 ### Subcontractors (NXT-05..07)
 - **Work order:** subcontractor (vendor, kind subcontractor), BOQ lines with agreed rate and quantity, site,
   retention %, advance.
