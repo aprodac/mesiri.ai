@@ -10,6 +10,11 @@ Mounted at /projects/{project_id}/boq:
   DELETE /lines/{line_id}         remove a line and its history
   GET    /work                    the project's recorded work quantities and the line each is on (CC-04)
   PUT    /work/{quantity_id}      put a work quantity on a line, or take it off (line_id null)
+  PUT    /lines/{line_id}/norms   the materials one unit of the line uses (MP-01), replacing the line's set
+  POST   /lines/{line_id}/norms/copy  the same norms onto the project's other lines of the same work and unit
+
+Each line carries ``materials``: its norms (material, quantity per unit of the line, wastage %), read by the
+material plan (MP-02, docs/plans/material-plan-plan.md).
 
 Each line also carries the work done against it (CC-04): site work updates put on the line
 plus confirmed work-order measurements that did not come from one, each counted once, in the
@@ -196,12 +201,23 @@ async def _done_by_line(
 done_by_line = _done_by_line
 
 
+def _norm_out(n: dict) -> dict:
+    return {
+        "material_id": n["material_id"], "material": n["material"], "unit": n["unit"],
+        "quantity_per_unit": n["quantity_per_unit"], "wastage_pct": n["wastage_pct"], "note": n["note"],
+    }
+
+
 async def _boq(repo: PostgresBoqRepository, organization_id: uuid.UUID, project_id: uuid.UUID) -> dict:
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
     sections = await repo.list_sections(organization_id, project_id)
     raw = await repo.list_lines(organization_id, project_id)
     done = await _done_by_line(repo, organization_id, project_id, raw)
+    norms = await MaterialNormRepository(repo.conn).for_project(organization_id, project_id)
     lines = [
-        {**_line_out(ln), **line_progress(ln, done[ln["id"]]["done"]), "done_in_other_unit": done[ln["id"]]["other_unit"]}
+        {**_line_out(ln), **line_progress(ln, done[ln["id"]]["done"]), "done_in_other_unit": done[ln["id"]]["other_unit"],
+         "materials": [_norm_out(n) for n in norms.get(ln["id"], [])]}
         for ln in raw
     ]
     out = []
@@ -354,6 +370,94 @@ async def delete_line(
         raise HTTPException(status_code=404, detail="Line not found")
     await repo.delete_line(line_id)
     return Response(status_code=204)
+
+
+class NormIn(BaseModel):
+    material_id: uuid.UUID
+    quantity_per_unit: Decimal = Field(gt=0, max_digits=14, decimal_places=4,
+                                       description="Material used by one unit of the line: 8 (bags per m³)")
+    wastage_pct: Decimal = Field(default=Decimal(0), ge=0, le=100, max_digits=5, decimal_places=2)
+    note: str | None = Field(default=None, max_length=300)
+
+    _clean_text = field_validator("note")(_clean)
+
+
+class NormsIn(BaseModel):
+    norms: list[NormIn] = Field(default_factory=list, max_length=30)
+
+
+class NormCopy(BaseModel):
+    overwrite: bool = Field(default=False, description="Also replace lines that already have their own norms")
+
+
+async def _norm_rows(conn: AsyncConnection, organization_id: uuid.UUID, body: NormsIn) -> list[dict]:
+    """Check the norms; 422 with a plain reason when one can't be used. A norm is in the material's stock unit."""
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    ids = [n.material_id for n in body.norms]
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=422, detail="A material is listed twice for this line; give it once")
+    found = await MaterialNormRepository(conn).materials(organization_id, ids)
+    rows = []
+    for n in body.norms:
+        material = found.get(n.material_id)
+        if material is None:
+            raise HTTPException(status_code=422, detail="One of the materials is not in your material list")
+        if not material["is_active"]:
+            raise HTTPException(status_code=422, detail=f"'{material['name']}' is switched off in your material list")
+        # Always the material's stock unit, so the plan compares need with stock without converting anything.
+        rows.append({**n.model_dump(), "unit_id": material["default_unit_id"]})
+    return rows
+
+
+@router.put("/lines/{line_id}/norms")
+async def put_line_norms(
+    project_id: uuid.UUID,
+    line_id: uuid.UUID,
+    body: NormsIn,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """MP-01: the materials one unit of this line uses. Replaces the line's whole list; an empty list clears it."""
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    repo = await _scope(project_id, auth, conn)
+    if await repo.get_line(auth.organization_id, project_id, line_id) is None:
+        raise HTTPException(status_code=404, detail="Line not found")
+    rows = await _norm_rows(conn, auth.organization_id, body)
+    norms = MaterialNormRepository(conn)
+    await norms.replace(auth.organization_id, line_id, rows, auth.user_id)
+    return _exact({"line_id": line_id, "materials": [_norm_out(n) for n in await norms.for_line(auth.organization_id, line_id)]})
+
+
+@router.post("/lines/{line_id}/norms/copy")
+async def copy_line_norms(
+    project_id: uuid.UUID,
+    line_id: uuid.UUID,
+    body: NormCopy,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """MP-01: the same norms onto the project's other current lines of the same work and unit ("M20 in columns" on
+    every floor). Lines with their own norms are left alone unless ``overwrite``."""
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    repo = await _scope(project_id, auth, conn)
+    line = await repo.get_line(auth.organization_id, project_id, line_id)
+    if line is None:
+        raise HTTPException(status_code=404, detail="Line not found")
+    norms = MaterialNormRepository(conn)
+    source = await norms.for_line(auth.organization_id, line_id)
+    if not source:
+        raise HTTPException(status_code=422, detail="This line has no materials to copy yet")
+    copied, kept = [], []
+    for other in await norms.lines_like(auth.organization_id, project_id, line):
+        if other["has_norms"] and not body.overwrite:
+            kept.append(other["id"])
+            continue
+        await norms.replace(auth.organization_id, other["id"], source, auth.user_id)
+        copied.append(other["id"])
+    return {"copied_to": [str(i) for i in copied], "kept": [str(i) for i in kept]}
 
 
 class WorkLine(BaseModel):

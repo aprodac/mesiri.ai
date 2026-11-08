@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Calculator, CalendarRange, ClipboardCheck, FileSpreadsheet, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Calculator, CalendarRange, ClipboardCheck, FileSpreadsheet, MoreHorizontal, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,7 +14,9 @@ import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProject, type Project } from '@/lib/projects'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
+import { NormsDialog } from '@/components/boq/norms-dialog'
 import {
+  copyLineNorms,
   createLine,
   createSection,
   deleteLine,
@@ -24,6 +26,7 @@ import {
   formatQuantity,
   formatRupees,
   maySeeBoq,
+  putLineNorms,
   putWorkOnLine,
   updateLine,
   updateSection,
@@ -33,6 +36,7 @@ import {
   type BoqTotals,
   type BoqWork,
   type LineInput,
+  type NormInput,
 } from '@/lib/boq'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
@@ -231,12 +235,14 @@ function SectionTable({
   readOnly,
   onAdd,
   onEdit,
+  onNorms,
   onDelete,
 }: {
   section: BoqSection
   readOnly: boolean
   onAdd: () => void
   onEdit: (line: BoqLine) => void
+  onNorms: (line: BoqLine) => void
   onDelete: (line: BoqLine) => void
 }) {
   if (section.lines.length === 0) {
@@ -276,6 +282,7 @@ function SectionTable({
               <td className="px-3 py-2">
                 <span className="font-medium">{line.work}</span>
                 {line.revision_no > 1 && <span className="ml-2 text-xs text-muted-foreground">rev {line.revision_no}</span>}
+                <MaterialsNote line={line} readOnly={readOnly} onNorms={() => onNorms(line)} />
               </td>
               <td className={cn('px-3 py-2', NUM)}>
                 {formatQuantity(line.planned_quantity)} <span className="text-muted-foreground">{line.unit}</span>
@@ -304,9 +311,12 @@ function SectionTable({
                         <MoreHorizontal className="size-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-36">
+                    <DropdownMenuContent align="end" className="w-44">
                       <DropdownMenuItem onClick={() => onEdit(line)}>
                         <Pencil className="mr-2 size-3.5" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onNorms(line)}>
+                        <Package className="mr-2 size-3.5" /> Materials per {line.unit}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(line)}>
@@ -335,6 +345,26 @@ function SectionTable({
     </div>
   )
 }
+
+/** MP-01: the line's materials per unit, under its name ("Cement 8 bags · M-sand 15 cft per cum"). */
+function MaterialsNote({ line, readOnly, onNorms }: { line: BoqLine; readOnly: boolean; onNorms: () => void }) {
+  if (line.materials.length === 0) {
+    return readOnly ? null : (
+      <button type="button" className="block text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={onNorms}>
+        + materials per {line.unit}
+      </button>
+    )
+  }
+  const text = line.materials.map((m) => `${m.material} ${formatQuantity(m.quantity_per_unit)} ${m.unit}`).join(' · ')
+  return (
+    <button type="button" disabled={readOnly} className="block text-left text-xs text-muted-foreground enabled:hover:underline" onClick={onNorms}>
+      {text} <span className="whitespace-nowrap">per {line.unit}</span>
+    </button>
+  )
+}
+
+const sameWork = (a: BoqLine, b: BoqLine) =>
+  a.id !== b.id && a.unit === b.unit && a.work.trim().replace(/\s+/g, ' ').toLowerCase() === b.work.trim().replace(/\s+/g, ' ').toLowerCase()
 
 function DoneCell({ line }: { line: BoqLine }) {
   const done = Number(line.done_quantity)
@@ -443,6 +473,7 @@ export default function ProjectBoqPage() {
   const [lineDialog, setLineDialog] = React.useState<LineDialogState>(null)
   const [sectionDialog, setSectionDialog] = React.useState<{ open: boolean; section: BoqSection | null }>({ open: false, section: null })
   const [importing, setImporting] = React.useState(false)
+  const [normsLine, setNormsLine] = React.useState<BoqLine | null>(null)
   const [confirm, setConfirm] = React.useState<{ kind: 'line'; line: BoqLine } | { kind: 'section'; section: BoqSection } | null>(null)
 
   const refresh = () => {
@@ -502,6 +533,21 @@ export default function ProjectBoqPage() {
       refresh()
     },
     onError: fail('Could not remove'),
+  })
+
+  const saveNorms = useMutation({
+    mutationFn: async ({ norms, copy }: { norms: NormInput[]; copy: boolean }) => {
+      if (!normsLine) return 0
+      await putLineNorms(id, normsLine.id, norms)
+      if (copy && norms.length > 0) return (await copyLineNorms(id, normsLine.id, true)).copied_to.length
+      return 0
+    },
+    onSuccess: (copied) => {
+      toast.success(copied ? `Materials saved, and on ${copied} more line${copied > 1 ? 's' : ''}` : 'Materials saved')
+      setNormsLine(null)
+      refresh()
+    },
+    onError: fail('Could not save the materials'),
   })
 
   const putWork = useMutation({
@@ -652,6 +698,7 @@ export default function ProjectBoqPage() {
                   readOnly={readOnly}
                   onAdd={() => setLineDialog({ section, line: null })}
                   onEdit={(line) => setLineDialog({ section, line })}
+                  onNorms={setNormsLine}
                   onDelete={(line) => setConfirm({ kind: 'line', line })}
                 />
               </DprSection>
@@ -686,6 +733,13 @@ export default function ProjectBoqPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <NormsDialog
+        line={normsLine}
+        similar={normsLine && boqQuery.data ? boqQuery.data.sections.flatMap((s) => s.lines).filter((l) => sameWork(l, normsLine)).length : 0}
+        onClose={() => setNormsLine(null)}
+        onSave={(norms, copy) => saveNorms.mutate({ norms, copy })}
+        saving={saveNorms.isPending}
+      />
       <BoqImportDialog projectId={id} projectName={project?.name} open={importing} onOpenChange={setImporting} />
     </div>
   )

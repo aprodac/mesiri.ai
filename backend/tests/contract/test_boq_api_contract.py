@@ -36,6 +36,9 @@ async def clean_db(test_engine: AsyncEngine):
         await conn.execute(sa.text("UPDATE activities SET work_package_id = NULL"))
         await conn.execute(sa.text("DELETE FROM work_packages"))
     yield
+    # MP-01: norms hold their materials (RESTRICT); other suites delete the whole catalog when they start.
+    async with test_engine.begin() as conn:
+        await conn.execute(sa.text("DELETE FROM boq_material_norms"))
 
 
 @pytest.fixture
@@ -382,3 +385,98 @@ async def test_work_order_measurements_count_on_the_boq_line_once(client, ctx, t
     assert Decimal(_line_in((await client.get(url, headers=h)).json(), line["id"])["done_quantity"]) == 10
     r = await client.put(f"{url}/work/{q}", json={"line_id": None}, headers=h)
     assert r.status_code == 409  # changed on the work order, so the two never disagree
+
+
+# -- MP-01: material norms per BOQ line ----------------------------------------------------------------------------
+
+async def _material(engine, org_id, name: str, unit: str = "bags", active: bool = True) -> str:
+    material_id = uuid.uuid4()
+    async with engine.begin() as conn:
+        creator = (await conn.execute(sa.text("SELECT id FROM users WHERE organization_id = :o LIMIT 1"), {"o": org_id})).scalar_one()
+        unit_id = (await conn.execute(sa.text("SELECT id FROM units_of_measure WHERE code = :c"), {"c": unit})).scalar_one()
+        await conn.execute(
+            sa.text(
+                "INSERT INTO materials_catalog (id, organization_id, name, default_unit_id, is_active, created_by) "
+                "VALUES (:id, :org, :name, :u, :a, :by)"
+            ),
+            {"id": material_id, "org": org_id, "name": name, "u": unit_id, "a": active, "by": creator},
+        )
+    return str(material_id)
+
+
+async def test_norms_are_kept_per_line_shown_on_the_boq_and_follow_a_revision(client, ctx, test_engine):
+    cement = await _material(test_engine, ctx["org"], "Cement OPC 53")
+    sand = await _material(test_engine, ctx["org"], "M-sand", unit="cft")
+    section = await _section(client, ctx, name="Concrete work")
+    line = await _add_line(client, ctx, section["id"], work="M20 in columns", unit="m3", planned_quantity="20")
+    url, h = f"/projects/{ctx['project']}/boq", _h(ctx["admin"])
+
+    r = await client.put(f"{url}/lines/{line['id']}/norms", json={"norms": [
+        {"material_id": cement, "quantity_per_unit": "8", "wastage_pct": "2"},
+        {"material_id": sand, "quantity_per_unit": "15"}]}, headers=h)
+    # Each norm is in the material's stock unit, so the plan compares with stock without converting.
+    assert r.status_code == 200, r.text
+    assert [(m["material"], m["unit"], m["quantity_per_unit"]) for m in r.json()["materials"]] == [
+        ("Cement OPC 53", "bags", "8.0000"), ("M-sand", "cft", "15.0000")]
+
+    boq = (await client.get(url, headers=h)).json()
+    assert [m["material"] for m in boq["sections"][0]["lines"][0]["materials"]] == ["Cement OPC 53", "M-sand"]
+
+    revised = (await client.patch(f"{url}/lines/{line['id']}", json={"planned_quantity": "25"}, headers=h)).json()
+    boq = (await client.get(url, headers=h)).json()
+    current = boq["sections"][0]["lines"][0]
+    assert current["id"] == revised["id"] and len(current["materials"]) == 2
+
+    # An empty list clears; a material in a norm can't be deleted from the catalog.
+    deleted = await client.delete(f"/materials/{cement}", headers=h)
+    assert deleted.status_code == 409
+    cleared = await client.put(f"{url}/lines/{revised['id']}/norms", json={"norms": []}, headers=h)
+    assert cleared.json()["materials"] == []
+
+
+async def test_norm_validation(client, ctx, test_engine):
+    cement = await _material(test_engine, ctx["org"], "Cement")
+    old = await _material(test_engine, ctx["org"], "Old cement", active=False)
+    other_org = await _org(test_engine)
+    await _user(test_engine, other_org, "admin")
+    foreign = await _material(test_engine, other_org, "Their cement")
+    section = await _section(client, ctx)
+    line = await _add_line(client, ctx, section["id"], work="Plaster", unit="sqm", planned_quantity="100")
+    url, h = f"/projects/{ctx['project']}/boq/lines/{line['id']}/norms", _h(ctx["admin"])
+    for norms, word in [
+        ([{"material_id": cement, "quantity_per_unit": "1"}, {"material_id": cement, "quantity_per_unit": "2"}], "twice"),
+        ([{"material_id": old, "quantity_per_unit": "1"}], "switched off"),
+        ([{"material_id": foreign, "quantity_per_unit": "1"}], "not in your material list"),
+    ]:
+        r = await client.put(url, json={"norms": norms}, headers=h)
+        assert r.status_code == 422 and word in r.json()["detail"], r.text
+    for bad in ({"material_id": cement, "quantity_per_unit": "0"}, {"material_id": cement, "quantity_per_unit": "1", "wastage_pct": "101"}):
+        assert (await client.put(url, json={"norms": [bad]}, headers=h)).status_code == 422
+    assert (await client.put(f"/projects/{ctx['project']}/boq/lines/{uuid.uuid4()}/norms", json={"norms": []}, headers=h)).status_code == 404
+    engineer = await _user(test_engine, ctx["org"], "site_engineer")
+    assert (await client.put(url, json={"norms": []}, headers=_h(engineer))).status_code == 403
+
+
+async def test_norms_copy_to_the_same_work_on_other_floors(client, ctx, test_engine):
+    cement = await _material(test_engine, ctx["org"], "Cement")
+    url, h = f"/projects/{ctx['project']}/boq", _h(ctx["admin"])
+    ground = await _section(client, ctx, name="Ground floor")
+    first = await _section(client, ctx, name="First floor")
+    second = await _section(client, ctx, name="Second floor")
+    src = await _add_line(client, ctx, ground["id"], work="M20  in slab", unit="m3", planned_quantity="30")
+    same = await _add_line(client, ctx, first["id"], work="m20 in slab", unit="m3", planned_quantity="30")
+    own = await _add_line(client, ctx, second["id"], work="M20 in slab", unit="m3", planned_quantity="30")
+    other_unit = await _add_line(client, ctx, second["id"], work="M20 in slab", unit="sqm", planned_quantity="1")
+
+    assert (await client.post(f"{url}/lines/{src['id']}/norms/copy", json={}, headers=h)).status_code == 422
+    await client.put(f"{url}/lines/{src['id']}/norms", json={"norms": [{"material_id": cement, "quantity_per_unit": "8"}]}, headers=h)
+    await client.put(f"{url}/lines/{own['id']}/norms", json={"norms": [{"material_id": cement, "quantity_per_unit": "7.5"}]}, headers=h)
+
+    r = (await client.post(f"{url}/lines/{src['id']}/norms/copy", json={}, headers=h)).json()
+    assert r == {"copied_to": [same["id"]], "kept": [own["id"]]}
+    r = (await client.post(f"{url}/lines/{src['id']}/norms/copy", json={"overwrite": True}, headers=h)).json()
+    assert sorted(r["copied_to"]) == sorted([same["id"], own["id"]]) and r["kept"] == []
+    boq = (await client.get(url, headers=h)).json()
+    by_id = {ln["id"]: ln for s in boq["sections"] for ln in s["lines"]}
+    assert by_id[own["id"]]["materials"][0]["quantity_per_unit"] == "8.0000"
+    assert by_id[other_unit["id"]]["materials"] == []

@@ -43,6 +43,24 @@ export interface BoqLine {
   earned: string | null
   /** Work put on the line in another unit: never added in, said instead. */
   done_in_other_unit: number
+  /** MP-01: what one unit of the line uses (in each material's stock unit). */
+  materials: BoqNorm[]
+}
+
+export interface BoqNorm {
+  material_id: string
+  material: string
+  unit: string
+  quantity_per_unit: string
+  wastage_pct: string
+  note: string | null
+}
+
+export interface NormInput {
+  material_id: string
+  quantity_per_unit: string
+  wastage_pct?: string
+  note?: string | null
 }
 
 /** A recorded work quantity (a site's work update) and the BOQ line it is counted on. */
@@ -130,6 +148,16 @@ export async function fetchBoqWork(projectId: string, unlinked = true): Promise<
 /** Count a work quantity on a BOQ line, or take it off (null). */
 export async function putWorkOnLine(projectId: string, quantityId: string, lineId: string | null) {
   await api.put(`${base(projectId)}/work/${quantityId}`, { line_id: lineId })
+}
+
+/** MP-01: the line's materials become exactly these (an empty list clears them). */
+export async function putLineNorms(projectId: string, lineId: string, norms: NormInput[]): Promise<BoqNorm[]> {
+  return (await api.put<{ materials: BoqNorm[] }>(`${base(projectId)}/lines/${lineId}/norms`, { norms })).data.materials
+}
+
+/** MP-01: the same norms onto the project's other lines of the same work and unit. */
+export async function copyLineNorms(projectId: string, lineId: string, overwrite = false) {
+  return (await api.post<{ copied_to: string[]; kept: string[] }>(`${base(projectId)}/lines/${lineId}/norms/copy`, { overwrite })).data
 }
 
 /** "18,000" for a quantity; trailing zeros of the 3 decimals dropped. */

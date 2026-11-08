@@ -325,6 +325,11 @@ class PostgresBoqRepository:
             text("UPDATE work_package_planned_items SET superseded_by_id = :new WHERE id = :old"),
             {"new": new_id, "old": line["id"]},
         )
+        # MP-01: material norms belong to the current revision; they move with it.
+        await self.conn.execute(
+            text("UPDATE boq_material_norms SET planned_item_id = :new, updated_at = now() WHERE planned_item_id = :old"),
+            {"new": new_id, "old": line["id"]},
+        )
         return new_id
 
     async def delete_line(self, line_id: uuid.UUID) -> None:

@@ -1142,6 +1142,10 @@ class PostgresMaterialCatalogRepository:
         not_requested = sa.text(
             "NOT EXISTS (SELECT 1 FROM material_request_lines l WHERE l.material_id = materials_catalog.id)"
         )
+        # MP-01: a material a BOQ line's norm names is in use (the material plan reads it).
+        not_in_norms = sa.text(
+            "NOT EXISTS (SELECT 1 FROM boq_material_norms n WHERE n.material_id = materials_catalog.id)"
+        )
         stmt = (
             sa.delete(_materials_catalog)
             .where(
@@ -1149,6 +1153,7 @@ class PostgresMaterialCatalogRepository:
                 _materials_catalog.c.organization_id == organization_id,
                 no_movements,
                 not_requested,
+                not_in_norms,
             )
             .returning(_materials_catalog.c.id)
         )
