@@ -179,6 +179,28 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 - **Not yet:** the WhatsApp side (`record_attendance` naming the work, v3; CC-11), engineers putting labour on
   lines (D-CC4), the green / amber / red colours (CC-07).
 
+### 4e. As built: green / amber / red per BOQ line (CC-07, 8 Nov 2026)
+
+- **Rule (`domains/costing/variance.py`, pure):** per line over a period, labour earned (work done × the
+  line's labour rate) against the labour put on the line (CC-05). Ratio earned / cost: green ≥ 1.00, amber
+  ≥ 0.90, red below, and red when labour is on a line with no work measured. Grey, with the reason, when it
+  cannot be judged: no labour rate, work with no labour on the line, labour with no wage. Never a colour made up.
+  Thresholds are D-CC6's default as constants; a per-company setting is later (it changes shared settings).
+- **One count of work done:** `boq_router.counted_work` (per line, day and site) is what `done_by_line` now sums,
+  so the BOQ page, the schedule, RA bills and the colours read the same work. `repo.work_done` also returns the
+  day and site.
+- **API:** `GET /cost/projects/{id}/variance?date_from&date_to&site_id` (default last 7 days): summary (earned,
+  spent, over / under, colour, lines per colour), lines worst first with the reason and cost per unit against the
+  rate, each day's colour, labour not on a line (said, not coloured), materials for the project (earned against
+  bought; not coloured: bought is not used, CC-08). A site's day is this route with one date and `site_id`; the
+  plan's separate `/sites/{id}/cost/daily` was not needed.
+- **Dashboard:** Cost control > Green / red (`/cost`, first in the group): Yesterday / Today / Last 7 / Last 30
+  days, a strip of the period's figures, a card per day (tap: that day), BOQ lines worst first with the reason
+  in words ("₹8,800 of labour for 2.6 cum: ₹3,384.62 per cum against the budget ₹1,800"), links to put labour
+  on lines or set a missing rate. Follows the scope bar's site.
+- **Not yet:** materials per line (CC-08), the evening card on WhatsApp (CC-11), the per-company threshold
+  setting, engineers seeing their site's colours without rates (D-CC4).
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |
