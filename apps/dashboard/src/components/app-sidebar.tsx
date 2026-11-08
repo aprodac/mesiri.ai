@@ -463,6 +463,8 @@ export function AppSidebar() {
   const equipmentCategory = isModuleEnabled('equipment') ? toCategory(groupByKey('equipment')) : null
   // NXT-05..07: Subcontract opens the same way (Work orders, Bills & checks, Subcontractors); hidden when empty.
   const subcontractCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('subcontract')))
+  // ST-04/05: Planning (Project start, Schedule, BOQ & budget): the start of a project; hidden when the role has none.
+  const planningCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('planning')))
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -615,6 +617,7 @@ export function AppSidebar() {
                 <SidebarMenu className="gap-0.5">
                   {RECORD_ITEMS.map(renderLink)}
                   {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
+                  {planningCategory && renderCategory(planningCategory)}
                   {materialsCategory && renderCategory(materialsCategory)}
                   {procurementCategory && renderCategory(procurementCategory)}
                   {equipmentCategory && renderCategory(equipmentCategory)}

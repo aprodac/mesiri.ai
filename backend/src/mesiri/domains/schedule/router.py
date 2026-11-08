@@ -365,7 +365,7 @@ async def _apply_update(conn: AsyncConnection, auth: AuthorizationContext, proje
         changes["is_milestone"] = body.milestone
     if body.done is not None:
         changes["status"] = "COMPLETED" if body.done else ("IN_PROGRESS" if current["actual_start"] else "NOT_STARTED")
-        changes["actual_end"] = today if body.done else None
+        changes["actual_end"] = _finished_on(before, activity_id, current, today) if body.done else None
     if body.clear_dates:
         changes["planned_start"] = changes["planned_end"] = None
     start = body.start or current["planned_start"]
@@ -406,6 +406,18 @@ async def _apply_update(conn: AsyncConnection, auth: AuthorizationContext, proje
                     moved.append({"id": i, "name": names.get(i, ""), "from_start": was[0], "from_end": was[1],
                                   "start": s_day, "end": e_day, "days": (s_day - was[0]).days if was[0] else None})
     return await _respond(conn, auth, project_id, moved=moved, focus=activity_id, finish_before=finish_before)
+
+
+def _finished_on(sched: dict, activity_id: uuid.UUID, current: dict, today: datetime.date) -> datetime.date:
+    """The day a "finished" activity ended: site's last report on it; else its planned end when that has passed (the
+    PM marks it later, so today would make it look late); else today."""
+    mine = next((a for a in sched["activities"] if a["id"] == activity_id), None)
+    last = mine["last_update"] if mine else None
+    if last:
+        return min(last, today)
+    if current["planned_end"] and current["planned_end"] < today:
+        return current["planned_end"]
+    return today
 
 
 @router.delete("/projects/{project_id}/schedule/activities/{activity_id}", status_code=204)

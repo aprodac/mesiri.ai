@@ -156,3 +156,19 @@ def test_critical_path_is_the_chain_with_no_slack():
 def test_conflicts_list_links_the_dates_break():
     acts = [act("a", D(2026, 11, 1), D(2026, 11, 5)), act("b", D(2026, 11, 4), D(2026, 11, 8))]
     assert logic.conflicts(acts, [link("a", "b")]) == [{"predecessor": "a", "successor": "b", "days": 2}]
+
+
+def test_a_milestone_may_fall_on_the_day_its_predecessor_ends():
+    acts = [act("work", D(2026, 11, 1), D(2026, 11, 10)), act("m", D(2026, 11, 10), D(2026, 11, 10), milestone=True)]
+    assert logic.conflicts(acts, [link("work", "m")]) == []
+    assert logic.push(acts, [link("work", "m")], {"work": (D(2026, 11, 1), D(2026, 11, 12))})["m"] == (
+        D(2026, 11, 12), D(2026, 11, 12))
+    assert logic.critical(acts, [link("work", "m")]) == {"work", "m"}
+
+
+def test_import_headings_read_like_names():
+    from mesiri.domains.progress.boq_import import heading_name
+
+    assert heading_name("SITE PREPARATION & EARTHWORK") == "Site Preparation & Earthwork"
+    assert heading_name("WORKS OF THE GROUND FLOOR") == "Works of the Ground Floor"
+    assert heading_name("Ground floor RCC") == "Ground floor RCC"

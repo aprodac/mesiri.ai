@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Calculator, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Calculator, CalendarRange, FileSpreadsheet, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProject, type Project } from '@/lib/projects'
+import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
 import {
   createLine,
   createSection,
@@ -334,6 +335,7 @@ export default function ProjectBoqPage() {
 
   const [lineDialog, setLineDialog] = React.useState<LineDialogState>(null)
   const [sectionDialog, setSectionDialog] = React.useState<{ open: boolean; section: BoqSection | null }>({ open: false, section: null })
+  const [importing, setImporting] = React.useState(false)
   const [confirm, setConfirm] = React.useState<{ kind: 'line'; line: BoqLine } | { kind: 'section'; section: BoqSection } | null>(null)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['boq', id] })
@@ -428,11 +430,21 @@ export default function ProjectBoqPage() {
         title="BOQ and budget"
         date={project?.name}
         action={
-          !readOnly && (
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setSectionDialog({ open: true, section: null })}>
-              <Plus className="size-3.5" /> Add section
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5" asChild>
+              <Link to={`/planning/schedule?project=${id}`}><CalendarRange className="size-3.5" /> Schedule</Link>
             </Button>
-          )
+            {!readOnly && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImporting(true)}>
+                <FileSpreadsheet className="size-3.5" /> Import from Excel
+              </Button>
+            )}
+            {!readOnly && (
+              <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setSectionDialog({ open: true, section: null })}>
+                <Plus className="size-3.5" /> Add section
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -445,12 +457,18 @@ export default function ProjectBoqPage() {
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6">
           <p className="font-medium">No BOQ yet for this project.</p>
           <p className="text-sm text-muted-foreground">
-            Start with one section from the estimate, for example "Plastering", and add its lines: quantity, unit, client rate and budget rate.
+            Upload the estimate Excel you already have (Description, Unit, Qty, Rate): every line comes in with its section, and the
+            sections become the schedule. Or start with one section by hand, for example "Plastering".
           </p>
           {!readOnly && (
-            <Button size="sm" className="gap-1.5" onClick={() => setSectionDialog({ open: true, section: null })}>
-              <Plus className="size-3.5" /> Add the first section
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" className="gap-1.5" onClick={() => setImporting(true)}>
+                <FileSpreadsheet className="size-3.5" /> Upload the BOQ Excel
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setSectionDialog({ open: true, section: null })}>
+                <Plus className="size-3.5" /> Add the first section by hand
+              </Button>
+            </div>
           )}
         </div>
       ) : (
@@ -528,6 +546,7 @@ export default function ProjectBoqPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <BoqImportDialog projectId={id} projectName={project?.name} open={importing} onOpenChange={setImporting} />
     </div>
   )
 }

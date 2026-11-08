@@ -19,6 +19,7 @@ import {
   CalendarRange,
   ListTodo,
   ShieldAlert,
+  Rocket,
   Stamp,
   type LucideIcon,
 } from 'lucide-react'
@@ -100,13 +101,13 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'teal',
     about: 'What the project should contain and cost, before work starts.',
     pages: [
+      { title: 'Project start', url: '/planning/setup', status: 'built', phase: 'V1', about: 'From "we won it" to "work starts": stage, contract dates, the BOQ from your Excel, the schedule, the site team, suppliers.', example: 'Upload the estimate sheet; 214 BOQ lines and a first schedule in 20 minutes.', tracker: 'ST-01, ST-03, ST-05', roles: MANAGERS, related: [{ title: 'Items', url: '/materials?view=items' }] },
+      { title: 'Schedule', url: '/planning/schedule', status: 'built', phase: 'V1', about: 'The project timeline: what should happen when, what site has done, what is late and what it pushes.', example: 'Excavation 3 days late at 60%: footings and slab move; forecast handover 27 Nov.', tracker: 'ST-04' },
       { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', about: 'Every work item with its quantity, client rate and budget rate.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02', roles: MONEY_ROLES },
-      { title: 'Project setup', url: '/planning/setup', status: 'planned', phase: 'V1', about: 'Start a project from the customer\'s own Excel: BOQ, suppliers with balances, opening stock.', example: 'Upload the estimate sheet; 214 BOQ lines and 12 suppliers loaded in 2 minutes.', tracker: 'CC-13, PRC-05', roles: MANAGERS, related: [{ title: 'Items', url: '/materials?view=items' }] },
       { title: 'Rate library', url: '/planning/rates', status: 'planned', phase: 'V1', about: "Standard output and material per unit of work, so a BOQ can be priced without a consultant.", example: 'Plastering 12 mm: 1 mason + 1 helper ≈ 80 sq ft a day. 1 m³ M20 ≈ 8 bags cement.', tracker: 'CC-03', roles: MANAGERS, related: [{ title: 'BOQ & budget', url: '/boq' }] },
       { title: 'Drawings', url: '/planning/drawings', status: 'planned', phase: 'V1.5', about: 'The latest drawings, so site always builds from the right revision.', example: 'Structural drawing rev C replaces rev B.', tracker: 'DRW' },
       { title: 'Documents', url: '/planning/documents', status: 'planned', phase: 'V1.5', about: 'Contracts, permits, approvals and agreements, per project, findable from WhatsApp.', example: 'Building permit, structural approval, Ravi\'s work order PDF.' },
       { title: 'Tasks', url: '/planning/tasks', status: 'planned', phase: 'V1.5', about: 'Who does what by when.', example: 'Arun: tie steel for grid B by Thursday.' },
-      { title: 'Schedule', url: '/planning/schedule', status: 'planned', phase: 'Later', about: 'The project timeline: stages, dependencies, what is late.', example: 'Slab on 14 Nov, then 21 days curing before the next floor; plastering 4 days behind.' },
       { title: 'Tendering', url: '/planning/tendering', status: 'planned', phase: 'Later', about: 'Price a new job from its BOQ and your rate library, to bid.', example: 'School building tender: 380 lines priced, 12% margin, bid ₹3.8 cr.', roles: MONEY_ROLES },
     ],
   },
@@ -293,4 +294,6 @@ export const PAGE_ICONS: Record<string, LucideIcon> = {
   '/site/safety': ShieldAlert,
   '/site/snags': ListTodo,
   '/boq': Calculator,
+  '/planning/setup': Rocket,
+  '/planning/schedule': CalendarRange,
 }

@@ -229,6 +229,20 @@ async def test_mark_done_and_quick_plan(client, ctx):
     assert _act(r.json()["schedule"], ids[0])["state"] == "done"
 
 
+async def test_marking_past_work_finished_does_not_make_it_look_late(client, test_engine, ctx):
+    today = company_today()
+    quiet = await _section(client, ctx, "Mobilisation")
+    reported = await _section(client, ctx, "Excavation")
+    line = await _line(client, ctx, reported, "Excavation", "10")
+    await _patch(client, ctx, quiet, start=str(today - 30 * D), end=str(today - 28 * D))
+    await _patch(client, ctx, reported, start=str(today - 20 * D), end=str(today - 15 * D))
+    await _measure(test_engine, ctx, line, "4", today - 12 * D)
+    await _patch(client, ctx, quiet, done=True)
+    sched = (await _patch(client, ctx, reported, done=True)).json()["schedule"]
+    assert (_act(sched, quiet)["actual_end"], _act(sched, quiet)["days_late"]) == (str(today - 28 * D), 0)
+    assert (_act(sched, reported)["actual_end"], _act(sched, reported)["days_late"]) == (str(today - 12 * D), 3)
+
+
 async def test_delete_only_an_activity_with_no_boq_lines(client, ctx):
     sec = await _section(client, ctx, "Plastering")
     await _line(client, ctx, sec, "Internal plaster", "500", unit="sqft")
@@ -352,7 +366,7 @@ async def test_a_real_estimate_sheet_with_heading_rows(client, ctx):
     problem = next(x for x in body["rows"] if x["result"] == "problem")
     assert "furlongs" in problem["message"]
     boq = (await client.get(f"/projects/{ctx['project']}/boq", headers=_h(ctx["admin"]))).json()
-    assert [s["name"] for s in boq["sections"]] == ["A EARTHWORK", "B CONCRETE"]
+    assert [(s["code"], s["name"]) for s in boq["sections"]] == [("A", "Earthwork"), ("B", "Concrete")]
     rcc = boq["sections"][1]["lines"][0]
     assert rcc["client_rate"] == "9800.00" and rcc["boq_code"] == "3"
 

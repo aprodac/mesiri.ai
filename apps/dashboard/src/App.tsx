@@ -19,6 +19,8 @@ import Projects from '@/pages/Projects'
 import ProjectDetails from '@/pages/ProjectDetails'
 import ProjectBoqPage from '@/pages/ProjectBoqPage'
 import BoqIndexPage from '@/pages/BoqIndexPage'
+import SchedulePage from '@/pages/SchedulePage'
+import ProjectStartPage from '@/pages/ProjectStartPage'
 import PlannedPage from '@/pages/PlannedPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
@@ -142,6 +144,9 @@ export default function App() {
           <Route path="projects/:id" element={<ProjectDetails />} />
           <Route path="projects/:id/boq" element={<ProjectBoqPage />} />
           <Route path="boq" element={<BoqIndexPage />} />
+          {/* ST-04 / ST-05: the start of a project and its schedule. */}
+          <Route path="planning/setup" element={<ProjectStartPage />} />
+          <Route path="planning/schedule" element={<SchedulePage />} />
           {/* WEB-72: planned module pages (lib/module-map.ts). Only shown while "Show planned
               modules" is on; otherwise PlannedPage sends the address to Today. */}
           {PLANNED_PAGES.map(({ page }) => (

@@ -547,7 +547,7 @@ Plan: [next-modules-plan.md](next-modules-plan.md). What each role needs next, a
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NXT-01 | **Clients and contracts:** client per project (name, GSTIN, address, contact), contract value, retention %, mobilisation advance and recovery %, GST %, TDS % | M | Must | CC-02 | todo | — | Owner: "when does the client pay me?" Additive tables `clients`, `project_contracts` |
+| NXT-01 | **Clients and contracts** (tables made in ST-02, migration 0521): client per project (name, GSTIN, address, contact), contract value, retention %, mobilisation advance and recovery %, GST %, TDS % | M | Must | CC-02 | todo | — | Owner: "when does the client pay me?" Additive tables `clients`, `project_contracts` |
 | NXT-02 | **RA bills from the BOQ:** RA-01…, measured to date − previous bills at the client rate; retention, advance recovery, TDS, GST; draft → submitted → certified; PDF on the letterhead | L | Must | NXT-01, CC-04 | todo | — | D-N1 default: measured quantities, office may edit before submit. Reuse the PO document renderer (PRC-26) |
 | NXT-03 | **Payments received and receivables:** against a bill or on account; outstanding per client with age; "client paid 5 lakh for RA-03" on WhatsApp (v3 `ALLOWED` + SOP) | M | Must | NXT-02 | todo | — | Who sees it: D-N3 (needs Ilan, permissions) |
 | NXT-04 | **Variations / extra items:** a line outside the BOQ, approved by the client, then billed like a BOQ line | S | Should | NXT-02 | todo | — | |
@@ -565,6 +565,27 @@ Plan: [next-modules-plan.md](next-modules-plan.md). What each role needs next, a
 | NXT-14 | **Shuttering, scaffolding and tools by site:** how many plates, props, scaffold pipes each site holds; sent to another site, returned, lost / damaged | M | Should | NXT-11 | done (hash in git log `NXT-11`) | Claude (session 8 Nov) | Reuse the material transfer flow (BE-32) and stock ledger; items in a returnable category, not a second stock system Built with NXT-11 (8 Nov): `material_categories.returnable` (0518); `GET /equipment/returnables` (stock per site of returnable categories, lost / damaged = wastage usage), `PUT /equipment/returnables/categories/{id}`; Shuttering & tools page. Moves stay material transfers (BE-32). |
 | NXT-15 | **Vehicles, fixed assets, maintenance:** company vehicles (trips, fuel, driver), owned machines with purchase value and depreciation, service due | M | Later | NXT-11 | in-progress | Claude (session 8 Nov) | Module map: Vehicles, Fixed assets (Later) **Part done 8 Nov (with NXT-11):** vehicles (kind vehicle, trips, driver; Vehicles page) and service due by hours worked (`service_every_hours`, Serviced today). **Left:** owned machines as fixed assets with purchase value and depreciation (Accounts module, money: needs a decision on the depreciation method). |
 | NXT-12 | **Tally export:** expenses, supplier bills, payments and receipts as Tally vouchers (XML) for the CA; one-way first | M | Should | CC-09, NXT-03 | todo | — | |
+
+---
+
+## ST — Project start: from "we won it" to "work starts" (8 Nov 2026)
+
+Plan: [project-start-plan.md](project-start-plan.md). Asked by Ilan 8 Nov: the middle of a project is covered; the start and the end are not. This is the start; the end (billing, handover, closeout, defect period) is the next plan. Value proposition: start in 30 minutes from the estimate Excel; the schedule updates itself from site WhatsApp updates; delays reach the owner the same morning.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ST-01 | **Project stage and dates:** Tender → Won → Running → Handover → Defect period → Closed; start and contract handover dates; `/projects/{id}/start`, `/lifecycle/projects`; stage and on-time/late on the Projects list | S | Must | — | done (commit in report) | Claude (session 8 Nov) | Migration 0521 (additive; `stage` defaults to running so existing projects are unchanged) |
+| ST-02 | **Clients and contract terms** (tables only): `clients`, `project_contracts` (value, retention, mobilisation advance + recovery, GST, TDS, defect liability) | S | Must | ST-01 | in progress | Claude (session 8 Nov) | Tables in 0521, no routes or screens yet: moved next to RA bills (NXT-01/02) so the terms are used the day they are typed (decided in session 8 Nov). Who sees them: D-N3, defaults to the BOQ roles |
+| ST-03 | **BOQ from Excel:** any estimate sheet (Description / Qty / Unit / Rate; heading rows become sections) or the template; preview then import; dates and "starts after" for the schedule; safe to re-run | M | Must | CC-02 | done (commit in report) | Claude (session 8 Nov) | The BOQ part of CC-13; suppliers and opening stock stay PRC-05 |
+| ST-04 | **Schedule (Gantt):** BOQ sections as activities with dates, milestones, "starts after" + lag; progress measured from site work updates (never typed); late / behind / on track; forecast finish at the site's pace; knock-on of late work; critical path; drag to move with a preview of what moves; quick plan | L | Must | ST-03 | done (commit in report) | Claude (session 8 Nov) | Reuses `work_packages` dates (0420, unused until now); no new schedule table |
+| ST-05 | **Project start page:** stage track, contract dates, a checklist (BOQ, schedule, sites, team on WhatsApp, suppliers, work orders) with the next step highlighted | M | Must | ST-01 | done (commit in report) | Claude (session 8 Nov) | Planning › Project start (`/planning/setup`) |
+| ST-06 | **Schedule on WhatsApp:** daily delay note to owner / admin / PM (what is late, what it pushes, forecast handover); Monday "this week" note to the site team; v3 `schedule` + `update_schedule_activity`, SOP rule 15 | M | Must | ST-04 | done (commit in report) | Claude (session 8 Nov) | English only for now (the other reminders are translated by `words()`; follow-up ST-11) |
+| ST-07 | **Walkthrough video** of the start of a project, with the value for each role | S | Should | ST-05 | done (in report) | Claude (session 8 Nov) | Captioned screen recording of the real dashboard on demo data |
+| ST-08 | Documents and drawing register per project (contract PDF, permits, latest drawing revision), findable from WhatsApp | M | Should | ST-01 | todo | — | Drawings → progress stays V2 (DRW) |
+| ST-09 | Tender pricing from a rate library (the Tender stage's own screen) | L | Later | CC-03 | todo | — | |
+| ST-10 | Weekly lookahead from the schedule (replaces NXT-10's free-text list) | M | Should | ST-04 | todo | — | The Monday note (ST-06) is its first half |
+| ST-11 | Delay and "this week" notes in Malayalam / Manglish / Hindi like the other reminders | S | Should | ST-06 | todo | — | |
+| ST-12 | Resize a bar by dragging its end; baseline (first plan) kept to compare against | M | Later | ST-04 | todo | — | Today a bar moves whole; the length changes in the panel |
 
 ---
 

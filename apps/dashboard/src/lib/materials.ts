@@ -885,7 +885,7 @@ export async function downloadImportTemplate(): Promise<Blob> {
   return res.data as Blob
 }
 
-async function fileBase64(file: File): Promise<string> {
+export async function fileBase64(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   let binary = ''
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))

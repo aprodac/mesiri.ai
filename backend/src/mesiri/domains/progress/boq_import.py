@@ -93,6 +93,16 @@ class ImportFileError(ValueError):
     """The file can't be read as a BOQ sheet; the message is for the person."""
 
 
+def heading_name(text: str) -> str:
+    """A heading as people read it: "SITE PREPARATION & EARTHWORK" -> "Site Preparation & Earthwork". Mixed case is
+    left as typed; short joining words stay small."""
+    if not text.isupper():
+        return text
+    small = {"and", "of", "to", "in", "for", "the", "on", "at", "with"}
+    words = text.lower().split()
+    return " ".join(w if (i and w in small) else w[:1].upper() + w[1:] for i, w in enumerate(words))
+
+
 def _key(value: Any) -> str:
     return re.sub(r"[\s.\-_/()\[\]:#]", "", str(value or "").lower())
 
@@ -332,7 +342,7 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, u
     plan: dict[str, dict[str, Any]] = {}  # section name (lower) -> {id, name, start, finish, after, lines}
     current: str | None = None
 
-    async def section_for(name: str, row: int) -> dict[str, Any]:
+    async def section_for(name: str, row: int, code: str | None = None) -> dict[str, Any]:
         k = name.lower()
         if k in plan:
             return plan[k]
@@ -340,7 +350,8 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, u
             report.sections_found += 1
             sid = existing[k]
         else:
-            sid = await repo.create_section(org, project_id, name[:200], None, None, user_id)
+            code = code[:40] if code and not await repo.code_taken(project_id, code[:40]) else None
+            sid = await repo.create_section(org, project_id, name[:200], None, code, user_id)
             existing[k] = sid
             report.sections_added += 1
         plan[k] = {"id": sid, "name": name, "start": None, "finish": None, "after": None, "lines": 0,
@@ -360,10 +371,10 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, u
         label = r.work or r.code or ""
         try:
             if r.heading:
-                name = r.section or " ".join(filter(None, [r.code, r.work]))
+                name = r.section or heading_name(r.work or r.code or "")
                 current = name
                 async with conn.begin_nested():
-                    entry = await section_for(name, r.row)
+                    entry = await section_for(name, r.row, None if r.section else r.code)
                     take_dates(entry, r)
                 report.note(r.row, "section", name, None, name)
                 continue

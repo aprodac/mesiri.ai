@@ -161,10 +161,11 @@ def assess(a: Mapping[str, Any], today: datetime.date) -> dict[str, Any]:
 
 # -- links -----------------------------------------------------------------------------------------------------------
 
-def earliest_after(pred: Mapping[str, Any], lag: int, end: datetime.date | None = None) -> datetime.date:
-    """The first day a successor may start: the day after the predecessor ends (a milestone's own day), plus lag."""
-    finish = end or pred["end"]
-    return finish + DAY * ((0 if pred.get("milestone") else 1) + lag)
+def earliest_after(pred: Mapping[str, Any], lag: int, succ: Mapping[str, Any] | None = None) -> datetime.date:
+    """The first day a successor may start, plus lag: the day after the predecessor ends; on the predecessor's own day
+    when either is a milestone ("Slab cast" is the day the slab work ends; work after a milestone starts that day)."""
+    same_day = pred.get("milestone") or bool(succ and succ.get("milestone"))
+    return pred["end"] + DAY * ((0 if same_day else 1) + lag)
 
 
 def order(ids: Iterable[Any], links: Iterable[Mapping[str, Any]]) -> list[Any]:
@@ -246,7 +247,7 @@ def push(
             p = acts.get(link["predecessor"])
             if p is None or not scheduled(p):
                 continue
-            day = earliest_after(p, int(link.get("lag") or 0))
+            day = earliest_after(p, int(link.get("lag") or 0), a)
             floor = day if floor is None or day > floor else floor
         if floor is not None and floor > a["start"]:
             shift = floor - a["start"]
@@ -304,7 +305,7 @@ def critical(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[st
         bound = finish
         for link in succ.get(i, []):
             s_start = latest_start[link["successor"]]
-            gap = (0 if a.get("milestone") else 1) + int(link.get("lag") or 0)
+            gap = (0 if a.get("milestone") or acts[link["successor"]].get("milestone") else 1) + int(link.get("lag") or 0)
             day = s_start - DAY * gap
             bound = min(bound, day)
         latest_end[i] = bound
@@ -320,7 +321,7 @@ def conflicts(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[s
         p, s = acts.get(link["predecessor"]), acts.get(link["successor"])
         if not p or not s or not scheduled(p) or not scheduled(s):
             continue
-        allowed = earliest_after(p, int(link.get("lag") or 0))
+        allowed = earliest_after(p, int(link.get("lag") or 0), s)
         if s["start"] < allowed:
             out.append({"predecessor": p["id"], "successor": s["id"], "days": (allowed - s["start"]).days})
     return out

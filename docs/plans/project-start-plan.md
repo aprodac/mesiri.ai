@@ -1,6 +1,6 @@
 # Project start: from "we won the job" to "work starts on site" (Nov 2026)
 
-> **Status:** plan written and built 8 Nov 2026 (asked in session by Ilan: "the middle part is done in an
+> **Status:** built 8 Nov 2026 (ST-01, ST-03..ST-07; ST-02 tables only) (asked in session by Ilan: "the middle part is done in an
 > okay way, but the starting and the ending is where we are lacking ... start with the starting part, then
 > slowly get to the middle part; make a video with the value proposition"). Tracker items `ST-01`..`ST-10`
 > in [V1_TRACKER.md](V1_TRACKER.md). The ending (billing, handover, closeout, defect period) is the next
@@ -109,7 +109,23 @@ section is late on the morning after a site report; the engineer asks "what's pl
 5. **One system from the first day**: the same BOQ lines carry through to purchase, subcontract work orders,
    cost control and client bills.
 
-## 6. Next (the middle, then the end)
+## 6. What was built (8 Nov 2026)
+
+- **Backend:** `domains/schedule/` (`logic.py` pure maths, `store.py`, `router.py`, `reminders.py`),
+  `domains/progress/boq_import.py`; migration 0521. Progress per BOQ line = work updates counted on the line
+  (CUMULATIVE replaces, ACHIEVED adds) + confirmed subcontract measurements not from a work update: the same
+  "measured to date" for the Gantt and later for RA bills.
+- **Rules settled while building:** a milestone may fall on the day its predecessor ends; "mark finished" on past
+  work dates it to site's last report (else the planned end), never today; a move pushes only later work, never
+  earlier or finished work, and is always previewed; forecasts count days of work before today (today's work is not
+  reported yet).
+- **Dashboard:** Planning › Project start, Planning › Schedule (Gantt on desktop, list on phones), the BOQ import
+  dialog (BOQ page, Project start, Schedule), stage and on-time/late on the Projects list, Planning in the sidebar.
+- **WhatsApp:** delay note (daily, owner / admin / PM), "this week" (Monday, site team), v3 tools and SOP rule 15.
+- **Not built (see tracker):** client and contract screens (with billing), documents register, tender pricing,
+  translated notes, bar resize and baselines.
+
+## 7. Next (the middle, then the end)
 
 After ST: CC-04 progress per BOQ line on the Gantt (done here for bars), NXT-10 weekly lookahead from the
 schedule, then the ending plan: RA bills (NXT-02), payments received (NXT-03), variations (NXT-04), snag list,
