@@ -49,3 +49,14 @@ def test_after_save_the_link_opens_the_work_order() -> None:
     assert made and made.endswith(f"/subcontract/work-orders/{wo}")
     measured = record_link("measure_work", f"/subcontracts/work-orders/{wo}/measurements", {"line_id": "x", "quantity": "40"}, {}, today="2026-11-08")
     assert measured and measured.endswith(f"/subcontract/work-orders/{wo}")
+
+
+def test_the_tools_resolve_against_the_agent_api() -> None:
+    from agent_api.app import build_api_app
+    from agent_api.tools import build_tools
+
+    names = {"list_work_orders", "work_order", "create_work_order", "measure_work", "record_subcontract_bill",
+             "subcontract_bills_waiting", "approve_subcontract_bill", "reject_subcontract_bill", "give_subcontract_advance",
+             "subcontractor_statement", "supplier_payables", "supplier_account", "pay_supplier", "link_bill_deliveries"}
+    tools = build_tools(build_api_app(None).openapi(), tuple(a for a in ALLOWED if a.name in names))
+    assert set(tools) == names
