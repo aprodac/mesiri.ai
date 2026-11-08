@@ -24,6 +24,9 @@ import MaterialPlanPage from '@/pages/MaterialPlanPage'
 import ClientsPage from '@/pages/ClientsPage'
 import DrawingCheckPage from '@/pages/DrawingCheckPage'
 import RaBillsPage from '@/pages/RaBillsPage'
+import PaymentsReceivedPage from '@/pages/PaymentsReceivedPage'
+import SnagsPage from '@/pages/SnagsPage'
+import HandoverPage from '@/pages/HandoverPage'
 import RaBillDocumentPage from '@/pages/RaBillDocumentPage'
 import ProjectStartPage from '@/pages/ProjectStartPage'
 import CostBudgetPage from '@/pages/CostBudgetPage'
@@ -161,6 +164,11 @@ export default function App() {
           <Route path="planning/drawing-check" element={<DrawingCheckPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
           <Route path="billing/ra-bills" element={<RaBillsPage />} />
+          {/* END-01..END-03: the end of a project. */}
+          <Route path="billing/receipts" element={<PaymentsReceivedPage />} />
+          <Route path="accounts/receivables" element={<PaymentsReceivedPage />} />
+          <Route path="site/snags" element={<SnagsPage />} />
+          <Route path="planning/handover" element={<HandoverPage />} />
           {/* CC-01 / CC-04: the Cost control module. */}
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />

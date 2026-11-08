@@ -21,6 +21,7 @@ import {
   Palette,
   ListChecks,
   Map as MapIcon,
+  ListTodo,
 } from 'lucide-react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -98,6 +99,8 @@ const PRIMARY_ITEMS: NavItem[] = [
 const RECORD_ITEMS: NavItem[] = [
   { title: 'Site log', url: '/site-log', icon: Activity, tone: 'sky' },
   { title: 'Analytics', url: '/analytics', icon: BarChart3, tone: 'indigo' },
+  // END-01: defects to put right before handover; the site engineer works through it, so no role limit.
+  { title: 'Snag list', url: '/site/snags', icon: ListTodo, tone: 'orange' },
 ]
 
 const ROOT_MANAGEMENT_ITEMS: NavItem[] = [

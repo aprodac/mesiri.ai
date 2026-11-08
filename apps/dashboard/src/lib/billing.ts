@@ -167,3 +167,98 @@ export function billDay(d: string | null | undefined): string {
   if (!d) return '—'
   return new Date(`${d.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+// END-02: payments received from the client and what each client still owes. Backend: billing/router.py,
+// money in billing/receivables.py (due = certified amount once certified, else net).
+export type PaymentKind = 'bill' | 'advance' | 'retention' | 'other'
+
+export const PAYMENT_KINDS: { key: PaymentKind; label: string }[] = [
+  { key: 'bill', label: 'Against a bill' },
+  { key: 'advance', label: 'Advance' },
+  { key: 'retention', label: 'Retention released' },
+  { key: 'other', label: 'Other' },
+]
+
+export interface ClientPayment {
+  id: string
+  project_id: string
+  project_name: string
+  client_name: string | null
+  ra_bill_id: string | null
+  bill_ref: string | null
+  kind: PaymentKind
+  kind_label: string
+  received_on: string
+  amount: string
+  mode: string | null
+  reference: string | null
+  notes: string | null
+}
+
+export interface BillReceivable {
+  id: string
+  ref: string
+  status: BillStatus
+  bill_date: string
+  due: string
+  received: string
+  outstanding: string
+  age_days: number
+  retention: string
+}
+
+export interface ProjectReceivable {
+  project: { id: string; name: string; stage: string }
+  client: { id: string; name: string } | null
+  contract_value: string | null
+  has_advance: boolean
+  handed_over_on: string | null
+  defect_liability_months: number | null
+  bills: BillReceivable[]
+  billed: string
+  received: string
+  outstanding: string
+  oldest_days: number | null
+  retention_held: string
+  retention_released: string
+  retention_left: string
+  retention_due_on: string | null
+  retention_due_now: boolean
+  advance: string
+  advance_received: string
+  advance_left: string
+}
+
+export interface Receivables {
+  today: string
+  projects: ProjectReceivable[]
+  outstanding: string
+  retention_left: string
+  received: string
+}
+
+export interface PaymentInput {
+  kind: PaymentKind
+  bill_id?: string | null
+  amount: string
+  received_on?: string
+  mode?: string | null
+  reference?: string | null
+  notes?: string | null
+}
+
+export async function fetchReceivables(projectId?: string | null): Promise<Receivables> {
+  return (await api.get<Receivables>('/billing/receivables', { params: { project_id: projectId || undefined } })).data
+}
+
+export async function fetchClientPayments(projectId?: string | null): Promise<ClientPayment[]> {
+  return (await api.get<ClientPayment[]>('/billing/payments', { params: { project_id: projectId || undefined } })).data
+}
+
+export async function recordClientPayment(projectId: string, body: PaymentInput): Promise<{ payment: ClientPayment; receivable: ProjectReceivable }> {
+  return (await api.post(`/projects/${projectId}/client-payments`, body)).data
+}
+
+export async function deleteClientPayment(id: string) {
+  await api.delete(`/billing/payments/${id}`)
+}
