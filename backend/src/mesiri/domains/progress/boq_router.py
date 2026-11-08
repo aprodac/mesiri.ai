@@ -241,6 +241,18 @@ async def _duplicate_check(
         raise HTTPException(status_code=409, detail=f"'{work}' in this unit is already a line in this section")
 
 
+async def _billed(repo: PostgresBoqRepository, where: str, key: uuid.UUID) -> bool:
+    """NXT-02: a BOQ line (any revision of it) that is on an RA bill stays: the bill points at it."""
+    from sqlalchemy import text
+
+    rows = await repo.conn.execute(text(
+        "WITH RECURSIVE chain(id) AS (SELECT CAST(:id AS uuid) UNION SELECT i.id FROM work_package_planned_items i "
+        "JOIN chain c ON i.superseded_by_id = c.id WHERE i.id <> c.id) "
+        f"SELECT EXISTS (SELECT 1 FROM ra_bill_lines l WHERE l.planned_item_id IN (SELECT id FROM "  # noqa: S608
+        f"work_package_planned_items WHERE {where}))"), {"id": key})
+    return bool(rows.scalar())
+
+
 @router.get("")
 async def get_boq(
     project_id: uuid.UUID,
@@ -299,6 +311,8 @@ async def delete_section(
         raise HTTPException(status_code=404, detail="Section not found")
     if await repo.section_has_activities(section_id):
         raise HTTPException(status_code=409, detail="Work has been logged against this section; it can't be removed")
+    if await _billed(repo, "work_package_id = :id", section_id):
+        raise HTTPException(status_code=409, detail="A line of this section is on an RA bill; it can't be removed")
     await repo.delete_section(section_id)
     return Response(status_code=204)
 
@@ -368,6 +382,8 @@ async def delete_line(
     repo = await _scope(project_id, auth, conn)
     if await repo.get_line(auth.organization_id, project_id, line_id) is None:
         raise HTTPException(status_code=404, detail="Line not found")
+    if await _billed(repo, "id IN (SELECT id FROM chain)", line_id):
+        raise HTTPException(status_code=409, detail="This line is on an RA bill; it can't be removed (change it instead)")
     await repo.delete_line(line_id)
     return Response(status_code=204)
 

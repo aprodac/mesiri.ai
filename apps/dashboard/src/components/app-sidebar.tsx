@@ -467,6 +467,8 @@ export function AppSidebar() {
   const planningCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('planning')))
   // CC-01: Cost control opens the same way (BOQ & budget, Budget vs actual, Cost centres); money roles only, so hidden when empty.
   const costCategory = isModuleEnabled('cost') ? ((c) => (c.items.length ? c : null))(toCategory(groupByKey('cost'))) : null
+  // NXT-01/02: Client billing (Clients, RA bills) the same way; owner, admin and finance only, so hidden when empty.
+  const billingCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('billing')))
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -626,6 +628,7 @@ export function AppSidebar() {
                   {subcontractCategory && renderCategory(subcontractCategory)}
                   {financeCategory && renderCategory(financeCategory)}
                   {costCategory && renderCategory(costCategory)}
+                  {billingCategory && renderCategory(billingCategory)}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

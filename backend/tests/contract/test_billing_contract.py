@@ -7,6 +7,7 @@ Requires a live Postgres reachable via Settings().postgres.dsn() -- run with
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 import sqlalchemy as sa
@@ -31,6 +32,9 @@ async def test_engine():
 @pytest.fixture
 async def clean_db(test_engine: AsyncEngine):
     yield
+    # Bills hold their BOQ lines (RESTRICT): other suites delete every BOQ row when they start.
+    async with test_engine.begin() as conn:
+        await conn.execute(sa.text("DELETE FROM ra_bills"))
 
 
 @pytest.fixture
@@ -174,3 +178,119 @@ async def test_project_start_lists_the_contract_step_without_money(client, ctx):
     step = next(s for s in (await client.get(f"/projects/{ctx['project']}/start", headers=h)).json()["steps"]
                 if s["key"] == "contract")
     assert step["done"] is True and "100" not in step["detail"]
+
+
+# -- NXT-02: RA bills -----------------------------------------------------------------------------------------------
+
+async def _measured(client, ctx, engine, line_id: str, quantity: str, unit: str) -> None:
+    """Site work on a BOQ line (a work update with a quantity, put on the line as the BOQ page does)."""
+    activity_id, quantity_id = uuid.uuid4(), uuid.uuid4()
+    async with engine.begin() as conn:
+        site = (await conn.execute(sa.text("SELECT id FROM sites WHERE project_id = :p"), {"p": ctx["project"]})).scalar_one()
+        unit_id = (await conn.execute(sa.text("SELECT id FROM units_of_measure WHERE code = :u"), {"u": unit})).scalar_one()
+        await conn.execute(sa.text(
+            "INSERT INTO activities (id, organization_id, project_id, site_id, work_type, activity_date, source) "
+            "VALUES (:id, :org, :p, :s, 'work', current_date, 'dashboard')"),
+            {"id": activity_id, "org": ctx["org"], "p": ctx["project"], "s": site})
+        await conn.execute(sa.text(
+            "INSERT INTO activity_quantities (id, activity_id, unit_id, quantity, planned_item_id) "
+            "VALUES (:id, :a, :u, :q, :line)"),
+            {"id": quantity_id, "a": activity_id, "u": unit_id, "q": Decimal(quantity), "line": line_id})
+
+
+async def _boq(client, ctx) -> tuple[dict, dict]:
+    h, base = _h(ctx["admin"]), f"/projects/{ctx['project']}/boq"
+    sec = (await client.post(f"{base}/sections", json={"name": "Structure"}, headers=h)).json()
+    m20 = (await client.post(f"{base}/sections/{sec['id']}/lines", json={
+        "work": "M20 in slab", "unit": "cum", "planned_quantity": "300", "client_rate": "6500"}, headers=h)).json()
+    plaster = (await client.post(f"{base}/sections/{sec['id']}/lines", json={
+        "work": "Plaster 12 mm", "unit": "sqm", "planned_quantity": "4000", "client_rate": "420"}, headers=h)).json()
+    await client.post(f"{base}/sections/{sec['id']}/lines", json={
+        "work": "Not priced yet", "unit": "nos", "planned_quantity": "5"}, headers=h)
+    await client.put(f"/projects/{ctx['project']}/contract", json={
+        "contract_value": "25000000", "retention_pct": "5", "mobilisation_advance": "850000",
+        "advance_recovery_pct": "10", "gst_pct": "18", "tds_pct": "2"}, headers=h)
+    return m20, plaster
+
+
+async def test_ra_bill_from_measured_work_with_the_contracts_deductions(client, ctx, test_engine):
+    h = _h(ctx["admin"])
+    m20, plaster = await _boq(client, ctx)
+    nothing = await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)
+    assert nothing.status_code == 422  # no measured work yet
+    await _measured(client, ctx, test_engine, m20["id"], "120", "cum")
+    await _measured(client, ctx, test_engine, plaster["id"], "800", "sqm")
+
+    r = await client.post(f"/projects/{ctx['project']}/ra-bills", json={"bill_date": "2026-11-08"}, headers=h)
+    assert r.status_code == 201, r.text
+    bill = r.json()
+    assert bill["ref"] == "RA-01" and bill["status"] == "draft"
+    assert [(ln["work"], ln["quantity"], ln["amount"]) for ln in bill["lines"]] == [
+        ("M20 in slab", "120.000", "780000.00"), ("Plaster 12 mm", "800.000", "336000.00")]
+    assert (bill["gross"], bill["retention"], bill["advance_recovery"], bill["gst"], bill["tds"], bill["net"]) == (
+        "1116000.00", "55800.00", "111600.00", "200880.00", "22320.00", "1127160.00")
+    again = await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)
+    assert again.status_code == 409  # one draft at a time
+
+    # The office changes a quantity before submitting; the suggested one stays visible.
+    plaster_line = bill["lines"][1]["id"]
+    r = await client.put(f"/billing/ra-bills/{bill['id']}/lines/{plaster_line}", json={"quantity": "700"}, headers=h)
+    line = r.json()["lines"][1]
+    assert line["edited"] is True and line["suggested_quantity"] == "800.000" and r.json()["gross"] == "1074000.00"
+    r = await client.post(f"/billing/ra-bills/{bill['id']}/submit", headers=h)
+    assert r.json()["status"] == "submitted" and r.json()["net"] is not None
+    assert (await client.put(f"/billing/ra-bills/{bill['id']}/lines/{plaster_line}", json={"quantity": "1"},
+                             headers=h)).status_code == 409
+
+    # RA-02: only what was measured since, plus the 100 sqm left off RA-01; the advance recovery continues.
+    await _measured(client, ctx, test_engine, m20["id"], "30", "cum")
+    two = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    assert two["ref"] == "RA-02"
+    assert [(ln["work"], ln["previous_quantity"], ln["quantity"]) for ln in two["lines"]] == [
+        ("M20 in slab", "120.000", "30.000"), ("Plaster 12 mm", "700.000", "100.000")]
+    assert two["previous_billed"] == "1074000.00"
+
+
+async def test_advance_recovery_stops_at_the_advance(client, ctx, test_engine):
+    h = _h(ctx["admin"])
+    m20, _ = await _boq(client, ctx)
+    await client.put(f"/projects/{ctx['project']}/contract", json={
+        "mobilisation_advance": "100000", "advance_recovery_pct": "10"}, headers=h)
+    await _measured(client, ctx, test_engine, m20["id"], "120", "cum")  # 7,80,000: 10% = 78,000
+    one = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    assert one["advance_recovery"] == "78000.00" and one["retention"] == "0.00"
+    await client.post(f"/billing/ra-bills/{one['id']}/submit", headers=h)
+    await _measured(client, ctx, test_engine, m20["id"], "120", "cum")
+    two = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    assert two["advance_recovery"] == "22000.00"  # only what is left of the advance
+
+
+async def test_certify_cancel_remove_and_the_boq_keeps_billed_lines(client, ctx, test_engine):
+    h = _h(ctx["admin"])
+    m20, plaster = await _boq(client, ctx)
+    await _measured(client, ctx, test_engine, m20["id"], "10", "cum")
+    bill = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    assert (await client.post(f"/billing/ra-bills/{bill['id']}/certify", json={"certified_amount": "1"},
+                              headers=h)).status_code == 409  # a draft is not certified
+    assert (await client.delete(f"/projects/{ctx['project']}/boq/lines/{m20['id']}", headers=h)).status_code == 409
+    assert (await client.delete(f"/billing/ra-bills/{bill['id']}", headers=h)).status_code == 204
+
+    bill = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    assert bill["ref"] == "RA-01"  # a removed draft frees its number
+    await client.post(f"/billing/ra-bills/{bill['id']}/submit", headers=h)
+    r = (await client.post(f"/billing/ra-bills/{bill['id']}/certify", json={"certified_amount": "60000",
+                                                                            "certified_on": "2026-11-20"}, headers=h)).json()
+    assert (r["status"], r["certified_amount"], r["certified_on"]) == ("certified", "60000.00", "2026-11-20")
+    assert (await client.post(f"/billing/ra-bills/{bill['id']}/cancel", headers=h)).status_code == 409
+
+    await _measured(client, ctx, test_engine, m20["id"], "5", "cum")
+    two = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    await client.post(f"/billing/ra-bills/{two['id']}/submit", headers=h)
+    assert (await client.post(f"/billing/ra-bills/{two['id']}/cancel", headers=h)).json()["status"] == "cancelled"
+    three = (await client.post(f"/projects/{ctx['project']}/ra-bills", json={}, headers=h)).json()
+    assert three["ref"] == "RA-03" and three["lines"][0]["quantity"] == "5.000"  # a withdrawn bill's work is free again
+
+    listed = (await client.get(f"/billing/ra-bills?project_id={ctx['project']}", headers=h)).json()
+    assert [b["ref"] for b in listed] == ["RA-03", "RA-02", "RA-01"] and listed[0]["net"] is not None
+    pm = await _user(test_engine, ctx["org"], "project_manager")
+    assert (await client.get(f"/billing/ra-bills/{bill['id']}", headers=_h(pm))).status_code == 403

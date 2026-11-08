@@ -22,6 +22,8 @@ import BoqIndexPage from '@/pages/BoqIndexPage'
 import SchedulePage from '@/pages/SchedulePage'
 import MaterialPlanPage from '@/pages/MaterialPlanPage'
 import ClientsPage from '@/pages/ClientsPage'
+import RaBillsPage from '@/pages/RaBillsPage'
+import RaBillDocumentPage from '@/pages/RaBillDocumentPage'
 import ProjectStartPage from '@/pages/ProjectStartPage'
 import CostBudgetPage from '@/pages/CostBudgetPage'
 import CostCentresPage from '@/pages/CostCentresPage'
@@ -95,6 +97,8 @@ export default function App() {
         <Route path="/live" element={<RequireAuth><LivePage /></RequireAuth>} />
         {/* PRC-26: the purchase order for the supplier, full screen so it prints clean. */}
         <Route path="/procurement/orders/:id/document" element={<RequireAuth><PurchaseOrderDocumentPage /></RequireAuth>} />
+        {/* NXT-02: the RA bill for the client, full screen so it prints clean. */}
+        <Route path="/billing/ra-bills/:id/document" element={<RequireAuth><RaBillDocumentPage /></RequireAuth>} />
         {/* NXT-05 / NXT-17: the work order and a subcontractor's statement, full screen so they print clean. */}
         <Route path="/subcontract/work-orders/:id/document" element={<RequireAuth><WorkOrderDocumentPage /></RequireAuth>} />
         <Route path="/subcontract/statement/:vendorId" element={<RequireAuth><StatementPage /></RequireAuth>} />
@@ -154,6 +158,7 @@ export default function App() {
           <Route path="planning/schedule" element={<SchedulePage />} />
           <Route path="planning/materials" element={<MaterialPlanPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
+          <Route path="billing/ra-bills" element={<RaBillsPage />} />
           {/* CC-01 / CC-04: the Cost control module. */}
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />

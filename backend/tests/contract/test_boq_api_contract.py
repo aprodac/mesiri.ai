@@ -32,6 +32,8 @@ async def test_engine():
 @pytest.fixture
 async def clean_db(test_engine: AsyncEngine):
     async with test_engine.begin() as conn:
+        # NXT-02: RA bill lines hold their BOQ lines (RESTRICT); bills go first.
+        await conn.execute(sa.text("DELETE FROM ra_bills"))
         await conn.execute(sa.text("DELETE FROM work_package_planned_items"))
         await conn.execute(sa.text("UPDATE activities SET work_package_id = NULL"))
         await conn.execute(sa.text("DELETE FROM work_packages"))

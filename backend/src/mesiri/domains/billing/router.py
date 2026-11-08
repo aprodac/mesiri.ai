@@ -6,6 +6,16 @@
   GET   /projects/{project_id}/contract        the project's client and contract terms (null when not set)
   PUT   /projects/{project_id}/contract        set them: an existing client_id, or a new client by name
 
+  GET   /billing/ra-bills?project_id=          RA bills, newest first per project
+  POST  /projects/{project_id}/ra-bills        a new draft from the measured work not billed yet
+  GET   /billing/ra-bills/{bill_id}            one bill with its lines and money
+  PATCH /billing/ra-bills/{bill_id}            a draft's date, period and notes
+  PUT   /billing/ra-bills/{bill_id}/lines/{line_id}   a draft line's quantity (the suggested one is kept)
+  POST  /billing/ra-bills/{bill_id}/submit     freeze it: the money is stored, it is sent to the client
+  POST  /billing/ra-bills/{bill_id}/certify    what the client's engineer certified (may differ), and when
+  POST  /billing/ra-bills/{bill_id}/cancel     a submitted bill withdrawn (its quantities go back to "not billed")
+  DELETE /billing/ra-bills/{bill_id}           remove a draft
+
 Who: the owner, an admin and finance (``may_manage_money``), within the projects they can reach: the plan's default
 for decision D-N3 (docs/plans/next-modules-plan.md), the narrowest existing money rule, until Ilan decides otherwise.
 """
@@ -191,3 +201,173 @@ async def put_contract(project_id: uuid.UUID, body: ContractIn,
         await contracts.name_project_client(conn, org, project_id, after["client_name"],
                                             before["client_name"] if before else None)
     return _out({"project": {"id": project_id, "name": name}, "contract": after})
+
+
+# -- RA bills (NXT-02) ---------------------------------------------------------------------------------------------
+
+class BillCreate(BaseModel):
+    bill_date: datetime.date | None = None
+    period_to: datetime.date | None = None
+
+
+class BillUpdate(BaseModel):
+    bill_date: datetime.date | None = None
+    period_to: datetime.date | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+    _clean_text = field_validator("notes")(_clean)
+
+
+class LineQuantity(BaseModel):
+    quantity: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+
+
+class Certify(BaseModel):
+    certified_amount: Decimal = Field(ge=0, max_digits=16, decimal_places=2)
+    certified_on: datetime.date | None = None
+
+
+async def _bill(conn: AsyncConnection, auth: AuthorizationContext, bill_id: uuid.UUID) -> dict[str, Any]:
+    from mesiri.domains.billing import bills
+
+    _require(auth)
+    bill = await bills.get(conn, auth.organization_id, bill_id)
+    if bill is None:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    _require(auth, bill["project_id"])
+    return bill
+
+
+def _draft(bill: dict[str, Any]) -> None:
+    if bill["status"] != "draft":
+        raise HTTPException(status_code=409, detail=f"{bill['ref']} is {bill['status']}; only a draft can change")
+
+
+async def _today(conn: AsyncConnection, org: uuid.UUID) -> datetime.date:
+    from mesiri.application.dpr.project_day import company_today
+
+    return await company_today(conn, org)
+
+
+@router.get("/billing/ra-bills")
+async def list_ra_bills(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import bills
+
+    _require(auth, project_id)
+    scope = None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
+    if project_id is not None:
+        scope = {project_id}
+    return _out(await bills.list_bills(conn, auth.organization_id, scope))
+
+
+@router.post("/projects/{project_id}/ra-bills", status_code=201)
+async def create_ra_bill(project_id: uuid.UUID, body: BillCreate,
+                         auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    from sqlalchemy import text
+
+    from mesiri.domains.billing import bills
+
+    _require(auth, project_id)
+    org = auth.organization_id
+    await _project_name(conn, org, project_id)
+    draft = (await conn.execute(text(
+        "SELECT number FROM ra_bills WHERE organization_id = :org AND project_id = :p AND status = 'draft'"),
+        {"org": org, "p": project_id})).scalar()
+    if draft is not None:
+        raise HTTPException(status_code=409, detail=f"{bills.ref(draft)} is still a draft: submit or remove it first")
+    today = await _today(conn, org)
+    bill_id, added = await bills.create_draft(conn, org, project_id, body.bill_date or today,
+                                              body.period_to or today, auth.user_id)
+    if added == 0:
+        raise HTTPException(status_code=422, detail="No measured work to bill: every priced BOQ line's measured "
+                                                    "quantity is already on a bill (or no line has a client rate)")
+    return _out(await bills.get(conn, org, bill_id))
+
+
+@router.get("/billing/ra-bills/{bill_id}")
+async def get_ra_bill(bill_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                      conn: AsyncConnection = Depends(get_db_conn)):
+    return _out(await _bill(conn, auth, bill_id))
+
+
+@router.patch("/billing/ra-bills/{bill_id}")
+async def update_ra_bill(bill_id: uuid.UUID, body: BillUpdate, auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import bills
+
+    bill = await _bill(conn, auth, bill_id)
+    _draft(bill)
+    values = body.model_dump(exclude_unset=True)
+    if "bill_date" in values and values["bill_date"] is None:
+        raise HTTPException(status_code=422, detail="A bill needs a date")
+    await bills.update_details(conn, bill_id, values)
+    return _out(await bills.get(conn, auth.organization_id, bill_id))
+
+
+@router.put("/billing/ra-bills/{bill_id}/lines/{line_id}")
+async def set_ra_bill_line(bill_id: uuid.UUID, line_id: uuid.UUID, body: LineQuantity,
+                           auth: AuthorizationContext = Depends(get_auth_context),
+                           conn: AsyncConnection = Depends(get_db_conn)):
+    """The office's quantity for one line of a draft (D-N1: measured by default, editable before submitting; the
+    suggested quantity stays on the line, so the change shows)."""
+    from mesiri.domains.billing import bills
+
+    bill = await _bill(conn, auth, bill_id)
+    _draft(bill)
+    if not await bills.set_quantity(conn, bill_id, line_id, body.quantity):
+        raise HTTPException(status_code=404, detail="Line not found on this bill")
+    return _out(await bills.get(conn, auth.organization_id, bill_id))
+
+
+@router.post("/billing/ra-bills/{bill_id}/submit")
+async def submit_ra_bill(bill_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import bills
+
+    bill = await _bill(conn, auth, bill_id)
+    _draft(bill)
+    if not any(Decimal(ln["quantity"]) > 0 for ln in bill["lines"]):
+        raise HTTPException(status_code=422, detail="Every line is 0: nothing to bill")
+    await bills.submit(conn, bill, auth.user_id)
+    return _out(await bills.get(conn, auth.organization_id, bill_id))
+
+
+@router.post("/billing/ra-bills/{bill_id}/certify")
+async def certify_ra_bill(bill_id: uuid.UUID, body: Certify, auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import bills
+
+    bill = await _bill(conn, auth, bill_id)
+    if bill["status"] not in ("submitted", "certified"):
+        raise HTTPException(status_code=409, detail="Only a submitted bill can be certified")
+    await bills.set_status(conn, bill_id, "certified", certified_amount=body.certified_amount,
+                           certified_on=body.certified_on or await _today(conn, auth.organization_id))
+    return _out(await bills.get(conn, auth.organization_id, bill_id))
+
+
+@router.post("/billing/ra-bills/{bill_id}/cancel")
+async def cancel_ra_bill(bill_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.billing import bills
+
+    bill = await _bill(conn, auth, bill_id)
+    if bill["status"] != "submitted":
+        raise HTTPException(status_code=409, detail="Only a submitted bill can be withdrawn (a draft is removed, a "
+                                                    "certified one stays)")
+    await bills.set_status(conn, bill_id, "cancelled")
+    return _out(await bills.get(conn, auth.organization_id, bill_id))
+
+
+@router.delete("/billing/ra-bills/{bill_id}", status_code=204)
+async def delete_ra_bill(bill_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    from fastapi import Response
+
+    from mesiri.domains.billing import bills
+
+    bill = await _bill(conn, auth, bill_id)
+    _draft(bill)
+    await bills.delete_draft(conn, bill_id)
+    return Response(status_code=204)
