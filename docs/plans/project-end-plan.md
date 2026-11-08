@@ -1,6 +1,7 @@
 # Project end: from "work is nearly done" to "project closed" (Nov 2026)
 
-> **Status:** planned and first round built 8 Nov 2026 (END-01..END-03, END-05, END-06). Asked in session ("modules that are
+> **Status:** planned 8 Nov 2026; first round built the same day (END-01..END-03, END-05, END-06: `254731a`,
+> `3c1453f`, `e6bc0d7`, `c5ae533`). Asked in session ("modules that are
 > pending, and the modules that are needed at the end of a project for the users"). The start of a project is
 > [project-start-plan.md](project-start-plan.md), whose last line said "the ending (billing, handover, closeout,
 > defect period) is the next plan". Tracker items `END-01`..`END-14` in [V1_TRACKER.md](V1_TRACKER.md).
