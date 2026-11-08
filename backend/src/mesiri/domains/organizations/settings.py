@@ -100,6 +100,7 @@ MODULES: dict[str, str] = {
     "labour": "Labour attendance and workforce",
     "materials": "Materials received, used and stock",
     "finance": "Expenses, petty cash, transfers, accounts and vendors",
+    "equipment": "Machines and vehicles: hours, idle and breakdown, diesel, hire; shuttering and tools",
     "automations": "User-defined scheduled messages",
 }
 
@@ -109,6 +110,7 @@ MODULE_LABELS: dict[str, str] = {
     "labour": "Labour",
     "materials": "Materials",
     "finance": "Finance",
+    "equipment": "Equipment",
     "automations": "Automations",
 }
 
@@ -117,7 +119,9 @@ ALWAYS_ON_MODULES: frozenset[str] = frozenset({"dpr"})
 
 # What V1 sells. Finance joined on 5 Nov 2026 (Ilan: "by default turn finance on for everyone"; migration 0506
 # switched it on for companies whose list was already stored).
-V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials", "finance")
+# Equipment joined on 8 Nov 2026 (asked in session: on for everyone; migration 0518 switched it on for companies whose
+# list was already stored).
+V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials", "finance", "equipment")
 
 # A company that has never had its modules set gets V1. Flipped from "every
 # module on" in the same release as the dashboard hiding (WEB-02) and the

@@ -704,6 +704,8 @@ VENDOR_LINKS = (
     ("material_invoices", "vendor_id", "bills"),
     ("purchase_orders", "vendor_id", "orders"),
     ("expense_payments", "vendor_id", "payments"),
+    ("equipment", "vendor_id", "machines"),  # NXT-11: machines hired from them
+    ("equipment_hire_bills", "vendor_id", "hire bills"),  # NXT-13
 )
 
 
