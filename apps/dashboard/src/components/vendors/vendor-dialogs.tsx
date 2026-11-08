@@ -178,7 +178,7 @@ export function PayVendorDialog({ open, onOpenChange, vendor, preselect, project
   const bills = React.useMemo(() => ledger.data?.summary.open_bills ?? [], [ledger.data])
   const balance = num(ledger.data?.closing)
   const accounts = useQuery({ queryKey: ['finance', 'accounts', 'payable'], queryFn: () => fetchAccountsApi(), enabled: open, staleTime: 30_000 })
-  const active = ((accounts.data ?? []) as Account[]).filter((a) => a.status !== 'inactive')
+  const active = ((accounts.data ?? []) as Account[]).filter((a) => a.status !== 'inactive' && !a.name.startsWith('TDS payable'))
   const [account, setAccount] = React.useState('')
   const [amount, setAmount] = React.useState('')
   const [date, setDate] = React.useState(todayIso())

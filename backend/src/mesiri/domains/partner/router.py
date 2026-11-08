@@ -239,6 +239,9 @@ async def send_bill(body: PartnerBillIn, p: Partner = Depends(get_partner), conn
                                      {"w": body.work_order_id})).scalar())
     when = body.bill_date or datetime.date.today()
     expense_id = await _bill_expense(conn, p.organization_id, recorder, wo, number, Decimal(result["gross"]), when, bill)
+    from mesiri.domains.subcontracts.router import hold_expense
+
+    await hold_expense(conn, p.organization_id, expense_id)  # theirs: never owed until the company checks it
     bill_id = uuid.uuid4()
     import json
 

@@ -86,7 +86,8 @@ async def fetch(conn: AsyncConnection, org: uuid.UUID, *, project_ids: set[uuid.
     billed = {r["line_id"]: (Decimal(r["q"]), Decimal(r["a"])) for r in (await conn.execute(text(
         "SELECT bl.line_id, SUM(bl.quantity) AS q, SUM(bl.quantity * bl.rate) AS a FROM work_order_bill_lines bl "
         "JOIN work_order_bills b ON b.id = bl.bill_id JOIN expenses e ON e.id = b.expense_id "
-        "WHERE b.work_order_id = ANY(:ids) AND b.check_status <> 'rejected' AND e.workflow_status = 'confirmed' "
+        "WHERE b.work_order_id = ANY(:ids) AND b.check_status <> 'rejected' "
+        "AND e.workflow_status IN ('confirmed', 'pending_confirmation') "
         "GROUP BY bl.line_id"), {"ids": ids})).mappings()}
     bills = await fetch_bills(conn, org, wo_ids=ids)
     advance = {r["work_order_id"]: Decimal(r["given"] or 0) for r in (await conn.execute(text(
@@ -189,7 +190,9 @@ async def fetch_bills(conn: AsyncConnection, org: uuid.UUID, *, wo_ids: list | N
                                      "agreed_rate": _m(r["agreed_rate"]), "amount": _m(Decimal(r["quantity"]) * Decimal(r["rate"]))})
     out = []
     for r in rows:
-        status = r["check_status"] if r["workflow_status"] == "confirmed" else "rejected"
+        # A bill waiting for its check is an expense waiting for confirmation: not owed, not a cost, not payable
+        # until it passes or is approved (8 Nov 2026). Taken back (voided / rejected): rejected.
+        status = "rejected" if r["workflow_status"] in ("voided", "rejected") else r["check_status"]
         gross = Decimal(r["gross"])
         left = max(gross - Decimal(r["paid_all"]), Decimal(0))
         held = Decimal(r["retention_amount"]) - Decimal(r["retention_released"])
@@ -265,3 +268,16 @@ async def tds_account(conn: AsyncConnection, org: uuid.UUID, user_id: uuid.UUID)
         organization_id=org, name=TDS_ACCOUNT, account_type="other", currency="INR", opening_balance=Decimal(0),
         opening_balance_date=datetime.date.today(), created_by=user_id)
     return acc.id
+
+
+async def refuse_tds_account(conn: AsyncConnection, org: uuid.UUID, account_id: Any) -> None:
+    """The TDS payable account only collects TDS deducted (and is paid off by a transfer into it): nothing is paid
+    from it, so money owed to the government is never spent on a supplier."""
+    from fastapi import HTTPException
+
+    if account_id is None:
+        return
+    name = (await conn.execute(text("SELECT name FROM money_accounts WHERE id = :a AND organization_id = :org"),
+                               {"a": account_id, "org": org})).scalar()
+    if name == TDS_ACCOUNT:
+        raise HTTPException(status_code=409, detail="The TDS payable account only collects TDS: pay from a bank or cash account.")

@@ -536,6 +536,9 @@ async def pay_vendor(
     scope = _view_scope(auth_context)
     if body.project_id is not None:
         _narrow(scope, body.project_id)
+    from mesiri.domains.subcontracts.store import refuse_tds_account
+
+    await refuse_tds_account(conn, org, body.account_id)
     account = await PostgresMoneyAccountRepository(conn).get_by_id(org, body.account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")

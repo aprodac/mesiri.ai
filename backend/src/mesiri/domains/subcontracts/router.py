@@ -614,6 +614,8 @@ async def record_bill(wo_id: uuid.UUID, body: BillIn, auth_context: Authorizatio
                     auth_context.user_id, who)
     if not result["flags"]:
         await _settle(conn, auth_context, wo_id, bill_id, body)
+    else:
+        await hold_expense(conn, org, expense_id)
     return {"bill": (await store.fetch_bills(conn, org, bill_id=bill_id))[0], "check": result,
             "work_order": _shown(auth_context, await _one(conn, auth_context, wo_id))}
 
@@ -640,6 +642,13 @@ async def _bill_expense(conn: AsyncConnection, org: uuid.UUID, user_id: uuid.UUI
     if result.status is ExecutionStatus.REJECTED or not result.material_row_id:
         raise HTTPException(status_code=422, detail=f"The bill could not be saved: {result.rejection_reasons}")
     return uuid.UUID(result.material_row_id)
+
+
+async def hold_expense(conn: AsyncConnection, org: uuid.UUID, expense_id: uuid.UUID) -> None:
+    """A bill waiting for its check is not yet owed or a cost: its expense waits for confirmation (Expenses,
+    the supplier ledger, the cost page and payments all count confirmed expenses only)."""
+    await conn.execute(text("UPDATE expenses SET workflow_status = 'pending_confirmation' WHERE id = :e AND organization_id = :org"),
+                       {"e": expense_id, "org": org})
 
 
 async def _settle(conn: AsyncConnection, auth: AuthorizationContext, wo_id: uuid.UUID, bill_id: uuid.UUID,
@@ -717,8 +726,13 @@ async def _decide(conn: AsyncConnection, auth: AuthorizationContext, bill_id: uu
         raise HTTPException(status_code=409, detail=f"{bill['ref']} is {bill['check_status']} already.")
     await conn.execute(text("UPDATE work_order_bills SET check_status = :s, decided_by = :u, decided_at = now(), "
                             "decision_reason = :r WHERE id = :id"), {"s": to, "u": auth.user_id, "r": reason.strip(), "id": bill_id})
+    pending = (await conn.execute(text("SELECT workflow_status FROM expenses WHERE id = :e"), {"e": bill["expense_id"]})).scalar() == "pending_confirmation"
     if to == "approved":
+        if pending:
+            await conn.execute(text("UPDATE expenses SET workflow_status = 'confirmed', updated_at = now() WHERE id = :e"), {"e": bill["expense_id"]})
         await _settle(conn, auth, uuid.UUID(bill["work_order_id"]), bill_id)
+    elif pending:  # never owed: turned down, nothing to take back
+        await conn.execute(text("UPDATE expenses SET workflow_status = 'rejected', updated_at = now() WHERE id = :e"), {"e": bill["expense_id"]})
     else:
         from mesiri.application.finance.reverse_commands import ReverseTransactionCommand
         from mesiri.application.finance.reverse_handler import ReverseTransactionHandler
@@ -791,6 +805,7 @@ async def give_advance(wo_id: uuid.UUID, body: AdvanceIn, auth_context: Authoriz
     wo = await _one(conn, auth_context, wo_id)
     if wo["status"] not in ("draft", "issued"):
         raise HTTPException(status_code=409, detail=f"{wo['ref']} is {wo['status']}.")
+    await store.refuse_tds_account(conn, auth_context.organization_id, body.account_id)
     acc = (await conn.execute(text("SELECT name, status FROM money_accounts WHERE id = :a AND organization_id = :org"),
                               {"a": body.account_id, "org": auth_context.organization_id})).mappings().first()
     if acc is None:

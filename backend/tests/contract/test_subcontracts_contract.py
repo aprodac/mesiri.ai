@@ -153,3 +153,35 @@ async def test_site_work_updates_count_on_a_line_once(client, world, test_engine
                               json={"activity_quantity_id": found[0]["activity_quantity_id"], "line_id": wo["lines"][0]["id"]})
     assert again.status_code == 409
     assert (await client.get(f"/subcontracts/work-orders/{wo['id']}/site-work", headers=h)).json() == []
+
+
+async def test_a_bill_waiting_for_its_check_is_not_owed_nor_a_cost_and_tds_is_never_spent(client, world):
+    """8 Nov 2026: a flagged bill (or one a subcontractor sent) counted as owed and as cost before anyone checked it."""
+    w = world
+    h = w["admin"]["h"]
+    await client.patch("/finance/settings", headers=h, json={"tds_enabled": True})
+    wo = await _wo(client, w, issue=True)
+    await _measure(client, w, wo, 0, "40")
+    flagged = (await client.post(f"/subcontracts/work-orders/{wo['id']}/bills", headers=h, json={
+        "lines": [{"line_id": wo["lines"][0]["id"], "quantity": "60"}]})).json()["bill"]
+    assert flagged["check_status"] == "flagged"
+    assert (await _ledger(client, h, wo["vendor_id"]))["closing"] == "0.00"          # not owed yet
+    costs = (await client.get("/finance/costs", params={"project_id": str(w["villa"])}, headers=h)).json()
+    assert costs["expenses"]["amount"] == "0.00"                                     # not a cost yet
+    again = (await client.post(f"/subcontracts/work-orders/{wo['id']}/bills/check", headers=h, json={
+        "lines": [{"line_id": wo["lines"][0]["id"], "quantity": "10"}]})).json()
+    assert any(f["code"] == "over_measured" for f in again["flags"])                # the waiting bill still counts as billed
+    await client.post(f"/subcontracts/bills/{flagged['id']}/approve", headers=h, json={"reason": "Measured late"})
+    assert (await _ledger(client, h, wo["vendor_id"]))["closing"] == "22572.00"     # owed once approved (less 1% TDS deducted)
+
+    other = (await client.post(f"/subcontracts/work-orders/{wo['id']}/bills", headers=h, json={
+        "lines": [{"line_id": wo["lines"][1]["id"], "quantity": "10"}]})).json()["bill"]
+    rej = await client.post(f"/subcontracts/bills/{other['id']}/reject", headers=h, json={"reason": "Not done"})
+    assert rej.json()["bill"]["check_status"] == "rejected" and (await _ledger(client, h, wo["vendor_id"]))["closing"] == "22572.00"
+
+    tds = next(a for a in (await client.get("/finance/accounts", headers=h)).json() if a["name"] == "TDS payable (194C)")
+    bank = await _account(client, h, "SBI", "bank")
+    no = await client.post(f"/finance/vendors/{wo['vendor_id']}/payments", headers=h, json={"account_id": tds["id"], "amount": "100"})
+    assert no.status_code == 409 and "TDS" in no.text
+    assert (await client.post("/finance/transfers", headers={**h, "Idempotency-Key": str(uuid.uuid4())},
+                              json={"from_account_id": tds["id"], "to_account_id": bank, "amount": "10"})).status_code == 409

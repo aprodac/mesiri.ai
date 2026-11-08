@@ -58,7 +58,7 @@ export function RecordExpenseDialog({
   const [paidFrom, setPaidFrom] = React.useState<string>('unpaid')
   const [gst, setGst] = React.useState<string>('0')
   const accountsQuery = useQuery({ queryKey: ['finance', 'accounts', 'payable'], queryFn: () => fetchAccountsApi(), enabled: open, staleTime: 30_000 })
-  const payable = ((accountsQuery.data ?? []) as { id: string; name: string; status: string; current_balance: number }[]).filter((a) => a.status !== 'inactive')
+  const payable = ((accountsQuery.data ?? []) as { id: string; name: string; status: string; current_balance: number }[]).filter((a) => a.status !== 'inactive' && !a.name.startsWith('TDS payable'))
   const [submitting, setSubmitting] = React.useState(false)
   // Set only when the typed vendor name doesn't match an existing vendor --
   // swaps the form for a "create this vendor?" confirmation instead of

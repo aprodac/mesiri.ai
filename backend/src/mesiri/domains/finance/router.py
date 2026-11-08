@@ -993,6 +993,10 @@ async def transfer_money(
 ):
     """Transfer money between two money accounts in the organization."""
     _require(may_transfer_money(auth_context.role), "Only the owner, an admin, finance or a project manager can move money.")
+    # NXT-07: TDS collected is owed to the government; it is paid off by a transfer INTO its account, never spent from it.
+    from mesiri.domains.subcontracts.store import refuse_tds_account
+
+    await refuse_tds_account(conn, auth_context.organization_id, body.from_account_id)
     cmd = TransferMoneyCommand(
         idempotency_key=idempotency_key,
         organization_id=str(auth_context.organization_id),
