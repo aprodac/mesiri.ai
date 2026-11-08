@@ -55,6 +55,11 @@ JOIN_REQUESTS = "join_requests"
 # day that just ended. Default 04:00: late-evening and night updates stay on their working day.
 WORKING_DAY_STARTS_AT = "working_day_starts_at"
 WORKING_DAY_STARTS_DEFAULT = "04:00"
+#: WA-264: the AI check of a draft card against what the person said. "shadow": runs after the reply, only logged
+#: (no time added, no reply changed); "off": not run.
+CARD_REVIEW = "card_review"
+CARD_REVIEW_MODES: frozenset[str] = frozenset({"off", "shadow"})
+CARD_REVIEW_DEFAULT = "shadow"
 CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
@@ -215,6 +220,14 @@ _SPECS: dict[str, SettingSpec] = {
         description=(
             "When the company's working day starts (HH:MM, 00:00-11:59). Before it, 'today' in a WhatsApp update "
             "means the day that just ended."
+        ),
+    ),
+    CARD_REVIEW: SettingSpec(
+        key=CARD_REVIEW,
+        default=CARD_REVIEW_DEFAULT,
+        description=(
+            "The AI check of a draft card against what the person said (off, or shadow: it runs after the reply "
+            "and is only logged for the team)."
         ),
     ),
     CAPTURE_MODE: SettingSpec(
@@ -443,6 +456,11 @@ def validate(key: str, value: object) -> object:
         return validate_module_list(value)
     if key == WORKING_DAY_STARTS_AT:
         return f"{_day_start(value):%H:%M}"
+    if key == CARD_REVIEW:
+        mode = str(value).strip().lower() if isinstance(value, str) else ""
+        if mode not in CARD_REVIEW_MODES:
+            raise ValueError(f"card_review must be one of {sorted(CARD_REVIEW_MODES)}")
+        return mode
     if key == CAPTURE_MODE:
         mode = str(value).strip().lower() if isinstance(value, str) else ""
         if mode not in CAPTURE_MODES:
