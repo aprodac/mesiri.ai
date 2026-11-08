@@ -88,6 +88,8 @@ async def test_work_order_measure_bill_pay_retention(client, world, test_engine)
     assert paid.status_code == 201, paid.text
     assert [x["expense_id"] for x in paid.json()["bills_paid"]] == [b1["expense_id"]]
     assert paid.json()["advance_left"] == "0.00"
+    after = (await client.get(f"/subcontracts/work-orders/{wo['id']}", headers=h)).json()
+    assert after["totals"]["paid"] == "12744.85"                  # paid via "pay supplier" counts as paid
 
     # Approve bill 2 with a reason (the extra was measured late): payable after its deductions.
     ok = await client.post(f"/subcontracts/bills/{b2['id']}/approve", headers=h, json={"reason": "Measured on Saturday, entry late"})

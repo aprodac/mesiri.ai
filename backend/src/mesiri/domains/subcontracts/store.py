@@ -173,8 +173,12 @@ async def fetch_bills(conn: AsyncConnection, org: uuid.UUID, *, wo_ids: list | N
         "SELECT b.*, e.workflow_status, e.payment_status, e.description, w.number AS wo_number, w.vendor_id, "
         "d.full_name AS decided_by_name, sb.full_name AS submitted_by_name, "
         "COALESCE((SELECT SUM(x.amount) FROM expense_payments x WHERE x.expense_id = b.expense_id AND x.status = 'confirmed'), 0) AS paid_all, "
+        # Paid in money: direct payments and payments to the supplier applied to this bill -- not TDS, and not the work
+        # order's advance being recovered (8 Nov 2026: payments made with "Pay supplier" were left out, so paid read 0).
         "COALESCE((SELECT SUM(x.amount) FROM expense_payments x JOIN money_accounts a ON a.id = x.account_id "
-        "  WHERE x.expense_id = b.expense_id AND x.status = 'confirmed' AND x.advance_id IS NULL AND a.name <> :tds), 0) AS paid_cash "
+        "  LEFT JOIN expense_payments adv ON adv.id = x.advance_id "
+        "  WHERE x.expense_id = b.expense_id AND x.status = 'confirmed' AND a.name <> :tds "
+        "  AND (x.advance_id IS NULL OR adv.work_order_id IS NULL)), 0) AS paid_cash "
         "FROM work_order_bills b JOIN expenses e ON e.id = b.expense_id JOIN work_orders w ON w.id = b.work_order_id "
         "LEFT JOIN users d ON d.id = b.decided_by LEFT JOIN users sb ON sb.id = b.submitted_by "
         f"WHERE {' AND '.join(where)} ORDER BY b.number"), {**p, "tds": TDS_ACCOUNT})).mappings()]  # noqa: S608
