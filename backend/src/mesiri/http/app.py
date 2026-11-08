@@ -321,6 +321,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("places router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.documents.router import router as documents_router
+
+        app.include_router(documents_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("documents router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.billing.router import router as billing_router
 
         app.include_router(billing_router)

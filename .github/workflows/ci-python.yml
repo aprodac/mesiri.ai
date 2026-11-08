@@ -115,6 +115,7 @@ jobs:
             "$GITHUB_WORKSPACE/backend/tests/contract/test_billing_contract.py" \
             "$GITHUB_WORKSPACE/backend/tests/contract/test_drawings_contract.py" \
             "$GITHUB_WORKSPACE/backend/tests/contract/test_places_contract.py" \
+            "$GITHUB_WORKSPACE/backend/tests/contract/test_documents_contract.py" \
             -m integration \
             --rootdir=/tmp \
             --import-mode=importlib \

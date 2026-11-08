@@ -486,6 +486,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.billing.router", "Client billing"),  # NXT-01/02: clients, contracts, RA bills
         ("mesiri.domains.drawings.router", "Drawing check"),  # DR-04: read a drawing PDF (nothing stored)
         ("mesiri.domains.places.router", "Places"),  # LP-01..05: floors and rooms, progress by place
+        ("mesiri.domains.documents.router", "Documents"),  # DOC-01, DR-07/08: documents and drawings register
         ("mesiri.domains.costing.router", "Cost control"),  # CC-01: the cost module (web)
     ):
         try:
