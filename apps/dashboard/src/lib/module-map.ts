@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   ClipboardList,
+  FileSearch,
   FileText,
   Gauge,
   HardHat,
@@ -109,6 +110,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', shortcut: true, about: 'Every work item with its quantity, client rate and budget rate.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02', roles: MONEY_ROLES },
       { title: 'Material plan', url: '/planning/materials', status: 'built', phase: 'V1', about: 'What each material is needed for, week by week, from the BOQ and the schedule, against stock and orders; red from the week it runs short.', example: 'First floor slab on 20 Nov needs 380 bags cement; 150 in stock: short from the week of 17 Nov.', tracker: 'MP-01, MP-02', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Stock', url: '/materials' }] },
       { title: 'Rate library', url: '/planning/rates', status: 'planned', phase: 'V1', about: "Standard output and material per unit of work, so a BOQ can be priced without a consultant.", example: 'Plastering 12 mm: 1 mason + 1 helper ≈ 80 sq ft a day. 1 m³ M20 ≈ 8 bags cement.', tracker: 'MP-01 (per BOQ line, built)', roles: MANAGERS, related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Material plan', url: '/planning/materials' }] },
+      { title: 'Drawing check', url: '/planning/drawing-check', status: 'built', phase: 'V1', about: 'Drop the architect\'s PDF: its sheets, levels, room sizes and fixtures, and what to ask the architect before it reaches site.', example: 'ROOM-1 is drawn 1740 x 590 cm (1,105 sq ft) but labelled 1,217 sq ft: the label looks copied from ROOM-2.', tracker: 'DR-01..DR-04', roles: MONEY_ROLES },
       { title: 'Drawings', url: '/planning/drawings', status: 'planned', phase: 'V1.5', about: 'The latest drawings, so site always builds from the right revision.', example: 'Structural drawing rev C replaces rev B.', tracker: 'DRW' },
       { title: 'Documents', url: '/planning/documents', status: 'planned', phase: 'V1.5', about: 'Contracts, permits, approvals and agreements, per project, findable from WhatsApp.', example: 'Building permit, structural approval, Ravi\'s work order PDF.' },
       { title: 'Tasks', url: '/planning/tasks', status: 'planned', phase: 'V1.5', about: 'Who does what by when.', example: 'Arun: tie steel for grid B by Thursday.' },
@@ -304,4 +306,5 @@ export const PAGE_ICONS: Record<string, LucideIcon> = {
   '/planning/setup': Rocket,
   '/planning/schedule': CalendarRange,
   '/planning/materials': PackageSearch,
+  '/planning/drawing-check': FileSearch,
 }

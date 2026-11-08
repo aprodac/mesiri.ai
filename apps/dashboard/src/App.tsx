@@ -22,6 +22,7 @@ import BoqIndexPage from '@/pages/BoqIndexPage'
 import SchedulePage from '@/pages/SchedulePage'
 import MaterialPlanPage from '@/pages/MaterialPlanPage'
 import ClientsPage from '@/pages/ClientsPage'
+import DrawingCheckPage from '@/pages/DrawingCheckPage'
 import RaBillsPage from '@/pages/RaBillsPage'
 import RaBillDocumentPage from '@/pages/RaBillDocumentPage'
 import ProjectStartPage from '@/pages/ProjectStartPage'
@@ -157,6 +158,7 @@ export default function App() {
           <Route path="planning/setup" element={<ProjectStartPage />} />
           <Route path="planning/schedule" element={<SchedulePage />} />
           <Route path="planning/materials" element={<MaterialPlanPage />} />
+          <Route path="planning/drawing-check" element={<DrawingCheckPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
           <Route path="billing/ra-bills" element={<RaBillsPage />} />
           {/* CC-01 / CC-04: the Cost control module. */}

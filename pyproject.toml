@@ -86,6 +86,10 @@ reports = [
     "fpdf2>=2.7",
     # PRC-05: the materials Excel import (read the customer's sheet, write the template). Pure Python.
     "openpyxl>=3.1",
+    # DR-01: the drawing reader reads a drawing PDF's own text with positions (title blocks, levels, rooms).
+    # pdfium (prebuilt wheels): a 9-sheet set in 0.3 s; pdfminer took 14 s on vector-heavy sections.
+    # Imported lazily inside domains/drawings/pdf_text.py.
+    "pypdfium2>=4.30,<6",
 ]
 dev = [
     "pytest>=8.0",

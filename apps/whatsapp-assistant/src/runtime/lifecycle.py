@@ -484,6 +484,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.schedule.router", "Schedule"),  # ST-01/04/05: project start, the Gantt, the lifecycle list
         ("mesiri.domains.materials.plan_router", "Material plan"),  # MP-02/03: what to order and when
         ("mesiri.domains.billing.router", "Client billing"),  # NXT-01/02: clients, contracts, RA bills
+        ("mesiri.domains.drawings.router", "Drawing check"),  # DR-04: read a drawing PDF (nothing stored)
         ("mesiri.domains.costing.router", "Cost control"),  # CC-01: the cost module (web)
     ):
         try:
