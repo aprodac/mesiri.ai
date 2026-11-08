@@ -32,6 +32,8 @@ class ExpenseResponse(BaseModel):
     #: orders those deliveries filled: {id, number, date, supplier, items: [{material, quantity, unit, rate, order_id,
     #: order_ref}]}. Only on GET /expenses/{id}.
     source_invoice: dict | None = None
+    #: NXT-06: the work order bill this expense is (ref, bill, check status), when it is one.
+    work_order: dict | None = None
     custodian_name: str | None = None
     amount: Decimal
     currency: str

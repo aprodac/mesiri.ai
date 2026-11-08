@@ -264,6 +264,25 @@ _DOCUMENT_TEMPLATE_SRC = """
     {% endfor %}
   </div>
 
+  {% if data.machinery %}
+  {% set n.i = n.i + 1 %}
+  <div class="section">
+    <div class="section-title"><span class="no">{{ n.i }}</span>Machinery</div>
+    <table>
+      <thead><tr><th style="width:30%">Machine</th><th class="num" style="width:11%">Worked</th>
+        <th class="num" style="width:11%">Idle</th><th class="num" style="width:13%">Breakdown</th>
+        <th class="num" style="width:11%">Diesel</th><th style="width:24%">Note</th></tr></thead>
+      <tbody>
+        {% for m in data.machinery %}
+        <tr><td class="strong">{{ m.machine }}{% if m.ownership %} <span class="muted">· {{ m.ownership }}</span>{% endif %}{% if m.site_name %} <span class="muted">· {{ m.site_name }}</span>{% endif %}</td>
+          <td class="num">{{ m.worked }} h</td><td class="num">{{ m.idle }} h</td><td class="num">{{ m.breakdown }} h</td>
+          <td class="num">{{ m.fuel }}</td><td>{{ m.note }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   {% set n.i = n.i + 1 %}
   <div class="section">
     <div class="section-title"><span class="no">{{ n.i }}</span>Site Issues

@@ -16,6 +16,7 @@ import { VendorTile } from '@/components/orders/order-detail'
 import { VendorRates } from '@/components/rates/vendor-rates'
 import { BillDeliveriesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
+import { VendorMachines } from '@/components/equipment/vendor-machines'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { useReadOnly } from '@/lib/trial'
@@ -26,6 +27,7 @@ import { mayManageMoney, rupees } from '@/lib/expenses'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
+import { VendorWorkOrders } from '@/components/subcontracts/vendor-work-orders'
 import {
   KINDS, LINE_LOOK, applyAdvance, balanceWords, day, deleteVendor, fetchLedger, fetchVendor, num, undoVendorPayment, updateVendor,
   type LedgerLine,
@@ -36,7 +38,7 @@ import {
 // rest forward, print and export), the open bills with due dates (tick and pay), deliveries with no bill yet (record
 // their bill, or put them on one typed earlier), payments (use an advance, undo), what it charged, and its details.
 
-type Tab = 'account' | 'bills' | 'unbilled' | 'payments' | 'rates' | 'details'
+type Tab = 'account' | 'bills' | 'unbilled' | 'payments' | 'work' | 'rates' | 'details'
 type Period = 'all' | 'month' | 'last' | '90d'
 
 const PERIODS: { value: Period; label: string }[] = [
@@ -140,6 +142,7 @@ export default function VendorPage() {
     { value: 'bills', label: 'Bills to pay', count: openBills.length, money: true },
     { value: 'unbilled', label: 'Not billed', count: unbilled.length, money: true },
     { value: 'payments', label: 'Payments', count: payments.length, money: true },
+    ...(v?.kind === 'subcontractor' ? [{ value: 'work' as Tab, label: 'Work orders' }] : []),
     { value: 'rates', label: 'Rates', money: true },
     { value: 'details', label: 'Details' },
   ]
@@ -385,11 +388,22 @@ export default function VendorPage() {
                         {num(b.paid) > 0 ? ` · ${rupees(num(b.paid))} of ${rupees(num(b.amount))} paid` : ''}
                       </span>
                     </Link>
+                    {b.mismatches > 0 && (
+                      <span className="hidden shrink-0 rounded bg-draft-soft px-1.5 py-0.5 text-xs font-medium text-draft sm:inline" title="Open the bill to see what differs">
+                        ⚠ {b.mismatches} not as delivered
+                      </span>
+                    )}
                     <span className="flex shrink-0 flex-col items-end">
                       <span className="font-semibold tabular-nums">{rupees(num(b.left))}</span>
                       {b.overdue_days > 0 ? <span className="text-xs font-semibold text-destructive">{b.overdue_days} days late</span> : <span className="text-xs text-muted-foreground">{b.age_days} days old</span>}
                     </span>
-                    {canManage && <Button size="sm" variant="outline" className="shrink-0" onClick={() => setPaying([b.id])}>Pay</Button>}
+                    {b.work_order && (
+                      <Link to={`/subcontract/work-orders/${b.work_order.id}?tab=bills`} className={cn('shrink-0 rounded px-1.5 py-0.5 text-xs font-medium',
+                        ['waiting', 'flagged'].includes(b.work_order.check_status) ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100' : 'bg-muted text-muted-foreground')}>
+                        {b.work_order.ref} {b.work_order.bill}{['waiting', 'flagged'].includes(b.work_order.check_status) ? ' · to check' : num(b.work_order.retention_held) ? ` · ${rupees(num(b.work_order.retention_held))} retention` : ''}
+                      </Link>
+                    )}
+                    {canManage && <Button size="sm" variant="outline" className="shrink-0" disabled={num(b.payable) <= 0} title={num(b.payable) <= 0 ? 'Waits for its check (on the work order)' : undefined} onClick={() => setPaying([b.id])}>Pay</Button>}
                   </li>
                 ))}
               </ul>
@@ -488,6 +502,10 @@ export default function VendorPage() {
       )}
 
       {shownTab === 'rates' && v && <div className="rounded-xl border bg-card"><VendorRates vendorId={v.id} /></div>}
+      {shownTab === 'work' && v && <VendorWorkOrders vendorId={v.id} vendorName={v.name} />}
+
+      {/* NXT-11: a hire company's machines, on its account and its details. */}
+      {v && (v.linked.machines ?? 0) > 0 && (shownTab === 'account' || shownTab === 'details') && <VendorMachines vendorId={v.id} />}
 
       {/* --- Details --------------------------------------------------------------------------------------------- */}
       {shownTab === 'details' && v && (
@@ -515,7 +533,7 @@ export default function VendorPage() {
           </dl>
           <div className="grid content-start gap-2 rounded-xl border bg-card p-4 text-sm">
             <div className="font-medium">Recorded with {v.name}</div>
-            {([['expenses', 'Expenses and bills', `/finance/expenses?vendor=${v.id}&period=all`], ['deliveries', 'Deliveries', null], ['orders', 'Orders', `/procurement/orders?vendor=${v.id}&tab=all`], ['payments', 'Payments on account', null]] as const).map(([k, label, to]) => (
+            {([['expenses', 'Expenses and bills', `/finance/expenses?vendor=${v.id}&period=all`], ['deliveries', 'Deliveries', null], ['orders', 'Orders', `/procurement/orders?vendor=${v.id}&tab=all`], ['payments', 'Payments on account', null], ['machines', 'Machines hired', `/equipment?from=${v.id}&tab=all`], ['hire bills', 'Hire bills', '/equipment/hire']] as const).map(([k, label, to]) => (
               <div key={k} className="flex items-center justify-between">
                 <span className="text-muted-foreground">{label}</span>
                 {to && v.linked[k] ? <Link to={to} className="font-medium tabular-nums hover:underline">{v.linked[k]}</Link> : <span className="font-medium tabular-nums">{v.linked[k]}</span>}

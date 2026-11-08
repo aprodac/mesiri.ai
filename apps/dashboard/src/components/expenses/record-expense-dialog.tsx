@@ -22,6 +22,7 @@ import {
 import type { AppScope } from '@/lib/scope-types'
 import { useToast } from '@/components/ui/toast-notification'
 import { toLocalISODate } from '@/lib/utils'
+import { SupplierHint } from '@/components/vendors/vendor-parts'
 import {
   recordExpenseApi,
   fetchAccountsApi,
@@ -141,7 +142,15 @@ export function RecordExpenseDialog({
       }
 
       onExpenseCreated?.(newEntry)
-      toast.success('Expense recorded successfully', `Logged ₹${parseFloat(amount).toLocaleString('en-IN')}`)
+      // PRC-11: a supplier's bill is matched to the deliveries the site recorded (linked when certain, else offered).
+      const found = (created as { unbilled_deliveries?: { linked: boolean; count: number; total: string; vendor: string } } | undefined)?.unbilled_deliveries
+      if (found?.linked) {
+        toast.success('Expense recorded', `${found.count} ${found.count === 1 ? 'delivery' : 'deliveries'} from ${found.vendor} put on this bill: counted once.`)
+      } else if (found) {
+        toast.success('Expense recorded', `${found.vendor} has ${found.count} ${found.count === 1 ? 'delivery' : 'deliveries'} with no bill (₹${Number(found.total).toLocaleString('en-IN')}). If they are on this bill, open the expense › Deliveries on this bill.`)
+      } else {
+        toast.success('Expense recorded successfully', `Logged ₹${parseFloat(amount).toLocaleString('en-IN')}`)
+      }
       setPendingVendorName(null)
       onOpenChange(false)
       setAmount('')
@@ -330,6 +339,7 @@ export function RecordExpenseDialog({
                   onChange={(e) => setVendor(e.target.value)}
                   className="h-9 text-xs"
                 />
+                <SupplierHint name={vendor} />
               </div>
 
               <div className="space-y-1.5">

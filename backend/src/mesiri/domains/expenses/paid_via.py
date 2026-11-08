@@ -22,12 +22,14 @@ UNPAID = "unpaid"
 
 
 def paid_via(payment_status: str | None, paid_by_account_type: dict[str, Decimal] | None) -> str:
-    """``paid_by_account_type``: confirmed payment amounts per account type, e.g. ``{"cash": Decimal("500")}``."""
+    """``paid_by_account_type``: confirmed payment amounts per account type, e.g. ``{"cash": Decimal("500")}``.
+    Still owed to whoever paid it (``reimbursable``) is own pocket even after a part repayment; once repaid in full
+    (``reimbursed``) it is the account they were repaid from."""
+    if (payment_status or "").lower() == "reimbursable":
+        return OWN_POCKET
     if paid_by_account_type:
         petty = sum((v for k, v in paid_by_account_type.items() if k in PETTY_CASH_ACCOUNTS), Decimal(0))
         other = sum((v for k, v in paid_by_account_type.items() if k not in PETTY_CASH_ACCOUNTS), Decimal(0))
         if petty or other:
             return PETTY_CASH if petty >= other else DIRECT
-    if (payment_status or "").lower() == "reimbursable":
-        return OWN_POCKET
     return UNPAID

@@ -111,3 +111,14 @@ code { font-size: 8.6pt; background: var(--soft); padding: 0 1mm; border-radius:
 .bars i { display: block; height: 4mm; border-radius: 1mm; background: #c9c0b4; }
 .bars .profit i { background: var(--ok); }
 .bars b { font-weight: 600; color: var(--muted); font-size: 8.8pt; }
+td code { word-break: break-all; }
+
+/* roles guide */
+.role { border: 1px solid var(--line); border-radius: 3.5mm; padding: 3.5mm 5mm; margin: 0 0 4mm; break-inside: avoid; }
+.role-head { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 1.5mm; }
+.role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+.lbl { font-size: 7.8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin: 1.5mm 0 .6mm; }
+.role p, .role li { font-size: 9.2pt; }
+.matrix td, .matrix th { text-align: center; padding: 1.3mm 1mm; font-size: 8.6pt; }
+.matrix td:first-child, .matrix th:first-child { text-align: left; }
+.matrix tr.grp td { background: var(--soft); font-weight: 700; text-align: left; }

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from contract.test_rates_api_contract import (  # noqa: F401 -- fixtures
     _TABLES,
+    TODAY,
     _came,
     _day,
     _exec,
@@ -35,8 +36,17 @@ async def _wipe(engine: AsyncEngine) -> None:
         await conn.execute(sa.text("UPDATE material_receipts SET reverses_movement_id = NULL, invoice_id = NULL"))
         await conn.execute(sa.text("UPDATE material_invoices SET expense_id = NULL"))
         await conn.execute(sa.text("UPDATE expense_payments SET advance_id = NULL"))
+        for t in ("work_order_bill_lines", "work_order_bills", "work_order_measurements", "work_order_events",
+                  "work_order_lines"):
+            await conn.execute(sa.text(f"DELETE FROM {t}"))  # noqa: S608
+        await conn.execute(sa.text("UPDATE expense_payments SET work_order_id = NULL"))
+        await conn.execute(sa.text("UPDATE activity_quantities SET work_order_line_id = NULL"))
+        await conn.execute(sa.text("DELETE FROM work_orders"))
+        await conn.execute(sa.text("DELETE FROM activity_quantities"))
+        await conn.execute(sa.text("DELETE FROM activities"))
+        await conn.execute(sa.text("DELETE FROM organization_settings"))
         for table in _TABLES:
-            if table == "users":
+            if table == "sites":  # accounts point at sites and users
                 await conn.execute(sa.text("DELETE FROM money_accounts"))
             await conn.execute(sa.text(f"DELETE FROM {table}"))  # noqa: S608 -- fixed names
 
@@ -158,13 +168,13 @@ async def test_a_typed_bill_and_its_deliveries_are_linked_and_counted_once(clien
     h = w["admin"]["h"]
     v = await _vendor(client, h, "Edappally Stores")
     d = await _came(client, w, "cement", "20", "410", days_ago=3, vendor_id=v)
-    bill = await _bill(client, w, v, "8200", days_ago=2)
-    assert (await _ledger(client, h, v))["closing"] == "16400.00"                 # twice until linked
+    bill = await _bill(client, w, v, "8500", days_ago=2)                          # with freight: not certain, offered
+    assert (await _ledger(client, h, v))["closing"] == "16700.00"                 # twice until linked
     linked = await client.post(f"/finance/vendors/{v}/bills/{bill}/deliveries", headers=h, json={"receipt_ids": [d["id"]]})
-    assert linked.status_code == 200 and linked.json()["difference"] == "0.00"
-    assert (await _ledger(client, h, v))["closing"] == "8200.00"
+    assert linked.status_code == 200 and linked.json()["difference"] == "300.00"
+    assert (await _ledger(client, h, v))["closing"] == "8500.00"
     costs = (await client.get("/finance/costs", params={"project_id": str(w["villa"])}, headers=h)).json()
-    assert costs["total"] == "8200.00"
+    assert costs["total"] == "8500.00"
     again = await client.post(f"/finance/vendors/{v}/bills/{bill}/deliveries", headers=h, json={"receipt_ids": [d["id"]]})
     assert again.status_code == 409
 
@@ -245,3 +255,172 @@ async def test_delete_and_merge_know_every_table_that_points_at_a_vendor(test_en
             "ON a.attrelid = k.conrelid AND a.attnum = ANY(k.conkey) "
             "WHERE k.confrelid = 'vendors'::regclass AND k.contype = 'f'"))).all()
     assert {(t, c) for t, c in rows} == {(t, c) for t, c, _ in VENDOR_LINKS}
+
+
+async def test_a_payment_for_one_project_pays_only_that_projects_bills(client, world):
+    """8 Nov 2026: a payment made for Edappally paid Villa's older bill first."""
+    w = world
+    h = w["admin"]["h"]
+    bank = await _account(client, h, "SBI", "bank")
+    v = await _vendor(client, h, "Kerala Steel")
+    villa_bill = await _bill(client, w, v, "10000", days_ago=20)
+    flats_bill = await _bill(client, w, v, "4000", days_ago=2, project="flats")
+    paid = await client.post(f"/finance/vendors/{v}/payments", headers=h,
+                             json={"account_id": bank, "amount": "6000", "project_id": str(w["flats"])})
+    assert paid.status_code == 201, paid.text
+    assert [b["expense_id"] for b in paid.json()["bills_paid"]] == [flats_bill]
+    assert paid.json()["advance_left"] == "2000.00"
+    assert (await client.get(f"/expenses/{villa_bill}/payments", headers=h)).json()["payment_status"] == "unpaid"
+    # Its advance stays with that project: using it never reaches Villa's bill.
+    nothing = await client.post(f"/finance/vendors/{v}/payments/{paid.json()['payment_id']}/apply", headers=h, json={})
+    assert nothing.status_code == 409
+
+
+async def test_the_money_summary_works_and_only_for_who_sees_all_spending(client, world):
+    w = world
+    h = w["admin"]["h"]
+    v = await _vendor(client, h, "Malabar")
+    await _bill(client, w, v, "2500", days_ago=1)
+    summary = await client.get("/finance/summary", headers=h)
+    assert summary.status_code == 200, summary.text          # failed with any vendor before (a missing key)
+    assert next(t for t in summary.json()["top_vendors"] if t["name"] == "Malabar")["unpaid_amount"] in ("2500.00", "2500", 2500)
+    assert (await client.get("/finance/summary", headers=w["arun"]["h"])).status_code == 403
+
+
+# --- PRC-11: a bill matched to the deliveries the site already recorded ------------------------------------------------
+
+
+async def _receipts(engine, material) -> list:
+    async with engine.begin() as conn:
+        return (await conn.execute(sa.text(
+            "SELECT quantity, invoice_id, billed_quantity, billed_rate, vendor_id FROM material_receipts "
+            "WHERE material_id = :m ORDER BY occurred_date, created_at"), {"m": material})).mappings().all()
+
+
+async def _invoice(client, w, lines, total=None, supplier="Malabar Hardware", days_ago=0, **extra):
+    r = await client.post("/materials/invoices", headers={**w["admin"]["h"], "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "supplier_name": supplier, "invoice_number": "MH/9",
+        "invoice_date": _day(days_ago), **({"invoice_total": total} if total else {}),
+        "lines": [{"material_id": w["cement"], "unit_id": w["units"]["bags"], "quantity": q, "unit_cost": rate} for q, rate in lines],
+        **extra})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+async def test_a_bill_for_a_delivery_already_recorded_is_linked_not_added_again(client, world, test_engine):
+    w = world
+    await _came(client, w, "cement", "100", None, days_ago=4, supplier="Malabar Hardware")   # site: no rate
+    preview = await client.post("/materials/invoices/match", headers=w["admin"]["h"], json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "supplier_name": "Malabar Hardware",
+        "invoice_date": _day(0), "lines": [{"material_id": w["cement"], "unit_id": w["units"]["bags"], "quantity": "100", "unit_cost": "413"}]})
+    assert preview.status_code == 200 and len(preview.json()["lines"][0]["deliveries"]) == 1
+    bill = await _invoice(client, w, [("100", "413")], total="41300")
+    assert len(bill["matched"]) == 1 and bill["matched"][0]["flags"] == []
+    rows = await _receipts(test_engine, w["cement"])
+    assert len(rows) == 1                                               # stock counted once
+    assert rows[0]["invoice_id"] is not None and rows[0]["billed_rate"] == 413
+    v = rows[0]["vendor_id"]
+    led = await _ledger(client, w["admin"]["h"], str(v))
+    assert led["closing"] == "41300.00" and [x["kind"] for x in led["lines"]] == ["bill"]
+
+
+async def test_a_bill_saying_more_or_a_different_rate_is_flagged(client, world, test_engine):
+    w = world
+    await _came(client, w, "cement", "150", "400", days_ago=3, supplier="Malabar Hardware")
+    bill = await _invoice(client, w, [("200", "420")])
+    assert bill["matched"][0]["flags"] == ["billed 50 bags more than delivered", "rate ₹420 on the bill, ₹400 on site"]
+    rows = await _receipts(test_engine, w["cement"])
+    assert [r["quantity"] for r in rows] == [150]                       # the site's count stays
+    led = await _ledger(client, w["admin"]["h"], str(rows[0]["vendor_id"]))
+    assert led["summary"]["open_bills"][0]["mismatches"] == 1
+    on = (await client.get(f"/finance/vendors/{rows[0]['vendor_id']}/bills/{bill['expense_id']}/deliveries", headers=w["admin"]["h"])).json()
+    assert on[0]["billed_quantity"] == "200" and len(on[0]["flags"]) == 2
+
+
+async def test_two_deliveries_on_one_bill_line_and_a_new_line_with_the_bill(client, world, test_engine):
+    w = world
+    await _came(client, w, "cement", "100", None, days_ago=6, supplier="Malabar Hardware")
+    await _came(client, w, "cement", "100", None, days_ago=2, supplier="Malabar Hardware")
+    await _invoice(client, w, [("200", "410")])
+    assert len(await _receipts(test_engine, w["cement"])) == 2          # both linked, none added
+    await _invoice(client, w, [("50", "410")])                          # came with the bill: a new delivery
+    rows = await _receipts(test_engine, w["cement"])
+    assert len(rows) == 3 and all(r["invoice_id"] for r in rows)
+    await _invoice(client, w, [("50", "410")], match_deliveries=False)  # said new: never matched
+    assert len(await _receipts(test_engine, w["cement"])) == 4
+
+
+async def test_a_bill_typed_as_an_expense_links_its_deliveries_when_certain_else_offers(client, world):
+    w = world
+    h = w["admin"]["h"]
+    v = await _vendor(client, h, "Edappally Stores")
+    await _came(client, w, "cement", "20", "410", days_ago=3, vendor_id=v)
+    exact = await client.post("/expenses", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "amount": "8200", "category_text": "Materials", "vendor_text": "Edappally Stores",
+        "occurred_date": _day(1)})
+    assert exact.status_code == 201 and exact.json()["unbilled_deliveries"]["linked"] is True
+    assert (await _ledger(client, h, v))["closing"] == "8200.00"        # once
+
+    await _came(client, w, "cement", "10", "410", days_ago=1, vendor_id=v)
+    other = await client.post("/expenses", headers={**h, "Idempotency-Key": str(uuid.uuid4())}, json={
+        "project_id": str(w["villa"]), "amount": "5000", "category_text": "Materials", "vendor_id": v, "occurred_date": _day(0)})
+    offer = other.json()["unbilled_deliveries"]
+    assert offer["linked"] is False and offer["count"] == 1 and offer["total"] == "4100.00"
+
+    listed = (await client.get("/finance/vendors/unbilled", headers=h)).json()
+    assert listed["totals"]["count"] == 1 and listed["deliveries"][0]["order_id"] is None and listed["totals"]["no_order"] == 1
+
+
+# --- 8 Nov 2026: money reads by role, supplier names on no account, the daily supplier note -------------------------
+
+
+async def test_a_site_engineer_sees_their_sites_cash_box_never_the_bank(client, world):
+    w = world
+    h = w["admin"]["h"]
+    bank = await _account(client, h, "HDFC current", "bank")
+    villa_box = (await client.post("/finance/accounts", headers=h, json={"name": "Villa box", "account_type": "cash",
+                 "opening_balance": "20000", "project_id": str(w["villa"]), "site_id": str(w["block_a"])})).json()["id"]
+    flats_box = (await client.post("/finance/accounts", headers=h, json={"name": "Flats box", "account_type": "cash",
+                 "opening_balance": "20000", "project_id": str(w["flats"]), "site_id": str(w["tower"])})).json()["id"]
+    arun = w["arun"]["h"]                                                     # site engineer on Villa
+    assert {a["name"] for a in (await client.get("/finance/accounts", headers=arun)).json()} == {"Villa box"}
+    assert (await client.get(f"/finance/accounts/{bank}", headers=arun)).status_code == 404
+    assert (await client.get(f"/finance/accounts/{flats_box}/transactions", headers=arun)).status_code == 404
+    assert (await client.get(f"/finance/accounts/{villa_box}/transactions", headers=arun)).status_code == 200
+    await client.post("/finance/transfers", headers=h, json={"from_account_id": bank, "to_account_id": flats_box, "amount": "500"})
+    assert all(t["to_account_id"] != flats_box for t in (await client.get("/finance/transactions", headers=arun)).json())
+    assert (await client.get("/finance/reports/statement", headers=arun)).status_code == 403
+    assert len((await client.get("/finance/accounts", headers=h)).json()) == 3   # the owner's view is unchanged
+
+
+async def test_supplier_names_on_no_account_are_listed_and_linked(client, world):
+    w = world
+    h = w["admin"]["h"]
+    malabar = await _vendor(client, h, "Malabar Hardware")
+    await _came(client, w, "cement", "10", "400", days_ago=3, supplier="Malabar Hardware")
+    # an old delivery typed before vendors were linked
+    eng = create_async_engine(Settings().postgres.dsn())
+    async with eng.begin() as conn:
+        await conn.execute(sa.text("UPDATE material_receipts SET vendor_id = NULL, supplier = 'malabar hardware '"))
+    await eng.dispose()
+    names = (await client.get("/finance/vendors/unlinked-names", headers=h)).json()
+    assert names[0]["name"].strip().lower() == "malabar hardware" and names[0]["likely"]["id"] == malabar
+    linked = await client.post("/finance/vendors/link-name", headers=h, json={"name": names[0]["name"], "vendor_id": malabar})
+    assert linked.json()["deliveries"] == 1
+    assert (await _ledger(client, h, malabar))["summary"]["unbilled"] == "4000.00"
+    assert (await client.get("/finance/vendors/unlinked-names", headers=h)).json() == []
+
+
+async def test_overdue_bills_are_told_once_a_day_to_who_pays(client, world, test_engine):
+    from mesiri.domains.vendors.reminders import queue_supplier_reminders
+
+    w = world
+    h = w["admin"]["h"]
+    v = await _vendor(client, h, "Concrete team", credit_days=7)
+    await _bill(client, w, v, "27000", days_ago=20)
+    async with test_engine.begin() as conn:
+        first = await queue_supplier_reminders(conn, w["org"], TODAY)
+        again = await queue_supplier_reminders(conn, w["org"], TODAY)
+        note = (await conn.execute(sa.text("SELECT payload->>'message' FROM notifications WHERE rule_key = 'suppliers_waiting'"))).scalar()
+    assert (first, again) == (1, 0)                                           # the admin only (engineers not told)
+    assert "₹27,000 of supplier bills is overdue (Concrete team ₹27,000)" in note

@@ -891,6 +891,12 @@ class PostgresDprRepository:
             build_site_report_payload,
             saved_rows_only,
         )
+        from mesiri.domains.equipment.reads import machinery_for_day
+
+        # NXT-11: each machine's day at the site (saved when logged; no draft state).
+        machinery_rows = await machinery_for_day(
+            self._conn, organization_id, day=report_date, site_ids=[site_id]
+        )
 
         def build(rows: dict[str, list[dict[str, Any]]], stock: list[Any]) -> dict[str, Any]:
             return build_site_report_payload(
@@ -909,6 +915,7 @@ class PostgresDprRepository:
                 labour_lines=rows["labour"],
                 material_movement_rows=rows["materials"],
                 material_stock_rows=[dict(row) for row in stock],
+                machinery_rows=machinery_rows,
             )
 
         every_row = {

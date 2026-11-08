@@ -210,6 +210,7 @@ _KIND_BY_TOOL = {
     "wont_fix_issue": "issue", "resolve_issue": "issue_close", "record_expense": "expense",
     "pay_expense": "payment", "pay_supplier": "payment", "send_dpr": "send", "record_attendance": "labour",
     "record_work": "work", "correct_work": "work",
+    "log_machines": "machine", "add_machine": "machine", "move_machine": "machine", "off_hire_machine": "machine",
 }
 
 

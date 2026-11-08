@@ -230,6 +230,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("vendors router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.subcontracts.router import router as subcontracts_router
+
+        app.include_router(subcontracts_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("subcontracts router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.workforce.router import router as workforce_router
 
         app.include_router(workforce_router)
@@ -249,6 +256,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         app.include_router(purchase_orders_router)
     except Exception as exc:  # noqa: BLE001
         _log.exception("purchase orders router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.equipment.router import router as equipment_router
+
+        app.include_router(equipment_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("equipment router not loaded: %s", exc)
 
     try:
         from mesiri.domains.procurement.grn_router import router as goods_receipts_router

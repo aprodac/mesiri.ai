@@ -1854,6 +1854,9 @@ class MaterialInvoiceCreate(BaseModel):
     # Set false only to record a purchase with no financial obligation (a free
     # replacement, an internal transfer documented on a supplier's paper).
     create_expense: bool = True
+    # PRC-11: a line the site already recorded as a delivery is linked to it, not added again (stock and money
+    # once). False only when the person said these are new deliveries that came with the bill.
+    match_deliveries: bool = True
 
 
 @router.post("/invoices", status_code=201)
@@ -1931,8 +1934,36 @@ async def create_invoice(
         created_by=auth_context.user_id,
     )
 
+    # PRC-11: the deliveries this bill is for, already recorded on site (domains/vendors/matching.py, the one rule).
+    from mesiri.domains.vendors import matching
+
+    found = []
+    if body.match_deliveries:
+        candidates = await matching.unbilled_for(
+            conn, auth_context.organization_id, vendor_id=vendor_id, supplier=supplier_name,
+            project_id=body.project_id, site_id=body.site_id, bill_date=occurred_date,
+        )
+        found = matching.match_lines(candidates, [(line.material_id, line.quantity) for line, *_ in resolved])
+    else:
+        found = [[] for _ in resolved]
+
     receipt_ids: list[uuid.UUID] = []
-    for line, material, unit, unit_cost, total_cost in resolved:
+    matched: list[dict] = []
+    for (line, material, unit, unit_cost, total_cost), deliveries in zip(resolved, found, strict=True):
+        if deliveries:
+            await matching.link(conn, auth_context.organization_id, invoice_id, deliveries, vendor_id,
+                                line.quantity, unit_cost)
+            receipt_ids.extend(d["id"] for d in deliveries)
+            delivered = sum((Decimal(d["quantity"]) for d in deliveries), Decimal(0))
+            site_rates = {Decimal(d["unit_cost"]) for d in deliveries if d.get("unit_cost") is not None}
+            matched.append({
+                "material": deliveries[0]["material"],
+                "billed_quantity": format(line.quantity.normalize(), "f"), "delivered_quantity": format(delivered.normalize(), "f"),
+                "deliveries": [matching.delivery_out(d) for d in deliveries],
+                "flags": matching.flags(delivered, line.quantity, next(iter(site_rates)) if len(site_rates) == 1 else None,
+                                        unit_cost, deliveries[0]["unit"]),
+            })
+            continue
         receipt_ids.append(
             await insert_invoice_line(
                 conn,
@@ -1981,10 +2012,58 @@ async def create_invoice(
         "receipt_ids": receipt_ids,
         "expense_id": expense_id,
         "status": "success",
+        # PRC-11: lines that were deliveries already recorded (linked, not added again), with any difference.
+        "matched": matched,
     }
     if idempotency_key:
         await _complete_idempotency_key(conn, idempotency_key, result)
     return result
+
+
+class InvoiceMatchRequest(BaseModel):
+    project_id: uuid.UUID
+    site_id: uuid.UUID | None = None
+    supplier_name: str | None = None
+    vendor_id: uuid.UUID | None = None
+    invoice_date: datetime.date | None = None
+    lines: list[MaterialInvoiceLine]
+
+
+@router.post("/invoices/match")
+async def match_invoice(
+    body: InvoiceMatchRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-11, before saving a bill: which of its lines are deliveries the site already recorded (they will be
+    linked, not added again), with what differs. Reads only."""
+    from mesiri.domains.vendors import matching
+
+    _authorize_write(auth_context, body.project_id, body.site_id)
+    vendor_name = None
+    if body.vendor_id is not None:
+        vendor_name = (await conn.execute(text("SELECT name FROM vendors WHERE id = :v AND organization_id = :org"),
+                                          {"v": body.vendor_id, "org": auth_context.organization_id})).scalar()
+    supplier = (body.supplier_name or "").strip() or vendor_name
+    vendor_id = body.vendor_id
+    if vendor_id is None and supplier:
+        vendor_id = (await conn.execute(text(
+            "SELECT id FROM vendors WHERE organization_id = :org AND lower(name) = lower(:n) AND status = 'active'"),
+            {"org": auth_context.organization_id, "n": supplier.strip()})).scalar()
+    when = body.invoice_date or datetime.date.today()
+    candidates = await matching.unbilled_for(conn, auth_context.organization_id, vendor_id=vendor_id, supplier=supplier,
+                                             project_id=body.project_id, site_id=body.site_id, bill_date=when)
+    found = matching.match_lines(candidates, [(line.material_id, line.quantity) for line in body.lines])
+    out = []
+    for line, deliveries in zip(body.lines, found, strict=True):
+        delivered = sum((Decimal(d["quantity"]) for d in deliveries), Decimal(0))
+        rates = {Decimal(d["unit_cost"]) for d in deliveries if d.get("unit_cost") is not None}
+        out.append({"material_id": str(line.material_id), "deliveries": [matching.delivery_out(d) for d in deliveries],
+                    "delivered_quantity": format(delivered.normalize(), "f") if deliveries else None,
+                    "flags": matching.flags(delivered, line.quantity, next(iter(rates)) if len(rates) == 1 else None,
+                                            line.unit_cost, deliveries[0]["unit"]) if deliveries else []})
+    used = {d["receipt_id"] for o in out for d in o["deliveries"]}
+    return {"lines": out, "other_unbilled": [matching.delivery_out(c) for c in candidates if str(c["id"]) not in used]}
 
 
 @router.get("/invoices/{invoice_id}")

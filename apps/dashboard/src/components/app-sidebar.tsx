@@ -459,6 +459,10 @@ export function AppSidebar() {
   const materialsCategory = isModuleEnabled('materials') ? toCategory(groupByKey('materials')) : null
   // PRC-10: Procurement opens the same way (Purchase orders, Suppliers; more as they are built).
   const procurementCategory = isModuleEnabled('materials') ? toCategory(groupByKey('procurement')) : null
+  // NXT-11: Equipment opens the same way (Machines, Daily log, Hire check, Vehicles, Shuttering & tools).
+  const equipmentCategory = isModuleEnabled('equipment') ? toCategory(groupByKey('equipment')) : null
+  // NXT-05..07: Subcontract opens the same way (Work orders, Bills & checks, Subcontractors); hidden when empty.
+  const subcontractCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('subcontract')))
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -613,6 +617,8 @@ export function AppSidebar() {
                   {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
                   {materialsCategory && renderCategory(materialsCategory)}
                   {procurementCategory && renderCategory(procurementCategory)}
+                  {equipmentCategory && renderCategory(equipmentCategory)}
+                  {subcontractCategory && renderCategory(subcontractCategory)}
                   {financeCategory && renderCategory(financeCategory)}
                 </SidebarMenu>
               </SidebarGroupContent>

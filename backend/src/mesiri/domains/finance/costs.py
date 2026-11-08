@@ -9,6 +9,10 @@ expenses typed in, but the materials delivered and the labour on site, each coun
 - **Labour**: attendance valued at the wage on each line (``PostgresWorkforceReadRepository.aggregate_attendance``,
   the Labour module's own rule: corrected and voided reports out, lines without a wage give man-days but no cost).
 
+- **Machines** (NXT-11): hire earned by hired machines from their day logs (``equipment/rules.hire_lines``: the
+  hire's minimum hours, never breakdown) and diesel priced on a log. A day on a hire bill that is an expense, and
+  diesel on a log linked to its expense, are in Expenses already and are not counted again.
+
 Known overlap, said on the page: a delivery priced on site *and* paid later by an expense typed without the bill
 counts twice until someone says which bill it was on: the supplier ledger's "On this bill" (CC-09) links them, and
 from then on the delivery is billed and counted once.
@@ -58,6 +62,7 @@ async def project_costs(
         f"WHERE {' AND '.join(where)} GROUP BY e.project_id, e.site_id"), params)).mappings().all()  # noqa: S608
 
     sites: dict[tuple, dict] = defaultdict(lambda: {"expenses": Decimal(0), "materials": Decimal(0), "labour": Decimal(0),
+                                                    "machines": Decimal(0), "hire": Decimal(0), "fuel": Decimal(0),
                                                     "expense_count": 0, "deliveries": 0})
     for r in rows:
         if r["site_id"] is not None and not visible(r["project_id"], r["site_id"]):
@@ -99,15 +104,31 @@ async def project_costs(
         if cost:
             sites[(srow["project_id"], srow["id"])]["labour"] += cost
 
+    # Machines: hire earned and diesel per site (the equipment module's own rule).
+    from mesiri.domains.equipment.reads import machine_costs
+
+    machine_hours = machine_litres = Decimal(0)
+    for (p, s), v in (await machine_costs(conn, org, project_ids=project_ids, site_id=site_id, date_from=date_from,
+                                          date_to=date_to, visible=visible)).items():
+        row = sites[(p, s)] if (v["hire"] or v["fuel"]) else None
+        if row is not None:
+            row["hire"] += v["hire"]
+            row["fuel"] += v["fuel"]
+            row["machines"] += v["hire"] + v["fuel"]
+        machine_hours += v["hours"]
+        machine_litres += v["litres"]
+
     names = await _names(conn, org, {k[0] for k in sites}, {k[1] for k in sites if k[1]})
     by_site = sorted(
         ({"project_id": str(p), "project_name": names["projects"].get(p, ""), "site_id": str(s) if s else None,
           "site_name": names["sites"].get(s) if s else None, "expenses": _m(v["expenses"]), "materials": _m(v["materials"]),
-          "labour": _m(v["labour"]), "total": _m(v["expenses"] + v["materials"] + v["labour"])}
+          "labour": _m(v["labour"]), "machines": _m(v["machines"]),
+          "total": _m(v["expenses"] + v["materials"] + v["labour"] + v["machines"])}
          for (p, s), v in sites.items()),
         key=lambda x: -Decimal(x["total"]),
     )
-    total = {k: sum((v[k] for v in sites.values()), Decimal(0)) for k in ("expenses", "materials", "labour")}
+    total = {k: sum((v[k] for v in sites.values()), Decimal(0))
+             for k in ("expenses", "materials", "labour", "machines", "hire", "fuel")}
     return {
         "date_from": date_from.isoformat(),
         "date_to": date_to.isoformat(),
@@ -116,7 +137,9 @@ async def project_costs(
                       "unpriced": unpriced},
         "labour": {"amount": _m(total["labour"]), "man_days": str(man_days.normalize()),
                    "priced_man_days": str(priced_days.normalize())},
-        "total": _m(total["expenses"] + total["materials"] + total["labour"]),
+        "machines": {"amount": _m(total["machines"]), "hire": _m(total["hire"]), "fuel": _m(total["fuel"]),
+                     "hours": str(machine_hours.normalize()), "litres": str(machine_litres.normalize())},
+        "total": _m(total["expenses"] + total["materials"] + total["labour"] + total["machines"]),
         "by_site": by_site,
     }
 

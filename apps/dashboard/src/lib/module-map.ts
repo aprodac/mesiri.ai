@@ -181,9 +181,9 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'violet',
     about: 'Work given out at an agreed rate, paid against measured quantity.',
     pages: [
-      { title: 'Subcontractors', url: '/subcontract/teams', status: 'planned', phase: 'V1.5', about: 'Every outside team, what they work on, and what you owe each.', example: "Ravi's plastering team: 2 sites, ₹46,000 due, ₹10,000 advance.", roles: MONEY_ROLES },
-      { title: 'Work orders', url: '/subcontract/work-orders', status: 'planned', phase: 'V1.5', about: 'Who does which work at what rate.', example: "Plastering to Ravi's team at ₹14 per sq ft, 18,000 sq ft.", roles: MONEY_ROLES },
-      { title: 'Bills & checks', url: '/subcontract/bills', status: 'planned', phase: 'V1', about: 'Each payment checked against the quantity measured.', example: '₹15,000 to the concrete team: 2.4 m³ × ₹6,000 = ₹14,400, slight overpay.', tracker: 'CC-06', roles: MONEY_ROLES },
+      { title: 'Subcontractors', url: '/subcontract/teams', status: 'built', phase: 'V1', tracker: 'NXT-05..07', about: 'Every outside team, what they work on, and what you owe each.', example: "Ravi's plastering team: 2 sites, ₹46,000 due, ₹10,000 advance.", roles: MONEY_ROLES },
+      { title: 'Work orders', url: '/subcontract/work-orders', status: 'built', phase: 'V1', tracker: 'NXT-05', about: 'Who does which work at what rate.', example: "Plastering to Ravi's team at ₹14 per sq ft, 18,000 sq ft." },
+      { title: 'Bills & checks', url: '/subcontract/bills', status: 'built', phase: 'V1', about: 'Each payment checked against the quantity measured.', example: '₹15,000 to the concrete team: 2.4 m³ × ₹6,000 = ₹14,400, slight overpay.', tracker: 'CC-06', roles: MONEY_ROLES },
     ],
   },
   {
@@ -247,10 +247,13 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     icon: Truck,
     tone: 'teal',
     about: 'Machines, vehicles, and reusable items like shuttering that go missing quietly.',
+    module: 'equipment',
     pages: [
-      { title: 'Machines & hire', url: '/equipment', status: 'planned', phase: 'V1.5', about: 'Hours, fuel and hire charges per machine.', example: 'JCB 6 hours today at ₹1,100 an hour, 30 L diesel.' },
-      { title: 'Vehicles', url: '/equipment/vehicles', status: 'planned', phase: 'Later', about: 'Company vehicles: trips, fuel and who used them.', example: 'Tipper: 6 trips of sand today, 40 L diesel.' },
-      { title: 'Shuttering & tools', url: '/equipment/assets', status: 'planned', phase: 'V1.5', about: 'Which site holds how many plates, props and tools.', example: '400 plates at the villa, 60 sent to Chennai.' },
+      { title: 'Machines', url: '/equipment', status: 'built', phase: 'V1', about: 'Every machine on every site: hours worked, idle and broken down, diesel, hire cost, service due.', example: 'JCB 6 hours today at ₹1,100 an hour, 30 L diesel.', tracker: 'NXT-11' },
+      { title: 'Daily log', url: '/equipment/log', status: 'built', phase: 'V1', about: "One day, every machine: the evening's figures in one screen.", example: 'JCB 6 h, mixer 8 h, roller broke down 3 h.', tracker: 'NXT-11' },
+      { title: 'Hire check', url: '/equipment/hire', status: 'built', phase: 'V1', about: 'The hire bill against the hours recorded on site.', example: 'Bill says 220 h; 186 h recorded: ₹37,400 more than the site says.', tracker: 'NXT-13', roles: MONEY_ROLES },
+      { title: 'Vehicles', url: '/equipment/vehicles', status: 'built', phase: 'V1', about: 'Company vehicles: trips, fuel and who drove.', example: 'Tipper: 6 trips of sand today, 40 L diesel.', tracker: 'NXT-15' },
+      { title: 'Shuttering & tools', url: '/equipment/assets', status: 'built', phase: 'V1', about: 'Which site holds how many plates, props and tools.', example: '400 plates at the villa, 60 sent to Chennai.', tracker: 'NXT-14' },
     ],
   },
 ]

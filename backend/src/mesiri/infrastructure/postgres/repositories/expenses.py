@@ -704,13 +704,18 @@ class PostgresExpensePaymentRepository:
     async def _recompute_payment_status(self, organization_id: uuid.UUID, expense_id: uuid.UUID) -> None:
         expense_row = (
             await self.conn.execute(
-                sa.select(_expenses.c.amount).where(
+                sa.select(_expenses.c.amount, _expenses.c.payment_status).where(
                     _expenses.c.id == expense_id, _expenses.c.organization_id == organization_id
-                )
+                ).with_for_update()  # two payments at once must not both fit under the amount
             )
         ).mappings().one()
         paid_total = await self._confirmed_paid_total(expense_id)
-        if paid_total <= 0:
+        if expense_row["payment_status"] in ("reimbursable", "reimbursed"):
+            # Paid by a member of staff from their own pocket: the supplier was paid; payments here repay the staff
+            # member. Until repaid in full it stays owed to them (8 Nov 2026: a part repayment made it
+            # "partially paid", which read as owed to the supplier).
+            status = "reimbursed" if paid_total >= Decimal(expense_row["amount"]) else "reimbursable"
+        elif paid_total <= 0:
             status = "unpaid"
         elif paid_total < Decimal(expense_row["amount"]):
             status = "partially_paid"
@@ -738,7 +743,7 @@ class PostgresExpensePaymentRepository:
             await self.conn.execute(
                 sa.select(_expenses.c.amount).where(
                     _expenses.c.id == expense_id, _expenses.c.organization_id == organization_id
-                )
+                ).with_for_update()  # two payments at once must not both fit under the amount
             )
         ).mappings().first()
         if expense_row is None:
@@ -904,7 +909,7 @@ class PostgresExpensePaymentRepository:
             await self.conn.execute(
                 sa.select(_expense_payments).where(
                     _expense_payments.c.id == advance_id, _expense_payments.c.organization_id == organization_id
-                )
+                ).with_for_update()  # one advance used by two requests at once must not be spent twice
             )
         ).mappings().first()
         if adv is None or adv["expense_id"] is not None:
@@ -916,7 +921,7 @@ class PostgresExpensePaymentRepository:
             await self.conn.execute(
                 sa.select(_expenses.c.amount).where(
                     _expenses.c.id == expense_id, _expenses.c.organization_id == organization_id
-                )
+                ).with_for_update()  # two payments at once must not both fit under the amount
             )
         ).mappings().first()
         if bill is None:

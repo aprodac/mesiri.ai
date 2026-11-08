@@ -36,6 +36,14 @@ import VendorPage from '@/pages/VendorPage'
 import MoneyPage from '@/pages/MoneyPage'
 import OperationsIssuesPage from '@/pages/OperationsIssuesPage'
 import OperationsAnalyticsPage from '@/pages/OperationsAnalyticsPage'
+import EquipmentPage from '@/pages/EquipmentPage'
+import MachinePage from '@/pages/MachinePage'
+import EquipmentLogPage from '@/pages/EquipmentLogPage'
+import HireCheckPage from '@/pages/HireCheckPage'
+import ReturnablesPage from '@/pages/ReturnablesPage'
+import WorkOrdersPage from '@/pages/WorkOrdersPage'
+import WorkOrderPage from '@/pages/WorkOrderPage'
+import { BillsChecksPage, StatementPage, SubcontractorsPage, WorkOrderDocumentPage } from '@/pages/SubcontractPages'
 import { ToastProvider } from '@/components/ui/toast-notification'
 
 // V1 routes (WEB-21, docs/DESIGN.md "Pages and routes"): one address per
@@ -66,6 +74,7 @@ function MovedUser() {
 const fin = (page: React.ReactNode) => <RequireModule module="finance">{page}</RequireModule>
 const lab = (page: React.ReactNode) => <RequireModule module="labour">{page}</RequireModule>
 const mat = (page: React.ReactNode) => <RequireModule module="materials">{page}</RequireModule>
+const eqp = (page: React.ReactNode) => <RequireModule module="equipment">{page}</RequireModule>
 
 export default function App() {
   return (
@@ -79,6 +88,9 @@ export default function App() {
         <Route path="/live" element={<RequireAuth><LivePage /></RequireAuth>} />
         {/* PRC-26: the purchase order for the supplier, full screen so it prints clean. */}
         <Route path="/procurement/orders/:id/document" element={<RequireAuth><PurchaseOrderDocumentPage /></RequireAuth>} />
+        {/* NXT-05 / NXT-17: the work order and a subcontractor's statement, full screen so they print clean. */}
+        <Route path="/subcontract/work-orders/:id/document" element={<RequireAuth><WorkOrderDocumentPage /></RequireAuth>} />
+        <Route path="/subcontract/statement/:vendorId" element={<RequireAuth><StatementPage /></RequireAuth>} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Moved to="/today" />} />
 
@@ -108,9 +120,22 @@ export default function App() {
           <Route path="materials/requests" element={mat(<RequestsPage />)} />
           {/* PRC-10: orders to suppliers, and what came against them. */}
           <Route path="procurement/orders" element={mat(<PurchaseOrdersPage />)} />
+          {/* NXT-05..07: subcontract */}
+          <Route path="subcontract/work-orders" element={<WorkOrdersPage />} />
+          <Route path="subcontract/work-orders/:id" element={<WorkOrderPage />} />
+          <Route path="subcontract/bills" element={<BillsChecksPage />} />
+          <Route path="subcontract/teams" element={<SubcontractorsPage />} />
           {/* PRC-29: goods received notes. */}
           <Route path="procurement/grn" element={mat(<GoodsReceiptsPage />)} />
           <Route path="procurement/rates" element={mat(<RatesPage />)} />
+
+          {/* NXT-11 / NXT-13 / NXT-14 / NXT-15: Equipment (module). */}
+          <Route path="equipment" element={eqp(<EquipmentPage />)} />
+          <Route path="equipment/vehicles" element={eqp(<EquipmentPage kind="vehicle" />)} />
+          <Route path="equipment/log" element={eqp(<EquipmentLogPage />)} />
+          <Route path="equipment/hire" element={eqp(<HireCheckPage />)} />
+          <Route path="equipment/assets" element={eqp(<ReturnablesPage />)} />
+          <Route path="equipment/:id" element={eqp(<MachinePage />)} />
 
           {/* Setup */}
           <Route path="projects" element={<Projects />} />

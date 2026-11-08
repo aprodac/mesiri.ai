@@ -213,6 +213,32 @@ ALLOWED: tuple[Allowed, ...] = (
         "Prepare a site's conditions for a day: weather, hours lost, whether the site worked, tomorrow's plan." + _WRITE,
     ),
     Allowed("send_dpr", "POST", "/dpr/projects/{project_id}/send", "Prepare sending today's project DPR now." + _WRITE),
+    # Machines and vehicles (NXT-11): the register, each machine's day, the hire check
+    Allowed("machines", "GET", "/equipment",
+            "The company's machines and vehicles: name, owned or hired and from whom, where each is, today's log, "
+            "this month's hours, idle, breakdown, diesel and (for the roles that see spending) hire cost; service due."),
+    Allowed("machine_logs", "GET", "/equipment/logs",
+            "Machine day logs for a date or a period (hours worked, idle, breakdown, diesel, operator), with totals; "
+            "for one date also the machines on site not logged yet."),
+    Allowed(
+        "log_machines", "POST", "/equipment/logs",
+        "Prepare the day of one or more machines: hours worked, idle, breakdown (and why), diesel litres, operator, "
+        "trips. The machine in their words ('JCB', 'JCB 2', 'mixer'); the site is where the machine is unless they "
+        "said another. A second log of the same machine and day adds to that day." + _WRITE,
+        hide=("source",), fixed=(("source", "whatsapp"),),
+    ),
+    Allowed(
+        "add_machine", "POST", "/equipment",
+        "Prepare adding a machine or vehicle to the company's list: its name as they call it, type, owned or hired, "
+        "the hire company in words, the rate and per hour / day / month, the site it is at." + _WRITE,
+    ),
+    Allowed("move_machine", "POST", "/equipment/{machine_id}/move",
+            "Prepare a machine going to another site (its id from `machines`)." + _WRITE),
+    Allowed("off_hire_machine", "POST", "/equipment/{machine_id}/off-hire",
+            "Prepare a hired machine sent back to the hire company (it stops earning hire)." + _WRITE),
+    Allowed("hire_check", "GET", "/equipment/hire-check",
+            "Per hired machine this month (or a period): hours recorded on site, what they come to at the rate, "
+            "the hire bills and whether a bill asks for more. Only for the roles that see spending."),
     # WA-142: corrections and set-up the dashboard already offers. Each one is prepared like any write
     # and runs only on Save, as the person (the API applies their role). Not here on purpose: anything
     # that grants access (users, roles; project members only as add_project_member below, approved by the owner
@@ -256,6 +282,44 @@ ALLOWED: tuple[Allowed, ...] = (
             "money_accounts) with the amount they said: it pays that supplier's oldest open bills first and what is "
             "left stays with them as an advance for the next bill. bill_ids [] when they said it is an advance only; "
             "reference for a UTR or cheque number; method (Bank transfer, UPI, Cheque, Cash) when said." + _WRITE),
+    # PRC-11 (8 Nov 2026): a supplier's bill saved as an expense is matched to the deliveries the site recorded; when
+    # not certain the answer offers them (unbilled_deliveries) and this puts the ones they confirm on the bill.
+    Allowed("link_bill_deliveries", "POST", "/finance/vendors/{vendor_id}/bills/{expense_id}/deliveries",
+            "Prepare putting deliveries the site recorded on a supplier's bill already saved as an expense (vendor_id "
+            "and expense_id from that save; receipt_ids from its unbilled_deliveries), so they are not owed and "
+            "counted twice." + _WRITE),
+    # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
+    # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
+    Allowed("list_work_orders", "GET", "/subcontracts/work-orders",
+            "Work orders given to subcontractors (project_id / vendor_id to narrow): each with its lines (agreed, "
+            "measured, billed, left), status, bills waiting for a check, payable now, retention held, advance left."),
+    Allowed("work_order", "GET", "/subcontracts/work-orders/{wo_id}",
+            "One work order: lines with agreed / measured / billed, measurements (and ones waiting for confirmation), "
+            "bills with their check and deductions, history."),
+    Allowed("create_work_order", "POST", "/subcontracts/work-orders",
+            "Prepare a work order for a subcontractor: vendor_name (or vendor_id), project_id, site_id when said, name, "
+            "lines [{description, unit (cum, sqm, sqft, rmt, nos...), quantity, rate}], retention_pct / advance_agreed "
+            "only when said; issue true unless they said draft." + _WRITE),
+    Allowed("measure_work", "POST", "/subcontracts/work-orders/{wo_id}/measurements",
+            "Prepare work done on a work order line (line_id from work_order): quantity, measured_on when not today, "
+            "notes." + _WRITE),
+    Allowed("record_subcontract_bill", "POST", "/subcontracts/work-orders/{wo_id}/bills",
+            "Prepare a subcontractor's bill on their work order: lines [{line_id, quantity, rate only when it differs}], "
+            "amount when the bill's total is said, their_bill_no, bill_date. The API checks it against the work measured "
+            "and the agreed rates: the answer says passed (payable after retention / advance / TDS) or flagged (why)."
+            + _WRITE),
+    Allowed("subcontract_bills_waiting", "GET", "/subcontracts/bills/waiting",
+            "Subcontract bills waiting for a person (flagged by the check, or sent by the subcontractor), with why."),
+    Allowed("approve_subcontract_bill", "POST", "/subcontracts/bills/{bill_id}/approve",
+            "Prepare approving a flagged subcontract bill with the reason they gave (reason)." + _WRITE),
+    Allowed("reject_subcontract_bill", "POST", "/subcontracts/bills/{bill_id}/reject",
+            "Prepare rejecting a subcontract bill with the reason they gave (reason): nothing is owed for it." + _WRITE),
+    Allowed("give_subcontract_advance", "POST", "/subcontracts/work-orders/{wo_id}/advance",
+            "Prepare an advance to a subcontractor against a work order: account_id (money_accounts), amount; it is "
+            "recovered from their bills." + _WRITE),
+    Allowed("subcontractor_statement", "GET", "/subcontracts/vendors/{vendor_id}/statement",
+            "A subcontractor's statement: each work order's agreed, done, billed, paid, retention held, advance left, "
+            "and payable now."),
     # PRC-02: the code picks `category_id` (the model's `category` in words, then the API's rule on the name); a
     # guessed id would fail the save, so it stays hidden on add and update.
     Allowed("add_material", "POST", "/materials",

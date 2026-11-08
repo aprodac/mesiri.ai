@@ -222,10 +222,16 @@ async def record_expense(
         raise HTTPException(status_code=422, detail=result.rejection_reasons)
 
     status_code = 201 if result.status == ExecutionStatus.SUCCEEDED else 200
-    return JSONResponse(
-        status_code=status_code,
-        content={"id": result.material_row_id, "status": result.status.value},
-    )
+    content: dict = {"id": result.material_row_id, "status": result.status.value}
+    if result.status == ExecutionStatus.SUCCEEDED and result.material_row_id:
+        # PRC-11: a supplier's bill typed as an expense -- the deliveries it is for, linked when certain, else offered
+        # (domains/vendors/matching.py), so a delivery and its bill are owed and cost once.
+        from mesiri.domains.vendors import matching
+
+        found = await matching.for_expense(conn, auth_context.organization_id, uuid.UUID(str(result.material_row_id)))
+        if found:
+            content["unbilled_deliveries"] = found
+    return JSONResponse(status_code=status_code, content=content)
 
 
 class CategoryResponse(BaseModel):
@@ -359,6 +365,17 @@ async def _list_names(conn: AsyncConnection, organization_id: uuid.UUID, items: 
         )
         out[kind] = {r.id: r.name for r in rows}
     return out
+
+
+async def _work_order_of(conn: AsyncConnection, organization_id: uuid.UUID, expense_id: uuid.UUID) -> dict | None:
+    """NXT-06: when this expense is a subcontractor's bill on a work order: which, and its check."""
+    from mesiri.domains.subcontracts.store import fetch_bills
+
+    found = await fetch_bills(conn, organization_id, expense_ids=[expense_id])
+    if not found:
+        return None
+    b = found[0]
+    return {k: b[k] for k in ("work_order_id", "wo_ref", "ref", "check_status", "flags", "retention_held", "payable_now")}
 
 
 async def _source_invoice(conn: AsyncConnection, organization_id: uuid.UUID, expense_id: uuid.UUID) -> dict | None:
@@ -666,6 +683,7 @@ async def get_expense(
         paid_amount=paid.get("paid"),
         paid_via=paid_via(expense.payment_status, paid.get("by_type")),
         source_invoice=await _source_invoice(conn, auth_context.organization_id, expense.id),
+        work_order=await _work_order_of(conn, auth_context.organization_id, expense.id),
         amount=expense.amount,
         currency=expense.currency,
         description=expense.description,
@@ -957,6 +975,14 @@ async def pay_expense(
         raise HTTPException(status_code=422, detail="The amount must be more than zero.")
     if amount > left:
         raise HTTPException(status_code=422, detail=f"Only {left} is still unpaid.")
+    # NXT-06/07: a subcontractor's bill is paid only once checked, and never its retention held.
+    from mesiri.domains.subcontracts.store import payable_caps
+
+    cap = (await payable_caps(conn, auth_context.organization_id, [expense_id])).get(expense_id)
+    if cap is not None and amount > cap:
+        raise HTTPException(status_code=409, detail=(
+            "This subcontract bill waits for its check (approve it on the work order first)." if cap <= 0
+            else f"Only ₹{cap} of this bill can be paid now; the rest is retention held until it is released."))
     try:
         payment = await payments.record_payment(
             organization_id=auth_context.organization_id, expense_id=expense_id, account_id=body.account_id,

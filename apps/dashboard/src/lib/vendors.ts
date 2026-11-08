@@ -1,4 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
+import { useAuth } from './AuthContext'
+import { MONEY_ROLES } from './module-map'
 
 // CC-09 / CC-10: suppliers, what we owe them (the supplier ledger) and paying them. Rules live in the backend
 // (domains/vendors/ledger.py): a priced delivery is owed until its bill comes, then the bill; a payment leaves the
@@ -75,6 +78,11 @@ export interface OpenBill {
   site: string | null
   payment_status: string
   deliveries: number
+  /** PRC-11: deliveries on it whose quantity or rate differs from the bill. */
+  mismatches: number
+  /** NXT-06/07: what may be paid now (0 while a subcontract bill waits for its check; never the retention held). */
+  payable: string
+  work_order: { ref: string; bill: string; id: string; check_status: string; retention_held: string } | null
   amount: string
   paid: string
   left: string
@@ -110,6 +118,7 @@ export interface LedgerLine {
   ref: string | null
   links: { expense_id?: string; receipt_id?: string; order_id?: string; payment_id?: string; account_id?: string }
   bill_left?: string
+  mismatches?: number
   on_account?: boolean
   advance_left?: string | null
   recorded_by?: string | null
@@ -135,6 +144,9 @@ export interface VendorLinks {
   bills: number
   orders: number
   payments: number
+  /** NXT-11 / NXT-13; absent from an older API. */
+  machines?: number
+  'hire bills'?: number
 }
 
 export const LINE_LOOK: Record<LineKind, { label: string; dot: string }> = {
@@ -211,7 +223,7 @@ export async function matchDeliveries(id: string, expenseId: string, receiptIds:
   return (await api.post(`/finance/vendors/${id}/bills/${expenseId}/deliveries`, { receipt_ids: receiptIds })).data
 }
 
-export async function billDeliveryList(id: string, expenseId: string): Promise<{ receipt_id: string; date: string; material: string; quantity: string; unit: string; site: string | null; amount: string | null }[]> {
+export async function billDeliveryList(id: string, expenseId: string): Promise<{ receipt_id: string; date: string; material: string; quantity: string; unit: string; site: string | null; amount: string | null; billed_quantity: string | null; billed_rate: string | null; flags: string[] }[]> {
   return (await api.get(`/finance/vendors/${id}/bills/${expenseId}/deliveries`)).data
 }
 
@@ -256,3 +268,45 @@ export function allocate(amount: number, bills: OpenBill[]): { bill: OpenBill; p
   }
   return out
 }
+
+// PRC-11: every delivery with no bill yet, across suppliers.
+export interface UnbilledDelivery {
+  receipt_id: string
+  date: string
+  days: number
+  material: string
+  quantity: string
+  unit: string
+  rate: string | null
+  amount: string | null
+  project_id: string
+  project: string | null
+  site: string | null
+  vendor_id: string | null
+  supplier: string | null
+  order_id: string | null
+  order_ref: string | null
+}
+
+export async function fetchUnbilled(params: { project_id?: string } = {}): Promise<{ as_of: string; deliveries: UnbilledDelivery[]; totals: { count: number; amount: string; unpriced: number; no_order: number; no_supplier: number } }> {
+  return (await api.get('/finance/vendors/unbilled', { params })).data
+}
+
+// Supplier names typed on deliveries that point at no supplier record: on no account until linked.
+export interface UnlinkedName { name: string; deliveries: number; last: string | null; amount: string | null; likely: { id: string; name: string } | null }
+
+export async function fetchUnlinkedNames(): Promise<UnlinkedName[]> {
+  return (await api.get('/finance/vendors/unlinked-names')).data
+}
+
+export async function linkName(body: { name: string; vendor_id?: string; create?: boolean }): Promise<{ vendor: Vendor; deliveries: number }> {
+  return (await api.post('/finance/vendors/link-name', body)).data
+}
+
+/** The company's payables, read once and shared by every place that names a supplier (roles that see spending). */
+export function usePayables() {
+  const { me } = useAuth()
+  const allowed = (MONEY_ROLES as readonly string[]).includes((me?.role || '').toUpperCase())
+  return useQuery({ queryKey: ['finance', 'payables', ''], queryFn: () => fetchPayables({ include_settled: true }), enabled: allowed, staleTime: 60_000, retry: false })
+}
+
