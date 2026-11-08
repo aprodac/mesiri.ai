@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Roles · Mesiri Field Guide 00a</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<section class="cover">
+  <div class="brand">Mesiri <span></span></div>
+  <p class="series">Field Guide · 00a · Companion to The big picture · Internal team edition</p>
+  <h1>Roles</h1>
+  <p class="lede">Everyone in and around a construction company, what their day looks like, what they want from software, what they will never do, and what they should be allowed to see. Software that ignores one of these people stops being used by them.</p>
+  <div class="draft">Draft, 8 Nov 2026. Built from industry practice, the customers we have met and construction software we studied. In a small company one person often holds several of these roles. Check with someone who has run sites.</div>
+  <div class="howto"><p><b>How to read this guide.</b> Part 1 is the map of roles. Parts 2 to 5 give each role a card: who, where they work, what they ask, what they want, what they won't do, what makes them adopt or quit. Part 6 is who sees and does what. Part 7 is where roles pull against each other. Part 8 is what Mesiri has and what to build.</p></div>
+  <div class="toc">
+    <p class="toc-title">In this guide</p>
+    <ol>
+      <li>The map of roles</li>
+      <li>Leadership: owner, GM</li>
+      <li>Project and site: PM, site engineer, supervisor, storekeeper, QS, MEP and quality</li>
+      <li>Office: purchase, accounts, the CA</li>
+      <li>Outside the company: subcontractor, labour contractor, supplier, client, architect</li>
+      <li>Who sees what, who does what</li>
+      <li>Where roles pull against each other</li>
+      <li>Mesiri today, and what to build</li>
+      <li>Check yourself</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===================== 1 ===================== -->
+<section class="new-page">
+  <p class="eyebrow">1 · The map of roles</p>
+  <h2>Three circles: deciders, doers, and people outside</h2>
+  <svg class="diagram" viewBox="0 0 760 300" role="img" aria-label="Role map: leadership at the centre; project and site roles and office roles around it; outside parties on the edge.">
+    <g font-family="Noto Sans, sans-serif" font-size="12">
+      <circle cx="380" cy="150" r="140" fill="#faf7f2" stroke="#e3ddd3"/>
+      <circle cx="380" cy="150" r="88" fill="#f2efe9" stroke="#e3ddd3"/>
+      <circle cx="380" cy="150" r="40" fill="#1f1d1a"/>
+      <text x="380" y="146" text-anchor="middle" fill="#fff" font-weight="700">Owner</text><text x="380" y="162" text-anchor="middle" fill="#f2b705" font-size="11">GM</text>
+      <g font-size="11.5" fill="#1f1d1a" text-anchor="middle">
+        <text x="380" y="88">Project manager</text><text x="300" y="118">Site engineer</text><text x="462" y="118">QS</text>
+        <text x="296" y="186">Supervisor</text><text x="462" y="186">Purchase</text><text x="320" y="222">Storekeeper</text><text x="440" y="222">Accounts</text>
+      </g>
+      <g font-size="11" fill="#5f5a52" text-anchor="middle">
+        <text x="380" y="30">Client · architect</text><text x="245" y="60">Subcontractors</text><text x="520" y="60">CA</text>
+        <text x="215" y="250">Labour contractors</text><text x="545" y="250">Suppliers</text>
+      </g>
+      <g font-size="10.5" fill="#8a8178"><text x="560" y="150">inner: decide</text><text x="560" y="166">middle: do the work</text><text x="560" y="182">outer: outside the company</text></g>
+    </g>
+  </svg>
+  <table>
+    <thead><tr><th style="width:20%">Role</th><th style="width:16%">Where they are</th><th style="width:16%">Device</th><th style="width:22%">Best channel</th><th>One-line want</th></tr></thead>
+    <tbody>
+      <tr><td><b>Owner / MD</b></td><td>Office, travelling</td><td>Phone</td><td>WhatsApp summary; dashboard on demand</td><td>"Am I making money, and where am I losing it?"</td></tr>
+      <tr><td><b>GM</b></td><td>Office, site visits</td><td>Laptop and phone</td><td>Dashboard; WhatsApp alerts</td><td>"Did we get the work we paid for?"</td></tr>
+      <tr><td><b>Project manager</b></td><td>Sites and office</td><td>Phone, laptop</td><td>Both</td><td>"What needs me today on my projects?"</td></tr>
+      <tr><td><b>Site engineer</b></td><td>Site, all day</td><td>Phone</td><td>WhatsApp, voice</td><td>"Record it without stopping work."</td></tr>
+      <tr><td><b>Supervisor / foreman</b></td><td>Site, with workers</td><td>Basic phone</td><td>WhatsApp voice</td><td>"Tell me what to do; don't make me type."</td></tr>
+      <tr><td><b>Storekeeper</b></td><td>Site store, gate</td><td>Phone</td><td>WhatsApp, photo</td><td>"Prove what came and who took it."</td></tr>
+      <tr><td><b>QS</b></td><td>Office, site to measure</td><td>Laptop</td><td>Dashboard, Excel</td><td>"Quantities and rates I can trust."</td></tr>
+      <tr><td><b>MEP / quality engineer</b></td><td>Sites</td><td>Phone</td><td>WhatsApp; dashboard</td><td>"My trade's material and checks."</td></tr>
+      <tr><td><b>Purchase</b></td><td>Office, phone with shops</td><td>Laptop, phone</td><td>Dashboard; WhatsApp</td><td>"Buy right, once, on time."</td></tr>
+      <tr><td><b>Accounts</b></td><td>Office</td><td>Laptop</td><td>Dashboard, Excel, Tally</td><td>"Every bill matched, nothing paid twice."</td></tr>
+      <tr><td><b>CA (outside)</b></td><td>Their office</td><td>Laptop</td><td>Export to Tally</td><td>"Complete books, on time."</td></tr>
+      <tr><td><b>Subcontractor</b></td><td>Site</td><td>Phone</td><td>WhatsApp</td><td>"Measure me fairly, pay me on time."</td></tr>
+      <tr><td><b>Labour contractor</b></td><td>Site</td><td>Basic phone</td><td>WhatsApp, voice</td><td>"My people's days and money, correct."</td></tr>
+      <tr><td><b>Supplier</b></td><td>Shop, depot</td><td>Phone</td><td>WhatsApp</td><td>"Clear orders; paid when due."</td></tr>
+      <tr><td><b>Client / house owner</b></td><td>Anywhere</td><td>Phone</td><td>WhatsApp, a link</td><td>"Is my building progressing, at my price?"</td></tr>
+      <tr><td><b>Architect / consultant</b></td><td>Their office</td><td>Laptop</td><td>A link, email</td><td>"Built to drawing; my approvals respected."</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 2 LEADERSHIP ===================== -->
+<section class="new-page">
+  <p class="eyebrow">2 · Leadership</p>
+  <h2>The people who pay for the software</h2>
+
+  <div class="role">
+    <div class="role-head"><h3>Owner / MD</h3><span class="chip muted">buys the software</span></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>Winning work, meeting clients and banks, cash, a few big decisions. Hears about sites by phone and in meetings.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>Which projects make money, which lose it?</li><li>How much cash do I need next month?</li><li>Who owes me, whom do I owe?</li><li>Is anything going badly wrong right now?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>One screen or one message: profit per project, cash, risks.</li><li>Problems pushed to him, not hunted for.</li><li>Trust: numbers that match the accounts.</li><li>Control: who can see rates and margins.</li></ul>
+      <p class="lbl">Won't do</p><p>Enter data. Learn a complex system. Read long reports.</p>
+      <p class="lbl">Adopts when · quits when</p><p>It catches one real loss early · its numbers disagree with Tally or the GM.</p></div>
+    </div>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>General manager (GM)</h3><span class="chip muted">often decides on the purchase</span></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>Runs all projects; releases payments to suppliers, subcontractors and labour; settles problems between sites and office.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>"Was ₹15,000 of work done for the ₹15,000 we paid?"</li><li>Which site is behind or over budget?</li><li>What is short, and has it been ordered?</li><li>What needs my approval?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>Daily green/red by project and work item.</li><li>Approvals in one place, with the facts beside them.</li><li>Material: what came, what was used, what is missing.</li><li>Every number traceable to who reported it.</li></ul>
+      <p class="lbl">Won't do</p><p>Accept a digital register as the answer ("noting down that cement arrived has no benefit").</p>
+      <p class="lbl">Adopts when · quits when</p><p>It answers his payment questions the same day · engineers stop reporting and the screens go stale.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 3 PROJECT & SITE ===================== -->
+<section class="new-page">
+  <p class="eyebrow">3 · Project and site</p>
+  <h2>The people who create the data</h2>
+
+  <div class="role">
+    <div class="role-head"><h3>Project manager (PM)</h3></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>Moves between 2 to 5 sites; plans the week; chases material, labour and subcontractors; reports to the GM.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>What is planned this week, and is everything in place?</li><li>Which site hasn't reported?</li><li>Is anything about to run out? Can another site lend it?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>A morning list of what needs him, across his projects only.</li><li>Approve requests and small expenses from the phone.</li><li>Move stock between his sites.</li><li>Progress against plan, not a diary.</li></ul>
+      <p class="lbl">Won't do</p><p>Re-type what engineers already sent.</p>
+      <p class="lbl">Adopts when · quits when</p><p>It saves his phone calls · he still has to call to find out.</p></div>
+    </div>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Site engineer</h3><span class="chip ok">the most important user</span></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>On site from morning: sets out work, checks quality, measures, handles deliveries and labour, answers calls. Evenings: the daily report.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>Do I have what tomorrow's work needs?</li><li>How do I report today without an hour of typing?</li><li>Who did I ask for cement, and when is it coming?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>Report by voice or one line, in Malayalam or Manglish.</li><li>Confirm, don't fill forms.</li><li>Fewer phone calls from the office.</li><li>Credit for good work (the report shows it).</li></ul>
+      <p class="lbl">Won't do</p><p>Install another app, log in, fill fields, report the same thing twice.</p>
+      <p class="lbl">Adopts when · quits when</p><p>Reporting takes less time than before · it asks too many questions or feels like surveillance.</p></div>
+    </div>
+    <p class="note">If the site engineer stops sending, every other role's screen goes empty. Design for this person first.</p>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Supervisor / foreman</h3></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>With the workers all day: who does what, where, with which material. Often limited reading or typing; speaks the local language.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>What is today's work for my team?</li><li>Is the material there?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>Voice in, voice or short text out.</li><li>Attendance in one message ("4 mason 2 helper").</li></ul>
+      <p class="lbl">Won't do</p><p>Read English screens, type, use a dashboard.</p></div>
+    </div>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Storekeeper</h3></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>At the gate and the store: receives lorries, counts, stores, issues material to teams, keeps the register.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>Does the lorry match the challan and the order?</li><li>Who took what, for which work?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>Photo of the challan plus one line, and it is recorded.</li><li>The open order to check the lorry against.</li><li>Proof, so he isn't blamed for shortages.</li></ul>
+      <p class="lbl">Won't do</p><p>Fill a GRN form per lorry; keep two registers (paper and app).</p></div>
+    </div>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Quantity surveyor (QS)</h3></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>Measures work, prepares client and subcontractor bills, checks material and cost against the estimate.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>How much of each BOQ item is done?</li><li>Does material used match the work done?</li><li>Is this subcontractor's bill right?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>BOQ with quantities done to date, by item.</li><li>Material reconciliation and wastage %.</li><li>Export to Excel; bills from measured quantities.</li></ul>
+      <p class="lbl">Won't do</p><p>Trust numbers he can't trace or adjust with a reason.</p></div>
+    </div>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>MEP engineer · quality and safety engineer</h3><span class="chip muted">in larger companies</span></div>
+    <p>Own one trade (electrical and plumbing) or one discipline (quality, safety) across sites. <b>Want:</b> their category's material and requests, their checklists, alerts only for their area. <b>Won't:</b> wade through everything else.</p>
+  </div>
+</section>
+
+<!-- ===================== 4 OFFICE ===================== -->
+<section class="new-page">
+  <p class="eyebrow">4 · Office</p>
+  <h2>The people who turn site activity into money</h2>
+
+  <div class="role">
+    <div class="role-head"><h3>Purchase</h3></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>Phones shops for rates, places orders, chases deliveries, handles returns. In small companies the owner or PM does this.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>What do sites need, by when?</li><li>Did someone already order it?</li><li>What did we pay last time, and where?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>All requests in one list, with needed-by dates.</li><li>Rate history per item and supplier.</li><li>Orders with what is still pending; duplicate warnings.</li></ul>
+      <p class="lbl">Won't do</p><p>Chase engineers on the phone for what they need.</p></div>
+    </div>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Accounts</h3></div>
+    <div class="role-grid">
+      <div><p class="lbl">Their day</p><p>Matches bills to deliveries, pays suppliers, labour and subcontractors, collects from clients, keeps petty cash, hands books to the CA.</p>
+      <p class="lbl">Top questions</p><ul class="tight"><li>Which bills are due, and are they correct?</li><li>Where is the bill for this delivery?</li><li>What do we owe each party; what do clients owe us?</li></ul></div>
+      <div><p class="lbl">Wants from software</p><ul class="tight"><li>Delivered-not-billed list; bill matched to order and delivery.</li><li>Party ledgers and payables by due date.</li><li>Expenses with photos and categories.</li><li>Export to Tally, without retyping.</li></ul>
+      <p class="lbl">Won't do</p><p>Keep a second set of books; accept entries without a trail.</p></div>
+    </div>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>CA (chartered accountant, outside)</h3></div>
+    <p>Keeps the statutory books in Tally, files GST and TDS, runs the audit. <b>Wants:</b> complete, correctly coded entries on time, as a Tally import or Excel. <b>Won't:</b> log into another system daily. <b>Why it matters:</b> if the CA distrusts the numbers, the owner will too.</p>
+  </div>
+
+  <p class="eyebrow">5 · Outside the company</p>
+  <h2>People the company works with, who can feed or check the system</h2>
+  <table>
+    <thead><tr><th style="width:18%">Role</th><th style="width:34%">Wants</th><th style="width:24%">Could do in software</th><th>Should never see</th></tr></thead>
+    <tbody>
+      <tr><td><b>Subcontractor</b></td><td>Fair measurement, prompt payment, clear work orders.</td><td>See their work order, measured quantities and bills; send progress by WhatsApp.</td><td>Other subcontractors' rates; the company's margins.</td></tr>
+      <tr><td><b>Labour contractor</b></td><td>Correct days and wages; advances recorded.</td><td>Confirm attendance and weekly totals by WhatsApp.</td><td>Anything but their own people and money.</td></tr>
+      <tr><td><b>Supplier</b></td><td>Clear orders, prompt payment.</td><td>Receive orders, send bills, see their balance.</td><td>Other suppliers' rates.</td></tr>
+      <tr><td><b>Client / house owner</b></td><td>Progress, photos, bills they can understand.</td><td>A link with progress and photos; RA bills; approve variations.</td><td>Costs, margins, supplier rates, internal issues.</td></tr>
+      <tr><td><b>Architect / consultant</b></td><td>Built to drawing; their approvals respected.</td><td>See progress and quality checks; answer questions.</td><td>Money.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 6 MATRIX ===================== -->
+<section class="new-page">
+  <p class="eyebrow">6 · Who sees what, who does what</p>
+  <h2>A starting point for permissions</h2>
+  <p>✓ yes · <b>own</b> only their projects or sites · <b>—</b> no. A proposal from common practice; each company adjusts it.</p>
+  <table class="matrix">
+    <thead><tr><th style="width:24%">What</th><th>Owner / GM</th><th>PM</th><th>Site eng.</th><th>Store</th><th>QS</th><th>Purchase</th><th>Accounts</th><th>Client</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="9">See</td></tr>
+      <tr><td>Work done, photos, issues</td><td>✓</td><td>own</td><td>own</td><td>own</td><td>✓</td><td>—</td><td>—</td><td>own</td></tr>
+      <tr><td>Stock and deliveries</td><td>✓</td><td>own</td><td>own</td><td>own</td><td>✓</td><td>✓</td><td>✓</td><td>—</td></tr>
+      <tr><td>Purchase rates</td><td>✓</td><td>own</td><td>—</td><td>—</td><td>✓</td><td>✓</td><td>✓</td><td>—</td></tr>
+      <tr><td>Client rates and margins</td><td>✓</td><td>own</td><td>—</td><td>—</td><td>✓</td><td>—</td><td>✓</td><td>—</td></tr>
+      <tr><td>Wages</td><td>✓</td><td>own</td><td>own team</td><td>—</td><td>✓</td><td>—</td><td>✓</td><td>—</td></tr>
+      <tr><td>Supplier and party balances</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✓</td><td>✓</td><td>—</td></tr>
+      <tr><td>Their own green / red</td><td>✓</td><td>own</td><td>own site</td><td>—</td><td>✓</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr class="grp"><td colspan="9">Do</td></tr>
+      <tr><td>Record work, labour, material</td><td>✓</td><td>✓</td><td>✓</td><td>material</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>Request material</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>Approve requests and expenses</td><td>✓</td><td>up to a limit</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>Place orders</td><td>✓</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td>Correct or adjust stock</td><td>✓</td><td>✓</td><td>—</td><td>with reason</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>Set BOQ and budget</td><td>✓</td><td>✓</td><td>—</td><td>—</td><td>✓</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>Pay and record payments</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✓</td><td>—</td></tr>
+      <tr><td>Approve variations</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✓</td></tr>
+      <tr><td>Set up company, people, categories</td><td>✓</td><td>some</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Two rules that never change: <b>the person who orders is not the one who receives, and neither is the one who pays</b>; and <b>outsiders only ever see their own records</b>.</p>
+</section>
+
+<!-- ===================== 7 TENSIONS ===================== -->
+<section>
+  <p class="eyebrow">7 · Where roles pull against each other</p>
+  <h2>Good software settles these, instead of picking a side</h2>
+  <table class="pairs">
+    <thead><tr><th>The pull</th><th>How to settle it</th></tr></thead>
+    <tbody>
+      <tr><td><b>Owner wants detail; engineer wants to type less.</b></td><td>Capture the minimum by voice; fill the rest from what already exists (orders, BOQ, last rate); ask at most one question.</td></tr>
+      <tr><td><b>GM wants control; site wants speed.</b></td><td>Approvals with limits: small things go straight through, big ones wait, and the approver sees the facts in the same message.</td></tr>
+      <tr><td><b>Accounts wants every field; the gate knows only item and quantity.</b></td><td>Record now, complete later: the bill photo fills rate and supplier afterwards.</td></tr>
+      <tr><td><b>Owner wants to watch; engineers fear being watched.</b></td><td>Show engineers their own green/red and credit for good days, not only mistakes.</td></tr>
+      <tr><td><b>Client wants transparency; company protects margins.</b></td><td>Separate views: the client sees progress and bills, never cost.</td></tr>
+      <tr><td><b>Purchase wants the best rate; site wants it today.</b></td><td>Requests with needed-by dates, so urgency is visible and planned.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== 8 MESIRI ===================== -->
+<section class="new-page">
+  <p class="eyebrow">8 · Mesiri today, and what to build</p>
+  <h2>Four roles today; the rest arrive on WhatsApp</h2>
+  <table class="req gap">
+    <thead><tr><th style="width:22%">Role</th><th style="width:10%">Mesiri</th><th>How it is served today · what is missing</th></tr></thead>
+    <tbody>
+      <tr><td>Owner / MD</td><td><span class="st part">Partly</span></td><td>As Admin / Director: everything, plus the evening DPR. Missing: a one-screen owner view (profit per project, cash, risks) and a weekly owner message.</td></tr>
+      <tr><td>GM</td><td><span class="st part">Partly</span></td><td>As Admin. Missing: green/red (CC-07), approvals in one place, payment checks against work.</td></tr>
+      <tr><td>Project manager</td><td><span class="st have">Have</span></td><td>A role with its own projects and sites; requests, transfers, sizes. Missing: a morning "needs you" list.</td></tr>
+      <tr><td>Site engineer</td><td><span class="st have">Have</span></td><td>A role, mainly on WhatsApp in Malayalam, Manglish or English; sees only their sites; doesn't see company spending.</td></tr>
+      <tr><td>Supervisor / foreman</td><td><span class="st part">Partly</span></td><td>Can be added as a site engineer and use WhatsApp voice. Missing: a lighter role that only reports, without dashboard access.</td></tr>
+      <tr><td>Storekeeper</td><td><span class="st part">Partly</span></td><td>Same as above. Missing: a store role (record material, adjust with reason) and GRN against orders.</td></tr>
+      <tr><td>QS</td><td><span class="st miss">Missing</span></td><td>No role; today a PM or admin. Missing: BOQ progress, reconciliation, measured bills.</td></tr>
+      <tr><td>MEP / quality / safety</td><td><span class="st miss">Missing</span></td><td>No owner per category or checklist.</td></tr>
+      <tr><td>Purchase</td><td><span class="st miss">Missing</span></td><td>No role; procurement pages are planned (PRC-06 onwards).</td></tr>
+      <tr><td>Accounts</td><td><span class="st have">Have</span></td><td>The Finance role: expenses, money, vendors. Missing: payables, party ledgers, Tally sync.</td></tr>
+      <tr><td>CA</td><td><span class="st miss">Missing</span></td><td>No access; planned Tally export.</td></tr>
+      <tr><td>Subcontractor, labour contractor</td><td><span class="st miss">Missing</span></td><td>Appear only as names on records. Missing: their own WhatsApp view of work orders, measurements and payments.</td></tr>
+      <tr><td>Supplier</td><td><span class="st part">Partly</span></td><td>A vendor record with phone and GSTIN. Missing: orders and balance sent to them.</td></tr>
+      <tr><td>Client / house owner</td><td><span class="st part">Partly</span></td><td>Can receive the DPR as an outside contact, with the client's logo. Missing: a progress link, RA bills, variation approval.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout">
+    <b>What to build, in order.</b>
+    <ol class="tight">
+      <li><b>Decide who sees rates and margins</b> (decision D-CC4 in the cost-control plan), using part 6 as the starting point. Security-sensitive: needs approval.</li>
+      <li><b>A reporting-only role</b> for supervisors and storekeepers: WhatsApp only, their site only, no dashboard.</li>
+      <li><b>A role home for each person:</b> owner (profit, cash, risks), GM (green/red, approvals), PM (needs you today), accounts (due bills, unbilled deliveries).</li>
+      <li><b>QS and Purchase roles</b> when the BOQ-progress and procurement pages exist.</li>
+      <li><b>Outside views on WhatsApp:</b> client progress link first (easy and impressive), then subcontractor statements.</li>
+    </ol>
+  </div>
+  <p class="note">Where this lives in the code: role names in <code>backend/src/mesiri/domains/users/router.py</code> (<code>_VALID_ROLES</code>); who may do what in <code>backend/src/mesiri/authorization/roles.py</code>; the dashboard's labels and scopes in <code>apps/dashboard/src/lib/permissions.ts</code>.</p>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section>
+  <p class="eyebrow">9 · Check yourself</p>
+  <ol class="quiz">
+    <li>Which role, if it stops using the software, empties everyone else's screens?</li>
+    <li>What does the GM want that a digital register can't give him?</li>
+    <li>Name the three hands that must be separate in buying.</li>
+    <li>What should a client never see, and what should they see?</li>
+    <li>Which two roles would most benefit from a reporting-only WhatsApp role?</li>
+  </ol>
+  <p class="answers"><b>Answers:</b> 1. The site engineer. 2. Whether the work done matched the money paid: green or red, the same day. 3. Who orders, who receives, who pays. 4. Never cost, margins or supplier rates; they see progress, photos and their bills. 5. Supervisor/foreman and storekeeper.</p>
+</section>
+
+</body>
+</html>

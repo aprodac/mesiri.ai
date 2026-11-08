@@ -13,6 +13,7 @@ into `pdf/*.pdf`. Any screenshots in `img/` come from the demo company on a loca
 | # | Guide | Status |
 |---|---|---|
 | 00 | The big picture: how a construction company runs and makes money, the life of a project, who's who, money flow, the biggest leaks, how every module connects | draft, 7 Nov |
+| 00a | Roles: everyone in and around a construction company, what each wants from software, who sees and does what, and what Mesiri has | draft, 8 Nov |
 | 01 | Site: daily reports, issues, quality, safety, equipment | to do |
 | 02 | Planning & BOQ | to do |
 | 03 | Materials | draft, 7 Nov |
