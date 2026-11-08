@@ -189,8 +189,8 @@ contacts on the subcontractor's page (invite, switch off), module map entries tu
 | # | Question | Decided / proposed |
 |---|---|---|
 | D-S0 | Subcontractor on Mesiri's WhatsApp (option B) | **Approved: Alan, relayed in session 8 Nov.** Deny-by-default design above; per-company switch, off until the owner turns it on |
-| D-S1 | TDS on subcontract bills | **Proposed default:** off per company until set; when on, 194C 1% individual / HUF, 2% others, per subcontractor, changeable per bill. Needs the owner's yes before S4 |
-| D-S2 | Retention default | **Proposed:** 5% per work order, changeable; released on completion or after the defect period the work order states |
-| D-S3 | Who approves a flagged bill | **Proposed:** owner, admin, finance, and the project's PM (a PM within their projects) |
+| D-S1 | TDS on subcontract bills | **Approved 8 Nov (owner):** off per company until set; when on, 194C 1% individual / HUF, 2% others, per subcontractor, changeable per bill. |
+| D-S2 | Retention default | **Approved 8 Nov:** 5% per work order, changeable; released on completion or after the defect period the work order states |
+| D-S3 | Who approves a flagged bill | **Approved 8 Nov:** owner, admin, finance, and the project's PM (a PM within their projects) |
 | D-S4 | Labour contractor teams paid by attendance | Stay in Labour; attendance can name the subcontractor (S2); wages are NXT-09 (blocked on Alan) |
 | D-S5 | Web login for subcontractors (option C) | Not now |

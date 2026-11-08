@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.finance.reverse_commands import ReverseTransactionCommand
@@ -167,6 +167,12 @@ class FinanceSettingsResponse(BaseModel):
     expense_card_enabled: bool = True
     weekly_digest_enabled: bool = True
     weekly_digest_schedule: str = "weekly_monday"
+    #: Subcontracts (D-S1, D-S2, D-S0, 8 Nov 2026): TDS on subcontract bills (off until the company turns it on),
+    #: its default %, the default retention %, and whether subcontractors may use Mesiri's WhatsApp (option B).
+    tds_enabled: bool = False
+    tds_default_pct: Decimal = Decimal("1")
+    retention_default_pct: Decimal = Decimal("5")
+    partner_access: bool = False
 
 
 class UpdateFinanceSettingsRequest(BaseModel):
@@ -184,6 +190,10 @@ class UpdateFinanceSettingsRequest(BaseModel):
     expense_card_enabled: bool | None = None
     weekly_digest_enabled: bool | None = None
     weekly_digest_schedule: str | None = None
+    tds_enabled: bool | None = None
+    tds_default_pct: Decimal | None = Field(default=None, ge=0, le=20)
+    retention_default_pct: Decimal | None = Field(default=None, ge=0, le=50)
+    partner_access: bool | None = None
 
 
 class FinanceReportRow(BaseModel):
@@ -397,6 +407,8 @@ async def update_finance_settings(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Update organization-wide financial preferences & WhatsApp assistant policies in PostgreSQL."""
+    # 8 Nov 2026: had no role check; the company's money settings are for the roles that manage money (SEC-03).
+    _require(may_manage_money(auth_context.role), "Only the owner, an admin or finance can change finance settings.")
     from mesiri.infrastructure.postgres.repositories.organization_settings import (
         PostgresOrganizationSettingsRepository,
     )

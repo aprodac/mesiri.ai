@@ -483,7 +483,8 @@ async def _open_bills(conn: AsyncConnection, auth: AuthorizationContext, vendor_
     unless named."""
     scope = _narrow(_view_scope(auth), project_id)
     entries, state = await ledger.fetch_entries(conn, auth.organization_id, vendor_id=vendor_id, projects=scope)
-    open_ = {b["id"]: b for b in state["bills"].values() if b["left"] > 0}
+    # Only what may be paid now: a subcontract bill waiting for its check is not, nor its retention held (NXT-06/07).
+    open_ = {b["id"]: {**b, "left": b["payable"]} for b in state["bills"].values() if b["payable"] > 0}
     if bill_ids is None:
         return sorted(open_.values(), key=lambda b: (b["date"], b["number"] or ""))
     out = []
@@ -823,16 +824,20 @@ VENDOR_LINKS = (
     ("material_invoices", "vendor_id", "bills"),
     ("purchase_orders", "vendor_id", "orders"),
     ("expense_payments", "vendor_id", "payments"),
+    ("work_orders", "vendor_id", "work orders"),
+    ("labour_attendance_lines", "vendor_id", "attendance lines"),
     ("equipment", "vendor_id", "machines"),  # NXT-11: machines hired from them
     ("equipment_hire_bills", "vendor_id", "hire bills"),  # NXT-13
 )
+#: How a table's rows are this company's (default: its own organization_id).
+_OWNED = {"labour_attendance_lines": "report_id IN (SELECT id FROM labour_attendance_reports WHERE organization_id = :org)"}
 
 
 async def _links(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.UUID) -> dict:
     out = {}
     for table, col, label in VENDOR_LINKS:
         n = (await conn.execute(text(
-            f"SELECT COUNT(*) FROM {table} WHERE organization_id = :org AND {col} = :v"),  # noqa: S608
+            f"SELECT COUNT(*) FROM {table} WHERE {_OWNED.get(table, 'organization_id = :org')} AND {col} = :v"),  # noqa: S608
             {"org": org, "v": vendor_id})).scalar()
         out[label] = int(n or 0)
     return out
@@ -879,7 +884,7 @@ async def merge_vendor(
     moved = await _links(conn, org, vendor_id)
     for table, col, _ in VENDOR_LINKS:
         await conn.execute(text(
-            f"UPDATE {table} SET {col} = :dst WHERE organization_id = :org AND {col} = :src"),  # noqa: S608
+            f"UPDATE {table} SET {col} = :dst WHERE {_OWNED.get(table, 'organization_id = :org')} AND {col} = :src"),  # noqa: S608
             {"dst": dst["id"], "src": src["id"], "org": org})
     fill = {k: src[k] for k in ("phone", "gstin", "address", "contact_person", "credit_days")
             if dst[k] is None and src[k] is not None}

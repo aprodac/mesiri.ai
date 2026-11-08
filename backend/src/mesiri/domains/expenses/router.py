@@ -963,6 +963,14 @@ async def pay_expense(
         raise HTTPException(status_code=422, detail="The amount must be more than zero.")
     if amount > left:
         raise HTTPException(status_code=422, detail=f"Only {left} is still unpaid.")
+    # NXT-06/07: a subcontractor's bill is paid only once checked, and never its retention held.
+    from mesiri.domains.subcontracts.store import payable_caps
+
+    cap = (await payable_caps(conn, auth_context.organization_id, [expense_id])).get(expense_id)
+    if cap is not None and amount > cap:
+        raise HTTPException(status_code=409, detail=(
+            "This subcontract bill waits for its check (approve it on the work order first)." if cap <= 0
+            else f"Only ₹{cap} of this bill can be paid now; the rest is retention held until it is released."))
     try:
         payment = await payments.record_payment(
             organization_id=auth_context.organization_id, expense_id=expense_id, account_id=body.account_id,
