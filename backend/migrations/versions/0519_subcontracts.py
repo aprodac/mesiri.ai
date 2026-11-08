@@ -15,8 +15,8 @@ See docs/plans/subcontractors-plan.md (S1-S4). Additive only:
 
 Every new table has row-level security like 0511. Downgrade refuses while work orders exist.
 
-Revision ID: 0518
-Revises: 0517
+Revision ID: 0519
+Revises: 0518
 Create Date: 2026-11-08
 """
 
@@ -24,8 +24,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0518"
-down_revision = "0517"
+revision = "0519"
+down_revision = "0518"
 branch_labels = None
 depends_on = None
 

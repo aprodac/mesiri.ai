@@ -16,6 +16,7 @@ import { VendorTile } from '@/components/orders/order-detail'
 import { VendorRates } from '@/components/rates/vendor-rates'
 import { BillDeliveriesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
+import { VendorMachines } from '@/components/equipment/vendor-machines'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { useReadOnly } from '@/lib/trial'
@@ -494,6 +495,9 @@ export default function VendorPage() {
 
       {shownTab === 'rates' && v && <div className="rounded-xl border bg-card"><VendorRates vendorId={v.id} /></div>}
 
+      {/* NXT-11: a hire company's machines, on its account and its details. */}
+      {v && (v.linked.machines ?? 0) > 0 && (shownTab === 'account' || shownTab === 'details') && <VendorMachines vendorId={v.id} />}
+
       {/* --- Details --------------------------------------------------------------------------------------------- */}
       {shownTab === 'details' && v && (
         <section className="grid gap-3 md:grid-cols-2">
@@ -520,7 +524,7 @@ export default function VendorPage() {
           </dl>
           <div className="grid content-start gap-2 rounded-xl border bg-card p-4 text-sm">
             <div className="font-medium">Recorded with {v.name}</div>
-            {([['expenses', 'Expenses and bills', `/finance/expenses?vendor=${v.id}&period=all`], ['deliveries', 'Deliveries', null], ['orders', 'Orders', `/procurement/orders?vendor=${v.id}&tab=all`], ['payments', 'Payments on account', null]] as const).map(([k, label, to]) => (
+            {([['expenses', 'Expenses and bills', `/finance/expenses?vendor=${v.id}&period=all`], ['deliveries', 'Deliveries', null], ['orders', 'Orders', `/procurement/orders?vendor=${v.id}&tab=all`], ['payments', 'Payments on account', null], ['machines', 'Machines hired', `/equipment?from=${v.id}&tab=all`], ['hire bills', 'Hire bills', '/equipment/hire']] as const).map(([k, label, to]) => (
               <div key={k} className="flex items-center justify-between">
                 <span className="text-muted-foreground">{label}</span>
                 {to && v.linked[k] ? <Link to={to} className="font-medium tabular-nums hover:underline">{v.linked[k]}</Link> : <span className="font-medium tabular-nums">{v.linked[k]}</span>}

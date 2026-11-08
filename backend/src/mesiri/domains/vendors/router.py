@@ -826,6 +826,8 @@ VENDOR_LINKS = (
     ("expense_payments", "vendor_id", "payments"),
     ("work_orders", "vendor_id", "work orders"),
     ("labour_attendance_lines", "vendor_id", "attendance lines"),
+    ("equipment", "vendor_id", "machines"),  # NXT-11: machines hired from them
+    ("equipment_hire_bills", "vendor_id", "hire bills"),  # NXT-13
 )
 #: How a table's rows are this company's (default: its own organization_id).
 _OWNED = {"labour_attendance_lines": "report_id IN (SELECT id FROM labour_attendance_reports WHERE organization_id = :org)"}

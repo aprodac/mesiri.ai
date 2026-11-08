@@ -70,6 +70,20 @@ class DprMaterialRow:
 
 
 @dataclass(frozen=True, slots=True)
+class DprMachineRow:
+    """NXT-11: one machine's day (worked / idle / breakdown hours, diesel)."""
+
+    machine: str
+    ownership: str
+    worked: str
+    idle: str
+    breakdown: str
+    fuel: str
+    note: str
+    site_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class DprSiteRow:
     site_name: str
     reported: bool
@@ -102,6 +116,8 @@ class DprDocumentData:
     headcount: int = 0
     labour_cost: str = "0"
     materials: list[DprMaterialRow] = field(default_factory=list)
+    # NXT-11: the Machinery section; empty hides it (a report without machines looks as before).
+    machinery: list[DprMachineRow] = field(default_factory=list)
     sites: list[DprSiteRow] = field(default_factory=list)
     reported_site_count: int = 0
     total_site_count: int = 0
@@ -260,6 +276,25 @@ def build_document_data(
             )
         )
         previous = main
+    machinery = [
+        DprMachineRow(
+            machine=str(m.get("machine") or "—"),
+            ownership=str(m.get("ownership") or ""),
+            worked=str(m.get("worked") or "0"),
+            idle=str(m.get("idle") or "0"),
+            breakdown=str(m.get("breakdown") or "0"),
+            fuel=f"{m['fuel']} L" if m.get("fuel") else "—",
+            note="; ".join(
+                x for x in (
+                    m.get("breakdown_reason") or "",
+                    f"{m['trips']} trips" if m.get("trips") else "",
+                    f"Operator {m['operator']}" if m.get("operator") else "",
+                ) if x
+            ),
+            site_name=_pretty(m.get("site_name")) if is_project else "",
+        )
+        for m in payload.get("machinery") or []
+    ]
     sites = [
         DprSiteRow(
             site_name=_pretty(s.get("site_name")),
@@ -300,6 +335,7 @@ def build_document_data(
         headcount=int(labour.get("headcount") or 0),
         labour_cost=str(labour.get("total_cost") or "0"),
         materials=materials,
+        machinery=machinery,
         sites=sites,
         reported_site_count=int(payload.get("reported_site_count") or 0),
         total_site_count=int(payload.get("total_site_count") or len(sites)),

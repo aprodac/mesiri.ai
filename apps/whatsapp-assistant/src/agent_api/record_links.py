@@ -63,6 +63,11 @@ RECORD_PAGES: dict[str, str | None] = {
     "pay_supplier": "supplier",  # CC-10: the supplier's account, its id in the path
     "link_bill_deliveries": "expense",  # PRC-11: the bill (expense) the deliveries went on, its id in the path
     "set_reply_language": None,
+    # NXT-11: machines.
+    "log_machines": "machine_log",
+    "add_machine": "machines",
+    "move_machine": "machines",
+    "off_hire_machine": "machines",
 }
 
 #: Where a page's placeholder is read from, in order: the saved request body, then the API's answer.

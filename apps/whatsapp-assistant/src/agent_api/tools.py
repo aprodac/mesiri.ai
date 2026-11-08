@@ -213,6 +213,32 @@ ALLOWED: tuple[Allowed, ...] = (
         "Prepare a site's conditions for a day: weather, hours lost, whether the site worked, tomorrow's plan." + _WRITE,
     ),
     Allowed("send_dpr", "POST", "/dpr/projects/{project_id}/send", "Prepare sending today's project DPR now." + _WRITE),
+    # Machines and vehicles (NXT-11): the register, each machine's day, the hire check
+    Allowed("machines", "GET", "/equipment",
+            "The company's machines and vehicles: name, owned or hired and from whom, where each is, today's log, "
+            "this month's hours, idle, breakdown, diesel and (for the roles that see spending) hire cost; service due."),
+    Allowed("machine_logs", "GET", "/equipment/logs",
+            "Machine day logs for a date or a period (hours worked, idle, breakdown, diesel, operator), with totals; "
+            "for one date also the machines on site not logged yet."),
+    Allowed(
+        "log_machines", "POST", "/equipment/logs",
+        "Prepare the day of one or more machines: hours worked, idle, breakdown (and why), diesel litres, operator, "
+        "trips. The machine in their words ('JCB', 'JCB 2', 'mixer'); the site is where the machine is unless they "
+        "said another. A second log of the same machine and day adds to that day." + _WRITE,
+        hide=("source",), fixed=(("source", "whatsapp"),),
+    ),
+    Allowed(
+        "add_machine", "POST", "/equipment",
+        "Prepare adding a machine or vehicle to the company's list: its name as they call it, type, owned or hired, "
+        "the hire company in words, the rate and per hour / day / month, the site it is at." + _WRITE,
+    ),
+    Allowed("move_machine", "POST", "/equipment/{machine_id}/move",
+            "Prepare a machine going to another site (its id from `machines`)." + _WRITE),
+    Allowed("off_hire_machine", "POST", "/equipment/{machine_id}/off-hire",
+            "Prepare a hired machine sent back to the hire company (it stops earning hire)." + _WRITE),
+    Allowed("hire_check", "GET", "/equipment/hire-check",
+            "Per hired machine this month (or a period): hours recorded on site, what they come to at the rate, "
+            "the hire bills and whether a bill asks for more. Only for the roles that see spending."),
     # WA-142: corrections and set-up the dashboard already offers. Each one is prepared like any write
     # and runs only on Save, as the person (the API applies their role). Not here on purpose: anything
     # that grants access (users, roles; project members only as add_project_member below, approved by the owner

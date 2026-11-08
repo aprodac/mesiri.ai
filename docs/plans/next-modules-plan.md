@@ -46,6 +46,7 @@
 | Advances | `AccountType.EMPLOYEE_ADVANCE` money accounts (finance) | NXT-09 records worker advances against these, not a new money system |
 | Requests / orders | `material_requests` status waiting; `purchase_orders` | Approvals inbox lists them |
 | Equipment | `equipment_events` (migration 0110: arrived / departed / usage / moved / refuelled, hours, diesel and its cost and paying account; RLS in 0484); **no code reads or writes it**; `domains/equipment/` empty; DPR `equipment_items` always `[]` (`domains/dpr/router.py`) | NXT-11 builds on it with additive columns; WA-68 closes with NXT-11 |
+| Equipment (built 8 Nov) | NXT-11, NXT-13, NXT-14 and NXT-15 vehicles + service: see [equipment-module-plan.md](equipment-module-plan.md) §3 | Fixed assets with depreciation left (NXT-15) |
 | Approvals | `domains/approvals/` empty | NXT-08 is a read model over existing statuses, not a new table |
 | Clients | only `projects.client_logo` (0467) | NXT-01 is new |
 | Module map | Clients, RA bills, Variations, Payments received, Receivables, Subcontractors, Work orders, Bills & checks, Wages & advances, Approvals, Tasks, Tally sync: all `planned` pages | Each item turns its planned page into a working one |
