@@ -172,6 +172,11 @@ async def queue_reminders(conn: AsyncConnection, organization_id: uuid.UUID, *, 
 
     async with conn.begin_nested():
         queued += await queue_supplier_reminders(conn, organization_id, today)
+    # ST-04: late work and what it pushes, to the people who run the project; Monday: this week's work to the site.
+    from mesiri.domains.schedule.reminders import queue_schedule_reminders
+
+    async with conn.begin_nested():
+        queued += await queue_schedule_reminders(conn, organization_id, today)
     return queued
 
 

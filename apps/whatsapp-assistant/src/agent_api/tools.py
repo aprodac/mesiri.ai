@@ -288,6 +288,15 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare putting deliveries the site recorded on a supplier's bill already saved as an expense (vendor_id "
             "and expense_id from that save; receipt_ids from its unbilled_deliveries), so they are not owed and "
             "counted twice." + _WRITE),
+    # ST-04 (8 Nov 2026): the schedule. Read by everyone on the project; moved only by those who plan (the API checks).
+    Allowed("schedule", "GET", "/projects/{project_id}/schedule",
+            "The project's schedule (Gantt): each activity with planned start/end, progress measured from site work "
+            "updates, state (late / behind / on_track / not_started / done), days_late, forecast_end, pushed_days "
+            "(days the late work before it pushes it), critical; summary with forecast_finish and slip_days."),
+    Allowed("update_schedule_activity", "PATCH", "/projects/{project_id}/schedule/activities/{activity_id}",
+            "Prepare moving a schedule activity (activity_id from `schedule`): new start and/or end, or done=true when "
+            "the PM says it is finished. The activities after it move with it." + _WRITE, hide=("preview", "push",
+                                                                                                "clear_dates")),
     # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
     # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
     Allowed("list_work_orders", "GET", "/subcontracts/work-orders",

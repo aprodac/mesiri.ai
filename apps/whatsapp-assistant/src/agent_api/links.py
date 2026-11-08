@@ -50,6 +50,7 @@ PAGES: dict[str, tuple[str, str]] = {
     "analytics": ("/analytics", "charts across sites"),
     "machines": ("/equipment", "machines and vehicles: where each is, today's hours, diesel, hire cost"),
     "machine_log": ("/equipment/log?date={date}", "one day's log of every machine"),
+    "schedule": ("/planning/schedule?project={project_id}", "the project's schedule (Gantt)"),
     "hire_check": ("/equipment/hire", "hire bills checked against the hours recorded"),
 }
 

@@ -307,3 +307,61 @@ async def delete_line(
         raise HTTPException(status_code=404, detail="Line not found")
     await repo.delete_line(line_id)
     return Response(status_code=204)
+
+
+# -- import from Excel (ST-03) ------------------------------------------------------------------------------------------
+
+class BoqImportFile(BaseModel):
+    file_base64: str = Field(min_length=1, description="The .xlsx file, base64-encoded")
+    file_name: str | None = None
+
+
+def _sheet(body: BoqImportFile):
+    import base64
+    import binascii
+
+    from mesiri.domains.progress.boq_import import ImportFileError, read_sheet
+
+    try:
+        data = base64.b64decode(body.file_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="The file could not be read. Choose it again.") from exc
+    try:
+        return read_sheet(data)
+    except ImportFileError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/import/template")
+async def boq_import_template(project_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                              conn: AsyncConnection = Depends(get_db_conn)):
+    """The BOQ sheet to fill, with example rows; any estimate sheet with Work / Unit / Quantity columns also works."""
+    from mesiri.domains.progress.boq_import import template_bytes
+
+    await _scope(project_id, auth, conn)
+    return Response(content=template_bytes(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="mesiri-boq-import.xlsx"'})
+
+
+@router.post("/import/preview")
+async def boq_import_preview(project_id: uuid.UUID, body: BoqImportFile,
+                             auth: AuthorizationContext = Depends(get_auth_context),
+                             conn: AsyncConnection = Depends(get_db_conn)):
+    """What importing this sheet would add, row by row, with nothing saved."""
+    from mesiri.domains.progress.boq_import import preview
+
+    await _scope(project_id, auth, conn)
+    return await preview(conn, auth.organization_id, project_id, auth.user_id, _sheet(body))
+
+
+@router.post("/import")
+async def boq_import(project_id: uuid.UUID, body: BoqImportFile,
+                     auth: AuthorizationContext = Depends(get_auth_context),
+                     conn: AsyncConnection = Depends(get_db_conn)):
+    """Import the sheet: sections, lines with their rates, and the sections' dates and links for the schedule.
+    Lines already in the BOQ are left as they are, so it is safe to run again."""
+    from mesiri.domains.progress.boq_import import run
+
+    await _scope(project_id, auth, conn)
+    return await run(conn, auth.organization_id, project_id, auth.user_id, _sheet(body))

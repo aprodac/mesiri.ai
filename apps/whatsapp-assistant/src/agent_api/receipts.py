@@ -211,6 +211,7 @@ _KIND_BY_TOOL = {
     "pay_expense": "payment", "pay_supplier": "payment", "send_dpr": "send", "record_attendance": "labour",
     "record_work": "work", "correct_work": "work",
     "log_machines": "machine", "add_machine": "machine", "move_machine": "machine", "off_hire_machine": "machine",
+    "update_schedule_activity": "schedule",
 }
 
 
