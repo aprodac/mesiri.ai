@@ -649,11 +649,11 @@ Plan: [location-progress-plan.md](location-progress-plan.md). **Independent** of
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| LP-01 | **Places API + quick setup** (floors × rooms) and Planning › Places page | M | Should | — | todo | | `location_nodes` (0410) has no rows or API yet |
-| LP-02 | **Work at a place:** `record_activity` and dashboard work entry take a place in words; `activities.location_id` | M | Should | LP-01 | todo | | |
-| LP-03 | **Progress by place:** floor × work grid coloured done / in progress / not started | M | Should | LP-02 | todo | | |
-| LP-04 | **"What's left on the first floor?"** on WhatsApp (v3 read route) | S | Should | LP-03 | todo | | |
-| LP-05 | **Photos per place** | S | Should | LP-02 | todo | | |
+| LP-01 | **Places API + quick setup** (floors × rooms) and Planning › Places page | M | Should | — | done (`a7196b8`) | Claude (session 8 Nov) | Migration 0526 (additive: `sort_order`, `archived_at` on `location_nodes`). `domains/places/` (names, progress, store, router) `GET/POST/PATCH/DELETE /projects/{id}/places`, `POST .../places/setup`; a place with work is archived, never deleted. Setup by the planning roles (`may_view_expenses`, as the schedule; D-LP1 default said owner/admin/PM, finance added for one rule with the schedule) |
+| LP-02 | **Work at a place:** `record_activity` and dashboard work entry take a place in words; `activities.location_id` | M | Should | LP-01 | done (`a7196b8`) | Claude (session 8 Nov) | `POST /progress/activities` takes `place` (words: "FF R2", "onnam nila kitchen") or `place_id`, and `finished` (a COMPLETED update, the same as a WhatsApp "done"); one resolver `domains/places/names.py`; words that fit several places are refused with the choices; no places set up: saved without one. **Not built:** a place picker on the dashboard's own work entry form (API ready) |
+| LP-03 | **Progress by place:** floor × work grid coloured done / in progress / not started | M | Should | LP-02 | done (`a7196b8`) | Claude (session 8 Nov) | `GET /projects/{id}/places/progress` (pure roll-up `places/progress.py`: done when finished there or every room done). Planning › Places grid; checked in a browser on seeded data (desktop + phone) |
+| LP-04 | **"What's left on the first floor?"** on WhatsApp (v3 read route) | S | Should | LP-03 | done (`a7196b8`) | Claude (session 8 Nov) | v3 `place_progress` in `ALLOWED`, `record_work` described with `place` / `finished`, SOP rule 17. Not verified: the live model (SOP eval runs on push) |
+| LP-05 | **Photos per place** | S | Should | LP-02 | done (`a7196b8`) | Claude (session 8 Nov) | `GET /projects/{id}/places/{place}/work`: the work at a place and its rooms with signed photo links; place panel on Planning › Places. Gallery filter by place not built. Not verified: a real photo shown (seeded data had none) |
 | LP-06 | Places from a drawing (preview, confirm) | S | Later | LP-01, DR-02 | todo | | Joins the DR plan when both exist |
 | LP-07 | Rework catcher: a revision that moves something done at a place | M | Later | LP-03, DRW-11 | todo | | |
 

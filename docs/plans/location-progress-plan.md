@@ -1,6 +1,6 @@
 # Progress by place: floors and rooms as places on site (Nov 2026)
 
-> **Status:** plan, 8 Nov 2026. One of three independent plans split from
+> **Status:** LP-01..LP-05 built 8 Nov 2026 (tracker has the commits); LP-06, LP-07 to do. One of three independent plans split from
 > [connected-project-plan.md](connected-project-plan.md); tracker section **LP** in [V1_TRACKER.md](V1_TRACKER.md).
 > **Does not wait on the material plan (MP) or the drawing reader (DR).** Places are typed or made from a template
 > (floors × rooms); the drawing reader can fill them later through the same table.
