@@ -8,6 +8,7 @@ import { fetchAccountsApi } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { fetchExpensePayments, payExpense, rupees, undoExpensePayment } from '@/lib/expenses'
 import { cn } from '@/lib/utils'
+import { applyAdvance } from '@/lib/vendors'
 
 // PRC-35: an expense's payments, and paying what is left (or repaying who paid it from their pocket) from one of the
 // company's accounts -- in full or in part, on a date -- with undo for a payment made by mistake. Only shown to the
@@ -41,6 +42,19 @@ export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expe
     },
   })
   const undo = useMutation({ mutationFn: (paymentId: string) => undoExpensePayment(expenseId, paymentId), onSuccess: refresh })
+  // CC-10: the supplier holds an advance of ours: use it on this bill first (no money moves), oldest advance first.
+  const offer = data.data?.vendor_advance
+  const useAdvance = useMutation({
+    mutationFn: async () => {
+      for (const a of offer?.advances ?? []) {
+        await applyAdvance(offer!.vendor_id, a.id, [expenseId])
+        const now = await fetchExpensePayments(expenseId)
+        if (Number(now.left) <= 0) return now
+      }
+      return fetchExpensePayments(expenseId)
+    },
+    onSuccess: refresh,
+  })
   const payments = data.data?.payments ?? []
   const verb = owedTo ? `Repay ${owedTo.split(' ')[0]}` : 'Mark paid'
 
@@ -66,6 +80,7 @@ export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expe
                 <span className="block truncate text-xs text-muted-foreground">
                   {new Date(`${p.paid_date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                   {p.recorded_by ? ` · ${p.recorded_by}` : ''}
+                  {p.from_advance ? ' · from advance' : ''}
                   {p.status === 'reversed' ? ' · undone' : ''}
                 </span>
               </span>
@@ -80,6 +95,15 @@ export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expe
         </ul>
       )}
       {undo.isError && <p className="text-sm text-destructive">{apiErrorMessage(undo.error)}</p>}
+      {canPay && left > 0 && offer && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm dark:border-sky-900 dark:bg-sky-950/40">
+          <span className="min-w-0 flex-1">{offer.vendor} holds {rupees(Number(offer.left))} of your advance.</span>
+          <Button size="sm" variant="outline" className="bg-background" disabled={useAdvance.isPending} onClick={() => useAdvance.mutate()}>
+            {useAdvance.isPending ? 'Using…' : `Use ${rupees(Math.min(Number(offer.left), left))} on this bill`}
+          </Button>
+          {useAdvance.isError && <p className="w-full text-destructive">{apiErrorMessage(useAdvance.error)}</p>}
+        </div>
+      )}
       {canPay && left > 0 && !paying && (
         <Button size="sm" className="gap-1.5 self-start font-semibold" onClick={() => setPaying(true)}>
           <CircleCheck className="size-4" /> {verb}

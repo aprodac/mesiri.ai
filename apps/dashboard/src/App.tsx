@@ -32,6 +32,7 @@ import ExpensesPage from '@/pages/ExpensesPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
 import FinanceSettingsPage from '@/pages/FinanceSettingsPage'
 import VendorsPage from '@/pages/VendorsPage'
+import VendorPage from '@/pages/VendorPage'
 import MoneyPage from '@/pages/MoneyPage'
 import OperationsIssuesPage from '@/pages/OperationsIssuesPage'
 import OperationsAnalyticsPage from '@/pages/OperationsAnalyticsPage'
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="finance/expenses/:id" element={fin(<ExpensesPage />)} />
           <Route path="finance/money" element={fin(<MoneyPage />)} />
           <Route path="finance/vendors" element={fin(<VendorsPage />)} />
+          <Route path="finance/vendors/:id" element={fin(<VendorPage />)} />
           <Route path="finance/settings" element={fin(<FinanceSettingsPage />)} />
           <Route path="finance/reports" element={fin(<FinanceReportsPage />)} />
           <Route path="finance/overview" element={<Navigate to="/finance/expenses" replace />} />

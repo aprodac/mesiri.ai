@@ -14,7 +14,12 @@ from mesiri.application.organizations.create_company import NewCompany, create_c
 from mesiri.domains.dpr import live_feed
 from mesiri.infrastructure.postgres.repositories.fact_reviews import PostgresFactReviewRepository
 
-from .test_live_questions_postgres import NOW, SENDER, _message, conn  # noqa: F401 -- the shared fixture
+from .test_live_questions_postgres import (  # noqa: F401 -- the shared fixture
+    NOW,
+    SENDER,
+    _message,
+    conn,
+)
 
 pytestmark = pytest.mark.integration
 

@@ -11,6 +11,7 @@ import { fetchGrns, type GoodsReceipt } from '@/lib/orders'
 import { ProjectDot } from '@/components/requests/parts'
 import { VendorTile } from '@/components/orders/order-detail'
 import { cn } from '@/lib/utils'
+import { VendorLink } from '@/components/vendors/vendor-parts'
 
 // PRC-29: Procurement > GRN. Every goods received note: what came against which order, what was accepted into stock
 // and what was turned away (and why), the challan number and photo, who received it. A GRN is made by "Material
@@ -88,7 +89,7 @@ export default function GoodsReceiptsPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-semibold tabular-nums">{g.ref}</span>
-                      <span className="text-sm">{g.vendor_name}</span>
+                      <VendorLink id={g.vendor_id} name={g.vendor_name} className="text-sm" />
                       <Link to={`/procurement/orders?id=${g.order_id}`} className="text-xs text-muted-foreground tabular-nums underline-offset-2 hover:underline">{g.order_ref}</Link>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">

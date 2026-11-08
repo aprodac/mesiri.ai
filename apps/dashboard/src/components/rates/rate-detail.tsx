@@ -9,6 +9,7 @@ import { rupees } from '@/lib/orders'
 import { cn } from '@/lib/utils'
 import { fetchRatePurchases, rate, shortDate, type RateFilters, type RateItem, type RatePurchase, vendorColour } from '@/lib/rates'
 import { RateChart, TrendChip } from './parts'
+import { VendorLink } from '@/components/vendors/vendor-parts'
 
 // PRC-14: one item on the Rates page -- the last rate and what it moved from, the chart, each supplier against the
 // cheapest, what was paid above it, and every purchase (bill, order or plain delivery), newest first.
@@ -111,7 +112,7 @@ export function RateDetail({
               <li key={v.key} className={cn('flex flex-col gap-1.5 rounded-lg border px-3 py-2', v.best && 'border-green-400 bg-green-50/60 dark:border-green-900 dark:bg-green-950/30')}>
                 <div className="flex items-center gap-2">
                   <span className="size-2.5 shrink-0 rounded-full" style={{ background: vendorColour(v.key) }} />
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{v.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold"><VendorLink id={v.key.startsWith('name:') || v.key === 'unknown' ? null : v.key} name={v.name} tab="rates" /></span>
                   {v.best && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-green-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
                       <Trophy className="size-3" /> Cheapest

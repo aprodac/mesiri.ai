@@ -61,7 +61,7 @@ async def fetch(conn: AsyncConnection, organization_id: uuid.UUID, *, order_id: 
     """GRNs with their lines, newest first: for one order, or the GRN page (within ``project_ids``)."""
     sql = """
         SELECT g.id, g.number, g.purchase_order_id, o.number AS order_number, o.project_id, p.name AS project_name,
-               o.site_id, s.name AS site_name, v.name AS vendor_name, g.received_on, g.challan_no, g.challan_photo_key,
+               o.site_id, s.name AS site_name, v.name AS vendor_name, o.vendor_id, g.received_on, g.challan_no, g.challan_photo_key,
                g.received_by_name, g.notes, cu.full_name AS created_by_name, g.created_at
           FROM goods_receipts g
           JOIN purchase_orders o ON o.id = g.purchase_order_id
@@ -106,7 +106,7 @@ async def fetch(conn: AsyncConnection, organization_id: uuid.UUID, *, order_id: 
         "id": str(r["id"]), "ref": ref(r["number"]), "number": r["number"],
         "order_id": str(r["purchase_order_id"]), "order_ref": f"PO-{r['order_number']:04d}",
         "project_id": str(r["project_id"]), "project_name": r["project_name"], "site_id": str(r["site_id"]),
-        "site_name": r["site_name"], "vendor_name": r["vendor_name"], "received_on": str(r["received_on"]),
+        "site_name": r["site_name"], "vendor_name": r["vendor_name"], "vendor_id": str(r["vendor_id"]), "received_on": str(r["received_on"]),
         "challan_no": r["challan_no"], "photo_key": r["challan_photo_key"], "received_by_name": r["received_by_name"],
         "notes": r["notes"], "created_by_name": r["created_by_name"], "created_at": r["created_at"].isoformat(),
         "lines": by_grn.get(r["id"], []),

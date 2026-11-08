@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/dpr-page'
 import { useSiteNames } from '@/lib/site-names'
 import { longDate, qty } from '@/lib/site-day'
+import { VendorLink } from '@/components/vendors/vendor-parts'
 import {
   fetchInvoice,
   fetchInvoiceAttachment,
@@ -103,6 +104,7 @@ export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDe
               <SheetSection title="Details">
                 <Facts>
                   <Fact label="Site">{site ? `${site.name} · ${site.project}` : null}</Fact>
+                  {invoice.vendor_id && <Fact label="Supplier"><VendorLink id={invoice.vendor_id} name={invoice.vendor_name} tab="account" className="font-medium" /></Fact>}
                   {invoice.vendor_name && invoice.supplier_name && invoice.vendor_name !== invoice.supplier_name && (
                     // The document's own words are kept even when a vendor
                     // record matched, so a later rename can't rewrite history.

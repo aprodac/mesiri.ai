@@ -10,6 +10,7 @@ import { BILL_ACCEPT, billFile } from '@/lib/bill-upload'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { addExpenseBillApi, fetchExpenseAttachmentsApi } from '@/lib/api'
 import { ExpensePayments } from './expense-payments'
+import { VendorLink } from '@/components/vendors/vendor-parts'
 import { Link } from 'react-router-dom'
 import { fetchExpenseDetail } from '@/lib/expenses'
 
@@ -25,6 +26,8 @@ export interface ExpenseDetailData {
   category_name?: string
   category_id?: string
   vendor_name?: string | null
+  /** CC-09: the supplier's account opens from here. */
+  vendor_id?: string | null
   project_name?: string | null
   site_name?: string | null
   date: string
@@ -214,13 +217,14 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
             </Row>
             <Row label="Vendor">
               {expense.vendor_name ? (
-                onOpenVendor ? (
-                  <button type="button" className="underline-offset-2 hover:underline" onClick={onOpenVendor}>
-                    {expense.vendor_name}
-                  </button>
-                ) : (
-                  expense.vendor_name
-                )
+                <span className="inline-flex flex-wrap items-center gap-x-2">
+                  <VendorLink id={expense.vendor_id} name={expense.vendor_name} className="font-medium" />
+                  {onOpenVendor && (
+                    <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={onOpenVendor}>
+                      its expenses
+                    </button>
+                  )}
+                </span>
               ) : (
                 '—'
               )}

@@ -85,7 +85,7 @@ dates, `manual_completion_pct`) and `work_package_planned_items` (`work_type`, `
 | `labour_attendance_lines.planned_item_id` (nullable) | CC-05 | **Labour module** (allowed without approval since 3 Nov, said in the report). Workforce tables untouched |
 | `expenses.planned_item_id`, `expenses.measured_quantity` (nullable) | CC-06 | Subcontract / piece work |
 | `material_usage.planned_item_id` (nullable) | CC-08 | Consumption register tied to work |
-| `vendors.opening_balance`, `opening_balance_date`; `expenses.is_advance` | CC-09 / CC-10 | Advances are payments with no bill yet |
+| `vendors.opening_balance`, `opening_balance_date`, `credit_days`, `kind`; `expense_payments.vendor_id` / `advance_id` (built 8 Nov, migration 0516, instead of `expenses.is_advance`) | CC-09 / CC-10 | Advances are payments with no bill yet: a payment row with no expense; applying it to a bill moves no money |
 | `expense_categories.kind` (`MATERIAL`/`LABOUR`/`SUBCONTRACT`/`EQUIPMENT`/`OVERHEAD`/`OTHER`, nullable) | CC-01 | Lets receipts and attendance land in the right cost centre without new tables |
 
 No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 0484).
@@ -127,7 +127,7 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 | `GET /projects/{id}/boq/progress` | CC-04 | Planned / done / remaining quantity and budget per BOQ line |
 | `GET /sites/{id}/cost/daily?date`, `GET /projects/{id}/cost/variance?from&to` | CC-07 | Earned vs actual per item, labour and material separately, green/red, reasons |
 | `GET /projects/{id}/materials/reconciliation` | CC-08 | Required / received / consumed / on hand / expected shortage per material |
-| `GET /vendors/{id}/ledger?from&to`, `GET /vendors/payables` | CC-09 | Dated lines with running balance; net payable per vendor |
+| `GET /finance/vendors/{id}/ledger?date_from&date_to`, `GET /finance/vendors/payables` (built 8 Nov) | CC-09 | Dated lines with running balance; net payable per vendor |
 | `POST /vendors/{id}/payments` (reuses expenses + payments) | CC-10 | "Paid Malabar 20,000 advance" |
 
 v3 assistant: `ALLOWED` lines for `boq_progress`, `daily_cost`, `vendor_balance`, `vendor_payables`,
@@ -146,7 +146,7 @@ registers as drill-downs. Proposed (needs D-CC5):
 |---|---|---|
 | **Project cost** (project home) | Budget vs spent vs earned; BOQ lines with planned / done / remaining, colour per line; cost by cost centre | CC-12 |
 | **Today** (replaces Today/Live as landing) | Each site's day: work done, its cost, green/red per item and team, issues | CC-12 |
-| **Payables** | Who we owe, how much, oldest first; vendor ledger with running balance; advances | CC-09 |
+| **Payables** (built 8 Nov as Finance › Suppliers and each supplier's page) | Who we owe, how much, oldest first; vendor ledger with running balance; advances | CC-09 |
 | **Material position** | Required vs received vs consumed vs on hand; shortage forecast; delivered not billed | CC-08 |
 | **Issues & approvals** | Existing issues page, moved up | — |
 | Project setup | BOQ import, norms, cost centres, suppliers with opening balances | CC-13 |

@@ -1119,6 +1119,11 @@ export interface MoneyTransactionItem {
   source_id: string | null
   description: string | null
   correlation_id: string | null
+  /** The expense a payment paid (null for a payment to a supplier on account, CC-10). */
+  expense_id?: string | null
+  /** CC-10: the supplier a payment went to. */
+  vendor_id?: string | null
+  vendor_name?: string | null
 }
 
 export async function fetchTransactionsApi(params?: {

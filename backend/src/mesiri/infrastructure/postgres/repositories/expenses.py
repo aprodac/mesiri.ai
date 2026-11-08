@@ -88,6 +88,9 @@ _expense_payments = sa.Table(
     sa.Column("created_by", sa.UUID(as_uuid=True)),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
     sa.Column("updated_by", sa.UUID(as_uuid=True)),
+    sa.Column("vendor_id", sa.UUID(as_uuid=True)),
+    sa.Column("project_id", sa.UUID(as_uuid=True)),
+    sa.Column("advance_id", sa.UUID(as_uuid=True)),
 )
 
 _budgets = sa.Table(
@@ -172,6 +175,9 @@ def _row_to_payment(row) -> ExpensePayment:
         payment_method=row.payment_method,
         reference_number=row.reference_number,
         paid_time=row.paid_time,
+        vendor_id=row.get("vendor_id"),
+        project_id=row.get("project_id"),
+        advance_id=row.get("advance_id"),
     )
 
 
@@ -777,6 +783,13 @@ class PostgresExpensePaymentRepository:
     async def reverse_payment(
         self, organization_id: uuid.UUID, payment_id: uuid.UUID, created_by: uuid.UUID
     ) -> ExpensePayment:
+        """Undo one payment row.
+
+        - A bill payment or an on-account payment (CC-10) moved money: the money goes back to its account.
+        - A part of an on-account payment applied to a bill (``advance_id``) moved none: undoing it only frees that
+          part of the advance again, no money moves (8 Nov 2026; before, every undo refunded the account).
+        - An on-account payment still applied to bills is refused: undo those first (``reverse_on_account`` does both).
+        """
         payment_row = (
             await self.conn.execute(
                 sa.select(_expense_payments).where(
@@ -789,28 +802,156 @@ class PostgresExpensePaymentRepository:
             raise ValueError("expense payment not found")
         if payment_row["status"] != "confirmed":
             raise ValueError("only confirmed payments can be reversed")
+        if payment_row["expense_id"] is None and await self._applied_total(payment_id) > 0:
+            raise ValueError("this payment is used on bills; undo those first")
 
         await self.conn.execute(
             sa.update(_expense_payments)
             .where(_expense_payments.c.id == payment_id)
-            .values(status="reversed", updated_by=created_by)
+            .values(status="reversed", updated_by=created_by, updated_at=sa.func.now())
         )
-        await self._transactions.record(
-            organization_id=organization_id,
-            transaction_type="reversal",
-            amount=payment_row["amount"],
-            occurred_date=datetime.date.today(),
-            created_by=created_by,
-            to_account_id=payment_row["account_id"],
-            source_type="expense_payment",
-            source_id=payment_id,
-        )
-        await self._recompute_payment_status(organization_id, payment_row["expense_id"])
+        if payment_row["advance_id"] is None:
+            await self._transactions.record(
+                organization_id=organization_id,
+                transaction_type="reversal",
+                amount=payment_row["amount"],
+                occurred_date=datetime.date.today(),
+                created_by=created_by,
+                to_account_id=payment_row["account_id"],
+                source_type="expense_payment",
+                source_id=payment_id,
+            )
+        if payment_row["expense_id"] is not None:
+            await self._recompute_payment_status(organization_id, payment_row["expense_id"])
 
         res = await self.conn.execute(
             sa.select(_expense_payments).where(_expense_payments.c.id == payment_id)
         )
         return _row_to_payment(res.mappings().one())
+
+    # --- CC-10: paying a supplier on account (an advance, or against the running balance) -----------------------
+
+    async def _applied_total(self, advance_id: uuid.UUID) -> Decimal:
+        stmt = sa.select(sa.func.coalesce(sa.func.sum(_expense_payments.c.amount), 0)).where(
+            _expense_payments.c.advance_id == advance_id, _expense_payments.c.status == "confirmed"
+        )
+        return Decimal((await self.conn.execute(stmt)).scalar_one())
+
+    async def advance_left(self, organization_id: uuid.UUID, advance_id: uuid.UUID) -> Decimal:
+        """What of an on-account payment is not yet applied to a bill (0 when undone or not one)."""
+        row = (
+            await self.conn.execute(
+                sa.select(_expense_payments.c.amount, _expense_payments.c.status, _expense_payments.c.expense_id).where(
+                    _expense_payments.c.id == advance_id, _expense_payments.c.organization_id == organization_id
+                )
+            )
+        ).mappings().first()
+        if row is None or row["status"] != "confirmed" or row["expense_id"] is not None:
+            return Decimal(0)
+        return Decimal(row["amount"]) - await self._applied_total(advance_id)
+
+    async def record_on_account(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        vendor_id: uuid.UUID,
+        account_id: uuid.UUID,
+        amount: Decimal,
+        paid_date: datetime.date,
+        created_by: uuid.UUID,
+        project_id: uuid.UUID | None = None,
+        payment_method: str | None = None,
+        reference_number: str | None = None,
+        description: str | None = None,
+    ) -> ExpensePayment:
+        """Money paid to a supplier with no bill picked: it leaves the account now (one money transaction) and is
+        applied to bills by ``apply_advance``."""
+        if amount <= 0:
+            raise ValueError("amount must be positive")
+        payment_id = uuid.uuid4()
+        await self.conn.execute(
+            sa.insert(_expense_payments).values(
+                id=payment_id, organization_id=organization_id, expense_id=None, vendor_id=vendor_id,
+                project_id=project_id, account_id=account_id, amount=amount, payment_method=payment_method,
+                reference_number=reference_number, paid_date=paid_date, status="confirmed", created_by=created_by,
+            )
+        )
+        await self._transactions.record(
+            organization_id=organization_id,
+            transaction_type="expense_payment",
+            amount=amount,
+            occurred_date=paid_date,
+            created_by=created_by,
+            from_account_id=account_id,
+            source_type="expense_payment",
+            source_id=payment_id,
+            description=description,
+        )
+        res = await self.conn.execute(sa.select(_expense_payments).where(_expense_payments.c.id == payment_id))
+        return _row_to_payment(res.mappings().one())
+
+    async def apply_advance(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        advance_id: uuid.UUID,
+        expense_id: uuid.UUID,
+        amount: Decimal,
+        created_by: uuid.UUID,
+    ) -> ExpensePayment:
+        """Use ``amount`` of an on-account payment on a bill: the bill is paid by that much, no money moves."""
+        adv = (
+            await self.conn.execute(
+                sa.select(_expense_payments).where(
+                    _expense_payments.c.id == advance_id, _expense_payments.c.organization_id == organization_id
+                )
+            )
+        ).mappings().first()
+        if adv is None or adv["expense_id"] is not None:
+            raise ValueError("on-account payment not found")
+        left = await self.advance_left(organization_id, advance_id)
+        if amount <= 0 or amount > left:
+            raise ValueError(f"only {left} of this payment is left to use")
+        bill = (
+            await self.conn.execute(
+                sa.select(_expenses.c.amount).where(
+                    _expenses.c.id == expense_id, _expenses.c.organization_id == organization_id
+                )
+            )
+        ).mappings().first()
+        if bill is None:
+            raise ValueError("expense not found")
+        if await self._confirmed_paid_total(expense_id) + amount > Decimal(bill["amount"]):
+            raise ValueError("confirmed payment total cannot exceed expense amount")
+        row_id = uuid.uuid4()
+        await self.conn.execute(
+            sa.insert(_expense_payments).values(
+                id=row_id, organization_id=organization_id, expense_id=expense_id, advance_id=advance_id,
+                vendor_id=adv["vendor_id"], account_id=adv["account_id"], amount=amount,
+                payment_method=adv["payment_method"], reference_number=adv["reference_number"],
+                paid_date=adv["paid_date"], status="confirmed", created_by=created_by,
+            )
+        )
+        await self._recompute_payment_status(organization_id, expense_id)
+        res = await self.conn.execute(sa.select(_expense_payments).where(_expense_payments.c.id == row_id))
+        return _row_to_payment(res.mappings().one())
+
+    async def reverse_on_account(
+        self, organization_id: uuid.UUID, payment_id: uuid.UUID, created_by: uuid.UUID
+    ) -> ExpensePayment:
+        """Undo an on-account payment: its uses on bills first (those bills are unpaid again), then the money."""
+        applied = (
+            await self.conn.execute(
+                sa.select(_expense_payments.c.id).where(
+                    _expense_payments.c.advance_id == payment_id,
+                    _expense_payments.c.organization_id == organization_id,
+                    _expense_payments.c.status == "confirmed",
+                )
+            )
+        ).scalars().all()
+        for row_id in applied:
+            await self.reverse_payment(organization_id, row_id, created_by)
+        return await self.reverse_payment(organization_id, payment_id, created_by)
 
 
 class PostgresBudgetRepository:

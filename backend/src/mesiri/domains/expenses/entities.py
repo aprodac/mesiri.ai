@@ -102,7 +102,8 @@ class ExpenseAttachment:
 class ExpensePayment:
     id: uuid.UUID
     organization_id: uuid.UUID
-    expense_id: uuid.UUID
+    #: None for a payment made to a supplier on account (CC-10): an advance, or against the running balance.
+    expense_id: uuid.UUID | None
     account_id: uuid.UUID
     amount: Decimal
     paid_date: datetime.date
@@ -111,6 +112,11 @@ class ExpensePayment:
     payment_method: str | None = None
     reference_number: str | None = None
     paid_time: datetime.time | None = None
+    #: CC-10: the supplier an on-account payment went to.
+    vendor_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    #: CC-10: set when this row is part of an on-account payment applied to a bill; it moves no money itself.
+    advance_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

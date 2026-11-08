@@ -3,13 +3,15 @@ expenses typed in, but the materials delivered and the labour on site, each coun
 
 - **Expenses**: confirmed expenses (``expenses``), however paid (PRC-18).
 - **Materials**: deliveries with a price (``material_receipts``, the same set as the Rates page: received, not taken
-  back, not a move between sites) that did *not* come with a supplier bill: a bill (``invoice_id``) already made an
-  expense, so it is in Expenses and is not counted again. Deliveries without a price are counted, not valued.
+  back, not a move between sites) that are not *billed* (``rates.BILLED_SQL``): a bill that made an expense is in
+  Expenses and is not counted again. A bill recorded without a price, or taken back, leaves its deliveries counted
+  here (8 Nov 2026: before, any ``invoice_id`` hid the delivery, so those cost nothing anywhere). Deliveries without a price are counted, not valued.
 - **Labour**: attendance valued at the wage on each line (``PostgresWorkforceReadRepository.aggregate_attendance``,
   the Labour module's own rule: corrected and voided reports out, lines without a wage give man-days but no cost).
 
 Known overlap, said on the page: a delivery priced on site *and* paid later by an expense typed without the bill
-counts twice. The supplier ledger (CC-09) is where a delivery and its payment are matched.
+counts twice until someone says which bill it was on: the supplier ledger's "On this bill" (CC-09) links them, and
+from then on the delivery is billed and counted once.
 """
 
 from __future__ import annotations
@@ -67,7 +69,7 @@ async def project_costs(
     # Materials: priced deliveries without a bill (a bill made an expense already), and how many had no price.
     delivered = await purchases.fetch_purchases(conn, org, project_ids=project_ids, date_from=date_from, date_to=date_to)
     for r in delivered:
-        if r.get("invoice_id") or (site_id is not None and r.get("site_id") != site_id):
+        if r.get("billed") or (site_id is not None and r.get("site_id") != site_id):
             continue
         if r.get("site_id") is not None and not visible(r["project_id"], r["site_id"]):
             continue
@@ -122,7 +124,7 @@ async def project_costs(
 async def _unpriced_deliveries(conn, org, project_ids, site_id, date_from, date_to) -> int:
     sql = ("SELECT COUNT(*) FROM material_receipts r WHERE r.organization_id = :org AND r.unit_cost IS NULL "
            "AND r.total_cost IS NULL AND r.movement_reason = 'RECEIVED' AND r.transfer_id IS NULL "
-           "AND r.reverses_movement_id IS NULL AND r.invoice_id IS NULL AND r.occurred_date BETWEEN :f AND :t "
+           "AND r.reverses_movement_id IS NULL AND NOT " + purchases.BILLED_SQL + " AND r.occurred_date BETWEEN :f AND :t "
            "AND NOT EXISTS (SELECT 1 FROM material_usage x WHERE x.reverses_movement_id = r.id)")
     params: dict = {"org": org, "f": date_from, "t": date_to}
     if project_ids is not None:

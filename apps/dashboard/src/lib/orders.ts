@@ -143,6 +143,7 @@ export interface GoodsReceipt {
   site_id: string
   site_name: string
   vendor_name: string
+  vendor_id?: string
   received_on: string
   challan_no: string | null
   received_by_name: string | null

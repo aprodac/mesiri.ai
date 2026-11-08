@@ -23,6 +23,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { periodRange, type Period } from '@/lib/period'
 import { CHIP } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
+import { vendorUrl } from '@/lib/vendors'
 import { deleteAccountApi, fetchAccountsApi, fetchFinanceSettingsApi, fetchTransactionsApi, reverseTransferApi } from '@/lib/api'
 import { exportCsv } from '@/lib/export'
 import { compact, fetchExpenses, mayManageMoney, mayMoveMoney } from '@/lib/expenses'
@@ -473,11 +474,13 @@ export default function MoneyPage() {
                           <button
                             type="button"
                             className="flex min-w-0 flex-1 flex-col gap-0.5 text-left after:absolute after:inset-0 disabled:cursor-default"
-                            disabled={tx.transaction_type !== 'expense_payment' || !(tx.expense_id ?? tx.source_id)}
-                            onClick={() => navigate(`/finance/expenses/${tx.expense_id ?? tx.source_id}`)}
+                            disabled={tx.transaction_type !== 'expense_payment' || !(tx.expense_id || tx.vendor_id)}
+                            onClick={() => navigate(tx.expense_id ? `/finance/expenses/${tx.expense_id}` : vendorUrl(tx.vendor_id!, 'payments'))}
                           >
                             <span className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{TX_LABEL[tx.transaction_type] ?? tx.transaction_type}</span>
+                              <span className="font-medium">
+                                {tx.transaction_type === 'expense_payment' && tx.vendor_name ? `Paid to ${tx.vendor_name}` : TX_LABEL[tx.transaction_type] ?? tx.transaction_type}
+                              </span>
                               {tx.description && <span className="line-clamp-1 text-xs text-muted-foreground">{tx.description}</span>}
                             </span>
                             <span className="text-xs text-muted-foreground">

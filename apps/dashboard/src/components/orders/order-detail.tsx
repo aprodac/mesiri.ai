@@ -14,6 +14,7 @@ import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
 import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, orderMessage, whatsappUrl, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import { NewOrderDialog } from './new-order-dialog'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
+import { VendorLink } from '@/components/vendors/vendor-parts'
 
 // PRC-06/08: one order, as the office and the site see it: the supplier, what was ordered and what came per line,
 // the deliveries so far, the requests it covers, and the next step (receive, move the date, cancel, close short).
@@ -97,7 +98,7 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
         <div className="flex items-center gap-3">
           <VendorTile id={order.vendor_id} name={order.vendor_name} size="lg" />
           <div className="min-w-0">
-            <h2 className="truncate text-xl leading-tight font-semibold">{order.vendor_name}</h2>
+            <h2 className="truncate text-xl leading-tight font-semibold"><VendorLink id={order.vendor_id} name={order.vendor_name} tab="account" /></h2>
             <div className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
               {order.vendor_phone && <a href={`tel:${order.vendor_phone}`} className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-2 hover:underline"><Phone className="size-3.5" />{order.vendor_phone}</a>}
               <span className="inline-flex items-center gap-1.5"><ProjectDot id={order.project_id} />{order.project_name} › {order.site_name}</span>

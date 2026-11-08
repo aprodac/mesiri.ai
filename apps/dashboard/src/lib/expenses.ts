@@ -118,6 +118,8 @@ export interface ExpensePayment {
   account_name: string
   account_type: string
   recorded_by: string | null
+  /** CC-10: paid from an advance given to the supplier earlier (no money moved now). */
+  from_advance?: boolean
 }
 
 export interface ExpensePayments {
@@ -127,6 +129,8 @@ export interface ExpensePayments {
   left: string
   payment_status: string
   payments: ExpensePayment[]
+  /** CC-10: what the bill's supplier still holds of our advances, offered before paying again. */
+  vendor_advance?: { vendor_id: string; vendor: string; left: string; advances: { id: string; date: string; left: string }[] } | null
 }
 
 export async function fetchExpensePayments(expenseId: string): Promise<ExpensePayments> {

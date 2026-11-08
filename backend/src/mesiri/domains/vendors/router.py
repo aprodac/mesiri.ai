@@ -1,15 +1,27 @@
+"""Finance > Vendors (suppliers): the list, their details, and the supplier ledger (CC-09) with paying them (CC-10).
+
+The list and details are for everyone with Finance (a vendor is picked when recording an expense). What the company
+owes them (balances, ledger, payables) is for the roles that see spending (SEC-01 ``may_view_expenses``), within their
+projects; paying, opening balances, billing deliveries, deleting and merging are for the roles that manage money
+(SEC-03 ``may_manage_money``). Ledger rules: ``ledger.py``.
+"""
+
 from __future__ import annotations
 
+import datetime
 import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.authorization.roles import may_manage_money, may_view_expenses
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
+from mesiri.domains.vendors import ledger
 from mesiri.domains.vendors.details import (
     VendorDetailError,
     clean_address,
@@ -34,8 +46,18 @@ class VendorResponse(BaseModel):
     phone: str | None = None
     gstin: str | None = None
     address: str | None = None
+    #: CC-09: what kind of vendor, the credit they give, a contact, notes, the opening balance.
+    kind: str = "supplier"
+    credit_days: int | None = None
+    contact_person: str | None = None
+    notes: str | None = None
+    opening_balance: Decimal | None = None
+    opening_balance_date: datetime.date | None = None
     expense_count: int = 0
     total_amount_paid: Decimal = Decimal("0")
+
+
+KINDS = ("supplier", "subcontractor", "hire", "service")
 
 
 class CreateVendorRequest(BaseModel):
@@ -43,6 +65,12 @@ class CreateVendorRequest(BaseModel):
     phone: str | None = None
     gstin: str | None = None
     address: str | None = None
+    kind: str | None = None
+    credit_days: int | None = Field(default=None, ge=0, le=365)
+    contact_person: str | None = None
+    notes: str | None = None
+    opening_balance: Decimal | None = None
+    opening_balance_date: datetime.date | None = None
 
 
 class UpdateVendorRequest(BaseModel):
@@ -52,15 +80,43 @@ class UpdateVendorRequest(BaseModel):
     phone: str | None = None
     gstin: str | None = None
     address: str | None = None
+    kind: str | None = None
+    credit_days: int | None = Field(default=None, ge=0, le=365)
+    contact_person: str | None = None
+    notes: str | None = None
+    opening_balance: Decimal | None = None
+    opening_balance_date: datetime.date | None = None
 
 
-def _details(body: BaseModel) -> dict:
-    """The contact details the request sent, cleaned; a 422 with the person's message for a wrong one."""
-    cleaners = {"phone": clean_phone, "gstin": clean_gstin, "address": clean_address}
+def _text(value: str | None) -> str | None:
+    t = " ".join((value or "").split())
+    return t or None
+
+
+def _details(body: BaseModel, auth_context: AuthorizationContext | None = None) -> dict:
+    """The details the request sent, cleaned; a 422 with the person's message for a wrong one."""
+    cleaners = {"phone": clean_phone, "gstin": clean_gstin, "address": clean_address, "contact_person": _text,
+                "notes": lambda v: (v or "").strip() or None}
+    sent = body.model_fields_set
     try:
-        return {k: cleaners[k](getattr(body, k)) for k in cleaners if k in body.model_fields_set}
+        out = {k: cleaners[k](getattr(body, k)) for k in cleaners if k in sent}
     except VendorDetailError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if "kind" in sent:
+        kind = (body.kind or "supplier").strip().lower()
+        if kind not in KINDS:
+            raise HTTPException(status_code=422, detail="A vendor is a supplier, subcontractor, hire or service.")
+        out["kind"] = kind
+    if "credit_days" in sent:
+        out["credit_days"] = body.credit_days
+    if {"opening_balance", "opening_balance_date"} & sent:
+        if auth_context is not None and not may_manage_money(auth_context.role):
+            raise HTTPException(status_code=403, detail="Only the owner, an admin or finance can set an opening balance.")
+        balance = body.opening_balance
+        out["opening_balance"] = balance.quantize(Decimal("0.01")) if balance is not None else None
+        when = body.opening_balance_date
+        out["opening_balance_date"] = when or (datetime.date.today() if balance is not None else None)
+    return out
 
 
 def _response(vendor, **metrics) -> VendorResponse:  # noqa: ANN001
@@ -76,6 +132,19 @@ def _response(vendor, **metrics) -> VendorResponse:  # noqa: ANN001
     )
 
 
+async def _with_extras(conn: AsyncConnection, org: uuid.UUID, responses: list[VendorResponse]) -> list[VendorResponse]:
+    """The CC-09 details for each vendor (one query for the list)."""
+    extra = await ledger.vendors_of(conn, org)
+    out = []
+    for r in responses:
+        v = extra.get(r.id)
+        if v:
+            r = r.model_copy(update={k: v[k] for k in ("kind", "credit_days", "contact_person", "notes",
+                                                        "opening_balance", "opening_balance_date")})
+        out.append(r)
+    return out
+
+
 @router.get("", response_model=list[VendorResponse])
 async def list_vendors(
     auth_context: AuthorizationContext = Depends(get_auth_context),
@@ -84,10 +153,10 @@ async def list_vendors(
     """List all vendors for the organization with live disbursement metrics."""
     repo = PostgresVendorRepository(conn)
     metrics = await repo.list_with_metrics(auth_context.organization_id)
-    return [
+    return await _with_extras(conn, auth_context.organization_id, [
         _response(m["vendor"], expense_count=m["expense_count"], total_amount_paid=m["total_amount"])
         for m in metrics
-    ]
+    ])
 
 
 @router.post("", response_model=VendorResponse, status_code=201)
@@ -98,7 +167,9 @@ async def create_vendor(
 ):
     """Create a new vendor in the organization."""
     repo = PostgresVendorRepository(conn)
-    details = _details(body)
+    details = _details(body, auth_context)
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="A vendor needs a name.")
     existing = await repo.find_by_name_exact_active(auth_context.organization_id, body.name)
     if existing:
         raise HTTPException(status_code=409, detail="Vendor with this name already exists")
@@ -111,7 +182,8 @@ async def create_vendor(
         vendor = await repo.update(
             auth_context.organization_id, vendor.id, updated_by=auth_context.user_id, details=details
         )
-    return _response(vendor, expense_count=0, total_amount_paid=Decimal("0"))
+    return (await _with_extras(conn, auth_context.organization_id,
+                               [_response(vendor, expense_count=0, total_amount_paid=Decimal("0"))]))[0]
 
 
 @router.patch("/{vendor_id}", response_model=VendorResponse)
@@ -126,13 +198,578 @@ async def update_vendor(
     vendor = await repo.get_by_id(auth_context.organization_id, vendor_id)
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
+    if body.name is not None:
+        if not body.name.strip():
+            raise HTTPException(status_code=422, detail="A vendor needs a name.")
+        clash = await repo.find_by_name_exact_active(auth_context.organization_id, body.name)
+        if clash and clash.id != vendor_id:
+            raise HTTPException(status_code=409, detail=f"{clash.name} is already a vendor: merge the two instead.")
+    if body.status is not None and body.status.strip().lower() not in ("active", "inactive"):
+        raise HTTPException(status_code=422, detail="status is active or inactive")
     updated = await repo.update(
         organization_id=auth_context.organization_id,
         vendor_id=vendor_id,
         name=body.name,
         status=body.status,
         updated_by=auth_context.user_id,
-        details=_details(body),
+        details=_details(body, auth_context),
     )
     assert updated is not None
-    return _response(updated, expense_count=0, total_amount_paid=Decimal("0"))
+    return (await _with_extras(conn, auth_context.organization_id,
+                               [_response(updated, expense_count=0, total_amount_paid=Decimal("0"))]))[0]
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# CC-09 supplier ledger and payables; CC-10 paying a supplier (on account, applied to bills oldest first).
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+def _view_scope(auth: AuthorizationContext) -> set[uuid.UUID] | None:
+    """The projects whose money this person sees (SEC-01, the same as expenses); None: the whole company."""
+    if not may_view_expenses(auth.role):
+        raise HTTPException(status_code=403, detail="Supplier balances are shown to the roles that see spending.")
+    if auth.project_scope.grants_all_org_projects:
+        return None
+    return set(auth.project_scope.project_ids)
+
+
+def _narrow(scope: set[uuid.UUID] | None, project_id: uuid.UUID | None) -> set[uuid.UUID] | None:
+    if project_id is None:
+        return scope
+    if scope is not None and project_id not in scope:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {project_id}
+
+
+def _manage(auth: AuthorizationContext, what: str) -> None:
+    if not may_manage_money(auth.role):
+        raise HTTPException(status_code=403, detail=f"Only the owner, an admin or finance can {what}.")
+
+
+async def _today(conn: AsyncConnection, org: uuid.UUID) -> datetime.date:
+    from mesiri.application.dpr import project_day
+
+    return await project_day.company_today(conn, org)
+
+
+async def _vendor(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.UUID) -> dict:
+    v = (await ledger.vendors_of(conn, org, vendor_id)).get(vendor_id)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    return v
+
+
+@router.get("/payables")
+async def payables(
+    project_id: uuid.UUID | None = None,
+    include_settled: bool = False,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Every supplier with what we owe them: balance, not billed yet, open and overdue bills, advances, age."""
+    projects = _narrow(_view_scope(auth_context), project_id)
+    org = auth_context.organization_id
+    entries, state = await ledger.fetch_entries(conn, org, vendor_id=None, projects=projects)
+    today = await _today(conn, org)
+    rows = []
+    totals = {k: Decimal(0) for k in ("payable", "advance", "overdue", "unbilled", "bills_left")}
+    buckets = {key: Decimal(0) for *_, key in ledger.BUCKETS}
+    for v in state["vendors"].values():
+        s = ledger.summarise(v, entries, state, today)
+        if not s["lines"] and not include_settled:
+            continue
+        bal = Decimal(s["balance"])
+        if not include_settled and bal == 0 and not s["bills_open"] and Decimal(s["advance_left"]) == 0:
+            continue
+        totals["payable"] += max(bal, Decimal(0))
+        totals["advance"] += max(-bal, Decimal(0))
+        for k in ("overdue", "unbilled", "bills_left"):
+            totals[k] += Decimal(s[k])
+        for k, val in s["buckets"].items():
+            buckets[k] += Decimal(val)
+        s.pop("open_bills")
+        s.pop("advances")
+        rows.append({**ledger.vendor_out(v), **s,
+                     "oldest_unbilled": s["oldest_unbilled"].isoformat() if s["oldest_unbilled"] else None})
+    rows.sort(key=lambda r: (-Decimal(r["overdue"]), -Decimal(r["balance"]), r["name"].lower()))
+    return {"as_of": today.isoformat(), "partial": projects is not None,
+            "totals": {k: ledger.money(v) for k, v in totals.items()},
+            "buckets": {k: ledger.money(v) for k, v in buckets.items()},
+            "vendors": rows}
+
+
+@router.get("/{vendor_id}")
+async def get_vendor(
+    vendor_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """One vendor's details, and what is linked to it (so a delete can say why it is refused)."""
+    v = await _vendor(conn, auth_context.organization_id, vendor_id)
+    return {**ledger.vendor_out(v), "linked": await _links(conn, auth_context.organization_id, vendor_id)}
+
+
+@router.get("/{vendor_id}/ledger")
+async def vendor_ledger(
+    vendor_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The supplier's account, line by line with a running balance; ``date_from`` brings the earlier lines forward
+    as one balance. Also the open bills (due, overdue), deliveries not billed and advances not used yet."""
+    projects = _narrow(_view_scope(auth_context), project_id)
+    org = auth_context.organization_id
+    v = await _vendor(conn, org, vendor_id)
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from is after date_to")
+    entries, state = await ledger.fetch_entries(conn, org, vendor_id=vendor_id, projects=projects)
+    today = await _today(conn, org)
+    summary = ledger.summarise(v, entries, state, today)
+    balance = Decimal(0)
+    forward = Decimal(0)
+    lines = []
+    for e in entries:
+        balance += e["owe"] - e["paid"]
+        if date_from and e["date"] < date_from:
+            forward = balance
+            continue
+        if date_to and e["date"] > date_to:
+            continue
+        lines.append(ledger.entry_out(e, balance))
+    closing = Decimal(lines[-1]["balance"]) if lines else forward
+    unbilled = [ledger.entry_out(e, Decimal(0)) for e in entries if e["kind"] == "delivery"]
+    return {
+        "vendor": ledger.vendor_out(v), "as_of": today.isoformat(), "partial": projects is not None,
+        "date_from": date_from.isoformat() if date_from else None, "date_to": date_to.isoformat() if date_to else None,
+        "brought_forward": ledger.money(forward) if date_from else None,
+        "closing": ledger.money(closing),
+        "period": {"owed": ledger.money(sum((Decimal(x["owe"] or 0) for x in lines), Decimal(0))),
+                   "paid": ledger.money(sum((Decimal(x["paid"] or 0) for x in lines), Decimal(0)))},
+        "summary": {k: (v2.isoformat() if isinstance(v2, datetime.date) else v2) for k, v2 in summary.items()},
+        "unbilled": unbilled,
+        "lines": lines,
+    }
+
+
+class PayVendorRequest(BaseModel):
+    account_id: uuid.UUID
+    amount: Decimal = Field(gt=0)
+    paid_date: datetime.date | None = None
+    reference: str | None = None
+    method: str | None = None
+    project_id: uuid.UUID | None = None
+    #: The bills to pay, in this order. Left out: the oldest open bills first. ``[]``: keep it all as an advance.
+    bill_ids: list[uuid.UUID] | None = None
+
+
+async def _open_bills(conn: AsyncConnection, auth: AuthorizationContext, vendor_id: uuid.UUID,
+                      bill_ids: list[uuid.UUID] | None) -> list[dict]:
+    """The bills a payment may go to: open, this vendor's, in the caller's projects; oldest first unless named."""
+    scope = _view_scope(auth)
+    entries, state = await ledger.fetch_entries(conn, auth.organization_id, vendor_id=vendor_id, projects=scope)
+    open_ = {b["id"]: b for b in state["bills"].values() if b["left"] > 0}
+    if bill_ids is None:
+        return sorted(open_.values(), key=lambda b: (b["date"], b["number"] or ""))
+    out = []
+    for bid in bill_ids:
+        b = open_.get(str(bid))
+        if b is None:
+            raise HTTPException(status_code=409, detail="One of those bills is not open for this vendor.")
+        out.append(b)
+    return out
+
+
+async def _apply(conn: AsyncConnection, auth: AuthorizationContext, advance_id: uuid.UUID, bills: list[dict]) -> list:
+    from mesiri.infrastructure.postgres.repositories.expenses import (
+        PostgresExpensePaymentRepository,
+    )
+
+    repo = PostgresExpensePaymentRepository(conn)
+    used = []
+    for b in bills:
+        left = await repo.advance_left(auth.organization_id, advance_id)
+        if left <= 0:
+            break
+        part = min(left, b["left"])
+        if part <= 0:
+            continue
+        await repo.apply_advance(organization_id=auth.organization_id, advance_id=advance_id,
+                                 expense_id=uuid.UUID(b["id"]), amount=part, created_by=auth.user_id)
+        used.append({"expense_id": b["id"], "number": b["number"], "amount": ledger.money(part)})
+    return used
+
+
+@router.post("/{vendor_id}/payments", status_code=201)
+async def pay_vendor(
+    vendor_id: uuid.UUID,
+    body: PayVendorRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Pay a supplier from an account: the money leaves once, then pays open bills oldest first (or the ones named);
+    what is left over stays with them as an advance and pays the next bill."""
+    from mesiri.infrastructure.postgres.repositories.expenses import (
+        PostgresExpensePaymentRepository,
+    )
+    from mesiri.infrastructure.postgres.repositories.finance import PostgresMoneyAccountRepository
+
+    _manage(auth_context, "pay a supplier")
+    org = auth_context.organization_id
+    v = await _vendor(conn, org, vendor_id)
+    scope = _view_scope(auth_context)
+    if body.project_id is not None:
+        _narrow(scope, body.project_id)
+    account = await PostgresMoneyAccountRepository(conn).get_by_id(org, body.account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if str(getattr(account.status, "value", account.status)) != "active":
+        raise HTTPException(status_code=409, detail=f"{account.name} is closed.")
+    bills = await _open_bills(conn, auth_context, vendor_id, body.bill_ids)
+    amount = body.amount.quantize(Decimal("0.01"))
+    payment = await PostgresExpensePaymentRepository(conn).record_on_account(
+        organization_id=org, vendor_id=vendor_id, account_id=body.account_id, amount=amount,
+        paid_date=body.paid_date or await _today(conn, org), created_by=auth_context.user_id,
+        project_id=body.project_id, payment_method=_text(body.method), reference_number=_text(body.reference),
+        description=f"Paid to {v['name']}",
+    )
+    used = await _apply(conn, auth_context, payment.id, bills)
+    left = amount - sum((Decimal(u["amount"]) for u in used), Decimal(0))
+    return {"payment_id": str(payment.id), "vendor_id": str(vendor_id), "vendor": v["name"], "amount": ledger.money(amount),
+            "account": account.name, "paid_date": payment.paid_date.isoformat(), "bills_paid": used,
+            "advance_left": ledger.money(left)}
+
+
+class ApplyRequest(BaseModel):
+    #: Left out: the oldest open bills first.
+    bill_ids: list[uuid.UUID] | None = None
+
+
+@router.post("/{vendor_id}/payments/{payment_id}/apply")
+async def apply_advance(
+    vendor_id: uuid.UUID,
+    payment_id: uuid.UUID,
+    body: ApplyRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Use what is left of an advance on bills (oldest first, or the ones named). No money moves."""
+    from mesiri.infrastructure.postgres.repositories.expenses import (
+        PostgresExpensePaymentRepository,
+    )
+
+    _manage(auth_context, "use an advance on a bill")
+    await _on_account(conn, auth_context.organization_id, vendor_id, payment_id)
+    left = await PostgresExpensePaymentRepository(conn).advance_left(auth_context.organization_id, payment_id)
+    if left <= 0:
+        raise HTTPException(status_code=409, detail="Nothing of this payment is left to use.")
+    bills = await _open_bills(conn, auth_context, vendor_id, body.bill_ids)
+    if not bills:
+        raise HTTPException(status_code=409, detail="No open bill to use it on.")
+    used = await _apply(conn, auth_context, payment_id, bills)
+    after = await PostgresExpensePaymentRepository(conn).advance_left(auth_context.organization_id, payment_id)
+    return {"payment_id": str(payment_id), "bills_paid": used, "advance_left": ledger.money(after)}
+
+
+async def _on_account(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.UUID, payment_id: uuid.UUID) -> None:
+    row = (await conn.execute(text(
+        "SELECT 1 FROM expense_payments WHERE id = :p AND organization_id = :org AND vendor_id = :v "
+        "AND expense_id IS NULL"), {"p": payment_id, "org": org, "v": vendor_id})).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+
+@router.post("/{vendor_id}/payments/{payment_id}/reverse")
+async def reverse_vendor_payment(
+    vendor_id: uuid.UUID,
+    payment_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Undo a payment made by mistake: the bills it paid are open again and the money goes back to the account."""
+    from mesiri.infrastructure.postgres.repositories.expenses import (
+        PostgresExpensePaymentRepository,
+    )
+
+    _manage(auth_context, "undo a payment")
+    await _on_account(conn, auth_context.organization_id, vendor_id, payment_id)
+    try:
+        await PostgresExpensePaymentRepository(conn).reverse_on_account(auth_context.organization_id, payment_id,
+                                                                        auth_context.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"payment_id": str(payment_id), "status": "reversed"}
+
+
+# --- Deliveries and bills: "these deliveries are on this bill" (D-CC3: the bill replaces the deliveries) -----------
+
+
+class BillDeliveriesRequest(BaseModel):
+    receipt_ids: list[uuid.UUID] = Field(min_length=1)
+    #: Left out: the deliveries' total.
+    amount: Decimal | None = Field(default=None, gt=0)
+    bill_number: str | None = None
+    bill_date: datetime.date | None = None
+    tax_amount: Decimal | None = Field(default=None, ge=0)
+
+
+class MatchRequest(BaseModel):
+    receipt_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+async def _unbilled(conn: AsyncConnection, auth: AuthorizationContext, vendor_id: uuid.UUID,
+                    receipt_ids: list[uuid.UUID]) -> list[dict]:
+    scope = _view_scope(auth)
+    entries, _ = await ledger.fetch_entries(conn, auth.organization_id, vendor_id=vendor_id, projects=scope)
+    open_ = {e["links"]["receipt_id"]: e for e in entries if e["kind"] == "delivery"}
+    rows = []
+    for rid in dict.fromkeys(receipt_ids):
+        e = open_.get(str(rid))
+        if e is None:
+            raise HTTPException(status_code=409, detail="One of those deliveries is not an unbilled delivery of this vendor.")
+        rows.append(e)
+    return rows
+
+
+async def _link(conn: AsyncConnection, auth: AuthorizationContext, v: dict, expense: dict, rows: list[dict],
+                bill_number: str | None, bill_date: datetime.date | None) -> list[str]:
+    """One material invoice per project for the bill (an invoice belongs to one project), the deliveries on it."""
+    by_project: dict = {}
+    for e in rows:
+        by_project.setdefault(e["project_id"], []).append(e)
+    ids = []
+    for project_id, group in by_project.items():
+        inv = uuid.uuid4()
+        await conn.execute(text(
+            "INSERT INTO material_invoices (id, organization_id, project_id, vendor_id, supplier_name, invoice_number, "
+            "invoice_date, invoice_total, expense_id, source, created_by, notes) VALUES (:id, :org, :p, :v, :name, :no, "
+            ":d, :total, :e, 'web', :by, 'Linked on the supplier ledger')"),
+            {"id": inv, "org": auth.organization_id, "p": project_id, "v": v["id"], "name": v["name"],
+             "no": bill_number, "d": bill_date or expense["occurred_date"],
+             "total": expense["amount"] if len(by_project) == 1 else None, "e": expense["id"], "by": auth.user_id})
+        await conn.execute(text(
+            "UPDATE material_receipts SET invoice_id = :inv WHERE organization_id = :org AND id = ANY(:ids)"),
+            {"inv": inv, "org": auth.organization_id, "ids": [uuid.UUID(e["links"]["receipt_id"]) for e in group]})
+        ids.append(str(inv))
+    return ids
+
+
+async def _bill(conn: AsyncConnection, auth: AuthorizationContext, vendor_id: uuid.UUID, expense_id: uuid.UUID) -> dict:
+    scope = _view_scope(auth)
+    row = (await conn.execute(text(
+        "SELECT id, amount, occurred_date, project_id, workflow_status FROM expenses "
+        "WHERE id = :e AND organization_id = :org AND vendor_id = :v"),
+        {"e": expense_id, "org": auth.organization_id, "v": vendor_id})).mappings().first()
+    if row is None or (scope is not None and row["project_id"] not in scope):
+        raise HTTPException(status_code=404, detail="Bill not found")
+    if row["workflow_status"] != "confirmed":
+        raise HTTPException(status_code=409, detail="This bill was taken back.")
+    return dict(row)
+
+
+@router.post("/{vendor_id}/bills", status_code=201)
+async def bill_deliveries(
+    vendor_id: uuid.UUID,
+    body: BillDeliveriesRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The supplier's bill for deliveries already recorded: one bill (an expense, unpaid) replaces them on the ledger
+    and in the cost; its amount is what the bill says (GST, freight), the deliveries' total when not given."""
+    from mesiri.application.expenses.handlers import RecordExpenseHandler
+    from mesiri.application.expenses.resolution import PostgresExpenseCategoryResolver
+    from mesiri.application.vendors.resolution import PostgresVendorResolver
+    from mesiri.domains.materials.invoices import build_expense_command
+    from mesiri.infrastructure.postgres.repositories.expense_execution import (
+        PostgresExpenseExecutionRepository,
+    )
+    from mesiri_contracts.application.results.execution_result import ExecutionStatus
+
+    _manage(auth_context, "record a supplier's bill")
+    org = auth_context.organization_id
+    v = await _vendor(conn, org, vendor_id)
+    rows = await _unbilled(conn, auth_context, vendor_id, body.receipt_ids)
+    projects = {e["project_id"] for e in rows}
+    if len(projects) != 1:
+        raise HTTPException(status_code=422, detail="Bill one project's deliveries at a time.")
+    total = sum((e["owe"] for e in rows), Decimal(0))
+    amount = (body.amount or total).quantize(Decimal("0.01"))
+    if amount <= 0:
+        raise HTTPException(status_code=422, detail="These deliveries have no price; say the bill's amount.")
+    sites = {e["site"] for e in rows}
+    site_id = None
+    if len(sites) == 1:
+        site_id = (await conn.execute(text(
+            "SELECT site_id FROM material_receipts WHERE id = :r"),
+            {"r": uuid.UUID(rows[0]["links"]["receipt_id"])})).scalar()
+    key = uuid.uuid4()
+    cmd = build_expense_command(
+        invoice_id=key, organization_id=org, project_id=projects.pop(), site_id=site_id, vendor_id=vendor_id,
+        supplier_name=v["name"], amount=amount, currency="INR",
+        occurred_date=body.bill_date or await _today(conn, org), media_object_key=None, created_by=auth_context.user_id,
+        correlation_id=None,
+    )
+    number = _text(body.bill_number)
+    cmd = cmd.model_copy(update={"description": f"Bill {number}" if number else f"Bill for {len(rows)} deliveries",
+                                 "idempotency_key": f"supplier-bill:{key}", "tax_amount": body.tax_amount})
+    result = await RecordExpenseHandler(
+        PostgresExpenseExecutionRepository(), resolver=PostgresExpenseCategoryResolver(),
+        vendor_resolver=PostgresVendorResolver(),
+    ).handle(conn, cmd)
+    if result.status is ExecutionStatus.REJECTED or not result.material_row_id:
+        raise HTTPException(status_code=422, detail=f"The bill could not be saved: {result.rejection_reasons}")
+    expense_id = uuid.UUID(result.material_row_id)
+    expense = await _bill(conn, auth_context, vendor_id, expense_id)
+    await _link(conn, auth_context, v, expense, rows, number, body.bill_date)
+    return {"expense_id": str(expense_id), "amount": ledger.money(amount), "deliveries": len(rows),
+            "deliveries_total": ledger.money(total), "difference": ledger.money(amount - total)}
+
+
+@router.post("/{vendor_id}/bills/{expense_id}/deliveries")
+async def match_deliveries(
+    vendor_id: uuid.UUID,
+    expense_id: uuid.UUID,
+    body: MatchRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """These deliveries are on a bill already recorded (an expense typed without them): from now on they are owed and
+    cost once, through the bill."""
+    _manage(auth_context, "link deliveries to a bill")
+    v = await _vendor(conn, auth_context.organization_id, vendor_id)
+    expense = await _bill(conn, auth_context, vendor_id, expense_id)
+    rows = await _unbilled(conn, auth_context, vendor_id, body.receipt_ids)
+    await _link(conn, auth_context, v, expense, rows, None, None)
+    total = sum((e["owe"] for e in rows), Decimal(0))
+    return {"expense_id": str(expense_id), "deliveries": len(rows), "deliveries_total": ledger.money(total),
+            "bill_amount": ledger.money(expense["amount"]), "difference": ledger.money(Decimal(expense["amount"]) - total)}
+
+
+@router.get("/{vendor_id}/bills/{expense_id}/deliveries")
+async def bill_delivery_list(
+    vendor_id: uuid.UUID,
+    expense_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    _view_scope(auth_context)
+    await _bill(conn, auth_context, vendor_id, expense_id)
+    rows = (await conn.execute(text(
+        "SELECT r.id, r.occurred_date, r.quantity, r.unit_cost, r.total_cost, mc.name AS material, "
+        "COALESCE(u.code, r.unit) AS unit, s.name AS site FROM material_receipts r "
+        "JOIN material_invoices i ON i.id = r.invoice_id JOIN materials_catalog mc ON mc.id = r.material_id "
+        "LEFT JOIN units_of_measure u ON u.id = mc.default_unit_id LEFT JOIN sites s ON s.id = r.site_id "
+        "WHERE i.expense_id = :e AND r.organization_id = :org ORDER BY r.occurred_date"),
+        {"e": expense_id, "org": auth_context.organization_id})).mappings().all()
+    return [{"receipt_id": str(r["id"]), "date": r["occurred_date"].isoformat(), "material": r["material"],
+             "quantity": format(Decimal(r["quantity"]).normalize(), "f"), "unit": r["unit"], "site": r["site"],
+             "amount": ledger.money(r["total_cost"] if r["total_cost"] is not None
+                                    else (Decimal(r["unit_cost"]) * Decimal(r["quantity"]) if r["unit_cost"] is not None else None))
+             if (r["total_cost"] is not None or r["unit_cost"] is not None) else None}
+            for r in rows]
+
+
+@router.delete("/{vendor_id}/bills/{expense_id}/deliveries/{receipt_id}")
+async def unmatch_delivery(
+    vendor_id: uuid.UUID,
+    expense_id: uuid.UUID,
+    receipt_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """A delivery put on the wrong bill: it is owed (and costs) by itself again."""
+    _manage(auth_context, "change a bill's deliveries")
+    await _bill(conn, auth_context, vendor_id, expense_id)
+    res = await conn.execute(text(
+        "UPDATE material_receipts r SET invoice_id = NULL FROM material_invoices i "
+        "WHERE r.id = :r AND r.organization_id = :org AND i.id = r.invoice_id AND i.expense_id = :e"),
+        {"r": receipt_id, "org": auth_context.organization_id, "e": expense_id})
+    if not res.rowcount:
+        raise HTTPException(status_code=404, detail="That delivery is not on this bill.")
+    return {"receipt_id": str(receipt_id), "status": "unbilled"}
+
+
+# --- Delete and merge -----------------------------------------------------------------------------------------------
+
+#: Every table that points at a vendor (checked against the database's foreign keys in a test).
+VENDOR_LINKS = (
+    ("expenses", "vendor_id", "expenses"),
+    ("material_receipts", "vendor_id", "deliveries"),
+    ("material_invoices", "vendor_id", "bills"),
+    ("purchase_orders", "vendor_id", "orders"),
+    ("expense_payments", "vendor_id", "payments"),
+)
+
+
+async def _links(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.UUID) -> dict:
+    out = {}
+    for table, col, label in VENDOR_LINKS:
+        n = (await conn.execute(text(
+            f"SELECT COUNT(*) FROM {table} WHERE organization_id = :org AND {col} = :v"),  # noqa: S608
+            {"org": org, "v": vendor_id})).scalar()
+        out[label] = int(n or 0)
+    return out
+
+
+@router.delete("/{vendor_id}")
+async def delete_vendor(
+    vendor_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Delete a vendor added by mistake. One with history is refused (switch it off, or merge it into the right one)."""
+    _manage(auth_context, "delete a vendor")
+    org = auth_context.organization_id
+    v = await _vendor(conn, org, vendor_id)
+    links = await _links(conn, org, vendor_id)
+    used = {k: n for k, n in links.items() if n}
+    if used or v["opening_balance"]:
+        said = ", ".join(f"{n} {k}" for k, n in used.items()) or "an opening balance"
+        raise HTTPException(status_code=409, detail=f"{v['name']} has {said}: switch it off, or merge it into another vendor.")
+    await conn.execute(text("DELETE FROM vendors WHERE id = :v AND organization_id = :org"), {"v": vendor_id, "org": org})
+    return {"id": str(vendor_id), "status": "deleted"}
+
+
+class MergeRequest(BaseModel):
+    into_vendor_id: uuid.UUID
+
+
+@router.post("/{vendor_id}/merge")
+async def merge_vendor(
+    vendor_id: uuid.UUID,
+    body: MergeRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The same supplier saved twice ("Malabar" and "Malabar Traders"): everything of this one moves to the other,
+    contact details it lacks are copied, opening balances add up, and this one is deleted."""
+    _manage(auth_context, "merge vendors")
+    org = auth_context.organization_id
+    if body.into_vendor_id == vendor_id:
+        raise HTTPException(status_code=422, detail="Pick a different vendor to merge into.")
+    src = await _vendor(conn, org, vendor_id)
+    dst = await _vendor(conn, org, body.into_vendor_id)
+    moved = await _links(conn, org, vendor_id)
+    for table, col, _ in VENDOR_LINKS:
+        await conn.execute(text(
+            f"UPDATE {table} SET {col} = :dst WHERE organization_id = :org AND {col} = :src"),  # noqa: S608
+            {"dst": dst["id"], "src": src["id"], "org": org})
+    fill = {k: src[k] for k in ("phone", "gstin", "address", "contact_person", "credit_days")
+            if dst[k] is None and src[k] is not None}
+    ob = [x for x in (src, dst) if x["opening_balance"] is not None]
+    if ob:
+        fill["opening_balance"] = sum((Decimal(x["opening_balance"]) for x in ob), Decimal(0))
+        fill["opening_balance_date"] = max(x["opening_balance_date"] for x in ob if x["opening_balance_date"]) \
+            if any(x["opening_balance_date"] for x in ob) else None
+    notes = "\n".join(x for x in (dst["notes"], src["notes"]) if x)
+    if src["notes"]:
+        fill["notes"] = notes
+    if fill:
+        sets = ", ".join(f"{k} = :{k}" for k in fill)
+        await conn.execute(text(f"UPDATE vendors SET {sets}, updated_at = now(), updated_by = :by "  # noqa: S608
+                                "WHERE id = :id AND organization_id = :org"),
+                           {**fill, "by": auth_context.user_id, "id": dst["id"], "org": org})
+    await conn.execute(text("DELETE FROM vendors WHERE id = :v AND organization_id = :org"), {"v": src["id"], "org": org})
+    return {"into": ledger.vendor_out(await _vendor(conn, org, dst["id"])), "moved": moved, "deleted": str(src["id"])}

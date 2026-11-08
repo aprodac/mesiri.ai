@@ -24,6 +24,14 @@ from mesiri.domains.procurement.orders import ref as order_ref
 #: A rate change smaller than this (per cent) is "about the same", not a rise or a fall.
 STEADY_PCT = Decimal("2")
 
+#: CC-09 (D-CC3): a delivery is *billed* when its supplier bill made an expense that still stands. Until then the
+#: delivery itself is what the company owes (the supplier ledger) and what it cost (CC-01). One rule, read by the
+#: ledger, the cost page and here; a bill recorded without a price (no expense) or taken back leaves it unbilled.
+BILLED_SQL = (
+    "EXISTS (SELECT 1 FROM material_invoices bi JOIN expenses be ON be.id = bi.expense_id "
+    "WHERE bi.id = r.invoice_id AND be.workflow_status = 'confirmed')"
+)
+
 _PURCHASES = """
     SELECT r.id, r.material_id, mc.name AS material_name, COALESCE(u.code, r.unit) AS unit,
            mc.category_id::text AS category_id,
@@ -33,7 +41,8 @@ _PURCHASES = """
            r.occurred_date, r.created_at, r.quantity, r.unit_cost, r.total_cost,
            r.vendor_id, v.name AS vendor_record_name, NULLIF(trim(r.supplier), '') AS supplier,
            r.invoice_id, inv.invoice_number, r.purchase_order_line_id,
-           po.id AS order_id, po.number AS order_number, pol.rate AS ordered_rate, r.source
+           po.id AS order_id, po.number AS order_number, pol.rate AS ordered_rate, r.source,
+           """ + BILLED_SQL + """ AS billed
       FROM material_receipts r
       JOIN materials_catalog mc ON mc.id = r.material_id
       LEFT JOIN units_of_measure u ON u.id = mc.default_unit_id
