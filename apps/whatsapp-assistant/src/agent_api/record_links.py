@@ -76,6 +76,8 @@ RECORD_PAGES: dict[str, str | None] = {
     "off_hire_machine": "machines",
     # ST-04: the schedule, the activity's project in the path.
     "update_schedule_activity": "schedule",
+    # CC-11: labour put on a BOQ line; Budget vs actual shows the line's labour, the project in the path.
+    "put_labour_on_boq": "budget_vs_actual",
 }
 
 #: Where a page's placeholder is read from, in order: the saved request body, then the API's answer.

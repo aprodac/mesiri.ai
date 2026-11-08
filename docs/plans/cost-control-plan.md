@@ -201,6 +201,19 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 - **Not yet:** materials per line (CC-08), the evening card on WhatsApp (CC-11), the per-company threshold
   setting, engineers seeing their site's colours without rates (D-CC4).
 
+### 4f. As built: the evening cost card and cost on WhatsApp (CC-11, 8 Nov 2026)
+
+- **Card (`domains/costing/reminders.py`):** queued by `application/procurement/alerts.queue_reminders` (every 15
+  minutes), once a day per project after its `reporting_cutoff_time` in its zone (18:00 company zone when unset);
+  today's colour, earned against spent, up to four lines worst first with why, labour not on a line, one colour per
+  site when there are several, a pointer to Cost control › Green / red. To owner / admin / PM on the project. Held
+  for the 24-hour window (a Meta template to send outside it is the ops part, open). Nothing when nothing happened
+  or the company has Cost control off. English only, like the schedule and material notes.
+- **v3:** the costing router is in the agent API; tools `cost_today`, `budget_vs_actual`, `labour_not_on_boq`,
+  `put_labour_on_boq` (Save first); SOP rule 20 (answer from the API, never a made-up colour; labour goes on a line
+  after the attendance is saved, a split only with their numbers). Rates, centres and categories stay on the
+  dashboard.
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |

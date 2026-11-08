@@ -306,6 +306,28 @@ ALLOWED: tuple[Allowed, ...] = (
             "narrow): per material still_needed, weeks (need per week from this Monday), on_hand, on_order, "
             "short_day (the day it runs short), short_by, supplier and lead_days, order_by, order_now, and lines "
             "(the BOQ work it is for). Empty materials: no BOQ line has its materials set yet."),
+    # CC-11 (8 Nov 2026): cost control. Read and written only by the roles that see the BOQ's rates (the API checks,
+    # D-CC4) and only when the company has the Cost control module.
+    Allowed("cost_today", "GET", "/cost/projects/{project_id}/variance",
+            "Green / amber / red per BOQ line: the labour budget the work measured earned (done x labour rate) against "
+            "the labour put on the line, for a period (date_from / date_to, default the last 7 days; one date for a "
+            "day; site_id for one site). summary (colour, earned_labour, labour_cost, difference: below zero is over), "
+            "lines worst first (colour, reason, done_quantity, unit, earned_labour, labour_cost, cost_per_unit against "
+            "labour_rate), days (each day's colour), labour.not_on_a_line (labour on no line: not coloured), materials "
+            "(earned vs bought for the project, not coloured)."),
+    Allowed("budget_vs_actual", "GET", "/cost/projects/{project_id}/budget",
+            "The project's budget against actual to date: kinds (labour, material, subcontract: budget, earned, actual "
+            "spent, difference), and every BOQ line with planned_quantity, done_quantity, remaining_quantity, "
+            "percent_done, budget_cost, earned, labour_cost; labour_not_on_a_line; work_not_on_a_line."),
+    Allowed("labour_not_on_boq", "GET", "/cost/projects/{project_id}/labour",
+            "The project's attendance per site, day and trade (date_from / date_to, default the last 30 days; "
+            "unallocated=true for only what is on no BOQ line): man_days, cost, on_lines (the BOQ lines it is on), "
+            "not_on_a_line, suggested_line_id. Use its site_id, date and trade_key to put labour on a line."),
+    Allowed("put_labour_on_boq", "PUT", "/cost/projects/{project_id}/labour",
+            "Prepare putting a site's day of one trade on BOQ lines by man-days (site_id, date and trade from "
+            "labour_not_on_boq; lines: [{line_id, man_days}] with line_id from budget_vs_actual's BOQ lines; it "
+            "replaces the lines that day and trade was on; [] takes it off every line). Never more man-days than "
+            "the day had." + _WRITE),
     # LP-04 (8 Nov 2026): progress by place. Read by everyone on the project; places are set up on the dashboard.
     Allowed("place_progress", "GET", "/projects/{project_id}/places/progress",
             "Progress floor by floor and room by room (place: a floor or room in their words, e.g. 'first floor'): "

@@ -335,3 +335,67 @@ async def test_variance_for_one_site_and_who_sees_it(client, ctx, test_engine):
     assert (await client.get(f"/cost/projects/{p}/variance?date_from=2026-02-01&date_to=2026-01-01", headers=h)).status_code == 422
     _, engineer = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
     assert (await client.get(f"/cost/projects/{p}/variance", headers=_h(engineer))).status_code == 403
+
+
+# -- CC-11: the evening cost card -----------------------------------------------------------------------------------
+
+
+async def test_the_evening_card_goes_once_after_the_cut_off_to_who_runs_the_project(client, ctx, test_engine):
+    import datetime as dt
+
+    from mesiri.domains.costing.reminders import RULE, queue_cost_cards
+
+    h, p = _h(ctx["admin"]), ctx["project"]
+    plaster, _ = await _boq_lines(client, ctx)
+    await _attendance(test_engine, ctx, [("mason", 4, "1100", None)], days_ago=0)
+    await _work(test_engine, ctx, plaster["id"], "sqft", "300", 0)
+    day = (await client.get(f"/cost/projects/{p}/labour", headers=h)).json()["groups"][0]["date"]
+    await client.put(f"/cost/projects/{p}/labour", headers=h, json={
+        "site_id": str(ctx["site"]), "date": day, "trade": "mason", "lines": [{"line_id": plaster["id"], "man_days": "4"}]})
+    await _run(test_engine, "UPDATE users SET whatsapp_number = :n WHERE id = :u", n=f"+91{uuid.uuid4().int % 10**10:010d}",
+               u=ctx["admin_id"])
+    engineer_id, _ = await _user(test_engine, ctx["org"], "SITE_ENGINEER")
+    await _run(test_engine, "UPDATE users SET whatsapp_number = :n WHERE id = :u", n=f"+91{uuid.uuid4().int % 10**10:010d}",
+               u=engineer_id)
+    today = dt.date.fromisoformat(day)
+    now = dt.datetime.now(tz=dt.UTC)
+
+    async def queue() -> int:
+        async with test_engine.begin() as conn:
+            return await queue_cost_cards(conn, ctx["org"], today, now)
+
+    async def sent() -> list:
+        return (await _run(test_engine, "SELECT recipient_user_id, payload FROM notifications WHERE organization_id = :o "
+                           "AND rule_key = :r", o=ctx["org"], r=RULE)).mappings().all()
+
+    # Before the cut-off: nothing.
+    await _run(test_engine, "UPDATE projects SET reporting_cutoff_time = '23:59', reporting_timezone = 'Pacific/Kiritimati' "
+               "WHERE id = :p", p=p)
+    late = (now.astimezone(dt.timezone(dt.timedelta(hours=14))).time() >= dt.time(23, 59))
+    if not late:
+        assert await queue() == 0 and await sent() == []
+    # After it: one card, to the admin only (an engineer does not see rates, D-CC4), and never twice that day.
+    await _run(test_engine, "UPDATE projects SET reporting_cutoff_time = '00:00' WHERE id = :p", p=p)
+    assert await queue() == 1
+    assert await queue() == 0
+    rows = await sent()
+    assert [r["recipient_user_id"] for r in rows] == [ctx["admin_id"]]
+    message = rows[0]["payload"]["message"]
+    # 300 sq ft x 14 = 4,200 earned for 4,400 of masons: amber.
+    assert "🟠 *Amber*: ₹4,200 of work earned for ₹4,400 of labour, ₹200 over." in message
+    assert "Internal plastering 12mm: ₹4,400 of labour for 300 sqft" in message
+
+
+async def test_no_card_when_the_company_has_cost_control_off(client, ctx, test_engine):
+    import datetime as dt
+    import json
+
+    from mesiri.domains.costing.reminders import queue_cost_cards
+
+    plaster, _ = await _boq_lines(client, ctx)
+    await _work(test_engine, ctx, plaster["id"], "sqft", "300", 0)
+    await _run(test_engine, "UPDATE projects SET reporting_cutoff_time = '00:00' WHERE id = :p", p=ctx["project"])
+    await _run(test_engine, "INSERT INTO organization_settings (id, organization_id, key, value) VALUES (gen_random_uuid(), :o, 'enabled_modules', "
+               "CAST(:v AS jsonb))", o=ctx["org"], v=json.dumps(["dpr", "finance"]))
+    async with test_engine.begin() as conn:
+        assert await queue_cost_cards(conn, ctx["org"], dt.date.today(), dt.datetime.now(tz=dt.UTC)) == 0

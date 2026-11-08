@@ -473,8 +473,28 @@ async def project_variance(
     day's colour, the labour not on a line (not coloured, said), and materials for the project (earned against
     bought; not per line until the consumption register, CC-08). ``site_id``: one site's lines and labour.
     """
+    repo = await _project_repo(auth, conn, project_id)
+    if site_id is not None and not await repo.site_in_project(project_id, site_id):
+        raise HTTPException(status_code=422, detail="site_id is not a site of this project")
+    date_to = date_to or await _today(conn, auth.organization_id)
+    date_from = date_from or date_to - datetime.timedelta(days=6)
+    if date_from > date_to or (date_to - date_from).days > 731:
+        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
+    return await variance_for(conn, auth.organization_id, project_id, date_from, date_to, site_id,
+                              _scope(auth, project_id, site_id))
+
+
+async def variance_for(
+    conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, date_from: datetime.date, date_to: datetime.date,
+    site_id: uuid.UUID | None = None, scope: dict | None = None,
+) -> dict:
+    """The variance read itself, for the route and the evening card (CC-11): one answer for both.
+
+    ``scope`` limits the materials figure to what the caller sees (the route); None: the whole project (the card,
+    which only goes to people who see the whole project's money)."""
     from mesiri.domains.costing.variance import line_variance, sort_worst_first, summarise
     from mesiri.domains.progress.boq_router import counted_work
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
     from mesiri.infrastructure.postgres.repositories.labour_allocations import (
         PostgresLabourAllocationRepository,
     )
@@ -482,15 +502,7 @@ async def project_variance(
         PostgresWorkforceReadRepository,
     )
 
-    repo = await _project_repo(auth, conn, project_id)
-    if site_id is not None and not await repo.site_in_project(project_id, site_id):
-        raise HTTPException(status_code=422, detail="site_id is not a site of this project")
-    org = auth.organization_id
-    date_to = date_to or await _today(conn, org)
-    date_from = date_from or date_to - datetime.timedelta(days=6)
-    if date_from > date_to or (date_to - date_from).days > 731:
-        raise HTTPException(status_code=422, detail="Pick a period of at most two years, start before end.")
-
+    repo = PostgresBoqRepository(conn)
     lines = await repo.list_lines(org, project_id)
     line_by_id = {ln["id"]: ln for ln in lines}
     sections = {s["id"]: s["name"] for s in await repo.list_sections(org, project_id)}
@@ -533,7 +545,9 @@ async def project_variance(
     earned_material = sum((w["quantity"] * Decimal(line_by_id[w["line_id"]]["material_rate"]) for w in work
                            if w["quantity"] is not None and line_by_id[w["line_id"]].get("material_rate") is not None),
                           Decimal(0))
-    centres = await cost_centres(conn, org, date_from=date_from, date_to=date_to, **_scope(auth, project_id, site_id))
+    if scope is None:
+        scope = {"project_ids": {project_id}, "site_id": site_id, "visible": lambda p, s: True}
+    centres = await cost_centres(conn, org, date_from=date_from, date_to=date_to, **scope)
     bought = next((Decimal(c["amount"]) for c in centres["centres"] if c["key"] == "materials"), Decimal(0))
 
     return {
