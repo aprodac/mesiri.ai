@@ -367,6 +367,17 @@ async def _list_names(conn: AsyncConnection, organization_id: uuid.UUID, items: 
     return out
 
 
+async def _work_order_of(conn: AsyncConnection, organization_id: uuid.UUID, expense_id: uuid.UUID) -> dict | None:
+    """NXT-06: when this expense is a subcontractor's bill on a work order: which, and its check."""
+    from mesiri.domains.subcontracts.store import fetch_bills
+
+    found = await fetch_bills(conn, organization_id, expense_ids=[expense_id])
+    if not found:
+        return None
+    b = found[0]
+    return {k: b[k] for k in ("work_order_id", "wo_ref", "ref", "check_status", "flags", "retention_held", "payable_now")}
+
+
 async def _source_invoice(conn: AsyncConnection, organization_id: uuid.UUID, expense_id: uuid.UUID) -> dict | None:
     """The supplier bill that made this expense (material_invoices.expense_id), its deliveries and their orders."""
     from mesiri.domains.procurement.orders import ref as order_ref
@@ -672,6 +683,7 @@ async def get_expense(
         paid_amount=paid.get("paid"),
         paid_via=paid_via(expense.payment_status, paid.get("by_type")),
         source_invoice=await _source_invoice(conn, auth_context.organization_id, expense.id),
+        work_order=await _work_order_of(conn, auth_context.organization_id, expense.id),
         amount=expense.amount,
         currency=expense.currency,
         description=expense.description,

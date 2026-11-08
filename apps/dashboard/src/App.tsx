@@ -41,6 +41,9 @@ import MachinePage from '@/pages/MachinePage'
 import EquipmentLogPage from '@/pages/EquipmentLogPage'
 import HireCheckPage from '@/pages/HireCheckPage'
 import ReturnablesPage from '@/pages/ReturnablesPage'
+import WorkOrdersPage from '@/pages/WorkOrdersPage'
+import WorkOrderPage from '@/pages/WorkOrderPage'
+import { BillsChecksPage, StatementPage, SubcontractorsPage, WorkOrderDocumentPage } from '@/pages/SubcontractPages'
 import { ToastProvider } from '@/components/ui/toast-notification'
 
 // V1 routes (WEB-21, docs/DESIGN.md "Pages and routes"): one address per
@@ -85,6 +88,9 @@ export default function App() {
         <Route path="/live" element={<RequireAuth><LivePage /></RequireAuth>} />
         {/* PRC-26: the purchase order for the supplier, full screen so it prints clean. */}
         <Route path="/procurement/orders/:id/document" element={<RequireAuth><PurchaseOrderDocumentPage /></RequireAuth>} />
+        {/* NXT-05 / NXT-17: the work order and a subcontractor's statement, full screen so they print clean. */}
+        <Route path="/subcontract/work-orders/:id/document" element={<RequireAuth><WorkOrderDocumentPage /></RequireAuth>} />
+        <Route path="/subcontract/statement/:vendorId" element={<RequireAuth><StatementPage /></RequireAuth>} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Moved to="/today" />} />
 
@@ -114,6 +120,11 @@ export default function App() {
           <Route path="materials/requests" element={mat(<RequestsPage />)} />
           {/* PRC-10: orders to suppliers, and what came against them. */}
           <Route path="procurement/orders" element={mat(<PurchaseOrdersPage />)} />
+          {/* NXT-05..07: subcontract */}
+          <Route path="subcontract/work-orders" element={<WorkOrdersPage />} />
+          <Route path="subcontract/work-orders/:id" element={<WorkOrderPage />} />
+          <Route path="subcontract/bills" element={<BillsChecksPage />} />
+          <Route path="subcontract/teams" element={<SubcontractorsPage />} />
           {/* PRC-29: goods received notes. */}
           <Route path="procurement/grn" element={mat(<GoodsReceiptsPage />)} />
           <Route path="procurement/rates" element={mat(<RatesPage />)} />

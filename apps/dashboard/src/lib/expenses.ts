@@ -172,6 +172,6 @@ export interface SourceInvoice {
 }
 
 /** One expense with what only its own read carries: the supplier bill it came from, GST. */
-export async function fetchExpenseDetail(expenseId: string): Promise<{ source_invoice: SourceInvoice | null; tax_rate: string | null; tax_amount: string | null; is_tax_inclusive: boolean }> {
+export async function fetchExpenseDetail(expenseId: string): Promise<{ source_invoice: SourceInvoice | null; tax_rate: string | null; tax_amount: string | null; is_tax_inclusive: boolean; work_order?: { work_order_id: string; wo_ref: string; ref: string; check_status: string; flags: { words: string }[]; retention_held: string; payable_now: string } | null }> {
   return (await api.get(`/expenses/${expenseId}`)).data
 }

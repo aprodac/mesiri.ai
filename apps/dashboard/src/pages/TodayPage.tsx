@@ -25,6 +25,7 @@ import { Callout, DprAside, DprSection, PageHeader, StatStrip } from '@/componen
 import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
 import { SuppliersWaiting } from '@/components/vendors/vendor-parts'
+import { BillsWaitingLine } from '@/components/subcontracts/parts'
 import {
   CHIP,
   FROZEN,
@@ -342,6 +343,7 @@ export default function TodayPage() {
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
       {isToday && <SuppliersWaiting />}
+      {isToday && <BillsWaitingLine />}
 
       {daysQuery.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={refresh}>Try again</Button>}>

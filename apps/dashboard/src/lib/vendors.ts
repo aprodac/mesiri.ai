@@ -80,6 +80,9 @@ export interface OpenBill {
   deliveries: number
   /** PRC-11: deliveries on it whose quantity or rate differs from the bill. */
   mismatches: number
+  /** NXT-06/07: what may be paid now (0 while a subcontract bill waits for its check; never the retention held). */
+  payable: string
+  work_order: { ref: string; bill: string; id: string; check_status: string; retention_held: string } | null
   amount: string
   paid: string
   left: string

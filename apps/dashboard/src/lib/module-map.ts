@@ -181,9 +181,9 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'violet',
     about: 'Work given out at an agreed rate, paid against measured quantity.',
     pages: [
-      { title: 'Subcontractors', url: '/subcontract/teams', status: 'planned', phase: 'V1.5', about: 'Every outside team, what they work on, and what you owe each.', example: "Ravi's plastering team: 2 sites, ₹46,000 due, ₹10,000 advance.", roles: MONEY_ROLES },
-      { title: 'Work orders', url: '/subcontract/work-orders', status: 'planned', phase: 'V1.5', about: 'Who does which work at what rate.', example: "Plastering to Ravi's team at ₹14 per sq ft, 18,000 sq ft.", roles: MONEY_ROLES },
-      { title: 'Bills & checks', url: '/subcontract/bills', status: 'planned', phase: 'V1', about: 'Each payment checked against the quantity measured.', example: '₹15,000 to the concrete team: 2.4 m³ × ₹6,000 = ₹14,400, slight overpay.', tracker: 'CC-06', roles: MONEY_ROLES },
+      { title: 'Subcontractors', url: '/subcontract/teams', status: 'built', phase: 'V1', tracker: 'NXT-05..07', about: 'Every outside team, what they work on, and what you owe each.', example: "Ravi's plastering team: 2 sites, ₹46,000 due, ₹10,000 advance.", roles: MONEY_ROLES },
+      { title: 'Work orders', url: '/subcontract/work-orders', status: 'built', phase: 'V1', tracker: 'NXT-05', about: 'Who does which work at what rate.', example: "Plastering to Ravi's team at ₹14 per sq ft, 18,000 sq ft." },
+      { title: 'Bills & checks', url: '/subcontract/bills', status: 'built', phase: 'V1', about: 'Each payment checked against the quantity measured.', example: '₹15,000 to the concrete team: 2.4 m³ × ₹6,000 = ₹14,400, slight overpay.', tracker: 'CC-06', roles: MONEY_ROLES },
     ],
   },
   {

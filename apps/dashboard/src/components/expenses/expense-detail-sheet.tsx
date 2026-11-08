@@ -178,6 +178,16 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
             )}
           </section>
 
+          {more.data?.work_order && (
+            <Link to={`/subcontract/work-orders/${more.data.work_order.work_order_id}?tab=bills`} className="flex flex-col gap-1 rounded-lg border bg-violet-50/60 p-3 text-sm hover:bg-violet-50 dark:bg-violet-950/30">
+              <span className="font-semibold">Subcontract bill {more.data.work_order.ref} on {more.data.work_order.wo_ref}</span>
+              <span className={cn('text-xs', ['waiting', 'flagged'].includes(more.data.work_order.check_status) ? 'text-draft' : 'text-muted-foreground')}>
+                {['waiting', 'flagged'].includes(more.data.work_order.check_status)
+                  ? `Waits for its check: ${more.data.work_order.flags.map((f) => f.words).join('; ') || 'sent by the subcontractor'}`
+                  : `Checked · ₹${Number(more.data.work_order.payable_now).toLocaleString('en-IN')} payable now${Number(more.data.work_order.retention_held) ? ` · ₹${Number(more.data.work_order.retention_held).toLocaleString('en-IN')} retention held` : ''}`}
+              </span>
+            </Link>
+          )}
           {more.data?.source_invoice && (
             <section className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
               <h3 className="flex items-center gap-2 font-semibold">

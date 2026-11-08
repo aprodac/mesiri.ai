@@ -13,6 +13,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { CHIP } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import { fetchCategoriesApi, fetchFinanceSettingsApi, updateCategoryApi, updateFinanceSettingsApi, type CategoryItem } from '@/lib/api'
+import { SubcontractSettings } from '@/components/subcontracts/settings-section'
 
 // WEB-51 (Ilan, 5 Nov): Finance > Settings, one page for what used to be Categories, Settings and Finance on
 // WhatsApp -- with only what does something. The old pages offered fourteen switches and limits (auto-approval,
@@ -123,6 +124,8 @@ export default function FinanceSettingsPage() {
         </form>
         <p className="text-xs text-muted-foreground">Money marks a site's cash box as low under this amount.</p>
       </section>
+
+      <SubcontractSettings readOnly={readOnly} />
 
       <CreateCategoryDialog open={editing !== undefined} onOpenChange={(o) => !o && setEditing(undefined)} categoryToEdit={editing ?? null} onSuccess={refresh} />
     </div>
