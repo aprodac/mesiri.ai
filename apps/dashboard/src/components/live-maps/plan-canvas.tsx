@@ -1,38 +1,17 @@
 import * as React from 'react'
 import { Maximize2, Minus, Plus } from 'lucide-react'
-import { STATE_WORD, stateFor, type LiveMap, type LiveMarker, type LiveState } from '@/lib/live-maps'
+import { CHIP_STATE, STATE_WORD, stateFor, type LiveMap, type LiveMarker } from '@/lib/live-maps'
 import { cn } from '@/lib/utils'
 
-// DR-10 / DR-11: one drawing page as a live map. Zoom with the wheel or a pinch, drag to move; markers keep their size.
-// "Blueprint" shows the drawing as light lines on navy (the PNG inverted and tinted, nothing redrawn).
-
-const PILL: Record<LiveState, string> = {
-  done: 'bg-emerald-400 text-emerald-950 border-emerald-200 shadow-[0_0_18px_rgba(52,211,153,.75)]',
-  in_progress: 'bg-amber-300 text-amber-950 border-amber-100 shadow-[0_0_18px_rgba(252,211,77,.7)]',
-  not_started: 'bg-slate-900/70 text-slate-100 border-slate-300/50 backdrop-blur-sm',
-}
-const PILL_PAPER: Record<LiveState, string> = {
-  done: 'bg-emerald-500 text-white border-emerald-700 shadow-md',
-  in_progress: 'bg-amber-400 text-amber-950 border-amber-600 shadow-md',
-  not_started: 'bg-white/95 text-slate-700 border-slate-400 shadow',
-}
+// DR-10 / DR-11: one drawing page as a live map, shown like a drawing viewer: the sheet on a neutral surround, a
+// status chip where each room or footing is. Colours are the status tokens (docs/DESIGN.md §3): green done, blue in
+// progress, grey not started. Wheel or pinch to zoom, drag to move; chips keep their size.
 
 interface View { s: number; x: number; y: number }
 
-function Ring({ value, className }: { value: number; className?: string }) {
-  const r = 6, c = 2 * Math.PI * r
-  return (
-    <svg viewBox="0 0 16 16" className={cn('size-3.5 -rotate-90', className)} aria-hidden>
-      <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeOpacity=".25" strokeWidth="3" />
-      <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${c * value} ${c}`} strokeLinecap="round" />
-    </svg>
-  )
-}
-
-export function PlanCanvas({ map, trade, blueprint, photos, selected, onSelect, className }: {
+export function PlanCanvas({ map, trade, photos, selected, onSelect, className }: {
   map: LiveMap
   trade: string | null
-  blueprint: boolean
   photos: boolean
   selected: string | null
   onSelect: (m: LiveMarker | null) => void
@@ -59,7 +38,7 @@ export function PlanCanvas({ map, trade, blueprint, photos, selected, onSelect, 
   const fit = React.useCallback(() => {
     const xs = map.markers.map((m) => m.x * cw), ys = map.markers.map((m) => m.y * ch)
     if (!xs.length) return setView({ s: Math.min(1, size.h / ch), x: 0, y: 0 })
-    const pad = 70
+    const pad = 60
     const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad
     const s = Math.max(0.4, Math.min(4, Math.min(size.w / (x1 - x0), size.h / (y1 - y0))))
     setView({ s, x: size.w / 2 - s * (x0 + x1) / 2, y: size.h / 2 - s * (y0 + y1) / 2 })
@@ -89,7 +68,6 @@ export function PlanCanvas({ map, trade, blueprint, photos, selected, onSelect, 
   }, [])
 
   const down = (e: React.PointerEvent) => {
-    (e.target as Element).setPointerCapture?.(e.pointerId)
     pointers.current.set(e.pointerId, local(e))
     moved.current = false
     last.current = null
@@ -109,58 +87,62 @@ export function PlanCanvas({ map, trade, blueprint, photos, selected, onSelect, 
     last.current = { x: cx, y: cy, d }
   }
   const up = (e: React.PointerEvent) => { pointers.current.delete(e.pointerId); last.current = null }
+  const clear = (e: React.MouseEvent) => { if (!moved.current && e.target === e.currentTarget) onSelect(null) }
 
-  const doneShare = (m: LiveMarker) => {
+  const share = (m: LiveMarker) => {
     const kinds = Object.values(m.cells)
-    return kinds.length ? kinds.filter((s) => s === 'done').length / kinds.length : 0
+    return kinds.length > 1 ? `${kinds.filter((s) => s === 'done').length}/${kinds.length}` : null
   }
 
   return (
-    <div ref={box} className={cn('relative touch-none overflow-hidden rounded-2xl select-none', blueprint ? 'bg-[#0a1a33]' : 'bg-white', className)}
-      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-      onClick={(e) => { if (!moved.current && e.target === e.currentTarget) onSelect(null) }}>
-      {blueprint && <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(125,211,252,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(125,211,252,.06)_1px,transparent_1px)] bg-[size:28px_28px]" />}
-      <div className={cn('absolute top-0 left-0 origin-top-left will-change-transform', blueprint && 'bg-[#0a1a33]')} style={{ width: cw, height: ch, transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})` }}
-        onClick={(e) => { if (!moved.current && e.target === e.currentTarget) onSelect(null) }}>
+    <div ref={box} className={cn('relative cursor-grab touch-none overflow-hidden rounded-xl border bg-muted/60 select-none active:cursor-grabbing', className)}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onClick={clear}>
+      <div className="absolute top-0 left-0 origin-top-left bg-white shadow-sm ring-1 ring-border will-change-transform"
+        style={{ width: cw, height: ch, transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})` }} onClick={clear}>
         {map.image_url ? (
-          <img src={map.image_url} alt={`${map.name}: ${map.document.title}`} draggable={false}
-            className={cn('pointer-events-none absolute inset-0 size-full', blueprint && 'opacity-90 mix-blend-screen [filter:invert(1)_sepia(1)_saturate(3)_hue-rotate(165deg)_brightness(1.15)]')} />
-        ) : <p className="absolute inset-x-0 top-1/2 text-center text-sm text-slate-400">The drawing's picture is not available: the {map.kind === 'foundation' ? 'footings' : 'rooms'} are shown where they are.</p>}
-        {map.markers.map((m) => {
-          const st = stateFor(m, trade)
-          const sel = selected === m.key
-          const round = map.kind === 'foundation'
-          return (
-            <div key={m.key} className="group absolute" style={{ left: m.x * cw, top: m.y * ch, transform: `translate(-50%, -50%) scale(${1 / view.s})`, zIndex: sel ? 30 : m.fresh ? 20 : 10 }}>
-              {photos && m.thumbs[0] && (
-                <div className="absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2">
-                  <img src={m.thumbs[0]} alt="" className="size-10 max-w-none rounded-full border-2 border-white object-cover shadow-lg" />
-                  {m.photos > 1 && <span className="absolute -top-1 -right-1 rounded-full bg-sky-500 px-1.5 text-[10px] font-bold text-white">{m.photos}</span>}
-                </div>
-              )}
-              {m.fresh && <span className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-emerald-300/50" />}
-              <button type="button" onClick={(e) => { e.stopPropagation(); if (!moved.current) onSelect(sel ? null : m) }}
-                className={cn('relative flex items-center gap-1 border font-semibold whitespace-nowrap transition-all duration-500 hover:scale-110',
-                  round ? 'size-7 justify-center rounded-full text-[10px]' : 'rounded-full px-2.5 py-1 text-[11px]',
-                  (blueprint ? PILL : PILL_PAPER)[st], sel && 'scale-125 ring-4 ring-white/80')}>
-                {!round && Object.keys(m.cells).length > 0 && !trade && <Ring value={doneShare(m)} />}
-                {m.label}
-                {!round && m.photos > 0 && !photos && <span className="ml-0.5 text-[9px] opacity-70">📷{m.photos}</span>}
-              </button>
-              <div className="pointer-events-none absolute top-full left-1/2 z-40 mt-2 hidden w-52 -translate-x-1/2 rounded-xl border border-white/10 bg-slate-950/95 p-2.5 text-left text-xs text-slate-100 shadow-2xl group-hover:block">
-                <p className="text-sm font-semibold">{m.label}</p>
-                {m.sub && <p className="text-slate-400">{m.sub}</p>}
-                <p className="mt-1">{STATE_WORD[st]}{m.last_work ? ` · ${m.last_work}` : ''}</p>
-                {m.updates > 0 && <p className="text-slate-400">{m.updates} update{m.updates > 1 ? 's' : ''}{m.photos ? ` · ${m.photos} photo${m.photos > 1 ? 's' : ''}` : ''}</p>}
-              </div>
-            </div>
-          )
-        })}
+          <img src={map.image_url} alt={`${map.name}: ${map.document.title}`} draggable={false} className="pointer-events-none absolute inset-0 size-full" />
+        ) : (
+          <p className="absolute inset-x-0 top-1/2 text-center text-sm text-muted-foreground">The drawing's picture is not available. The {map.kind === 'foundation' ? 'footings' : 'rooms'} are shown where they are.</p>
+        )}
       </div>
-      <div className="absolute right-3 bottom-3 flex flex-col overflow-hidden rounded-xl border border-white/15 bg-slate-950/70 text-white shadow-lg backdrop-blur">
-        <button type="button" className="p-2 hover:bg-white/10" aria-label="Zoom in" onClick={() => zoomAt(size.w / 2, size.h / 2, 1.4)}><Plus className="size-4" /></button>
-        <button type="button" className="p-2 hover:bg-white/10" aria-label="Zoom out" onClick={() => zoomAt(size.w / 2, size.h / 2, 1 / 1.4)}><Minus className="size-4" /></button>
-        <button type="button" className="p-2 hover:bg-white/10" aria-label="Fit the plan" onClick={fit}><Maximize2 className="size-4" /></button>
+      {/* Chips in screen pixels over the sheet (never scaled with it), so their words stay sharp at any zoom. */}
+      <div className="pointer-events-none absolute inset-0">
+        {map.markers.map((m) => {
+            const st = stateFor(m, trade)
+            const sel = selected === m.key
+            const round = map.kind === 'foundation'
+            const frac = trade ? null : share(m)
+            return (
+              <div key={m.key} className="group pointer-events-auto absolute" style={{ left: view.x + m.x * cw * view.s, top: view.y + m.y * ch * view.s, transform: 'translate(-50%, -50%)', zIndex: sel ? 30 : 10 }}>
+                {photos && m.thumbs[0] && (
+                  <div className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2">
+                    <img src={m.thumbs[0]} alt="" className="size-9 max-w-none rounded-md border-2 border-background object-cover shadow-sm" />
+                    {m.photos > 1 && <span className="absolute -right-1.5 -bottom-1 rounded-full border bg-background px-1 text-[10px] font-medium tabular-nums">{m.photos}</span>}
+                  </div>
+                )}
+                <button type="button" aria-label={`${m.label}: ${STATE_WORD[st]}`} aria-pressed={sel}
+                  onClick={(e) => { e.stopPropagation(); if (!moved.current) onSelect(sel ? null : m) }}
+                  className={cn('relative flex items-center gap-1 border font-medium whitespace-nowrap shadow-sm transition-colors duration-300 hover:brightness-95',
+                    round ? 'size-6 justify-center rounded-full text-[10px]' : 'rounded-md px-1.5 py-0.5 text-[11px]',
+                    CHIP_STATE[st], sel && 'ring-2 ring-ring ring-offset-1 ring-offset-background')}>
+                  {m.label}
+                  {frac && <span className="tabular-nums opacity-75">{frac}</span>}
+                  {m.fresh && <span className="absolute -top-1 -right-1 size-2 rounded-full border border-background bg-primary" title="Updated in the last 2 days" />}
+                </button>
+                <div className="pointer-events-none absolute top-full left-1/2 z-40 mt-1.5 hidden w-48 -translate-x-1/2 rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-md group-hover:block">
+                  <p className="font-semibold">{m.label}</p>
+                  {m.sub && <p className="text-muted-foreground">{m.sub}</p>}
+                  <p className="mt-1">{STATE_WORD[st]}{m.last_work ? ` · ${m.last_work}` : ''}</p>
+                  {m.updates > 0 && <p className="text-muted-foreground">{m.updates} update{m.updates > 1 ? 's' : ''}{m.photos ? `, ${m.photos} photo${m.photos > 1 ? 's' : ''}` : ''}</p>}
+                </div>
+              </div>
+            )
+          })}
+            </div>
+      <div className="absolute right-2.5 bottom-2.5 flex flex-col divide-y overflow-hidden rounded-lg border bg-background shadow-sm">
+        <button type="button" className="p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Zoom in" aria-label="Zoom in" onClick={() => zoomAt(size.w / 2, size.h / 2, 1.4)}><Plus className="size-4" /></button>
+        <button type="button" className="p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Zoom out" aria-label="Zoom out" onClick={() => zoomAt(size.w / 2, size.h / 2, 1 / 1.4)}><Minus className="size-4" /></button>
+        <button type="button" className="p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Fit the plan" aria-label="Fit the plan" onClick={fit}><Maximize2 className="size-4" /></button>
       </div>
     </div>
   )

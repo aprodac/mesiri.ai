@@ -1,14 +1,14 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, CalendarClock, FileText, FolderOpen, Lock, Search, Upload } from 'lucide-react'
+import { Archive, CalendarClock, FileText, Lock, MapPinned, Search, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, PageError } from '@/components/dpr-page'
+import { Callout, PageError, PageHeader } from '@/components/dpr-page'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import {
   archiveDocument, DISCIPLINE_NAMES, documentError, fetchDocument, fetchDocuments, fileSize, FOLDER_NAMES, FOLDER_ORDER,
@@ -26,28 +26,13 @@ function dayLabel(iso: string | null): string {
   return iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
 }
 
-function Heading() {
-  return (
-    <header className="flex min-w-0 items-center gap-3">
-      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200">
-        <FolderOpen className="size-5" />
-      </span>
-      <div className="min-w-0">
-        <div className="text-xs text-muted-foreground">Planning</div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight">Documents</h1>
-      </div>
-    </header>
-  )
-}
-
 export default function DocumentsPage() {
   usePageTitle('Documents')
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-8 sm:px-2">
-        <Heading />
-        <p className="text-sm text-muted-foreground">Pick a project to see its drawings, permits and papers.</p>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-4 sm:px-2">
+        <PageHeader title="Documents" subtitle="Drawings, permits and papers per project. Pick a project." />
         <ProjectPickList to={(id) => `/planning/documents?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -68,11 +53,8 @@ function DocumentsView({ projectId }: { projectId: string }) {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-8 sm:px-2">
-      <Heading />
-      <p className="max-w-3xl text-sm text-muted-foreground">
-        The project's papers in one place. Drop drawings in and their number and revision are read for you; a new revision marks the old one out of date.
-        On WhatsApp, anyone on the project can ask “send me the latest S-101”.
-      </p>
+      <PageHeader title="Documents"
+        subtitle="The project's papers in one place. Drop drawings in: their number and revision are read for you, and a new revision marks the old one out of date." />
       {data && data.expiring.length > 0 && (
         <Callout tone="draft" icon={CalendarClock}>
           {data.expiring.map((e) => `${e.title}: ${new Date(`${e.valid_until}T00:00:00`) < new Date() ? 'expired' : 'expires'} ${dayLabel(e.valid_until)}`).join(' · ')}
@@ -125,9 +107,9 @@ function DocRow({ doc, onOpen }: { doc: ProjectDocument; onOpen: () => void }) {
         <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
-            {doc.number && <span className="font-mono text-xs text-muted-foreground">{doc.number}</span>}
+            {doc.number && <span className="text-sm text-muted-foreground tabular-nums">{doc.number}</span>}
             <span className="font-medium">{doc.title}</span>
-            {doc.revision && <span className="rounded bg-sky-100 px-1.5 text-xs font-medium text-sky-900 dark:bg-sky-950 dark:text-sky-200">rev {doc.revision}</span>}
+            {doc.revision && <span className="rounded bg-info-soft px-1.5 text-xs font-medium text-info">rev {doc.revision}</span>}
             {(doc.restricted || doc.restricted_by_folder) && <Lock className="size-3 text-muted-foreground" aria-label="Office only" />}
           </div>
           <p className="truncate text-xs text-muted-foreground">
@@ -242,10 +224,9 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
             {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" className="text-sm underline underline-offset-2">Open / download</a>}
 
             {doc.facts?.live_plan && (
-              <Link to={`/planning/live?project=${projectId}`} className="flex items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-[#0a1a33] to-indigo-950 p-3 text-sm text-white">
-                <span>This drawing is a live plan: its rooms and footings coloured by site's updates.</span>
-                <span className="shrink-0 text-sky-300">Open →</span>
-              </Link>
+              <Callout tone="info" icon={MapPinned} action={<Button asChild size="sm" variant="outline"><Link to={`/planning/live?project=${projectId}`}>Open live plan</Link></Button>}>
+                Its rooms and footings are on the live plans, coloured by site's updates.
+              </Callout>
             )}
             {doc.facts && (
               <section className="rounded-md bg-muted/40 p-3 text-sm">

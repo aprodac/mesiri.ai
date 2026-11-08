@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, PageError, StatStrip, type Stat } from '@/components/dpr-page'
+import { Callout, PageError, PageHeader, StatStrip, type Stat } from '@/components/dpr-page'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
@@ -23,9 +23,10 @@ import { fetchLiveMaps } from '@/lib/live-maps'
 // (done / in progress / not started), with the work and photos of a room one tap away. Nothing is typed to fill
 // it: "first floor Room-2 plastering done" on WhatsApp lands on that room.
 
+// Status tokens only (docs/DESIGN.md §3): green done, blue in progress, grey not started.
 const CELL: Record<CellState, string> = {
-  done: 'bg-emerald-500/85 text-white dark:bg-emerald-600',
-  in_progress: 'bg-amber-300/80 text-amber-950 dark:bg-amber-600/70 dark:text-amber-50',
+  done: 'bg-success text-white dark:text-background',
+  in_progress: 'bg-info-soft text-info',
   not_started: 'bg-muted text-muted-foreground',
 }
 const CELL_WORD: Record<CellState, string> = { done: 'Done', in_progress: 'In progress', not_started: 'Not started' }
@@ -34,28 +35,13 @@ function dayLabel(iso: string | null): string {
   return iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''
 }
 
-function Heading() {
-  return (
-    <header className="flex min-w-0 items-center gap-3">
-      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200">
-        <Layers className="size-5" />
-      </span>
-      <div className="min-w-0">
-        <div className="text-xs text-muted-foreground">Planning</div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight">Places</h1>
-      </div>
-    </header>
-  )
-}
-
 export default function PlacesPage() {
   usePageTitle('Places')
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-8 sm:px-2">
-        <Heading />
-        <p className="text-sm text-muted-foreground">Pick a project to see its progress floor by floor and room by room.</p>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-4 sm:px-2">
+        <PageHeader title="Places" subtitle="Progress floor by floor and room by room. Pick a project." />
         <ProjectPickList to={(id) => `/planning/places?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -75,44 +61,38 @@ function PlacesView({ projectId }: { projectId: string }) {
     return <PageError message="The places did not load." onRetry={() => { list.refetch(); grid.refetch() }} back={{ to: '/planning/places', label: 'All projects' }} />
   }
   if (!list.data || !grid.data) {
-    return <div className="mx-auto w-full max-w-6xl pb-8 sm:px-2"><Heading /><Skeleton className="mt-4 h-64 w-full" /></div>
+    return <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2"><PageHeader title="Places" /><Skeleton className="h-64 w-full" /></div>
   }
   const places = list.data.places
   const rows = grid.data.places
   const floors = rows.filter((r) => r.depth === 0)
   const kinds = grid.data.kinds
-  const doneCells = rows.filter((r) => r.depth > 0 || !rows.some((c) => c.parent_id === r.id))
-    .reduce((n, r) => n + Object.values(r.cells).filter((c) => c.state === 'done').length, 0)
+  // Footings tracked from a structural drawing sit under "Foundation": counted as footings, never as rooms.
+  const foundation = new Set(floors.filter((f) => f.name.toLowerCase() === 'foundation').map((f) => f.id))
+  const footings = rows.filter((r) => r.parent_id && foundation.has(r.parent_id)).length
+  const rooms = rows.filter((r) => r.depth > 0 && !(r.parent_id && foundation.has(r.parent_id)))
+  const finished = rooms.filter((r) => r.done.length > 0 && r.left.length === 0).length
+  const underWay = rooms.filter((r) => r.left.length > 0 && Object.values(r.cells).some((c) => c.state !== 'not_started')).length
   const stats: Stat[] = [
-    { label: 'Floors', value: floors.length },
-    { label: 'Rooms', value: places.length - floors.length },
-    { label: 'Kinds of work reported', value: kinds.length },
-    { label: 'Room × work done', value: doneCells, tone: doneCells ? 'good' : undefined },
+    { label: 'Floors', value: floors.length - foundation.size || '—', hint: footings ? `and ${footings} footings` : undefined },
+    { label: 'Rooms', value: rooms.length || '—' },
+    { label: 'Rooms finished', value: finished || '—', tone: finished ? 'good' : undefined, hint: 'every trade reported there done' },
+    { label: 'Under way', value: underWay || '—', tone: underWay ? 'info' : undefined },
   ]
+  const hasLive = !!live.data?.maps.length
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-8 sm:px-2">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Heading />
-        {list.data.can_edit && places.length > 0 && (
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing((e) => !e)}>
-            <Pencil className="size-3.5" /> {editing ? 'Done editing' : 'Edit floors and rooms'}
-          </Button>
-        )}
-      </div>
-      <p className="max-w-3xl text-sm text-muted-foreground">
-        Every floor and room, coloured by the work site has reported there. Site does nothing extra: “first floor Room-2 plastering done” on WhatsApp lands on that room.
-      </p>
-      {live.data && live.data.maps.length > 0 && (
-        <Link to={`/planning/live?project=${projectId}`} className="group flex items-center gap-4 rounded-2xl border bg-gradient-to-r from-[#0a1a33] to-indigo-950 p-4 text-white shadow-lg transition hover:shadow-sky-500/20">
-          <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/20 text-sky-300"><MapPinned className="size-5" /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-semibold">See it on the drawings</span>
-            <span className="block truncate text-sm text-slate-300">{live.data.maps.map((m) => `${m.name}: ${m.summary.done}/${m.summary.count}`).join(' · ')}</span>
-          </span>
-          <span className="text-sm text-sky-300 transition group-hover:translate-x-1">Live plans →</span>
-        </Link>
-      )}
+    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-4 sm:px-2">
+      <PageHeader title="Places"
+        subtitle="Every floor and room, coloured by the work site reports. “First floor Room-2 plastering done” on WhatsApp lands on that room."
+        actions={<>
+          {hasLive && <Button asChild variant="outline" size="sm" className="gap-1.5"><Link to={`/planning/live?project=${projectId}`}><MapPinned className="size-3.5" /> On the drawings</Link></Button>}
+          {list.data.can_edit && places.length > 0 && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing((e) => !e)}>
+              <Pencil className="size-3.5" /> {editing ? 'Done editing' : 'Edit'}
+            </Button>
+          )}
+        </>} />
       {places.length === 0 ? (
         list.data.can_edit ? <QuickSetup projectId={projectId} suggested={list.data.suggested} /> : (
           <Callout tone="info" icon={Layers}>Floors and rooms are not set up for this project yet. The owner, an admin or the project manager sets them up here.</Callout>
@@ -121,7 +101,7 @@ function PlacesView({ projectId }: { projectId: string }) {
         <EditPlaces projectId={projectId} list={list.data} />
       ) : (
         <>
-          <StatStrip stats={stats} />
+          <StatStrip stats={stats} phoneCols={2} />
           {kinds.length === 0 ? (
             <Callout tone="info" icon={Layers}>
               Nothing recorded by room yet. When site names the place in a work update (“FF R2 tiling 40 sqft”, “onnam nila kitchen wiring kazhinju”), it shows here.
@@ -271,7 +251,7 @@ function QuickSetup({ projectId, suggested }: { projectId: string; suggested: Pl
     onError: (e) => toast.error('Could not set up the places', apiErrorMessage(e)),
   })
   return (
-    <section className="rounded-lg border p-4">
+    <section className="flex flex-col">
       <h2 className="font-medium">Set up floors and rooms</h2>
       <p className="mb-3 text-sm text-muted-foreground">One per line. Every floor gets the same rooms; rename, add or remove any of them after.</p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -322,7 +302,7 @@ function EditPlaces({ projectId, list }: { projectId: string; list: PlacesList }
     </form>
   )
   return (
-    <section className="flex flex-col gap-2 rounded-lg border p-4">
+    <section className="flex flex-col gap-2">
       {list.places.map((p) => (
         <React.Fragment key={p.id}>
           <div className="flex items-center gap-2" style={{ paddingLeft: p.depth * 24 }}>

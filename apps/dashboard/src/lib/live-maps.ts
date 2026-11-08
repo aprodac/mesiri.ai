@@ -89,3 +89,17 @@ export const STATE_WORD: Record<LiveState, string> = { done: 'Done', in_progress
 export function stateFor(m: LiveMarker, trade: string | null): LiveState {
   return trade ? (m.cells[trade] ?? 'not_started') : m.state
 }
+
+/** A room's or footing's chip by state: the same meanings as every other page (docs/DESIGN.md §3). */
+export const CHIP_STATE: Record<LiveState, string> = {
+  done: 'border-success bg-success text-white dark:text-background',
+  in_progress: 'border-info bg-info-soft text-info',
+  not_started: 'border-input bg-background text-foreground',
+}
+
+/** Soft chips (status text on a tint), for words. */
+export const SOFT_STATE: Record<LiveState, string> = {
+  done: 'bg-success-soft text-success',
+  in_progress: 'bg-info-soft text-info',
+  not_started: 'bg-muted text-muted-foreground',
+}

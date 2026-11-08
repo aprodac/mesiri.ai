@@ -158,7 +158,7 @@ def pages(data: bytes) -> list[dict[str, Any]]:
         doc.close()
 
 
-def render_png(data: bytes, page_number: int, *, longest_px: int = 1800) -> tuple[bytes, int, int]:
+def render_png(data: bytes, page_number: int, *, longest_px: int = 2400) -> tuple[bytes, int, int]:
     """DR-10: one page as a PNG, the way it is shown (rotation applied), its longest side ``longest_px``. Returns
     the PNG and its width and height in pixels. Word positions from ``pages`` scale onto it by width / page width."""
     import io
