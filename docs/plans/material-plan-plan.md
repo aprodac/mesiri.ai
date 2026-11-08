@@ -40,6 +40,18 @@ remaining quantity drops; the schedule moves, the need moves.
 | **MP-05** | **Consumption against the work** (rest of CC-08): `material_usage.planned_item_id`; used vs norm per line ("slab used 12% more cement than its norm") | M |
 | **MP-06** | **Cash-flow forecast:** plan × last rate + BOQ labour / subcontract rates over the schedule; RA bills in when NXT-02 exists. **Blocked:** who sees it (D-MP3) needs Ilan | M |
 
+## 3a. As built
+
+- **MP-01 (8 Nov, `c62511e`).** Migration **0523** `boq_material_norms` (line, material, quantity per unit, wastage %,
+  note; unique per line and material; RLS; downgrade refuses while norms exist). A norm is always in the material's
+  **stock unit** (`materials_catalog.default_unit_id`), so the plan compares need with stock without converting; the
+  dialog shows that unit. Routes on the BOQ router (same roles as the BOQ): `PUT /projects/{id}/boq/lines/{line}/norms`
+  replaces the line's set (empty clears); `POST .../norms/copy` puts them on the project's other current lines with the
+  same work (case and spacing ignored) and unit, keeping lines that have their own unless `overwrite`. `GET /boq` lines
+  carry `materials`. `revise_quantity` moves norms to the new revision. A material named in a norm counts as in use for
+  catalog delete (deactivate instead). Dashboard: materials under each BOQ line; "Materials per <unit>" dialog with
+  "use the same for the N other lines with this work". Repository: `repositories/material_norms.py`.
+
 ## 4. Implementation plan (Phase 2)
 
 **Objective.** A PM sees, per project, what material is needed each week, which will run short, and the day to order
