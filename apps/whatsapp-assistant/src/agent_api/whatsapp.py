@@ -53,7 +53,7 @@ from runtime.ai_outage import (
 from runtime.release_notes import request_ref
 from runtime.team_notify import poke_watch_soon
 
-from . import bill_photo
+from . import bill_photo, documents
 from .agent import (
     DONT_KNOW,
     LANGUAGE_LINES,
@@ -610,6 +610,11 @@ class ApiWhatsApp:
                 sizes=sizes, may_set_sizes=_may_set_sizes(ctx),  # WA-166: who may set a size for the company
                 size_open=needs,  # [232]: a number answers the open size question, however long the message
             )
+            if self._send_document is not None:
+                # DOC-05: "send me the latest S-101": the code fetches the file through the API and sends it.
+                wa, send_file = message.sender.wa_id, self._send_document
+                run["actions"] = {documents.SEND_DOCUMENT: (
+                    documents.TOOL, lambda arguments: documents.send(client, send_file, wa, arguments))}
             try:
                 turn = await self._agent.run(client, **run)
                 _lap("v3_model_tools")

@@ -92,6 +92,11 @@ class ApiClient:
             body = response.text
         return ApiResponse(response.status_code, body)
 
+    async def fetch_bytes(self, path: str) -> tuple[int, bytes, dict[str, str]]:
+        """DOC-05: a route that answers with a file (status, the bytes, the headers), with the same login."""
+        response = await asyncio.create_task(self._http.request("GET", path))
+        return response.status_code, response.content, dict(response.headers)
+
     async def close(self) -> None:
         await self._http.aclose()
 

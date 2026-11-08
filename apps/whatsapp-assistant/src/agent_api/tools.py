@@ -311,6 +311,16 @@ ALLOWED: tuple[Allowed, ...] = (
             "Progress floor by floor and room by room (place: a floor or room in their words, e.g. 'first floor'): "
             "per place, each kind of work done / in_progress / not_started, left (work not done there), done, photos, "
             "last_update. No match: options (the places to choose from). set_up false: no floors or rooms yet."),
+    # DOC-05 / DR-08 (8 Nov 2026): the documents register. The API shows each person only what they may see.
+    Allowed("find_documents", "GET", "/projects/{project_id}/documents/find",
+            "Find a project document by what they call it (q: their words, e.g. 'S-101', 'column drawing', 'building "
+            "permit'): current revisions only, best first, each with id, number, title, revision, folder, "
+            "valid_until. Empty documents: nothing fits (folders says what the project has)."),
+    Allowed("drawing_facts", "GET", "/projects/{project_id}/drawing-facts",
+            "What the project's current drawings say (q narrows: 'slab', 'first floor', 'kitchen'): levels (text as "
+            "written on the drawing; value in the drawing's own units; sheet), rooms (label, size_text, area as "
+            "written, computed sqft / sqm, floor), floors, fixtures, checks (things to ask the architect); each "
+            "names its drawing and revision."),
     # NXT-05/06/07 (8 Nov 2026): subcontracts. Work orders, work measured on them, a subcontractor's bill (checked
     # by the API against measured and agreed), approving / rejecting a flagged bill, an advance, a statement.
     Allowed("list_work_orders", "GET", "/subcontracts/work-orders",

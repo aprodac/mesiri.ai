@@ -8,6 +8,7 @@
   GET    /projects/{project_id}/documents/find?q=       the best current matches for "latest column drawing"
   GET    /projects/{project_id}/drawing-facts?q=        levels, floors, rooms and checks of the current drawings
   GET    /documents/{doc_id}                            one document, a short-lived link, its revisions
+  GET    /documents/{doc_id}/file                       the file itself (download; WhatsApp sends it, DOC-05)
   PATCH  /documents/{doc_id}                            folder, number, title, revision, dates, links, restricted
   POST   /documents/{doc_id}/revisions                  a new revision (multipart); the old one is superseded
   DELETE /documents/{doc_id}                            archive (kept, hidden); never a hard delete
@@ -29,7 +30,7 @@ import re
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -335,6 +336,26 @@ async def get_document(doc_id: uuid.UUID, auth: AuthorizationContext = Depends(g
         facts = await store.facts(conn, auth.organization_id, doc_id) or {}
         out["facts"] = {k: facts.get(k) for k in ("floors", "levels", "fixtures", "checks", "pages")}
     return out
+
+
+@router.get("/documents/{doc_id}/file")
+async def document_file(doc_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn),
+                        object_storage: ObjectStoragePort = Depends(get_object_storage)):
+    """The stored file, for the same people who may see the document. ``X-Document-*`` headers name it, so a sender
+    can say which revision went (and whether it is still current)."""
+    from mesiri_contracts.common.errors import MesiriError
+
+    doc = await _doc(conn, auth, doc_id)
+    try:
+        stored = await object_storage.get_object(doc["object_key"])
+    except MesiriError as exc:
+        raise HTTPException(status_code=404, detail="The file is missing from storage") from exc
+    safe = re.sub(r'[^A-Za-z0-9._ -]+', "_", doc["file_name"])
+    return Response(content=stored.data, media_type=doc["content_type"], headers={
+        "Content-Disposition": f'attachment; filename="{safe}"', "Cache-Control": "private, no-store",
+        "X-Document-Status": doc["status"], "X-Document-Revision": doc["revision"] or "",
+        "X-Document-Number": doc["number"] or "", "X-Document-Title": re.sub(r"[^\x20-\x7e]", "", doc["title"])})
 
 
 class DocumentChange(BaseModel):

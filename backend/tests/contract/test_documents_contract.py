@@ -44,6 +44,11 @@ class _Storage:
     async def put_object(self, key, data, *, content_type=None):
         self.files[key] = data
 
+    async def get_object(self, key):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(data=self.files[key], content_type=None)
+
     async def generate_presigned_url(self, key, *, expires_in_seconds=900, method="GET"):
         return f"https://files.test/{key}"
 
@@ -198,3 +203,15 @@ async def test_uploader_corrects_details_but_cannot_restrict(client, ctx):
     assert r.status_code == 200 and r.json()["restricted"] is True
     listed = (await client.get(f"/projects/{ctx['project']}/documents", headers=_h(ctx["engineer"]))).json()
     assert listed["documents"] == []
+
+
+async def test_the_file_route_names_the_revision_and_keeps_money_papers_in(client, ctx):
+    drawing = (await _up(client, ctx, "s101.pdf", _drawing(rev="C"))).json()
+    r = await client.get(f"/documents/{drawing['id']}/file", headers=_h(ctx["engineer"]))
+    assert r.status_code == 200 and r.content.startswith(b"%PDF")
+    assert (r.headers["x-document-status"], r.headers["x-document-revision"], r.headers["x-document-number"]) == \
+        ("current", "C", "S-101")
+    assert 'filename="s101.pdf"' in r.headers["content-disposition"]
+    contract = (await _up(client, ctx, "Agreement.pdf", _drawing(number="", title="", extra="agreement"))).json()
+    assert (await client.get(f"/documents/{contract['id']}/file", headers=_h(ctx["engineer"]))).status_code == 404
+    assert (await client.get(f"/documents/{contract['id']}/file", headers=_h(ctx["pm"]))).status_code == 200
