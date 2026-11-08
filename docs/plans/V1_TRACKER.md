@@ -633,10 +633,10 @@ Plan: [drawing-reader-plan.md](drawing-reader-plan.md). **Independent** of MP an
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DR-01 | **Reader:** per-page title block (title, no., scale, date, architect, client, units), kind and level of each sheet | M | Should | — | in-progress | Claude (session 8 Nov) | Kondotty architectural set as the first fixture |
-| DR-02 | **Facts:** levels, rooms with sizes, stated areas, fixture counts, each with page + position | M | Should | DR-01 | todo | | |
-| DR-03 | **Checks:** area label vs dimensions, levels differing between sheets, missing scale / date / no. / revision, typical floors differing | M | Should | DR-02 | todo | | Kondotty: ROOM-1 1740 × 590 labelled 1217 sq ft (is 1,105) |
-| DR-04 | **Read a drawing set:** `POST /drawings/read` (nothing stored); Planning › Drawing check page | M | Should | DR-03 | todo | | |
+| DR-01 | **Reader:** per-page title block (title, no., scale, date, architect, client, units), kind and level of each sheet | M | Should | — | done (`18f42e8`) | Claude (session 8 Nov) | Title block by label and shape; pdfium text layer (page rotation, turned and stacked text). Kondotty architectural set as the first fixture |
+| DR-02 | **Facts:** levels, rooms with sizes, stated areas, fixture counts, each with page + position | M | Should | DR-01 | done (`18f42e8`) | Claude (session 8 Nov) | Levels, rooms (label over size, stated area), fixtures; each with page + position |
+| DR-03 | **Checks:** area label vs dimensions, levels differing between sheets, missing scale / date / no. / revision, typical floors differing | M | Should | DR-02 | done (`18f42e8`) | Claude (session 8 Nov) | Area label (with "looks copied"), levels drawn two ways, typical floors, missing fields, scans. Kondotty: ROOM-1 flagged on both floors. Kondotty: ROOM-1 1740 × 590 labelled 1217 sq ft (is 1,105) |
+| DR-04 | **Read a drawing set:** `POST /drawings/read` (nothing stored); Planning › Drawing check page | M | Should | DR-03 | done (`18f42e8`) | Claude (session 8 Nov) | `POST /drawings/read` (raw PDF body, 50 MB, planning roles) + Planning › Drawing check. **Ops:** production nginx `client_max_body_size 8m` (infra/nginx/api.whatsapp.mesiri.ai.conf) caps uploads at 8 MB; raise to 50m for big sets (the page says 8 MB until then) |
 | DR-05 | **Draft schedule from levels** into ST-04 quick plan (preview) | M | Should | DR-04 | todo | | Never overwrites (D-DR2) |
 | DR-06 | **Draft BOQ quantities from rooms** into ST-03 preview, or a diff with the BOQ | L | Later | DR-04 | todo | | |
 | DR-07 | Sheets and facts saved in the documents register (`drawing_facts`) | M | Later | DR-04, DOC-01 | todo | | Waits on DOC-01 (outside this plan) |

@@ -44,6 +44,27 @@ label, size and level is text in the PDF. ROOM-1 is drawn 1740 × 590 cm but lab
 | **DR-07** | **With the documents register (after DOC-01):** one uploaded set → one register entry per sheet; facts and checks saved (`drawing_facts`, additive, RLS) | M |
 | **DR-08** | **On WhatsApp (after DR-07 + DOC-04):** "first floor slab level?", "Room-2 size?" from saved facts; v3 `drawing_facts` route in `ALLOWED` | M |
 
+## 3a. As built (DR-01..DR-04, 8 Nov 2026, `18f42e8`)
+
+- **Text layer:** `domains/drawings/pdf_text.py` with **pdfium** (`pypdfium2`, in the `reports` extra). pdfminer
+  (pdfplumber) was tried first: right answers, but 14 s for the 9-sheet Kondotty set because it parses every vector
+  path; pdfium takes 0.3 s. Handled: pages stored with `/Rotate` (positions mapped to the page as shown), text turned
+  90° (read in the CAD file's own order; a reversed known word is turned back), labels drawn as letters stacked one
+  under another (joined), scanned pages (no words: reported, not guessed).
+- **Pure modules on word lists:** `reader.py` (title block by label + the words right of it or just below, up to the
+  next label's column; notes such as "all dimensions are in cm" are never a value; title phrases by pattern, nearest
+  the title label), `facts.py` (levels; rooms = a label over an "A x B" size with the stated area under it; fixtures),
+  `checks.py`, `read.py` (whole set).
+- **Route:** `POST /drawings/read`, the PDF as the raw request body (no multipart dependency: python-multipart is only
+  present through google-adk), 50 MB, planning roles, nothing stored. Mounted in the backend app and the live app.
+- **Page:** Planning › Drawing check. Uploads are limited to 8 MB in the page because production nginx has
+  `client_max_body_size 8m` (`infra/nginx/api.whatsapp.mesiri.ai.conf`): an ops change to raise it.
+- **Kondotty architectural set** (kept out of the repository, D-DR3): 9 sheets, all title blocks; 3 floors; levels
+  −265 … +1270 incl. +1167.5; 12 toilets, 6 urinals, 3 lifts; ROOM-1 flagged on both floors.
+- **Tests:** `tests/unit/test_drawing_reader.py` (15: word lists and an fpdf2-drawn PDF with a turned label and a
+  blank page), `tests/contract/test_drawings_contract.py` (2).
+- **Not yet:** DR-05 (draft schedule from levels), DR-06 (draft BOQ), DR-07/08 (with the documents register).
+
 ## 4. Implementation plan (Phase 2)
 
 **Objective.** Drop a drawing PDF into Mesiri and in seconds get its sheets, levels, rooms, fixture counts and the
