@@ -105,3 +105,8 @@ ROOM-1 flag; synthetic small PDFs for edge cases; route test; dashboard checks.
 | D-DR1 | Checks shown to whom | The person who uploaded; never sent to the architect by Mesiri |
 | D-DR2 | Drafts | Always a preview the user confirms; never overwrites a BOQ or schedule |
 | D-DR3 | Customer drawings in the test set | Only with the customer's permission; anonymised names |
+
+
+## DR-09 Structural sets (built 8 Nov 2026)
+
+A structural consultant's set is read for its schedules: the footing schedule and the footing plan's marks give the number and size of every footing, so the foundation's concrete, PCC, steel by bar diameter and cement are worked out (each figure with how); the column schedule gives steel per metre of height; slab schedules give steel per m². Mismatches between the plan, the schedules and the details are checks. Pure module `domains/drawings/structure.py`; the result is `structure` in the read, a Foundation section in the draft BOQ, kept with the drawing in Documents, and on WhatsApp through `drawing_facts`. Not a design check: it reads what was drawn and adds it up.
