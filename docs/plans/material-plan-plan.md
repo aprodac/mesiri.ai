@@ -71,6 +71,14 @@ remaining quantity drops; the schedule moves, the need moves.
   column and an Order button that opens the existing purchase order form filled in (supplier, site, material,
   shortfall rounded up).
 
+- **MP-04 (8 Nov, `19e21c7`).** v3 tool `material_plan` (`GET /projects/{id}/material-plan`, read only) in `agent_api/tools.py`
+  `ALLOWED`; the route is mounted in the assistant's API app (`agent_api/app.py`) and the live app
+  (`runtime/lifecycle.py`); `links.py` page `material_plan`. SOP rule 16: "what to order / is cement enough for the
+  slab" reads the plan, soonest order-by first, quantities rounded up, supplier and days when known; with no plan (no
+  norms, or a role the API refuses) the old `stock_summary` running-low answer stays, and the stock rule's "what to order"
+  points to rule 16 first. Test: `tests/agent_api/test_api_material_plan_mp04.py` (route, read only, SOP guard).
+  **Not verified:** the live model on real messages (the SOP eval workflow runs on the next push).
+
 ## 4. Implementation plan (Phase 2)
 
 **Objective.** A PM sees, per project, what material is needed each week, which will run short, and the day to order
