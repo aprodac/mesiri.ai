@@ -137,6 +137,21 @@ No column is dropped, renamed or rewritten. Every new table gets tenant RLS (as 
 - **Web:** BOQ page Done (quantity, %, bar) and Earned columns, "Earned so far" tile, a "Work done, not
   on a BOQ line yet" list with a line picker and Count.
 
+### 4c. As built: Cost control as a module (CC-17, CC-01 centres, 8 Nov 2026)
+
+- **Module `cost`** ("Cost control"), on by default (V1), switched off per company from the control panel like
+  Equipment. Migration 0521 adds it where a module list is stored and records where, so the downgrade takes it
+  off exactly there. Asked in session by Adarsh; Alan not asked yet (shared module settings).
+- **Backend `domains/costing/`** (`require_module("cost")`, mounted in `http/app.py` and the production app):
+  `GET /cost/centres` (`centres.split` over `finance.costs.project_costs`: centres + not set always equal the
+  read model's total), `GET/PATCH /cost/categories` (`expense_categories.cost_centre`: materials, labour,
+  subcontract, equipment, fuel, overhead, other, or not set), `GET /cost/projects/{id}/budget` (per kind: BOQ
+  budget, earned by the work on lines, spent in that centre to date; spending with no BOQ rate listed apart).
+- **Sidebar:** Cost control group (money roles only): BOQ & budget (moved from Planning), Budget vs actual, Cost
+  centres; Green / red and Closeout still planned.
+- **Not yet:** spending per BOQ line (needs CC-05 labour allocation), green / amber / red (CC-07, thresholds
+  D-CC6), material norms (CC-03).
+
 ## 5. API work (each route used by the dashboard; WhatsApp gets it through v3 `ALLOWED`)
 
 | Route | Item | What |

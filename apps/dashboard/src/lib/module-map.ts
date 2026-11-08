@@ -100,7 +100,6 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'teal',
     about: 'What the project should contain and cost, before work starts.',
     pages: [
-      { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', about: 'Every work item with its quantity, client rate and budget rate.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02', roles: MONEY_ROLES },
       { title: 'Project setup', url: '/planning/setup', status: 'planned', phase: 'V1', about: 'Start a project from the customer\'s own Excel: BOQ, suppliers with balances, opening stock.', example: 'Upload the estimate sheet; 214 BOQ lines and 12 suppliers loaded in 2 minutes.', tracker: 'CC-13, PRC-05', roles: MANAGERS, related: [{ title: 'Items', url: '/materials?view=items' }] },
       { title: 'Rate library', url: '/planning/rates', status: 'planned', phase: 'V1', about: "Standard output and material per unit of work, so a BOQ can be priced without a consultant.", example: 'Plastering 12 mm: 1 mason + 1 helper ≈ 80 sq ft a day. 1 m³ M20 ≈ 8 bags cement.', tracker: 'CC-03', roles: MANAGERS, related: [{ title: 'BOQ & budget', url: '/boq' }] },
       { title: 'Drawings', url: '/planning/drawings', status: 'planned', phase: 'V1.5', about: 'The latest drawings, so site always builds from the right revision.', example: 'Structural drawing rev C replaces rev B.', tracker: 'DRW' },
@@ -116,10 +115,13 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     icon: Gauge,
     tone: 'rose',
     about: 'Was the money spent matched by the work done? Green or red, every day.',
+    // CC-01 (8 Nov 2026): a module of its own, switched on per company like Equipment.
+    module: 'cost',
     pages: [
+      { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', about: 'Every work item with its quantity, client rate and budget rate, the work done on it and the budget it earned.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02, CC-04', roles: MONEY_ROLES },
       { title: 'Green / red', url: '/cost', status: 'planned', phase: 'V1', about: "Each day's cost against the value of the work done, per work item.", example: 'Plastering green (₹6,400 of labour, 180 sq ft done); brickwork red, ₹2,100 over.', tracker: 'CC-07, CC-11', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Attendance', url: '/labour' }] },
-      { title: 'Budget vs actual', url: '/cost/budget', status: 'planned', phase: 'V1', about: 'Each BOQ line: quantity done and money spent against plan.', example: 'Concrete: 40% of quantity done, 46% of budget spent.', tracker: 'CC-04', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }] },
-      { title: 'Cost centres', url: '/cost/centres', status: 'planned', phase: 'V1', about: 'Where the money went: materials, labour, subcontract, fuel, equipment.', example: 'This month: materials ₹8.2 L, labour ₹3.1 L, fuel ₹18,000.', tracker: 'CC-01', roles: MONEY_ROLES, related: [{ title: 'Expenses', url: '/finance/expenses' }] },
+      { title: 'Budget vs actual', url: '/cost/budget', status: 'built', phase: 'V1', about: 'For a project: the budget, the budget earned by the work done, and the money spent, for labour, materials and subcontract.', example: 'Materials: ₹28,000 earned, ₹30,000 spent, ₹2,000 over.', tracker: 'CC-04', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }] },
+      { title: 'Cost centres', url: '/cost/centres', status: 'built', phase: 'V1', about: 'Where the money went: materials, labour, subcontract, fuel, equipment.', example: 'This month: materials ₹8.2 L, labour ₹3.1 L, fuel ₹18,000.', tracker: 'CC-01', roles: MONEY_ROLES, related: [{ title: 'Expenses', url: '/finance/expenses' }] },
       { title: 'Closeout report', url: '/cost/closeout', status: 'planned', phase: 'V1.5', about: 'At handover: budget vs actual, leftover stock, what is still owed.', example: 'Villa Kakkanad: ₹2.4 cr budget, ₹2.31 cr spent, 3 suppliers unpaid.', tracker: 'CC-14', roles: MONEY_ROLES },
     ],
   },

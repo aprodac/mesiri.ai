@@ -463,6 +463,8 @@ export function AppSidebar() {
   const equipmentCategory = isModuleEnabled('equipment') ? toCategory(groupByKey('equipment')) : null
   // NXT-05..07: Subcontract opens the same way (Work orders, Bills & checks, Subcontractors); hidden when empty.
   const subcontractCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('subcontract')))
+  // CC-01: Cost control opens the same way (BOQ & budget, Budget vs actual, Cost centres); money roles only, so hidden when empty.
+  const costCategory = isModuleEnabled('cost') ? ((c) => (c.items.length ? c : null))(toCategory(groupByKey('cost'))) : null
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -620,6 +622,7 @@ export function AppSidebar() {
                   {equipmentCategory && renderCategory(equipmentCategory)}
                   {subcontractCategory && renderCategory(subcontractCategory)}
                   {financeCategory && renderCategory(financeCategory)}
+                  {costCategory && renderCategory(costCategory)}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
