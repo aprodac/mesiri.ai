@@ -34,6 +34,8 @@ KINDS: dict[str, tuple[str, str, str, str]] = {
     "expense": ("#F0E3FB", "#7E22CE", "M6 4h12 M6 9h12 M9 4c5 0 5 10 0 10H6l8 7", "EXPENSE"),
     "payment": ("#EAF3D6", "#4D7C0F", "M3 7h18v10H3z M3 11h18 M7 15h3", "PAYMENT"),
     "undo": ("#ECEAE7", "#57534E", "M9 7L4 12l5 5 M4 12h11a5 5 0 0 1 0 10h-2", "TAKE BACK"),
+    # NXT-11: a machine's day (hours, breakdown, diesel), a machine added or moved.
+    "machine": ("#D3F0EE", "#0F6B66", "M3 17h11V9H3z M14 12h4l3 3v2h-7 M6 20a2 2 0 1 0 0-.1 M17 20a2 2 0 1 0 0-.1", "MACHINE"),
     "send": ("#E3EAF2", "#334E6E", "M3 12l18-8-7 18-3-7z M11 15l10-11", "SEND"),
     "list": ("#E6E9EE", "#46536A", "M4 6h16 M4 12h10 M4 18h7 M18 15v6 M15 18h6", "SETTING"),
 }

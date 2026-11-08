@@ -45,6 +45,9 @@ PAGES: dict[str, tuple[str, str]] = {
     "vendors": ("/finance/vendors", "suppliers and what is owed to each"),
     "supplier": ("/finance/vendors/{vendor_id}", "one supplier's account: balance, bills to pay, payments"),
     "analytics": ("/analytics", "charts across sites"),
+    "machines": ("/equipment", "machines and vehicles: where each is, today's hours, diesel, hire cost"),
+    "machine_log": ("/equipment/log?date={date}", "one day's log of every machine"),
+    "hire_check": ("/equipment/hire", "hire bills checked against the hours recorded"),
 }
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

@@ -213,6 +213,7 @@ def build_site_report_payload(
     review_states: dict[str, dict[Any, str]] | None = None,
     late_entries: list[dict[str, Any]] | None = None,
     carried_issue_rows: list[dict[str, Any]] | None = None,
+    machinery_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Compose the payload dict. `activity_rows`/`issue_rows`/`labour_lines`/
     `material_movement_rows` are already scoped to the one site+date by the
@@ -228,7 +229,10 @@ def build_site_report_payload(
 
     `late_entries` (BE-13) are earlier days' entries that arrived after that
     day was confirmed; this report lists them once, under "Late entries for
-    earlier days" (application/dpr/late_entries.py)."""
+    earlier days" (application/dpr/late_entries.py).
+
+    `machinery_rows` (NXT-11) are the day's machine logs at the site
+    (`domains/equipment/reads.machinery_for_day`): the Machinery section."""
     from mesiri.application.dpr import fact_review
 
     review_states = review_states or {}
@@ -305,6 +309,7 @@ def build_site_report_payload(
         "conditions": _conditions(conditions or {}, issues),
         "drafts": fact_review.review_counts(review_states),
         "late_entries": list(late_entries or []),
+        "machinery": list(machinery_rows or []),
     }
 
 
@@ -480,6 +485,7 @@ def has_saved_entries(payload: dict[str, Any] | None) -> bool:
         or payload.get("materials")
         or payload.get("issues")
         or payload.get("evidence_count")
+        or payload.get("machinery")
     )
 
 
@@ -535,6 +541,7 @@ def build_project_report_payload(
     total_cost = Decimal("0")
     materials: dict[tuple[str | None, str | None], dict[str, Decimal]] = {}
     issues: list[dict[str, Any]] = []
+    machinery: list[dict[str, Any]] = []
 
     for site_name, payload in site_payloads:
         if payload is None:
@@ -583,6 +590,7 @@ def build_project_report_payload(
 
         for issue in [*payload.get("issues", []), *payload.get("carried_issues", [])]:
             issues.append({**issue, "site_name": site_name})
+        machinery.extend({**m, "site_name": m.get("site_name") or site_name} for m in payload.get("machinery") or [])
 
     return {
         "level": "PROJECT",
@@ -612,4 +620,5 @@ def build_project_report_payload(
             }
             for (name, unit), entry in materials.items()
         ],
+        "machinery": machinery,
     }
