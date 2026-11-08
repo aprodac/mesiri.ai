@@ -537,7 +537,7 @@ class BillIn(BaseModel):
     source: str = "web"
 
 
-async def _check(conn: AsyncConnection, auth: AuthorizationContext, wo: dict, body: BillIn, *, besides: uuid.UUID | None = None) -> dict:
+async def _check(conn: AsyncConnection, org: uuid.UUID, wo: dict, body: BillIn, *, besides: uuid.UUID | None = None) -> dict:
     """The check and the deductions a bill would get, without saving anything."""
     lines = {x["id"]: {"description": x["description"], "unit": x["unit"], "quantity": Decimal(x["quantity"]), "rate": Decimal(x["rate"])}
              for x in wo["lines"]}
@@ -554,7 +554,7 @@ async def _check(conn: AsyncConnection, auth: AuthorizationContext, wo: dict, bo
         bill_lines.append({"line_id": key, "quantity": bl.quantity, "rate": bl.rate if bl.rate is not None else lines[key]["rate"]})
     gross = rules.money(body.amount if body.amount is not None else sum((b["quantity"] * b["rate"] for b in bill_lines), Decimal(0)))
     flags = rules.check_bill(lines, measured, billed, bill_lines, gross)
-    settings = await _settings(conn, auth.organization_id)
+    settings = await _settings(conn, org)
     tds = None
     if settings.get("tds_enabled"):
         tds = body.tds_pct if body.tds_pct is not None else Decimal(str(wo.get("tds_pct") or wo.get("vendor_tds_pct") or settings.get("tds_default_pct", rules.DEFAULT_TDS_PCT)))
@@ -578,7 +578,7 @@ async def check_bill(wo_id: uuid.UUID, body: BillIn, auth_context: Authorization
                      conn: AsyncConnection = Depends(get_db_conn)):
     """What a bill would be: passed or flagged (why), and retention / advance / TDS / net payable. Saves nothing."""
     _money(auth_context, "check a subcontractor's bill")
-    return await _check(conn, auth_context, await _one(conn, auth_context, wo_id), body)
+    return await _check(conn, auth_context.organization_id, await _one(conn, auth_context, wo_id), body)
 
 
 @router.post("/work-orders/{wo_id}/bills", status_code=201)
@@ -590,12 +590,12 @@ async def record_bill(wo_id: uuid.UUID, body: BillIn, auth_context: Authorizatio
     wo = await _one(conn, auth_context, wo_id, lock=True)
     if wo["status"] not in ("issued", "completed"):
         raise HTTPException(status_code=409, detail=f"{wo['ref']} is {wo['status']}: bills are recorded on an issued work order.")
-    result = await _check(conn, auth_context, wo, body)
+    result = await _check(conn, auth_context.organization_id, wo, body)
     org = auth_context.organization_id
     number = int((await conn.execute(text("SELECT COALESCE(MAX(number), 0) + 1 FROM work_order_bills WHERE work_order_id = :w"),
                                      {"w": wo_id})).scalar())
     when = body.bill_date or await _today(conn, org)
-    expense_id = await _bill_expense(conn, auth_context, wo, number, Decimal(result["gross"]), when, body)
+    expense_id = await _bill_expense(conn, org, auth_context.user_id, wo, number, Decimal(result["gross"]), when, body)
     bill_id = uuid.uuid4()
     await conn.execute(text(
         "INSERT INTO work_order_bills (id, organization_id, work_order_id, expense_id, number, their_bill_no, bill_date, gross, "
@@ -618,7 +618,7 @@ async def record_bill(wo_id: uuid.UUID, body: BillIn, auth_context: Authorizatio
             "work_order": _shown(auth_context, await _one(conn, auth_context, wo_id))}
 
 
-async def _bill_expense(conn: AsyncConnection, auth: AuthorizationContext, wo: dict, number: int, gross: Decimal,
+async def _bill_expense(conn: AsyncConnection, org: uuid.UUID, user_id: uuid.UUID, wo: dict, number: int, gross: Decimal,
                         when: datetime.date, body: BillIn) -> uuid.UUID:
     from mesiri.application.expenses.commands import RecordExpenseCommand
     from mesiri.application.expenses.handlers import RecordExpenseHandler
@@ -631,10 +631,10 @@ async def _bill_expense(conn: AsyncConnection, auth: AuthorizationContext, wo: d
 
     words = f"{wo['ref']} · {store.bill_ref(number)}" + (f" (their bill {body.their_bill_no.strip()})" if (body.their_bill_no or "").strip() else "")
     cmd = RecordExpenseCommand(
-        idempotency_key=f"wo-bill:{uuid.uuid4()}", organization_id=str(auth.organization_id), project_id=wo["project_id"],
+        idempotency_key=f"wo-bill:{uuid.uuid4()}", organization_id=str(org), project_id=wo["project_id"],
         site_id=wo["site_id"], vendor_id=wo["vendor_id"], category_text="Subcontract work", amount=gross,
         occurred_date=when, description=words + (f" — {body.notes.strip()}" if (body.notes or "").strip() else ""),
-        media_object_key=body.media_object_key, source="web", created_by=str(auth.user_id))
+        media_object_key=body.media_object_key, source="web", created_by=str(user_id))
     result = await RecordExpenseHandler(PostgresExpenseExecutionRepository(), resolver=PostgresExpenseCategoryResolver(),
                                         vendor_resolver=PostgresVendorResolver()).handle(conn, cmd)
     if result.status is ExecutionStatus.REJECTED or not result.material_row_id:
@@ -657,7 +657,7 @@ async def _settle(conn: AsyncConnection, auth: AuthorizationContext, wo_id: uuid
     again = BillIn(lines=lines, amount=Decimal(bill["gross"]),
                    retention_pct=body.retention_pct if body else None, advance_recover=body.advance_recover if body else None,
                    tds_pct=Decimal(bill["tds_pct"]) if bill["tds_pct"] else (body.tds_pct if body else None))
-    d = (await _check(conn, auth, wo, again, besides=bill_id))["deductions"]
+    d = (await _check(conn, auth.organization_id, wo, again, besides=bill_id))["deductions"]
     if bill["tds_pct"] is None and (await _settings(conn, org)).get("tds_enabled") is not True:
         d["tds"] = "0.00"
         d["net"] = store._m(Decimal(d["gross"]) - Decimal(d["retention"]) - Decimal(d["advance"]))

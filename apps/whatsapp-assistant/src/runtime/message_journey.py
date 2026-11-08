@@ -462,6 +462,19 @@ def build_message_handlers(
         ))
         return _api_agent[0]
 
+    # NXT-16: the subcontractor assistant, built on first use (only /partner routes as tools).
+    _partner: list[Any] = []
+
+    async def _partner_for():  # type: ignore[no-untyped-def]
+        if _partner:
+            return _partner[0]
+        if agent_provider is None or material_db is None:
+            return None
+        from agent_api.partner import PartnerWhatsApp
+
+        _partner.append(PartnerWhatsApp(provider=agent_provider, database=material_db))
+        return _partner[0]
+
     #: Correlation ids whose reply ended on a question: the daily setup
     #: question must not pile a second one on top of it.
     _agent_parked: set[str] = set()
@@ -1570,6 +1583,21 @@ def build_message_handlers(
                 _log.exception("team_join.unregistered_failed wa_id=%s", wa_id)
                 reply = None
             if reply is not None:
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+            # NXT-16 (option B, approved by Alan 8 Nov 2026): a subcontractor's contact, answered with their own
+            # short tool list and token (agent_api/partner.py); None when the number is not one.
+            reply = None
+            partner = await _partner_for()
+            if partner is not None:
+                try:
+                    reply = await partner.reply(message)
+                except Exception:  # noqa: BLE001 -- never a dead end: the usual unregistered path carries on
+                    _log.exception("partner.reply_failed wa_id=%s", wa_id)
+                    reply = None
+            if reply is not None:
+                await sender.send_text(wa_id, reply)
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return

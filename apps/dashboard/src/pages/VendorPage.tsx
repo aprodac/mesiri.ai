@@ -28,6 +28,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { VendorWorkOrders } from '@/components/subcontracts/vendor-work-orders'
+import { mayGiveWork } from '@/lib/subcontracts'
 import {
   KINDS, LINE_LOOK, applyAdvance, balanceWords, day, deleteVendor, fetchLedger, fetchVendor, num, undoVendorPayment, updateVendor,
   type LedgerLine,
@@ -502,7 +503,7 @@ export default function VendorPage() {
       )}
 
       {shownTab === 'rates' && v && <div className="rounded-xl border bg-card"><VendorRates vendorId={v.id} /></div>}
-      {shownTab === 'work' && v && <VendorWorkOrders vendorId={v.id} vendorName={v.name} />}
+      {shownTab === 'work' && v && <VendorWorkOrders vendorId={v.id} vendorName={v.name} canManage={!readOnly && (canManage || mayGiveWork(role))} />}
 
       {/* NXT-11: a hire company's machines, on its account and its details. */}
       {v && (v.linked.machines ?? 0) > 0 && (shownTab === 'account' || shownTab === 'details') && <VendorMachines vendorId={v.id} />}

@@ -557,6 +557,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Subcontracts router not loaded: %s", exc)
 
+    # NXT-16: the subcontractor's own routes (their token is signed apart; staff routes reject it).
+    try:
+        from mesiri.domains.partner.router import router as partner_router
+
+        app.include_router(partner_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Partner router not loaded: %s", exc)
+
     # Labour/workforce routes (dashboard Worker Roster, Attendance Log,
     # Overview, Reports, Settings pages; POST /labour/workers add-worker) --
     # same gap as expenses/finance/vendors above: built against

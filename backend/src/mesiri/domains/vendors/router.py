@@ -826,6 +826,7 @@ VENDOR_LINKS = (
     ("expense_payments", "vendor_id", "payments"),
     ("work_orders", "vendor_id", "work orders"),
     ("labour_attendance_lines", "vendor_id", "attendance lines"),
+    ("vendor_contacts", "vendor_id", "contacts"),  # NXT-16
     ("equipment", "vendor_id", "machines"),  # NXT-11: machines hired from them
     ("equipment_hire_bills", "vendor_id", "hire bills"),  # NXT-13
 )
@@ -903,3 +904,110 @@ async def merge_vendor(
                            {**fill, "by": auth_context.user_id, "id": dst["id"], "org": org})
     await conn.execute(text("DELETE FROM vendors WHERE id = :v AND organization_id = :org"), {"v": src["id"], "org": org})
     return {"into": ledger.vendor_out(await _vendor(conn, org, dst["id"])), "moved": moved, "deleted": str(src["id"])}
+
+
+# --- NXT-16: a subcontractor's contacts who may use Mesiri's WhatsApp (option B, approved by Alan 8 Nov 2026) ------
+
+
+class ContactIn(BaseModel):
+    name: str = Field(min_length=1)
+    phone: str
+    language: str | None = None
+
+
+class ContactEdit(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    language: str | None = None
+    status: str | None = None
+
+
+def _contacts_manager(auth: AuthorizationContext) -> None:
+    from mesiri.authorization.roles import may_act_on_material_requests
+
+    if not (may_manage_money(auth.role) or may_act_on_material_requests(auth.role)):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin, finance or a project manager can manage a subcontractor's contacts.")
+
+
+async def _clean_contact_phone(conn: AsyncConnection, org: uuid.UUID, phone: str, besides: uuid.UUID | None = None) -> str:
+    try:
+        cleaned = clean_phone(phone)
+    except VendorDetailError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="A contact needs a WhatsApp number.")
+    last10 = "".join(c for c in cleaned if c.isdigit())[-10:]
+    staff = (await conn.execute(text(
+        "SELECT full_name FROM users WHERE status = 'active' AND right(regexp_replace(COALESCE(whatsapp_number, ''), '\\D', '', 'g'), 10) = :d"),
+        {"d": last10})).scalar()
+    if staff:
+        raise HTTPException(status_code=409, detail=f"That number is {staff}'s, who uses Mesiri as staff.")
+    clash = (await conn.execute(text(
+        "SELECT v.name FROM vendor_contacts c JOIN vendors v ON v.id = c.vendor_id WHERE c.organization_id = :org AND c.status = 'active' "
+        "AND right(regexp_replace(c.phone, '\\D', '', 'g'), 10) = :d AND (CAST(:me AS uuid) IS NULL OR c.id <> :me)"),
+        {"org": org, "d": last10, "me": besides})).scalar()
+    if clash:
+        raise HTTPException(status_code=409, detail=f"That number is already a contact of {clash}.")
+    return cleaned
+
+
+def _contact_out(r) -> dict:  # noqa: ANN001
+    return {"id": str(r["id"]), "name": r["name"], "phone": r["phone"], "language": r["language"], "status": r["status"],
+            "last_seen_at": r["last_seen_at"].isoformat() if r["last_seen_at"] else None, "created_at": r["created_at"].isoformat()}
+
+
+@router.get("/{vendor_id}/contacts")
+async def list_contacts(vendor_id: uuid.UUID, auth_context: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    await _vendor(conn, auth_context.organization_id, vendor_id)
+    rows = (await conn.execute(text("SELECT * FROM vendor_contacts WHERE organization_id = :org AND vendor_id = :v ORDER BY status, name"),
+                               {"org": auth_context.organization_id, "v": vendor_id})).mappings().all()
+    from mesiri.domains.subcontracts.router import _settings
+
+    return {"partner_access": bool((await _settings(conn, auth_context.organization_id)).get("partner_access")),
+            "contacts": [_contact_out(r) for r in rows]}
+
+
+@router.post("/{vendor_id}/contacts", status_code=201)
+async def add_contact(vendor_id: uuid.UUID, body: ContactIn, auth_context: AuthorizationContext = Depends(get_auth_context),
+                      conn: AsyncConnection = Depends(get_db_conn)):
+    """A person of this subcontractor who may ask Mesiri on WhatsApp what is pending, send bills and report work (all of
+    it waiting for the company's check). Never a login to anything else."""
+    _contacts_manager(auth_context)
+    org = auth_context.organization_id
+    await _vendor(conn, org, vendor_id)
+    phone = await _clean_contact_phone(conn, org, body.phone)
+    row = (await conn.execute(text(
+        "INSERT INTO vendor_contacts (organization_id, vendor_id, name, phone, language, invited_by) VALUES (:org, :v, :n, :p, :l, :u) "
+        "RETURNING *"), {"org": org, "v": vendor_id, "n": body.name.strip(), "p": phone, "l": body.language, "u": auth_context.user_id})).mappings().one()
+    return _contact_out(row)
+
+
+@router.patch("/{vendor_id}/contacts/{contact_id}")
+async def edit_contact(vendor_id: uuid.UUID, contact_id: uuid.UUID, body: ContactEdit,
+                       auth_context: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    """Change a contact, or switch them off (their next message is not answered as the subcontractor)."""
+    _contacts_manager(auth_context)
+    org = auth_context.organization_id
+    sets, p = [], {"id": contact_id, "org": org, "v": vendor_id}
+    if body.name is not None:
+        sets.append("name = :name")
+        p["name"] = body.name.strip()
+    if body.phone is not None:
+        sets.append("phone = :phone")
+        p["phone"] = await _clean_contact_phone(conn, org, body.phone, besides=contact_id)
+    if body.language is not None:
+        sets.append("language = :lang")
+        p["lang"] = body.language or None
+    if body.status is not None:
+        if body.status not in ("active", "inactive"):
+            raise HTTPException(status_code=422, detail="status is active or inactive")
+        sets.append("status = :status")
+        p["status"] = body.status
+    if not sets:
+        raise HTTPException(status_code=422, detail="Nothing to change.")
+    row = (await conn.execute(text(f"UPDATE vendor_contacts SET {', '.join(sets)}, updated_at = now() "  # noqa: S608
+                                   "WHERE id = :id AND organization_id = :org AND vendor_id = :v RETURNING *"), p)).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return _contact_out(row)
