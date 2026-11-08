@@ -163,7 +163,7 @@ async def test_message_claimed_ack_fires_before_slow_media_download_completes() 
             file_size=11,
         )
 
-    async def _on_claimed(message_id: str) -> None:
+    async def _on_claimed(message_id: str, raw: object = None) -> None:
         events.append("claimed")
 
     media_downloader = AsyncMock()
