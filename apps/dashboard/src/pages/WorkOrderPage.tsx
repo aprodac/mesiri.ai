@@ -271,7 +271,12 @@ export default function WorkOrderPage() {
                 <span className="ml-auto text-lg font-semibold tabular-nums">{rupees(n(b.gross))}</span>
               </div>
               <div className="mt-1 text-xs text-muted-foreground">{b.lines.map((l) => `${l.quantity} ${l.unit} ${l.description} @ ₹${Number(l.rate)}${n(l.rate) > n(l.agreed_rate) ? ` (agreed ₹${Number(l.agreed_rate)})` : ''}`).join(' · ')}</div>
-              {b.flags.length > 0 && <ul className="mt-2 grid gap-0.5 text-sm text-destructive">{b.flags.map((f, i) => <li key={i}>⚠ {f.words}</li>)}</ul>}
+              {b.flags.length > 0 && <ul className="mt-2 grid gap-0.5 text-sm text-destructive">{b.flags.map((f, i) => <li key={i}>⚠ {f.words}{f.excess && n(f.excess) ? ` · ${rupees(n(f.excess))}` : ''}</li>)}</ul>}
+              {n(b.caught) > 0 && (
+                <div className={cn('mt-2 inline-flex rounded-lg px-2.5 py-1 text-sm font-semibold', b.check_status === 'rejected' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200' : b.check_status === 'approved' ? 'bg-muted text-muted-foreground' : 'bg-draft-soft text-draft')}>
+                  {b.check_status === 'rejected' ? `🛡 ${rupees(n(b.caught))} stopped before payment` : b.check_status === 'approved' ? `${rupees(n(b.caught))} accepted with a reason` : `🛡 ${rupees(n(b.caught))} held until you check it`}
+                </div>
+              )}
               {b.decision_reason && <p className="mt-1 text-xs">{b.check_status === 'approved' ? 'Approved' : 'Rejected'} by {b.decided_by_name}: “{b.decision_reason}”</p>}
               {(b.check_status === 'passed' || b.check_status === 'approved') && (
                 <dl className="mt-2 grid grid-cols-3 gap-x-4 gap-y-1 text-xs sm:grid-cols-6">

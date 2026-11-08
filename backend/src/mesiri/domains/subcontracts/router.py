@@ -888,6 +888,56 @@ async def statement_for(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.U
                                                 "retention_pct", "start_date", "end_date", "completed_on")} for w in wos]}
 
 
+@router.get("/value")
+async def value(
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    project_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """What checking subcontract bills protected, for a period (default: this month) and since the start: over-billing
+    caught (what flagged bills asked for work not measured or above the agreed rate), stopped (on bills rejected),
+    accepted with a reason, still waiting; bills checked and how many passed first time; advance recovered by itself;
+    retention held. Every figure is read from the bills, never estimated."""
+    _money(auth_context, "see what subcontract checks protected")
+    scope = _scope(auth_context)
+    if project_id is not None:
+        if scope is not None and project_id not in scope:
+            raise HTTPException(status_code=404, detail="Project not found")
+        scope = {project_id}
+    today = await _today(conn, auth_context.organization_id)
+    date_to = date_to or today
+    date_from = date_from or date_to.replace(day=1)
+    wos = await store.fetch(conn, auth_context.organization_id, project_ids=scope)
+    bills = [{**b, "vendor_name": w["vendor_name"], "wo_ref": w["ref"]} for w in wos for b in w["bills"]]
+
+    def figures(rows: list[dict]) -> dict:
+        def total(xs, key="caught"):
+            return store._m(sum((Decimal(b[key]) for b in xs), Decimal(0)))
+        flagged = [b for b in rows if b["flags"]]
+        return {
+            "bills": len(rows), "passed_first_time": len([b for b in rows if not b["flags"]]),
+            "flagged": len(flagged), "billed": total(rows, "gross"),
+            "caught": total(flagged),
+            "stopped": total([b for b in flagged if b["check_status"] == "rejected"]),
+            "accepted": total([b for b in flagged if b["check_status"] == "approved"]),
+            "waiting": total([b for b in flagged if b["check_status"] in ("waiting", "flagged")]),
+            "advance_recovered": total(rows, "advance_recovered"), "tds": total(rows, "tds_amount"),
+        }
+
+    in_period = [b for b in bills if date_from.isoformat() <= b["bill_date"] <= date_to.isoformat()]
+    biggest = sorted((b for b in in_period if b["flags"]), key=lambda b: -Decimal(b["caught"]))[:3]
+    return {
+        "date_from": date_from.isoformat(), "date_to": date_to.isoformat(),
+        "period": figures(in_period), "all_time": figures(bills),
+        "retention_held": store._m(sum((Decimal(w["totals"]["retention_held"]) for w in wos), Decimal(0))),
+        "examples": [{"bill_id": b["id"], "ref": b["ref"], "wo_ref": b["wo_ref"], "work_order_id": b["work_order_id"],
+                      "vendor": b["vendor_name"], "gross": b["gross"], "caught": b["caught"], "status": b["check_status"],
+                      "why": b["flags"][0]["words"] if b["flags"] else None} for b in biggest],
+    }
+
+
 @router.get("/bills/waiting")
 async def bills_waiting(auth_context: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
     """Bills waiting for a person (flagged or sent by a subcontractor): what Today and the approvals list show."""

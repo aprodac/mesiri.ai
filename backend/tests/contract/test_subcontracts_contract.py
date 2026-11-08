@@ -185,3 +185,22 @@ async def test_a_bill_waiting_for_its_check_is_not_owed_nor_a_cost_and_tds_is_ne
     assert no.status_code == 409 and "TDS" in no.text
     assert (await client.post("/finance/transfers", headers={**h, "Idempotency-Key": str(uuid.uuid4())},
                               json={"from_account_id": tds["id"], "to_account_id": bank, "amount": "10"})).status_code == 409
+
+
+async def test_the_value_strip_adds_up_from_the_bills(client, world):
+    w = world
+    h = w["admin"]["h"]
+    wo = await _wo(client, w, issue=True)
+    await _measure(client, w, wo, 0, "40")
+    ok = (await client.post(f"/subcontracts/work-orders/{wo['id']}/bills", headers=h, json={
+        "lines": [{"line_id": wo["lines"][0]["id"], "quantity": "40"}]})).json()["bill"]
+    over = (await client.post(f"/subcontracts/work-orders/{wo['id']}/bills", headers=h, json={
+        "lines": [{"line_id": wo["lines"][0]["id"], "quantity": "30", "rate": "400"}]})).json()["bill"]
+    assert ok["caught"] == "0.00"
+    assert over["caught"] == "12000.00"          # 30 m³ not measured at ₹400 (the higher rate is on the same line: once)
+    await client.post(f"/subcontracts/bills/{over['id']}/reject", headers=h, json={"reason": "Not done yet"})
+    v = (await client.get("/subcontracts/value", headers=h)).json()
+    p = v["period"]
+    assert (p["bills"], p["passed_first_time"], p["flagged"], p["caught"], p["stopped"], p["waiting"]) == (2, 1, 1, "12000.00", "12000.00", "0.00")
+    assert v["examples"][0]["ref"] == "RA-2" and "30 cum more than measured" in v["examples"][0]["why"].replace("m³", "cum")
+    assert (await client.get("/subcontracts/value", headers=w["arun"]["h"])).status_code == 403

@@ -8,6 +8,7 @@ import { Callout } from '@/components/dpr-page'
 import { VendorTile } from '@/components/orders/order-detail'
 import { DecideDialog } from '@/components/subcontracts/dialogs'
 import { Progress3 } from '@/components/subcontracts/parts'
+import { ValueStrip } from '@/components/subcontracts/value-strip'
 import { useAuth } from '@/lib/AuthContext'
 import { useReadOnly } from '@/lib/trial'
 import { usePageTitle } from '@/lib/page-title'
@@ -38,6 +39,7 @@ export function BillsChecksPage() {
         <span className="inline-flex size-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100"><ClipboardCheck className="size-5" /></span>
         <div><div className="text-xs text-muted-foreground">Subcontract</div><h1 className="text-2xl leading-tight font-semibold tracking-tight">Bills & checks</h1></div>
       </header>
+      <ValueStrip />
       <p className="text-sm text-muted-foreground">A subcontractor’s bill is checked against the work measured and the agreed rates. These did not pass, or were sent by the subcontractor: each waits for a person before anything is paid.</p>
       {waiting.isError ? <Callout tone="draft" icon={TriangleAlert}>The bills could not be loaded.</Callout>
         : waiting.isLoading ? <Skeleton className="h-40 rounded-xl" />
@@ -56,6 +58,7 @@ export function BillsChecksPage() {
                   <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', CHECK_LOOK[b.check_status].chip)}>{CHECK_LOOK[b.check_status].label}</span>
                   <span className="text-lg font-semibold tabular-nums">{rupees(n(b.gross))}</span>
                 </div>
+                {n(b.caught) > 0 && <div className="mt-1 text-sm font-semibold text-destructive">{rupees(n(b.caught))} of it is for work not measured or above the agreed rate</div>}
                 {b.flags.length > 0 && <ul className="mt-2 grid gap-0.5 text-sm text-destructive">{b.flags.map((f, i) => <li key={i}>⚠ {f.words}</li>)}</ul>}
                 <div className="mt-2 flex flex-wrap gap-2">
                   {!readOnly && <Button size="sm" className="gap-1" onClick={() => setDeciding({ bill: b, decision: 'approve' })}><Check className="size-4" /> Approve</Button>}

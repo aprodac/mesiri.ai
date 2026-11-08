@@ -44,7 +44,7 @@ export interface WoLine {
   over_agreed: boolean
 }
 
-export interface Flag { code: string; line_id: string | null; words: string }
+export interface Flag { code: string; line_id: string | null; words: string; excess?: string }
 
 export interface WoBill {
   id: string
@@ -59,6 +59,8 @@ export interface WoBill {
   gross: string
   check_status: CheckStatus
   flags: Flag[]
+  /** What its flags put at risk (₹): over-billing caught on this bill. */
+  caught: string
   retention_amount: string
   retention_released: string
   retention_held: string
@@ -273,3 +275,15 @@ export const fetchContacts = async (vendorId: string): Promise<{ partner_access:
 export const addContact = async (vendorId: string, body: { name: string; phone: string; language?: string }): Promise<VendorContact> => (await api.post(`/finance/vendors/${vendorId}/contacts`, body)).data
 export const editContact = async (vendorId: string, id: string, body: Partial<Pick<VendorContact, 'name' | 'phone' | 'language' | 'status'>>): Promise<VendorContact> =>
   (await api.patch(`/finance/vendors/${vendorId}/contacts/${id}`, body)).data
+
+// The value strip: what checking subcontract bills protected (backend GET /subcontracts/value; read from the bills).
+export interface ValueFigures { bills: number; passed_first_time: number; flagged: number; billed: string; caught: string; stopped: string; accepted: string; waiting: string; advance_recovered: string; tds: string }
+export interface SubcontractValue {
+  date_from: string
+  date_to: string
+  period: ValueFigures
+  all_time: ValueFigures
+  retention_held: string
+  examples: { bill_id: string; ref: string; wo_ref: string; work_order_id: string; vendor: string; gross: string; caught: string; status: CheckStatus; why: string | null }[]
+}
+export const fetchValue = async (params: { project_id?: string } = {}): Promise<SubcontractValue> => (await api.get(`${B}/value`, { params })).data

@@ -62,25 +62,42 @@ def check_bill(
         line = lines[bl["line_id"]]
         name, unit = line["description"], line["unit"]
         q, rate = Decimal(bl["quantity"]), Decimal(bl["rate"])
+        agreed = Decimal(line["rate"])
         total += q * rate
         to_date = Decimal(billed_before.get(bl["line_id"], 0)) + q
         done = Decimal(measured.get(bl["line_id"], 0))
+        # ``excess``: the rupees this flag is about (what would be paid for work not done, or above the rate) --
+        # summed as "over-billing caught" (the value strip).
         if done <= 0:
-            flags.append(_flag("not_measured", bl["line_id"], line=name))
+            flags.append(_flag("not_measured", bl["line_id"], q * rate, line=name))
         elif to_date > done:
-            flags.append(_flag("over_measured", bl["line_id"], extra=qty(to_date - done), unit=unit, line=name))
+            extra = min(to_date - done, q)
+            flags.append(_flag("over_measured", bl["line_id"], extra * rate, extra=qty(to_date - done), unit=unit, line=name))
         if to_date > Decimal(line["quantity"]):
-            flags.append(_flag("over_agreed", bl["line_id"], extra=qty(to_date - Decimal(line["quantity"])), unit=unit,
-                               line=name))
-        if rate > Decimal(line["rate"]):
-            flags.append(_flag("rate_above", bl["line_id"], rate=qty(rate), agreed=qty(Decimal(line["rate"])), line=name))
+            extra = min(to_date - Decimal(line["quantity"]), q)
+            flags.append(_flag("over_agreed", bl["line_id"], extra * rate, extra=qty(to_date - Decimal(line["quantity"])),
+                               unit=unit, line=name))
+        if rate > agreed:
+            flags.append(_flag("rate_above", bl["line_id"], (rate - agreed) * q, rate=qty(rate), agreed=qty(agreed), line=name))
     if abs(money(total) - money(gross)) > Decimal("1"):
-        flags.append(_flag("total_differs", None, gross=qty(money(gross)), lines=qty(money(total))))
+        flags.append(_flag("total_differs", None, max(money(gross) - money(total), Decimal(0)), gross=qty(money(gross)),
+                           lines=qty(money(total))))
     return flags
 
 
-def _flag(code: str, line_id: Any, **words: Any) -> dict[str, Any]:
-    return {"code": code, "line_id": str(line_id) if line_id else None, "words": FLAG_WORDS[code].format(**words)}
+def caught(flags: list[dict[str, Any]], gross: Decimal) -> Decimal:
+    """What a bill's flags put at risk, once: the largest of each line's flags (a line billed above measured *and* at a
+    higher rate is not counted twice), never more than the bill."""
+    per_line: dict[Any, Decimal] = {}
+    for f in flags:
+        key = f.get("line_id") or "_bill"
+        per_line[key] = max(per_line.get(key, Decimal(0)), Decimal(str(f.get("excess") or 0)))
+    return min(money(sum(per_line.values(), Decimal(0))), money(gross))
+
+
+def _flag(code: str, line_id: Any, excess: Decimal, **words: Any) -> dict[str, Any]:
+    return {"code": code, "line_id": str(line_id) if line_id else None, "words": FLAG_WORDS[code].format(**words),
+            "excess": str(money(excess))}
 
 
 def recovery_pct(advance_agreed: Decimal | None, order_value: Decimal, set_pct: Decimal | None) -> Decimal:
