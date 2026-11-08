@@ -80,6 +80,7 @@ from .agent import (
     size_question,
 )
 from .app import build_api_app
+from .card_review import review_card
 from .client import Actor, ApiClient, new_idempotency_key
 from .memory import DayMemory, tools_version
 from .receipts import caption_lines, preview_slip
@@ -261,6 +262,8 @@ class ApiWhatsApp:
         self._just_saved: dict[str, list[WriteResult]] = {}
         #: WA-210: Save taps whose list was on a preview card: no SAVED card after them.
         self._previewed_saves: dict[str, bool] = {}
+        #: WA-264: the structured lines of the card a message's reply showed, for the card check after the reply.
+        self._shown_lines: dict[str, list[str]] = {}
         self._send_document = send_document
         self._send = send
         self._transcribe = transcribe
@@ -389,10 +392,51 @@ class ApiWhatsApp:
             # TM-28: after the reply and the "answered" mark, so the team bot can read this request at once.
             self._requested.discard(message.correlation_id)
             poke_watch_soon(message.correlation_id)
+        shown = self._shown_lines.pop(message.correlation_id, None)
+        if said and shown and reply.header_image is not None:
+            # WA-264: the AI check of the card against what they said, after the reply (shadow: logged only).
+            history = await _safe_load(self._memory, ctx)
+            if await self._card_review_mode(ctx) == "shadow":
+                _in_background(self._review_card(message, ctx, said, shown, history))
         if said:
             await self._memory.remember(ctx, said, for_memory(reply.text, await self._card_lines(reply, ctx)))
             _lap("v3_memory_write")
         return True
+
+    async def _card_review_mode(self, ctx: Any) -> str:
+        """WA-264: the company's ``card_review`` setting (off / shadow), cached 10 minutes; the default when unread."""
+        from mesiri.domains.organizations.settings import CARD_REVIEW, CARD_REVIEW_DEFAULT
+
+        org = str(getattr(ctx, "organization_id", "") or "")
+        cache = self.__dict__.setdefault("_card_review_cache", {})
+        hit = cache.get(org)
+        if hit and time.time() - hit[1] < 600:
+            return hit[0]
+        value = CARD_REVIEW_DEFAULT
+        try:
+            if self._database is not None:
+                from mesiri.infrastructure.postgres.repositories.organization_settings import (
+                    PostgresOrganizationSettingsRepository,
+                )
+
+                async with self._database.transaction() as conn:
+                    value = str(await PostgresOrganizationSettingsRepository(conn).get(
+                        uuid.UUID(org), CARD_REVIEW) or CARD_REVIEW_DEFAULT)
+        except Exception:  # noqa: BLE001
+            pass
+        cache[org] = (value, time.time())
+        return value
+
+    async def _review_card(self, message: Any, ctx: Any, said: str, lines: list[str], history: list[Any]) -> None:
+        """WA-264: run the card check and write its verdict to the trace (stage ``card_review``)."""
+        verdict = await review_card(self._agent._provider, said=said, lines=lines, history=history,
+                                    organization_id=str(ctx.organization_id), correlation_id=message.correlation_id)
+        if verdict is None or self._trace is None:
+            return
+        await self._trace.log_stage(
+            correlation_id=message.correlation_id, stage="card_review",
+            stage_payload={"said": said[:500], "card": lines, **verdict.to_json()},
+            duration_ms=verdict.ms, succeeded=not verdict.error, event_source=EVENT_SOURCE)
 
     @staticmethod
     def _answered_key(message: Any) -> str | None:
@@ -1249,6 +1293,8 @@ class ApiWhatsApp:
             state["previewed"] = batch
             await self._save_state(ctx, state)
             language = state.get("language")
+            if correlation_id:
+                self._shown_lines[correlation_id] = lines  # WA-264
             human = without_ready_claims(without_listed_lines(reply.text, entries, language)) or press_line(
                 entries, language)
             return dataclasses.replace(reply, header_image=image, text=with_structured(lines, human))
@@ -2035,6 +2081,13 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
 
 #: Writes nothing waits for (WEB-58), held until they finish so none is dropped half-way.
 _BACKGROUND: set[asyncio.Task[None]] = set()
+
+
+async def _safe_load(memory: Any, ctx: Any) -> list[Any]:
+    try:
+        return list(await memory.load(ctx))
+    except Exception:  # noqa: BLE001 -- the check reads the message alone
+        return []
 
 
 def _in_background(awaitable: Awaitable[Any]) -> None:

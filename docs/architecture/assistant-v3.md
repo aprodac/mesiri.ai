@@ -281,6 +281,18 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 - **Not on the list on purpose:** users and roles (they grant access), removing members, Workforce /
   Attendance deletes, and company modules (platform admins only today: WA-144 is the decision).
 
+## Card check (WA-264, shadow)
+
+The code checks every line as it is prepared (numbers they said, real materials and units, believable sizes, real
+record ids), but not its meaning. `agent_api/card_review.py` + `CARD_REVIEW.md`: a second, cheap AI call (JSON, no
+thinking) reads the latest turns, the message and the card's structured lines (what the person sees) and says ok /
+wrong / unsure, each problem with the card line and the person's own words; the code drops a problem whose line is
+not on the card or whose words they never said. Company setting `card_review` (off / shadow, default shadow): shadow
+runs after the reply has been sent (no time added, nothing changed), writes the verdict to `journey_traces` stage
+`card_review`, cost tagged `card_review`. Read it with
+`SELECT stage_payload FROM journey_traces WHERE stage = 'card_review' ORDER BY created_at DESC`.
+Next, once shadow shows it is right: an "on" mode that asks its one question before the card goes out.
+
 ## API changes made for v3 (the dashboard benefits too)
 
 | Change | Item |
