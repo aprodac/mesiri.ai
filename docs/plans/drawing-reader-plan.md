@@ -63,7 +63,14 @@ label, size and level is text in the PDF. ROOM-1 is drawn 1740 × 590 cm but lab
   −265 … +1270 incl. +1167.5; 12 toilets, 6 urinals, 3 lifts; ROOM-1 flagged on both floors.
 - **Tests:** `tests/unit/test_drawing_reader.py` (15: word lists and an fpdf2-drawn PDF with a turned label and a
   blank page), `tests/contract/test_drawings_contract.py` (2).
-- **Not yet:** DR-05 (draft schedule from levels), DR-06 (draft BOQ), DR-07/08 (with the documents register).
+- **DR-05 / DR-06 (`c6c5481`):** `drafts.py` makes a draft schedule (floors bottom to top: foundation once, each floor's
+  columns and slab, then masonry, plaster and flooring per floor, then finishes and handover; typical days) and draft
+  BOQ quantities per floor (flooring and ceiling = room areas; skirting = perimeters; wall plaster = perimeters ×
+  clear height, the clear height from the levels less a 15 cm slab, 3.0 m when not given; paint; WCs, urinals, wash
+  basins from labels; lifts and stairs left out). Both editable on Drawing check and added with
+  `POST /projects/{id}/schedule/from-drawing` and `POST /projects/{id}/boq/from-drawing`, which never overwrite
+  (existing names / lines skipped and counted). Kondotty: 24 activities, 3.90 m clear height.
+- **Not yet:** DR-07/08 (with the documents register, DOC-01); a side-by-side diff with an existing BOQ.
 
 ## 4. Implementation plan (Phase 2)
 
