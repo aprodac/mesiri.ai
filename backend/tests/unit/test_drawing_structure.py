@@ -163,3 +163,14 @@ def test_an_architectural_set_has_no_structure():
 def test_a_mix_ratio_is_never_a_scale():
     assert reader.sheet(SCHEDULE)["scale"] is None  # "P.C.C 1:4:8" on the sheet
     assert reader.sheet(page(9, row("SCALE : 1:100", 400, 700)))["scale"] == "1:100"
+
+
+def test_each_footing_gets_its_grid():
+    """DR-10: grid bubbles across (A, B, C) and down (1, 2, 3) give each footing its grid from its column."""
+    plan = page(1, [w("A", 100, 40), w("B", 300, 40), w("C", 500, 40), w("1", 40, 100), w("2", 40, 200),
+                    w("3", 40, 300), w("F1-250X250", 290, 190), w("C1", 298, 200), w("F2-220X220", 490, 290),
+                    w("C2", 498, 300), w("F1-250X250", 90, 90), w("C1", 98, 100)])
+    found = {(f["mark"], f["grid"]) for f in structure.footing_plan([plan])["footings"]}
+    assert found == {("F1", "B2"), ("F2", "C3"), ("F1", "A1")}
+    t = structure.takeoff([plan], [reader.sheet(plan)])
+    assert {f["grid"] for f in t["plan"]["footings"]} == {"A1", "B2", "C3"}

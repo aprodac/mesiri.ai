@@ -16,6 +16,8 @@ import {
   type CellState, type PlaceProgressRow, type PlacesList, type PlacesProgress,
 } from '@/lib/places'
 import { cn } from '@/lib/utils'
+import { LiveFootingPlan } from '@/components/drawings/live-plan'
+import { fetchProjectLivePlan } from '@/lib/live-plan'
 
 // LP-01..05: Planning › Places. The project's floors and rooms, coloured by the work site has reported at each one
 // (done / in progress / not started), with the work and photos of a room one tap away. Nothing is typed to fill
@@ -66,6 +68,8 @@ function PlacesView({ projectId }: { projectId: string }) {
   const grid = useQuery<PlacesProgress>({ queryKey: ['places-progress', projectId], queryFn: () => fetchPlacesProgress(projectId) })
   const [editing, setEditing] = React.useState(false)
   const [open, setOpen] = React.useState<PlaceProgressRow | null>(null)
+  // DR-10: the project's structural drawing, coloured by the work at each footing.
+  const live = useQuery({ queryKey: ['live-plan', projectId], queryFn: () => fetchProjectLivePlan(projectId) })
 
   if (list.isError || grid.isError) {
     return <PageError message="The places did not load." onRetry={() => { list.refetch(); grid.refetch() }} back={{ to: '/planning/places', label: 'All projects' }} />
@@ -99,6 +103,7 @@ function PlacesView({ projectId }: { projectId: string }) {
       <p className="max-w-3xl text-sm text-muted-foreground">
         Every floor and room, coloured by the work site has reported there. Site does nothing extra: “first floor Room-2 plastering done” on WhatsApp lands on that room.
       </p>
+      {live.data && <LiveFootingPlan live={live.data} refreshKey={['live-plan', projectId]} />}
       {places.length === 0 ? (
         list.data.can_edit ? <QuickSetup projectId={projectId} suggested={list.data.suggested} /> : (
           <Callout tone="info" icon={Layers}>Floors and rooms are not set up for this project yet. The owner, an admin or the project manager sets them up here.</Callout>

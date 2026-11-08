@@ -129,17 +129,62 @@ def footing_plan(pages: list[Mapping[str, Any]]) -> dict[str, Any] | None:
         return None
     page, marks = best
     columns = [w for w in page["words"] if _COLUMN_MARK.match(w["text"].strip())]
+    grid = grid_lines(page)
     footings = []
     for w, m in marks:
         fx, fy = _centre(w)
         # The column on a footing: the nearest column mark below the footing's label (drawn inside its outline).
         near = sorted(columns, key=lambda c: math.hypot(_centre(c)[0] - fx, _centre(c)[1] - fy))
+        at = _centre(near[0]) if near else (fx, fy)
         footings.append({"mark": m.group(1).upper(), "a": int(m.group(2)), "b": int(m.group(3)),
                          "column": near[0]["text"].strip().upper() if near else None,
-                         "x": round(fx, 1), "y": round(fy, 1)})
-    return {"page": page["number"], "footings": footings,
+                         "x": round(fx, 1), "y": round(fy, 1),
+                         # DR-10: where the footing is: its column's position and the grid it stands on ("B3").
+                         "cx": round(at[0], 1), "cy": round(at[1], 1), "grid": grid_ref(grid, at)})
+    return {"page": page["number"], "width": page.get("width"), "height": page.get("height"),
+            "grid": {k: [[t, round(v, 1)] for t, v in vs] for k, vs in grid.items()}, "footings": footings,
             "columns": [{"mark": c["text"].strip().upper(), "x": round(_centre(c)[0], 1), "y": round(_centre(c)[1], 1)}
                         for c in columns]}
+
+
+def grid_lines(page: Mapping[str, Any]) -> dict[str, list[tuple[str, float]]]:
+    """The grid bubbles of a plan: letters in a row (A, B, C ... across) and numbers in a column (1, 2, 3 ...
+    down), or the other way round. Each with the position of its line. Empty when the plan has no grid."""
+    singles = [w for w in page["words"] if re.fullmatch(r"[A-Z]|\d{1,2}|[A-Z]'", w["text"].strip())]
+
+    def run(items: list[Mapping[str, Any]], along: str) -> list[tuple[str, float]]:
+        """The biggest group sharing one line (same top for a row, same x for a column), at least 3."""
+        key = "top" if along == "x" else "x0"
+        groups: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+        for w in items:
+            groups[round(w[key] / 6)].append(w)
+        best = max(groups.values(), key=len, default=[])
+        if len(best) < 3:
+            return []
+        pos = (lambda w: _centre(w)[0]) if along == "x" else (lambda w: w["top"])
+        return sorted(((w["text"].strip(), pos(w)) for w in best), key=lambda t: t[1])
+
+    letters = [w for w in singles if w["text"].strip()[0].isalpha()]
+    numbers = [w for w in singles if w["text"].strip().isdigit()]
+    across, down = run(letters, "x"), run(numbers, "y")
+    if not across or not down:  # letters down the side, numbers across the top
+        across, down = run(numbers, "x"), run(letters, "y")
+    return {"across": across, "down": down} if across and down else {}
+
+
+def grid_ref(grid: Mapping[str, list[tuple[str, float]]], at: tuple[float, float]) -> str | None:
+    """"B3": the nearest grid line across and down to a point, when it is close to both."""
+    if not grid:
+        return None
+    x, y = at
+    col = min(grid["across"], key=lambda t: abs(t[1] - x))
+    row = min(grid["down"], key=lambda t: abs(t[1] - y))
+    across_gap = min((b[1] - a[1] for a, b in zip(grid["across"], grid["across"][1:], strict=False)), default=60)
+    down_gap = min((b[1] - a[1] for a, b in zip(grid["down"], grid["down"][1:], strict=False)), default=60)
+    if abs(col[1] - x) > max(across_gap, 20) or abs(row[1] - y) > max(down_gap, 20):
+        return None
+    letter, number = (col[0], row[0]) if col[0][0].isalpha() else (row[0], col[0])
+    return f"{letter}{number}"
 
 
 def column_schedule(pages: list[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -397,9 +442,22 @@ def takeoff(pages: list[Mapping[str, Any]], sheets: list[Mapping[str, Any]]) -> 
             "Columns: per metre of height (the floor heights are not on these sheets).",
         ],
         "plan_page": (plan or {}).get("page"),
+        # DR-10: where each footing is on the plan page (points, top-left origin), for the live plan.
+        "plan": {k: (plan or {}).get(k) for k in ("page", "width", "height", "grid")} | {
+            "footings": [_placed(f, footings_out, counts) for f in (plan or {}).get("footings", [])]} if plan else None,
     }
     result["checks"] = cross_checks(sched, plan, cols, combined)
     return result
+
+
+def _placed(f: Mapping[str, Any], footings: list[dict[str, Any]], counts: Counter) -> dict[str, Any]:
+    """One footing where it sits, with its share of its type's concrete and steel."""
+    kind = next((x for x in footings if x["mark"] == f["mark"]), {})
+    n = counts.get(f["mark"]) or 1
+    return {"mark": f["mark"], "grid": f.get("grid"), "column": f.get("column"), "x": f.get("cx", f["x"]),
+            "y": f.get("cy", f["y"]), "size": kind.get("size"),
+            "concrete_cum": round(kind["concrete_cum"] / n, 3) if kind.get("concrete_cum") else None,
+            "steel_kg": round(kind["steel_kg"] / n, 1) if kind.get("steel_kg") else None}
 
 
 def cross_checks(sched: Mapping[str, Any], plan: Mapping[str, Any] | None, cols: Mapping[str, Any],

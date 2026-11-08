@@ -154,3 +154,24 @@ def pages(data: bytes) -> list[dict[str, Any]]:
         return out
     finally:
         doc.close()
+
+
+def render_png(data: bytes, page_number: int, *, longest_px: int = 1800) -> tuple[bytes, int, int]:
+    """DR-10: one page as a PNG, the way it is shown (rotation applied), its longest side ``longest_px``. Returns
+    the PNG and its width and height in pixels. Word positions from ``pages`` scale onto it by width / page width."""
+    import io
+
+    import pypdfium2 as pdfium
+
+    doc = pdfium.PdfDocument(data)
+    try:
+        page = doc[page_number - 1]
+        w, h = page.get_size()
+        shown = max(w, h)
+        bitmap = page.render(scale=longest_px / shown, may_draw_forms=True)
+        image = bitmap.to_pil().convert("L")  # drawings are black and white: a grey image is a third the size
+        out = io.BytesIO()
+        image.save(out, format="PNG", optimize=True)
+        return out.getvalue(), image.width, image.height
+    finally:
+        doc.close()

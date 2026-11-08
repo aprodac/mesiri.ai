@@ -12,6 +12,11 @@
   PATCH  /documents/{doc_id}                            folder, number, title, revision, dates, links, restricted
   POST   /documents/{doc_id}/revisions                  a new revision (multipart); the old one is superseded
   DELETE /documents/{doc_id}                            archive (kept, hidden); never a hard delete
+  POST   /documents/{doc_id}/track                      DR-10: the footings on a structural drawing become places
+                                                        (Foundation / B3 ...), so site's work lands on them
+  GET    /projects/{project_id}/live-plan           DR-10: the newest structural drawing's live plan (or null)
+  GET    /documents/{doc_id}/live                       DR-10: the footing plan with each footing coloured by the
+                                                        work site reported there, and what is done in m³ and kg
 
 Who (D-DOC1, approved 8 Nov 2026): everyone on the project sees drawings, approvals, test reports, handover and other
 papers, and may upload; contract, BOQ / estimate, work orders and anything marked restricted are seen only by the
@@ -255,6 +260,18 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
     doc_id = uuid.uuid4()
     key = await _save_file(object_storage, org, project_id, doc_id, name, data, kind)
     facts = _facts(read) if read and values["folder"] == "drawing" and first is not None else None
+    plan = ((facts or {}).get("structure") or {}).get("plan")
+    if plan and plan.get("page"):
+        # DR-10: the footing plan as a picture, so the live plan can colour each footing on the real drawing.
+        try:
+            from mesiri.domains.drawings.pdf_text import render_png
+
+            png, width, height = await asyncio.wait_for(asyncio.to_thread(render_png, data, plan["page"]), 20)
+            plan["image_key"] = f"documents/{org}/{project_id}/{doc_id}/plan-page-{plan['page']}.png"
+            await object_storage.put_object(plan["image_key"], png, content_type="image/png")
+            plan["image_width"], plan["image_height"] = width, height
+        except Exception:  # noqa: BLE001 -- the drawing is still kept; only the picture is missing
+            _log.info("documents.plan_image_failed", exc_info=True)
     await store.insert(conn, org, project_id, {
         "id": doc_id, **values, "status": "current", "supersedes_id": old["id"] if old else None,
         "valid_until": _date(given.get("valid_until"), "valid_until"), "restricted": restricted,
@@ -342,6 +359,9 @@ async def get_document(doc_id: uuid.UUID, auth: AuthorizationContext = Depends(g
     if doc["has_facts"]:
         facts = await store.facts(conn, auth.organization_id, doc_id) or {}
         out["facts"] = {k: facts.get(k) for k in ("floors", "levels", "fixtures", "checks", "pages")}
+        st = facts.get("structure") or {}
+        out["facts"]["foundation"] = st.get("foundation")
+        out["facts"]["live_plan"] = bool((st.get("plan") or {}).get("footings"))
     return out
 
 
@@ -433,3 +453,118 @@ async def archive_document(doc_id: uuid.UUID, auth: AuthorizationContext = Depen
                                                     "document")
     await store.archive(conn, auth.organization_id, doc_id)
     return {"id": str(doc_id), "status": "archived"}
+
+
+FOUNDATION = "Foundation"
+
+
+async def _structure_plan(conn: AsyncConnection, auth: AuthorizationContext, doc_id: uuid.UUID) -> tuple[dict, dict]:
+    doc = await _doc(conn, auth, doc_id)
+    facts = await store.facts(conn, auth.organization_id, doc_id) if doc["has_facts"] else None
+    plan = ((facts or {}).get("structure") or {}).get("plan")
+    if not plan or not plan.get("footings"):
+        raise HTTPException(status_code=422, detail="This drawing has no footing plan Mesiri could read")
+    return doc, plan
+
+
+@router.post("/documents/{doc_id}/track")
+async def track_footings(doc_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                         conn: AsyncConnection = Depends(get_db_conn)):
+    """Each footing on the plan becomes a place under "Foundation", named by its grid ("B3"), so "B3 footing
+    concreted" on WhatsApp is work at that footing. Places already there are kept (running it again adds none).
+    Who: those who set up places (the planning roles)."""
+    from mesiri.domains.places import store as places
+
+    doc, plan = await _structure_plan(conn, auth, doc_id)
+    if not may_view_expenses(auth.role):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin, finance or a project manager can set "
+                                                    "up places")
+    org, project_id = auth.organization_id, doc["project_id"]
+    existing = await places.places(conn, org, project_id)
+    root = next((p for p in existing if p["parent_id"] is None and p["name"].lower() == FOUNDATION.lower()), None)
+    made = 0
+    if root is None:
+        root = await places.add(conn, org, project_id, name=FOUNDATION, level_label="Stage", parent_id=None,
+                                user_id=auth.user_id, sort_order=-1)
+    have = {p["name"].lower() for p in existing if p["parent_id"] == root["id"]}
+
+    def walk(f: dict) -> tuple:
+        """Grid line by grid line, as site walks it: A1, D1, E1, B2, A3 ..."""
+        m = re.match(r"([A-Z]+)(\d+)$", f.get("grid") or "")
+        return (int(m.group(2)), m.group(1)) if m else (9999, f.get("grid") or "")
+
+    for f in sorted(plan["footings"], key=walk):
+        name = f.get("grid")
+        if not name or name.lower() in have:
+            continue
+        await places.add(conn, org, project_id, name=name, level_label=f"Footing {f['mark']}", parent_id=root["id"],
+                         user_id=auth.user_id)
+        have.add(name.lower())
+        made += 1
+    return {"made": made, "tracked": len(have), "untracked": sum(1 for f in plan["footings"] if not f.get("grid"))}
+
+
+@router.get("/projects/{project_id}/live-plan")
+async def project_live_plan(project_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                            conn: AsyncConnection = Depends(get_db_conn),
+                            object_storage: ObjectStoragePort = Depends(get_object_storage)):
+    """The live plan of the project's newest current structural drawing with a footing plan; ``{"live": null}``
+    when there is none (Places shows it on top when there is)."""
+    from sqlalchemy import text
+
+    await _project(conn, auth, project_id)
+    doc_id = (await conn.execute(text(
+        "SELECT id FROM project_documents WHERE organization_id = :org AND project_id = :p AND status = 'current' "
+        "AND facts -> 'structure' -> 'plan' -> 'footings' IS NOT NULL ORDER BY created_at DESC LIMIT 1"),
+        {"org": auth.organization_id, "p": project_id})).scalar()
+    if doc_id is None:
+        return {"live": None}
+    return {"live": await live_plan(doc_id, auth, conn, object_storage)}
+
+
+@router.get("/documents/{doc_id}/live")
+async def live_plan(doc_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                    conn: AsyncConnection = Depends(get_db_conn),
+                    object_storage: ObjectStoragePort = Depends(get_object_storage)):
+    """The footing plan as a picture with each footing's position (as a share of the page, 0..1) and state: done
+    (work there marked finished), in_progress (work recorded), not_started; its last work and photos; and the
+    concrete and steel of the footings done."""
+    from mesiri.domains.places import store as places
+
+    doc, plan = await _structure_plan(conn, auth, doc_id)
+    org, project_id = auth.organization_id, doc["project_id"]
+    rows = await places.places(conn, org, project_id)
+    root = next((p for p in rows if p["parent_id"] is None and p["name"].lower() == FOUNDATION.lower()), None)
+    by_name = {p["name"].lower(): p for p in rows if root and p["parent_id"] == root["id"]}
+    works: dict[uuid.UUID, list] = {}
+    for w in await places.works(conn, org, project_id):
+        works.setdefault(w.location_id, []).append(w)
+    width, height = plan.get("width") or 1, plan.get("height") or 1
+    markers, totals = [], {"done": 0, "in_progress": 0, "not_started": 0}
+    done_cum = done_kg = all_cum = all_kg = 0.0
+    for f in plan["footings"]:
+        place = by_name.get((f.get("grid") or "").lower())
+        here = sorted(works.get(place["id"], []) if place else [], key=lambda w: w.day)
+        state = "done" if any(w.finished for w in here) else "in_progress" if here else "not_started"
+        totals[state] += 1
+        all_cum += f.get("concrete_cum") or 0
+        all_kg += f.get("steel_kg") or 0
+        if state == "done":
+            done_cum += f.get("concrete_cum") or 0
+            done_kg += f.get("steel_kg") or 0
+        last = here[-1] if here else None
+        markers.append({"grid": f.get("grid"), "mark": f["mark"], "column": f.get("column"), "size": f.get("size"),
+                        "x": round(f["x"] / width, 4), "y": round(f["y"] / height, 4), "state": state,
+                        "place_id": str(place["id"]) if place else None,
+                        "last_work": last.work_type if last else None,
+                        "last_date": last.day.isoformat() if last else None,
+                        "updates": len(here), "photos": sum(w.photos for w in here)})
+    image = await signed_media_url(object_storage, plan.get("image_key")) if plan.get("image_key") else None
+    return {"document": {"id": str(doc_id), "number": doc["number"], "title": doc["title"],
+                         "revision": doc["revision"]},
+            "project_id": str(project_id), "image_url": image, "image_width": plan.get("image_width"),
+            "image_height": plan.get("image_height"), "page": plan.get("page"), "tracked": root is not None,
+            "can_track": may_view_expenses(auth.role), "markers": markers,
+            "summary": {**totals, "footings": len(markers), "concrete_done_cum": round(done_cum, 2),
+                        "concrete_cum": round(all_cum, 2), "steel_done_kg": round(done_kg, 1),
+                        "steel_kg": round(all_kg, 1)}}
