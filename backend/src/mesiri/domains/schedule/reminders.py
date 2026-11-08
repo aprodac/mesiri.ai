@@ -49,12 +49,15 @@ def delay_message(project_name: str, schedule: dict[str, Any]) -> str | None:
     lines = []
     for a in acts[:3]:
         progress = f", {a['progress']}% done" if a["progress"] is not None else ""
+        not_started = not a["actual_start"] and not a["progress"]
         if a["state"] == logic.LATE:
             what = f"*{a['name']}* is {_days(a['days_late'])} late{progress}"
+        elif not_started:
+            what = f"*{a['name']}* has not started (planned {_day(a['start'])})"
         else:
             what = f"*{a['name']}* is behind{progress}"
         if a["forecast_end"] and a["slip_days"]:
-            what += f": at this pace it finishes {_day(a['forecast_end'])}"
+            what += f": {'starting today' if not_started else 'at this pace'} it finishes {_day(a['forecast_end'])}"
         pushed = [names[x["id"]] for x in schedule["activities"] if x["pushed_days"] and any(
             p["id"] == a["id"] for p in x["after"])]
         if pushed:
@@ -76,15 +79,18 @@ def week_message(project_name: str, schedule: dict[str, Any], today: datetime.da
     """The Monday note: this week's work in order, and what is already late. None when the week is empty."""
     week_end = today + logic.DAY * 6
     late = [a for a in schedule["activities"] if a["state"] == logic.LATE]
-    starting, running, finishing = [], [], []
+    starting, running, finishing, waiting = [], [], [], []
     for a in schedule["activities"]:
         if not a["start"] or a["state"] in (logic.DONE, logic.LATE):
             continue
         if today <= a["start"] <= week_end:
             starting.append(a)
         elif a["start"] < today and a["end"] >= today:
-            (finishing if a["end"] <= week_end else running).append(a)
-    if not (starting or running or finishing or late):
+            if not a["actual_start"] and not a["progress"]:
+                waiting.append(a)  # should be running, has not started
+            else:
+                (finishing if a["end"] <= week_end else running).append(a)
+    if not (starting or running or finishing or waiting or late):
         return None
     parts = []
     if starting:
@@ -96,6 +102,8 @@ def week_message(project_name: str, schedule: dict[str, Any], today: datetime.da
             for a in finishing[:5]))
     if running:
         parts.append("Continues: " + ", ".join(a["name"] for a in running[:5]))
+    if waiting:
+        parts.append("⚠️ Should have started: " + ", ".join(f"{a['name']} ({_day(a['start'])})" for a in waiting[:5]))
     if late:
         parts.append("⚠️ Late: " + ", ".join(f"{a['name']} ({_days(a['days_late'])})" for a in late[:5]))
     return (f"📅 *This week at {project_name}* ({_day(today)} - {_day(week_end)})\n" + "\n".join(parts)

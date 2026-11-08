@@ -101,7 +101,9 @@ export function Gantt({
   const forecast = schedule.summary.forecast_finish
 
   return (
-    <div className="flex min-w-0 overflow-hidden rounded-xl border bg-card">
+    // contain: the timeline is wider than the screen and scrolls inside; without this, its width becomes the page's
+    // minimum width and the whole app scrolls sideways.
+    <div className="flex min-w-0 overflow-hidden rounded-xl border bg-card [contain:inline-size]">
       {/* Names */}
       <div className="shrink-0 border-r bg-card" style={{ width: NAME_COL }}>
         <div className="flex items-end border-b bg-muted/40 px-3 pb-1.5 text-[11px] font-medium text-muted-foreground" style={{ height: HEAD }}>
