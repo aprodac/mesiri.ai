@@ -263,6 +263,14 @@ ALLOWED: tuple[Allowed, ...] = (
             "work_progress first." + _WRITE),
     Allowed("acknowledge_issue", "POST", "/progress/issues/{issue_id}/acknowledge",
             "Prepare marking an issue as seen / being handled." + _WRITE),
+    # GM-06 (9 Nov 2026): who is on an issue and by when; a reminder to them.
+    Allowed("assign_issue", "PUT", "/progress/issues/{issue_id}/owner",
+            "Prepare putting someone on an open issue (find it with list_issues): assigned_user_name as they said it "
+            "(the API finds the one person on that project; it answers when several match or none), due_on when they "
+            "gave a day. They are told on WhatsApp." + _WRITE, hide=("assigned_user_id",)),
+    Allowed("remind_issue_owner", "POST", "/progress/issues/{issue_id}/remind",
+            "Prepare reminding the person on an open issue on WhatsApp (once a day; refused when no one is on it)."
+            + _WRITE),
     Allowed("wont_fix_issue", "POST", "/progress/issues/{issue_id}/wont-fix",
             "Prepare closing an issue that will not be fixed (with the reason)." + _WRITE),
     Allowed("undo_receipt", "POST", "/materials/inflows/{receipt_id}/reverse",

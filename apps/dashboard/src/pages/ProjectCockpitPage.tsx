@@ -152,8 +152,8 @@ export default function ProjectCockpitPage() {
             const age = Math.floor((Date.now() - new Date(i.occurred_at).getTime()) / 86_400_000)
             return (
               <Row key={i.id} title={(i.narrative || i.issue_type.replace(/_/g, ' ').toLowerCase()).slice(0, 60)}
-                note={`${age === 0 ? 'Today' : `${age} day${age === 1 ? '' : 's'}`} · ${String(i.severity).toLowerCase()}${(i as { assigned_user_id?: string | null }).assigned_user_id ? '' : ' · no one on it'}`}
-                chip={['HIGH', 'CRITICAL'].includes(String(i.severity)) ? { text: 'High', tone: 'bad' } : age >= 2 ? { text: `${age} d`, tone: 'warn' } : undefined} />
+                note={`${age === 0 ? 'Today' : `${age} day${age === 1 ? '' : 's'}`} · ${String(i.severity).toLowerCase()} · ${i.assigned_user_name ? `${i.assigned_user_name}${i.due_on ? `, by ${day(i.due_on)}` : ''}` : 'no one on it'}`}
+                chip={i.due_on && i.due_on < today ? { text: 'Overdue', tone: 'bad' } : ['HIGH', 'CRITICAL'].includes(String(i.severity)) ? { text: 'High', tone: 'bad' } : age >= 2 ? { text: `${age} d`, tone: 'warn' } : undefined} />
             )
           })}
         </Panel>

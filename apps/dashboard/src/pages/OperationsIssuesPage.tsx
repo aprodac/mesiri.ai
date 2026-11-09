@@ -13,6 +13,8 @@ import {
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
 import { Button } from '@/components/ui/button'
+import { IssueOwner } from '@/components/issues/issue-owner'
+import { useReadOnly } from '@/lib/trial'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
@@ -117,6 +119,7 @@ function severityAccent(item: SiteIssueItem): string {
 // ─── Main Operations Issues Page ───────────────────────────────────────────────
 
 export default function OperationsIssuesPage() {
+  const readOnly = useReadOnly()
   const { scope } = useScope()
   const toast = useToast()
 
@@ -436,6 +439,7 @@ export default function OperationsIssuesPage() {
                   </button>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-[80px] sm:pl-0">
+                  {!closed && <IssueOwner issue={item} readOnly={readOnly} onChanged={loadIssues} />}
                   {getStatusBadge(item.status)}
                   {!closed && item.status.toUpperCase() === 'OPEN' && (
                     <Button variant="ghost" size="sm" onClick={() => handleAcknowledgeIssue(item)}>

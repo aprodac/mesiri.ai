@@ -144,6 +144,16 @@ send these; a fourth push would repeat them. The morning brief (GM-08) will carr
 - An issue gets an owner (a team member) and a due date; overdue issues rise in the feed; "remind" sends the owner
   a WhatsApp nudge. Additive columns on issues. Closing from WhatsApp stays as today.
 
+**As built (9 Nov 2026).** The owner is the existing `site_issues.assigned_user_id` (nothing set it before); migration
+**0534** adds `due_on`. `PUT /progress/issues/{id}/owner` (`assigned_user_id` or `assigned_user_name` as said, `due_on`;
+either may be cleared) and `POST /progress/issues/{id}/remind` (`domains/progress/issue_owner.py`). Anyone who can
+reach the issue may put someone on it; the person must work on its project (member, or reaching every project by role
+or grant, the shared rule). A name is matched among them (full name, first name, start); several or none: the API says
+who. The person is told on WhatsApp once per owner and date; "Remind" once a day per issue; both through the
+notification queue, waiting for their 24-hour window (no template). Attention (GM-04): past its date the issue is
+**Overdue** (act now) and says who said by when. Dashboard: a "who is on it" chip on each open issue (person, date, red
+once overdue) with Remind; the cockpit's issues say who. WhatsApp: v3 `assign_issue`, `remind_issue_owner`, SOP rule 24.
+
 ### GM-07 Review mode (Monday meeting)
 - Full-screen, one project per page, arrow keys: last week vs plan, cost colour, top three reasons, next week's
   board, decisions taken (typed in the meeting, saved as notes on the project). Export the pack as PDF using the

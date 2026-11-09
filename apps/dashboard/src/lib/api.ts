@@ -382,7 +382,10 @@ export interface SiteIssueItem {
   resolved_at?: string | null
   status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED' | 'WONT_FIX' | 'CANCELLED' | string
   resolution_notes?: string | null
+  /** GM-06: who is on it and by when. */
   assigned_user_id?: string | null
+  assigned_user_name?: string | null
+  due_on?: string | null
   reported_by_user_id?: string | null
   created_at: string
   updated_at: string

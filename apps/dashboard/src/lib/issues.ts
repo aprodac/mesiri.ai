@@ -1,4 +1,4 @@
-import { fetchSiteIssuesApi, type SiteIssueItem } from '@/lib/api'
+import { api, fetchSiteIssuesApi, type SiteIssueItem } from '@/lib/api'
 
 // DSH-10: every open issue, not just the latest 100 of all statuses: the server
 // filters by status, and each status is read page by page (the API caps a page
@@ -14,4 +14,14 @@ export async function fetchAllOpenIssues(projectId: string | undefined): Promise
     }
   }
   return all
+}
+
+/** GM-06: put someone on an issue, with the date they gave (either may be cleared). They are told on WhatsApp. */
+export async function setIssueOwner(issueId: string, body: { assigned_user_id: string | null; due_on: string | null }): Promise<SiteIssueItem> {
+  return (await api.put<SiteIssueItem>(`/progress/issues/${issueId}/owner`, body)).data
+}
+
+/** GM-06: remind the person on it, on WhatsApp (once a day). */
+export async function remindIssueOwner(issueId: string): Promise<{ sent: boolean; message: string }> {
+  return (await api.post<{ sent: boolean; message: string }>(`/progress/issues/${issueId}/remind`)).data
 }
