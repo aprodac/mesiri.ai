@@ -42,6 +42,10 @@ The sidebar follows a project's story ([plan](plans/ui-story-plan.md) section 4)
    one visible page is a link, with more a drawer.
 4. **Settings** (admins; `/settings`): the hub for Company, Projects & sites, Team, WhatsApp, scheduled messages,
    modules. Those pages keep their addresses; the Settings row lights up on them. Others with Automations get that.
+5. **The bell** (top bar, NXT-08, `components/inbox-bell.tsx`): everything waiting for this person (site reports to
+   confirm, material requests, subcontractor bills, RA bill drafts, my tasks due), urgent first; each row opens its
+   record. The date pill keeps today's drafts and the red icon open issues; the bell does not repeat them as badges.
+   [Plan](plans/approvals-inbox-plan.md).
 
 **One home per page.** A page listed in two modules is `shortcut: true` in all but its home, and the sidebar shows
 only the home: BOQ & budget lives in Planning, Requests and Suppliers in Procurement. The breadcrumb (`findPage`)
