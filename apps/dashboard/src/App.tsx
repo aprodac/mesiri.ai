@@ -51,6 +51,7 @@ import TdsPage from '@/pages/accounts/TdsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
+import SettingsPage from '@/pages/SettingsPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
@@ -200,6 +201,7 @@ export default function App() {
           ))}
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="company" element={<CompanyDetails />} />
           <Route path="company/messages" element={<Moved to="/whatsapp?view=messages" />} />
           <Route path="whatsapp" element={<WhatsAppPage />} />

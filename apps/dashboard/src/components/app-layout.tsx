@@ -7,6 +7,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
+import { JumpBox } from '@/components/jump-box'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
@@ -110,6 +111,7 @@ export function AppLayout() {
       >
         Skip to content
       </a>
+      <JumpBox />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>

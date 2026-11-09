@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   Rocket,
   Stamp,
+  Settings as SettingsIcon,
   type LucideIcon,
 } from 'lucide-react'
 import type { ModuleKey } from './modules'
@@ -80,7 +81,36 @@ export interface ModuleGroup {
   about: string
   /** Hidden when the company has this module switched off (WEB-02). */
   module?: ModuleKey
+  /** Where the module sits in the project's story (UX-04, docs/plans/ui-story-plan.md section 4): the sidebar
+   *  shows the daily pages, then PLAN, SITE, BUY, MONEY, then Settings. */
+  section: NavSection
   pages: ModulePage[]
+}
+
+/** The sidebar's sections, in the order of a project's life (UX-04). */
+export type NavSection = 'daily' | 'plan' | 'site' | 'buy' | 'money' | 'settings'
+
+export const SECTION_TITLES: Record<NavSection, string> = {
+  daily: 'Every day',
+  plan: 'Plan',
+  site: 'Site',
+  buy: 'Buy',
+  money: 'Money',
+  settings: 'Settings',
+}
+
+/** Each role's day comes first (UX-04/UX-11): the same sections, in the order the role reaches for them. */
+export const SECTION_ORDER: Record<string, NavSection[]> = {
+  ADMIN: ['plan', 'site', 'buy', 'money'],
+  OWNER: ['plan', 'site', 'buy', 'money'],
+  SUPER_ADMIN: ['plan', 'site', 'buy', 'money'],
+  PROJECT_MANAGER: ['site', 'plan', 'buy', 'money'],
+  SITE_ENGINEER: ['site', 'buy', 'plan', 'money'],
+  FINANCE: ['money', 'buy', 'site', 'plan'],
+}
+
+export function sectionOrder(role: string | null | undefined): NavSection[] {
+  return SECTION_ORDER[(role || '').toUpperCase()] ?? SECTION_ORDER.ADMIN
 }
 
 export const MODULE_GROUPS: ModuleGroup[] = [
@@ -90,6 +120,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     icon: CalendarDays,
     tone: 'orange',
     about: 'What happened on site today, and what is stuck.',
+    section: 'daily',
     pages: [
       { title: 'Today', url: '/today', status: 'built', phase: 'V1', about: "Each site's day: what came in, what is missing, what needs you.", example: 'Main building sent 4 updates; Compound wall has not reported.' },
       { title: 'Daily reports', url: '/reports', status: 'built', phase: 'V1', about: 'Every DPR, newest first.', example: 'Last evening\'s PDF that went to the owner.' },
@@ -109,10 +140,11 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     icon: ClipboardList,
     tone: 'teal',
     about: 'What the project should contain and cost, before work starts.',
+    section: 'plan',
     pages: [
       { title: 'Project start', url: '/planning/setup', status: 'built', phase: 'V1', about: 'From "we won it" to "work starts": stage, contract dates, the BOQ from your Excel, the schedule, the site team, suppliers.', example: 'Upload the estimate sheet; 214 BOQ lines and a first schedule in 20 minutes.', tracker: 'ST-01, ST-03, ST-05', roles: MANAGERS, related: [{ title: 'Items', url: '/materials?view=items' }] },
       { title: 'Schedule', url: '/planning/schedule', status: 'built', phase: 'V1', about: 'The project timeline: what should happen when, what site has done, what is late and what it pushes.', example: 'Excavation 3 days late at 60%: footings and slab move; forecast handover 27 Nov.', tracker: 'ST-04' },
-      { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', shortcut: true, about: 'Every work item with its quantity, client rate and budget rate.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02', roles: MONEY_ROLES },
+      { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', about: 'Every work item with its quantity, client rate and budget rate.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02', roles: MONEY_ROLES },
       { title: 'Material plan', url: '/planning/materials', status: 'built', phase: 'V1', about: 'What each material is needed for, week by week, from the BOQ and the schedule, against stock and orders; red from the week it runs short.', example: 'First floor slab on 20 Nov needs 380 bags cement; 150 in stock: short from the week of 17 Nov.', tracker: 'MP-01, MP-02', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Stock', url: '/materials' }] },
       { title: 'Rate library', url: '/planning/rates', status: 'planned', phase: 'V1', about: "Standard output and material per unit of work, so a BOQ can be priced without a consultant.", example: 'Plastering 12 mm: 1 mason + 1 helper ≈ 80 sq ft a day. 1 m³ M20 ≈ 8 bags cement.', tracker: 'MP-01 (per BOQ line, built)', roles: MANAGERS, related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Material plan', url: '/planning/materials' }] },
       { title: 'Live plans', url: '/planning/live', status: 'built', phase: 'V1', about: 'The drawings as live maps: every room and footing coloured by the work site sent on WhatsApp, per trade, with photos and a live feed.', example: 'First floor: Pantry plastering done (green), Office-1 under way; B3 footing concreted this morning.', tracker: 'DR-10, DR-11', related: [{ title: 'Documents', url: '/planning/documents' }, { title: 'Places', url: '/planning/places' }] },
@@ -132,9 +164,10 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     about: 'Was the money spent matched by the work done? Green or red, every day.',
     // CC-01 (8 Nov 2026): a module of its own, switched on per company like Equipment.
     module: 'cost',
+    section: 'money',
     pages: [
       { title: 'Overview', url: '/cost', status: 'built', phase: 'V1', about: 'Every project with a BOQ, worst first: budget, done against spent, committed, the forecast at completion, the last 7 days.', example: 'Villa Kakkanad: ₹4,500 under at completion; Block C: 2 red lines this week.', tracker: 'CC-19, CC-22', roles: MONEY_ROLES },
-      { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', about: 'Every work item with its quantity, client rate and budget rate, the work done on it and the budget it earned.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02, CC-04', roles: MONEY_ROLES },
+      { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', shortcut: true, about: 'Every work item with its quantity, client rate and budget rate, the work done on it and the budget it earned.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02, CC-04', roles: MONEY_ROLES },
       { title: 'Green / red', url: '/cost/green-red', status: 'built', phase: 'V1', about: "Each BOQ line's labour against the labour budget its work earned, per day or period: green, amber or red, worst first, with why.", example: 'Plastering amber: ₹4,400 of labour for 300 sq ft, ₹14.67 per sq ft against ₹14.', tracker: 'CC-07', roles: [...MONEY_ROLES, 'SITE_ENGINEER'], related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Attendance', url: '/labour' }] },
       { title: 'Budget vs actual', url: '/cost/budget', status: 'built', phase: 'V1', about: 'For a project: the budget, the budget earned by the work done, and the money spent, for labour, materials and subcontract; per BOQ line the labour put on it against the labour it earned.', example: 'Plastering: ₹8,680 of labour earned, ₹4,400 spent, ₹4,280 under.', tracker: 'CC-04, CC-05', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }] },
       { title: 'Materials vs BOQ', url: '/cost/materials', status: 'built', phase: 'V1', about: 'Per material: what the work done needed by the BOQ norms against what was used, and what is short to finish beyond stock and open orders.', example: 'Cement: 4 bags used, the work needed 3; 26 bags short to finish.', tracker: 'CC-08', roles: MONEY_ROLES, related: [{ title: 'Material plan', url: '/planning/materials' }] },
@@ -149,11 +182,12 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'emerald',
     module: 'materials',
     about: 'What is on site, what came, what went into the work.',
+    section: 'site',
     pages: [
       { title: 'Stock', url: '/materials?view=stock', status: 'built', phase: 'V1', about: 'What is on site now, how long it lasts, what is coming on orders and what the sites asked for.', example: 'Cement: 217 bags, lasts about 10 days, 200 coming on PO-0042.', tracker: 'WEB-77' },
       { title: 'Movements', url: '/materials?view=movements', status: 'built', phase: 'V1', about: 'The register: every delivery, use and move.', example: '+100 bags cement from Malabar Hardware, ₹41,400.' },
       { title: 'Items', url: '/materials?view=items', status: 'built', phase: 'V1', about: 'Your list of materials, with category and unit.', example: 'Cement OPC 53 · Structural › Concrete · bags.', roles: MANAGERS },
-      { title: 'Requests', url: '/materials/requests', status: 'built', phase: 'V1', about: 'What the site asks for, before anyone orders it.', example: 'Engineer: need 200 bags cement by Friday for the first-floor slab.', tracker: 'PRC-22', related: [{ title: 'Stock', url: '/materials' }] },
+      { title: 'Requests', url: '/materials/requests', status: 'built', phase: 'V1', shortcut: true, about: 'What the site asks for, before anyone orders it.', example: 'Engineer: need 200 bags cement by Friday for the first-floor slab.', tracker: 'PRC-22', related: [{ title: 'Stock', url: '/materials' }] },
       { title: 'Central store', url: '/materials/store', status: 'planned', phase: 'Later', about: 'A yard or godown that buys in bulk and sends to sites.', example: '20 tonnes of steel at the yard; 3 tonnes sent to the villa today.', related: [{ title: 'Movements', url: '/materials?view=movements' }] },
     ],
   },
@@ -163,16 +197,17 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     icon: ShoppingCart,
     tone: 'sky',
     about: 'From "the site needs it" to "the supplier is paid", each step checked against the last.',
+    section: 'buy',
     pages: [
       // PRC-31: requests and orders are one flow; Requests also sits here (the same page as Materials > Requests).
-      { title: 'Requests', url: '/materials/requests', status: 'built', phase: 'V1', shortcut: true, about: 'What the sites ask for, before anyone orders it.', example: 'Engineer: need 200 bags cement by Friday for the first-floor slab.', tracker: 'PRC-22' },
+      { title: 'Requests', url: '/materials/requests', status: 'built', phase: 'V1', about: 'What the sites ask for, before anyone orders it.', example: 'Engineer: need 200 bags cement by Friday for the first-floor slab.', tracker: 'PRC-22' },
       { title: 'Purchase orders', url: '/procurement/orders', status: 'built', phase: 'V1', about: 'Orders to suppliers, with what is still to arrive and duplicate warnings.', example: 'PO-0042 to Malabar: 200 bags at ₹400, 150 delivered, 50 pending.', tracker: 'PRC-06..10', related: [{ title: 'Movements', url: '/materials?view=movements' }] },
       { title: 'Goods received (GRN)', navTitle: 'GRN', url: '/procurement/grn', status: 'built', phase: 'V1', about: 'Each delivery received against its order: GRN number, challan photo, quantity accepted and rejected, who received it.', example: 'GRN-0117: 150 of 200 bags against PO-0042, 3 torn bags rejected, challan photo attached, received by Arun.', tracker: 'PRC-08', related: [{ title: 'Deliveries today (Movements)', url: '/materials?view=movements' }] },
       { title: 'Pending deliveries', url: '/procurement/pending', status: 'planned', phase: 'V1', about: 'What is ordered but has not arrived, and which orders are late.', example: '3 orders past their date: 50 bags cement from Malabar, 2 days late.', tracker: 'PRC-08' },
       { title: 'Bills', url: '/procurement/bills', status: 'planned', phase: 'V1', about: 'Supplier bills matched to deliveries; material delivered but not billed.', example: 'Bill says 200 bags at ₹420, delivery says 150 at ₹400: flagged.', tracker: 'PRC-11', roles: MONEY_ROLES },
       { title: 'Rates', url: '/procurement/rates', status: 'built', phase: 'V1', about: 'What each item cost, from which supplier, over time.', example: 'Cement ₹14 more than last time at Malabar.', tracker: 'PRC-14, PRC-16', roles: MONEY_ROLES },
       { title: 'Quotations', url: '/procurement/quotations', status: 'planned', phase: 'V1.5', about: 'Ask several suppliers, compare side by side, pick one.', example: 'Three shops quote for TMT 12 mm.', roles: MONEY_ROLES },
-      { title: 'Suppliers', url: '/finance/vendors', status: 'built', phase: 'V1', shortcut: true, about: 'Suppliers with phone, GSTIN and credit days, and what you owe each one.', example: 'Malabar Hardware · ₹26,000 due, ₹10,000 overdue' },
+      { title: 'Suppliers', url: '/finance/vendors', status: 'built', phase: 'V1', about: 'Suppliers with phone, GSTIN and credit days, and what you owe each one.', example: 'Malabar Hardware · ₹26,000 due, ₹10,000 overdue' },
       { title: 'Reports', url: '/procurement/reports', status: 'planned', phase: 'V1', about: 'Spend by supplier, category and project; late deliveries; rate changes.', example: 'October: ₹28 L bought, 41% from Malabar; 6 late deliveries; cement up 3.5%.', tracker: 'PRC-19', roles: MONEY_ROLES, related: [{ title: 'Movements', url: '/materials?view=movements' }] },
       { title: 'Returns', url: '/procurement/returns', status: 'planned', phase: 'Later', about: 'Material sent back, and what the supplier now owes you (debit note).', example: 'Bent steel returned: Kerala Steels owes ₹8,400.', roles: MONEY_ROLES },
       { title: 'Rate contracts', url: '/procurement/contracts', status: 'planned', phase: 'Later', about: 'Yearly agreed rates with a supplier, used on every order automatically.', example: 'Malabar: cement at ₹395 a bag until March.', roles: MONEY_ROLES },
@@ -185,6 +220,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'amber',
     module: 'labour',
     about: 'Who worked, what it cost, and whether the work matched the cost.',
+    section: 'site',
     pages: [
       { title: 'Attendance', url: '/labour', status: 'built', phase: 'V1', about: 'Who worked today, by contractor and trade.', example: '4 masons and 2 helpers under Suresh.' },
       { title: 'Workers', url: '/labour?view=workers', status: 'built', phase: 'V1', about: 'Your workers and their daily wage.', example: 'Mason ₹1,200 a day, helper ₹800.' },
@@ -198,6 +234,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     icon: Handshake,
     tone: 'violet',
     about: 'Work given out at an agreed rate, paid against measured quantity.',
+    section: 'buy',
     pages: [
       { title: 'Subcontractors', url: '/subcontract/teams', status: 'built', phase: 'V1', tracker: 'NXT-05..07', about: 'Every outside team, what they work on, and what you owe each.', example: "Ravi's plastering team: 2 sites, ₹46,000 due, ₹10,000 advance.", roles: MONEY_ROLES },
       { title: 'Work orders', url: '/subcontract/work-orders', status: 'built', phase: 'V1', tracker: 'NXT-05', about: 'Who does which work at what rate.', example: "Plastering to Ravi's team at ₹14 per sq ft, 18,000 sq ft." },
@@ -211,10 +248,11 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'violet',
     module: 'finance',
     about: "Money in and out of the company's accounts.",
+    section: 'money',
     pages: [
       { title: 'Expenses', url: '/finance/expenses', status: 'built', phase: 'V1', about: 'Every expense with its photo and who paid.', example: '₹100 petrol from the engineer\'s petty cash.', roles: MONEY_ROLES },
       { title: 'Money', url: '/finance/money', status: 'built', phase: 'V1', about: 'Accounts and petty cash balances.', example: 'Site petty cash ₹4,200; office bank.' },
-      { title: 'Suppliers', url: '/finance/vendors', status: 'built', phase: 'V1', about: 'Suppliers, subcontractors, hire and services, and what you owe each: bills, deliveries not billed, payments, advances, balance.', example: 'Malabar: ₹40,000 + ₹36,000 delivered − ₹50,000 paid = ₹26,000 due.', tracker: 'CC-09, CC-10' },
+      { title: 'Suppliers', url: '/finance/vendors', status: 'built', phase: 'V1', shortcut: true, about: 'Suppliers, subcontractors, hire and services, and what you owe each: bills, deliveries not billed, payments, advances, balance.', example: 'Malabar: ₹40,000 + ₹36,000 delivered − ₹50,000 paid = ₹26,000 due.', tracker: 'CC-09, CC-10' },
       { title: 'Settings', url: '/finance/settings', status: 'built', phase: 'V1', about: 'Categories and finance options.', example: 'Expense categories.' },
     ],
   },
@@ -225,6 +263,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'indigo',
     module: 'finance',
     about: "The company's books: every rupee in and out, by party and by project, ready for the CA and Tally.",
+    section: 'money',
     pages: [
       { title: 'Accounts home', navTitle: 'Home', url: '/accounts', status: 'built', phase: 'V1', module: 'accounts', about: "The owner's one screen: cash and bank today, owed to us and by us, this month's profit against last, the year by month, GST this month, TDS to deposit, the projects best first.", example: 'Cash ₹15.9 L; clients owe ₹6.4 L; profit this month ₹2.1 L, up 18%.', tracker: 'ACC-09', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'] },
       { title: 'Project P&L', url: '/accounts/projects', status: 'built', phase: 'V1', module: 'accounts', about: 'Profit or loss of each project: billed to the client minus every cost booked to it, its position (received, owed, retention held), against the BOQ budget.', example: 'Villa Kakkanad: ₹62 L billed, ₹54.8 L cost, ₹7.2 L profit (11.6%).', tracker: 'ACC-08, CC-20', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }] },
@@ -253,6 +292,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     icon: ReceiptText,
     tone: 'green',
     about: 'Money you collect from the client, in stages against measured work.',
+    section: 'money',
     pages: [
       { title: 'Clients', url: '/billing/clients', status: 'built', phase: 'V1', about: 'Each client, their projects and contract values; the terms each RA bill uses.', example: 'Mr. Thomas: villa, ₹62 L contract, 5% retention.', tracker: 'NXT-01', roles: BILLING_ROLES },
       { title: 'RA bills', url: '/billing/ra-bills', status: 'built', phase: 'V1', about: 'Running bills from the work site measured since the last bill × the client rates, with retention, advance recovery, GST and TDS worked out; printed on your letterhead.', example: 'RA-04: ₹12.6 L of work in October, ₹11.9 L net after retention and TDS.', tracker: 'NXT-02', roles: BILLING_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }] },
@@ -268,12 +308,29 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     tone: 'teal',
     about: 'Machines, vehicles, and reusable items like shuttering that go missing quietly.',
     module: 'equipment',
+    section: 'site',
     pages: [
       { title: 'Machines', url: '/equipment', status: 'built', phase: 'V1', about: 'Every machine on every site: hours worked, idle and broken down, diesel, hire cost, service due.', example: 'JCB 6 hours today at ₹1,100 an hour, 30 L diesel.', tracker: 'NXT-11' },
       { title: 'Daily log', url: '/equipment/log', status: 'built', phase: 'V1', about: "One day, every machine: the evening's figures in one screen.", example: 'JCB 6 h, mixer 8 h, roller broke down 3 h.', tracker: 'NXT-11' },
       { title: 'Hire check', url: '/equipment/hire', status: 'built', phase: 'V1', about: 'The hire bill against the hours recorded on site.', example: 'Bill says 220 h; 186 h recorded: ₹37,400 more than the site says.', tracker: 'NXT-13', roles: MONEY_ROLES },
       { title: 'Vehicles', url: '/equipment/vehicles', status: 'built', phase: 'V1', about: 'Company vehicles: trips, fuel and who drove.', example: 'Tipper: 6 trips of sand today, 40 L diesel.', tracker: 'NXT-15' },
       { title: 'Shuttering & tools', url: '/equipment/assets', status: 'built', phase: 'V1', about: 'Which site holds how many plates, props and tools.', example: '400 plates at the villa, 60 sent to Chennai.', tracker: 'NXT-14' },
+    ],
+  },
+  {
+    // UX-04: setup in one place, at the bottom of the sidebar (admins). Its pages keep their addresses.
+    key: 'settings',
+    title: 'Settings',
+    icon: SettingsIcon,
+    tone: 'indigo',
+    about: 'Your company, projects and sites, team and WhatsApp.',
+    section: 'settings',
+    pages: [
+      { title: 'Settings', url: '/settings', status: 'built', phase: 'V1', about: 'Everything you set up once: company, projects and sites, team, WhatsApp, modules.', example: 'Add a site; invite the engineer; set the report time.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
+      { title: 'Projects & sites', url: '/projects', status: 'built', phase: 'V1', about: 'Each project, its sites and who gets its reports.', example: 'Villa Kakkanad: Main building, Compound wall.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
+      { title: 'Team', url: '/team', status: 'built', phase: 'V1', about: 'Everyone who reports to or reads from Mesiri, with their role and sites.', example: 'Arun, site engineer, Main building.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
+      { title: 'Company', url: '/company', status: 'built', phase: 'V1', about: 'Company details, letterhead, logo and report settings.', example: 'GSTIN, address and logo on every PDF.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
+      { title: 'WhatsApp', url: '/whatsapp', status: 'built', phase: 'V1', about: 'Conversations with Mesiri, every message, and scheduled messages.', example: "Arun's 6 pm update and Mesiri's reply.", roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
     ],
   },
 ]
