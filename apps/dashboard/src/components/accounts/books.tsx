@@ -86,6 +86,8 @@ const PAGES = [
   { to: '/accounts/balance-sheet', label: 'Balance sheet' },
   { to: '/accounts/cash-bank', label: 'Cash & bank' },
   { to: '/accounts/projects', label: 'Projects' },
+  { to: '/accounts/gst', label: 'GST' },
+  { to: '/accounts/tds', label: 'TDS' },
   { to: '/accounts/trial-balance', label: 'Trial balance' },
   { to: '/accounts/day-book', label: 'Day book' },
   { to: '/accounts/ledgers', label: 'Ledgers' },

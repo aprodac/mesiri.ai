@@ -627,3 +627,64 @@ async def put_settings(body: SettingsIn, auth: AuthorizationContext = Depends(ge
         {"org": auth.organization_id, "b": body.overhead_basis, "p": body.head_office_project_id, "u": auth.user_id})
     stats = await sweep.sweep(conn, auth.organization_id)
     return {**await sweep.overhead_settings(conn, auth.organization_id), "posted": stats}
+
+
+# --- Phase C: GST and TDS (ACC-10, ACC-11) -------------------------------------------------------------------------
+
+async def _tax_period(conn, auth, date_from, date_to):
+    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    return date_from, date_to
+
+
+@router.get("/gst")
+async def gst_summary(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                      auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-10: output and claimable input GST (IGST / CGST / SGST by place of supply), net payable per month, sales and
+    purchases with GSTINs, credit missed and why, tied to the Output / Input GST ledgers. Company-wide (one return)."""
+    from mesiri.domains.accounts import tax
+
+    await _ready(conn, auth)
+    date_from, date_to = await _tax_period(conn, auth, date_from, date_to)
+    return _out({"date_from": date_from, "date_to": date_to,
+                 **await tax.gst(conn, auth.organization_id, date_from, date_to)})
+
+
+@router.get("/gst/export")
+async def gst_export(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                     auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.accounts import tax
+
+    await _ready(conn, auth)
+    date_from, date_to = await _tax_period(conn, auth, date_from, date_to)
+    g = await tax.gst(conn, auth.organization_id, date_from, date_to)
+    return _xlsx(export.gst(await _company(conn, auth.organization_id), date_from, date_to, g),
+                 f"gst-{date_from}-to-{date_to}.xlsx")
+
+
+@router.get("/tds")
+async def tds_register(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                       auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-11: TDS deducted from subcontractors (194C) with what is deposited and due by when; TDS clients deducted
+    from our RA bills (for 26AS)."""
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.accounts import tax
+
+    await _ready(conn, auth)
+    date_from, date_to = await _tax_period(conn, auth, date_from, date_to)
+    today = await project_day.company_today(conn, auth.organization_id)
+    return _out({"date_from": date_from, "date_to": date_to, "today": today,
+                 **await tax.tds(conn, auth.organization_id, date_from, date_to, today)})
+
+
+@router.get("/tds/export")
+async def tds_export(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                     auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.accounts import tax
+
+    await _ready(conn, auth)
+    date_from, date_to = await _tax_period(conn, auth, date_from, date_to)
+    today = await project_day.company_today(conn, auth.organization_id)
+    t = await tax.tds(conn, auth.organization_id, date_from, date_to, today)
+    return _xlsx(export.tds(await _company(conn, auth.organization_id), date_from, date_to, t),
+                 f"tds-{date_from}-to-{date_to}.xlsx")

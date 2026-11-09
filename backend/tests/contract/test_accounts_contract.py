@@ -402,3 +402,53 @@ async def test_phase_b_statements_agree_with_the_books_for_the_company_and_the_p
         assert vp["overheads"] == "0.00" and vp["totals"]["net_profit"] == "39300.00"  # switched off: taken back
     finally:
         await _run(test_engine, "DELETE FROM organizations WHERE id = :id", id=ids["org"])
+
+
+async def test_phase_c_gst_and_tds_registers_tie_to_the_books(client, test_engine):
+    """ACC-10/11: GST with the company's GSTIN (CGST + SGST within Kerala, IGST across), credit missed and why, tied to
+    the GST ledgers; TDS deducted (194C) with its deposit and due date; TDS the client deducted from the RA bill."""
+    ids = await _company(test_engine)
+    h = {"Authorization": f"Bearer {ids['admin']}"}
+    month, day = ids["month"], ids["day"]
+    end = (month.replace(day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
+    try:
+        await _run(test_engine, "INSERT INTO organization_settings (id, organization_id, key, value) VALUES "
+                   "(gen_random_uuid(), :o, 'branding', CAST(:v AS jsonb))", o=ids["org"], v='{"gstin": "32ABCDE1234F1Z5"}')
+        await _run(test_engine, "UPDATE clients SET gstin = '29AAACM1234A1Z5' WHERE id = :id", id=ids["client"])
+        # A bill with GST from a supplier with no GSTIN: its credit is missed, and said.
+        await _run(test_engine, "INSERT INTO expenses (id, organization_id, project_id, amount, occurred_date, created_by, "
+                   "category_id, workflow_status, tax_amount, is_tax_inclusive) VALUES (gen_random_uuid(), :org, :p, 590, :d, "
+                   ":u, :c, 'confirmed', 90, true)", org=ids["org"], p=ids["project"], d=day, u=ids["admin_id"],
+                   c=ids["materials"])
+        g = (await client.get(f"/accounts/gst?date_from={month}&date_to={end}", headers=h)).json()
+        assert g["company_state"] == "32"
+        assert (g["output"]["gst"], g["output"]["igst"]) == ("18000.00", "18000.00")  # client in Karnataka: IGST
+        assert (g["input"]["gst"], g["input"]["cgst"], g["input"]["sgst"]) == ("1800.00", "900.00", "900.00")
+        assert g["payable"] == "16200.00" and g["missed"] == "90.00"
+        assert [w["key"] for w in g["warnings"]] == ["supplier_no_gstin"]
+        assert g["tie"]["agrees"] is True and g["tie"]["output_books"] == "18000.00"
+        xl = await client.get(f"/accounts/gst/export?date_from={month}&date_to={end}", headers=h)
+        assert xl.status_code == 200 and xl.content[:2] == b"PK"
+
+        # TDS: 500 deducted from Ajay's bill; 300 deposited from the bank into the TDS payable account.
+        from mesiri.infrastructure.postgres.repositories.finance import (
+            PostgresMoneyTransactionRepository,
+        )
+
+        async with test_engine.begin() as conn:
+            await PostgresMoneyTransactionRepository(conn).record(
+                organization_id=ids["org"], transaction_type="transfer", amount=Decimal(300), occurred_date=end,
+                created_by=ids["admin_id"], from_account_id=ids["bank"], to_account_id=ids["tds"])
+        t = (await client.get(f"/accounts/tds?date_from={month}&date_to={end}", headers=h)).json()
+        assert [(d["party"], d["amount"], d["section"]) for d in t["deducted"]] == [("Ajay Tiling", "500.00", "194C")]
+        m = t["months"][0]
+        assert (m["deducted"], m["deposited"], m["left"]) == ("500.00", "300.00", "200.00")
+        nxt = (month.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+        assert m["due"] == (str(nxt.replace(day=7)) if month.month != 3 else f"{month.year}-04-30")
+        assert t["to_deposit"] == "200.00" and t["missing_pan"] == ["Ajay Tiling"]
+        assert [(r["client"], r["amount"], r["pan"]) for r in t["by_clients"]] == [("Mehta Builders", "2000.00", "AAACM1234A")]
+        assert (await client.get(f"/accounts/tds/export?date_from={month}&date_to={end}", headers=h)).status_code == 200
+        _, pm = await _user(test_engine, ids["org"], "PROJECT_MANAGER")
+        assert (await client.get("/accounts/gst", headers={"Authorization": f"Bearer {pm}"})).status_code == 403
+    finally:
+        await _run(test_engine, "DELETE FROM organizations WHERE id = :id", id=ids["org"])

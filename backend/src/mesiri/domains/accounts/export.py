@@ -85,3 +85,55 @@ def day_book(company: str, scope: str, date_from, date_to, book_: dict[str, Any]
     sheet.insert_rows(1, 2)
     sheet["A1"] = f"{company}: day book, {scope}, {date_from} to {date_to}"
     return _save(book)
+
+
+def gst(company: str, date_from, date_to, g: dict[str, Any]) -> bytes:
+    """GST for the CA: Summary (GSTR-3B terms), Sales (outward), Purchases (inward, claimable or why not), by GSTIN."""
+    from openpyxl import Workbook
+
+    book = Workbook()
+    o, i = g["output"], g["input"]
+    summary = [
+        ["3.1(a) Outward taxable supplies", o["taxable"], o["igst"], o["cgst"], o["sgst"], o["unknown"], o["gst"]],
+        ["4(A)(5) Input tax credit (claimable)", i["taxable"], i["igst"], i["cgst"], i["sgst"], i["unknown"], i["gst"]],
+        ["Net GST payable", None, None, None, None, None, g["payable"]],
+        ["GST paid, not claimable (missed credit)", None, None, None, None, None, g["missed"]],
+    ]
+    sheet = _sheet(book, "Summary", ["", "Taxable value", "IGST", "CGST", "SGST", "GST (state unknown)", "Total GST"],
+                   summary, [40, 16, 14, 14, 14, 18, 14])
+    sheet.insert_rows(1, 2)
+    sheet["A1"] = f"{company} (GSTIN {g['company_gstin'] or 'not set'}): GST {date_from} to {date_to}"
+    _sheet(book, "Sales", ["Date", "Bill", "Client", "GSTIN", "Project", "Rate %", "Taxable", "IGST", "CGST", "SGST", "GST"],
+           [[str(r["date"]), r["ref"], r["client"], r["gstin"], r["project"], r["rate"], r["taxable"], r["igst"],
+             r["cgst"], r["sgst"], r["gst"]] for r in g["sales"]], [12, 10, 28, 18, 22, 8, 14, 12, 12, 12, 12])
+    words = {"no_gstin": "Supplier has no GSTIN", "not_included": "GST said as not included",
+             "tax_not_below_amount": "GST not below the amount"}
+    _sheet(book, "Purchases", ["Date", "Expense", "Supplier", "GSTIN", "Project", "Taxable", "IGST", "CGST", "SGST",
+                               "GST", "Claimable", "Why not"],
+           [[str(r["date"]), r["number"], r["supplier"], r["gstin"], r["project"], r["taxable"], r["igst"], r["cgst"],
+             r["sgst"], r["gst"], "Yes" if r["claimable"] else "No", words.get(r["reason"] or "", "")]
+            for r in g["purchases"]], [12, 12, 28, 18, 22, 14, 12, 12, 12, 12, 10, 26])
+    _sheet(book, "By supplier GSTIN", ["Supplier", "GSTIN", "Bills", "Taxable", "GST", "Claimable"],
+           [[s["supplier"], s["gstin"], s["bills"], s["taxable"], s["gst"], s["claimable"]] for s in g["by_supplier"]],
+           [32, 18, 8, 14, 14, 14])
+    return _save(book)
+
+
+def tds(company: str, date_from, date_to, t: dict[str, Any]) -> bytes:
+    from openpyxl import Workbook
+
+    book = Workbook()
+    sheet = _sheet(book, "Months", ["Month", "Deducted", "Deposited", "To deposit", "Due by", "Status"],
+                   [[m["month"], m["deducted"], m["deposited"], m["left"], str(m["due"]), m["status"]] for m in t["months"]],
+                   [10, 14, 14, 14, 12, 12])
+    sheet.insert_rows(1, 2)
+    sheet["A1"] = f"{company}: TDS {date_from} to {date_to}"
+    _sheet(book, "Deducted 194C", ["Date", "Subcontractor", "PAN", "Section", "Bill", "Bill amount", "TDS", "Project"],
+           [[str(d["date"]), d["party"], d["pan"], d["section"], d["bill"], d["bill_amount"], d["amount"], d["project"]]
+            for d in t["deducted"]], [12, 30, 14, 9, 12, 14, 12, 24])
+    _sheet(book, "Deposited", ["Date", "Amount", "From"], [[str(d["date"]), d["amount"], d["from"]] for d in t["deposits"]],
+           [12, 14, 28])
+    _sheet(book, "Deducted by clients", ["Date", "RA bill", "Client", "PAN", "Project", "Gross", "Rate %", "TDS"],
+           [[str(r["date"]), r["ref"], r["client"], r["pan"], r["project"], r["gross"], r["rate"], r["amount"]]
+            for r in t["by_clients"]], [12, 10, 28, 14, 24, 14, 8, 12])
+    return _save(book)
