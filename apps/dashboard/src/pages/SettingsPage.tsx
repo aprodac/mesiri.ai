@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Building, Building2, ChevronRight, Clock, History, ListChecks, MessageSquare, Puzzle, Users } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
-import { MODULE_NAMES, useModuleEnabled, type ModuleKey } from '@/lib/modules'
+import { MODULE_KEYS, MODULE_NAMES, useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { SETUP_URL, setupCounts, useSetupProgress } from '@/lib/setup'
 import { usePageTitle } from '@/lib/page-title'
 import { PageHeader, Section } from '@/components/page/page-kit'
@@ -19,7 +19,6 @@ const ROWS = [
   { title: 'Scheduled messages', about: 'Reminders and summaries Mesiri sends on a timetable.', url: '/whatsapp?view=automations', icon: Clock, module: 'automations' as ModuleKey },
 ]
 
-const MODULES: ModuleKey[] = ['dpr', 'labour', 'materials', 'equipment', 'finance', 'cost', 'accounts', 'automations']
 
 export default function SettingsPage() {
   usePageTitle('Settings')
@@ -71,7 +70,7 @@ export default function SettingsPage() {
 
       <Section title="Modules" note="Switched on by the Mesiri team. Ask us to add one.">
         <ul className="flex flex-wrap gap-2">
-          {MODULES.map((key) => {
+          {MODULE_KEYS.map((key) => {
             const on = isModuleEnabled(key)
             return (
               <li

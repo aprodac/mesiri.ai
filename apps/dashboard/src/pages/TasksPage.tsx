@@ -6,13 +6,13 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EmptyState, PageError, PageHeader } from '@/components/page/page-kit'
 import { Avatar, FilterPill, ProjectDot, WhatsAppMark, type FilterOption } from '@/components/requests/parts'
 import { NewTaskDialog } from '@/components/tasks/new-task-dialog'
-import { StatusChip, TaskDetail } from '@/components/tasks/task-detail'
+import { LineProgress, StatusChip, TaskDetail } from '@/components/tasks/task-detail'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuth } from '@/lib/AuthContext'
 import { usePageTitle } from '@/lib/page-title'
 import { swatch } from '@/lib/requests'
 import { useScope } from '@/lib/ScopeContext'
-import { dueWords, fetchTasks, PRIORITY_LABEL, type Task } from '@/lib/tasks'
+import { CREATE_ROLES, dueWords, fetchTasks, PRIORITY_LABEL, type Task } from '@/lib/tasks'
 import { useReadOnly } from '@/lib/trial'
 import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
@@ -36,8 +36,6 @@ const QUERY: Record<View, { assignee?: string; status?: string; due?: 'overdue' 
   overdue: { due: 'overdue' },
   done: { status: 'done' },
 }
-
-const CREATE_ROLES = ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER']
 
 export default function TasksPage() {
   const { scope } = useScope()
@@ -211,6 +209,7 @@ function TaskRow({ task: t, today, selected, onPick }: { task: Task; today: stri
           <StatusChip status={t.status} />
         </span>
         {t.status === 'blocked' && t.blocked_reason && <span className="truncate text-xs text-orange-800 dark:text-orange-200">Blocked: {t.blocked_reason}</span>}
+        <LineProgress task={t} compact />
       </span>
     </button>
   )

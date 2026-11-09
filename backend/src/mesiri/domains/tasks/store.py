@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import text
@@ -15,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 _SELECT = """
 SELECT t.*, p.name AS project_name, s.name AS site_name,
        au.full_name AS assignee_name, v.name AS assignee_vendor_name,
-       ln.name AS place_name, wp.name AS activity_name, cu.full_name AS created_by_name
+       ln.name AS place_name, wp.name AS activity_name, cu.full_name AS created_by_name,
+       si.issue_type, si.narrative AS issue_narrative, si.status AS issue_status,
+       pi.work_type AS line_work, lu.code AS line_unit
   FROM tasks t
   JOIN projects p ON p.id = t.project_id
   LEFT JOIN sites s ON s.id = t.site_id
@@ -24,6 +27,9 @@ SELECT t.*, p.name AS project_name, s.name AS site_name,
   LEFT JOIN location_nodes ln ON ln.id = t.place_id
   LEFT JOIN work_packages wp ON wp.id = t.work_package_id
   LEFT JOIN users cu ON cu.id = t.created_by
+  LEFT JOIN site_issues si ON si.id = t.site_issue_id
+  LEFT JOIN work_package_planned_items pi ON pi.id = t.planned_item_id
+  LEFT JOIN units_of_measure lu ON lu.id = pi.unit_id
 """
 
 #: Fields a task row may be given or changed through ``insert`` / ``update``.
@@ -58,6 +64,65 @@ async def subcontractors(conn: AsyncConnection, org: uuid.UUID) -> list[dict]:
     rows = await conn.execute(text("SELECT id, name FROM vendors WHERE organization_id = :org AND kind = 'subcontractor' "
                                    "AND COALESCE(status, 'active') = 'active' ORDER BY name"), {"org": org})
     return [dict(r) for r in rows.mappings().all()]
+
+
+async def boq_lines(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
+    """The project's current BOQ lines for a picker: what the work is, its unit and section. No rates (anyone who
+    gives tasks may pick a line; rates are for the money roles)."""
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+    sections = {s["id"]: s["name"] for s in await PostgresBoqRepository(conn).list_sections(org, project_id)}
+    return [{"id": ln["id"], "work": ln["work_type"], "unit": ln["unit"], "planned_quantity": ln["planned_quantity"],
+             "work_package_id": ln["work_package_id"], "section": sections.get(ln["work_package_id"])}
+            for ln in await PostgresBoqRepository(conn).list_lines(org, project_id)]
+
+
+async def places(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
+    """The project's places as people say them ("First Floor / Room-2"), for a picker."""
+    from mesiri.domains.places import store as places_store
+
+    return [{"id": p["id"], "label": p["label"], "site_id": p["site_id"]}
+            for p in await places_store.places(conn, org, project_id)]
+
+
+def num(value: Decimal | None) -> str | None:
+    """A quantity as the BOQ shows it: "6", "12.5" (no trailing zeros, never "6E+1")."""
+    return None if value is None else f"{value.normalize():f}"
+
+
+async def progress(conn: AsyncConnection, org: uuid.UUID, tasks: list[dict]) -> dict[uuid.UUID, dict]:
+    """For each task on a BOQ line: the work site recorded on that line since the task started (or was given), at its
+    site when it has one, counted by the BOQ's own rule (``boq_router.counted_work``: the line's unit only, work on
+    an older revision of the line still counts), so a task never disagrees with the BOQ page. Never typed (D-T4).
+
+    Not by place: counted work carries no place yet, so a task at "First Floor / R2" counts the line's work on its
+    whole site. The start day is the UTC day of ``started_at`` / ``created_at``."""
+    from mesiri.domains.progress.boq_router import counted_work
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+    out: dict[uuid.UUID, dict] = {}
+    on_lines = [t for t in tasks if t.get("planned_item_id")]
+    repo = PostgresBoqRepository(conn)
+    for project_id in {t["project_id"] for t in on_lines}:
+        lines = await repo.list_lines(org, project_id)
+        current = await repo.current_revision_of(org, project_id)
+        work = await counted_work(repo, org, project_id, lines)
+        for t in (t for t in on_lines if t["project_id"] == project_id):
+            line = current.get(t["planned_item_id"], t["planned_item_id"])
+            since = (t.get("started_at") or t["created_at"]).date()
+            mine = [w for w in work if w["line_id"] == line and w["work_date"] >= since
+                    and (t.get("site_id") is None or w["site_id"] == t["site_id"])]
+            done = sum((w["quantity"] for w in mine if w["quantity"] is not None), Decimal(0))
+            expected = t.get("expected_quantity")
+            out[t["id"]] = {"done": num(done), "expected": num(expected), "unit": t.get("line_unit"),
+                            "other_unit": sum(1 for w in mine if w["quantity"] is None),
+                            "pct": min(100, int(done * 100 / expected)) if expected else None}
+    return out
+
+
+async def section_of_line(conn: AsyncConnection, line_id: uuid.UUID) -> uuid.UUID | None:
+    return (await conn.execute(text("SELECT work_package_id FROM work_package_planned_items WHERE id = :id"),
+                               {"id": line_id})).scalar_one_or_none()
 
 
 async def link_errors(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, v: dict[str, Any]) -> list[str]:

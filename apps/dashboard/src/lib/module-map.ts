@@ -5,6 +5,8 @@ import {
   Boxes,
   Calculator,
   CalendarDays,
+  AlarmClock,
+  CircleCheck,
   ClipboardCheck,
   ClipboardList,
   FileSearch,
@@ -87,14 +89,17 @@ export interface ModuleGroup {
   /** Where the module sits in the project's story (UX-04, docs/plans/ui-story-plan.md section 4): the sidebar
    *  shows the daily pages, then PLAN, SITE, BUY, MONEY, then Settings. */
   section: NavSection
+  /** Its pages are its section's rows, with no drawer (Tasks: a section of its own, Adarsh 9 Nov 2026). */
+  flat?: boolean
   pages: ModulePage[]
 }
 
 /** The sidebar's sections, in the order of a project's life (UX-04). */
-export type NavSection = 'daily' | 'plan' | 'site' | 'buy' | 'money' | 'settings'
+export type NavSection = 'daily' | 'tasks' | 'plan' | 'site' | 'buy' | 'money' | 'settings'
 
 export const SECTION_TITLES: Record<NavSection, string> = {
   daily: 'Every day',
+  tasks: 'Tasks',
   plan: 'Plan',
   site: 'Site',
   buy: 'Buy',
@@ -104,12 +109,14 @@ export const SECTION_TITLES: Record<NavSection, string> = {
 
 /** Each role's day comes first (UX-04/UX-11): the same sections, in the order the role reaches for them. */
 export const SECTION_ORDER: Record<string, NavSection[]> = {
-  ADMIN: ['plan', 'site', 'buy', 'money'],
-  OWNER: ['plan', 'site', 'buy', 'money'],
-  SUPER_ADMIN: ['plan', 'site', 'buy', 'money'],
-  PROJECT_MANAGER: ['site', 'plan', 'buy', 'money'],
-  SITE_ENGINEER: ['site', 'buy', 'plan', 'money'],
-  FINANCE: ['money', 'buy', 'site', 'plan'],
+  // Tasks (who does what by when) comes first for everyone who gives or does them; finance neither gives nor does
+  // one, so it comes last for them.
+  ADMIN: ['tasks', 'plan', 'site', 'buy', 'money'],
+  OWNER: ['tasks', 'plan', 'site', 'buy', 'money'],
+  SUPER_ADMIN: ['tasks', 'plan', 'site', 'buy', 'money'],
+  PROJECT_MANAGER: ['tasks', 'site', 'plan', 'buy', 'money'],
+  SITE_ENGINEER: ['tasks', 'site', 'buy', 'plan', 'money'],
+  FINANCE: ['money', 'buy', 'site', 'plan', 'tasks'],
 }
 
 export function sectionOrder(role: string | null | undefined): NavSection[] {
@@ -142,15 +149,18 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     title: 'Tasks',
     icon: ListChecks,
     tone: 'amber',
-    about: 'Who does what by when: given on WhatsApp or here, closed with a photo, late ones flagged.',
-    // TSK-01/02 (9 Nov 2026): a module of its own, switched on per company like Cost control.
+    about: 'Who does what by when: given here, moved to done by the person it is for, late ones flagged.',
+    // TSK-01/02 (9 Nov 2026): a module of its own, switched on per company like Cost control. Web only for now
+    // (Adarsh, 9 Nov): no WhatsApp tools or reminders, so no `whatsapp` sentence on its pages. Its own sidebar
+    // section, TASKS, with the pages as rows (Adarsh, 9 Nov: "own sidebar section").
     module: 'tasks',
-    section: 'site',
+    section: 'tasks',
+    flat: true,
     pages: [
-      { title: 'My tasks', url: '/tasks', status: 'built', phase: 'V1', about: 'What is given to you, late first, then by the day it is due.', example: 'T-14 Tie steel for grid B, due Thursday; T-9 blocked: no shuttering.', whatsapp: "Arun: tie steel for grid B by Thursday", tracker: 'TSK-02' },
+      { title: 'My tasks', url: '/tasks', status: 'built', phase: 'V1', about: 'What is given to you, late first, then by the day it is due.', example: 'T-14 Tie steel for grid B, due Thursday; T-9 blocked: no shuttering.', tracker: 'TSK-02' },
       { title: 'All tasks', url: '/tasks?view=all', status: 'built', phase: 'V1', about: 'Every open task on the projects you see, by person, site and due day.', example: '23 open at Villa Kakkanad: 4 late, 6 due this week.', tracker: 'TSK-02' },
       { title: 'Overdue', url: '/tasks?view=overdue', status: 'built', phase: 'V1', about: 'Tasks past their day and still not done, with who has them.', example: 'T-6 Arun, 3 days late: waterproofing the terrace.', tracker: 'TSK-02' },
-      { title: 'Done', url: '/tasks?view=done', status: 'built', phase: 'V1', about: 'What was finished, who closed it and the photo it was closed with.', example: 'T-11 done by Biju yesterday, with a photo of the cover blocks.', tracker: 'TSK-02' },
+      { title: 'Done', url: '/tasks?view=done', status: 'built', phase: 'V1', about: 'What was finished and who closed it.', example: 'T-11 done by Biju yesterday.', tracker: 'TSK-02' },
       { title: 'Checklists', url: '/tasks/checklists', status: 'planned', phase: 'Later', about: 'Ready-made checklists to attach to a task before key work.', example: 'Before the slab pour: cover blocks, shuttering level, curing plan.', tracker: 'TSK-09', related: [{ title: 'Quality checks', url: '/site/quality' }] },
     ],
   },
@@ -383,6 +393,11 @@ export function findPage(pathname: string, search = ''): { group: ModuleGroup; p
 /** Icons for the few built pages the sidebar shows as plain links. */
 export const PAGE_ICONS: Record<string, LucideIcon> = {
   '/today': CalendarDays,
+  '/tasks': ListChecks,
+  '/tasks?view=all': ListTodo,
+  '/tasks?view=overdue': AlarmClock,
+  '/tasks?view=done': CircleCheck,
+  '/tasks/checklists': ClipboardCheck,
   '/reports': FileText,
   '/issues': AlertCircle,
   '/site-log': Activity,

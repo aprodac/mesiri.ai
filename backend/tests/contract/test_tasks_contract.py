@@ -7,6 +7,7 @@ Fixtures mirror test_schedule_contract.py.
 from __future__ import annotations
 
 import asyncio
+import base64
 import datetime
 import json
 import uuid
@@ -215,6 +216,11 @@ async def test_overdue_and_due_filters(client, co):
     assert [t["id"] for t in overdue] == [late["id"]] and overdue[0]["days_late"] >= 1
     summary = (await client.get("/tasks/summary", headers=co["arun"])).json()
     assert summary["mine_open"] == 2 and summary["mine_overdue"] == 1
+    # TSK-06: the sidebar counts follow the project picked; another project's tasks are not counted.
+    here = (await client.get("/tasks/summary", params={"project_id": str(co["project"])}, headers=co["arun"])).json()
+    assert here == summary
+    elsewhere = (await client.get("/tasks/summary", params={"project_id": str(uuid.uuid4())}, headers=co["arun"])).json()
+    assert elsewhere == {"mine_open": 0, "mine_overdue": 0, "overdue": 0}
 
 
 async def test_a_site_limited_engineer_sees_only_their_sites_and_their_own(client, co, test_engine):
@@ -269,6 +275,35 @@ async def test_done_with_a_whatsapp_photo_only_our_own(client, co, test_engine):
     assert (await client.post(f"/tasks/{tid}/comments", json={}, headers=co["pm"])).status_code == 422
 
 
+async def test_done_with_a_photo_from_the_web_and_a_pdf_in_a_comment(client, co, test_engine):
+    """TSK-12: a file sent from the web is checked like an expense bill and kept under the company's own prefix."""
+    tid = (await _give(client, co, assignee="arun")).json()["id"]
+    jpeg = base64.b64encode(b"\xff\xd8\xff" + b"0" * 64).decode()
+    pdf = base64.b64encode(b"%PDF-1.4 drawing").decode()
+    lying = await client.post(f"/tasks/{tid}/status", json={"status": "done", "file": {
+        "data_base64": pdf, "content_type": "image/jpeg"}}, headers=co["arun"])
+    assert lying.status_code == 422 and (await client.get(f"/tasks/{tid}", headers=co["pm"])).json()["status"] == "open"
+    both = await client.post(f"/tasks/{tid}/comments", json={"media_object_key": "wa/x.jpg", "file": {
+        "data_base64": jpeg, "content_type": "image/jpeg"}}, headers=co["pm"])
+    assert both.status_code == 422
+    big = await client.post(f"/tasks/{tid}/comments", json={"file": {
+        "data_base64": base64.b64encode(b"%PDF-" + b"0" * 800 * 1024).decode(), "content_type": "application/pdf"}},
+        headers=co["pm"])
+    assert big.status_code == 422 and "photo must be 700 KB" in big.json()["detail"]
+    done = await client.post(f"/tasks/{tid}/status", json={"status": "done", "file": {
+        "data_base64": jpeg, "content_type": "image/jpeg"}}, headers=co["arun"])
+    assert done.status_code == 200
+    only_file = await client.post(f"/tasks/{tid}/comments", json={"file": {
+        "data_base64": pdf, "content_type": "application/pdf"}}, headers=co["pm"])
+    assert only_file.status_code == 201
+    history = (await client.get(f"/tasks/{tid}", headers=co["pm"])).json()["history"]
+    closed, drawing = history[-2], history[-1]
+    assert closed["to_status"] == "done" and closed["source"] == "web" and not closed["photo_is_pdf"]
+    assert closed["photo_url"].startswith(f"https://files.test/org/{co['org']}/tasks/{tid}/photo-")
+    assert closed["photo_url"].endswith(".jpg")
+    assert drawing["kind"] == "comment" and drawing["photo_is_pdf"] and drawing["text"] is None
+
+
 async def test_switched_off_the_module_refuses(test_engine, co, monkeypatch):
     app = _app(test_engine, monkeypatch, modules=["dpr", "finance"])
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as off:
@@ -291,3 +326,70 @@ async def test_options_list_what_a_task_can_name(client, co, test_engine):
     assert fin["may_create"] is False
     assert (await client.get("/tasks/options", params={"project_id": str(uuid.uuid4())},
                              headers=co["pm"])).status_code == 404
+
+
+# -- TSK-03: links and progress ------------------------------------------------------------------------------------
+
+async def _boq_line(client, co, work: str, qty: str) -> tuple[str, str]:
+    r = await client.post(f"/projects/{co['project']}/boq/sections", json={"name": "Structure"}, headers=co["admin"])
+    assert r.status_code == 201, r.text
+    section = r.json()["id"]
+    r = await client.post(f"/projects/{co['project']}/boq/sections/{section}/lines",
+                          json={"work": work, "unit": "cum", "planned_quantity": qty}, headers=co["admin"])
+    assert r.status_code == 201, r.text
+    body = r.json()
+    lines = [ln for s in body["sections"] for ln in s["lines"]] if "sections" in body else [body]
+    return section, next(ln["id"] for ln in lines if ln["work"] == work)
+
+
+async def _measure(engine, co, line_id: str, qty: str, day: datetime.date, site_id) -> None:
+    """A work update from site counted on a BOQ line (what WhatsApp saves)."""
+    act = uuid.uuid4()
+    await _exec(engine, "INSERT INTO activities (id, organization_id, project_id, site_id, activity_date, status) "
+                        "VALUES (:id, :org, :p, :s, :d, 'COMPLETED')", id=act, org=co["org"], p=co["project"],
+                s=site_id, d=day)
+    await _exec(engine, "INSERT INTO activity_quantities (id, activity_id, unit_id, quantity, measurement_type, "
+                        "planned_item_id) VALUES (gen_random_uuid(), :a, (SELECT unit_id FROM work_package_planned_items "
+                        "WHERE id = :l), :q, 'ACHIEVED', :l)", a=act, l=uuid.UUID(line_id), q=qty)
+
+
+async def test_progress_is_read_from_work_on_the_line_since_the_task_and_at_its_site(client, co, test_engine):
+    section, line = await _boq_line(client, co, "PCC 1:4:8", "40")
+    today = datetime.date.today()
+    await _measure(test_engine, co, line, "5", today - 3 * D, co["main"])  # before the task: not counted
+    task = (await _give(client, co, site_id=str(co["main"]), planned_item_id=line, expected_quantity="20")).json()
+    assert task["work_package_id"] == section  # the line's section, filled in
+    assert task["line"]["work"] == "PCC 1:4:8" and task["progress"]["done"] == "0"
+    await _measure(test_engine, co, line, "6", today, co["main"])
+    await _measure(test_engine, co, line, "4", today, co["annex"])  # another site: not this task's
+    one = (await client.get(f"/tasks/{task['id']}", headers=co["pm"])).json()
+    assert one["progress"]["done"] == "6" and one["progress"]["pct"] == 30 and one["progress"]["unit"] == "cum"
+    listed = (await client.get("/tasks", params={"view": "all"}, headers=co["pm"])).json()["items"]
+    assert next(t for t in listed if t["id"] == task["id"])["progress"]["done"] == "6"
+    # finishing the task records nothing (D-T4): the BOQ still shows only what site recorded
+    await client.post(f"/tasks/{task['id']}/status", json={"status": "done"}, headers=co["pm"])
+    boq = (await client.get(f"/projects/{co['project']}/boq", headers=co["admin"])).json()
+    done = next(ln for s in boq["sections"] for ln in s["lines"] if ln["id"] == line)
+    assert float(done["done_quantity"]) == 15.0
+
+
+async def test_a_task_from_an_issue_names_it(client, co, test_engine):
+    issue = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO site_issues (id, organization_id, project_id, site_id, issue_type, severity, "
+                             "status, narrative, occurred_at, created_at, updated_at) VALUES (:id, :org, :p, :s, "
+                             "'MATERIAL_SHORTAGE', 'HIGH', 'OPEN', 'No shuttering plates', now(), now(), now())",
+                id=issue, org=co["org"], p=co["project"], s=co["main"])
+    task = (await _give(client, co, title="Bring 60 plates from Annex", site_issue_id=str(issue))).json()
+    assert task["issue"]["narrative"] == "No shuttering plates" and task["issue"]["status"] == "OPEN"
+    opts = (await client.get("/tasks/options", params={"project_id": str(co["project"])}, headers=co["arun"])).json()
+    assert "places" in opts and "lines" in opts and all("client_rate" not in ln for ln in opts["lines"])
+
+
+async def test_a_boq_line_under_a_task_can_still_be_deleted(client, co):
+    """0537: deleting a BOQ line a task expects a quantity of was refused by the task's check (found by the BOQ tests)."""
+    _, line = await _boq_line(client, co, "Brickwork 230 mm", "30")
+    task = (await _give(client, co, planned_item_id=line, expected_quantity="10")).json()
+    gone = await client.delete(f"/projects/{co['project']}/boq/lines/{line}", headers=co["admin"])
+    assert gone.status_code in (200, 204), gone.text
+    after = (await client.get(f"/tasks/{task['id']}", headers=co["pm"])).json()
+    assert after["line"] is None and after["progress"] is None and after["status"] == "open"

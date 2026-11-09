@@ -24,10 +24,11 @@ _SIGNATURES: tuple[tuple[str, bytes, str], ...] = (
 )
 
 
-def decode_bill(data_base64: str, content_type: str) -> tuple[bytes, str, str]:
+def decode_bill(data_base64: str, content_type: str, what: str = "bill") -> tuple[bytes, str, str]:
     """Bytes, extension and canonical content type of a bill upload.
 
-    ValueError, with a message fit to show the person, when it is not a usable bill.
+    ValueError, with a message fit to show the person, when it is not a usable bill. ``what`` names the file in
+    those messages: the same rule takes a photo on a task (TSK-12).
     """
     try:
         data = base64.b64decode(data_base64 or "", validate=True)
@@ -36,7 +37,7 @@ def decode_bill(data_base64: str, content_type: str) -> tuple[bytes, str, str]:
     if not data:
         raise ValueError("The file is empty.")
     if len(data) > BILL_MAX_BYTES:
-        raise ValueError("The file is too big: a bill must be 700 KB or smaller.")
+        raise ValueError(f"The file is too big: a {what} must be 700 KB or smaller.")
     declared = (content_type or "").split(";")[0].strip().lower()
     if declared == "image/jpg":
         declared = "image/jpeg"
@@ -49,7 +50,7 @@ def decode_bill(data_base64: str, content_type: str) -> tuple[bytes, str, str]:
             if data.startswith(signature):
                 return data, ext, mime
             raise ValueError("The file is not what it says it is.")
-    raise ValueError("A bill must be a photo (JPEG, PNG or WebP) or a PDF.")
+    raise ValueError(f"A {what} must be a photo (JPEG, PNG or WebP) or a PDF.")
 
 
 def bill_key(organization_id: uuid.UUID, expense_id: uuid.UUID, extension: str) -> str:

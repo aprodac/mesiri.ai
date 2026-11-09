@@ -110,7 +110,7 @@ MODULES: dict[str, str] = {
     "cost": "Cost control: budget against actual, cost centres, work done and earned against the BOQ",
     "accounts": "Accounts: the company's books (chart of accounts, journals, trial balance, ledgers), posted from the "
                 "records automatically",
-    "tasks": "Tasks: who does what by when, on the web and WhatsApp, with a morning card and overdue notes",
+    "tasks": "Tasks: who does what by when, given and closed on the web, late ones flagged",
 }
 
 # Short names for the control panel's module switches (SA-07).

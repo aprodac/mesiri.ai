@@ -1,4 +1,5 @@
 import { api } from './api'
+import type { BillFile } from './bill-upload'
 
 // TSK-02: the Tasks module -- who does what, by when. The shapes mirror backend/src/mesiri/domains/tasks
 // (router.py describes the routes; logic.py the status moves and who may do what). Plan: docs/plans/tasks-plan.md.
@@ -44,6 +45,12 @@ export interface Task {
   updated_at: string
   overdue: boolean
   days_late: number
+  /** The site issue it fixes (TSK-03). */
+  issue: { id: string; type: string | null; narrative: string | null; status: string | null } | null
+  /** The BOQ line its work counts against. */
+  line: { id: string; work: string | null; unit: string | null } | null
+  /** Work site recorded on that line since the task started, at its site; never typed (D-T4). */
+  progress: { done: string; expected: string | null; unit: string | null; other_unit: number; pct: number | null } | null
 }
 
 export interface TaskEvent {
@@ -53,6 +60,7 @@ export interface TaskEvent {
   to_status: TaskStatus | null
   text: string | null
   photo_url: string | null
+  photo_is_pdf: boolean
   changes: Record<string, [unknown, unknown]> | null
   source: 'web' | 'whatsapp'
   created_at: string
@@ -69,7 +77,21 @@ export interface TaskOptions {
   sites: { id: string; name: string }[]
   people: { id: string; name: string; role: string }[]
   subcontractors: { id: string; name: string }[]
+  places: { id: string; label: string; site_id: string | null }[]
+  lines: { id: string; work: string; unit: string; planned_quantity: string; work_package_id: string; section: string | null }[]
   may_create: boolean
+}
+
+export interface TaskSummary {
+  mine_open: number
+  mine_overdue: number
+  overdue: number
+}
+
+/** TSK-06: how many are mine and how many are late, for the sidebar and Today (one project's when one is picked). */
+export async function fetchTaskSummary(projectId?: string | null): Promise<TaskSummary> {
+  const { data } = await api.get<TaskSummary>('/tasks/summary', { params: { project_id: projectId || undefined } })
+  return data
 }
 
 export async function fetchTasks(params: {
@@ -111,6 +133,17 @@ export interface NewTask {
   assignee_user_id?: string | null
   assignee_vendor_id?: string | null
   assignee_team?: string | null
+  place_id?: string | null
+  work_package_id?: string | null
+  planned_item_id?: string | null
+  expected_quantity?: string | null
+  site_issue_id?: string | null
+}
+
+/** What a "Make a task" button already knows (an issue, a schedule activity): filled into the new task. */
+export type TaskPrefill = Partial<Pick<NewTask, 'project_id' | 'title' | 'notes' | 'site_id' | 'work_package_id' | 'site_issue_id'>> & {
+  /** Shown above the form: what the task is made from ("From the issue: No shuttering plates"). */
+  from?: string
 }
 
 export async function createTask(payload: NewTask): Promise<Task> {
@@ -123,13 +156,14 @@ export async function updateTask(id: string, payload: Partial<Omit<NewTask, 'pro
   return data
 }
 
-export async function moveTask(id: string, status: TaskStatus, note?: string | null): Promise<Task> {
-  const { data } = await api.post<Task>(`/tasks/${id}/status`, { status, note: note || null })
+/** TSK-12: a photo or PDF from the web goes with a move or a comment, shrunk first like an expense bill. */
+export async function moveTask(id: string, status: TaskStatus, note?: string | null, file?: BillFile | null): Promise<Task> {
+  const { data } = await api.post<Task>(`/tasks/${id}/status`, { status, note: note || null, file: file ?? null })
   return data
 }
 
-export async function commentOnTask(id: string, text: string): Promise<void> {
-  await api.post(`/tasks/${id}/comments`, { text })
+export async function commentOnTask(id: string, text: string, file?: BillFile | null): Promise<void> {
+  await api.post(`/tasks/${id}/comments`, { text: text || null, file: file ?? null })
 }
 
 /** "Which person / site?": the choices the API sent back when the words fit several or none. */
@@ -147,9 +181,18 @@ export const STATUS_LOOK: Record<TaskStatus, { label: string; chip: string; dot:
   cancelled: { label: 'Cancelled', chip: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/60' },
 }
 
+/** Who gives tasks (backend logic.CREATE_ROLES); the API refuses the rest. */
+export const CREATE_ROLES = ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER']
+
 export const PRIORITY_LABEL: Record<TaskPriority, string> = { normal: 'Normal', high: 'High', urgent: 'Urgent' }
 
 /** A due day as people say it: "Today", "Tomorrow", "Thu 12 Nov", "3 days late". */
+/** "Wed, 11 Nov": a task's day as people read it (never the raw ISO date). */
+export function dayWords(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
 export function dueWords(task: Pick<Task, 'due_date' | 'overdue' | 'days_late' | 'status'>, today: string): string {
   if (!task.due_date) return 'No date'
   if (task.overdue) return task.days_late === 1 ? '1 day late' : `${task.days_late} days late`
@@ -165,7 +208,7 @@ export function dueWords(task: Pick<Task, 'due_date' | 'overdue' | 'days_late' |
 /** What happened, in a line, for the history. */
 export function eventWords(e: TaskEvent): string {
   if (e.kind === 'created') return 'gave the task'
-  if (e.kind === 'comment') return e.photo_url && !e.text ? 'sent a photo' : 'commented'
+  if (e.kind === 'comment') return e.photo_url && !e.text ? (e.photo_is_pdf ? 'added a PDF' : 'sent a photo') : 'commented'
   if (e.kind === 'status' && e.to_status) {
     if (e.to_status === 'open') return e.from_status === 'done' || e.from_status === 'cancelled' ? 'reopened it' : 'moved it back to open'
     if (e.to_status === 'doing') return 'started it'

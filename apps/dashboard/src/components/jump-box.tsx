@@ -68,7 +68,7 @@ export function JumpBox() {
         .map((p) => ({
           key: p.url,
           title: p.title,
-          hint: group.key === 'site' ? SECTION_TITLES.daily : `${SECTION_TITLES[group.section]} · ${group.title}`,
+          hint: group.key === 'site' ? SECTION_TITLES.daily : (SECTION_TITLES[group.section] === group.title ? group.title : `${SECTION_TITLES[group.section]} · ${group.title}`),
           url: p.url,
           icon: PAGE_ICONS[p.url] ?? group.icon,
           words: `${p.title} ${p.navTitle ?? ''} ${group.title} ${p.about}`.toLowerCase(),

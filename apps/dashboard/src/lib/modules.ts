@@ -11,13 +11,17 @@ export const MODULE_NAMES: Record<ModuleKey, string> = {
   dpr: 'Daily progress',
   labour: 'Labour',
   materials: 'Materials',
-  finance: 'Finance',
   equipment: 'Equipment',
-  automations: 'Automations',
+  finance: 'Finance',
   cost: 'Cost control',
   accounts: 'Accounts',
   tasks: 'Tasks',
+  automations: 'Automations',
 }
+
+/** Every module, in the order the Settings page lists them. Read from MODULE_NAMES (a Record over ModuleKey), so a
+ *  new module is listed as soon as it has a name: Tasks was missing from a hand-kept copy (9 Nov 2026). */
+export const MODULE_KEYS = Object.keys(MODULE_NAMES) as ModuleKey[]
 
 /**
  * Whether a module is switched on for the signed-in company. `/auth/me`
