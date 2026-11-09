@@ -1,6 +1,7 @@
 # Tasks: who does what, by when (TSK)
 
-**Status:** plan, 9 Nov 2026. Not built. **Tasks is its own module** (`tasks` switch, own sidebar group, own
+**Status:** TSK-01 built 9 Nov 2026 (the module, tables `tasks` / `task_events` in 0533, the API under `/tasks`);
+TSK-02..07 to do. **Tasks is its own module** (`tasks` switch, own sidebar group, own
 routes under `/tasks`), asked in session by Adarsh on 9 Nov ("want new module proper"), the same way Cost control
 became one (CC-17). Tracker section **TSK** in [V1_TRACKER.md](V1_TRACKER.md).
 **Why now:** module 05 "Task & Work Management" is the only module in Phase 1 of the Capability Framework with
