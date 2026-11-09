@@ -48,6 +48,7 @@
 | Alan has left the company: who approves what was his (Module Isolation, migrations that rewrite data, security, CLAUDE.md changes)? | Every item whose Notes said "needs Alan" (now "needs Ilan") | **Decided 8 Nov (Ilan): Ilan approves.** CLAUDE.md and the open items' Notes updated; past "approved by Alan" records left as history |
 | Mesiri inside WhatsApp groups: ~8-person limit, quiet mode, one group = one site, DPR to the group, identity + labour messages from groups; how groups are created and people invited ([plan](../execution/WHATSAPP_GROUPS_PLAN.md#creating-a-group-and-inviting-people-proposed-waiting-for-a-yes)) | WA-87 | **Approved 28 Oct (Ilan)**, incl. the creation / invite flow |
 | Cost control and finance decisions D-CC4, D-CC8, D-N3, SEC-04, full books vs Tally, CC-17 review | SEC-04, CC-25, NXT-03, NXT-12, CC-17, D-CC4 engineer view | **Decided 8 Nov (Ilan: "do the recommended"):** D-CC8 cost before claimable GST when the supplier has a GSTIN and the bill says GST is included, else the full amount, flagged; SEC-04 adding or renaming expense categories: owner, admin, finance; D-CC4 money (rates, earned, cost, margins, balances): owner, admin, finance, PM; site engineers see their own sites' green / red and quantities, never rupees or rates; D-N3 client bills and receivables: owner, admin, finance; books: Tally export first, full Accounts later (V1.1); CC-17 reviewed in session and kept. |
+| Accounts decisions D-ACC1..D-ACC12 | ACC-01..ACC-23 | **Decided 9 Nov (Ilan: "go build it", recommended defaults):** books posted by a sweep from the records (no write path in other modules changes); a change after close posted on the first open day, flagged; Mesiri keeps the books, Tally export stays; wages booked when paid; deliveries not billed accrued at month end; owner / admin / finance read, close and (later) post vouchers, owner / admin reopen, PM project P&L only; April–March, INR; Tally groups seeded; WDV depreciation; overheads to projects off by default; separate books per company; new module `accounts`, off by default. |
 
 ---
 
@@ -556,32 +557,32 @@ Plan: [cost-control-plan.md](cost-control-plan.md). The client values a DPR alon
 
 ## ACC — Accounts: full accounting and finance (9 Nov 2026)
 
-Plan: [accounts-plan.md](accounts-plan.md). **Waiting for Ilan's approval** (security-sensitive: posting, closing and reopening the books; shared: roles, module map, every money record read as a source). Decisions D-ACC1..D-ACC12 in the plan, each with a recommended default. Build order: A foundation (01–05), B statements (06–09, 22, 23), C tax (10–11), D control (12–15), E year end (16–18), F out (19–21).
+Plan: [accounts-plan.md](accounts-plan.md). **Approved by Ilan, 9 Nov 2026** ("go build it then phase a"), with the recommended default for every decision D-ACC1..D-ACC12. How posting works: [accounts-posting.md](../architecture/accounts-posting.md). Build order: A foundation (01–05), B statements (06–09, 22, 23), C tax (10–11), D control (12–15), E year end (16–18), F out (19–21).
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ACC-01 | **Chart of accounts:** Tally-style groups, construction ledgers seeded per company, linked ledgers for suppliers, clients, money accounts, expense categories (`ledger_groups`, `ledgers`, `ledger_links`) | M | Must | — | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-02 | **Financial years and monthly periods** (April–March), open / closed | S | Must | ACC-01 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-03 | **Journals:** `journal_entries` + `journal_lines`, voucher types and numbering, balance enforced by the database | M | Must | ACC-01 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-04 | **Posting engine:** one pure rule per source (expenses, payments, advances, transfers, fund received, subcontract and hire bills, RA bills, client receipts, opening balances); posting sweep on the scheduler and before reports; source fingerprint, re-post, reverse | L | Must | ACC-03 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-05 | **Trial balance, day book, ledger statement** with drill-down to the source record | M | Must | ACC-04 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-06 | **P&L and balance sheet** (periods, comparisons, groups expand, Excel / PDF) | M | Must | ACC-05 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-07 | **Cash book and bank book** | S | Must | ACC-05 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-08 | **Project P&L** (billed vs every cost booked to the project, by cost centre, against the BOQ forecast); absorbs CC-20 | M | Must | ACC-06 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-09 | **Accounts home:** cash and bank, ageing, month P&L, GST payable, needs attention | M | Must | ACC-06 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-10 | **GST summary** (output, input claimable, net payable per month, GSTR-3B layout; purchases by GSTIN; missing GSTIN warnings) | M | Must | ACC-04 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-11 | **TDS registers** (194C deducted to deposit; TDS deducted by clients) | S | Must | ACC-04 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-12 | **Manual vouchers** (journal, contra) with a keyboard-first grid | M | Must | ACC-03 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-13 | **Bank reconciliation** (statement import, auto-match, one-tap journals for charges / interest) | L | Should | ACC-07 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-14 | **Close the month:** checklist, close / reopen, changes after close posted as flagged adjustments (D-ACC2) | M | Must | ACC-05 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-15 | **Deliveries not billed accrual** at month end, reversing (D-ACC5) | S | Should | ACC-04 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-16 | **Fixed assets and depreciation** (WDV default) | M | Should | ACC-06 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-17 | **Year end and carry forward** | M | Should | ACC-14 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-18 | **Cash flow** (direct method) | S | Should | ACC-07 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-19 | **Tally export from the posted journals** (one source of truth; replaces NXT-12's direct reads) | S | Must | ACC-04 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-20 | **WhatsApp reads** for owner / accountant (cash, profit, GST, statements) via v3 `ALLOWED` + SOP | S | Should | ACC-06 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-21 | **PDF / Excel of every report; party statements shared on WhatsApp** | M | Should | ACC-06 | todo | — | Waits for the plan's approval and D-ACC1..10 |
-| ACC-22 | **Company / project / site on every report** (scope bar): trial balance, day book, ledgers, P&L, cash and bank, ageing, GST / TDS for review; head-office money stays company-level | M | Must | ACC-05 | todo | — | Ilan, 9 Nov: "company wise and project wise also needed" |
+| ACC-01 | **Chart of accounts:** Tally-style groups, construction ledgers seeded per company, linked ledgers for suppliers, clients, money accounts, expense categories (`ledger_groups`, `ledgers`, `ledger_links`) | M | Must | — | done (`e63178c`, `0b70fb3`) | Claude (session 9 Nov) | Groups + ledgers in one `ledgers` table with `link_kind` / `link_id` (no separate `ledger_links`: one link per ledger; merge later). Page: Chart of accounts (add / rename / move / switch off; linked ledgers renamed in their module) |
+| ACC-02 | **Financial years and monthly periods** (April–March), open / closed | S | Must | ACC-01 | done (`e63178c`, `0b70fb3`) | Claude (session 9 Nov) | `accounting_periods` (months; years derived, April–March). Close (money roles) and reopen with a reason (owner / admin); page: Months |
+| ACC-03 | **Journals:** `journal_entries` + `journal_lines`, voucher types and numbering, balance enforced by the database | M | Must | ACC-01 | done (`e63178c`, `0b70fb3`) | Claude (session 9 Nov) | Deferred constraint trigger: every entry balances at commit; numbers per voucher type and year |
+| ACC-04 | **Posting engine:** one pure rule per source (expenses, payments, advances, transfers, fund received, subcontract and hire bills, RA bills, client receipts, opening balances); posting sweep on the scheduler and before reports; source fingerprint, re-post, reverse | L | Must | ACC-03 | done (`e63178c`, `0b70fb3`) | Claude (session 9 Nov) | Bank and cash from `money_transactions` (ties to Finance by construction). Runs before every read and on `POST /accounts/post`; **not yet on the scheduler**. Client receipts now move money (`704b460`, migration 0530) |
+| ACC-05 | **Trial balance, day book, ledger statement** with drill-down to the source record | M | Must | ACC-04 | done (`e63178c`, `0b70fb3`) | Claude (session 9 Nov) | Pages: Trial balance (group tree, checks against Money / suppliers / Receivables), Day book (filters, search, keyboard, voucher sheet), Ledgers + statement; Excel for each; links from the supplier page, Money and Receivables |
+| ACC-06 | **P&L and balance sheet** (periods, comparisons, groups expand, Excel / PDF) | M | Must | ACC-05 | todo | — | Approved; next in its phase |
+| ACC-07 | **Cash book and bank book** | S | Must | ACC-05 | todo | — | Approved; next in its phase |
+| ACC-08 | **Project P&L** (billed vs every cost booked to the project, by cost centre, against the BOQ forecast); absorbs CC-20 | M | Must | ACC-06 | todo | — | Approved; next in its phase |
+| ACC-09 | **Accounts home:** cash and bank, ageing, month P&L, GST payable, needs attention | M | Must | ACC-06 | todo | — | Approved; next in its phase |
+| ACC-10 | **GST summary** (output, input claimable, net payable per month, GSTR-3B layout; purchases by GSTIN; missing GSTIN warnings) | M | Must | ACC-04 | todo | — | Approved; next in its phase |
+| ACC-11 | **TDS registers** (194C deducted to deposit; TDS deducted by clients) | S | Must | ACC-04 | todo | — | Approved; next in its phase |
+| ACC-12 | **Manual vouchers** (journal, contra) with a keyboard-first grid | M | Must | ACC-03 | todo | — | Approved; next in its phase |
+| ACC-13 | **Bank reconciliation** (statement import, auto-match, one-tap journals for charges / interest) | L | Should | ACC-07 | todo | — | Approved; next in its phase |
+| ACC-14 | **Close the month:** checklist, close / reopen, changes after close posted as flagged adjustments (D-ACC2) | M | Must | ACC-05 | in-progress | Claude (session 9 Nov) | Close / reopen and changes after close built in Phase A (`e63178c`, `0b70fb3`); the checklist remains |
+| ACC-15 | **Deliveries not billed accrual** at month end, reversing (D-ACC5) | S | Should | ACC-04 | todo | — | Approved; next in its phase |
+| ACC-16 | **Fixed assets and depreciation** (WDV default) | M | Should | ACC-06 | todo | — | Approved; next in its phase |
+| ACC-17 | **Year end and carry forward** | M | Should | ACC-14 | todo | — | Approved; next in its phase |
+| ACC-18 | **Cash flow** (direct method) | S | Should | ACC-07 | todo | — | Approved; next in its phase |
+| ACC-19 | **Tally export from the posted journals** (one source of truth; replaces NXT-12's direct reads) | S | Must | ACC-04 | todo | — | Approved; next in its phase |
+| ACC-20 | **WhatsApp reads** for owner / accountant (cash, profit, GST, statements) via v3 `ALLOWED` + SOP | S | Should | ACC-06 | todo | — | Approved; next in its phase |
+| ACC-21 | **PDF / Excel of every report; party statements shared on WhatsApp** | M | Should | ACC-06 | todo | — | Approved; next in its phase |
+| ACC-22 | **Company / project / site on every report** (scope bar): trial balance, day book, ledgers, P&L, cash and bank, ageing, GST / TDS for review; head-office money stays company-level | M | Must | ACC-05 | in-progress | Claude (session 9 Nov) | Built for trial balance, day book and ledger statement (`e63178c`, `0b70fb3`; a scoped trial balance shows "Head office and other projects"). Rest with ACC-06..11. Ilan, 9 Nov: "company wise and project wise also needed" |
 | ACC-23 | **Overheads to projects:** optional monthly allocation journal (by cost or billing share); project P&L before and after overheads (D-ACC11) | S | Should | ACC-08 | todo | — | Off by default |
 
 ---
