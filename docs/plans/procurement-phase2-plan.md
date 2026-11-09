@@ -1,6 +1,6 @@
 # Procurement phase 2: quotations, returns, stock control, supplier performance (plan, 9 Nov 2026)
 
-> **Status:** plan written 9 Nov 2026, nothing built. Tracker items `PRC-40`..`PRC-52` in
+> **Status:** plan written 9 Nov 2026. Built: PRC-34 (step 0, GST on deliveries and orders). Tracker items `PRC-40`..`PRC-52` in
 > [V1_TRACKER.md](V1_TRACKER.md) (PRC section).
 > **Follows:** [procurement-plan.md](procurement-plan.md) (PRC-00..37, built 5–9 Nov) and the gaps listed in
 > [capability-framework-gap-analysis.md](capability-framework-gap-analysis.md) modules 07, 08, 09.

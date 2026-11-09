@@ -59,6 +59,9 @@ class OrderLineIn(BaseModel):
     unit_id: uuid.UUID
     #: Per the unit given; converted to the stock unit with the quantity.
     rate: Decimal | None = Field(default=None, ge=0)
+    #: PRC-34: the GST on the rate (0 = none charged) and whether the rate includes it; deliveries on the line take it.
+    gst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    rate_includes_gst: bool | None = None
     #: The site's request line this order line covers (PRC-22).
     request_line_id: uuid.UUID | None = None
     notes: str | None = None  # filled by the conversion
@@ -80,6 +83,8 @@ class OrderCreate(BaseModel):
     quantity: Decimal | None = Field(default=None, gt=0)
     unit_id: uuid.UUID | None = None
     rate: Decimal | None = Field(default=None, ge=0)
+    gst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    rate_includes_gst: bool | None = None
     expected_date: datetime.date | None = None
     notes: str | None = Field(default=None, max_length=500)
     confirm_duplicate: bool = False
@@ -178,7 +183,8 @@ async def _lines(conn: AsyncConnection, auth: AuthorizationContext, project_id: 
                                     "and material")
         out.append({"material_id": line.material_id, "unit_id": line.unit_id, "quantity": line.quantity,
                     "rate": rate, "said": said.split(" = ")[0] if said else None,
-                    "request_line_id": line.request_line_id})
+                    "request_line_id": line.request_line_id,
+                    "gst_percent": line.gst_percent, "rate_includes_gst": line.rate_includes_gst})
     # PRC-24: the same material may be on two lines only when each covers a different site's request (requests put
     # together in one order); otherwise add the quantities together.
     seen: dict = {}
@@ -633,13 +639,14 @@ async def _one_form(conn: AsyncConnection, auth: AuthorizationContext, body: Ord
         body.lines = [OrderLineIn(material_id=uuid.UUID(line["material_id"]), unit_id=uuid.UUID(line["unit_id"]),
                                   quantity=body.quantity or (Decimal(line["to_buy"]) if Decimal(line["to_buy"]) > 0
                                                              else Decimal(line["quantity"])),
-                                  rate=body.rate, request_line_id=uuid.UUID(line["id"])) for line in req["lines"]]
+                                  rate=body.rate, gst_percent=body.gst_percent, rate_includes_gst=body.rate_includes_gst,
+                                  request_line_id=uuid.UUID(line["id"])) for line in req["lines"]]
         return
     if body.material_id is not None:
         if body.lines or body.quantity is None or body.unit_id is None:
             raise HTTPException(status_code=422, detail="One item is material_id, quantity and unit_id (or use lines).")
         body.lines = [OrderLineIn(material_id=body.material_id, quantity=body.quantity, unit_id=body.unit_id,
-                                  rate=body.rate)]
+                                  rate=body.rate, gst_percent=body.gst_percent, rate_includes_gst=body.rate_includes_gst)]
     if not body.lines:
         raise HTTPException(status_code=422, detail="Say what is ordered: at least one item.")
     if body.project_id is None or body.site_id is None:

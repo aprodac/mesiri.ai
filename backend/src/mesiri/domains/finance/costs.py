@@ -104,6 +104,9 @@ async def project_costs(
             continue
         s = sites[(r["project_id"], r.get("site_id"))]
         amount = Decimal(r["total_cost"]) if r.get("total_cost") is not None else Decimal(r["unit_cost"]) * Decimal(r["quantity"])
+        g = purchases.gst_of(r)
+        if g.known and g.entered > 0 and g.cost != g.entered:
+            amount = amount * g.cost / g.entered  # PRC-34 / D-CC8: GST that can be claimed back is not cost
         s["materials"] += amount
         s["deliveries"] += 1
     unpriced = await _unpriced_deliveries(conn, org, project_ids, site_id, date_from, date_to)

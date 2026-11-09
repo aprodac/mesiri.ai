@@ -18,6 +18,8 @@ import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from '@/components/requests/parts'
 import { SupplierHint } from '@/components/vendors/vendor-parts'
+import { GstField } from '@/components/procurement/gst-field'
+import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
 
 // PRC-06/07: place an order with a supplier. From a request (PRC-22) it opens filled in: the request's site and
 // what is still to buy, each line linked to the request so the request follows the order. The duplicate check
@@ -59,6 +61,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
   const [siteId, setSiteId] = React.useState('')
   const [supplier, setSupplier] = React.useState('')
   const [lines, setLines] = React.useState<Line[]>([])
+  const [gst, setGst] = React.useState<GstValue>(GST_NOT_SAID)
   const [when, setWhen] = React.useState<When>('tomorrow')
   const [picked, setPicked] = React.useState('')
   const [notes, setNotes] = React.useState('')
@@ -78,6 +81,8 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
       : prefill?.lines.length
         ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, rate: l.rate ?? '', requestLineId: l.request_line_id, requestRef: prefill.request_ref }))
         : [{ key: 1, materialId: '', quantity: '', rate: '' }])
+    const firstPriced = editing?.lines.find((l) => l.gst_percent != null)
+    setGst(firstPriced ? { percent: String(Number(firstPriced.gst_percent)), includes: firstPriced.rate_includes_gst ?? null } : GST_NOT_SAID)
     setSupplier(editing?.vendor_name ?? prefill?.vendor_name ?? '')
     setWhen(editing ? 'pick' : 'tomorrow')
     setPicked(editing?.expected_date ?? '')
@@ -130,7 +135,9 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
     unit_id: materials.find((m) => m.id === l.materialId)?.default_unit_id ?? '',
     rate: l.rate ? l.rate : null,
     request_line_id: l.requestLineId ?? null,
+    ...(l.rate ? gstPayload(gst) : {}),
   }))
+  const priced = ready.some((l) => l.rate)
   const save = useMutation({
     mutationFn: (confirm: boolean) => editing
       ? updateOrder(editing.id, { supplier: supplier.trim(), lines: orderLines, expected_date: dateFor(when, picked), notes: notes.trim() || null, their_ref: theirRef.trim() || null })
@@ -255,6 +262,13 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
               </Button>
             )}
           </div>
+
+          {seesMoney && priced && (
+            <div className="flex flex-col gap-1 rounded-xl border bg-muted/30 p-3">
+              <GstField value={gst} onChange={setGst} rate={ready.find((l) => l.rate)?.rate} />
+              <p className="text-[11px] text-muted-foreground">For every rate on this order; deliveries on it take the same GST. Items with a different GST: order them separately.</p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <Label>Expected by</Label>

@@ -32,6 +32,8 @@ import { CategoryTile } from '@/components/requests/parts'
 import type { AppScope } from '@/lib/scope-types'
 import { fetchVendorsApi } from '@/lib/api'
 import { Combobox } from '@/components/ui/combobox'
+import { GstField } from '@/components/procurement/gst-field'
+import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
@@ -80,6 +82,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: Recor
   // and rounding that arithmetic would silently erase.
   const [totalCost, setTotalCost] = React.useState('')
   const [totalCostEdited, setTotalCostEdited] = React.useState(false)
+  const [gst, setGst] = React.useState<GstValue>(GST_NOT_SAID)
   const [notes, setNotes] = React.useState('')
   const [error, setError] = React.useState('')
   const [success, setSuccess] = React.useState(false)
@@ -107,6 +110,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: Recor
       setUnitCost('')
       setTotalCost('')
       setTotalCostEdited(false)
+      setGst(GST_NOT_SAID)
       setNotes('')
       setError('')
       setSuccess(false)
@@ -213,6 +217,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: Recor
           // than a zero that would read as "this delivery was free".
           unit_cost: unitCost.trim() || undefined,
           total_cost: totalCost.trim() || undefined,
+          ...(unitCost.trim() ? gstPayload(gst) : {}),
           notes: notes.trim() || undefined,
           occurred_date: occurredDate,
         },
@@ -524,6 +529,10 @@ export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: Recor
               />
             </div>
           </div>
+
+          {reason === 'RECEIVED' && unitCost.trim() && (
+            <GstField value={gst} onChange={setGst} rate={unitCost} unit={selectedMaterial?.default_unit ?? undefined} />
+          )}
 
           {priceJump !== null && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">

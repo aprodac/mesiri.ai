@@ -31,6 +31,8 @@ export interface RateItem {
   category: string | null
   main_category: string | null
   purchases: number
+  /** PRC-34: purchases compared as entered because their GST was not said. */
+  gst_unknown: number
   quantity: string
   spend: string
   avg_rate: string
@@ -75,6 +77,14 @@ export interface RatePurchase {
   ordered_rate: string | null
   differs_from_order: boolean
   invoice_number: string | null
+  /** PRC-34: `rate` is what a unit costs the company (before GST when the supplier has a GSTIN, else with GST). */
+  rate_entered: string
+  rate_with_gst: string
+  rate_before_gst: string
+  gst_percent: string | null
+  rate_includes_gst: boolean | null
+  gst_known: boolean
+  gst_claimable: boolean
 }
 
 export interface RateFilters {

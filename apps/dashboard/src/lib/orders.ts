@@ -24,6 +24,9 @@ export interface OrderLine {
   rejected?: string
   /** Only for the roles that see spending. */
   rate: string | null
+  /** PRC-34: GST on the agreed rate (0 = none); null when not said. */
+  gst_percent?: string | null
+  rate_includes_gst?: boolean | null
   amount: string | null
   request: { id: string; ref: string; status: string; line_id: string } | null
 }
@@ -95,7 +98,7 @@ export interface CreateOrderPayload {
   site_id: string
   vendor_id?: string | null
   supplier?: string | null
-  lines: { material_id: string; quantity: string; unit_id: string; rate?: string | null; request_line_id?: string | null }[]
+  lines: { material_id: string; quantity: string; unit_id: string; rate?: string | null; request_line_id?: string | null; gst_percent?: string; rate_includes_gst?: boolean }[]
   expected_date?: string | null
   notes?: string | null
   their_ref?: string | null

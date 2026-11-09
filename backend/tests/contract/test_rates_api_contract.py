@@ -141,7 +141,8 @@ def _day(days_ago: int) -> str:
 
 
 async def _came(client, w, material, qty: str, rate: str | None, *, days_ago: int, supplier: str | None = None,
-                vendor_id: str | None = None, site="block_a", project="villa", unit=None, po_line=None) -> dict:
+                vendor_id: str | None = None, site="block_a", project="villa", unit=None, po_line=None,
+                gst: str | None = None, incl: bool | None = None) -> dict:
     body = {"project_id": str(w[project]), "site_id": str(w[site]), "material_id": w[material],
             "unit_id": unit or w["units"]["bags" if material == "cement" else "kg"], "quantity": qty,
             "movement_reason": "RECEIVED", "occurred_date": _day(days_ago), "no_order": po_line is None}
@@ -153,6 +154,10 @@ async def _came(client, w, material, qty: str, rate: str | None, *, days_ago: in
         body["vendor_id"] = vendor_id
     if po_line:
         body["purchase_order_line_id"] = po_line
+    if gst is not None:
+        body["gst_percent"] = gst
+    if incl is not None:
+        body["rate_includes_gst"] = incl
     resp = await client.post("/materials/inflows", json=body, headers=w["admin"]["h"])
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -228,6 +233,50 @@ async def test_a_delivery_charged_differently_from_its_order_is_flagged(client, 
         ("400.00", "order", "PO-0001", "400.00", False),
         ("415.00", "order", "PO-0001", "400.00", True),
     ]
+
+
+async def test_gst_rates_compare_as_they_cost_the_company(client, world):
+    """PRC-34 / D-CC8: a registered supplier's GST is claimed back, so its rate compares before GST; a shop without a
+    GSTIN compares with GST (what is paid); a rate whose GST is not known compares as entered and is counted."""
+    w = world
+    reg = (await client.post("/finance/vendors", headers=w["admin"]["h"],
+                             json={"name": "KK Traders", "gstin": "32ABCDE1234F1Z5"})).json()["id"]
+    await _came(client, w, "cement", "100", "472", days_ago=20, vendor_id=reg, gst="18", incl=True)  # 400 + GST
+    await _came(client, w, "cement", "100", "410", days_ago=10, supplier="Corner Shop", gst="18", incl=False)  # 483.80 paid
+    await _came(client, w, "cement", "100", "405", days_ago=5, supplier="Corner Shop")  # GST not said
+    cement = _item((await client.get("/procurement/rates", headers=w["admin"]["h"])).json(), w["cement"])
+    assert cement["gst_unknown"] == 1
+    assert [(v["name"], v["avg_rate"], v["best"]) for v in cement["vendors"]] == [
+        ("KK Traders", "400.00", True), ("Corner Shop", "444.40", False)]  # (483.80 + 405) / 2
+    purchases = (await client.get(f"/procurement/rates/{w['cement']}", headers=w["admin"]["h"])).json()["purchases"]
+    assert [(p["rate"], p["rate_entered"], p["rate_with_gst"], p["rate_before_gst"], p["gst_known"], p["gst_claimable"])
+            for p in purchases] == [
+        ("405.00", "405.00", "405.00", "405.00", False, False),
+        ("483.80", "410.00", "483.80", "410.00", True, False),
+        ("400.00", "472.00", "472.00", "400.00", True, True),
+    ]
+
+
+async def test_an_order_lines_gst_goes_to_its_deliveries(client, world):
+    w = world
+    po = (await client.post("/procurement/orders", headers=w["admin"]["h"], json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "supplier": "Malabar Hardware",
+        "lines": [{"material_id": w["cement"], "quantity": "200", "unit_id": w["units"]["bags"], "rate": "400",
+                   "gst_percent": "28", "rate_includes_gst": False}]})).json()
+    line = po["lines"][0]
+    assert (line["gst_percent"], line["rate_includes_gst"]) == ("28", False)
+    got = await client.post(f"/procurement/orders/{po['id']}/receive", headers=w["admin"]["h"],
+                            json={"lines": [{"line_id": line["id"], "quantity": "50"}], "occurred_date": _day(0)})
+    assert got.status_code == 201, got.text
+    await _came(client, w, "cement", "10", "500", days_ago=0, po_line=line["id"], gst="0")  # said its own: no GST
+    purchases = (await client.get(f"/procurement/rates/{w['cement']}", headers=w["admin"]["h"])).json()["purchases"]
+    assert sorted((p["rate_entered"], p["gst_percent"], p["rate_includes_gst"], p["rate_with_gst"]) for p in purchases) == [
+        ("400.00", "28", False, "512.00"), ("500.00", "0", None, "500.00")]
+    bad = await client.post("/materials/inflows", headers=w["admin"]["h"], json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "material_id": w["cement"],
+        "unit_id": w["units"]["bags"], "quantity": "1", "occurred_date": _day(0), "unit_cost": "1", "gst_percent": "180",
+        "no_order": True})
+    assert bad.status_code == 422
 
 
 async def test_money_roles_only_scope_and_one_supplier(client, world):

@@ -1401,6 +1401,10 @@ class MaterialInflowCreate(BaseModel):
     # a real invoice's discount, rounding or delivery charge survives instead
     # of being overwritten by arithmetic.
     total_cost: Decimal | None = None
+    #: PRC-34: the GST rate on this delivery (0 = none charged) and whether ``unit_cost`` already includes it.
+    #: Left out on a delivery against an order: the order line's are used.
+    gst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    rate_includes_gst: bool | None = None
     #: PRC-08: the purchase order line this delivery fills (same site and material, the order still open).
     purchase_order_line_id: uuid.UUID | None = None
     #: PRC-23: more than the order line still has to come is refused (409 ``more_than_ordered``) unless confirmed.
@@ -1624,6 +1628,11 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
             if body.vendor_id is None and not body.supplier:
                 body.vendor_id = uuid.UUID(matched["vendor_id"])
     supplier, vendor_id = await _delivery_vendor(conn, auth_context, body.supplier, body.vendor_id)
+    gst_percent, includes_gst = body.gst_percent, body.rate_includes_gst
+    if body.purchase_order_line_id is not None and gst_percent is None and includes_gst is None:
+        from mesiri.domains.procurement.orders import line_gst
+
+        gst_percent, includes_gst = await line_gst(conn, body.purchase_order_line_id)
 
     row_id = uuid.uuid4()
     await conn.execute(
@@ -1631,10 +1640,11 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
             "INSERT INTO material_receipts "
             "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
             "supplier, vendor_id, occurred_date, occurred_date_source, source, movement_reason, notes, "
-            "material_id, unit_cost, total_cost, created_by, purchase_order_line_id) "
+            "material_id, unit_cost, total_cost, created_by, purchase_order_line_id, gst_percent, rate_includes_gst) "
             "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
             ":quantity, :unit, :unit_id, :supplier, :vendor_id, :occurred_date, 'reported', 'web', "
-            ":movement_reason, :notes, :material_id, :unit_cost, :total_cost, :created_by, :po_line)"
+            ":movement_reason, :notes, :material_id, :unit_cost, :total_cost, :created_by, :po_line, "
+            ":gst_percent, :includes_gst)"
         ),
         {
             "id": row_id,
@@ -1655,6 +1665,8 @@ async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContex
             "total_cost": total_cost,
             "created_by": auth_context.user_id,
             "po_line": body.purchase_order_line_id,
+            "gst_percent": gst_percent,
+            "includes_gst": includes_gst,
         },
     )
     await post_material_movement(
@@ -1833,6 +1845,9 @@ class MaterialInvoiceLine(BaseModel):
     quantity: Decimal
     unit_cost: Decimal | None = None
     total_cost: Decimal | None = None
+    #: PRC-34: this line's GST rate; left out, the bill's ``gst_percent`` / ``rates_include_gst`` apply.
+    gst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    rate_includes_gst: bool | None = None
 
 
 class MaterialInvoiceCreate(BaseModel):
@@ -1846,6 +1861,9 @@ class MaterialInvoiceCreate(BaseModel):
     # As printed on the document. Never derived from the lines: tax and freight
     # are not extracted in V1, so this legitimately differs from their sum.
     invoice_total: Decimal | None = None
+    #: PRC-34: the GST rate printed on the bill (most bills have one) and whether the line rates include it.
+    gst_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    rates_include_gst: bool | None = None
     currency: str = "INR"
     notes: str | None = None
     # Object key of the already-uploaded document. The file is never copied --
@@ -1982,6 +2000,9 @@ async def create_invoice(
                 occurred_date=occurred_date,
                 created_by=auth_context.user_id,
                 vendor_id=vendor_id,
+                gst_percent=line.gst_percent if line.gst_percent is not None else body.gst_percent,
+                rate_includes_gst=(line.rate_includes_gst if line.rate_includes_gst is not None
+                                   else body.rates_include_gst),
             )
         )
 

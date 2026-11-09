@@ -3,7 +3,8 @@
 Read-only over deliveries (``material_receipts``): every delivery with a rate, not taken back, not a move between
 sites. A delivery's rate is per the material's stock unit already (a rate said per load or per bar is converted when
 it is saved, ``materials.router._convert_to_stock_unit``), so rates of one item compare as they are. The rate is the
-one recorded: with or without GST as the person entered it (deliveries carry no GST field yet; the page says so).
+one recorded, compared as it costs the company (PRC-34, ``gst.py``): before GST when the supplier has a GSTIN, with GST
+when not; a delivery whose GST is not known is compared as entered and counted in ``gst_unknown``.
 
 A supplier is the vendor record when the delivery has one, else the supplier name as typed (trimmed, any case), so
 "Malabar" typed on WhatsApp and the vendor "Malabar" picked on the dashboard stay two rows until the name is linked.
@@ -19,6 +20,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.domains.procurement import gst
 from mesiri.domains.procurement.orders import ref as order_ref
 
 #: A rate change smaller than this (per cent) is "about the same", not a rise or a fall.
@@ -39,6 +41,7 @@ _PURCHASES = """
            COALESCE(parent.name, cat.name) AS main_category,
            r.project_id, p.name AS project_name, r.site_id, s.name AS site_name,
            r.occurred_date, r.created_at, r.quantity, r.unit_cost, r.total_cost,
+           r.gst_percent, r.rate_includes_gst, v.gstin AS vendor_gstin,
            r.vendor_id, v.name AS vendor_record_name, NULLIF(trim(r.supplier), '') AS supplier,
            r.invoice_id, inv.invoice_number, r.purchase_order_line_id,
            po.id AS order_id, po.number AS order_number, pol.rate AS ordered_rate, r.source,
@@ -70,6 +73,16 @@ def _money(value: Decimal | None) -> str | None:
 
 def _qty(value: Decimal) -> str:
     return format(Decimal(value).normalize(), "f")
+
+
+def gst_of(row: dict) -> gst.GstRate:
+    return gst.split(row["unit_cost"], row.get("gst_percent"), row.get("rate_includes_gst"),
+                     supplier_gstin=row.get("vendor_gstin"))
+
+
+def cost_rate(row: dict) -> Decimal:
+    """The rate every comparison here uses: what one unit costs the company (D-CC8)."""
+    return gst_of(row).cost
 
 
 def vendor_key(row: dict) -> str:
@@ -147,7 +160,8 @@ def _pct(new: Decimal, old: Decimal | None) -> str | None:
 
 
 def purchase_out(row: dict) -> dict:
-    rate = Decimal(row["unit_cost"])
+    g = gst_of(row)
+    rate = g.cost
     ordered = row.get("ordered_rate")
     return {
         "id": str(row["id"]),
@@ -162,13 +176,14 @@ def purchase_out(row: dict) -> dict:
         "quantity": _qty(row["quantity"]),
         "unit": row["unit"],
         "rate": _money(rate),
-        "amount": _money(row["total_cost"] if row.get("total_cost") is not None else rate * Decimal(row["quantity"])),
+        "amount": _money(row["total_cost"] if row.get("total_cost") is not None else g.entered * Decimal(row["quantity"])),
+        **gst.out(g),
         "source": source_of(row),
         "order_id": str(row["order_id"]) if row.get("order_id") else None,
         "order_ref": order_ref(row["order_number"]) if row.get("order_number") else None,
         "ordered_rate": _money(ordered),
         #: The delivery's rate is not what the order said (both known).
-        "differs_from_order": ordered is not None and Decimal(ordered) != rate,
+        "differs_from_order": ordered is not None and Decimal(ordered) != g.entered,
         "invoice_number": row.get("invoice_number"),
     }
 
@@ -183,12 +198,12 @@ def summarise(rows: list[dict], before: dict[uuid.UUID, dict]) -> list[dict]:
     for material_id, list_ in by_material.items():
         first = list_[0]
         quantity = sum((Decimal(r["quantity"]) for r in list_), Decimal(0))
-        spend = sum((Decimal(r["unit_cost"]) * Decimal(r["quantity"]) for r in list_), Decimal(0))
-        rates = [Decimal(r["unit_cost"]) for r in list_]
+        spend = sum((cost_rate(r) * Decimal(r["quantity"]) for r in list_), Decimal(0))
+        rates = [cost_rate(r) for r in list_]
         last = list_[-1]
         prev = list_[-2] if len(list_) > 1 else before.get(material_id)
-        last_rate = Decimal(last["unit_cost"])
-        prev_rate = Decimal(prev["unit_cost"]) if prev else None
+        last_rate = cost_rate(last)
+        prev_rate = cost_rate(prev) if prev else None
 
         vendors: dict[str, dict] = {}
         for r in list_:
@@ -196,7 +211,7 @@ def summarise(rows: list[dict], before: dict[uuid.UUID, dict]) -> list[dict]:
             v = vendors.setdefault(key, {
                 "key": key, "vendor_id": str(r["vendor_id"]) if r.get("vendor_id") else None, "name": vendor_name(r),
                 "purchases": 0, "quantity": Decimal(0), "spend": Decimal(0), "min": None, "max": None})
-            rate, q = Decimal(r["unit_cost"]), Decimal(r["quantity"])
+            rate, q = cost_rate(r), Decimal(r["quantity"])
             v["purchases"] += 1
             v["quantity"] += q
             v["spend"] += rate * q
@@ -217,6 +232,8 @@ def summarise(rows: list[dict], before: dict[uuid.UUID, dict]) -> list[dict]:
             "category": first.get("category"),
             "main_category": first.get("main_category"),
             "purchases": len(list_),
+            #: PRC-34: deliveries compared as entered because their GST is not known.
+            "gst_unknown": sum(1 for r in list_ if not gst_of(r).known),
             "quantity": _qty(quantity),
             "spend": _money(spend),
             "avg_rate": _money(spend / quantity),
@@ -239,7 +256,7 @@ def summarise(rows: list[dict], before: dict[uuid.UUID, dict]) -> list[dict]:
                  "last_date": v["last_date"].isoformat(), "best": best is not None and v["key"] == best["key"]}
                 for v in ranked
             ],
-            "points": [{"date": r["occurred_date"].isoformat(), "rate": _money(Decimal(r["unit_cost"])),
+            "points": [{"date": r["occurred_date"].isoformat(), "rate": _money(cost_rate(r)),
                         "vendor_key": vendor_key(r)} for r in list_],
         })
     return out

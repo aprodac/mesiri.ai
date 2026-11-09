@@ -179,6 +179,7 @@ export function RateDetail({
                         look.label
                       )}
                     </span>
+                    <GstNote p={p} />
                     {p.differs_from_order && p.ordered_rate && (
                       <span className="inline-flex items-center gap-1 rounded-md bg-draft-soft px-1.5 py-0.5 font-semibold text-draft">
                         <TriangleAlert className="size-3" /> Order said {rate(p.ordered_rate)}
@@ -194,7 +195,8 @@ export function RateDetail({
 
       <p className="flex items-start gap-2 px-4 py-3 text-xs text-muted-foreground sm:px-5">
         <Info className="mt-0.5 size-3.5 shrink-0" />
-        Rates are per {item.unit}, as recorded on each delivery: with or without GST, as it was entered. A rate said in another unit (a load, a bar) was
+        Rates are per {item.unit} and compared as they cost the company: before GST from a supplier with a GSTIN (the GST is claimed back), with GST
+        from one without. {item.gst_unknown > 0 && <>{item.gst_unknown} {item.gst_unknown === 1 ? 'purchase has' : 'purchases have'} no GST said and {item.gst_unknown === 1 ? 'is' : 'are'} compared as entered. </>}A rate said in another unit (a load, a bar) was
         converted when it was saved.
       </p>
       {canOrder && (
@@ -226,5 +228,17 @@ function Section({ title, count, children }: { title: string; count?: number; ch
       </h3>
       {children}
     </section>
+  )
+}
+
+
+/** PRC-34: what the GST on one purchase was, beside its rate. */
+function GstNote({ p }: { p: RatePurchase }) {
+  if (!p.gst_known) return <span className="rounded-md bg-muted px-1.5 py-0.5">GST not said</span>
+  if (Number(p.gst_percent) === 0) return <span className="rounded-md bg-muted px-1.5 py-0.5">No GST</span>
+  return (
+    <span className="rounded-md bg-muted px-1.5 py-0.5 tabular-nums" title={`Entered ${rate(p.rate_entered)} ${p.rate_includes_gst ? 'incl.' : '+'} GST`}>
+      {p.gst_percent}% GST · {rate(p.rate_with_gst)} with GST{p.gst_claimable ? ' · claimable' : ''}
+    </span>
   )
 }

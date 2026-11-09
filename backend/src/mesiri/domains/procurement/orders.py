@@ -278,11 +278,19 @@ async def insert_lines(conn: AsyncConnection, organization_id: uuid.UUID, order_
         await conn.execute(text(
             """
             INSERT INTO purchase_order_lines (organization_id, purchase_order_id, material_id, unit_id, quantity, rate,
-                                              said, request_line_id, position)
-            VALUES (:org, :order, :material, :unit, :quantity, :rate, :said, :request_line, :position)
+                                              said, request_line_id, position, gst_percent, rate_includes_gst)
+            VALUES (:org, :order, :material, :unit, :quantity, :rate, :said, :request_line, :position, :gst, :incl)
             """), {"org": organization_id, "order": order_id, "material": line["material_id"],
                    "unit": line["unit_id"], "quantity": line["quantity"], "rate": line.get("rate"),
-                   "said": line.get("said"), "request_line": line.get("request_line_id"), "position": position})
+                   "said": line.get("said"), "request_line": line.get("request_line_id"), "position": position,
+                   "gst": line.get("gst_percent"), "incl": line.get("rate_includes_gst")})
+
+
+async def line_gst(conn: AsyncConnection, line_id: uuid.UUID) -> tuple[Decimal | None, bool | None]:
+    """PRC-34: an order line's GST, which a delivery filling it takes unless the delivery says its own."""
+    row = (await conn.execute(text("SELECT gst_percent, rate_includes_gst FROM purchase_order_lines WHERE id = :id"),
+                              {"id": line_id})).first()
+    return (row.gst_percent, row.rate_includes_gst) if row else (None, None)
 
 
 async def set_status(conn: AsyncConnection, order_id: uuid.UUID, status: str, user_id: uuid.UUID,
@@ -339,7 +347,7 @@ async def fetch_orders(conn: AsyncConnection, organization_id: uuid.UUID, *, pro
     lines = (await conn.execute(text(
         f"""
         SELECT l.id, l.purchase_order_id, l.material_id, m.name AS material, l.unit_id, u.code AS unit,
-               l.quantity, l.rate, l.said, l.request_line_id, l.position,
+               l.quantity, l.rate, l.said, l.request_line_id, l.position, l.gst_percent, l.rate_includes_gst,
                COALESCE(pc.name, c.name) AS main_category, COALESCE(pc.id, c.id) AS main_category_id,
                c.id AS category_id, rq.id AS request_id, rq.number AS request_number, rq.status AS request_status,
                COALESCE((SELECT SUM(r.quantity) FROM material_receipts r WHERE r.purchase_order_line_id = l.id
@@ -433,6 +441,9 @@ def describe(rows: list[dict[str, Any]], *, today: datetime.date, with_money: bo
                 "received": _num(got), "pending": _num(max(qty - got, Decimal(0))), "extra": _num(max(got - qty, Decimal(0))),
                 "rate": _money(rate) if with_money else None,
                 "amount": _money(qty * rate) if with_money and rate is not None else None,
+                #: PRC-34: the GST on the agreed rate (0 = none); null: not said.
+                "gst_percent": _num(line["gst_percent"]) if line["gst_percent"] is not None else None,
+                "rate_includes_gst": line["rate_includes_gst"],
                 "request": None if not line["request_id"] else {
                     "id": str(line["request_id"]), "ref": f"REQ-{line['request_number']:04d}",
                     "status": line["request_status"], "line_id": str(line["request_line_id"])},

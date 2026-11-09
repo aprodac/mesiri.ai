@@ -101,6 +101,8 @@ async def insert_invoice_line(
     occurred_date: datetime.date,
     created_by: uuid.UUID,
     vendor_id: uuid.UUID | None = None,
+    gst_percent: Decimal | None = None,
+    rate_includes_gst: bool | None = None,
 ) -> uuid.UUID:
     """One purchase, recorded exactly like any other inflow but carrying its
     invoice's id. Deliberately a normal `material_receipts` row: inventory,
@@ -112,10 +114,10 @@ async def insert_invoice_line(
             "INSERT INTO material_receipts "
             "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
             "supplier, vendor_id, occurred_date, occurred_date_source, source, movement_reason, "
-            "material_id, unit_cost, total_cost, invoice_id, created_by) "
+            "material_id, unit_cost, total_cost, invoice_id, created_by, gst_percent, rate_includes_gst) "
             "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, :quantity, "
             ":unit, :unit_id, :supplier, :vendor_id, :occurred_date, 'reported', 'invoice', 'RECEIVED', "
-            ":material_id, :unit_cost, :total_cost, :invoice_id, :created_by)"
+            ":material_id, :unit_cost, :total_cost, :invoice_id, :created_by, :gst_percent, :includes_gst)"
         ),
         {
             "id": receipt_id,
@@ -134,6 +136,8 @@ async def insert_invoice_line(
             "total_cost": total_cost,
             "invoice_id": invoice_id,
             "created_by": created_by,
+            "gst_percent": gst_percent,
+            "includes_gst": rate_includes_gst,
         },
     )
     await post_material_movement(

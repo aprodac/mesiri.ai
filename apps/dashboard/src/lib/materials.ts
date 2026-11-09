@@ -368,6 +368,9 @@ export interface CreateInflowPayload {
   // as "free" in a spend total.
   unit_cost?: string | number
   total_cost?: string | number
+  /** PRC-34: the GST rate (0 = none) and whether unit_cost includes it; left out when not said. */
+  gst_percent?: string
+  rate_includes_gst?: boolean
 }
 
 // ---------------------------------------------------------------------
@@ -433,7 +436,12 @@ export interface CreateInvoicePayload {
     quantity: string | number
     unit_cost?: string | number
     total_cost?: string | number
+    gst_percent?: string
+    rate_includes_gst?: boolean
   }>
+  /** PRC-34: the bill's GST rate and whether its line rates include it (a line's own wins). */
+  gst_percent?: string
+  rates_include_gst?: boolean
   supplier_name?: string
   vendor_id?: string
   invoice_number?: string
