@@ -1,5 +1,7 @@
 # Reports: handoff for a new session (9 Nov 2026)
 
+> **9 Nov, later:** discussed and approved; the plan is [reports-plan.md](reports-plan.md) and R1 (PRC-19) is built.
+>
 > Written at the end of a long session so a new one can start the **reports** work with Ilan. **Discuss first, then
 > plan, then build** (CLAUDE.md phases). Nothing here is built yet; it is the investigation and a proposal.
 

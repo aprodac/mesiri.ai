@@ -299,7 +299,7 @@ Related tracker item: NXT-10 (weekly lookahead per site, todo).
 
 | Capability | Status | In Mesiri / what is missing |
 |---|---|---|
-| Progress, DPR, productivity reports | 🟡 | Daily reports, Analytics. **Missing:** weekly/monthly (PRC-19), labour productivity |
+| Progress, DPR, productivity reports | 🟡 | Daily reports, Analytics, weekly / monthly report (PRC-19, page + PDF + Excel). **Missing:** sending it on a schedule (PRC-20), labour productivity (RPT-03) |
 | BOQ, measurement, billing status | ✅ | BOQ progress, RA bills, receivables |
 | Procurement, vendor, stock, consumption | 🟡 | Stock for a period, supplier statements. Procurement reports is a placeholder |
 | Labour, equipment, expenses | ✅ | Attendance, equipment log, finance reports |

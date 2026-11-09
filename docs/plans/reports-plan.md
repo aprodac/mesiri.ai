@@ -50,6 +50,19 @@ Adarsh's #10 (owner's one page).
 | R4 | Cost & margin, cash & receivables outlook, labour productivity, materials & waste, procurement, equipment, subcontractors | RPT-03 |
 | R5 | Closeout, delay register | CC-14, RPT-04 |
 
+## Status
+
+| Phase | Status |
+| --- | --- |
+| R1 | **Done** 9 Nov 2026 (`89606f2` backend, `a9eeddb` dashboard). |
+| R2..R5 | todo |
+
+**R1 as built, differences from the plan:** "Needs you" also lists what the approvals inbox has waiting in the
+project. Client bills are left out of the figures when a project has none (₹0 billed, ₹0 received is noise). The
+PDF's page 1 carries the top five "Needs you" items. **Known limits:** an activity's state (late / behind) is as
+of today, not as of the period's end, because the Gantt read is to date; a past month's report shows today's
+schedule state. Fonts: rupees print as "Rs" in the PDF.
+
 ## R1 in detail (PRC-19)
 
 ### Scope
