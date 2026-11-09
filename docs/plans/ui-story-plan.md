@@ -2,7 +2,7 @@
 
 > **Status:** plan written 9 Nov 2026 (asked in session: "give this software a proper start, proper UI, proper
 > feel overall; like a story has a start and a middle, it should feel properly connected and properly divided,
-> especially UI and UX: brand, theme, sidebar, the first screens"). Tracker items `UX-01`..`UX-10` in
+> especially UI and UX: brand, theme, sidebar, the first screens"). Tracker items `UX-01`..`UX-12` in
 > [V1_TRACKER.md](V1_TRACKER.md). Continues WEB-25 / WEB-52 and closes WEB-14.
 >
 > Phase 1 (investigation) findings are in §2. The plan is §3 onward. Decisions needed before building are in §9.
@@ -51,12 +51,33 @@ Screenshots: desktop 1440 px and phone 390 px, owner role with every module on, 
   Client billing, Accounts as collapsed drawers. The order is the order they were built, not the order of the work.
 - **The same page appears in two drawers:** BOQ & budget (Planning and Cost control), Requests (Materials and
   Procurement), Suppliers (Procurement and Finance). Two doors to one room make the map harder to learn.
-- **Setup is invisible to an owner:** the Setup group (Projects & Sites, Team, Company, WhatsApp) requires the `ADMIN`
-  role in `app-sidebar.tsx`. An `OWNER` sees none of it in the screenshot.
+- **Setup is admin-only, which is right:** a signup's owner is `ADMIN` (`create_company.py`), and the Setup group
+  (Projects & Sites, Team, Company, WhatsApp) shows for `ADMIN`. (The first screenshot used `OWNER`, which the
+  dashboard checks in places but the backend never assigns: `module-map.ts` lists `OWNER` in 16 role lists that only
+  `ADMIN` ever matches. Harmless, but tidied in UX-11.)
 - **Labour is a single "Attendance" link** under "Site records", while every other module is a drawer.
 - **Live (`/live`) has no sidebar entry**, though it is the most striking screen Mesiri has.
 - **The preview toggle** (map icon) shows planned pages with a hollow dot. That is useful internally, but the switch
   sits next to the user's name, where a customer can find it.
+
+### Roles: everyone gets the same home
+- Four roles exist (`lib/permissions.ts`, backend `_VALID_ROLES`): **Admin / Director** (the owner), **Project
+  Manager**, **Site Engineer**, **Finance / Accountant**. There is no storekeeper or purchase role: purchase work is
+  done by a PM or site engineer today.
+- **Today (`TodayPage.tsx`) has no role logic.** The director, the site engineer and the accountant all open the
+  same site-by-site list. What the director asks ("am I making money, what needs me?") and what the accountant asks
+  ("what is due, what is billed?") are on other pages: Accounts home, Cost overview, Receivables.
+- Roles today only **hide** pages (`roles` in `module-map.ts`); nothing is **ordered or summarised** for a role.
+
+### Connections: modules are islands
+- Links from one module's page to another module are rare: of 63 pages, **VendorPage and ProjectStartPage have 5
+  cross-module links; most have 0 or 1** (Today, Site log, Work orders, Tally export, Subcontract: 0).
+- Examples of a missing step: a purchase order does not show its request or its supplier bill; a GRN does not link
+  to the stock it added; a BOQ line does not show its requests, orders or RA bills; a worker does not link to the
+  cost they carry; an RA bill does not link to the receipt that paid it.
+- The scope bar (`ScopeContext`) does carry the chosen project and site across pages. That is the base for a
+  project hub.
+- The project page (`ProjectDetails.tsx`) is a setup page (sites, members, recipients), not the project's home.
 
 ### First run
 - An empty company lands on **Today: "No active sites yet"** in a dashed box, with one button to Projects & Sites.
@@ -126,6 +147,48 @@ Rules:
 - **Search / jump (⌘K):** one box that finds any page, project, site, supplier or worker. This needs `cmdk`, which
   DESIGN_SYSTEM.md already recommended. It is the only new library, and it is optional (decision D-UX4).
 
+## 4b. A home for each role (UX-11)
+
+**Today becomes Home**, one address (`/today`) with a different first screen per role. The page is built from tiles
+that each answer one question and **open the page that answers it in full**. That makes Home the start of every
+connection. All tiles read existing APIs; no new backend.
+
+| Role | Home answers, in this order | Tiles (each opens its page) |
+|---|---|---|
+| **Admin / Director** | Am I making money? What needs me? Which site is behind? | Cash and bank today · Owed to us / by us (Receivables, Suppliers) · Projects worst first with margin and budget (Cost overview, Project P&L) · Waiting for you (approvals) · Sites that have not reported · Today's DPRs |
+| **Project Manager** | Which site is behind? What is waiting on me? What runs short? | My sites: reported / missing / DPR to confirm or send · Late schedule items · Materials short in the next 2 weeks (Material plan) · Requests to decide · Deliveries due today · Open issues · Red BOQ lines (Green / red) |
+| **Site Engineer** | What did my site send? What is missing? What is coming? | My site's day with Confirm DPR · Missing today (attendance, work, photos) · My requests and their status · Deliveries due · Machines today · Tell Mesiri box · the WhatsApp sentence for anything missing |
+| **Finance / Accountant** | What is due? What came in? What is not booked? | Cash and bank · Payments due this week (suppliers, subcontractors) · Overdue receivables · Bills to check (subcontract, hire, supplier vs GRN) · GST and TDS due · Expenses to confirm · Month close status |
+
+Rules:
+- One page, one tile set per role. A director who wants the site list scrolls to it; nothing is lost.
+- Each tile shows a number or short list and **one link**. No chart without a decision behind it.
+- Scope: a tile follows the scope bar (all projects → one project → one site).
+- The sidebar order follows the role as well (§4): SITE first for a site engineer, MONEY first for finance.
+
+## 4c. Connected modules (UX-09, UX-12)
+
+Modules connect along four chains. Every record in a chain shows **where it came from and what happened next**,
+and each step is one tap.
+
+```
+PLAN → DO      BOQ line → schedule task → material plan → request → order → GRN → stock → used in a work update → progress → RA bill
+BUY → PAY      request → purchase order → GRN → supplier bill → payment → supplier ledger → day book
+WORK → COST    attendance / work order / machine hours → bill check (subcontract, hire) → expense / payment → cost centre → budget vs actual
+MONEY IN       BOQ client rate → measured quantity → RA bill → receipt → receivables → project P&L
+```
+
+How it shows on screen:
+- **"Linked" strip** in every detail panel (`ListDetail`, UX-05): the records before and after this one in its chain,
+  each a chip with status ("PO-0042 · 150 of 200 delivered", "Bill 3 · ₹15,000 · checked").
+- **Project hub (UX-12):** the project page becomes the project's home: progress, schedule, cost, materials, money
+  and documents for that project, each a short summary that opens the module **already scoped to the project**. Setup
+  (sites, team, recipients) moves to a tab of it.
+- **Same names everywhere:** a record has one name and number in every module (PO-0042, GRN-0117, RA-04), so the
+  chips read the same wherever they appear.
+- **Built from existing ids** (PO → request, GRN → PO, expense → vendor / work order, RA bill line → BOQ line). Where a
+  link needs an id the API does not return, it is listed in the item as an additive API change, not guessed.
+
 ## 5. Work items
 
 | ID | Item | Size | What changes |
@@ -138,11 +201,13 @@ Rules:
 | **UX-06** | **First-run story** | M | Login, signup and welcome in the app's brand (keeping the voice-note demo, but in the app's type and colours); after signup, one path: Welcome → *Your first project* (Project start) → *Who reports from site* (Team) → *Connect WhatsApp* → *Your first update* (first-report moment) → Today. Each step can be skipped; the checklist stays in the sidebar ("Finish setup 3/5") until done. Today's empty state becomes the next setup step, not a dead end |
 | **UX-07** | **Empty states that lead** | S | Every module page with no data says what it is for, the one thing to do first, and the WhatsApp sentence that fills it ("Send *JCB 6 hrs, 30 L diesel* and it shows here"). Uses `EmptyState` from UX-05 |
 | **UX-08** | **Pages onto the kit, section by section** | L | PLAN, then SITE, BUY, MONEY: each page uses the kit, the tokens and the one-primary-button rule; the repeated subtitles go (WEB-52). One commit per section, each checked at 390 px and 1440 px, light and dark |
-| **UX-09** | **Connected records** | M | Each record links along its chain: request ↔ order ↔ GRN ↔ supplier bill ↔ payment ↔ ledger; BOQ line ↔ work done ↔ cost ↔ RA bill; worker ↔ attendance ↔ cost. A "Linked" strip in the detail panel from `ListDetail`. Reads existing ids; a missing link that needs an API field is listed, not built here |
+| **UX-09** | **Connected records** (§4c) | M | Each record links along its chain: request ↔ order ↔ GRN ↔ supplier bill ↔ payment ↔ ledger; BOQ line ↔ work done ↔ cost ↔ RA bill; worker ↔ attendance ↔ cost. A "Linked" strip in the detail panel from `ListDetail`. Reads existing ids; a missing link that needs an API field is listed, not built here |
+| **UX-11** | **A home for each role** (§4b) | M | Today becomes Home with a tile set per role (Director, PM, Site engineer, Finance) from existing APIs; sidebar order per role; `OWNER` tidied out of role lists where `ADMIN` is meant |
+| **UX-12** | **Project hub** (§4c) | M | The project page becomes the project's home: a summary per module, each opening the module scoped to the project; setup in a tab |
 | **UX-10** | **Screenshot check for every page** | S | A Playwright script (`apps/dashboard/scripts/screens.mjs`) with a stubbed API that opens every built page in `module-map.ts` at 390 and 1440 px, light and dark, and fails on a blank page or a console error. Run before each UX push; images go in the phase report |
 
 **Order:** UX-01 + UX-02 + UX-03 (look) → UX-05 (kit) → UX-04 (navigation) → UX-06 + UX-07 (first run) → UX-08
-(pages, section by section) → UX-09 (links). UX-10 is built first, alongside UX-01, so every later step is checked.
+(pages, section by section, UX-11 role homes in the middle of it) → UX-09 + UX-12 (connections). UX-10 is built first, alongside UX-01, so every later step is checked.
 
 ## 6. Files expected to change
 
@@ -182,15 +247,20 @@ Payroll and Workforce are not touched.
 
 **Success criteria.**
 1. A new owner goes from signup to their first DPR on Today without hitting a dead end or leaving the guided path.
-2. The sidebar for an owner with every module shows at most 4 daily entries + 4 sections + Settings, with each page in
+2. Each of the four roles opens a Home that answers its first question without a click, and every tile opens the
+   page behind it.
+3. From any record in a chain (§4c) the step before and the step after are one tap away.
+4. The sidebar for an owner with every module shows at most 4 daily entries + 4 sections + Settings, with each page in
    exactly one place.
-3. No page uses a hard-coded palette colour for meaning (lint check: `rg "(emerald|amber|rose|sky)-[0-9]"` finds
+5. No page uses a hard-coded palette colour for meaning (lint check: `rg "(emerald|amber|rose|sky)-[0-9]"` finds
    only the token file).
-4. Login, signup, the app, the favicon, the phone home-screen icon and the DPR PDF use the same mark and colours.
-5. Every built page passes UX-10 at 390 px and 1440 px in light and dark: no blank page, no console error, no
+6. Login, signup, the app, the favicon, the phone home-screen icon and the DPR PDF use the same mark and colours.
+7. Every built page passes UX-10 at 390 px and 1440 px in light and dark: no blank page, no console error, no
    sideways scroll.
 
-## 9. Decisions needed (proposed default in **bold**)
+## 9. Decisions (proposed default in **bold**)
+
+**Decided 9 Nov (in session: "yeah"): the defaults below.** Connections and role homes added as must-haves.
 
 | # | Question | Default |
 |---|---|---|
