@@ -59,8 +59,8 @@ async def test_urgent_first_then_oldest_and_counts(monkeypatch):
         "site_report": _source(_row("site_report", "2026-11-09", False, "today"),
                                _row("site_report", "2026-11-08", True, "yesterday")),
         "material_request": _source(_row("material_request", "2026-11-01", False, "old request")),
-        "subcontract_bill": _source(), "ra_bill": _source(), "wage_sheet": _source(),
-        "task": _source(_row("task", "2026-11-07", True, "late")),
+        "subcontract_bill": _source(), "measurement": _source(), "ra_bill": _source(), "wage_sheet": _source(),
+        "size_request": _source(), "task": _source(_row("task", "2026-11-07", True, "late")),
     })
     box = await inbox.waiting(_Conn(), _Auth(), lambda m: True)
     assert [i["title"] for i in box["items"]] == ["late", "yesterday", "old request", "today"]
@@ -79,7 +79,8 @@ async def test_a_failing_source_is_named_and_hides_nothing_else(monkeypatch):
 
     monkeypatch.setattr(inbox, "SOURCES", {
         "site_report": _source(_row("site_report", "2026-11-09", False)), "material_request": broken,
-        "subcontract_bill": refused, "ra_bill": odd, "wage_sheet": _source(), "task": _source(),
+        "subcontract_bill": refused, "measurement": _source(), "ra_bill": odd, "wage_sheet": _source(),
+        "size_request": _source(), "task": _source(),
     })
     box = await inbox.waiting(_Conn(), _Auth(), lambda m: True)
     assert box["total"] == 1 and box["unavailable"] == ["material_request", "ra_bill"]  # a 403 is "not yours", quiet
@@ -97,7 +98,7 @@ async def test_a_switched_off_module_is_not_asked(monkeypatch):
 
     monkeypatch.setattr(inbox, "SOURCES", {k: spy(k) for k in inbox.KINDS})
     await inbox.waiting(_Conn(), _Auth(), lambda m: m in ("dpr",))
-    assert asked == ["site_report", "subcontract_bill", "ra_bill"]  # materials and tasks are off
+    assert asked == ["site_report", "subcontract_bill", "measurement", "ra_bill"]  # materials and tasks are off
 
 
 async def test_subcontract_bill_rows(monkeypatch):

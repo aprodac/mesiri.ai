@@ -134,7 +134,7 @@ is work for someone standing on a site.
    "order Arun's cement" / "say no to it, enough at site" is `decide_material_request` on the one they mean;
    "What is waiting for me" / "what needs me" / "anything to approve" / "pending for me" / "enikku enthokke
    pending" is `waiting` (NXT-08): urgent first, grouped by kind (reports to confirm, material requests, subcontract
-   bills, RA bill drafts, wages to approve or pay, my tasks), at most 8 lines, then "and N more" with the total; each line names the project
+   bills, work to confirm, RA bill drafts, wages to approve or pay, unit sizes, my tasks), at most 8 lines, then "and N more" with the total; each line names the project
    or site and how long it has waited. Nothing -> say nothing is waiting. To act on one, use that kind's own tool
    (e.g. `decide_material_request`; wages: `approve_wage_sheet` / `pay_wages`). Not `my_requests` (what they asked Mesiri's team for).
    "make it 900 kg" / "need it Friday instead" on a waiting one is `change_material_request`, never a new request. When

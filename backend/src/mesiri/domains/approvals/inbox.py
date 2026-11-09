@@ -13,6 +13,10 @@ Sources, and who they are waiting for:
   (the approve route's own rule).
 - ``ra_bill``: a client RA bill still in draft. Those who see client bills (``may_manage_money``).
 - ``task``: my own tasks, overdue or due today (the tasks module).
+- ``measurement``: work a subcontractor reported (``proposed``), waiting for the site to confirm. Whoever may record
+  work at that site (the confirm route's own rule). Urgent when it takes the line past the agreed quantity. (GM-01)
+- ``size_request``: a unit size nobody on site knew; the lines said in it wait until it is set (WA-168). Those who may
+  set a size (``may_set_unit_conversions``). (GM-01)
 
 A source the person may not use is left out; a source that fails is named in ``unavailable`` so the page can say
 so, and never hides the rest.
@@ -38,10 +42,11 @@ from mesiri.authorization.roles import (
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("site_report", "material_request", "subcontract_bill", "ra_bill", "wage_sheet", "task")
+KINDS = ("site_report", "material_request", "subcontract_bill", "measurement", "ra_bill", "wage_sheet", "size_request",
+         "task")
 #: The module each source belongs to (``organization.settings.MODULES``); None: always on.
-MODULE_OF = {"site_report": "dpr", "material_request": "materials", "subcontract_bill": None, "ra_bill": "dpr",
-             "wage_sheet": "labour", "task": "tasks"}
+MODULE_OF = {"site_report": "dpr", "material_request": "materials", "subcontract_bill": None, "measurement": None,
+             "ra_bill": "dpr", "wage_sheet": "labour", "size_request": "materials", "task": "tasks"}
 RA_DRAFT_STALE_DAYS = 7
 
 
@@ -153,6 +158,65 @@ async def ra_bills(conn: AsyncConnection, auth: AuthorizationContext, today: dat
     return out
 
 
+async def measurements(conn: AsyncConnection, auth: AuthorizationContext, today: datetime.date) -> list[dict]:
+    """GM-01: work a subcontractor reported, waiting for the site to confirm it (``decide_measurement``'s rule)."""
+    from sqlalchemy import text
+
+    from mesiri.domains.materials.router import _authorize_write
+    from mesiri.domains.subcontracts.store import ref as wo_ref
+
+    scope = None if auth.project_scope.grants_all_org_projects else list(auth.project_scope.project_ids)
+    if scope is not None and not scope:
+        return []
+    rows = (await conn.execute(text(
+        "SELECT m.id, m.work_order_id, m.quantity, m.measured_on, m.created_at, l.description, l.unit, "
+        "l.quantity AS agreed, w.number AS wo_number, w.project_id, w.site_id, p.name AS project_name, "
+        "s.name AS site_name, v.name AS vendor_name, "
+        "(SELECT COALESCE(SUM(x.quantity), 0) FROM work_order_measurements x WHERE x.line_id = m.line_id "
+        "  AND x.status = 'confirmed') AS measured "
+        "FROM work_order_measurements m JOIN work_order_lines l ON l.id = m.line_id "
+        "JOIN work_orders w ON w.id = m.work_order_id JOIN projects p ON p.id = w.project_id "
+        "JOIN vendors v ON v.id = w.vendor_id LEFT JOIN sites s ON s.id = w.site_id "
+        "WHERE m.organization_id = :org AND m.status = 'proposed' "
+        + ("AND w.project_id = ANY(:ps) " if scope is not None else "") + "ORDER BY m.created_at"),
+        {"org": auth.organization_id, **({"ps": scope} if scope is not None else {})})).mappings().all()
+    out = []
+    for r in rows:
+        try:
+            _authorize_write(auth, r["project_id"], r["site_id"])
+        except HTTPException:
+            continue
+        after = r["measured"] + r["quantity"]
+        over = bool(r["agreed"]) and after > r["agreed"]
+        detail = (f"Takes the line to {_qty(after)} of {_qty(r['agreed'])} {r['unit']} agreed" if over
+                  else f"{_qty(r['measured'])} of {_qty(r['agreed'])} {r['unit']} confirmed so far")
+        out.append(_item("measurement", r["id"], f"{r['vendor_name']}: {_qty(r['quantity'])} {r['unit']} {r['description']}",
+                         f"Reported for {_day(r['measured_on'])} · {detail}", since=r["created_at"], urgent=over,
+                         project_id=r["project_id"], project_name=r["project_name"], site_id=r["site_id"],
+                         site_name=r["site_name"], ref=wo_ref(r["wo_number"]), work_order_id=r["work_order_id"]))
+    return out
+
+
+async def size_requests(conn: AsyncConnection, auth: AuthorizationContext, today: datetime.date) -> list[dict]:
+    """GM-01: unit sizes nobody on site knew; the lines said in them wait until one is set (WA-168)."""
+    from mesiri.authorization.roles import may_set_unit_conversions
+
+    if not may_set_unit_conversions(auth.role):
+        return []
+    from mesiri.domains.materials import size_requests as sizes
+
+    out = []
+    for r in await sizes.list_requests(conn, auth.organization_id, "open"):
+        held = r.get("waiting") or 0
+        proposed = r.get("proposed_one_unit_equals")
+        detail = f"{held} line{'s' if held != 1 else ''} held until it is set" if held else "No lines held"
+        if proposed:
+            detail += f" · {r.get('proposed_by_name') or 'site'} says 1 {r['unit']} = {proposed} {r.get('stock_unit') or ''}".rstrip()
+        out.append(_item("size_request", r["id"], f"How much is 1 {r['unit']} of {r['material']}?", detail,
+                         since=r.get("created_at"), urgent=held > 0))
+    return out
+
+
 async def tasks(conn: AsyncConnection, auth: AuthorizationContext, today: datetime.date) -> list[dict]:
     from mesiri.domains.tasks.router import list_tasks
 
@@ -197,7 +261,8 @@ async def wage_sheets(conn: AsyncConnection, auth: AuthorizationContext, today: 
 
 SOURCES: dict[str, Callable[[AsyncConnection, AuthorizationContext, datetime.date], Awaitable[list[dict]]]] = {
     "site_report": site_reports, "material_request": material_requests, "subcontract_bill": subcontract_bills,
-    "ra_bill": ra_bills, "wage_sheet": wage_sheets, "task": tasks,
+    "measurement": measurements, "ra_bill": ra_bills, "wage_sheet": wage_sheets, "size_request": size_requests,
+    "task": tasks,
 }
 
 

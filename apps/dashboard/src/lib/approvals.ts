@@ -4,7 +4,7 @@ import { recordUrl } from './links'
 // NXT-08: the approvals inbox, "what is waiting for me". Backend: domains/approvals (GET /approvals/waiting), a read
 // over each module's own list as the caller, so a row is here exactly when its page would show it to this person.
 
-export type WaitingKind = 'site_report' | 'material_request' | 'subcontract_bill' | 'ra_bill' | 'wage_sheet' | 'task'
+export type WaitingKind = 'site_report' | 'material_request' | 'subcontract_bill' | 'measurement' | 'ra_bill' | 'wage_sheet' | 'size_request' | 'task'
 
 export interface WaitingItem {
   kind: WaitingKind
@@ -52,11 +52,13 @@ export const KIND_LABEL: Record<WaitingKind, string> = {
   site_report: 'Site reports to confirm',
   material_request: 'Material requests',
   subcontract_bill: 'Subcontractor bills',
+  measurement: 'Work to confirm',
   ra_bill: 'RA bills in draft',
   wage_sheet: 'Wages to approve or pay',
+  size_request: 'Unit sizes to set',
   task: 'My tasks',
 }
-export const KIND_ORDER: WaitingKind[] = ['site_report', 'material_request', 'subcontract_bill', 'ra_bill', 'wage_sheet', 'task']
+export const KIND_ORDER: WaitingKind[] = ['site_report', 'material_request', 'subcontract_bill', 'measurement', 'ra_bill', 'wage_sheet', 'size_request', 'task']
 
 /** Where a row opens: the record's own page (lib/links.ts), never a new screen. */
 export function waitingUrl(item: WaitingItem): string {
@@ -67,6 +69,11 @@ export function waitingUrl(item: WaitingItem): string {
       return recordUrl.request(item.id)
     case 'subcontract_bill':
       return item.work_order_id ? recordUrl.workOrderBills(item.work_order_id) : '/subcontract/work-orders'
+    case 'measurement':
+      // GM-01: the work order, where the measurement waits for its confirm.
+      return item.work_order_id ? `/subcontract/work-orders/${item.work_order_id}` : '/subcontract/work-orders'
+    case 'size_request':
+      return '/materials?view=items'
     case 'ra_bill':
       return item.project_id ? recordUrl.raBill(item.id, item.project_id) : '/billing/ra-bills'
     case 'wage_sheet':
