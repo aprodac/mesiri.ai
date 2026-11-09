@@ -195,8 +195,9 @@ Languages: the three the other alerts use (`alerts.words`).
 
 - `src/lib/tasks.ts`: types, query hooks, mutations (the same shape as `lib/schedule.ts`).
 - Built on the page kit in `components/page/` (UX-05: PageHeader, FilterBar, ListDetail, EmptyState) and placed
-  in its own sidebar group (placed by the UX-04 story order, next to Planning), so it matches the pages being
-  moved onto the kit.
+  in its own sidebar section, TASKS, with its pages as rows (`flat` group in `lib/module-map.ts`), first after the
+  daily pages for everyone but finance (Adarsh, 9 Nov: "own sidebar section"), so it matches the pages being moved
+  onto the kit.
 - **The module on the web:** `tasks` in `lib/modules.ts` (`ModuleKey`, `MODULE_NAMES`: "Tasks"); a `tsk()` guard
   in `App.tsx` (`RequireModule module="tasks"`, like `cst()`); its own **Tasks** group in `lib/module-map.ts` with
   `module: 'tasks'`, hidden when the module is off. `/planning/tasks` redirects to `/tasks` and the Planning

@@ -40,7 +40,7 @@ export function HelpButton() {
   const about = page?.about ?? extra?.about ?? 'Your sites, reported on WhatsApp: open any part of Mesiri from the sidebar or search.'
   const example = page?.example ?? extra?.example
   const whatsapp = page?.whatsapp ?? extra?.whatsapp
-  const where = group ? (group.key === 'site' ? SECTION_TITLES.daily : `${SECTION_TITLES[group.section]} › ${group.title}`) : null
+  const where = group ? (group.key === 'site' ? SECTION_TITLES.daily : (SECTION_TITLES[group.section] === group.title ? group.title : `${SECTION_TITLES[group.section]} › ${group.title}`)) : null
   const siblings =
     group?.pages.filter(
       (p) => p.status === 'built' && !p.shortcut && p.url !== page?.url && (!p.roles || p.roles.includes(role)) && (!p.module || isModuleEnabled(p.module)),

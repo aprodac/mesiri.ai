@@ -28,7 +28,7 @@ of the finished work stays with the job."**
   gave or were given.
 - Tasks are numbered per project: **T-1, T-2, …**. Say "T-14" on site and everyone means the same job.
 - Tasks is on by default. The Mesiri team switches it off for a company in the control panel (Settings → Modules
-  shows it to the company). When it is off, the sidebar group, the counts and the Today card all disappear.
+  shows it to the company). When it is off, the TASKS section, the counts and the Today card all disappear.
 
 ## 3. The engineer's morning: Today
 
@@ -36,8 +36,8 @@ of the finished work stays with the job."**
 
 - **My tasks card** at the top of Today: how many are mine, how many are late, and the first three, late first.
   A tap opens the task.
-- **Sidebar, Tasks:** *My tasks* shows mine still open (orange). *Overdue* shows the late ones (red). When the drawer
-  is closed, it shows the red number first.
+- **Sidebar, the TASKS section** (its own heading, right under Live; last for finance): *My tasks* shows mine still
+  open (orange), *Overdue* the late ones (red), then *All tasks* and *Done*.
 - A manager also sees **"N tasks late for others in your projects"**, which opens the Overdue list.
 - The counts follow the project picked at the top of the page, like the rest of Today.
 
