@@ -48,6 +48,10 @@ async def clean_db(test_engine: AsyncEngine):
     async with test_engine.begin() as conn:
         await conn.execute(sa.text("DELETE FROM client_receipts"))
         await conn.execute(sa.text("DELETE FROM ra_bills"))
+        # Its own bank account, so suites that wipe users afterwards are not blocked by it (the INF-33 class).
+        await conn.execute(sa.text("DELETE FROM money_transactions WHERE to_account_id IN (SELECT id FROM money_accounts "
+                                   "WHERE name = 'HDFC current 5521')"))
+        await conn.execute(sa.text("DELETE FROM money_accounts WHERE name = 'HDFC current 5521'"))
 
 
 @pytest.fixture
