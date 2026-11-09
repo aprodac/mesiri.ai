@@ -178,7 +178,8 @@ def _kinds(inbox: dict) -> list[str]:
 async def test_admin_sees_everything_urgent_first(client, world):
     w = world
     box = await _inbox(client, w["admin"])
-    assert box["counts"] == {"site_report": 2, "material_request": 1, "subcontract_bill": 0, "ra_bill": 1, "task": 1}
+    assert box["counts"] == {"site_report": 2, "material_request": 1, "subcontract_bill": 0, "ra_bill": 1, "wage_sheet": 0,
+                             "task": 1}
     assert box["total"] == 5 and box["unavailable"] == []
     urgent = [i for i in box["items"] if i["urgent"]]
     assert box["items"][:len(urgent)] == urgent  # urgent first
