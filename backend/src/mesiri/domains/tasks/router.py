@@ -2,6 +2,7 @@
 
   GET    /tasks                    list: mine, a project's, a site's, a person's; overdue / today / this week
   GET    /tasks/summary            counts for the sidebar and Today: mine open, mine overdue, overdue in my projects
+  GET    /tasks/options            a project's sites, people and subcontractors, for the pickers
   POST   /tasks                    give a task (site, person and place by id or in words)
   GET    /tasks/{id}               one task with its history (photos as links)
   PATCH  /tasks/{id}               change the details, reassign
@@ -244,6 +245,19 @@ async def summary(auth: AuthorizationContext = Depends(get_auth_context),
     mine = [r for r in rows if str(r.get("assignee_user_id")) == str(auth.user_id)]
     late = [r for r in rows if logic.is_overdue(r["status"], r.get("due_date"), today)]
     return {"mine_open": len(mine), "mine_overdue": sum(1 for r in mine if r in late), "overdue": len(late)}
+
+
+@router.get("/options")
+async def options(project_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
+                  conn: AsyncConnection = Depends(get_db_conn)):
+    """What a task on this project can name: its sites (those this person sees), the people it can be for (the
+    same list ``POST /tasks`` matches names against) and the company's subcontractors."""
+    org = auth.organization_id
+    if not _project_in_scope(auth, project_id) or await store.project(conn, org, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    sites = [s for s in await store.sites(conn, org, project_id) if _site_in_scope(auth, project_id, s["id"])]
+    return {"sites": sites, "people": await store.people(conn, org, project_id),
+            "subcontractors": await store.subcontractors(conn, org), "may_create": logic.may_create(auth.role)}
 
 
 @router.post("", status_code=201)

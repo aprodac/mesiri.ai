@@ -275,3 +275,19 @@ async def test_switched_off_the_module_refuses(test_engine, co, monkeypatch):
         resp = await off.get("/tasks", headers=co["pm"])
         assert resp.status_code == 403 and resp.json()["detail"]["code"] == "MODULE_DISABLED"
         assert (await _give(off, co)).status_code == 403
+
+
+async def test_options_list_what_a_task_can_name(client, co, test_engine):
+    sub = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO vendors (id, organization_id, name, status, kind, created_by, created_at, "
+                             "updated_at) VALUES (:id, :org, 'Ravi Bar Bending', 'active', 'subcontractor', :u, now(), now())",
+                id=sub, org=co["org"], u=co["pm_id"])
+    await _user(test_engine, co["org"], "ADMIN", "Anu Admin")  # org-wide: on every project, not a member row
+    got = (await client.get("/tasks/options", params={"project_id": str(co["project"])}, headers=co["arun"])).json()
+    assert {s["name"] for s in got["sites"]} == {"Main building", "Annex"}
+    assert {"Arun Kumar", "Priya PM", "Anu Admin"} <= {p["name"] for p in got["people"]}
+    assert [s["name"] for s in got["subcontractors"]] == ["Ravi Bar Bending"] and got["may_create"] is True
+    fin = (await client.get("/tasks/options", params={"project_id": str(co["project"])}, headers=co["fin"])).json()
+    assert fin["may_create"] is False
+    assert (await client.get("/tasks/options", params={"project_id": str(uuid.uuid4())},
+                             headers=co["pm"])).status_code == 404

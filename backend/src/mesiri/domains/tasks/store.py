@@ -54,6 +54,12 @@ async def people(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -
     return [dict(r) for r in rows.mappings().all()]
 
 
+async def subcontractors(conn: AsyncConnection, org: uuid.UUID) -> list[dict]:
+    rows = await conn.execute(text("SELECT id, name FROM vendors WHERE organization_id = :org AND kind = 'subcontractor' "
+                                   "AND COALESCE(status, 'active') = 'active' ORDER BY name"), {"org": org})
+    return [dict(r) for r in rows.mappings().all()]
+
+
 async def link_errors(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, v: dict[str, Any]) -> list[str]:
     """What named in ``v`` is not of this project (or company): each one a sentence to show."""
     checks = (

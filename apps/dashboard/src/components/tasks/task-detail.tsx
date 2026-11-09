@@ -1,0 +1,196 @@
+import * as React from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Ban, Check, CirclePause, MapPin, MessageCircle, Play, RotateCcw, Send } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useToast } from '@/components/ui/toast-notification'
+import { Avatar, ProjectDot, WhatsAppMark } from '@/components/requests/parts'
+import { apiErrorMessage } from '@/lib/logo-upload'
+import { ago } from '@/lib/requests'
+import { useReadOnly } from '@/lib/trial'
+import { cn } from '@/lib/utils'
+import {
+  PRIORITY_LABEL,
+  STATUS_LOOK,
+  commentOnTask,
+  dueWords,
+  eventWords,
+  fetchTask,
+  fetchTaskOptions,
+  moveTask,
+  updateTask,
+  type Task,
+  type TaskPriority,
+  type TaskStatus,
+} from '@/lib/tasks'
+
+// TSK-02: one task on the right of the Tasks page (a sheet on a phone): what it is, the buttons for the moves this
+// person may make (the API's own `may`), the details the giver or a manager may change, and its history with photos.
+
+export function StatusChip({ status }: { status: TaskStatus }) {
+  const look = STATUS_LOOK[status]
+  return <span className={cn('inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-semibold', look.chip)}>{look.label}</span>
+}
+
+export function TaskDetail({ task: row, today, inSheet = false }: { task: Task; today: string; inSheet?: boolean }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const readOnly = useReadOnly()
+  const { data: task } = useQuery({ queryKey: ['tasks', 'one', row.id], queryFn: () => fetchTask(row.id) })
+  const { data: options } = useQuery({
+    queryKey: ['tasks', 'options', row.project_id],
+    queryFn: () => fetchTaskOptions(row.project_id),
+    enabled: !!task?.may.edit,
+    staleTime: 60_000,
+  })
+  const [blocking, setBlocking] = React.useState(false)
+  const [reason, setReason] = React.useState('')
+  const [comment, setComment] = React.useState('')
+  React.useEffect(() => { setBlocking(false); setReason(''); setComment('') }, [row.id])
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['tasks'] })
+  const fail = (err: unknown) => toast.error('Not saved', apiErrorMessage(err))
+  const move = useMutation({
+    mutationFn: ({ status, note }: { status: TaskStatus; note?: string }) => moveTask(row.id, status, note),
+    onSuccess: (t) => { refresh(); setBlocking(false); setReason(''); toast.success(`${t.ref} ${STATUS_LOOK[t.status].label.toLowerCase()}`) },
+    onError: fail,
+  })
+  const change = useMutation({
+    mutationFn: (payload: Parameters<typeof updateTask>[1]) => updateTask(row.id, payload),
+    onSuccess: () => refresh(),
+    onError: fail,
+  })
+  const say = useMutation({
+    mutationFn: () => commentOnTask(row.id, comment.trim()),
+    onSuccess: () => { setComment(''); refresh() },
+    onError: fail,
+  })
+
+  const t = task ?? { ...row, history: [], may: { edit: false, cancel: false, move: false, comment: false } }
+  const live = t.status === 'open' || t.status === 'doing' || t.status === 'blocked'
+  const busy = move.isPending || readOnly
+
+  const who = t.assignee_user_id ? `u:${t.assignee_user_id}` : t.assignee_vendor_id ? `v:${t.assignee_vendor_id}` : ''
+  const pickWho = (value: string) => change.mutate(
+    value.startsWith('u:') ? { assignee_user_id: value.slice(2) } :
+      value.startsWith('v:') ? { assignee_vendor_id: value.slice(2) } :
+        { assignee_user_id: null, assignee_vendor_id: null },
+  )
+
+  return (
+    <div className={cn('flex flex-col gap-4 p-4', inSheet && 'pb-8')}>
+      <header className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground tabular-nums">{t.ref}</span>
+          <ProjectDot id={t.project_id} />
+          <span className="truncate">{t.project_name}{t.site_name ? ` › ${t.site_name}` : ''}</span>
+          {t.source === 'whatsapp' && <WhatsAppMark />}
+        </div>
+        <h2 className="text-lg leading-snug font-semibold">{t.title}</h2>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <StatusChip status={t.status} />
+          <span className={cn('tabular-nums', t.overdue ? 'font-semibold text-destructive' : 'text-muted-foreground')}>{dueWords(t, today)}</span>
+          {t.priority !== 'normal' && <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-semibold text-destructive">{PRIORITY_LABEL[t.priority]}</span>}
+        </div>
+        {t.status === 'blocked' && t.blocked_reason && (
+          <p className="rounded-lg bg-orange-100 px-3 py-2 text-sm text-orange-950 dark:bg-orange-950 dark:text-orange-100">Blocked: {t.blocked_reason}</p>
+        )}
+      </header>
+
+      {t.may.move && (
+        <div className="flex flex-wrap gap-2">
+          {t.status === 'open' && <Button size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => move.mutate({ status: 'doing' })}><Play className="size-4" /> Start</Button>}
+          {t.status === 'blocked' && <Button size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => move.mutate({ status: 'doing' })}><Play className="size-4" /> Unblocked</Button>}
+          {live && <Button size="sm" className="gap-1.5" disabled={busy} onClick={() => move.mutate({ status: 'done' })}><Check className="size-4" /> Done</Button>}
+          {live && t.status !== 'blocked' && <Button size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => setBlocking(true)}><CirclePause className="size-4" /> Blocked…</Button>}
+          {!live && <Button size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => move.mutate({ status: 'open' })}><RotateCcw className="size-4" /> Reopen</Button>}
+          {live && t.may.cancel && <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground" disabled={busy} onClick={() => move.mutate({ status: 'cancelled' })}><Ban className="size-4" /> Cancel task</Button>}
+        </div>
+      )}
+      {blocking && (
+        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (reason.trim()) move.mutate({ status: 'blocked', note: reason.trim() }) }}>
+          <Input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="What is blocking it? (no shuttering, waiting for drawing…)" />
+          <Button type="submit" size="sm" disabled={!reason.trim() || busy}>Save</Button>
+        </form>
+      )}
+
+      <dl className="grid grid-cols-[7rem_1fr] items-center gap-x-3 gap-y-2 text-sm">
+        <dt className="text-muted-foreground">For</dt>
+        <dd>
+          {t.may.edit && options && !readOnly ? (
+            <Select value={who || 'none'} onValueChange={(v) => pickWho(v === 'none' ? '' : v)}>
+              <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nobody yet</SelectItem>
+                {options.people.map((p) => <SelectItem key={p.id} value={`u:${p.id}`}>{p.name}</SelectItem>)}
+                {options.subcontractors.map((s) => <SelectItem key={s.id} value={`v:${s.id}`}>{s.name} (subcontractor)</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="inline-flex items-center gap-1.5"><Avatar id={t.assignee_user_id ?? t.assignee_vendor_id} name={t.assigned_to} />{t.assigned_to ?? 'Nobody yet'}</span>
+          )}
+        </dd>
+        <dt className="text-muted-foreground">Due</dt>
+        <dd>
+          {t.may.edit && !readOnly ? (
+            <Input type="date" className="h-8 w-44" value={t.due_date ?? ''} onChange={(e) => change.mutate({ due_date: e.target.value || null })} />
+          ) : (t.due_date ?? 'No date')}
+        </dd>
+        <dt className="text-muted-foreground">Priority</dt>
+        <dd>
+          {t.may.edit && !readOnly ? (
+            <Select value={t.priority} onValueChange={(v) => change.mutate({ priority: v as TaskPriority })}>
+              <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>{(['normal', 'high', 'urgent'] as TaskPriority[]).map((p) => <SelectItem key={p} value={p}>{PRIORITY_LABEL[p]}</SelectItem>)}</SelectContent>
+            </Select>
+          ) : PRIORITY_LABEL[t.priority]}
+        </dd>
+        {(t.place_name || t.activity_name) && (
+          <>
+            <dt className="text-muted-foreground">Where</dt>
+            <dd className="inline-flex items-center gap-1.5"><MapPin className="size-3.5 text-muted-foreground" />{[t.place_name, t.activity_name].filter(Boolean).join(' · ')}</dd>
+          </>
+        )}
+        <dt className="text-muted-foreground">Given by</dt>
+        <dd>{t.created_by_name ?? 'Someone'} · {ago(t.created_at)}</dd>
+      </dl>
+      {t.notes && <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm whitespace-pre-line">{t.notes}</p>}
+
+      <section className="flex flex-col gap-3 border-t pt-3" aria-label="History">
+        <h3 className="text-sm font-semibold">History</h3>
+        {task === undefined && <div className="h-16 animate-pulse rounded-lg bg-muted/50" />}
+        <ol className="flex flex-col gap-3">
+          {t.history.map((e) => (
+            <li key={e.id} className="flex gap-2.5 text-sm">
+              <Avatar id={e.actor_user_id} name={e.actor_name} />
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <p>
+                  <span className="font-medium">{e.actor_name ?? 'Someone'}</span> <span className="text-muted-foreground">{eventWords(e)}</span>
+                  {e.source === 'whatsapp' && <span className="ml-1.5 inline-flex align-middle"><WhatsAppMark /></span>}
+                  <span className="ml-1.5 text-xs text-muted-foreground tabular-nums">{ago(e.created_at)}</span>
+                </p>
+                {e.text && <p className="rounded-lg bg-muted/50 px-2.5 py-1.5">{e.text}</p>}
+                {e.photo_url && (
+                  <a href={e.photo_url} target="_blank" rel="noreferrer" className="block w-40 overflow-hidden rounded-lg border">
+                    <img src={e.photo_url} alt={`Photo on ${t.ref}`} className="h-28 w-40 object-cover" loading="lazy" />
+                  </a>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+        {t.may.comment && !readOnly && (
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (comment.trim()) say.mutate() }}>
+            <label className="sr-only" htmlFor={`comment-${t.id}`}>Comment</label>
+            <div className="relative flex-1">
+              <MessageCircle className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+              <Input id={`comment-${t.id}`} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment" className="pl-8" />
+            </div>
+            <Button type="submit" size="icon" variant="outline" disabled={!comment.trim() || say.isPending} aria-label="Send comment"><Send className="size-4" /></Button>
+          </form>
+        )}
+      </section>
+    </div>
+  )
+}

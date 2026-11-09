@@ -51,6 +51,7 @@ import TdsPage from '@/pages/accounts/TdsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
+import TasksPage from '@/pages/TasksPage'
 import SettingsPage from '@/pages/SettingsPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
@@ -109,6 +110,7 @@ const mat = (page: React.ReactNode) => <RequireModule module="materials">{page}<
 const eqp = (page: React.ReactNode) => <RequireModule module="equipment">{page}</RequireModule>
 const cst = (page: React.ReactNode) => <RequireModule module="cost">{page}</RequireModule>
 const acc = (page: React.ReactNode) => <RequireModule module="accounts">{page}</RequireModule>
+const tsk = (page: React.ReactNode) => <RequireModule module="tasks">{page}</RequireModule>
 
 export default function App() {
   return (
@@ -194,6 +196,9 @@ export default function App() {
           <Route path="cost/materials" element={cst(<CostMaterialsPage />)} />
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />
+          {/* TSK-02: the Tasks module (views by ?view=). The planned page it replaced moves here. */}
+          <Route path="tasks" element={tsk(<TasksPage />)} />
+          <Route path="planning/tasks" element={<Moved to="/tasks" />} />
           {/* WEB-72: planned module pages (lib/module-map.ts). Only shown while "Show planned
               modules" is on; otherwise PlannedPage sends the address to Today. */}
           {PLANNED_PAGES.map(({ page }) => (
