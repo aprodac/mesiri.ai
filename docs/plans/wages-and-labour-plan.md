@@ -153,3 +153,24 @@ where WhatsApp needs it. Money figures only for money roles; a site engineer see
 | D-W5 | Who approves / pays a sheet | **Prepare: anyone who pays; approve and pay: PM, owner, finance** |
 | D-W6 | Books | **Accrue wages monthly from attendance; payments settle** |
 | D-W7 | PF / ESI / statutory | **Not now** |
+
+
+## 10. As built (9 Nov 2026)
+
+| Item | Where | Notes |
+|---|---|---|
+| LW-01 register, teams | migration 0535; `workforce/router.py` (phone, home project/site, team, wage basis, dates); `vendors.kind = 'labour'`; Labour › Workers / Teams | A team chosen on a worker fills the old contractor text. Attendance naming a contractor in words joins the team of that name (`pay.team_of`) |
+| LW-02 muster roll | `GET /labour/muster`; Labour › Muster roll | P / ½ / A per person, a count for headcount groups, overtime ringed; CSV export. **PDF not built** |
+| LW-03 advances | `POST/GET /labour/advances`, `/advances/balances`, `/advances/{id}/void`; Labour › Advances | Out of a money account (a site engineer: only an account they hold); taking back returns the money |
+| LW-04 wage sheet | `GET /labour/wage-sheets/open`, `PATCH .../rows/{id}`, `approve`, `reopen`; Labour › Wages | A draft follows attendance; recovery default all outstanding up to earnings; deductions with reasons; changed-since-approval shown; a paid week's change is carried once into the next draft |
+| LW-05 payment | `POST .../pay` (a row, part of a row, or all due); slip text to copy / send on WhatsApp | Through `money_transactions` (`wage_payment`) |
+| LW-06 books | `accounts/chart.py` (Labour wages, Wages payable, Advances to labour), `posting.labour_accrual_entries` / `wage_row_entries`, `sweep.labour_sources` | Checked locally: trial balance balanced; a paid week leaves Wages payable and Advances to labour at nil; Labour wages = attendance at wage + overtime − deductions |
+| LW-07 WhatsApp | `ALLOWED`: labour_teams, labour_advance_balances, give_labour_advance, wage_sheet, approve_wage_sheet, pay_wages; SOP rule 22 (rule 4 points to it); `waiting` includes wages | Scripted test `tests/agent_api/test_wages_advances_lw07.py`. **Not run on the live model** |
+| LW-08 connections | Home Wages tile (director, PM, finance); project hub Labour / Wages; the bell (approvals) lists wage weeks to approve or pay; Linked strips on a wage row and a worker | |
+| LW-09 dashboard | `/labour/wages`, `/labour/advances`, Labour views Attendance · Muster roll · Workers · Teams | Phone: wage rows as cards |
+| LW-10 reports | **Not built**: labour by project/site/trade/team for a period and a worker statement (the existing attendance statement stays) | |
+
+**Known limits.** A payee whose paid week's attendance went down shows a negative row ("owes ₹X") that is never
+paid; it is not yet turned into an advance to recover. Labour wages in the books include overtime and deductions;
+cost control still counts attendance at wage only (no overtime), so the two differ by those. Statutory pay
+(PF / ESI) not in scope (D-W7).

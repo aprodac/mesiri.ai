@@ -59,7 +59,8 @@ async def test_urgent_first_then_oldest_and_counts(monkeypatch):
         "site_report": _source(_row("site_report", "2026-11-09", False, "today"),
                                _row("site_report", "2026-11-08", True, "yesterday")),
         "material_request": _source(_row("material_request", "2026-11-01", False, "old request")),
-        "subcontract_bill": _source(), "ra_bill": _source(), "task": _source(_row("task", "2026-11-07", True, "late")),
+        "subcontract_bill": _source(), "ra_bill": _source(), "wage_sheet": _source(),
+        "task": _source(_row("task", "2026-11-07", True, "late")),
     })
     box = await inbox.waiting(_Conn(), _Auth(), lambda m: True)
     assert [i["title"] for i in box["items"]] == ["late", "yesterday", "old request", "today"]
@@ -78,7 +79,7 @@ async def test_a_failing_source_is_named_and_hides_nothing_else(monkeypatch):
 
     monkeypatch.setattr(inbox, "SOURCES", {
         "site_report": _source(_row("site_report", "2026-11-09", False)), "material_request": broken,
-        "subcontract_bill": refused, "ra_bill": odd, "task": _source(),
+        "subcontract_bill": refused, "ra_bill": odd, "wage_sheet": _source(), "task": _source(),
     })
     box = await inbox.waiting(_Conn(), _Auth(), lambda m: True)
     assert box["total"] == 1 and box["unavailable"] == ["material_request", "ra_bill"]  # a 403 is "not yours", quiet
@@ -124,3 +125,40 @@ async def test_roles_that_may_not_decide_get_no_rows():
 
     for source in (inbox.material_requests, inbox.subcontract_bills, inbox.ra_bills):
         assert await source(_Conn(), SiteEngineer(), TODAY) == []
+
+
+async def test_wage_weeks_wait_to_be_approved_then_paid(monkeypatch):
+    """LW-08: a past draft week asks for approval; an approved week with money due asks for payment (urgent once its
+    pay day passed); this week's draft and a paid week are not waiting; a site engineer sees none of it."""
+    import datetime as dt
+    import uuid as _uuid
+
+    def sheet(status, period_to, net, paid):
+        return {"id": _uuid.uuid4(), "project_id": _uuid.uuid4(), "project_name": "Villa", "site_id": None,
+                "site_name": "Main", "period_from": period_to - dt.timedelta(days=6), "period_to": period_to,
+                "status": status, "net": net, "paid": paid}
+
+    today = dt.date(2026, 11, 18)
+    sheets = [sheet("draft", dt.date(2026, 11, 14), 9550, 0),       # last week, not approved: waiting
+              sheet("draft", dt.date(2026, 11, 21), 4000, 0),       # this week: not yet
+              sheet("approved", dt.date(2026, 11, 7), 9000, 5000),  # approved, 4,000 still due, pay day passed: urgent
+              sheet("approved", dt.date(2026, 10, 31), 8000, 8000)]  # paid in full: not waiting
+
+    async def list_sheets(conn, org, scope, project_id=None, site_id=None):
+        return sheets
+
+    monkeypatch.setattr("mesiri.domains.workforce.pay_store.list_sheets", list_sheets)
+
+    class _Owner(_Auth):
+        class project_scope:  # noqa: N801 - stands in for ProjectAccessScope
+            grants_all_org_projects = True
+            project_ids: set = set()
+
+    items = await inbox.wage_sheets(_Conn(), _Owner(), today)
+    assert [(i["detail"], i["urgent"]) for i in items] == [("Draft: check and approve", False),
+                                                          ("Approved: ₹4,000 to pay", True)]
+
+    class _Engineer(_Owner):
+        role = "SITE_ENGINEER"
+
+    assert await inbox.wage_sheets(_Conn(), _Engineer(), today) == []

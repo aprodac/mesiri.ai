@@ -477,7 +477,8 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("waiting", "GET", "/approvals/waiting",
             "What is waiting for this person, urgent first then oldest: site reports with entries to confirm (today, "
             "yesterday), material requests to decide, subcontractor bills flagged or sent for approval, RA bills in "
-            "draft, their own tasks overdue or due today. Each item: kind, ref, title, detail, project_name, "
+            "draft, pay weeks whose wages are to approve or pay, their own tasks overdue or due today. Each item: kind, ref, "
+            "title, detail, project_name, "
             "site_name, since, urgent; plus counts per kind and total. Read only: acting goes through each kind's own "
             "tool."),
 )

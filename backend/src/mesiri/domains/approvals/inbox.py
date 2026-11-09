@@ -38,10 +38,10 @@ from mesiri.authorization.roles import (
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("site_report", "material_request", "subcontract_bill", "ra_bill", "task")
+KINDS = ("site_report", "material_request", "subcontract_bill", "ra_bill", "wage_sheet", "task")
 #: The module each source belongs to (``organization.settings.MODULES``); None: always on.
 MODULE_OF = {"site_report": "dpr", "material_request": "materials", "subcontract_bill": None, "ra_bill": "dpr",
-             "task": "tasks"}
+             "wage_sheet": "labour", "task": "tasks"}
 RA_DRAFT_STALE_DAYS = 7
 
 
@@ -170,9 +170,34 @@ async def tasks(conn: AsyncConnection, auth: AuthorizationContext, today: dateti
     return out
 
 
+async def wage_sheets(conn: AsyncConnection, auth: AuthorizationContext, today: datetime.date) -> list[dict]:
+    """LW-08: a past pay week still in draft (approve it), or approved with money still due (pay it; urgent once its pay
+    day has passed). The roles that see wages only."""
+    if not may_view_expenses(auth.role):
+        return []
+    from mesiri.domains.workforce import pay_store
+
+    scope = None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
+    out = []
+    for w in await pay_store.list_sheets(conn, auth.organization_id, scope):
+        net, paid = float(w["net"] or 0), float(w["paid"] or 0)
+        where = w["site_name"] or w["project_name"]
+        week = f"{w['period_from']:%d %b}–{w['period_to']:%d %b}"
+        if w["status"] == "draft" and net > 0 and w["period_to"] < today:
+            out.append(_item("wage_sheet", w["id"], f"Wages {week}: {where}", "Draft: check and approve",
+                             since=w["period_to"], urgent=False, project_id=w["project_id"], project_name=w["project_name"],
+                             site_id=w["site_id"], site_name=w["site_name"], amount=str(net), period_from=str(w["period_from"])))
+        elif w["status"] == "approved" and net - paid > 0.005:
+            out.append(_item("wage_sheet", w["id"], f"Wages {week}: {where}", f"Approved: ₹{net - paid:,.0f} to pay",
+                             since=w["period_to"], urgent=w["period_to"] < today, project_id=w["project_id"],
+                             project_name=w["project_name"], site_id=w["site_id"], site_name=w["site_name"],
+                             amount=str(net - paid), period_from=str(w["period_from"])))
+    return out
+
+
 SOURCES: dict[str, Callable[[AsyncConnection, AuthorizationContext, datetime.date], Awaitable[list[dict]]]] = {
     "site_report": site_reports, "material_request": material_requests, "subcontract_bill": subcontract_bills,
-    "ra_bill": ra_bills, "task": tasks,
+    "ra_bill": ra_bills, "wage_sheet": wage_sheets, "task": tasks,
 }
 
 

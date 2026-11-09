@@ -841,16 +841,16 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| LW-01 | **Register: workers and teams** (phone, home site, team = vendor kind `labour`, joined/left) | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-02 | **Muster roll**: month grid per site from attendance; PDF / Excel | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-03 | **Advances** to a worker or team from a money account; balances | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-04 | **Wage sheet** per site per pay period: days × wage + OT − advances − deductions; draft → approved | L | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-05 | **Payment** from a money account; payment slip on WhatsApp; carry-forward | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-06 | **Books**: wages accrual, advance, payment, recovery posting rules; Tally follows | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-07 | **WhatsApp** (v3 ALLOWED + SOP): advance, wage due, paid, send slip | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-08 | **Connections**: links, Home tiles (wages due, advances), project hub Labour tile, help | S | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-09 | **Dashboard**: Labour drawer (Attendance, Muster roll, Workers & teams, Wages, Advances) on the page kit | L | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
-| LW-10 | **Reports**: labour by project/site/trade/team; worker statement | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-01 | **Register: workers and teams** (phone, home site, team = vendor kind `labour`, joined/left) | M | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026). Migration 0535; register fields; teams = vendors kind labour |
+| LW-02 | **Muster roll**: month grid per site from attendance; PDF / Excel | M | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026). Grid + CSV. PDF not built |
+| LW-03 | **Advances** to a worker or team from a money account; balances | M | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026).  |
+| LW-04 | **Wage sheet** per site per pay period: days × wage + OT − advances − deductions; draft → approved | L | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026). Carry of a paid week's change into the next draft; negative row not yet turned into an advance |
+| LW-05 | **Payment** from a money account; payment slip on WhatsApp; carry-forward | M | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026).  |
+| LW-06 | **Books**: wages accrual, advance, payment, recovery posting rules; Tally follows | M | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026). Trial balance checked locally |
+| LW-07 | **WhatsApp** (v3 ALLOWED + SOP): advance, wage due, paid, send slip | M | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026). Not run on the live model |
+| LW-08 | **Connections**: links, Home tiles (wages due, advances), project hub Labour tile, help | S | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026). Home tile, project hub, approvals bell, links |
+| LW-09 | **Dashboard**: Labour drawer (Attendance, Muster roll, Workers & teams, Wages, Advances) on the page kit | L | Must | — | done | Claude (session 9 Nov) | **Done (9 Nov).** See [plan §10](wages-and-labour-plan.md#10-as-built-9-nov-2026).  |
+| LW-10 | **Reports**: labour by project/site/trade/team; worker statement | M | Must | — | todo | Claude (session 9 Nov) | Labour by project / site / trade / team for a period; worker statement. Not built in the 9 Nov pass |
 
 ## Done log
 

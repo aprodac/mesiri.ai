@@ -4,7 +4,7 @@ import { recordUrl } from './links'
 // NXT-08: the approvals inbox, "what is waiting for me". Backend: domains/approvals (GET /approvals/waiting), a read
 // over each module's own list as the caller, so a row is here exactly when its page would show it to this person.
 
-export type WaitingKind = 'site_report' | 'material_request' | 'subcontract_bill' | 'ra_bill' | 'task'
+export type WaitingKind = 'site_report' | 'material_request' | 'subcontract_bill' | 'ra_bill' | 'wage_sheet' | 'task'
 
 export interface WaitingItem {
   kind: WaitingKind
@@ -21,6 +21,8 @@ export interface WaitingItem {
   date?: string
   count?: number
   work_order_id?: string
+  /** wage_sheet: the pay week's first day. */
+  period_from?: string
   amount?: string | null
 }
 
@@ -51,9 +53,10 @@ export const KIND_LABEL: Record<WaitingKind, string> = {
   material_request: 'Material requests',
   subcontract_bill: 'Subcontractor bills',
   ra_bill: 'RA bills in draft',
+  wage_sheet: 'Wages to approve or pay',
   task: 'My tasks',
 }
-export const KIND_ORDER: WaitingKind[] = ['site_report', 'material_request', 'subcontract_bill', 'ra_bill', 'task']
+export const KIND_ORDER: WaitingKind[] = ['site_report', 'material_request', 'subcontract_bill', 'ra_bill', 'wage_sheet', 'task']
 
 /** Where a row opens: the record's own page (lib/links.ts), never a new screen. */
 export function waitingUrl(item: WaitingItem): string {
@@ -66,6 +69,9 @@ export function waitingUrl(item: WaitingItem): string {
       return item.work_order_id ? recordUrl.workOrderBills(item.work_order_id) : '/subcontract/work-orders'
     case 'ra_bill':
       return item.project_id ? recordUrl.raBill(item.id, item.project_id) : '/billing/ra-bills'
+    case 'wage_sheet':
+      // LW-08: the week's sheet, on its site and week.
+      return `/labour/wages?${item.site_id ? `at=${item.site_id}&` : ''}week=${item.period_from ?? ''}`
     case 'task':
       return recordUrl.task(item.id)
   }
