@@ -90,10 +90,9 @@ export default function TasksPage() {
   const late = all.filter((t) => t.overdue).length
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <PageHeader
         title="Tasks"
-        subtitle={view === 'mine' ? 'What is given to you, late first.' : 'Who does what, by when.'}
         actions={canCreate && (
           <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)}>
             <Plus className="size-4" strokeWidth={2.6} /> New task

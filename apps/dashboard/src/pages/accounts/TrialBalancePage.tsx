@@ -208,7 +208,7 @@ export default function TrialBalancePage() {
   const natures = [...new Set(tree.map((n) => n.group.nature))]
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/finance/money', label: 'Money' }}
         crumb="Accounts"

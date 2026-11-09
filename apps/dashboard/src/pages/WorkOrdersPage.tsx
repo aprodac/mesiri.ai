@@ -21,6 +21,7 @@ import { rupees } from '@/lib/expenses'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { WO_LOOK, fetchWorkOrders, mayGiveWork, n, woUrl, type WorkOrder } from '@/lib/subcontracts'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-05 (8 Nov 2026): Subcontract › Work orders. Every work given out: who, where, how much is done, billed and
 // payable; tiles that filter (open, bills to check, over the agreed / measured, retention held), status tabs, search,
@@ -72,11 +73,10 @@ export default function WorkOrdersPage() {
   ]
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200"><Handshake className="size-5" /></span>
-          <div><div className="text-xs text-muted-foreground">Subcontract</div><h1 className="text-2xl leading-tight font-semibold tracking-tight">Work orders</h1></div>
+          <ModuleTitle icon={Handshake} title="Work orders" />
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2" disabled={!shown.length} onClick={() => exportCsv('work-orders.csv',

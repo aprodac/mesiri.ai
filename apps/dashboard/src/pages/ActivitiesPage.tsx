@@ -341,8 +341,6 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
     stopped: activities.filter((a) => a.status.toLowerCase() === 'stopped').length,
   }), [activities])
 
-  const scopeLabel =
-    scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
   const names = useSiteNames()
 
@@ -407,7 +405,6 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
       ) : (
         <PageHeader
           title="Activities"
-          subtitle={<>Every work item the sites sent, newest first · {scopeLabel}</>}
           actions={
             <>
               <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>

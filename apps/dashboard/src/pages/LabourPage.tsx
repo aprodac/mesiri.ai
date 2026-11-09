@@ -25,7 +25,6 @@ export default function LabourPage() {
   usePageTitle(view === 'workers' ? 'Workers · Labour' : 'Labour')
   const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
   const siteId = scope.mode === 'site' ? scope.siteId : null
-  const scopeLabel = scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
   const switcher = (
     <Segmented<View>
@@ -40,10 +39,9 @@ export default function LabourPage() {
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Labour"
-        subtitle={`Who was on site, and the worker register · ${scopeLabel}`}
         actions={
           !readOnly && (
             <Button

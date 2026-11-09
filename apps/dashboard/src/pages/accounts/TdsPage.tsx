@@ -31,7 +31,7 @@ export default function TdsPage() {
   const d = q.data
   const deducted = d ? d.deducted.reduce((s, x) => s + Number(x.amount), 0) : 0
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/accounts', label: 'Accounts' }}
         crumb="Accounts"

@@ -600,7 +600,7 @@ export default function ProjectBoqPage() {
   }
   if (projectQuery.isLoading || boqQuery.isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
+      <div className="mx-auto flex w-full flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
         <Skeleton className="h-8 w-72" />
         <Skeleton className="h-24 rounded-lg" />
         <Skeleton className="h-48 rounded-lg" />
@@ -613,7 +613,7 @@ export default function ProjectBoqPage() {
   const boq = boqQuery.data
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={back}
         crumb="Project"

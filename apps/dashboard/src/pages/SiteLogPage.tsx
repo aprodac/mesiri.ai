@@ -1,6 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader, Segmented } from '@/components/dpr-page'
-import { useScope } from '@/lib/ScopeContext'
 import { usePageTitle } from '@/lib/page-title'
 import ActivitiesPage from './ActivitiesPage'
 import OperationsGalleryPage from './OperationsGalleryPage'
@@ -15,12 +14,10 @@ type View = 'work' | 'photos' | 'all'
 const TITLES: Record<View, string> = { work: 'Work', photos: 'Photos', all: 'Everything' }
 
 export default function SiteLogPage() {
-  const { scope } = useScope()
   const [params, setParams] = useSearchParams()
   const raw = params.get('view')
   const view: View = raw === 'photos' || raw === 'all' ? raw : 'work'
   usePageTitle(`${TITLES[view]} · Site log`)
-  const scopeLabel = scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
   // Each view keeps its own filters in the address; switching drops them
   // (they mean different things per view) but keeps the scope.
@@ -39,8 +36,8 @@ export default function SiteLogPage() {
     )
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
-      <PageHeader title="Site log" subtitle={`Everything the sites sent, newest first · ${scopeLabel}`} />
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader title="Site log" />
       <Segmented<View>
         label="View"
         value={view}

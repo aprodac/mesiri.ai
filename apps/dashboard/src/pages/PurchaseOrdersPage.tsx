@@ -17,6 +17,7 @@ import { ORDER_LOOK, dueWords, fetchOrders, rupees, type OrderStatus, type Purch
 import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/components/requests/parts'
 import { OrderDetail, OrderProgress, VendorTile } from '@/components/orders/order-detail'
 import { NewOrderDialog } from '@/components/orders/new-order-dialog'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // PRC-10: Procurement > Purchase orders, in the Requests page's visual language (approved 7 Nov): tiles for what
 // needs attention, status tabs, filter dropdowns with the row cues, a list beside the chosen order (a sheet on a
@@ -136,15 +137,9 @@ export default function PurchaseOrdersPage() {
   const openValue = filtered.filter((o) => inTile(o, 'open') && o.value).reduce((n, o) => n + Number(o.value) - Number(o.value_received ?? 0), 0)
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200"><ShoppingCart className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Procurement</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Purchase orders</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={ShoppingCart} title="Purchase orders" />
         <div className="flex items-center gap-3">
           {openValue > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">Still to come: <strong className="text-foreground tabular-nums">{rupees(openValue)}</strong></span>}
           <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportOrders(list)} title="The orders shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>

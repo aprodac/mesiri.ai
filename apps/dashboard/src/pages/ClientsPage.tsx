@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { createClient, fetchClients, mayBill, rupees, updateClient, type Client, type ClientInput } from '@/lib/billing'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-01: Client billing › Clients. Each client the company builds for, their projects and contract values.
 // A project's terms are set from Planning › Project start (Client and contract) or the RA bills page.
@@ -34,15 +35,9 @@ export default function ClientsPage() {
   const [editing, setEditing] = React.useState<Client | 'new' | null>(null)
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><Users className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Client billing</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Clients</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={Users} title="Clients" />
         {allowed && <Button size="sm" className="gap-1.5" onClick={() => setEditing('new')}><Plus className="size-4" /> Add a client</Button>}
       </header>
       {!allowed ? (

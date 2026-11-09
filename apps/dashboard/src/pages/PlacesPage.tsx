@@ -40,8 +40,8 @@ export default function PlacesPage() {
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-4 sm:px-2">
-        <PageHeader title="Places" subtitle="Progress floor by floor and room by room. Pick a project." />
+      <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
+        <PageHeader title="Places" subtitle="Pick a project." />
         <ProjectPickList to={(id) => `/planning/places?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -61,7 +61,7 @@ function PlacesView({ projectId }: { projectId: string }) {
     return <PageError message="The places did not load." onRetry={() => { list.refetch(); grid.refetch() }} back={{ to: '/planning/places', label: 'All projects' }} />
   }
   if (!list.data || !grid.data) {
-    return <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2"><PageHeader title="Places" /><Skeleton className="h-64 w-full" /></div>
+    return <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2"><PageHeader title="Places" /><Skeleton className="h-64 w-full" /></div>
   }
   const places = list.data.places
   const rows = grid.data.places
@@ -82,9 +82,8 @@ function PlacesView({ projectId }: { projectId: string }) {
   const hasLive = !!live.data?.maps.length
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-4 sm:px-2">
+    <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-4 sm:px-2">
       <PageHeader title="Places"
-        subtitle="Every floor and room, coloured by the work site reports. “First floor Room-2 plastering done” on WhatsApp lands on that room."
         actions={<>
           {hasLive && <Button asChild variant="outline" size="sm" className="gap-1.5"><Link to={`/planning/live?project=${projectId}`}><MapPinned className="size-3.5" /> On the drawings</Link></Button>}
           {list.data.can_edit && places.length > 0 && (

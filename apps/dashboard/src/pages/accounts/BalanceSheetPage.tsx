@@ -90,7 +90,7 @@ export default function BalanceSheetPage() {
   if (q.isError) return <PageError message="The balance sheet could not be loaded." onRetry={() => q.refetch()} back={{ to: '/accounts', label: 'Accounts' }} />
   const d = q.data
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/accounts', label: 'Accounts' }}
         crumb="Accounts"

@@ -193,7 +193,7 @@ export default function AutomationsPage({ embedded = false }: { embedded?: boole
           {newButton}
         </div>
       ) : (
-        <PageHeader title="Automations" subtitle="Messages Mesiri sends on WhatsApp on a schedule" actions={newButton} />
+        <PageHeader title="Automations" actions={newButton} />
       )}
 
       {isError ? (

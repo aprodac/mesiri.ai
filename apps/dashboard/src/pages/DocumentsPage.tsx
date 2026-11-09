@@ -31,8 +31,8 @@ export default function DocumentsPage() {
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-4 sm:px-2">
-        <PageHeader title="Documents" subtitle="Drawings, permits and papers per project. Pick a project." />
+      <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
+        <PageHeader title="Documents" subtitle="Pick a project." />
         <ProjectPickList to={(id) => `/planning/documents?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -52,9 +52,8 @@ function DocumentsView({ projectId }: { projectId: string }) {
   const folders = FOLDER_ORDER.filter((f) => data?.sees_restricted || !['contract', 'boq', 'work_order'].includes(f))
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-8 sm:px-2">
-      <PageHeader title="Documents"
-        subtitle="The project's papers in one place. Drop drawings in: their number and revision are read for you, and a new revision marks the old one out of date." />
+    <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader title="Documents" />
       {data && data.expiring.length > 0 && (
         <Callout tone="draft" icon={CalendarClock}>
           {data.expiring.map((e) => `${e.title}: ${new Date(`${e.valid_until}T00:00:00`) < new Date() ? 'expired' : 'expires'} ${dayLabel(e.valid_until)}`).join(' · ')}

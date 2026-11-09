@@ -30,6 +30,7 @@ import { exportCsv } from '@/lib/export'
 import { compact, fetchExpenses, mayManageMoney, mayMoveMoney } from '@/lib/expenses'
 import { useAuth } from '@/lib/AuthContext'
 import type { AccountForEdit } from '@/components/accounts/account-dialog'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // WEB-51 (Ilan, 5 Nov): Finance > Money, one page for what used to be Accounts, Petty cash, Transactions and the
 // transfers. Accounts: the company's bank accounts, each site's petty cash and the rest, with what each holds; a row
@@ -211,15 +212,7 @@ export default function MoneyPage() {
 
   const header = (
     <header className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-          <PiggyBank className="size-5" />
-        </span>
-        <div>
-          <div className="text-xs text-muted-foreground">Finance</div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Money</h1>
-        </div>
-      </div>
+      <ModuleTitle icon={PiggyBank} title="Money" />
       <div className="flex items-center gap-2">
         <BooksLink to="/accounts/ledgers?kind=money" label="Bank & cash books" className="hidden sm:inline-flex" />
       {canMove && (
@@ -319,7 +312,7 @@ export default function MoneyPage() {
   }, [txRows])
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       {header}
 
       {view === 'accounts' ? (

@@ -209,15 +209,12 @@ export default function OperationsAnalyticsPage() {
   }, [data])
   const openTotal = issueRows.reduce((n, r) => n + r.total, 0)
 
-  const scopeLabel =
-    scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
   const nDays = data?.days.length ?? Number(range)
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Analytics"
-        subtitle={<>How the sites are doing · {scopeLabel}</>}
         actions={
           <>
             <Select value={range} onValueChange={(v) => setRange(v as Range)}>

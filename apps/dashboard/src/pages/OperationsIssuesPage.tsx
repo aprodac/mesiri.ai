@@ -224,8 +224,6 @@ export default function OperationsIssuesPage() {
 
   const siteLabel = (item: SiteIssueItem) => names.get(item.site_id)?.name || '—'
 
-  const scopeLabel =
-    scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
   // Sites the issue can be reported on: the scope's site, else every site in view.
   const siteChoices = React.useMemo(
     () =>
@@ -315,10 +313,9 @@ export default function OperationsIssuesPage() {
   const filtered = statusFilter !== ACTIVE_FILTER || severityFilter !== 'ALL' || !!searchQuery
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Issues"
-        subtitle={<>What's stuck, most severe first · {scopeLabel}</>}
         actions={
           <>
             <Button size="sm" className="gap-1.5 font-semibold" onClick={openCreate}>

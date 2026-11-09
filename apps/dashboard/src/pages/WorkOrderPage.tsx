@@ -27,6 +27,8 @@ import {
   CHECK_LOOK, WO_LOOK, countSiteWork, decideMeasurement, fetchSiteWork, fetchTeamLines, fetchWorkOrder, markTeam, mayGiveWork,
   moveWorkOrder, n, waLink, workOrderText, type WoBill,
 } from '@/lib/subcontracts'
+import { LinkedStrip } from '@/components/page/page-kit'
+import { workOrderLinks } from '@/lib/links'
 
 // NXT-05/06/07, CC-04 (8 Nov 2026): one work order. What was agreed, done (measured) and billed per line; measurements
 // and the site's work updates to count on a line; bills with their check (approve / reject with a reason) and what was
@@ -73,9 +75,9 @@ export default function WorkOrderPage() {
   const mark = useMutation({ mutationFn: (x: { ids: string[]; theirs: boolean }) => markTeam(id, x.ids, x.theirs), onSuccess: () => { refresh(); team.refetch() } })
 
   if (q.isError) {
-    return <div className="mx-auto w-full max-w-3xl py-12"><Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => navigate('/subcontract/work-orders')}>All work orders</Button>}>This work order could not be found.</Callout></div>
+    return <div className="mx-auto w-full py-12"><Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => navigate('/subcontract/work-orders')}>All work orders</Button>}>This work order could not be found.</Callout></div>
   }
-  if (!wo) return <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 py-4"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-64 rounded-xl" /></div>
+  if (!wo) return <div className="mx-auto flex w-full flex-col gap-3 py-4"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-64 rounded-xl" /></div>
 
   const t = wo.totals
   const money = wo.with_money
@@ -93,7 +95,7 @@ export default function WorkOrderPage() {
   const company = me?.organization_name ?? 'Mesiri'
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <Link to="/subcontract/work-orders" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Work orders</Link>
 
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -134,6 +136,8 @@ export default function WorkOrderPage() {
           </DropdownMenu>
         </div>
       </header>
+
+      <LinkedStrip records={workOrderLinks(wo)} />
 
       {waiting.length > 0 && money && (
         <Callout tone="draft" icon={AlertTriangle} action={<Button size="sm" variant="outline" className="bg-background" onClick={() => setTab('bills')}>Check {waiting.length === 1 ? 'it' : 'them'}</Button>}>
