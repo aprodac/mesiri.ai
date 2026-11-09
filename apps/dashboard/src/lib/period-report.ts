@@ -214,3 +214,151 @@ export function shortDay(iso: string | null | undefined): string {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
+
+// -- RPT-01: the owner's brief (GET /reports/portfolio) --------------------------------------------------------------
+
+export interface BriefRow {
+  project_id: string
+  name: string
+  client: string | null
+  status: Tone
+  word: string
+  attention: number
+  progress_to_date: number | null
+  expected_to_date: string | null
+  done_pct: string | null
+  plan_pct: string | null
+  work_status: Tone
+  cost_status: Tone | null
+  labour_colour: 'green' | 'amber' | 'red' | 'grey' | null
+  spent: string | null
+  billed?: string | null
+  received?: string | null
+  owed?: string | null
+  overdue?: string | null
+  oldest_overdue_days: number
+  schedule_status: Tone
+  forecast_finish: string | null
+  slip_days: number
+  man_days: string | null
+  open_issues: number
+  serious_issues: number
+  needs: number
+  top: string | null
+  lead: string
+  facts: string[]
+}
+
+export interface Brief {
+  scope: 'portfolio'
+  period: PeriodInfo
+  previous: PeriodInfo
+  next: PeriodInfo | null
+  running: boolean
+  generated_at: string
+  headline: { lead: string; facts: string[]; more: string[] }
+  kpis: Kpi[]
+  projects: BriefRow[]
+  need_you: number
+  unavailable: string[]
+  sees_money: boolean
+  has_bills: boolean
+}
+
+export type BriefQuery = Omit<PeriodQuery, 'project_id' | 'site_id'>
+
+function briefParams(q: BriefQuery): Record<string, string> {
+  const out: Record<string, string> = { period: q.period }
+  if (q.period === 'custom') {
+    if (q.date_from) out.date_from = q.date_from
+    if (q.date_to) out.date_to = q.date_to
+  } else if (q.date) out.date = q.date
+  return out
+}
+
+export async function fetchBrief(q: BriefQuery): Promise<Brief> {
+  return (await api.get<Brief>('/reports/portfolio', { params: briefParams(q) })).data
+}
+
+export async function downloadBrief(q: BriefQuery, kind: 'pdf' | 'xlsx'): Promise<{ blob: Blob; filename: string }> {
+  const res = await api.get(`/reports/portfolio/${kind}`, { params: briefParams(q), responseType: 'blob' })
+  const match = /filename="([^"]+)"/.exec(String(res.headers['content-disposition'] ?? ''))
+  return { blob: res.data as Blob, filename: match?.[1] ?? `mesiri-all-projects.${kind}` }
+}
+
+// -- PRC-20: sending, sent copies, schedules -------------------------------------------------------------------------
+
+export type ReportScope = { scope: 'project'; project_id: string; site_id?: string } | { scope: 'portfolio' }
+
+export interface SendResult {
+  send_id: string
+  queued: number
+  skipped: number
+  people: { user_id: string; name: string; status: 'queued' | 'skipped'; reason?: string; sees_money?: boolean }[]
+}
+
+export async function sendReport(
+  target: ReportScope,
+  q: BriefQuery,
+  body: { recipient_user_ids: string[]; note?: string },
+): Promise<SendResult> {
+  return (await api.post<SendResult>('/reports/send', { ...target, ...briefParams(q), ...body })).data
+}
+
+export interface SentSend {
+  send_id: string
+  period: PeriodInfo
+  trigger: 'now' | 'schedule'
+  note: string | null
+  sent_by: string | null
+  created_at: string
+  people: { snapshot_id: string; name: string; delivery: string; word: string; reason: string | null; sent_at: string | null }[]
+}
+
+export async function fetchSent(target: ReportScope): Promise<SentSend[]> {
+  const params = target.scope === 'project' ? { project_id: target.project_id, scope: 'project' } : { scope: 'portfolio' }
+  return (await api.get<{ sends: SentSend[] }>('/reports/sent', { params })).data.sends
+}
+
+export async function fetchSentCopy(snapshotId: string): Promise<{ changed_since: { label: string; sent: string; now: string }[]; note: string | null }> {
+  return (await api.get(`/reports/sent/${snapshotId}`)).data
+}
+
+export async function downloadSentPdf(snapshotId: string): Promise<Blob> {
+  return (await api.get(`/reports/sent/${snapshotId}/pdf`, { responseType: 'blob' })).data as Blob
+}
+
+export interface ReportSchedule {
+  id: string
+  project_id: string | null
+  frequency: 'WEEKLY' | 'MONTHLY'
+  day_of_week: number | null
+  time_of_day: string
+  timezone: string
+  note: string | null
+  last_run_on: string | null
+  recipients: { user_id: string; name: string }[]
+}
+
+export async function fetchSchedules(target: ReportScope): Promise<ReportSchedule[]> {
+  const params = target.scope === 'project' ? { project_id: target.project_id, scope: 'project' } : { scope: 'portfolio' }
+  return (await api.get<{ schedules: ReportSchedule[] }>('/reports/schedules', { params })).data.schedules
+}
+
+export async function addSchedule(
+  target: ReportScope,
+  body: { frequency: 'WEEKLY' | 'MONTHLY'; day_of_week?: number; time_of_day: string; recipient_user_ids: string[]; note?: string },
+): Promise<ReportSchedule> {
+  const where = target.scope === 'project' ? { project_id: target.project_id, site_id: target.site_id } : {}
+  return (await api.post<ReportSchedule>('/reports/schedules', { ...where, ...body })).data
+}
+
+export async function stopSchedule(id: string): Promise<void> {
+  await api.delete(`/reports/schedules/${id}`)
+}
+
+// Mirrors backend roles.REPORT_SEND_ROLES: who may send a report to other people.
+export const maySendToOthers = (role: string | null | undefined) =>
+  ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER'].includes(String(role ?? '').toUpperCase())
+
+export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']

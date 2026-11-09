@@ -2150,9 +2150,9 @@ export async function rejectFactApi(factType: FactType, factId: string, reason: 
 // fetchAutomationRunsApi.
 // ---------------------------------------------------------------------------
 
-export type AutomationAction = 'SEND_DPR' | 'COMPLIANCE_SUMMARY' | 'REMINDER'
+export type AutomationAction = 'SEND_DPR' | 'COMPLIANCE_SUMMARY' | 'REMINDER' | 'SEND_PERIOD_REPORT'
 export type AutomationAudience = 'SELF' | 'USERS' | 'ROLE' | 'NON_REPORTERS'
-export type AutomationFrequency = 'DAILY' | 'WEEKDAYS' | 'WEEKLY'
+export type AutomationFrequency = 'DAILY' | 'WEEKDAYS' | 'WEEKLY' | 'MONTHLY'
 
 export interface AutomationItem {
   id: string

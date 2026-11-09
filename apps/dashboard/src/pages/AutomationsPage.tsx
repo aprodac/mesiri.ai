@@ -41,6 +41,8 @@ const ACTION_WORDS: Record<AutomationAction, string> = {
   SEND_DPR: 'send the DPR',
   COMPLIANCE_SUMMARY: "say who hasn't reported",
   REMINDER: 'send a reminder',
+  // PRC-20: set up from a report's Send (Reports > Weekly & monthly), shown and stopped here too.
+  SEND_PERIOD_REPORT: 'send the weekly / monthly report',
 }
 
 const ACTION_OPTIONS: { value: AutomationAction; label: string }[] = [
@@ -71,7 +73,9 @@ function when(item: Pick<AutomationItem, 'frequency' | 'day_of_week' | 'time_of_
       ? `Every ${WEEKDAYS[item.day_of_week] ?? 'week'}`
       : item.frequency === 'WEEKDAYS'
         ? 'Weekdays'
-        : 'Every day'
+        : item.frequency === 'MONTHLY'
+          ? 'On the 1st of each month'
+          : 'Every day'
   return `${days} at ${clock(item.time_of_day)}`
 }
 

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Send,
   FileSpreadsheet,
   FileText,
   HardHat,
@@ -17,6 +18,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { DprHeader, DprSection, PageError, Segmented } from '@/components/dpr-page'
+import { SendReportDialog, SentAndScheduled } from '@/components/reports/send-report'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
@@ -24,11 +26,15 @@ import { downloadBlob } from '@/lib/export'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import {
+  downloadBrief,
   downloadPeriodReport,
+  fetchBrief,
   fetchPeriodReport,
   inr,
   shortDay,
   type Area,
+  type Brief,
+  type BriefQuery,
   type Kpi,
   type NeedsYou,
   type PeriodKind,
@@ -588,6 +594,104 @@ function DownloadButton({ q, kind, fallback }: { q: PeriodQuery; kind: 'pdf' | '
   )
 }
 
+function BriefDownload({ q, kind }: { q: BriefQuery; kind: 'pdf' | 'xlsx' }) {
+  const toast = useToast()
+  const [busy, setBusy] = React.useState(false)
+  const Icon = kind === 'pdf' ? FileText : FileSpreadsheet
+  const go = async () => {
+    setBusy(true)
+    try {
+      const { blob, filename } = await downloadBrief(q, kind)
+      downloadBlob(filename, blob)
+    } catch (err) {
+      toast.error(kind === 'pdf' ? 'Could not make the PDF' : 'Could not make the Excel file', apiErrorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Button size="sm" variant="outline" onClick={go} disabled={busy}>
+      <Icon className="size-3.5" /> {busy ? 'Preparing…' : kind === 'pdf' ? 'PDF' : 'Excel'}
+    </Button>
+  )
+}
+
+const COST_WORD: Record<string, { word: string; tone: Tone }> = {
+  red: { word: 'Over', tone: 'bad' },
+  amber: { word: 'Watch', tone: 'warn' },
+  green: { word: 'On budget', tone: 'good' },
+  grey: { word: 'No budget', tone: 'none' },
+}
+
+/** RPT-01: every running project on one page, the one that needs you most first. Each row opens its own report. */
+function BriefView({ b, linkFor }: { b: Brief; linkFor: (projectId: string) => string }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Headline h={b.headline} />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {b.kpis.map((k, i) => (
+          <div key={k.key} className={cn('flex', b.kpis.length % 2 === 1 && i === b.kpis.length - 1 && 'col-span-2 sm:col-span-1')}>
+            <KpiTile k={k} onOpen={() => undefined} />
+          </div>
+        ))}
+      </div>
+      {b.projects.length === 0 ? (
+        <Empty>No running projects you can see.</Empty>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-muted-foreground">
+              <tr className="border-b">
+                <th className="px-3 py-2 text-left font-medium">Project</th>
+                <th className="px-3 py-2 text-left font-medium">Done vs plan</th>
+                {b.sees_money && <th className="px-3 py-2 text-left font-medium">Cost</th>}
+                <th className="px-3 py-2 text-left font-medium">Finish</th>
+                <th className="px-3 py-2 text-right font-medium">Man-days</th>
+                {b.has_bills && <th className="px-3 py-2 text-right font-medium">Clients owe</th>}
+                <th className="px-3 py-2 text-left font-medium">Top item</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {b.projects.map((p) => {
+                const cost = COST_WORD[p.labour_colour ?? 'grey'] ?? COST_WORD.grey
+                const expected = p.expected_to_date === null ? null : Number(p.expected_to_date)
+                return (
+                  <tr key={p.project_id} className="hover:bg-muted/40">
+                    <td className="px-3 py-2">
+                      <Link to={linkFor(p.project_id)} className="flex items-center gap-2 font-medium hover:underline">
+                        <span className={cn('size-2 shrink-0 rounded-full', p.status === 'bad' ? 'bg-destructive' : p.status === 'warn' ? 'bg-draft' : p.status === 'good' ? 'bg-success' : 'bg-muted-foreground/40')} aria-hidden="true" />
+                        {p.name}
+                      </Link>
+                      {p.client && <p className="pl-4 text-xs text-muted-foreground">{p.client}</p>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Bar value={p.progress_to_date ?? 0} max={100} mark={expected} />
+                      <p className="mt-1 text-xs tabular-nums text-muted-foreground">{p.progress_to_date ?? 0}%{expected !== null && ` · plan ${Math.round(expected)}%`}</p>
+                    </td>
+                    {b.sees_money && <td className="px-3 py-2"><Pill tone={cost.tone}>{cost.word}</Pill></td>}
+                    <td className="px-3 py-2 tabular-nums">
+                      {p.forecast_finish ? <>{shortDay(p.forecast_finish)}{p.slip_days > 0 && <span className="ml-1 text-xs text-draft">+{p.slip_days} d</span>}</> : <span className="text-muted-foreground">No plan</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.man_days ?? '0'}</td>
+                    {b.has_bills && (
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {inr(p.owed)}
+                        {Number(p.overdue ?? 0) > 0 && <p className="text-xs text-destructive">{inr(p.overdue)} over 30 d</p>}
+                      </td>
+                    )}
+                    <td className="max-w-64 px-3 py-2 text-xs text-muted-foreground">{p.top ?? '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {b.unavailable.length > 0 && <p className="text-sm text-draft">Could not be read just now: {b.unavailable.join(', ')}.</p>}
+    </div>
+  )
+}
+
 const KIND_OPTIONS: { value: PeriodKind; label: string }[] = [
   { value: 'week', label: 'Week' },
   { value: 'month', label: 'Month' },
@@ -611,6 +715,16 @@ export default function PeriodReportPage() {
     enabled: ready,
     placeholderData: (prev) => prev,
   })
+  // RPT-01: with no project picked, the page is the owner's brief across every project.
+  const briefQuery: BriefQuery = { period: kind, date: params.get('date') ?? undefined, date_from: params.get('from') ?? undefined, date_to: params.get('to') ?? undefined }
+  const briefReady = !projectId && (kind !== 'custom' || (!!briefQuery.date_from && !!briefQuery.date_to))
+  const bq = useQuery({
+    queryKey: ['portfolio-report', briefQuery],
+    queryFn: () => fetchBrief(briefQuery),
+    enabled: briefReady,
+    placeholderData: (prev) => prev,
+  })
+  const [sending, setSending] = React.useState(false)
   const [tab, setTab] = React.useState<keyof Sections>('work')
   const sectionsRef = React.useRef<HTMLDivElement>(null)
 
@@ -624,14 +738,15 @@ export default function PeriodReportPage() {
       return next
     }), [setParams])
 
-  const r = q.data
+  const r = projectId ? q.data : undefined
+  const info = projectId ? q.data : bq.data
   const step = React.useCallback((dir: -1 | 1) => {
-    if (!r) return
-    const target = dir < 0 ? r.previous : r.next
+    if (!info) return
+    const target = dir < 0 ? info.previous : info.next
     if (!target) return
-    if (r.period.kind === 'custom') set({ from: target.from, to: target.to })
+    if (info.period.kind === 'custom') set({ from: target.from, to: target.to })
     else set({ date: target.from })
-  }, [r, set])
+  }, [info, set])
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -655,8 +770,14 @@ export default function PeriodReportPage() {
     }
   }
 
-  const where = scope.mode === 'site' ? `${scope.projectName} · ${scope.siteName}` : scope.mode === 'project' ? scope.projectName : 'Pick a project'
+  const where = scope.mode === 'site' ? `${scope.projectName} · ${scope.siteName}` : scope.mode === 'project' ? scope.projectName : 'All projects'
   const fallbackName = `mesiri-${(r?.project.name ?? 'project').replace(/[^A-Za-z0-9]+/g, '-').toLowerCase()}-${r?.period.from ?? ''}`
+  const target = projectId ? { scope: 'project' as const, project_id: projectId, site_id: siteId } : { scope: 'portfolio' as const }
+  const sendButton = info ? (
+    <Button size="sm" onClick={() => setSending(true)}>
+      <Send className="size-3.5" /> Send
+    </Button>
+  ) : null
   const header = (
     <DprHeader
       back={{ to: '/reports', label: 'Daily reports' }}
@@ -667,24 +788,30 @@ export default function PeriodReportPage() {
         <div className="flex gap-2">
           <DownloadButton q={query} kind="xlsx" fallback={fallbackName} />
           <DownloadButton q={query} kind="pdf" fallback={fallbackName} />
+          {sendButton}
+        </div>
+      ) : briefReady ? (
+        <div className="flex gap-2">
+          <BriefDownload q={briefQuery} kind="xlsx" />
+          <BriefDownload q={briefQuery} kind="pdf" />
+          {sendButton}
         </div>
       ) : undefined}
     />
   )
-
-  if (!projectId) {
-    return (
-      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-        {header}
-        <p className="text-sm text-muted-foreground">A week or a month of one project: work against plan, labour, materials, money and what needs you. Pick a project.</p>
-        <ProjectPicker />
-      </div>
-    )
-  }
+  const sendDialog = info ? (
+    <SendReportDialog
+      target={target}
+      query={briefQuery}
+      what={`${where}: ${info.period.kind === 'custom' ? info.period.range : `${info.period.label}, ${info.period.range}`}`}
+      open={sending}
+      onOpenChange={setSending}
+    />
+  ) : null
 
   const controls = (
     <div className="flex flex-wrap items-center gap-2">
-      <Segmented label="Period" value={kind} options={KIND_OPTIONS} onChange={(v) => set({ period: v, date: null, ...(v === 'custom' && r ? { from: r.period.from, to: r.period.to } : { from: null, to: null }) })} />
+      <Segmented label="Period" value={kind} options={KIND_OPTIONS} onChange={(v) => set({ period: v, date: null, ...(v === 'custom' && info ? { from: info.period.from, to: info.period.to } : { from: null, to: null }) })} />
       {kind === 'custom' ? (
         <div className="flex items-center gap-1.5 text-sm">
           <label className="sr-only" htmlFor="report-from">From</label>
@@ -694,18 +821,58 @@ export default function PeriodReportPage() {
           <input id="report-to" type="date" className="h-8 rounded-md border bg-background px-2" value={params.get('to') ?? ''} onChange={(e) => set({ to: e.target.value })} />
         </div>
       ) : null}
-      {r && (
+      {info && (
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="size-8" aria-label={`Previous: ${r.previous.label}`} title={`${r.previous.label} (←)`} onClick={() => step(-1)}>
+          <Button size="icon" variant="ghost" className="size-8" aria-label={`Previous: ${info.previous.label}`} title={`${info.previous.label} (←)`} onClick={() => step(-1)}>
             <ChevronLeft className="size-4" />
           </Button>
-          <Button size="icon" variant="ghost" className="size-8" aria-label={r.next ? `Next: ${r.next.label}` : 'No next period yet'} title={r.next ? `${r.next.label} (→)` : 'Not started yet'} onClick={() => step(1)} disabled={!r.next}>
+          <Button size="icon" variant="ghost" className="size-8" aria-label={info.next ? `Next: ${info.next.label}` : 'No next period yet'} title={info.next ? `${info.next.label} (→)` : 'Not started yet'} onClick={() => step(1)} disabled={!info.next}>
             <ChevronRight className="size-4" />
           </Button>
         </div>
       )}
     </div>
   )
+
+  if (!projectId) {
+    const b = bq.data
+    const linkFor = (id: string) => {
+      const next = new URLSearchParams(params)
+      next.set('project', id)
+      return `/reports/period?${next.toString()}`
+    }
+    return (
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
+        {header}
+        {controls}
+        {sendDialog}
+        {kind === 'custom' && !briefReady ? (
+          <Empty>Choose the first and last day (at most 92 days).</Empty>
+        ) : bq.isError && !b ? (
+          <PageError message="The report could not be loaded." onRetry={() => bq.refetch()} back={{ to: '/reports', label: 'Daily reports' }} />
+        ) : !b ? (
+          <div className="flex flex-col gap-3" aria-busy="true">
+            <Skeleton className="h-16 rounded-lg" />
+            <Skeleton className="h-64 rounded-xl" />
+          </div>
+        ) : (
+          <div className={cn('flex flex-col gap-4 transition-opacity', bq.isFetching && 'opacity-60')}>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="text-xl font-semibold tracking-tight">{b.period.kind === 'custom' ? b.period.range : b.period.label}</h2>
+              {b.period.kind !== 'custom' && <span className="text-sm text-muted-foreground">{b.period.range}</span>}
+              {b.running && <Pill tone="none">So far: the period is still running</Pill>}
+            </div>
+            <BriefView b={b} linkFor={linkFor} />
+            <SentAndScheduled target={target} />
+          </div>
+        )}
+        <details className="rounded-lg border px-4 py-2">
+          <summary className="cursor-pointer text-sm font-medium">Open one project's report</summary>
+          <div className="pt-3"><ProjectPicker /></div>
+        </details>
+      </div>
+    )
+  }
 
   if (kind === 'custom' && !ready) {
     return (
@@ -733,6 +900,7 @@ export default function PeriodReportPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       {header}
       {controls}
+      {sendDialog}
       {!r ? (
         <div className="flex flex-col gap-3" aria-busy="true">
           <Skeleton className="h-6 w-60" />
@@ -785,6 +953,7 @@ export default function PeriodReportPage() {
               </DprSection>
             )}
           </div>
+          <SentAndScheduled target={target} />
           <p className="text-xs text-muted-foreground">
             Every figure comes from the module that records it: the BOQ and schedule, attendance, stock, expenses and bills. Rupees only show for the roles that see spending.
           </p>
