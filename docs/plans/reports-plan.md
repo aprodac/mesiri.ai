@@ -55,13 +55,29 @@ Adarsh's #10 (owner's one page).
 | Phase | Status |
 | --- | --- |
 | R1 | **Done** 9 Nov 2026 (`89606f2` backend, `a9eeddb` dashboard). |
-| R2..R5 | todo |
+| R2 | **Done** 9 Nov 2026 (`7c72970` backend, `dfc5cbe` assistant, `e1da630` dashboard). |
+| R3..R5 | todo |
 
 **R1 as built, differences from the plan:** "Needs you" also lists what the approvals inbox has waiting in the
 project. Client bills are left out of the figures when a project has none (₹0 billed, ₹0 received is noise). The
 PDF's page 1 carries the top five "Needs you" items. **Known limits:** an activity's state (late / behind) is as
 of today, not as of the period's end, because the Gantt read is to date; a past month's report shows today's
 schedule state. Fonts: rupees print as "Rs" in the PDF.
+
+**R2 as built:**
+
+- **Per person, never the sender's view.** A send builds the report once per recipient with that person's own
+  access (`AuthorizationService.resolve_from_jwt`), so an engineer never gets rupees and nobody gets a project they
+  cannot open. Each copy is frozen in `report_snapshots` (0538) with its PDF; "what changed since" re-reads it as
+  that person.
+- **Delivery is the notifications queue's** (the DPR's path): in the 24-hour window a summary and the PDF; outside
+  it the `mesiri_period_report` template once approved (PRC-13), until then skipped and the reason shown.
+- **Schedules reuse the automations table and runner** (`SEND_PERIOD_REPORT`, `MONTHLY` on the 1st). Found while
+  building: the automations module is not in `V1_MODULES`, so its routes are off for most companies. Report
+  schedules therefore have their own routes (`/reports/schedules`) that write the same rows; no second scheduler.
+- **Names on WhatsApp.** v3 has no team list (access routes are refused), so send and schedule take names; a name
+  that fits several people is refused with the names, never guessed.
+- **Not built:** PM notes per section (one note per send instead); the client copy (R3).
 
 ## R1 in detail (PRC-19)
 
