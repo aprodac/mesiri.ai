@@ -77,7 +77,7 @@ async def get_preferences(
                               .where(_mine(ctx)))).first()
     return Preferences(reply_language=effective_reply_language(row.reply_language if row else None),
                        voice_transcript=await _voice_transcript(conn, ctx, row.voice_transcript if row else None),
-                       morning_brief=row.morning_brief if row is not None and row.morning_brief is not None else True)
+                       morning_brief=getattr(row, "morning_brief", None) is not False)
 
 
 async def _voice_transcript(conn: AsyncConnection, ctx: AuthorizationContext, person: bool | None) -> bool:
