@@ -317,7 +317,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { title: 'RA bills', url: '/billing/ra-bills', status: 'built', phase: 'V1', about: 'Running bills from the work site measured since the last bill × the client rates, with retention, advance recovery, GST and TDS worked out; printed on your letterhead.', example: 'RA-04: ₹12.6 L of work in October, ₹11.9 L net after retention and TDS.', tracker: 'NXT-02', roles: BILLING_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }] },
       { title: 'Variations', url: '/billing/variations', status: 'planned', phase: 'Later', about: 'Extra or changed work the client asked for, priced and approved before it is built.', example: 'Client adds a balcony: ₹1.8 L approved on 3 Nov.', roles: MONEY_ROLES },
       { title: 'Payments received', url: '/billing/receipts', status: 'planned', phase: 'Later', about: 'Money in from clients, and the share held back until handover (retention).', example: 'Received ₹12 L of RA bill 4; 5% (₹63,000) held.', roles: MONEY_ROLES },
-      { title: 'Client view', url: '/billing/client-view', status: 'planned', phase: 'V1.5', about: 'A link the house owner opens to see progress and photos.', example: 'Mr. Thomas sees his villa\'s week in photos.' },
+      { title: 'Client view', url: '/billing/client-view', status: 'built', phase: 'V1', about: 'A link the house owner opens on the phone, no login: progress, milestones, photos from approved site reports, bills and payments. Never rates or costs.', example: 'Mr. Thomas sees his villa at 42%, the slab done on 3 Nov, RA-02 ₹2.6 L due.', tracker: 'CV-01..CV-03', roles: BILLING_ROLES, related: [{ title: 'RA bills', url: '/billing/ra-bills' }, { title: 'Clients', url: '/billing/clients' }] },
     ],
   },
   {
