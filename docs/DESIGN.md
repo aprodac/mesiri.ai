@@ -111,8 +111,19 @@ the page: the same "₹61k owed" means the company, one project or one site.
   doesn't split by site", or "Company-wide. This page shows every project". Nothing is said with All projects picked.
 - **The table** `lib/scope-levels.ts` gives each route its level (`site`, `project`, `company`). A new page adds its
   row; a page that starts following the site moves its row. Record pages (one bill, one machine) have none.
-- **Roles land where they work** (`lib/ScopeContext.tsx`): owner and finance on All projects, a project manager on
-  their first project, a site engineer on their first site (never a whole project).
+- **Roles land where they work** (`lib/ScopeContext.tsx`), at every login: owner and finance on All projects; a
+  project manager on the project they said they mostly work on (asked once, `components/start-project-dialog.tsx`,
+  only when they have more than one), else their first; a site engineer on the first project where they have a site,
+  on that site (never a whole project).
+- **A pick lasts one login** (`lib/scope-recent.ts`): kept across reloads, forgotten at the next login, so another
+  person on the same computer, or the owner next week, never starts on yesterday's site. Recent picks and the start
+  project are kept per person.
+- **A change the person did not make is announced.** A link (WhatsApp, a notification, a record on another project)
+  or Back that changes the view adds a blue line: "Now showing Villa Kakkanad on every page… Back to all projects".
+- **Tiles wider than the pick say so** with a small amber tag on the tile: "Company" or "Whole project"
+  (`Tile tag`). Home's heading names the project or site picked.
+- **No page without a level:** a built page with no row in the table logs a console error in dev, which fails the
+  screenshot check.
 
 ## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-33)
 

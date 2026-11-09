@@ -148,8 +148,8 @@ export interface PaySummary {
 
 const clean = (p: Record<string, unknown>) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== null && v !== undefined && v !== ''))
 
-export async function fetchPaySummary(): Promise<PaySummary> {
-  return (await api.get('/labour/pay/summary')).data
+export async function fetchPaySummary(projectId?: string | null): Promise<PaySummary> {
+  return (await api.get('/labour/pay/summary', { params: clean({ project_id: projectId }) })).data
 }
 export async function openWageSheet(params: { project_id?: string | null; site_id?: string | null; date?: string }): Promise<WageSheet> {
   return (await api.get('/labour/wage-sheets/open', { params: clean(params) })).data
