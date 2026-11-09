@@ -27,6 +27,8 @@ RECORD_PAGES: dict[str, str | None] = {
     "resolve_issue": "issues",
     "acknowledge_issue": "issues",
     "wont_fix_issue": "issues",
+    "assign_issue": "issues",  # GM-06
+    "remind_issue_owner": "issues",
     "record_attendance": "site_day",
     "record_expense": "expense",
     "set_site_conditions": "site_day",
