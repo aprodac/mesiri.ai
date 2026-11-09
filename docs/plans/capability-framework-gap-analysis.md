@@ -413,7 +413,7 @@ handover. Fixed assets in Accounts is Later.)
    control (CC-17): module switch, sidebar group, backend domain, v3 tool in `agent_api/tools.py`.
 2. **Approvals inbox** (NXT-08): one "waiting for you" list for requests, expenses, bills and measurements
    (modules 07, 13, 22).
-3. **Quotations / RFQ** (module 07): request quotes, record them, compare, pick one into a PO.
+3. **Quotations / RFQ** (module 07): request quotes, record them, compare, pick one into a PO. Planned 9 Nov: [procurement-phase2-plan.md](procurement-phase2-plan.md) (PRC-40..52, with returns, reorder, stock count, vendor rating).
 4. **Reorder levels, stock count, returns** (module 08).
 5. **Vendor rating** (module 09): on-time delivery and quality, worked out from GRNs and issues.
 6. **In-app notifications and meeting minutes** (module 20).
