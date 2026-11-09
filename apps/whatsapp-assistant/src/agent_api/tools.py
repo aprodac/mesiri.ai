@@ -126,6 +126,12 @@ ALLOWED: tuple[Allowed, ...] = (
             "to narrow: material_request, subcontract_bill, measurement, ra_bill, size_request). Each item: kind, id, ref, "
             "title, project_name, site_name, asked_by, since, amount (only for roles that see spending), flagged, fact (the "
             "one fact that decides it, in words), group (flagged / older / recent); counts. Only what their role may decide."),
+    # GM-04 (9 Nov 2026): what crossed a line for this person, read from each module's own route (read only).
+    Allowed("attention", "GET", "/attention",
+            "What crossed a line for THIS person, worst first (project_id to narrow): each alert has kind (handover, "
+            "budget, late, cost, order, issue, unreported, hire), severity (bad = act now, warn = worth a look), title (what), "
+            "detail (by how much, in words), project_name, site_name, action (what to open). counts: total, bad, warn, "
+            "snoozed (hidden by the person for today). Only what their role may see; a site engineer's has no money."),
     # PRC-22: material requests -- what a site asks for before anyone orders it (Materials > Requests).
     Allowed("material_requests", "GET", "/procurement/requests",
             "Material requests (what the sites asked for, before it is ordered), most urgent first: status waiting "
