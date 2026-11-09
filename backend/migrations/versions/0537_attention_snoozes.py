@@ -5,8 +5,8 @@
 alert is back. Nothing else reads it. Additive; tenant row-level security like 0531. Downgrade drops the table
 (snoozes only).
 
-Revision ID: 0533
-Revises: 0532
+Revision ID: 0537
+Revises: 0536
 Create Date: 2026-11-09
 """
 
@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0533"
-down_revision = "0532"
+revision = "0537"
+down_revision = "0536"
 branch_labels = None
 depends_on = None
 

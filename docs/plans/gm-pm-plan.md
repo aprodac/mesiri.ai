@@ -10,6 +10,14 @@
 > Product judgment from the code and the module map, not from GM interviews. Show GM-01 and GM-02 to a real GM
 > before building past them.
 
+> **Reconciled with main, 9 Nov 2026 (decided in session: "rebuild on main").** While this work sat on its branch,
+> main built NXT-08 (approvals inbox + bell), UX-11 (a home per role), UX-12 (project hub) and the Tasks module (TSK).
+> Where they overlap, main's version stays: GM-01's inbox, GM-02's page and GM-03's page were removed in the merge;
+> GM-06 (issue owner + due date) was reverted for TSK-03. GM-04 Attention stays (nothing like it on main; migration
+> renumbered 0537). Ported onto main's pieces: the portfolio table into the Director / PM home, "why it is red" into
+> the project hub, work to confirm and unit sizes into NXT-08, This week from the schedule + Tasks module, one
+> morning message with TSK-05. The "as built" notes below describe the branch versions before the merge.
+
 ---
 
 ## 1. Who the GM / PM is and what they ask
