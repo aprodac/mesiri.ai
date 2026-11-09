@@ -67,7 +67,7 @@ export default function WhatsAppPage() {
         <WhatsAppInboxPage embedded />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-6xl p-4 sm:px-6">{view === 'messages' ? <WhatsAppMessagesTab /> : <AutomationsPage embedded />}</div>
+          <div className="mx-auto w-full p-4 sm:px-6">{view === 'messages' ? <WhatsAppMessagesTab /> : <AutomationsPage embedded />}</div>
         </div>
       )}
     </div>

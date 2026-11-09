@@ -26,7 +26,7 @@ export default function BoqIndexPage() {
   if (scope.mode === 'project' || scope.mode === 'site') return <Navigate to={`/projects/${scope.projectId}/boq`} replace />
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="BOQ & budget" date="Pick a project" />
       {projects.isLoading ? (
         <Skeleton className="h-32 rounded-lg" />

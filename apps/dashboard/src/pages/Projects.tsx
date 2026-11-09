@@ -102,7 +102,7 @@ export default function Projects() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Projects & Sites"
         subtitle={query.isLoading ? 'Loading…' : `${plural(current, 'project')} running${paused.length ? ` · ${paused.length} paused or done` : ''}`}

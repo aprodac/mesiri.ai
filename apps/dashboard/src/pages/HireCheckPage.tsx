@@ -10,6 +10,7 @@ import { useReadOnly } from '@/lib/trial'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { RATE_WORDS, fetchHireCheck, hrs, iso, type HireCheckRow, inr } from '@/lib/equipment'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-13: Equipment > Hire check. "The bill says 8 hours a day; how many did it work?" Per hired machine in the period:
 // the hours recorded on site, what they come to at the agreed rate (with the hire's minimum hours, never the breakdown),
@@ -45,16 +46,10 @@ export default function HireCheckPage() {
       r.days_on_site, Number(r.charged_hours), r.expected, r.billed, r.unbilled, STATE[r.state].label]))
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <Link to="/equipment" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />Machines</Link>
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><Scale className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Equipment</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Hire check</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={Scale} title="Hire check" />
         <div className="flex items-center gap-2">
           <div role="tablist" aria-label="Month" className="flex gap-0.5 rounded-xl bg-muted p-1">
             {[-2, -1, 0].map((o) => (

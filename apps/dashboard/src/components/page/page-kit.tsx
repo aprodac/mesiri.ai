@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { findPage } from '@/lib/module-map'
 import { ArrowRight, ChevronRight, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -10,6 +11,45 @@ import { cn } from '@/lib/utils'
 // that joins a record to the ones before and after it (UX-09).
 
 export { PageHeader, StatStrip, Callout, PageError, Segmented, DprSection as IconSection } from '@/components/dpr-page'
+
+/**
+ * A module page's title (UX-08): one icon tile in the brand colour, the module's name above the title taken from
+ * lib/module-map.ts (so it always matches the sidebar and breadcrumb), and the title. Pages put their actions
+ * beside it in their own header row. Replaces ~20 hand-made headers that each picked their own tile colour and
+ * typed their own module name.
+ */
+export function ModuleTitle({
+  icon: Icon,
+  title,
+  chip,
+  module: moduleName,
+  className,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  title: React.ReactNode
+  chip?: React.ReactNode
+  /** Only for a page outside the module map. */
+  module?: string
+  className?: string
+}) {
+  const { pathname, search } = useLocation()
+  const hit = findPage(pathname, search)
+  const eyebrow = moduleName ?? (hit && hit.group.key !== 'site' ? hit.group.title : undefined)
+  return (
+    <div className={cn('flex min-w-0 items-center gap-3', className)}>
+      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary-ink" aria-hidden>
+        <Icon className="size-5" />
+      </span>
+      <div className="min-w-0">
+        {eyebrow && <div className="text-xs text-muted-foreground">{eyebrow}</div>}
+        <h1 className="flex flex-wrap items-center gap-2 text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
+          <span className="truncate">{title}</span>
+          {chip}
+        </h1>
+      </div>
+    </div>
+  )
+}
 
 /** A flat section: title, an optional note beside it, an optional action, a thin rule above. */
 export function Section({
@@ -31,7 +71,10 @@ export function Section({
     <section id={id} className={cn('flex scroll-mt-20 flex-col gap-2 border-t pt-4 first:border-t-0 first:pt-0', className)}>
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <h2 className="text-[15px] font-semibold">{title}</h2>
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+            <span aria-hidden className="h-4 w-1 shrink-0 self-center rounded-full bg-primary" />
+            {title}
+          </h2>
           {note && <span className="text-sm text-muted-foreground">{note}</span>}
         </div>
         {action}
@@ -88,12 +131,21 @@ export function EmptyState({
 
 export type TileTone = 'default' | 'attention' | 'good' | 'bad' | 'info'
 
+// UX-08 (asked 9 Nov: "increase visual cues"): a tile's state reads at a glance: a bar, a tinted ground and the
+// figure in the state's colour. Default tiles stay plain so the coloured ones stand out.
 const TILE_TONE: Record<TileTone, string> = {
   default: '',
-  attention: 'before:bg-draft',
-  good: 'before:bg-success',
-  bad: 'before:bg-destructive',
-  info: 'before:bg-info',
+  attention: 'before:bg-draft bg-draft-soft/50 border-draft/25',
+  good: 'before:bg-success bg-success-soft/40 border-success/20',
+  bad: 'before:bg-destructive bg-destructive/[0.06] border-destructive/25',
+  info: 'before:bg-info bg-info-soft/50 border-info/20',
+}
+const TILE_VALUE: Record<TileTone, string> = {
+  default: '',
+  attention: 'text-draft',
+  good: 'text-success',
+  bad: 'text-destructive',
+  info: 'text-info',
 }
 
 /**
@@ -136,7 +188,7 @@ export function Tile({
       {loading ? (
         <span className="h-7 w-20 animate-pulse rounded bg-muted" aria-label="Loading" />
       ) : (
-        value !== undefined && <span className="truncate text-xl font-semibold tabular-nums">{value}</span>
+        value !== undefined && <span className={cn('truncate text-xl font-semibold tabular-nums', TILE_VALUE[tone])}>{value}</span>
       )}
       {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
       {children}

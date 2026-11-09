@@ -36,7 +36,7 @@ export default function LedgerStatementPage() {
   const credit = d && ['liability', 'equity', 'income'].includes(d.ledger.nature)
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/accounts/ledgers', label: 'Ledgers' }}
         crumb="Accounts"

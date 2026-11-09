@@ -54,7 +54,7 @@ export default function ProjectBooksPage() {
   const budgetMax = b ? Math.max(Number(b.budget ?? 0), Number(b.forecast ?? 0), Number(b.spent), booksCost) : 0
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts/projects', label: 'Projects' }} crumb="Accounts · Projects" title={name ?? 'Project'} date="The project's books" />
       <PeriodBar state={periodState} />
       {!d || !p ? (

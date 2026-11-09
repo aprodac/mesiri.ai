@@ -121,7 +121,7 @@ export default function CostMaterialsPage() {
   )
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         {header}
         <ProjectPicker />
       </div>
@@ -130,7 +130,7 @@ export default function CostMaterialsPage() {
   if (q.isError) return <PageError message="Materials vs BOQ could not be loaded." onRetry={() => q.refetch()} back={{ to: '/cost', label: 'Overview' }} />
   const d = q.data
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       {header}
       {q.isLoading || !d ? (
         <Skeleton className="h-64 rounded-lg" />

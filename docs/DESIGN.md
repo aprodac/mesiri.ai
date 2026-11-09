@@ -75,6 +75,19 @@ A page does not draw its own header, empty box or tile.
 - **Headers:** `DprHeader`'s back line follows the module map on a module's own page and shows on phones only
   (the top bar's breadcrumb covers laptops); detail pages keep their real "up" link.
 
+## Space, words and help (UX-08, asked 9 Nov 2026)
+
+- **Full width.** A page fills the space beside the sidebar: no `max-w-*` on a page's root (`mx-auto … w-full`).
+  Only dialogs, sheets, centred error states and printable documents keep a width.
+- **No descriptions on the page.** A page shows its title, its figures and its work. What the page is for, an
+  example and the WhatsApp line live in the page's **help** (the ? in the top bar, `components/help-button.tsx`),
+  read from `lib/module-map.ts` (`about`, `example`, `whatsapp`, `related`, the module's other pages). A
+  subtitle is data only: a count, a date, the company, "Pick a project".
+- **Module page header:** `ModuleTitle` from the page kit: one brand icon tile, the module's name from the module
+  map, the title; the page's actions beside it.
+- **Visual cues:** a `Tile` in a state has a bar, a tinted ground and its figure in the state's colour; a `Section`
+  title carries the yellow accent bar. Colour still means state only (§3).
+
 ## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-33)
 
 V1 is one loop — sites send updates on WhatsApp, the engineer confirms, the

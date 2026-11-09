@@ -268,7 +268,7 @@ export function PageHeader({
  * text. */
 export function DprPageSkeleton() {
   return (
-    <div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col gap-4 pb-4 sm:px-2" aria-busy="true" aria-label="Loading">
+    <div className="mx-auto flex w-full animate-pulse flex-col gap-4 pb-4 sm:px-2" aria-busy="true" aria-label="Loading">
       <div className="h-4 w-48 rounded bg-muted" />
       <div className="h-7 w-72 rounded bg-muted" />
       <div className="h-9 rounded-lg bg-muted/60" />

@@ -30,8 +30,8 @@ export default function LivePlansPage() {
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-4 sm:px-2">
-        <PageHeader title="Live plans" subtitle="The drawings, coloured by the work site reports on WhatsApp." />
+      <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
+        <PageHeader title="Live plans" subtitle="Pick a project." />
         <ProjectPickList to={(id) => `/planning/live?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -73,7 +73,7 @@ function Live({ projectId }: { projectId: string }) {
 
   if (!data) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col gap-4 pb-4 sm:px-2" aria-busy="true" aria-label="Loading">
+      <div className="mx-auto flex w-full animate-pulse flex-col gap-4 pb-4 sm:px-2" aria-busy="true" aria-label="Loading">
         {header}
         <div className="h-8 w-80 rounded-lg bg-muted" />
         <div className="h-16 rounded-xl bg-muted/60" />
@@ -83,7 +83,7 @@ function Live({ projectId }: { projectId: string }) {
   }
   if (!map) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
         {header}
         <Callout tone="muted" icon={MapPinned} action={<Button asChild size="sm" variant="outline"><Link to={`/planning/documents?project=${projectId}`}>Open Documents</Link></Button>}>
           No drawings with rooms or footings yet. Upload the architect's floor plans or the structural set in Documents: each room and footing shows here, coloured by the work site reports.
@@ -110,7 +110,7 @@ function Live({ projectId }: { projectId: string }) {
       ]
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-4 sm:px-2">
+    <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-4 sm:px-2">
       {header}
       {data.untracked.length > 0 && <TrackCallout projectId={projectId} data={data} />}
 

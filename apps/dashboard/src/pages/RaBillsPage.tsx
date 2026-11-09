@@ -21,6 +21,7 @@ import {
   raBillAction, rupees, setRaBillQuantity, type RaBill, type RaBillLine,
 } from '@/lib/billing'
 import { cn } from '@/lib/utils'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-02: Client billing › RA bills. A bill is made from the BOQ: work measured on each priced line (the site's own
 // WhatsApp updates) less what earlier bills already billed, at the client rate. The contract's retention, advance
@@ -35,13 +36,9 @@ export default function RaBillsPage() {
   const projectId = usePlanningProject()
   const allowed = mayBill(me?.role)
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
       <header className="flex items-center gap-3">
-        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><ReceiptText className="size-5" /></span>
-        <div>
-          <div className="text-xs text-muted-foreground">Client billing</div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">RA bills</h1>
-        </div>
+        <ModuleTitle icon={ReceiptText} title="RA bills" />
       </header>
       {!allowed ? (
         <p className="text-sm text-muted-foreground">Client bills are for the owner, admins and finance.</p>

@@ -128,7 +128,7 @@ export default function DayBookPage() {
   let index = -1
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/accounts/trial-balance', label: 'Trial balance' }}
         crumb="Accounts"

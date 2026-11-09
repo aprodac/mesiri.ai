@@ -122,7 +122,7 @@ export default function VendorPage() {
   if (vendor.isError) {
     const gone = (vendor.error as { response?: { status?: number } })?.response?.status === 404
     return (
-      <div className="mx-auto w-full max-w-3xl py-12">
+      <div className="mx-auto w-full py-12">
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => navigate('/finance/vendors')}>All suppliers</Button>}>
           {gone ? 'This supplier is not here any more (deleted, or merged into another).' : 'The supplier could not be loaded.'}
         </Callout>
@@ -163,7 +163,7 @@ export default function VendorPage() {
   ] : []
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-24 sm:px-2 md:pb-8 print:max-w-none print:pb-0">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8 print:max-w-none print:pb-0">
       <Link to="/finance/vendors" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground print:hidden">
         <ArrowLeft className="size-4" /> Suppliers
       </Link>

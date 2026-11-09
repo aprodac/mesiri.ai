@@ -241,10 +241,9 @@ export default function DailyReportsPage() {
     )
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Reports"
-        subtitle="Every site and project DPR, newest first"
         actions={
           <>
             <Button variant="outline" size="sm" className="gap-1.5" disabled={items.length === 0} onClick={exportRows}>

@@ -10,6 +10,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { errorWords, fetchReturnables, setReturnable } from '@/lib/equipment'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-14: Equipment > Shuttering & tools. Plates, props, scaffold pipes and tools are materials in a returnable
 // category (no second stock system): this page shows how many each site holds, what went out lost or damaged, and
@@ -41,16 +42,10 @@ export default function ReturnablesPage() {
     items.map((it) => [it.name, it.category ?? '', it.unit, ...sites.map((s) => it.sites.find((x) => x.site_id === s.site_id)?.held ?? ''), it.total, it.lost]))
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <Link to="/equipment" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />Machines</Link>
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><Layers className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Equipment</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Shuttering & tools</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={Layers} title="Shuttering & tools" />
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2" asChild><Link to="/materials?view=movements"><ArrowRightLeft className="size-4" /><span className="hidden sm:inline">Send to a site</span></Link></Button>
           <Button variant="outline" className="gap-2" disabled={!items.length} onClick={exportIt}><Download className="size-4" /><span className="hidden sm:inline">Export</span></Button>

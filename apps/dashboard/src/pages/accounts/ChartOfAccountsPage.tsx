@@ -202,7 +202,7 @@ export default function ChartOfAccountsPage() {
   const editingLinked = edit?.kind === 'ledger' && !!edit.ledger?.link_kind
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} crumb="Accounts" title="Chart of accounts" date={d ? `${d.groups.length} groups · ${d.ledgers.length} ledgers` : undefined} />
       <BooksTabs current="/accounts/chart" />
       <Callout tone="info" icon={ListTree}>

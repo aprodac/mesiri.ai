@@ -308,7 +308,7 @@ export default function TodayPage() {
   const cutoffLabel = cutoffs.length === 1 ? ` · Cutoff ${formatClock(cutoffs[0])}` : ''
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title={isToday ? 'Today' : longDate(date)}
         subtitle={

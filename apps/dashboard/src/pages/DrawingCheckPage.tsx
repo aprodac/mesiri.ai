@@ -10,6 +10,7 @@ import { DraftBoq, DraftSchedule } from '@/components/drawings/drafts'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // DR-04: Planning › Drawing check. Drop the architect's PDF: Mesiri reads its own text (title blocks, levels, room
 // sizes, fixtures) in a second and lists what to ask the architect before the drawing reaches site, such as an area
@@ -69,18 +70,10 @@ export default function DrawingCheckPage() {
   const r = read.data
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
       <header className="flex items-center gap-3">
-        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><FileSearch className="size-5" /></span>
-        <div>
-          <div className="text-xs text-muted-foreground">Planning</div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Drawing check</h1>
-        </div>
+        <ModuleTitle icon={FileSearch} title="Drawing check" />
       </header>
-      <p className="max-w-3xl text-sm text-muted-foreground">
-        Drop the architect's drawing PDF. Mesiri reads the sheets, levels, room sizes and fixtures from the drawing's own text, and lists
-        anything to ask the architect before it reaches site. Nothing is saved or sent.
-      </p>
 
       <button
         type="button"

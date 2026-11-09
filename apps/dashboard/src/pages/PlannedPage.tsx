@@ -52,7 +52,7 @@ export default function PlannedPage() {
   const Icon = group.icon
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-6 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/today', label: 'Today' }}
         crumb={group.title}

@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
 import { JumpBox } from '@/components/jump-box'
+import { HelpButton } from '@/components/help-button'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
@@ -73,6 +74,7 @@ function TopBar() {
               <span className="rounded-full bg-orange-500 px-1.5 text-[11px] font-semibold text-white tabular-nums">{drafts}</span>
             )}
           </Link>
+          <HelpButton />
           <Link
             to="/issues"
             className={cn(

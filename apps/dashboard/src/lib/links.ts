@@ -56,3 +56,23 @@ export function raBillLinks(bill: { project_id: string; project_name: string; st
     { kind: 'Profit', label: 'Project P&L', url: `/accounts/projects/${bill.project_id}`, side: 'after' },
   ]
 }
+
+/** WORK → COST: a work order prices BOQ work for a subcontractor; its bills, the subcontractor's account and the
+ *  project's cost come after. */
+export function workOrderLinks(wo: { id: string; vendor_id: string; vendor_name: string; project_id: string; project_name: string; site_id: string | null; site_name: string | null }): LinkedRecord[] {
+  return [
+    { kind: 'BOQ', label: wo.project_name, status: 'the lines it covers', url: `/projects/${wo.project_id}/boq`, side: 'before' },
+    ...(wo.site_id ? [{ kind: 'Site', label: wo.site_name ?? 'Site', status: 'work measured there', url: recordUrl.siteDay(wo.project_id, wo.site_id), side: 'before' as const }] : []),
+    { kind: 'Bills', label: 'Bills & checks', url: `/subcontract/work-orders/${wo.id}?tab=bills`, side: 'after' },
+    { kind: 'Subcontractor account', label: wo.vendor_name, url: recordUrl.supplier(wo.vendor_id), side: 'after' },
+    { kind: 'Project cost', label: wo.project_name, status: 'budget vs actual', url: `/cost/budget?project=${wo.project_id}`, side: 'after' },
+  ]
+}
+
+/** WORK → COST: a worker's days come from attendance; what they cost lands on the BOQ lines' labour. */
+export function workerLinks(worker: { trades: string[]; contractors: string[] }): LinkedRecord[] {
+  return [
+    ...worker.trades.slice(0, 3).map((t) => ({ kind: 'Attendance', label: t, status: 'every day on site', url: `/labour?trade=${encodeURIComponent(t)}`, side: 'before' as const })),
+    { kind: 'Labour cost', label: 'Green / red', status: 'labour against the budget it earned', url: '/cost/green-red', side: 'after' },
+  ]
+}

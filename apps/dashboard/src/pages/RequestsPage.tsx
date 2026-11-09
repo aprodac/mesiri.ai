@@ -25,6 +25,7 @@ import {
 import { Avatar, CategoryTile, CoverBar, FilterPill, ProjectDot, StatusChip, UrgencyChip, WhatsAppMark, type FilterOption } from '@/components/requests/parts'
 import { RequestDetail } from '@/components/requests/request-detail'
 import { NewRequestDialog } from '@/components/requests/new-request-dialog'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // PRC-22 (design approved by Ilan, 7 Nov 2026): Materials > Requests. What the sites need and what is happening
 // to it. Four tiles say what needs attention; tabs by status; filters as dropdowns with the same cues as the rows;
@@ -176,17 +177,9 @@ export default function RequestsPage() {
   const pickTab = (t: Tab) => { setTile(''); setTab(t) }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200">
-            <ClipboardList className="size-5" />
-          </span>
-          <div>
-            <div className="text-xs text-muted-foreground">Materials</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Requests</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={ClipboardList} title="Requests" />
         <div className="flex items-center gap-2">
         <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportRequests(list)} title="The requests shown, as a CSV file (opens in Excel)">
           <Download className="size-4" /> <span className="hidden sm:inline">Export</span>

@@ -177,7 +177,7 @@ export default function CostBudgetPage() {
   )
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         {header}
         <ProjectPicker />
       </div>
@@ -188,7 +188,7 @@ export default function CostBudgetPage() {
   const lines = b ? b.boq.sections.flatMap((s) => s.lines.map((l) => ({ ...l, section: s.name }))) : []
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       {header}
       {q.isLoading || !b ? (
         <Skeleton className="h-48 rounded-lg" />

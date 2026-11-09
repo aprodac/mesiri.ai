@@ -22,6 +22,7 @@ import {
 } from '@/lib/schedule'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // ST-04: Planning › Schedule. The project's Gantt: what should happen when, what site has actually done (measured
 // from the WhatsApp work updates, never typed), what is late and what it pushes, and the forecast handover.
@@ -34,7 +35,7 @@ export default function SchedulePage() {
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-8 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         <Heading />
         <p className="text-sm text-muted-foreground">Pick a project to see its schedule.</p>
         <ProjectPickList to={(id) => `/planning/schedule?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
@@ -47,13 +48,7 @@ export default function SchedulePage() {
 function Heading({ children, chip }: { children?: React.ReactNode; chip?: React.ReactNode }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><CalendarRange className="size-5" /></span>
-        <div className="min-w-0">
-          <div className="text-xs text-muted-foreground">Planning</div>
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl leading-tight font-semibold tracking-tight">Schedule {chip}</h1>
-        </div>
-      </div>
+      <ModuleTitle icon={CalendarRange} title="Schedule" chip={chip} />
       {children}
     </header>
   )
@@ -123,7 +118,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
     preview.mutate({ id, body })
   }
 
-  if (query.isLoading) return <div className="mx-auto flex w-full max-w-7xl animate-pulse flex-col gap-4 sm:px-2"><div className="h-10 w-64 rounded bg-muted" /><div className="h-16 rounded-xl bg-muted/60" /><div className="h-96 rounded-xl bg-muted/60" /></div>
+  if (query.isLoading) return <div className="mx-auto flex w-full animate-pulse flex-col gap-4 sm:px-2"><div className="h-10 w-64 rounded bg-muted" /><div className="h-16 rounded-xl bg-muted/60" /><div className="h-96 rounded-xl bg-muted/60" /></div>
   if (query.isError || !query.data) return <PageError message="The schedule did not load." onRetry={() => query.refetch()} back={{ to: '/planning/schedule', label: 'All projects' }} />
 
   const s = query.data

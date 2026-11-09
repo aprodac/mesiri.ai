@@ -12,6 +12,7 @@ import { ProjectDot } from '@/components/requests/parts'
 import { VendorTile } from '@/components/orders/order-detail'
 import { cn } from '@/lib/utils'
 import { VendorLink } from '@/components/vendors/vendor-parts'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // PRC-29: Procurement > GRN. Every goods received note: what came against which order, what was accepted into stock
 // and what was turned away (and why), the challan number and photo, who received it. A GRN is made by "Material
@@ -51,13 +52,7 @@ export default function GoodsReceiptsPage() {
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200"><ClipboardCheck className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Procurement</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Goods received</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={ClipboardCheck} title="Goods received" />
         <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportGrns(list)}><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
       </header>
 

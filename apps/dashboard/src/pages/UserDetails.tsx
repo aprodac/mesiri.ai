@@ -69,7 +69,7 @@ export default function UserDetails() {
 
   if (query.isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
+      <div className="mx-auto flex w-full flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-8 w-64" />
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -91,7 +91,7 @@ export default function UserDetails() {
   const active = user.status === 'active'
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/team', label: 'Team' }}
         crumb="Person"

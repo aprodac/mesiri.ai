@@ -97,8 +97,8 @@ export default function MachinePage() {
     onError: (e) => toast.error('Not changed', errorWords(e)),
   })
 
-  if (isLoading) return <div className="mx-auto w-full max-w-6xl p-6"><div className="h-40 animate-pulse rounded-xl bg-muted/50" /></div>
-  if (isError || !m) return <div className="mx-auto w-full max-w-6xl p-6 text-sm text-destructive">This machine did not load. <Link to="/equipment" className="underline">Back to machines</Link></div>
+  if (isLoading) return <div className="mx-auto w-full p-6"><div className="h-40 animate-pulse rounded-xl bg-muted/50" /></div>
+  if (isError || !m) return <div className="mx-auto w-full p-6 text-sm text-destructive">This machine did not load. <Link to="/equipment" className="underline">Back to machines</Link></div>
 
   const p = m.period
   const exportLog = () => exportCsv(`${m.name}-log-${p.from}-${p.to}.csv`,
@@ -107,7 +107,7 @@ export default function MachinePage() {
       l.operator_name ?? '', l.trips ?? '', l.meter_reading ?? '', l.created_by_name ?? '', l.source ?? '']))
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-5 pb-24 sm:px-2 md:pb-8">
       <Link to="/equipment" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />Machines</Link>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">

@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const companyName = me?.org_name || me?.organization_name || 'Your company'
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-4 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
       <PageHeader title="Settings" subtitle={companyName} />
 
       {counts && counts.done < counts.total && (
