@@ -1,7 +1,7 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, BarChart3, Check, Clock, Copy, Home, IndianRupee, MessageCircle, PackageCheck, Pencil, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Check, Clock, Copy, Home, IndianRupee, MessageCircle, PackageCheck, Pencil, RotateCcw, Scale, ShoppingCart, Truck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -27,6 +27,7 @@ import { LinkedStrip } from '@/components/page/page-kit'
 import { requestLinks } from '@/lib/links'
 import { Avatar, CategoryTile, CoverBar, ProjectDot, StatusChip } from './parts'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
+import { NewRfqDialog } from '@/components/quotations/new-rfq-dialog'
 import { NewRequestDialog } from './new-request-dialog'
 
 // PRC-22: one request, as the office acts on it: what is asked, what is here / ordered / still to buy, other sites
@@ -47,6 +48,9 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
   const [decision, setDecision] = React.useState<Act | null>(null)
   // PRC-06: a purchase order made from this request, filled in with what is still to buy at its site.
   const [ordering, setOrdering] = React.useState(false)
+  // PRC-40: or ask suppliers for quotes first (the award places the order and the request follows it).
+  const [quoting, setQuoting] = React.useState(false)
+  const navigate = useNavigate()
   // PRC-31: change it while it waits; bring it back once said no to or taken back.
   const [editing, setEditing] = React.useState(false)
   const prefill = React.useMemo<OrderPrefill>(() => ({
@@ -170,8 +174,11 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
           )}
           {request.may_act && request.status === 'waiting' && (
             <>
-              <Button className="h-11 basis-full gap-2 font-semibold" onClick={() => setOrdering(true)}>
+              <Button className="h-11 flex-1 gap-2 font-semibold" onClick={() => setOrdering(true)}>
                 <ShoppingCart className="size-4" /> Create order{buyWords}
+              </Button>
+              <Button variant="outline" className="h-11 gap-2 font-semibold" title="Ask several suppliers, compare, then order" onClick={() => setQuoting(true)}>
+                <Scale className="size-4" /> Get quotes
               </Button>
               {request.may_decide && (<>
               <Button variant="outline" className="h-11 flex-1 gap-2 border-fuchsia-300 bg-fuchsia-50 font-semibold text-fuchsia-900 hover:bg-fuchsia-100 dark:bg-fuchsia-950 dark:text-fuchsia-100" onClick={() => setDecision('sent')}>
@@ -213,6 +220,9 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
       )}
 
       <NewOrderDialog open={ordering} onOpenChange={setOrdering} scope={{ mode: 'portfolio' }} prefill={prefill} />
+      <NewRfqDialog open={quoting} onOpenChange={setQuoting} scope={{ mode: 'portfolio' }}
+        prefill={{ request_id: request.id, request_ref: request.ref, project_id: request.project_id, site_id: request.site_id, site_name: request.site_name, lines: prefill.lines }}
+        onCreated={(r) => navigate(`/procurement/quotations?id=${r.id}`)} />
       <NewRequestDialog open={editing} onOpenChange={setEditing} scope={{ mode: 'portfolio' }} editing={request} />
       <DecisionDialog
         request={request}

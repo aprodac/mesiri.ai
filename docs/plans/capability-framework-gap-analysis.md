@@ -141,11 +141,11 @@ Related tracker item: NXT-10 (weekly lookahead per site, todo).
 | Capability | Status | In Mesiri / what is missing |
 |---|---|---|
 | Material / service requisitions from site | ✅ | Materials › Requests (dashboard and WhatsApp) |
-| RFQs sent to selected vendors | ❌ | Quotations is a placeholder (V1.5) |
-| Receive and record quotations | ❌ | |
-| Compare price, tax, delivery, terms | 🟡 | Rate history and last purchase rate only. **Missing:** a quotation comparison sheet |
+| RFQs sent to selected vendors | ✅ | Procurement › Quotations (PRC-40..44, 9 Nov): RFQ per site, sent on WhatsApp per supplier |
+| Receive and record quotations | ✅ | Typed on the dashboard or said / forwarded on WhatsApp; revised quotes replace; declines with reason |
+| Compare price, tax, delivery, terms | ✅ | Comparison sheet: cost per unit with GST per D-CC8, delivery, credit, validity, last paid; award into POs |
 | Route requests and quotes for approval | ✅ | Request decide (approve / reject / buy outside) |
-| POs, amendments, delivery status | ✅ | Purchase orders: edit, cancel, close, reopen, part deliveries, PO document. Pending deliveries page is still a placeholder |
+| POs, amendments, delivery status | ✅ | Purchase orders: edit, cancel, close, reopen, part deliveries, PO document; Pending deliveries page (PRC-45) |
 | Link GRN, inventory, supplier invoice check | ✅ | GRN, stock, bill matched to deliveries, not-billed list (PRC-11) |
 
 ### 08. Inventory & Stock (Phase 1): Partly done

@@ -32,6 +32,7 @@ const LEVELS: [string, ScopeLevel][] = [
   ['/procurement/orders', 'site'],
   ['/procurement/grn', 'site'],
   ['/procurement/pending', 'site'],
+  ['/procurement/quotations', 'site'],
   ['/procurement/rates', 'site'],
   ['/subcontract/work-orders', 'site'],
   ['/subcontract/bills', 'site'],
