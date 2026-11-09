@@ -801,15 +801,15 @@ Why: 33% of v3 material save calls refused (31 Oct - 7 Nov); TMT and M-sand aske
 
 ## TSK — Tasks: who does what, by when ([plan](tasks-plan.md), 9 Nov 2026)
 
-Module 05 of the Capability Framework, the only Phase 1 module with nothing built ([gap analysis](capability-framework-gap-analysis.md)). **Its own module** (`tasks` switch, on by default, own sidebar group, `/tasks`), asked by Adarsh 9 Nov (D-T1); the module catalogue is a shared component, so the report names it for Alan, as CC-17 did. D-T2..D-T6 in the plan are recommendations, not yet confirmed.
+**Web only for now** (Adarsh, 9 Nov): the WhatsApp items (TSK-04, TSK-05, TSK-10, TSK-11) are deferred. Module 05 of the Capability Framework, the only Phase 1 module with nothing built ([gap analysis](capability-framework-gap-analysis.md)). **Its own module** (`tasks` switch, on by default, own sidebar group, `/tasks`), asked by Adarsh 9 Nov (D-T1); the module catalogue is a shared component, so the report names it for Alan, as CC-17 did. D-T2..D-T6 in the plan are recommendations, not yet confirmed.
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TSK-01 | **Tasks module and API:** `tasks` in the module catalogue (on by default, switched on where a list is stored, mounted in backend, production and agent apps); tables `tasks`, `task_events` (0533, additive, RLS); `domains/tasks`: list, summary, create (site / place / person by id or in words), get, patch, status moves, comments with photo; unit + contract tests | M | Must | — | done (`f8229c89`) | Claude (session 9 Nov, Adarsh) | `require_module("tasks")`; shared component (module catalogue): named in the report for Alan. Also fixed VENDOR_LINKS missing `project_documents` (since 0527). Found SEC-05 on the way |
 | TSK-02 | **Tasks module on the web:** own sidebar group (`module: 'tasks'`), `/tasks` (Mine / All / Overdue / Done), quick add, task panel with history, status buttons, photo; `RequireModule` guard; `/planning/tasks` → `/tasks` | M | Must | TSK-01, UX-05 | done (`06469c90`) | Claude (session 9 Nov, Adarsh) | Also `GET /tasks/options` for the pickers. No photo upload from the web yet (photos come from WhatsApp, TSK-04). |
 | TSK-03 | **Links:** "Make a task" from an Issue and a schedule activity; place; BOQ line with progress read from site work (never typed) | M | Must | TSK-01, TSK-02 | done (`97662f73`) | Claude (session 9 Nov, Adarsh) | Closing a task never records work (D-T4) Progress is per site, not per place yet (counted work has no place). Migration 0537 fixed BOQ line deletes under a task. |
-| TSK-04 | **Tasks on WhatsApp (v3):** `tasks`, `give_task`, `task_status`, `task_comment` in `ALLOWED`; SOP section (task vs work report vs issue); assistant tests | S | Must | TSK-01 | todo | — | |
-| TSK-05 | **Morning card and overdue note** on WhatsApp (`tasks_morning`, `tasks_overdue`), once a day, none when empty | S | Must | TSK-01 | todo | — | |
+| TSK-04 | **Tasks on WhatsApp (v3):** `tasks`, `give_task`, `task_status`, `task_comment` in `ALLOWED`; SOP section (task vs work report vs issue); assistant tests | S | Must | TSK-01 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
+| TSK-05 | **Morning card and overdue note** on WhatsApp (`tasks_morning`, `tasks_overdue`), once a day, none when empty | S | Must | TSK-01 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-06 | **Sidebar counts and Today card** (my open, overdue) | S | Should | TSK-02 | todo | — | |
 | TSK-07 | **Walkthrough for the team:** what to tell site, with the WhatsApp sentences | S | Should | TSK-02..05 | todo | — | |
 | TSK-08 | Subtasks and recurring tasks | M | Later | TSK-01 | todo | — | |
@@ -834,8 +834,9 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 | CV-11 | **Link preview:** per-link `og:` tags and a rendered card (name, %, cover photo) | S | Should | CV-06 | blocked | — | Needs Ilan: D-CV8; nginx change (ops) |
 | CV-12 | **Saturday digest and milestone messages** to the client on WhatsApp (Automation, template) | M | Later | CV-06 | blocked | — | Needs Ilan: D-CV9; Meta template approval (ops) |
 | CV-13 | **Office side:** preview as client, client's phone per link (`wa.me/<phone>`), opens per tab | S | Should | CV-03 | todo | — | |
-| TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | todo | — | |
-| TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | todo | — | |
+| TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
+| TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
+| TSK-12 | **Photo on a task from the web:** attach a photo when closing a task or in a comment (upload, like an expense bill: a photo or PDF, kept in object storage, shown in the history) | S | Should | TSK-02 | todo | — | Needed now that Tasks is web only: photos were to come from WhatsApp (TSK-04, deferred) |
 
 ## SCP — What the pages show: company, project, site (asked 9 Nov 2026, approved by Ilan in session)
 
