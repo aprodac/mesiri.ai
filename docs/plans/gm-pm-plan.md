@@ -60,6 +60,26 @@ Nothing here needs a second copy of any table, API or workflow.
 - Phone: swipe right approve, left reject (asks the reason). WhatsApp: "what is waiting for me?" lists them with
   buttons (v3 `ALLOWED` + SOP rule); the decision uses the existing decide tools.
 
+**As built (9 Nov 2026).** `domains/approvals/inbox.py` (one pure row builder per source, plus the collector) and
+`router.py`: `GET /approvals/inbox` (`project_id`, `kind`) and `GET /approvals/inbox/count`, mounted in all three
+apps (backend, the assistant's web app, the agent's API app). Five sources, each kept to what the caller may decide
+by **that module's own rule**: material requests waiting with no open order behind them (`may_act_on_material_requests`;
+Materials switch), subcontract bills waiting or flagged (`subcontracts.router.waiting_bills`, now the one rule that
+`/subcontracts/bills/waiting` also uses), work a subcontractor reported (`proposed` measurements; whoever may record at
+that site), RA bill drafts (`may_manage_money`), unit sizes nobody knew (`may_set_unit_conversions`; Materials switch).
+Each row: title, where, from, since, amount (money roles only; a request's is an estimate at the last rates), the
+deciding `fact` with a tone, and a group: flagged, waiting over 2 days, recent.
+**Left out, on purpose:** purchase orders (no draft state), stock adjustments (no approval step), expenses (they wait
+only as subcontract bills: one row, not two), hire bills (NXT-13 checks them but they have no approve / reject state
+yet, so they could never leave the list; they join when the hire check gets a decision).
+Dashboard: Site > **Waiting for you** (`/site/approvals`, `ApprovalsPage.tsx`, `lib/approvals.ts`), in the sidebar
+with a yellow count badge; tiles, kind tabs, grouped list, detail panel with the module's own buttons (a reason field
+where the module needs one), `j` / `k` / `a` / `r` / `o`, a bottom sheet on phones. Batch (D-GM2, narrowed): only
+"Confirm" on unflagged work to confirm; a request's "ordered" and a bill's approval stay one at a time (a bill needs a
+reason; "ordered" is a fact about one request). WhatsApp: v3 `waiting_for_me` + SOP rule 22; deciding uses the existing
+tools (`decide_material_request`, `approve_subcontract_bill`, `answer_size_request`); work to confirm and RA bills are
+sent to the dashboard page, never said done in chat.
+
 ### GM-02 Command centre (GM landing; part of CC-12)
 - Top strip: **sites reporting today 9/11**, **waiting for you 7**, **red items 4**, **projects late 2**.
 - One row per project (expand to its sites), worst first: health dot; schedule (on time / 6 days late, forecast
