@@ -82,11 +82,11 @@ through the after-close rule).
 Who: the company's statements are the money roles'; `/accounts/projects`, `/accounts/projects/{id}`, a project's
 `/accounts/pl` and `/accounts/home?project_id` are also its project manager's (D-ACC6).
 
-## Phase C: GST and TDS ()
+## Phase C: GST and TDS (`tax.py`)
 
 GST is read from the records (they carry the GSTIN and rate) and tied to the Output / Input GST ledgers. Claimable
 input follows D-CC8 (supplier GSTIN and GST said as included), the same rule as posting; the rest is "credit missed"
-with its reason. Place of supply: the company's GSTIN (letterhead, ) against the other party's first
+with its reason. Place of supply: the company's GSTIN (letterhead, `branding.gstin`) against the other party's first
 two digits: same state CGST + SGST, else IGST, unknown without both. TDS deducted is the payments from the TDS payable
 money account; deposits are transfers into it, applied oldest month first; due on the 7th (March: 30 April).
 
