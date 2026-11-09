@@ -97,6 +97,18 @@ sent to the dashboard page, never said done in chat.
   idle machine hours), Issues (open, owner, age), Waiting for you (this project only).
 - Every number links to the register that explains it.
 
+**As built (9 Nov 2026).** Dashboard only, no new API: `/projects/:id/cockpit` (`ProjectCockpitPage.tsx`) reads each
+module's own route as the person (schedule, budget vs actual, material plan, site days, open issues, machine logs,
+Waiting for you and Attention narrowed to the project), so every figure is the module's own and a panel the role may
+not see says so instead of a number. Header: stage, client, Schedule / BOQ / Setup. Tiles: handover (forecast against
+the contract date), work done (earned of the BOQ), spent (against the work: "points ahead"), committed. **Why it is
+red / amber**: this project's top three attention alerts (GM-04) with their buttons. Panels: schedule (mini Gantt,
+today line, critical tag, late outlined), cost by kind (spent against earned, forecast over / under), order in the
+next 7 days, today on site (what each site sent, machines' hours, idle and breakdown), open issues (oldest first, who
+is on it), waiting on this project. Ways in: **Cockpit** on the project list and the project's setup page (the old
+"Open" is now "Setup"), and the project name on each Attention alert. Not done here: the command centre landing
+(GM-02, D-GM1).
+
 ### GM-04 Attention feed and alerts (was CC-23, widened)
 - One feed of things that crossed a line: BOQ line or project over budget, site not reported by 6 pm, issue open
   more than 2 days with no owner, material order-by tomorrow, activity slipped onto the critical path, hire bill

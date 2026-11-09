@@ -161,6 +161,10 @@ export default function ProjectDetails() {
         date={facts.join(' · ') || undefined}
         action={
           <div className="flex flex-wrap items-center gap-2">
+            {/* GM-03: the project's cockpit (how it is going, and why). */}
+            <Button asChild size="sm" className="font-semibold">
+              <Link to={`/projects/${project.id}/cockpit`}>Cockpit</Link>
+            </Button>
             <Button asChild variant="outline" size="sm">
               <Link to={`/today?project=${project.id}`}>Today's updates</Link>
             </Button>

@@ -53,6 +53,7 @@ import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
 import ApprovalsPage from '@/pages/ApprovalsPage'
 import AttentionPage from '@/pages/AttentionPage'
+import ProjectCockpitPage from '@/pages/ProjectCockpitPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
@@ -179,6 +180,7 @@ export default function App() {
           {/* Setup */}
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
+          <Route path="projects/:id/cockpit" element={<ProjectCockpitPage />} />
           <Route path="projects/:id/boq" element={<ProjectBoqPage />} />
           <Route path="boq" element={<BoqIndexPage />} />
           {/* ST-04 / ST-05: the start of a project and its schedule. */}

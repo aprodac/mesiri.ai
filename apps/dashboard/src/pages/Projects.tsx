@@ -266,8 +266,11 @@ function ProjectRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        <Button asChild size="sm">
+          <Link to={`/projects/${project.id}/cockpit`}>Cockpit</Link>
+        </Button>
         <Button asChild variant="outline" size="sm">
-          <Link to={`/projects/${project.id}`}>Open</Link>
+          <Link to={`/projects/${project.id}`}>Setup</Link>
         </Button>
         {!readOnly && (
           <DropdownMenu>
