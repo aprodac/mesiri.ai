@@ -29,6 +29,7 @@ import { RoleHome } from '@/components/home/role-home'
 import { EmptyState } from '@/components/page/page-kit'
 import { useAuth } from '@/lib/AuthContext'
 import { BillsWaitingLine } from '@/components/subcontracts/parts'
+import { MyTasksCard } from '@/components/tasks/my-tasks-card'
 import {
   CHIP,
   FROZEN,
@@ -352,6 +353,7 @@ export default function TodayPage() {
       />
 
       {isToday && <RoleHome />}
+      {isToday && <MyTasksCard />}
       {isToday && <TimeSaved />}
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}

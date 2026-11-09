@@ -82,6 +82,18 @@ export interface TaskOptions {
   may_create: boolean
 }
 
+export interface TaskSummary {
+  mine_open: number
+  mine_overdue: number
+  overdue: number
+}
+
+/** TSK-06: how many are mine and how many are late, for the sidebar and Today (one project's when one is picked). */
+export async function fetchTaskSummary(projectId?: string | null): Promise<TaskSummary> {
+  const { data } = await api.get<TaskSummary>('/tasks/summary', { params: { project_id: projectId || undefined } })
+  return data
+}
+
 export async function fetchTasks(params: {
   project_id?: string | null
   site_id?: string | null

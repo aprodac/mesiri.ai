@@ -44,7 +44,7 @@ import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
-import { useNavCounts } from '@/lib/nav-counts'
+import { useNavCounts, useTaskCounts } from '@/lib/nav-counts'
 import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, sectionOrder, type ModuleGroup, type NavSection } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
 import { usePlannedPreview } from '@/lib/preview'
@@ -68,7 +68,9 @@ type NavItem = {
 }
 
 // A collapsible module in the sidebar (WEB-72): its pages come from lib/module-map.ts.
-type SubItem = { title: string; url: string; soon?: boolean; phase?: string }
+// A live count on a drawer's page (TSK-06): `tone` is the badge colour, `label` what the number means.
+type SubCount = { n: number; tone: keyof typeof BADGE; label: string }
+type SubItem = { title: string; url: string; soon?: boolean; phase?: string; count?: SubCount }
 type NavCategory = {
   key: string
   title: string
@@ -240,6 +242,9 @@ function CollapsibleNavCategory({
   if (category.items.length === 0) return null
   const IconComp = category.icon
   const allSoon = category.items.every((i) => i.soon)
+  // Closed, the drawer shows its most urgent count (red before orange), so nothing waits unseen.
+  const counted = category.items.map((i) => i.count).filter((c): c is SubCount => !!c && c.n > 0)
+  const headline = counted.find((c) => c.tone === 'issues') ?? counted[0]
 
   return (
     <SidebarMenuItem>
@@ -257,10 +262,16 @@ function CollapsibleNavCategory({
         )}
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <IconComp className={cn('size-4 shrink-0', isChildActive ? S.iconActive : S.icon)} />
+          <span className="relative shrink-0">
+            <IconComp className={cn('size-4', isChildActive ? S.iconActive : S.icon)} />
+            {headline && (
+              <span aria-hidden className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[headline.tone])} />
+            )}
+          </span>
           <span className={cn('truncate group-data-[collapsible=icon]:hidden', allSoon && !isChildActive && 'opacity-70')}>{category.title}</span>
         </div>
         <span className={cn('flex items-center gap-1.5 group-data-[collapsible=icon]:hidden', S.chevron)}>
+          {headline && !isOpen && <CountPill count={headline} />}
           <ChevronRight className={cn('size-3.5 transition-transform duration-200', isOpen && 'rotate-90')} />
         </span>
       </SidebarMenuButton>
@@ -285,12 +296,22 @@ function CollapsibleNavCategory({
                 {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full bg-yellow-400" />}
                 <span className="truncate">{item.title}</span>
                 {item.soon && <SoonDot className="ml-auto" />}
+                {item.count && item.count.n > 0 && <CountPill count={item.count} className="ml-auto" />}
               </Link>
             )
           })}
         </div>
       )}
     </SidebarMenuItem>
+  )
+}
+
+function CountPill({ count, className }: { count: SubCount; className?: string }) {
+  return (
+    <span className={cn('min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums', BADGE[count.tone], className)} title={`${count.n} ${count.label}`}>
+      {count.n > 99 ? '99+' : count.n}
+      <span className="sr-only"> {count.label}</span>
+    </span>
   )
 }
 
@@ -411,6 +432,12 @@ export function AppSidebar() {
   const userName = me?.name || me?.full_name || ''
 
   const counts = useNavCounts()
+  const taskCounts = useTaskCounts()
+  // TSK-06: My tasks counts what is mine still open (orange: waiting on me); Overdue counts what is late (red).
+  const pageCounts: Record<string, SubCount | undefined> = {
+    '/tasks': taskCounts ? { n: taskCounts.mine_open, tone: 'drafts', label: taskCounts.mine_overdue ? `open for you, ${taskCounts.mine_overdue} late` : 'open for you' } : undefined,
+    '/tasks?view=overdue': taskCounts ? { n: taskCounts.overdue, tone: 'issues', label: 'late' } : undefined,
+  }
   // "Finish setup" (SS-19): the getting-started card stays one click away,
   // hidden or not, until everything is done.
   const setup = useSetupProgress()
@@ -430,7 +457,7 @@ export function AppSidebar() {
     key: group.key,
     title: group.title,
     icon: group.icon,
-    items: group.pages.filter(pageVisible).map((p) => ({ title: p.navTitle ?? p.title, url: p.url, soon: p.status === 'planned', phase: p.phase })),
+    items: group.pages.filter(pageVisible).map((p) => ({ title: p.navTitle ?? p.title, url: p.url, soon: p.status === 'planned', phase: p.phase, count: pageCounts[p.url] })),
   })
   // A section's entries: a module with one page is a plain link, with several a drawer.
   type Entry = { kind: 'link'; item: NavItem } | { kind: 'category'; category: NavCategory }

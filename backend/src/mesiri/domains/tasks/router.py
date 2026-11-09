@@ -282,11 +282,12 @@ def _due_fits(task: dict[str, Any], due: str | None, today: datetime.date) -> bo
 
 
 @router.get("/summary")
-async def summary(auth: AuthorizationContext = Depends(get_auth_context),
+async def summary(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
                   conn: AsyncConnection = Depends(get_db_conn)):
-    """How many: mine still open, mine late, and late in the projects I see."""
+    """How many: mine still open, mine late, and late in the projects I see; one project's when the page has one
+    picked (the sidebar counts follow the scope, as the Today counts do, TSK-06)."""
     scope = None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
-    rows = await store.listing(conn, auth.organization_id, project_ids=scope, project_id=None, site_id=None,
+    rows = await store.listing(conn, auth.organization_id, project_ids=scope, project_id=project_id, site_id=None,
                                statuses=tuple(logic.LIVE), assignee_user_id=None, assignee_vendor_id=None, q=None,
                                limit=5000)
     today = await _today(conn, auth)

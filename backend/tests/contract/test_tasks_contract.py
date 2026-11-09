@@ -216,6 +216,11 @@ async def test_overdue_and_due_filters(client, co):
     assert [t["id"] for t in overdue] == [late["id"]] and overdue[0]["days_late"] >= 1
     summary = (await client.get("/tasks/summary", headers=co["arun"])).json()
     assert summary["mine_open"] == 2 and summary["mine_overdue"] == 1
+    # TSK-06: the sidebar counts follow the project picked; another project's tasks are not counted.
+    here = (await client.get("/tasks/summary", params={"project_id": str(co["project"])}, headers=co["arun"])).json()
+    assert here == summary
+    elsewhere = (await client.get("/tasks/summary", params={"project_id": str(uuid.uuid4())}, headers=co["arun"])).json()
+    assert elsewhere == {"mine_open": 0, "mine_overdue": 0, "overdue": 0}
 
 
 async def test_a_site_limited_engineer_sees_only_their_sites_and_their_own(client, co, test_engine):
