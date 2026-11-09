@@ -75,8 +75,10 @@ def delay_message(project_name: str, schedule: dict[str, Any]) -> str | None:
     return f"⏱️ *{project_name}* schedule\n" + "\n".join(lines) + finish + "\nPlanning › Schedule on the dashboard."
 
 
-def week_message(project_name: str, schedule: dict[str, Any], today: datetime.date) -> str | None:
-    """The Monday note: this week's work in order, and what is already late. None when the week is empty."""
+def week_message(project_name: str, schedule: dict[str, Any], today: datetime.date,
+                 tasks: list[dict[str, Any]] | None = None) -> str | None:
+    """The Monday note: this week's work in order, what is already late, and (GM-05) the Tasks module's open tasks
+    due this week and those overdue: the This week board as a message. None when the week is empty."""
     week_end = today + logic.DAY * 6
     late = [a for a in schedule["activities"] if a["state"] == logic.LATE]
     starting, running, finishing, waiting = [], [], [], []
@@ -90,7 +92,10 @@ def week_message(project_name: str, schedule: dict[str, Any], today: datetime.da
                 waiting.append(a)  # should be running, has not started
             else:
                 (finishing if a["end"] <= week_end else running).append(a)
-    if not (starting or running or finishing or waiting or late):
+    live = [t for t in (tasks or []) if t.get("status") in ("open", "doing", "blocked") and t.get("due_date")]
+    due_week = [t for t in live if today <= t["due_date"] <= week_end]
+    overdue = [t for t in live if t["due_date"] < today]
+    if not (starting or running or finishing or waiting or late or due_week or overdue):
         return None
     parts = []
     if starting:
@@ -106,6 +111,14 @@ def week_message(project_name: str, schedule: dict[str, Any], today: datetime.da
         parts.append("⚠️ Should have started: " + ", ".join(f"{a['name']} ({_day(a['start'])})" for a in waiting[:5]))
     if late:
         parts.append("⚠️ Late: " + ", ".join(f"{a['name']} ({_days(a['days_late'])})" for a in late[:5]))
+
+    def _task(t: dict[str, Any]) -> str:
+        who = f"{t['assignee_name']}, " if t.get("assignee_name") else ""
+        return f"{t['title']} ({who}{_day(t['due_date'])})"
+    if due_week:
+        parts.append("Tasks this week: " + ", ".join(_task(t) for t in sorted(due_week, key=lambda t: t["due_date"])[:6]))
+    if overdue:
+        parts.append("⚠️ Tasks overdue: " + ", ".join(_task(t) for t in sorted(overdue, key=lambda t: t["due_date"])[:5]))
     return (f"📅 *This week at {project_name}* ({_day(today)} - {_day(week_end)})\n" + "\n".join(parts)
             + "\nSend your work updates as usual: they fill in the schedule.")
 
@@ -117,6 +130,26 @@ async def _people(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, 
         "WHERE u.organization_id = :org AND u.status = 'active' AND u.whatsapp_number IS NOT NULL "
         "AND upper(u.role) = ANY(:roles) AND (m.id IS NOT NULL OR upper(u.role) IN ('ADMIN', 'OWNER', 'SUPER_ADMIN'))"),
         {"org": org, "p": project_id, "roles": list(roles)})).scalars().all()
+
+
+async def _tasks_on(conn: AsyncConnection, org: uuid.UUID) -> bool:
+    """GM-05: the Tasks module is switched on for this company (its own setting, read here, not through a request)."""
+    from mesiri.domains.organizations import settings as org_settings
+    from mesiri.infrastructure.postgres.repositories.organization_settings import (
+        PostgresOrganizationSettingsRepository,
+    )
+
+    stored = await PostgresOrganizationSettingsRepository(conn).get(org, org_settings.ENABLED_MODULES)
+    return org_settings.module_enabled("tasks", stored)
+
+
+async def _live_tasks(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
+    """GM-05: the project's open tasks (the Tasks module's own store), for the Monday note."""
+    from mesiri.domains.tasks import store as task_store
+
+    return await task_store.listing(conn, org, project_ids=None, project_id=project_id, site_id=None,
+                                    statuses=("open", "doing", "blocked"), assignee_user_id=None,
+                                    assignee_vendor_id=None, q=None, limit=200)
 
 
 async def queue_schedule_reminders(conn: AsyncConnection, organization_id: uuid.UUID, today: datetime.date) -> int:
@@ -131,11 +164,13 @@ async def queue_schedule_reminders(conn: AsyncConnection, organization_id: uuid.
         "AND w.planned_start IS NOT NULL)"), {"org": organization_id})).mappings().all()
     repo = PostgresNotificationRepository(conn)
     queued = 0
+    tasks_on = await _tasks_on(conn, organization_id)
     for proj in projects:
         schedule = await store.load(conn, organization_id, proj["id"], today)
         notes = [(DELAY_RULE, delay_message(proj["name"], schedule), MANAGER_ROLES)]
         if today.weekday() == 0:
-            notes.append((WEEK_RULE, week_message(proj["name"], schedule, today), WEEK_ROLES))
+            tasks = await _live_tasks(conn, organization_id, proj["id"]) if tasks_on else []
+            notes.append((WEEK_RULE, week_message(proj["name"], schedule, today, tasks), WEEK_ROLES))
         for rule, note, roles in notes:
             if note is None:
                 continue

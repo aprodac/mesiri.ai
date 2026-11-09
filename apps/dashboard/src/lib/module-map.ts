@@ -166,6 +166,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     pages: [
       { title: 'Project start', url: '/planning/setup', status: 'built', phase: 'V1', about: 'From "we won it" to "work starts": stage, contract dates, the BOQ from your Excel, the schedule, the site team, suppliers.', example: 'Upload the estimate sheet; 214 BOQ lines and a first schedule in 20 minutes.', tracker: 'ST-01, ST-03, ST-05', roles: MANAGERS, related: [{ title: 'Items', url: '/materials?view=items' }] },
       { title: 'Schedule', url: '/planning/schedule', status: 'built', phase: 'V1', about: 'The project timeline: what should happen when, what site has done, what is late and what it pushes.', example: 'Excavation 3 days late at 60%: footings and slab move; forecast handover 27 Nov.', tracker: 'ST-04' },
+      { title: 'This week', url: '/planning/week', status: 'built', phase: 'V1', about: "A project's week, Monday to Saturday: the schedule's work in it (ticked by site updates), the tasks due, and what slipped in from earlier weeks.", example: 'Slab 6F pour Thursday, 40% done; pump booked (Arun, Wed); water line slipped 5 days.', tracker: 'GM-05', related: [{ title: 'Schedule', url: '/planning/schedule' }, { title: 'My tasks', url: '/tasks' }] },
       { title: 'BOQ & budget', url: '/boq', status: 'built', phase: 'V1', about: 'Every work item with its quantity, client rate and budget rate.', example: 'Plastering 18,000 sq ft at ₹42; budget ₹36 per sq ft.', tracker: 'CC-02', roles: MONEY_ROLES },
       { title: 'Material plan', url: '/planning/materials', status: 'built', phase: 'V1', about: 'What each material is needed for, week by week, from the BOQ and the schedule, against stock and orders; red from the week it runs short.', example: 'First floor slab on 20 Nov needs 380 bags cement; 150 in stock: short from the week of 17 Nov.', tracker: 'MP-01, MP-02', roles: MONEY_ROLES, related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Stock', url: '/materials' }] },
       { title: 'Rate library', url: '/planning/rates', status: 'planned', phase: 'V1', about: "Standard output and material per unit of work, so a BOQ can be priced without a consultant.", example: 'Plastering 12 mm: 1 mason + 1 helper ≈ 80 sq ft a day. 1 m³ M20 ≈ 8 bags cement.', tracker: 'MP-01 (per BOQ line, built)', roles: MANAGERS, related: [{ title: 'BOQ & budget', url: '/boq' }, { title: 'Material plan', url: '/planning/materials' }] },
@@ -398,6 +399,7 @@ export const PAGE_ICONS: Record<string, LucideIcon> = {
   '/boq': Calculator,
   '/planning/setup': Rocket,
   '/planning/schedule': CalendarRange,
+  '/planning/week': CalendarRange,
   '/planning/materials': PackageSearch,
   '/planning/places': Layers,
   '/planning/live': MapPinned,

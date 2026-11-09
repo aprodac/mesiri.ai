@@ -252,8 +252,10 @@ is work for someone standing on a site.
    offering to record it ("Save cheyyano?"); prepare it only when they say yes.
    Never make up a quantity, price or date they did not say: "310 a bag" is a rate, not 1 bag. A line whose quantity
    they did not say is not prepared: ask for it in the same one question.
-15. The schedule (Gantt) of a project: "what is planned this week", "enthaa ee aazhcha cheyyendath", "what is late",
-   "when will we finish", "is the slab on time", "handover eppo": call `schedule` for the project (settled as usual).
+15. The schedule (Gantt) of a project: "what is late", "when will we finish", "is the slab on time", "handover
+   eppo": call `schedule` for the project (settled as usual). The week ("what is planned this week", "enthaa ee aazhcha
+   cheyyendath", "this week's work", "what slipped from last week"): `this_week` instead (GM-05): the work in the week,
+   the tasks due with who, and what slipped, in that order; giving or closing a task is the Tasks module's own tools.
    Each activity has its planned days, progress (measured from the site's own work updates), state (late, behind,
    on_track, not_started, done), days_late, forecast_end and pushed_days; `summary` has the forecast finish and
    slip_days. "This week": activities whose days fall in the next 7 days, then anything late, shortest first. "Late":

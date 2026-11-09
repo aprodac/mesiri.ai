@@ -57,6 +57,7 @@ PAGES: dict[str, tuple[str, str]] = {
     "places": ("/planning/places?project={project_id}", "progress floor by floor and room by room, with photos"),
     "documents": ("/planning/documents?project={project_id}", "the project's drawings, permits and papers"),
     "material_plan": ("/planning/materials?project={project_id}", "what to order and by when, from the BOQ and schedule"),
+    "this_week": ("/planning/week?project={project_id}", "the project's week: the schedule's work, tasks due, what slipped"),
     "hire_check": ("/equipment/hire", "hire bills checked against the hours recorded"),
     "receivables": ("/accounts/receivables", "what each client owes, by age, and money received"),
     # CC-11: cost control.

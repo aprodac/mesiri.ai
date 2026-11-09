@@ -321,6 +321,11 @@ ALLOWED: tuple[Allowed, ...] = (
             "The project's schedule (Gantt): each activity with planned start/end, progress measured from site work "
             "updates, state (late / behind / on_track / not_started / done), days_late, forecast_end, pushed_days "
             "(days the late work before it pushes it), critical; summary with forecast_finish and slip_days."),
+    # GM-05 (9 Nov 2026): one project's week: the schedule's work in it, the tasks due, what slipped (read only).
+    Allowed("this_week", "GET", "/projects/{project_id}/week",
+            "One project's week, Monday to Saturday (start: any day of another week; site_id to narrow): activities "
+            "in the week with progress, state, critical and the days they cover; tasks (the Tasks module) due in it "
+            "with who and done; slipped (activities and tasks not done in an earlier week, days_late); counts."),
     Allowed("update_schedule_activity", "PATCH", "/projects/{project_id}/schedule/activities/{activity_id}",
             "Prepare moving a schedule activity (activity_id from `schedule`): new start and/or end, or done=true when "
             "the PM says it is finished. The activities after it move with it." + _WRITE, hide=("preview", "push",

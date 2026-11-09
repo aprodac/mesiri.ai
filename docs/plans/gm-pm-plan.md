@@ -158,6 +158,14 @@ send these; a fourth push would repeat them. The morning brief (GM-08) will carr
   Work updates from WhatsApp tick them (planned item / activity link from CC-04). Saturday: what slipped,
   carried to next week with a reason. The Monday note (ST-06) becomes this board's message.
 
+**As built on main (9 Nov 2026).** No task table of its own: `GET /projects/{id}/week` (`schedule/week.py`, pure) reads
+the schedule's activities in the week (progress from site updates) and the **Tasks module's** tasks due in it, through
+`GET /tasks` as the caller (only when the `tasks` module is on); slipped = activities due to finish before the week and
+not done, tasks due before it still open. Planning > **This week** (`/planning/week`): week navigation, a Monday to
+Saturday grid of the schedule's work, tasks per day ticked through the Tasks module, "Give a task" with its own
+dialog, and what slipped. The Monday note (ST-06) now names the week's open tasks and the overdue ones. WhatsApp:
+`this_week` (read) in rule 15; giving or closing a task stays the Tasks module's tools.
+
 ### GM-06 Issue owner, due date, chase
 - An issue gets an owner (a team member) and a due date; overdue issues rise in the feed; "remind" sends the owner
   a WhatsApp nudge. Additive columns on issues. Closing from WhatsApp stays as today.

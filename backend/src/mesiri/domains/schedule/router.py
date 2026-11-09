@@ -21,7 +21,7 @@ import datetime
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -525,3 +525,35 @@ async def schedule_from_drawing(project_id: uuid.UUID, body: FromDrawing,
     out = await _respond(conn, auth, project_id, moved=[], focus=None)
     out.update(added=added, skipped=skipped)
     return out
+
+
+# -- GM-05: this week -------------------------------------------------------------------------------------------------
+
+@router.get("/projects/{project_id}/week")
+async def get_week(project_id: uuid.UUID, request: Request, start: datetime.date | None = None,
+                   site_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                   conn: AsyncConnection = Depends(get_db_conn)):
+    """GM-05: the week's board (any day of the week as ``start``; default this week): the schedule's activities in it
+    (their progress from site updates), the Tasks module's tasks due in it (as the caller sees them), and what slipped
+    into it. ``site_id``: one site's. Read only: tasks are given and ticked in the Tasks module."""
+    from mesiri.domains.organizations import settings as org_settings
+    from mesiri.domains.schedule import week
+    from mesiri.domains.shared.modules import read_enabled_modules
+
+    proj = await _project(conn, auth, project_id)
+    await _check_site(conn, project_id, site_id)
+    today = await _today(conn, auth)
+    monday = week.monday(start or today)
+    sched = await store.load(conn, auth.organization_id, project_id, today)
+    tasks: list[dict] = []
+    tasks_on = org_settings.module_enabled("tasks", await read_enabled_modules(request, auth.organization_id))
+    if tasks_on:
+        from mesiri.domains.tasks.router import list_tasks
+
+        try:
+            tasks = (await list_tasks(project_id=project_id, site_id=None, assignee=None, status="all", due=None, q=None,
+                                      limit=500, auth=auth, conn=conn))["items"]
+        except HTTPException:
+            tasks = []
+    out = week.board(sched, tasks, monday, today, str(site_id) if site_id else None)
+    return _iso({**out, "project": _project_out(proj), "tasks_module": tasks_on})

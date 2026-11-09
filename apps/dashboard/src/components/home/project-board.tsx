@@ -28,9 +28,9 @@ export function ProjectBoard({ withMoney }: { withMoney: boolean }) {
   const waiting = useQuery({ queryKey: ['home', 'board', 'waiting'], queryFn: fetchWaiting, ...opts })
   const money = withMoney && !portfolio.isError
 
-  const rows = React.useMemo(() => (lifecycle.data ?? []).filter((p) => LIVE.includes(p.stage)).map((p) => {
+  const rows = React.useMemo(() => (Array.isArray(lifecycle.data) ? lifecycle.data : []).filter((p) => LIVE.includes(p.stage)).map((p) => {
     const alerts = (attention.data?.items ?? []).filter((a) => a.project_id === p.id)
-    const cost = portfolio.data?.projects.find((c) => c.project_id === p.id)
+    const cost = portfolio.data?.projects?.find((c) => c.project_id === p.id)
     const sites = (days.data?.items ?? []).filter((s) => s.project_id === p.id)
     const bad = alerts.filter((a) => a.severity === 'bad').length
     const score = bad * 10 + alerts.length + (p.slip_days > 0 ? 5 : 0) + (cost?.colour === 'red' ? 5 : cost?.colour === 'amber' ? 2 : 0)

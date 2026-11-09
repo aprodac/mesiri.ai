@@ -31,13 +31,17 @@ export interface AttentionFeed {
 
 export const ATTENTION_KEY = ['attention'] as const
 
+const NO_COUNTS: AttentionFeed['counts'] = { total: 0, bad: 0, warn: 0, snoozed: 0 }
+
 export async function fetchAttention(projectId?: string | null): Promise<AttentionFeed> {
-  return (await api.get<AttentionFeed>('/attention', { params: projectId ? { project_id: projectId } : {} })).data
+  const data = (await api.get<Partial<AttentionFeed>>('/attention', { params: projectId ? { project_id: projectId } : {} })).data
+  // An answer without a field (an older API, a stub) still renders: empty lists, zero counts.
+  return { date: data?.date ?? '', items: data?.items ?? [], snoozed: data?.snoozed ?? [], counts: { ...NO_COUNTS, ...(data?.counts ?? {}) } }
 }
 
 export async function fetchAttentionCount(projectId?: string | null): Promise<AttentionFeed['counts']> {
-  const res = await api.get<{ counts: AttentionFeed['counts'] }>('/attention/count', { params: projectId ? { project_id: projectId } : {} })
-  return res.data.counts
+  const res = await api.get<{ counts?: AttentionFeed['counts'] }>('/attention/count', { params: projectId ? { project_id: projectId } : {} })
+  return { ...NO_COUNTS, ...(res.data?.counts ?? {}) }
 }
 
 /** Not now: hidden for this person until `days` from today (1 = the rest of today). Back after, if still true. */

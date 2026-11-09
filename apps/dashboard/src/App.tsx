@@ -55,6 +55,7 @@ import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
 import AttentionPage from '@/pages/AttentionPage'
+import WeekPage from '@/pages/WeekPage'
 import TasksPage from '@/pages/TasksPage'
 import SettingsPage from '@/pages/SettingsPage'
 import WagesPage from '@/pages/WagesPage'
@@ -147,6 +148,7 @@ export default function App() {
           <Route path="reports/:date/projects/:projectId" element={<ProjectDayPage />} />
           <Route path="issues" element={<OperationsIssuesPage />} />
           <Route path="site/attention" element={<AttentionPage />} />
+          <Route path="planning/week" element={<WeekPage />} />
 
           {/* Site records: everything the sites sent, across days. */}
           <Route path="site-log" element={<SiteLogPage />} />
