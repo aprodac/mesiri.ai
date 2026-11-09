@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ProjectHub } from '@/components/home/project-hub'
 import { Archive, Calculator, Clock, FileText, MapPin, MoreHorizontal, Pencil, Plus, Send, Sparkles, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,7 +27,6 @@ import {
 } from '@/lib/projects'
 import { roleLabel } from '@/lib/permissions'
 import { CHIP, localIsoDate, plural, siteDayPath } from '@/lib/site-day'
-import { useModuleEnabled } from '@/lib/modules'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchBoq, formatRupees, maySeeBoq } from '@/lib/boq'
 import { usePageTitle } from '@/lib/page-title'
@@ -61,7 +61,6 @@ export default function ProjectDetails() {
   const toast = useToast()
   const readOnly = useReadOnly()
   const { me } = useAuth()
-  const isModuleEnabled = useModuleEnabled()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [today] = React.useState(() => localIsoDate(new Date()))
@@ -161,14 +160,6 @@ export default function ProjectDetails() {
         date={facts.join(' · ') || undefined}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link to={`/today?project=${project.id}`}>Today's updates</Link>
-            </Button>
-            {isModuleEnabled('finance') && (
-              <Button asChild variant="outline" size="sm">
-                <Link to={`/finance/expenses?project_id=${project.id}`}>Finance</Link>
-              </Button>
-            )}
             {!readOnly && (
               <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setProjectDialogOpen(true)}>
                 <Pencil className="size-3.5" /> Edit details
@@ -205,6 +196,8 @@ export default function ProjectDetails() {
           No sites yet: updates from WhatsApp need a site to land on.
         </Callout>
       ) : null}
+
+      <ProjectHub projectId={project.id} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col">

@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { LinkedStrip } from '@/components/page/page-kit'
+import { raBillLinks } from '@/lib/links'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Trash2, Undo2 } from 'lucide-react'
@@ -238,6 +240,7 @@ function BillView({ billId, onRemoved }: { billId: string; onRemoved: () => void
         )}
       </dl>
       <CertifyDialog bill={b} open={certifying} onOpenChange={setCertifying} onSaved={put} />
+      <LinkedStrip records={raBillLinks(b)} className="border-t pt-3" />
     </section>
   )
 }

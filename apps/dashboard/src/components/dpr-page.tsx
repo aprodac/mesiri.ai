@@ -1,8 +1,9 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ArrowLeft, Check, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { findPage } from '@/lib/module-map'
 
 // The building blocks of the site and project DPR pages (WEB-04/05, reworked
 // in WEB-25): one white page in flat sections split by rules, not a stack of
@@ -212,14 +213,22 @@ export function DprHeader({
   date?: string
   action?: React.ReactNode
 }) {
+  // UX-08: a module's own page (its address is the page's address in lib/module-map.ts) is reached from the
+  // sidebar, and the top bar already says "Module › Page" on a laptop; its back line then names the module as
+  // the map does, on phones only (the top bar hides its breadcrumb there). A detail page (one project, one
+  // ledger) keeps its real "up" link everywhere.
+  const { pathname, search } = useLocation()
+  const hit = findPage(pathname, search)
+  const modulePage = !!hit && hit.page.url.split('?')[0] === pathname
+  const up = modulePage && hit && hit.group.key !== 'site' ? { to: hit.group.pages.find((p) => p.status === 'built' && !p.shortcut)?.url ?? back.to, label: hit.group.title } : back
   return (
     <header className="flex flex-col gap-1">
-      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Link to={back.to} className="inline-flex items-center gap-1 hover:text-foreground">
-          <ArrowLeft className="size-4" /> {back.label}
+      <p className={cn('flex items-center gap-1.5 text-sm text-muted-foreground', modulePage && 'md:hidden')}>
+        <Link to={up.to} className="inline-flex items-center gap-1 hover:text-foreground">
+          <ArrowLeft className="size-4" /> {up.label}
         </Link>
         <span aria-hidden>/</span>
-        <span className="truncate">{crumb}</span>
+        <span className="truncate">{modulePage && hit ? hit.page.title : crumb}</span>
       </p>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
