@@ -556,7 +556,7 @@ Plan: [cost-control-plan.md](cost-control-plan.md). The client values a DPR alon
 
 ## ACC — Accounts: full accounting and finance (9 Nov 2026)
 
-Plan: [accounts-plan.md](accounts-plan.md). **Waiting for Ilan's approval** (security-sensitive: posting, closing and reopening the books; shared: roles, module map, every money record read as a source). Decisions D-ACC1..D-ACC10 in the plan, each with a recommended default. Build order: A foundation (01–05), B statements (06–09), C tax (10–11), D control (12–15), E year end (16–18), F out (19–21).
+Plan: [accounts-plan.md](accounts-plan.md). **Waiting for Ilan's approval** (security-sensitive: posting, closing and reopening the books; shared: roles, module map, every money record read as a source). Decisions D-ACC1..D-ACC12 in the plan, each with a recommended default. Build order: A foundation (01–05), B statements (06–09, 22, 23), C tax (10–11), D control (12–15), E year end (16–18), F out (19–21).
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -581,6 +581,8 @@ Plan: [accounts-plan.md](accounts-plan.md). **Waiting for Ilan's approval** (sec
 | ACC-19 | **Tally export from the posted journals** (one source of truth; replaces NXT-12's direct reads) | S | Must | ACC-04 | todo | — | Waits for the plan's approval and D-ACC1..10 |
 | ACC-20 | **WhatsApp reads** for owner / accountant (cash, profit, GST, statements) via v3 `ALLOWED` + SOP | S | Should | ACC-06 | todo | — | Waits for the plan's approval and D-ACC1..10 |
 | ACC-21 | **PDF / Excel of every report; party statements shared on WhatsApp** | M | Should | ACC-06 | todo | — | Waits for the plan's approval and D-ACC1..10 |
+| ACC-22 | **Company / project / site on every report** (scope bar): trial balance, day book, ledgers, P&L, cash and bank, ageing, GST / TDS for review; head-office money stays company-level | M | Must | ACC-05 | todo | — | Ilan, 9 Nov: "company wise and project wise also needed" |
+| ACC-23 | **Overheads to projects:** optional monthly allocation journal (by cost or billing share); project P&L before and after overheads (D-ACC11) | S | Should | ACC-08 | todo | — | Off by default |
 
 ---
 

@@ -3,7 +3,7 @@
 > Asked by Ilan, 9 Nov 2026: "create a plan and let's create full accounting and finance module with rich UX".
 > Status: **plan, waiting for approval** (Phase 2 of the protocol). Accounts is security-sensitive (who can post,
 > close and reopen the books) and touches shared components (roles, module map, every money record as a source),
-> so it does not start in autonomous mode. Decisions D-ACC1..D-ACC10 below each carry a recommended default.
+> so it does not start in autonomous mode. Decisions D-ACC1..D-ACC12 below each carry a recommended default.
 
 ## 1. Objective
 
@@ -129,6 +129,31 @@ Asset register (from an expense marked capital, or added), WDV depreciation at I
 monthly or yearly; disposal. Year end: closing entries move P&L to capital / reserves, the next year opens with the
 balances, the year locks.
 
+### 5.8 Company-wise and project-wise (Ilan, 9 Nov: "company wise and project wise also needed")
+
+Every journal line carries its **project, site and cost centre** (taken from the source record: an expense's project
+and site, a bill's project, a receipt's project). So every book can be read three ways, with the same scope bar the
+dashboard already has (All projects / a project / a site):
+
+| Report | Company | Project | Site |
+|---|---|---|---|
+| Trial balance, day book, ledger statements | yes | yes (lines of that project) | yes |
+| P&L | yes | **yes: billed − every cost booked to it, by cost centre, against the BOQ budget and forecast** | yes (cost side) |
+| Balance sheet | yes (the legal one) | **Project position** instead: work billed, received, receivable, retention held by the client, advances, what the project owes suppliers and subcontractors, retention held by us, cost to date vs billed (WIP) | — |
+| Cash and bank books | yes | money paid or received for the project | the site's petty cash |
+| Receivables / payables ageing | yes | yes | — |
+| GST, TDS | yes (returns are per GSTIN) | yes (for review; filing stays company-wise) | — |
+| Accounts home | yes | yes (the project's own home) | — |
+
+**Money with no project** (head office rent, salaries of office staff, bank interest, capital, loans) stays on the
+company's books as "Head office" and is never forced onto a project. **Overheads to projects (D-ACC11):** an optional
+monthly allocation journal shares head-office expenses over projects (by cost or by billing, the company picks), so
+project P&L can be shown before and after overheads; off by default.
+
+**Several companies (D-ACC12):** each company in Mesiri already has its own books (row-level security per company,
+as today). A group owner with several legal companies sees each company's books separately; a consolidated group view
+is later.
+
 ## 6. UX and UI (rich, but the least work for the user)
 
 | Screen | What it does | Notes |
@@ -139,7 +164,7 @@ balances, the year locks.
 | **New voucher** | Manual journal / contra with ledger search-as-you-type, Dr / Cr columns that balance live, project and cost centre per line | Tally-like speed: Tab between cells, Ctrl+Enter to save |
 | **Ledger statement** | Any ledger or party: opening, lines, running balance; share on WhatsApp / PDF | Party statements to suppliers and clients |
 | **Trial balance / P&L / Balance sheet** | Period picker, compare columns, expand groups, drill to ledger, Excel / PDF | Same visual language as Cost control |
-| **Project P&L** | Billed, cost by centre, margin, against BOQ budget (CC-18 forecast) | Replaces CC-20 |
+| **Project P&L and Project position** | Billed, cost by centre, margin, against BOQ budget (CC-18 forecast); billed / received / receivable / retention / advances / payables of the project | Replaces CC-20; every report also switches Company / Project / Site with the scope bar |
 | **GST** | Month view: output, input, net payable; purchase list by GSTIN; missing GSTIN warnings | Export for the CA |
 | **TDS** | Deducted (to deposit) by section and month; deducted by clients | Due dates shown |
 | **Bank reconciliation** | Upload statement, auto-match, confirm, create missing journals | Progress bar to "reconciled" |
@@ -189,7 +214,7 @@ money table.
 | Phase | Items | Why this order |
 |---|---|---|
 | A. Foundation | ACC-01 chart of accounts + seeds + links · ACC-02 years and periods · ACC-03 journals + balance check · ACC-04 posting engine: expenses, payments, transfers, receipts, RA bills, client receipts, subcontract and hire bills · ACC-05 trial balance + day book + ledger statement | Nothing reports without journals |
-| B. Statements | ACC-06 P&L + balance sheet · ACC-07 cash & bank books · ACC-08 project P&L (absorbs CC-20) · ACC-09 Accounts home | What the owner looks at |
+| B. Statements | ACC-06 P&L + balance sheet · ACC-07 cash & bank books · ACC-08 project P&L + project position (absorbs CC-20) · ACC-09 Accounts home · ACC-22 company / project / site scope on every report · ACC-23 overhead allocation | What the owner looks at, for the company and each project |
 | C. Tax | ACC-10 GST summary + purchase list · ACC-11 TDS registers | Monthly filing support |
 | D. Control | ACC-12 manual vouchers · ACC-13 bank reconciliation · ACC-14 period close + changes after close · ACC-15 deliveries-not-billed accrual | What the accountant needs to trust it |
 | E. Year end | ACC-16 fixed assets + depreciation · ACC-17 year end + carry forward · ACC-18 cash flow | Once a year |
@@ -210,6 +235,8 @@ Each item is its own commits, tested, pushed, with its tracker row; the first de
 | D-ACC7 | Year and money | **April–March, INR only, GST as recorded on each bill (CGST + SGST when the place of supply is the company's state, IGST otherwise)** |
 | D-ACC8 | Chart of accounts | **Tally's primary groups + construction ledgers seeded; the company renames, adds and regroups** |
 | D-ACC9 | Depreciation | **WDV at Income-tax rates; SLM (Companies Act) as a company setting** |
+| D-ACC11 | Head-office overheads in project P&L | **Optional monthly allocation by cost share (or billing share), off by default; project P&L shows before and after** |
+| D-ACC12 | Several companies of one owner | **Separate books per company (as today); a consolidated group view later** |
 | D-ACC10 | Module switch | **A new module `accounts` (off by default, V1.1 paid add-on per V1_SCOPE), separate from `finance`, so existing companies see no change until it is switched on** |
 
 ## 12. Risks
