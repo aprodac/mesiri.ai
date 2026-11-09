@@ -837,6 +837,7 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 | TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-12 | **Photo on a task from the web:** attach a photo when closing a task or in a comment (upload, like an expense bill: a photo or PDF, kept in object storage, shown in the history) | S | Should | TSK-02 | done | Claude (f5b1eff3) | Needed now that Tasks is web only: photos were to come from WhatsApp (TSK-04, deferred) |
+| TSK-13 | **Tasks as its own sidebar section** (TASKS, pages as rows, counts on them), not a drawer under SITE | S | Should | TSK-06 | done | Claude (92e2eb81) | Adarsh, 9 Nov: "own sidebar section". Also fixed aria-current on sidebar rows with ?view= |
 
 ## SCP — What the pages show: company, project, site (asked 9 Nov 2026, approved by Ilan in session)
 
