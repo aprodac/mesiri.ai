@@ -65,6 +65,6 @@ No agent (`ALLOWED`) route yet: sharing from WhatsApp ("send Mr. Thomas his link
 Revert the commits. Migration 0534 only adds `client_links`; its downgrade refuses while links exist. Turning off
 every link (`UPDATE client_links SET revoked_at = now()`) stops all access without a deploy.
 
-## Later (CV-04)
+## Later (CV-04 and the rich UX, CV-05..CV-13: [client-view-ux-plan](client-view-ux-plan.md))
 
 The client asks or complains from the page; it reaches the PM as an Issue (module 30, "client requests").

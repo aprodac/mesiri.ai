@@ -824,7 +824,16 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 | CV-01 | **Links:** `client_links` (migration 0534, token stored only as SHA-256), make / list / revoke for owner, admin, finance (`may_manage_money`) | S | Must | NXT-01 | done | Claude (session 9 Nov) | **Done `b8d4a1d`**. Plan: [client-view-plan](client-view-plan.md) |
 | CV-02 | **Public read** `GET /client/{token}`: company name and logo, progress and milestones, photos from approved/published site reports, submitted/certified RA bills with received and due, payments; fixed allow-list, no rates or costs | M | Must | CV-01 | done | Claude (session 9 Nov) | **Done `b8d4a1d`**. Plan: [client-view-plan](client-view-plan.md) |
 | CV-03 | **Web:** `/c/:token` (no login, phone first); "Share with client" on the project's contract; `/billing/client-view` lists links with revoke | M | Must | CV-02 | done | Claude (session 9 Nov) | **Done `cb0022f`**, aligned `e21a56e`. Plan: [client-view-plan](client-view-plan.md) |
-| CV-04 | Client asks or complains from the page (goes to the PM as an Issue) | M | Later | CV-03 | todo | — | Module 30 "client requests" |
+| CV-04 | **Ask:** question / change / complaint from the page with photo or voice, reaches the PM as an Issue (`CLIENT`), replies thread | L | Should | CV-05 | blocked | — | Needs Ilan: D-CV7 ([ux plan](client-view-ux-plan.md)); price approval waits for NXT-04 |
+| CV-05 | **App shell:** bottom tabs (Home, Progress, Photos, Bills, Ask), per-tab addresses under `/c/:token`, builder's colour, skeletons, add to home screen | M | Should | CV-03 | todo | — | [ux plan](client-view-ux-plan.md) |
+| CV-06 | **Home:** cover photo, progress ring and On time pill, next milestone, "this week" from approved reports, money bar | M | Should | CV-05 | todo | — | |
+| CV-07 | **Progress:** done vs should-be, milestone timeline with late reasons (hindrance register), floor by floor (LP roll-up) | M | Should | CV-05 | blocked | — | Needs Ilan: D-CV5 (show should-be % and floors) |
+| CV-08 | **Photos:** by week, floor filter, full-screen swipe viewer, before / after; thumbnails; paged route | M | Should | CV-05 | todo | — | |
+| CV-09 | **Bills:** due card, contract bar, per-bill breakdown, bill and statement PDF behind the token | M | Should | CV-05 | blocked | — | Needs Ilan: D-CV4 (client sees their own bill's lines) |
+| CV-10 | **Pay by UPI:** company UPI ID and QR, "I have paid" with UTR → draft receipt finance confirms | M | Later | CV-09 | blocked | — | Needs Ilan: D-CV6 |
+| CV-11 | **Link preview:** per-link `og:` tags and a rendered card (name, %, cover photo) | S | Should | CV-06 | blocked | — | Needs Ilan: D-CV8; nginx change (ops) |
+| CV-12 | **Saturday digest and milestone messages** to the client on WhatsApp (Automation, template) | M | Later | CV-06 | blocked | — | Needs Ilan: D-CV9; Meta template approval (ops) |
+| CV-13 | **Office side:** preview as client, client's phone per link (`wa.me/<phone>`), opens per tab | S | Should | CV-03 | todo | — | |
 | TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | todo | — | |
 | TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | todo | — | |
 
