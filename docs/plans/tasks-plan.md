@@ -8,8 +8,9 @@ TSK-04 (WhatsApp tools) and TSK-05 (WhatsApp morning card and overdue note) are 
 that build on them. TSK-12 built 9 Nov: a photo or PDF from the web, with a comment or by "Done with photo" (the expense-bill
 rule: shrunk in the page, 700 KB, checked against its bytes, kept under `org/{org}/tasks/{task}/`). TSK-06 built 9 Nov: sidebar counts (My tasks: mine open,
 orange; Overdue: late, red; the closed drawer shows the red one first) and a My tasks card on Today (mine, late first,
-and how many are late for others), both from `GET /tasks/summary`, which now takes the picked project. Left for the
-web: TSK-07 (walkthrough). Sections 7 and 8 below describe the deferred WhatsApp work and stay as the design for when it comes. **Tasks is its own module** (`tasks` switch, own sidebar group, own
+and how many are late for others), both from `GET /tasks/summary`, which now takes the picked project. TSK-07 built 9 Nov:
+[the walkthrough](../training/tasks/tasks-walkthrough.md) (web only, real screenshots). Every web item is built;
+what remains is the deferred WhatsApp work and the Later items (TSK-08..11). Sections 7 and 8 below describe the deferred WhatsApp work and stay as the design for when it comes. **Tasks is its own module** (`tasks` switch, own sidebar group, own
 routes under `/tasks`), asked in session by Adarsh on 9 Nov ("want new module proper"), the same way Cost control
 became one (CC-17). Tracker section **TSK** in [V1_TRACKER.md](V1_TRACKER.md).
 **Why now:** module 05 "Task & Work Management" is the only module in Phase 1 of the Capability Framework with
