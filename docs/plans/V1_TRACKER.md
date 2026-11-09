@@ -810,7 +810,7 @@ Why: 33% of v3 material save calls refused (31 Oct - 7 Nov); TMT and M-sand aske
 | TSK-03 | **Links:** "Make a task" from an Issue and a schedule activity; place; BOQ line with progress read from site work (never typed) | M | Must | TSK-01, TSK-02 | done (`97662f73`) | Claude (session 9 Nov, Adarsh) | Closing a task never records work (D-T4) Progress is per site, not per place yet (counted work has no place). Migration 0537 fixed BOQ line deletes under a task. |
 | TSK-04 | **Tasks on WhatsApp (v3):** `tasks`, `give_task`, `task_status`, `task_comment` in `ALLOWED`; SOP section (task vs work report vs issue); assistant tests | S | Must | TSK-01 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-05 | **Morning card and overdue note** on WhatsApp (`tasks_morning`, `tasks_overdue`), once a day, none when empty | S | Must | TSK-01 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
-| TSK-06 | **Sidebar counts and Today card** (my open, overdue) | S | Should | TSK-02 | todo | — | |
+| TSK-06 | **Sidebar counts and Today card** (my open, overdue) | S | Should | TSK-02 | done | Claude (b971de29) | |
 | TSK-07 | **Walkthrough for the team:** what to tell site, with the WhatsApp sentences | S | Should | TSK-02..05 | todo | — | |
 | TSK-08 | Subtasks and recurring tasks | M | Later | TSK-01 | todo | — | |
 | TSK-09 | Checklist templates on a task (base for Quality, module 16) | M | Later | TSK-01 | todo | — | |
