@@ -40,6 +40,14 @@ _workforce_workers = sa.Table(
     sa.Column("created_by", sa.UUID(as_uuid=True)),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
     sa.Column("updated_by", sa.UUID(as_uuid=True)),
+    # LW-01 (0535): phone, home project and site, team (a labour contractor's vendor), wage basis, dates.
+    sa.Column("phone", sa.String),
+    sa.Column("project_id", sa.UUID(as_uuid=True)),
+    sa.Column("site_id", sa.UUID(as_uuid=True)),
+    sa.Column("vendor_id", sa.UUID(as_uuid=True)),
+    sa.Column("wage_basis", sa.String),
+    sa.Column("joined_on", sa.Date),
+    sa.Column("left_on", sa.Date),
 )
 
 _labour_attendance_reports = sa.Table(
@@ -346,7 +354,9 @@ class PostgresWorkforceReadRepository:
         contractor: str | None,
         status: str,
         created_by: uuid.UUID,
+        **extra: Any,
     ) -> dict[str, Any]:
+        """``extra``: the LW-01 fields (phone, project_id, site_id, vendor_id, wage_basis, joined_on, left_on)."""
         worker_id = uuid.uuid4()
         await self._conn.execute(
             _workforce_workers.insert().values(
@@ -362,6 +372,7 @@ class PostgresWorkforceReadRepository:
                 created_by=created_by,
                 updated_at=sa.func.now(),
                 updated_by=created_by,
+                **{k: v for k, v in extra.items() if v is not None},
             )
         )
         worker = await self.get_worker(organization_id, worker_id)

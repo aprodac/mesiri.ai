@@ -841,16 +841,16 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| LW-01 | **Register: workers and teams** (phone, home site, team = vendor kind `labour`, joined/left) | M | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-02 | **Muster roll**: month grid per site from attendance; PDF / Excel | M | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-03 | **Advances** to a worker or team from a money account; balances | M | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-04 | **Wage sheet** per site per pay period: days × wage + OT − advances − deductions; draft → approved | L | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-05 | **Payment** from a money account; payment slip on WhatsApp; carry-forward | M | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-06 | **Books**: wages accrual, advance, payment, recovery posting rules; Tally follows | M | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-07 | **WhatsApp** (v3 ALLOWED + SOP): advance, wage due, paid, send slip | M | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-08 | **Connections**: links, Home tiles (wages due, advances), project hub Labour tile, help | S | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-09 | **Dashboard**: Labour drawer (Attendance, Muster roll, Workers & teams, Wages, Advances) on the page kit | L | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
-| LW-10 | **Reports**: labour by project/site/trade/team; worker statement | M | Must | — | blocked | — | Workforce / Payroll: needs Ilan's approval of the plan and D-W1..D-W7 (CLAUDE.md) |
+| LW-01 | **Register: workers and teams** (phone, home site, team = vendor kind `labour`, joined/left) | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-02 | **Muster roll**: month grid per site from attendance; PDF / Excel | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-03 | **Advances** to a worker or team from a money account; balances | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-04 | **Wage sheet** per site per pay period: days × wage + OT − advances − deductions; draft → approved | L | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-05 | **Payment** from a money account; payment slip on WhatsApp; carry-forward | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-06 | **Books**: wages accrual, advance, payment, recovery posting rules; Tally follows | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-07 | **WhatsApp** (v3 ALLOWED + SOP): advance, wage due, paid, send slip | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-08 | **Connections**: links, Home tiles (wages due, advances), project hub Labour tile, help | S | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-09 | **Dashboard**: Labour drawer (Attendance, Muster roll, Workers & teams, Wages, Advances) on the page kit | L | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
+| LW-10 | **Reports**: labour by project/site/trade/team; worker statement | M | Must | — | todo | — | **Approved 9 Nov (Ilan, in session): plan and defaults D-W1..D-W7** |
 
 ## Done log
 

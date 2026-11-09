@@ -4,8 +4,8 @@
 > workforce module with connection to others and full features and UX the users will need"). Tracker items
 > `LW-01`..`LW-10` in [V1_TRACKER.md](V1_TRACKER.md). Replaces NXT-09 (Wages and advances).
 >
-> **Approval:** this changes Workforce / Payroll behaviour (CLAUDE.md Module Isolation; D-N4 in
-> [next-modules-plan.md](next-modules-plan.md)), so building waits for **Ilan's yes** on this plan and §9.
+> **Approved 9 Nov 2026 by Ilan (in session):** the plan and the defaults D-W1..D-W7 in §9, unchanged. It changes
+> Workforce / Payroll behaviour (CLAUDE.md Module Isolation; D-N4 in [next-modules-plan.md](next-modules-plan.md)).
 
 ---
 

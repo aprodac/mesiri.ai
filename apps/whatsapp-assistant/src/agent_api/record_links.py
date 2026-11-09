@@ -79,6 +79,10 @@ RECORD_PAGES: dict[str, str | None] = {
     "record_client_receipt": "receivables",  # NXT-03: what the client owes now
     # CC-11: labour put on a BOQ line; Budget vs actual shows the line's labour, the project in the path.
     "put_labour_on_boq": "budget_vs_actual",
+    # LW-07: wages and advances (the Labour pages).
+    "give_labour_advance": "advances",
+    "approve_wage_sheet": "wages",
+    "pay_wages": "wages",
 }
 
 #: Where a page's placeholder is read from, in order: the saved request body, then the API's answer.

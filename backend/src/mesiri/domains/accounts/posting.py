@@ -218,6 +218,39 @@ def opening_vendor_entries(v: dict[str, Any]) -> list[dict[str, Any]]:
                   lines)]
 
 
+def labour_accrual_entries(day: datetime.date, project_id: Any, site_id: Any, amount: Any, words: str) -> list[dict[str, Any]]:
+    """LW-06: a month's attendance at its wage on a site: Dr Labour wages (the labour cost, as cost control counts it),
+    Cr Wages payable. Paying the wages (a money movement) clears the payable."""
+    amount = money(amount)
+    if amount <= 0:
+        return []
+    lines = [line(code("labour_wages"), amount, True, project_id=project_id, site_id=site_id, cost_centre="labour"),
+             line(code("wages_payable"), amount, False, project_id=project_id, site_id=site_id)]
+    return [entry("main", day, "journal", words, lines, project_id)]
+
+
+def wage_row_entries(day: datetime.date, project_id: Any, site_id: Any, payee: str, recovered: Any = 0,
+                     overtime: Any = 0, deducted: Any = 0) -> list[dict[str, Any]]:
+    """LW-06: what an approved wage sheet row adds to the attendance accrual, so Wages payable ends at what is still
+    owed: overtime earned (Dr Labour wages, Cr Wages payable), deductions kept back (Dr Wages payable, Cr Labour wages:
+    the cost is that much less) and the advance taken back (Dr Wages payable, Cr Advances to labour)."""
+    at = {"project_id": project_id, "site_id": site_id}
+    out = []
+    if money(overtime) > 0:
+        out.append(entry("overtime", day, "journal", f"Overtime · {payee}", [
+            line(code("labour_wages"), overtime, True, cost_centre="labour", **at),
+            line(code("wages_payable"), overtime, False, **at)], project_id))
+    if money(deducted) > 0:
+        out.append(entry("deductions", day, "journal", f"Deducted from {payee}'s wages", [
+            line(code("wages_payable"), deducted, True, **at),
+            line(code("labour_wages"), deducted, False, cost_centre="labour", **at)], project_id))
+    if money(recovered) > 0:
+        out.append(entry("main", day, "journal", f"Advance taken back from {payee}'s wages", [
+            line(code("wages_payable"), recovered, True, **at),
+            line(code("labour_advances"), recovered, False, **at)], project_id))
+    return out
+
+
 def overhead_entries(month_end: datetime.date, head_office: Decimal, shares: dict[str, Decimal],
                      basis: str, from_project: Any = None) -> list[dict[str, Any]]:
     """ACC-23: a month's head-office costs shared over the projects by ``basis`` (their cost or their billing that

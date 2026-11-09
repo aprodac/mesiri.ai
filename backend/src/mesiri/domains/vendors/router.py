@@ -59,7 +59,7 @@ class VendorResponse(BaseModel):
     total_amount_paid: Decimal = Decimal("0")
 
 
-KINDS = ("supplier", "subcontractor", "hire", "service")
+KINDS = ("supplier", "subcontractor", "hire", "service", "labour")  # labour: a labour contractor's team (LW-01)
 
 
 class CreateVendorRequest(BaseModel):
