@@ -170,6 +170,37 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("close_order", "POST", "/procurement/orders/{order_id}/close",
             "Prepare closing a part-received order: the rest will not come (reason required). A request still short "
             "waits to be ordered again." + _WRITE),
+    # PRC-44: quotations (Procurement > Quotations): ask several suppliers, record each quote, compare, order the
+    # chosen ones. The comparison is the API's (what each unit costs the company, GST per D-CC8); award places the
+    # orders through the order route's own checks.
+    Allowed("rfqs", "GET", "/procurement/rfqs",
+            "Requests for quotation (RFQ-0001 ...): status live (waiting for quotes or ready to compare), open, ready, "
+            "awarded, closed or all. Each: the site, the items, every supplier asked and whether it quoted / declined, "
+            "per item each quote as it costs the company (cost) with the cheapest marked (lowest), the last price paid "
+            "(last_paid), each supplier's total, lowest_total (one supplier for everything) and lowest_per_line "
+            "(each item from its cheapest; saves = what that saves against one supplier)."),
+    Allowed("rfq", "GET", "/procurement/rfqs/{rfq_id}",
+            "One RFQ's comparison sheet (rfq_id from rfqs, or its number RFQ-0003): as rfqs, for one."),
+    Allowed("ask_for_quotes", "POST", "/procurement/rfqs",
+            "Prepare asking suppliers for quotes (the office: admin, owner, project manager): lines (material_id, "
+            "quantity, unit_id) or request_id for a site's request ('get quotes for Arun's cement'), suppliers in "
+            "their words, the site, due_date when they said by when, needed_by when the site needs it." + _WRITE,
+            hide=("vendor_ids",)),
+    Allowed("record_quote", "POST", "/procurement/rfqs/{rfq_id}/quotes",
+            "Prepare a supplier's quote on an RFQ (find it with rfqs; a forwarded quote photo is read the same way): "
+            "supplier in their words, per item material_id + rate (unit_id when the rate is per another unit, e.g. "
+            "per tonne), GST as on a delivery (gst_percent / rates_include_gst for the whole quote), delivery_days, "
+            "valid_until, payment_days, their_ref when printed. A new quote from the same supplier replaces its old "
+            "rates." + _WRITE, hide=("vendor_id", "source"), fixed=(("source", "whatsapp"),)),
+    Allowed("decline_quote", "POST", "/procurement/rfqs/{rfq_id}/suppliers/{rv_id}/decline",
+            "Prepare marking that a supplier will not quote (rv_id: its rfq_vendor_id in rfq), with their reason."
+            + _WRITE),
+    Allowed("award_quotes", "POST", "/procurement/rfqs/{rfq_id}/award",
+            "Prepare ordering from the quotes: mode lowest_total (all from the one cheapest supplier), lowest_per_line "
+            "(each item from its cheapest), or picks (rfq_line_id + vendor_id per item they chose). Not the cheapest "
+            "for an item needs reason in their words. One purchase order per supplier; if an open order already has "
+            "the material the save is refused and says which; prepare again with confirm_duplicate only when they "
+            "say it is separate." + _WRITE),
     # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),

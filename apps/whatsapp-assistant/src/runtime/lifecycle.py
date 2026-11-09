@@ -483,6 +483,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for module, label in (
         ("mesiri.domains.procurement.grn_router", "Goods received"),
         ("mesiri.domains.procurement.rates_router", "Rates"),
+        ("mesiri.domains.procurement.rfqs_router", "Quotations"),  # PRC-40..44: RFQs, quotes, compare, award
         ("mesiri.domains.progress.boq_router", "BOQ"),
         ("mesiri.domains.equipment.router", "Equipment"),  # NXT-11
         ("mesiri.domains.schedule.router", "Schedule"),  # ST-01/04/05: project start, the Gantt, the lifecycle list

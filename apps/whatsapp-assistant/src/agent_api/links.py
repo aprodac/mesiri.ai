@@ -37,6 +37,8 @@ PAGES: dict[str, tuple[str, str]] = {
     "materials": ("/materials", "stock in and out"),
     "material_requests": ("/materials/requests", "what the sites asked for, before it is ordered"),
     "purchase_orders": ("/procurement/orders", "orders to suppliers: what is still to come, late ones first"),
+    "pending_deliveries": ("/procurement/pending", "what is still to come on orders, late first, by date or supplier"),
+    "quotations": ("/procurement/quotations", "quotes asked from suppliers, compared side by side"),
     "projects": ("/projects", "all projects"),
     "project": ("/projects/{project_id}", "one project: its sites and members"),
     "team": ("/team", "the company's people and roles"),

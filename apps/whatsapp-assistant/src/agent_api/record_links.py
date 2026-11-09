@@ -48,6 +48,10 @@ RECORD_PAGES: dict[str, str | None] = {
     "change_order": "purchase_orders",
     "cancel_order": "purchase_orders",
     "close_order": "purchase_orders",
+    "ask_for_quotes": "quotations",  # PRC-44
+    "record_quote": "quotations",
+    "decline_quote": "quotations",
+    "award_quotes": "purchase_orders",
     "add_expense_category": "expense_categories",
     "create_project": "project",
     "update_project": "project",
