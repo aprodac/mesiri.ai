@@ -187,6 +187,12 @@ export const CREATE_ROLES = ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'PROJECT_MANAGER',
 export const PRIORITY_LABEL: Record<TaskPriority, string> = { normal: 'Normal', high: 'High', urgent: 'Urgent' }
 
 /** A due day as people say it: "Today", "Tomorrow", "Thu 12 Nov", "3 days late". */
+/** "Wed, 11 Nov": a task's day as people read it (never the raw ISO date). */
+export function dayWords(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
 export function dueWords(task: Pick<Task, 'due_date' | 'overdue' | 'days_late' | 'status'>, today: string): string {
   if (!task.due_date) return 'No date'
   if (task.overdue) return task.days_late === 1 ? '1 day late' : `${task.days_late} days late`
