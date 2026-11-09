@@ -33,6 +33,7 @@ PAGES: dict[str, tuple[str, str]] = {
     "workers": ("/labour?view=workers", "the worker register"),
     "materials": ("/materials", "stock in and out"),
     "material_requests": ("/materials/requests", "what the sites asked for, before it is ordered"),
+    "waiting_for_you": ("/site/approvals", "every decision waiting for this person, flagged first"),
     "purchase_orders": ("/procurement/orders", "orders to suppliers: what is still to come, late ones first"),
     "projects": ("/projects", "all projects"),
     "project": ("/projects/{project_id}", "one project: its sites and members"),

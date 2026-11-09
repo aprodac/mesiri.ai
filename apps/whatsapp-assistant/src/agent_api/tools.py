@@ -120,6 +120,12 @@ ALLOWED: tuple[Allowed, ...] = (
             + _WRITE),
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
+    # GM-01 (9 Nov 2026): every decision waiting for this person, over each module's own statuses (read only).
+    Allowed("waiting_for_me", "GET", "/approvals/inbox",
+            "Everything waiting for THIS person's decision, flagged first, then the oldest (project_id to narrow; kind "
+            "to narrow: material_request, subcontract_bill, measurement, ra_bill, size_request). Each item: kind, id, ref, "
+            "title, project_name, site_name, asked_by, since, amount (only for roles that see spending), flagged, fact (the "
+            "one fact that decides it, in words), group (flagged / older / recent); counts. Only what their role may decide."),
     # PRC-22: material requests -- what a site asks for before anyone orders it (Materials > Requests).
     Allowed("material_requests", "GET", "/procurement/requests",
             "Material requests (what the sites asked for, before it is ordered), most urgent first: status waiting "
