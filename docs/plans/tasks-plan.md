@@ -5,8 +5,9 @@ TSK-02 built 9 Nov (`06469c90`): the module on the web (sidebar group, `/tasks`,
 `GET /tasks/options`. TSK-03 built 9 Nov (`97662f73`): tasks from issues and the schedule, place, BOQ line with
 progress from the BOQ's own count (per site; not per place yet), migration 0537. **Web only for now** (Adarsh, 9 Nov 2026: "now only want to be web, dont need in whatsapp"):
 TSK-04 (WhatsApp tools) and TSK-05 (WhatsApp morning card and overdue note) are deferred, with TSK-10 and TSK-11
-that build on them. Left for the web: TSK-06 (counts and the Today card), TSK-12 (photo from the web), TSK-07
-(walkthrough). Sections 7 and 8 below describe the deferred WhatsApp work and stay as the design for when it comes. **Tasks is its own module** (`tasks` switch, own sidebar group, own
+that build on them. TSK-12 built 9 Nov: a photo or PDF from the web, with a comment or by "Done with photo" (the expense-bill
+rule: shrunk in the page, 700 KB, checked against its bytes, kept under `org/{org}/tasks/{task}/`). Left for the web:
+TSK-06 (counts and the Today card), TSK-07 (walkthrough). Sections 7 and 8 below describe the deferred WhatsApp work and stay as the design for when it comes. **Tasks is its own module** (`tasks` switch, own sidebar group, own
 routes under `/tasks`), asked in session by Adarsh on 9 Nov ("want new module proper"), the same way Cost control
 became one (CC-17). Tracker section **TSK** in [V1_TRACKER.md](V1_TRACKER.md).
 **Why now:** module 05 "Task & Work Management" is the only module in Phase 1 of the Capability Framework with
@@ -143,8 +144,8 @@ the connection, never commits). `logic.py` is pure: allowed status moves, overdu
 | POST | `/tasks` | Create. Takes the site, place and assignee by id **or in words** (as `/progress/activities` does for places: "Arun", "FF R2"); refused with the choices when the words match none or several. Optional `site_issue_id`, `work_package_id`, `planned_item_id` + `expected_quantity`. Hidden `media_object_key` for a WhatsApp photo |
 | GET | `/tasks/{id}` | One task with its history and progress |
 | PATCH | `/tasks/{id}` | Title, notes, due, priority, assignee, place, links. Writes a `changed` event |
-| POST | `/tasks/{id}/status` | `{status, note?, media_object_key?}`: start, block (reason required), done, reopen, cancel. Only the allowed moves (logic.py) |
-| POST | `/tasks/{id}/comments` | `{text?, media_object_key?}` |
+| POST | `/tasks/{id}/status` | `{status, note?, media_object_key?, file?}`: start, block (reason required), done, reopen, cancel. Only the allowed moves (logic.py) |
+| POST | `/tasks/{id}/comments` | `{text?, media_object_key?, file?}`. `file` is a web photo or PDF (`{data_base64, content_type}`, 700 KB, `expenses/bill_file.py`); a WhatsApp key or a file, never both. History says `photo_is_pdf` |
 
 Task numbers are given out under a lock on the project row, so two tasks at the same moment do not get the same
 number. A task on another company's project returns 404, and one out of the person's scope returns 403, both

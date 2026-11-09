@@ -7,6 +7,7 @@ Fixtures mirror test_schedule_contract.py.
 from __future__ import annotations
 
 import asyncio
+import base64
 import datetime
 import json
 import uuid
@@ -267,6 +268,35 @@ async def test_done_with_a_whatsapp_photo_only_our_own(client, co, test_engine):
     assert photo["photo_url"] == f"https://files.test/{ours}" and photo["source"] == "whatsapp"
     assert history[-1]["text"] == "cover blocks checked"
     assert (await client.post(f"/tasks/{tid}/comments", json={}, headers=co["pm"])).status_code == 422
+
+
+async def test_done_with_a_photo_from_the_web_and_a_pdf_in_a_comment(client, co, test_engine):
+    """TSK-12: a file sent from the web is checked like an expense bill and kept under the company's own prefix."""
+    tid = (await _give(client, co, assignee="arun")).json()["id"]
+    jpeg = base64.b64encode(b"\xff\xd8\xff" + b"0" * 64).decode()
+    pdf = base64.b64encode(b"%PDF-1.4 drawing").decode()
+    lying = await client.post(f"/tasks/{tid}/status", json={"status": "done", "file": {
+        "data_base64": pdf, "content_type": "image/jpeg"}}, headers=co["arun"])
+    assert lying.status_code == 422 and (await client.get(f"/tasks/{tid}", headers=co["pm"])).json()["status"] == "open"
+    both = await client.post(f"/tasks/{tid}/comments", json={"media_object_key": "wa/x.jpg", "file": {
+        "data_base64": jpeg, "content_type": "image/jpeg"}}, headers=co["pm"])
+    assert both.status_code == 422
+    big = await client.post(f"/tasks/{tid}/comments", json={"file": {
+        "data_base64": base64.b64encode(b"%PDF-" + b"0" * 800 * 1024).decode(), "content_type": "application/pdf"}},
+        headers=co["pm"])
+    assert big.status_code == 422 and "photo must be 700 KB" in big.json()["detail"]
+    done = await client.post(f"/tasks/{tid}/status", json={"status": "done", "file": {
+        "data_base64": jpeg, "content_type": "image/jpeg"}}, headers=co["arun"])
+    assert done.status_code == 200
+    only_file = await client.post(f"/tasks/{tid}/comments", json={"file": {
+        "data_base64": pdf, "content_type": "application/pdf"}}, headers=co["pm"])
+    assert only_file.status_code == 201
+    history = (await client.get(f"/tasks/{tid}", headers=co["pm"])).json()["history"]
+    closed, drawing = history[-2], history[-1]
+    assert closed["to_status"] == "done" and closed["source"] == "web" and not closed["photo_is_pdf"]
+    assert closed["photo_url"].startswith(f"https://files.test/org/{co['org']}/tasks/{tid}/photo-")
+    assert closed["photo_url"].endswith(".jpg")
+    assert drawing["kind"] == "comment" and drawing["photo_is_pdf"] and drawing["text"] is None
 
 
 async def test_switched_off_the_module_refuses(test_engine, co, monkeypatch):

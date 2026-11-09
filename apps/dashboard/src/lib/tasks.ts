@@ -1,4 +1,5 @@
 import { api } from './api'
+import type { BillFile } from './bill-upload'
 
 // TSK-02: the Tasks module -- who does what, by when. The shapes mirror backend/src/mesiri/domains/tasks
 // (router.py describes the routes; logic.py the status moves and who may do what). Plan: docs/plans/tasks-plan.md.
@@ -59,6 +60,7 @@ export interface TaskEvent {
   to_status: TaskStatus | null
   text: string | null
   photo_url: string | null
+  photo_is_pdf: boolean
   changes: Record<string, [unknown, unknown]> | null
   source: 'web' | 'whatsapp'
   created_at: string
@@ -142,13 +144,14 @@ export async function updateTask(id: string, payload: Partial<Omit<NewTask, 'pro
   return data
 }
 
-export async function moveTask(id: string, status: TaskStatus, note?: string | null): Promise<Task> {
-  const { data } = await api.post<Task>(`/tasks/${id}/status`, { status, note: note || null })
+/** TSK-12: a photo or PDF from the web goes with a move or a comment, shrunk first like an expense bill. */
+export async function moveTask(id: string, status: TaskStatus, note?: string | null, file?: BillFile | null): Promise<Task> {
+  const { data } = await api.post<Task>(`/tasks/${id}/status`, { status, note: note || null, file: file ?? null })
   return data
 }
 
-export async function commentOnTask(id: string, text: string): Promise<void> {
-  await api.post(`/tasks/${id}/comments`, { text })
+export async function commentOnTask(id: string, text: string, file?: BillFile | null): Promise<void> {
+  await api.post(`/tasks/${id}/comments`, { text: text || null, file: file ?? null })
 }
 
 /** "Which person / site?": the choices the API sent back when the words fit several or none. */
@@ -187,7 +190,7 @@ export function dueWords(task: Pick<Task, 'due_date' | 'overdue' | 'days_late' |
 /** What happened, in a line, for the history. */
 export function eventWords(e: TaskEvent): string {
   if (e.kind === 'created') return 'gave the task'
-  if (e.kind === 'comment') return e.photo_url && !e.text ? 'sent a photo' : 'commented'
+  if (e.kind === 'comment') return e.photo_url && !e.text ? (e.photo_is_pdf ? 'added a PDF' : 'sent a photo') : 'commented'
   if (e.kind === 'status' && e.to_status) {
     if (e.to_status === 'open') return e.from_status === 'done' || e.from_status === 'cancelled' ? 'reopened it' : 'moved it back to open'
     if (e.to_status === 'doing') return 'started it'

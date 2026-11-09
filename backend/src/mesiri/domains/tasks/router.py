@@ -9,10 +9,12 @@
   POST   /tasks/{id}/status        start, block (with a reason), done, reopen, cancel
   POST   /tasks/{id}/comments      a comment, a photo, or both
 
+A photo comes from WhatsApp (``media_object_key``, which must be one this company's WhatsApp received) or is sent
+from the web (``file``: a photo or PDF, base64, the expense-bill rule, TSK-12), never both.
+
 A task is seen by everyone on its project, except that a person limited to some sites sees only those sites'
 tasks, plus the ones they gave or were given (the BE-42 rule). Who may change what is ``logic.may_*`` (D-T2).
-A WhatsApp photo (``media_object_key``) must be one this company's WhatsApp received. Plan:
-docs/plans/tasks-plan.md.
+Plan: docs/plans/tasks-plan.md.
 """
 
 from __future__ import annotations
@@ -94,10 +96,17 @@ class TaskPatch(BaseModel):
     _strip = field_validator("title", "notes", "assignee_team")(_clean)
 
 
+class FileIn(BaseModel):
+    """A photo or PDF sent from the web: base64, 700 KB at most (``expenses/bill_file.py``)."""
+    data_base64: str
+    content_type: str
+
+
 class StatusIn(BaseModel):
     status: Literal["open", "doing", "blocked", "done", "cancelled"]
     note: str | None = Field(default=None, max_length=1000, description="Why (required when blocked), or a remark")
     media_object_key: str | None = None
+    file: FileIn | None = None
     source: Source = "web"
 
     _strip = field_validator("note")(_clean)
@@ -106,6 +115,7 @@ class StatusIn(BaseModel):
 class CommentIn(BaseModel):
     text: str | None = Field(default=None, max_length=2000)
     media_object_key: str | None = None
+    file: FileIn | None = None
     source: Source = "web"
 
     _strip = field_validator("text")(_clean)
@@ -148,6 +158,31 @@ async def _today(conn: AsyncConnection, auth: AuthorizationContext) -> datetime.
 async def _check_photo(conn: AsyncConnection, auth: AuthorizationContext, key: str | None) -> None:
     if key and not await photo_is_ours(conn, auth.organization_id, key):
         raise HTTPException(status_code=404, detail="Photo not found")
+
+
+def _read_file(body: StatusIn | CommentIn) -> tuple[bytes, str, str] | None:
+    """The web file, checked before anything is written; a 422 the person can read when it is not usable."""
+    if body.file is None:
+        return None
+    if body.media_object_key:
+        raise HTTPException(status_code=422, detail="Send a file or a WhatsApp photo, not both")
+    from mesiri.domains.expenses.bill_file import decode_bill
+
+    try:
+        return decode_bill(body.file.data_base64, body.file.content_type, what="photo")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def _keep_file(object_storage: ObjectStoragePort, auth: AuthorizationContext, task_id: uuid.UUID,
+                     file: tuple[bytes, str, str] | None, whatsapp_key: str | None) -> str | None:
+    """The key the history keeps: the WhatsApp photo's, or a web file stored under the company's own prefix."""
+    if file is None:
+        return whatsapp_key
+    data, extension, content_type = file
+    key = f"org/{auth.organization_id}/tasks/{task_id}/photo-{uuid.uuid4().hex}.{extension}"
+    await object_storage.put_object(key, data, content_type=content_type)
+    return key
 
 
 def _choose(message: str, options: list[str]) -> HTTPException:
@@ -339,7 +374,9 @@ async def get_task(task_id: uuid.UUID, auth: AuthorizationContext = Depends(get_
     task = await _task(conn, auth, task_id)
     history = await store.events(conn, auth.organization_id, task_id)
     for e in history:
-        e["photo_url"] = await signed_media_url(object_storage, e.pop("media_object_key"))
+        key = e.pop("media_object_key")
+        e["photo_url"] = await signed_media_url(object_storage, key)
+        e["photo_is_pdf"] = bool(key and key.lower().endswith(".pdf"))
     out = _out(task, await _today(conn, auth), (await store.progress(conn, auth.organization_id, [task])).get(task_id))
     out["history"] = history
     out["may"] = {"edit": logic.may_edit(auth.role, auth.user_id, task),
@@ -385,7 +422,8 @@ async def update_task(task_id: uuid.UUID, body: TaskPatch, auth: AuthorizationCo
 
 @router.post("/{task_id}/status")
 async def move_task(task_id: uuid.UUID, body: StatusIn, auth: AuthorizationContext = Depends(get_auth_context),
-                    conn: AsyncConnection = Depends(get_db_conn)):
+                    conn: AsyncConnection = Depends(get_db_conn),
+                    object_storage: ObjectStoragePort = Depends(get_object_storage)):
     """Start, block (say why), finish, reopen or cancel. Finishing never records work done (D-T4)."""
     org = auth.organization_id
     task = await _task(conn, auth, task_id)
@@ -396,6 +434,7 @@ async def move_task(task_id: uuid.UUID, body: StatusIn, auth: AuthorizationConte
     error = logic.move_error(task["status"], body.status, body.note)
     if error:
         raise HTTPException(status_code=409, detail=error)
+    file = _read_file(body)
     await _check_photo(conn, auth, body.media_object_key)
     changes: dict[str, Any] = {"status": body.status,
                                "blocked_reason": body.note if body.status == logic.BLOCKED else None}
@@ -406,23 +445,27 @@ async def move_task(task_id: uuid.UUID, body: StatusIn, auth: AuthorizationConte
         changes["done_by"] = auth.user_id
     elif body.status == logic.OPEN:
         changes["done_at"] = changes["done_by"] = None
+    key = await _keep_file(object_storage, auth, task_id, file, body.media_object_key)
     await store.update(conn, task_id, changes)
     await store.add_event(conn, org, task_id, "status", user_id=auth.user_id, source=body.source,
                           from_status=task["status"], to_status=body.status, words=body.note,
-                          media_object_key=body.media_object_key)
+                          media_object_key=key)
     return await _shaped(conn, auth, task_id)
 
 
 @router.post("/{task_id}/comments", status_code=201)
 async def comment(task_id: uuid.UUID, body: CommentIn, auth: AuthorizationContext = Depends(get_auth_context),
-                  conn: AsyncConnection = Depends(get_db_conn)):
+                  conn: AsyncConnection = Depends(get_db_conn),
+                  object_storage: ObjectStoragePort = Depends(get_object_storage)):
     """A comment, a photo, or both, on the task's history."""
     task = await _task(conn, auth, task_id)
-    if not body.text and not body.media_object_key:
+    if not body.text and not body.media_object_key and body.file is None:
         raise HTTPException(status_code=422, detail="Say something or send a photo")
     if not logic.may_comment(auth.role, auth.user_id, task):
         raise HTTPException(status_code=403, detail="Not authorized to comment on this task")
+    file = _read_file(body)
     await _check_photo(conn, auth, body.media_object_key)
+    key = await _keep_file(object_storage, auth, task_id, file, body.media_object_key)
     await store.add_event(conn, auth.organization_id, task_id, "comment", user_id=auth.user_id, source=body.source,
-                          words=body.text, media_object_key=body.media_object_key)
+                          words=body.text, media_object_key=key)
     return {"ok": True, "ref": logic.ref(task["number"])}

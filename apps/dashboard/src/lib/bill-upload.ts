@@ -29,13 +29,14 @@ async function shrink(file: File, longEdge: number, quality: number): Promise<Bl
   )
 }
 
-/** The file as the server takes it; an Error with a message to show when it cannot be sent. */
-export async function billFile(file: File): Promise<BillFile> {
+/** The file as the server takes it; an Error with a message to show when it cannot be sent. `what` names it in
+ * those messages: the same rule takes a photo on a task (TSK-12). */
+export async function billFile(file: File, what = 'the bill'): Promise<BillFile> {
   if (file.type === 'application/pdf') {
-    if (file.size > BILL_MAX_BYTES) throw new Error('This PDF is over 700 KB. Add a photo of the bill instead.')
+    if (file.size > BILL_MAX_BYTES) throw new Error(`This PDF is over 700 KB. Add a photo of ${what} instead.`)
     return { content_type: file.type, data_base64: await readAsBase64(file) }
   }
-  if (!file.type.startsWith('image/')) throw new Error('Choose a photo or a PDF of the bill.')
+  if (!file.type.startsWith('image/')) throw new Error(`Choose a photo or a PDF of ${what}.`)
   let blob: Blob | null = null
   for (const [edge, quality] of [[2000, 0.82], [1600, 0.75], [1200, 0.65]] as const) {
     blob = await shrink(file, edge, quality)
