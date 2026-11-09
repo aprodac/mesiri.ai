@@ -60,6 +60,11 @@ LEDGERS: tuple[tuple[str, str, str, str], ...] = (
     ("round_off", "Round off", "indirect_expenses", "Rounding differences"),
     ("overheads_allocated", "Head office overheads allocated", "indirect_expenses",
      "Each project's monthly share of head-office costs, when sharing is on (nil company-wide)"),
+    # LW-06 (9 Nov 2026): labour is cost when worked (attendance at its wage) and money when paid.
+    ("labour_wages", "Labour wages", "direct_expenses", "Attendance at its wage, per project and site (the labour cost)"),
+    ("wages_payable", "Wages payable", "current_liabilities", "Wages earned on site and not yet paid"),
+    ("labour_advances", "Advances to labour", "loans_advances",
+     "Advances given to workers and labour contractors, until taken back from their wages"),
 )
 
 #: The groups a linked ledger is made in (``link_kind`` -> group code). Money accounts depend on the account type.

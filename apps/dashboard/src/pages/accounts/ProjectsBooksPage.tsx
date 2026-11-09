@@ -92,7 +92,7 @@ export default function ProjectsBooksPage() {
   const top = Math.max(0, ...(d?.projects ?? []).map((p) => Math.abs(Number(p.profit))))
   const losing = (d?.projects ?? []).filter((p) => Number(p.profit) < 0)
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Projects" date="Which site makes money" />
       <BooksTabs current="/accounts/projects" />
       <PeriodBar state={periodState} />

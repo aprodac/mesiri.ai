@@ -110,6 +110,7 @@ MODULES: dict[str, str] = {
     "cost": "Cost control: budget against actual, cost centres, work done and earned against the BOQ",
     "accounts": "Accounts: the company's books (chart of accounts, journals, trial balance, ledgers), posted from the "
                 "records automatically",
+    "tasks": "Tasks: who does what by when, on the web and WhatsApp, with a morning card and overdue notes",
 }
 
 # Short names for the control panel's module switches (SA-07).
@@ -122,6 +123,7 @@ MODULE_LABELS: dict[str, str] = {
     "automations": "Automations",
     "cost": "Cost control",
     "accounts": "Accounts",
+    "tasks": "Tasks",
 }
 
 # DPR is the product: a company without it has nothing to use.
@@ -133,7 +135,9 @@ ALWAYS_ON_MODULES: frozenset[str] = frozenset({"dpr"})
 # list was already stored).
 # Cost control joined on 8 Nov 2026 (asked in session by Adarsh: "a proper module"; Alan not asked yet, said in the
 # report; migration 0521 switched it on for companies whose list was already stored).
-V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials", "finance", "equipment", "cost")
+# Tasks joined on 9 Nov 2026 (asked in session by Adarsh: "want new module proper"; Alan not asked yet, said in the
+# report; migration 0533 switched it on for companies whose list was already stored).
+V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials", "finance", "equipment", "cost", "tasks")
 
 # A company that has never had its modules set gets V1. Flipped from "every
 # module on" in the same release as the dashboard hiding (WEB-02) and the

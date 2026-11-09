@@ -75,7 +75,7 @@ export default function AccountsHomePage() {
   const topProfit = Math.max(0, ...(d?.projects ?? []).map((p) => Math.abs(Number(p.profit))))
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/finance/money', label: 'Money' }} crumb="Accounts" title="Accounts" date={d ? `${d.financial_year} · ${d.scope} · ${formatDay(d.today)}` : undefined} />
       <BooksTabs current="/accounts" />
       {!d || !tm || !lm ? (

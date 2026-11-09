@@ -1312,6 +1312,13 @@ export interface WorkforceWorkerItem {
   default_daily_wage: number | null
   contractor: string | null
   status: 'active' | 'inactive'
+  phone?: string | null
+  project_id?: string | null
+  site_id?: string | null
+  vendor_id?: string | null
+  wage_basis?: 'day' | 'month'
+  joined_on?: string | null
+  left_on?: string | null
 }
 
 /** One worker's attendance history, derived on read from
@@ -1368,6 +1375,14 @@ export interface CreateWorkerPayload {
   default_daily_wage?: number
   contractor?: string
   status?: 'active' | 'inactive'
+  // LW-01: who to call, where they work, whose team they are in.
+  phone?: string | null
+  project_id?: string | null
+  site_id?: string | null
+  vendor_id?: string | null
+  wage_basis?: 'day' | 'month'
+  joined_on?: string | null
+  left_on?: string | null
 }
 
 export async function fetchWorkersApi(params?: {

@@ -1,19 +1,15 @@
-"""GM-01: the "Waiting for you" API (dashboard Site > Approvals, and the assistant's "what is waiting for me?").
+"""REST API for the approvals inbox (NXT-08). Read only; acting stays on each module's own route.
 
-  GET /approvals/inbox         every decision waiting for the caller, flagged first, then the oldest; counts per
-                               group and kind. ``project_id`` narrows to one project; ``kind`` to some kinds.
-  GET /approvals/inbox/count   just the counts (the sidebar badge)
+  GET /approvals/waiting    everything waiting for me: items (urgent first, then oldest), counts per kind, total
 
-Read only. Each row says which of its module's routes decides it (``actions`` + ``kind``); deciding stays there.
-Rules and sources: ``inbox.py``. Plan: docs/plans/gm-pm-plan.md.
+Used by the dashboard's bell (top bar) and by the WhatsApp assistant ("what is waiting for me?", tool ``waiting``).
 """
 
 from __future__ import annotations
 
-import datetime
-import uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
@@ -26,42 +22,22 @@ from mesiri.infrastructure.postgres.dependency import get_db_conn
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
-def _kinds(kind: str | None) -> set[str] | None:
-    if not kind:
-        return None
-    asked = {k.strip() for k in kind.split(",") if k.strip()}
-    unknown = asked - set(inbox.KINDS)
-    if unknown:
-        raise HTTPException(status_code=422, detail=f"kind is one or more of {', '.join(inbox.KINDS)}")
-    return asked
-
-
-async def _arranged(request: Request, conn: AsyncConnection, auth: AuthorizationContext,
-                    project_id: uuid.UUID | None, kind: str | None) -> dict:
-    kinds = _kinds(kind)
+@router.get("/waiting")
+async def waiting(
+    request: Request,
+    kind: str | None = Query(default=None, description="Only these kinds, comma separated: site_report, "
+                                                        "material_request, subcontract_bill, ra_bill, task"),
+    limit: int = Query(default=100, ge=1, le=300, description="At most this many items (the counts are all of them)"),
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+) -> dict[str, Any]:
+    """What is waiting for me: site reports to confirm, material requests to decide, subcontractor bills to approve,
+    RA bills in draft, my tasks overdue or due today. Each item names its kind, project, site and how long it has
+    waited; urgent ones first."""
+    kinds = inbox.KINDS
+    if kind:
+        kinds = tuple(k for k in (w.strip() for w in kind.split(",")) if k in inbox.KINDS) or inbox.KINDS
     stored = await read_enabled_modules(request, auth.organization_id)
-    enabled = {m for m in org_settings.MODULES if org_settings.module_enabled(m, stored)}
-    rows = await inbox.collect(conn, auth, enabled=enabled, project_id=project_id, kinds=kinds)
-    return inbox.arrange(rows, datetime.datetime.now(datetime.UTC))
-
-
-@router.get("/inbox")
-async def waiting_for_me(
-    request: Request,
-    project_id: uuid.UUID | None = None,
-    kind: str | None = Query(default=None, description="Comma-separated: " + ", ".join(inbox.KINDS)),
-    auth_context: AuthorizationContext = Depends(get_auth_context),
-    conn: AsyncConnection = Depends(get_db_conn),
-):
-    """What is waiting for this person's decision, each row with the one fact that decides it."""
-    return await _arranged(request, conn, auth_context, project_id, kind)
-
-
-@router.get("/inbox/count")
-async def waiting_count(
-    request: Request,
-    project_id: uuid.UUID | None = None,
-    auth_context: AuthorizationContext = Depends(get_auth_context),
-    conn: AsyncConnection = Depends(get_db_conn),
-):
-    return {"counts": (await _arranged(request, conn, auth_context, project_id, None))["counts"]}
+    result = await inbox.waiting(conn, auth, lambda m: org_settings.module_enabled(m, stored), kinds)
+    result["items"] = result["items"][:limit]
+    return result

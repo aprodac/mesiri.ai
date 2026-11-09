@@ -1,4 +1,6 @@
-> **Superseded for the web dashboard by [DESIGN.md](DESIGN.md) (24 Oct 2026, WEB-25).** Kept for history; it does not describe the shipped product.
+> **Superseded by [DESIGN.md](DESIGN.md)** (24 Oct 2026, WEB-25; brand settled 9 Nov 2026, UX-01: site yellow
+> `#facc15` + charcoal, not the lime below). Kept for history only: it does not describe the shipped product, and
+> nothing here should be copied into new work.
 
 # Mesiri.ai — Complete UI Design System
 

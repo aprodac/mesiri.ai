@@ -15,8 +15,11 @@ broken image.
 from __future__ import annotations
 
 import logging
+import uuid
 
 from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri_contracts.common.storage import ObjectStoragePort
 
@@ -53,3 +56,13 @@ async def signed_media_url(object_storage: ObjectStoragePort, key: str | None) -
     except Exception:  # noqa: BLE001 -- one missing photo must not hide the rest
         logger.warning("media.url_unavailable key=%s", key)
         return None
+
+
+async def photo_is_ours(conn: AsyncConnection, organization_id: uuid.UUID, key: str) -> bool:
+    """Only a file this company's own WhatsApp received: a key names no company, so without this a caller could
+    attach (and then read) another company's photo. The one check for every route that takes a WhatsApp
+    ``media_object_key`` (expenses, tasks)."""
+    owned = (await conn.execute(
+        text("SELECT 1 FROM inbound_messages WHERE organization_id = :org AND media_object_key = :key LIMIT 1"),
+        {"org": organization_id, "key": key})).first()
+    return owned is not None

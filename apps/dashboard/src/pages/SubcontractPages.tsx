@@ -15,6 +15,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { rupees } from '@/lib/expenses'
 import { day, fetchPayables, vendorUrl } from '@/lib/vendors'
 import { cn } from '@/lib/utils'
+import { ModuleTitle } from '@/components/page/page-kit'
 import {
   CHECK_LOOK, WO_LOOK, fetchBillsWaiting, fetchStatement, fetchWorkOrder, fetchWorkOrders, n, statementText, waLink, woUrl, workOrderText,
   type WoBill,
@@ -34,10 +35,9 @@ export function BillsChecksPage() {
   const [deciding, setDeciding] = React.useState<{ bill: WoBill; decision: 'approve' | 'reject' } | null>(null)
   const list = waiting.data ?? []
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center gap-3">
-        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100"><ClipboardCheck className="size-5" /></span>
-        <div><div className="text-xs text-muted-foreground">Subcontract</div><h1 className="text-2xl leading-tight font-semibold tracking-tight">Bills & checks</h1></div>
+        <ModuleTitle icon={ClipboardCheck} title="Bills & checks" />
       </header>
       <ValueStrip />
       <p className="text-sm text-muted-foreground">A subcontractor’s bill is checked against the work measured and the agreed rates. These did not pass, or were sent by the subcontractor: each waits for a person before anything is paid.</p>
@@ -97,11 +97,10 @@ export function SubcontractorsPage() {
     return [...by.values()].sort((a, b) => b.open - a.open || b.value - a.value)
   }, [wos.data, pay.data])
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200"><Handshake className="size-5" /></span>
-          <div><div className="text-xs text-muted-foreground">Subcontract</div><h1 className="text-2xl leading-tight font-semibold tracking-tight">Subcontractors</h1></div>
+          <ModuleTitle icon={Handshake} title="Subcontractors" />
         </div>
         <Button variant="outline" onClick={() => navigate('/subcontract/work-orders')}>Work orders</Button>
       </header>

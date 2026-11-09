@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader, Segmented } from '@/components/dpr-page'
 import { AttendanceView } from '@/components/workforce/attendance-view'
 import { WorkersView } from '@/components/workforce/workers-view'
+import { MusterView, TeamsView } from '@/components/workforce/muster-view'
 import { useScope } from '@/lib/ScopeContext'
 import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
@@ -15,17 +16,16 @@ import { useReadOnly } from '@/lib/trial'
 // WhatsApp Automations and Settings pages are gone: nothing read their
 // toggles (labour_settings is only stored and echoed back).
 
-type View = 'attendance' | 'workers'
+type View = 'attendance' | 'muster' | 'workers' | 'teams'
 
 export default function LabourPage() {
   const { scope } = useScope()
   const readOnly = useReadOnly()
   const [view, setView] = useUrlState<View>('view', 'attendance')
   const [addOpen, setAddOpen] = React.useState(false)
-  usePageTitle(view === 'workers' ? 'Workers · Labour' : 'Labour')
+  usePageTitle({ attendance: 'Labour', muster: 'Muster roll · Labour', workers: 'Workers · Labour', teams: 'Teams · Labour' }[view] ?? 'Labour')
   const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
   const siteId = scope.mode === 'site' ? scope.siteId : null
-  const scopeLabel = scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
   const switcher = (
     <Segmented<View>
@@ -34,16 +34,17 @@ export default function LabourPage() {
       onChange={setView}
       options={[
         { value: 'attendance', label: 'Attendance' },
+        { value: 'muster', label: 'Muster roll' },
         { value: 'workers', label: 'Workers' },
+        { value: 'teams', label: 'Teams' },
       ]}
     />
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Labour"
-        subtitle={`Who was on site, and the worker register · ${scopeLabel}`}
         actions={
           !readOnly && (
             <Button
@@ -64,6 +65,10 @@ export default function LabourPage() {
           filters and export, so the top of the page is one line. */}
       {view === 'attendance' ? (
         <AttendanceView projectId={projectId} siteId={siteId} leading={switcher} />
+      ) : view === 'muster' ? (
+        <MusterView siteId={siteId} leading={switcher} />
+      ) : view === 'teams' ? (
+        <TeamsView leading={switcher} />
       ) : (
         <WorkersView addOpen={addOpen} setAddOpen={setAddOpen} leading={switcher} />
       )}

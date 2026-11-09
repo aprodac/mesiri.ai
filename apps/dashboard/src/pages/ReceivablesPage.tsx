@@ -57,7 +57,7 @@ export default function ReceivablesPage() {
   const openBills = d ? d.clients.flatMap((c) => c.open_bills) : []
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/billing/ra-bills', label: 'RA bills' }}
         crumb="Accounts"

@@ -14,6 +14,7 @@ re-posted (keeping the entry's number when its voucher type and year are unchang
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -31,6 +32,9 @@ _ZERO = Decimal(0)
 
 #: Source kinds (``journal_entries.source_kind``).
 EXPENSE, MONEY, RA_BILL, OPENING_ACCOUNT, OPENING_VENDOR = "expense", "money", "ra_bill", "opening_account", "opening_vendor"
+#: LW-06: a site's month of attendance at its wage; an advance taken back on a wage sheet.
+LABOUR_WAGES, WAGE_RECOVERY = "labour_wages", "wage_recovery"
+_LABOUR_NS = uuid.UUID("2c0c7a8e-5d1b-4f7e-9a63-1d6f0b9e4a71")
 
 
 def _s(v: Any) -> str | None:
@@ -71,6 +75,14 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
     moves = {str(r["id"]): r for r in await _rows(conn,
         "SELECT id, transaction_type AS type, amount, occurred_date AS date, from_account_id, to_account_id, "
         "source_type, source_id, description FROM money_transactions WHERE organization_id = :org", org)}
+    # LW-06: advances and wage payments name their project and site for the money movement's other side.
+    from mesiri.domains.workforce.pay_store import ADVANCE_SOURCE, PAYMENT_SOURCE
+
+    labour_money = {str(r["id"]): r for r in await _rows(conn,
+        "SELECT id, project_id, site_id, payee_name AS who FROM labour_advances WHERE organization_id = :org "
+        "UNION ALL SELECT p.id, w.project_id, w.site_id, r.payee_name AS who FROM wage_payments p "
+        "JOIN wage_sheets w ON w.id = p.sheet_id JOIN wage_sheet_rows r ON r.id = p.row_id "
+        "WHERE p.organization_id = :org", org)}
     bills = await _rows(conn,
         "SELECT b.id, b.number, b.bill_date AS date, b.status, COALESCE(b.client_id, pc.client_id) AS client_id, "
         "b.gross, b.gst, b.net, b.tds, b.retention, b.advance_recovery, b.project_id, p.name AS project "
@@ -134,6 +146,11 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
             return c
         if src == "expense" and sid in expenses:
             return payment_counter(None, sid, m["date"])
+        if src in (ADVANCE_SOURCE, PAYMENT_SOURCE):
+            r = labour_money.get(sid) or {}
+            return {"ledger": posting.code("labour_advances" if src == ADVANCE_SOURCE else "wages_payable"),
+                    "project_id": r.get("project_id"), "site_id": r.get("site_id"),
+                    "words": ("Advance to " if src == ADVANCE_SOURCE else "Wages paid to ") + (r.get("who") or "labour")}
         if m["type"] == "reversal" and src == "money_transaction" and sid in moves and depth < 3:
             c = counter_of(moves[sid], depth + 1)
             return {**c, "words": f"Undone: {c['words']}"} if c else None
@@ -166,10 +183,44 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
         ref = bill_ref(b["number"])
         out[(RA_BILL, str(b["id"]))] = posting.ra_bill_entries(
             {**b, "ref": ref, "words": " · ".join(x for x in (f"{ref} running bill", b["project"]) if x)})
+    out.update(await labour_sources(conn, org))
     for a in accounts.values():
         out[(OPENING_ACCOUNT, str(a["id"]))] = posting.opening_account_entries(a)
     for v in vendors.values():
         out[(OPENING_VENDOR, str(v["id"]))] = posting.opening_vendor_entries(v)
+    return out
+
+
+async def labour_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """LW-06: each site's month of attendance at its wage (the same counted lines and rule as the labour cost, so the
+    books and cost control agree), dated the month's last attendance day; and each approved wage sheet row's overtime,
+    deductions and advance recovery, dated the day its sheet was approved (never after the period's end)."""
+    from mesiri.infrastructure.postgres.repositories.workforce import counted_line_sql
+
+    out: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for r in await _rows(conn,
+            "SELECT r.project_id, r.site_id, p.name AS project, s.name AS site, date_trunc('month', r.occurred_date)::date "
+            "AS month, MAX(r.occurred_date) AS last_day, SUM(COALESCE(l.headcount, 1) * CASE l.attendance_status "
+            "WHEN 'absent' THEN 0 WHEN 'half_day' THEN 0.5 ELSE 1 END * l.daily_wage) AS amount "
+            "FROM labour_attendance_lines l JOIN labour_attendance_reports r ON r.id = l.report_id "
+            "JOIN projects p ON p.id = r.project_id LEFT JOIN sites s ON s.id = r.site_id "
+            f"WHERE r.organization_id = :org AND l.daily_wage IS NOT NULL AND {counted_line_sql('l', 'r')} "
+            "GROUP BY r.project_id, r.site_id, p.name, s.name, date_trunc('month', r.occurred_date)", org):
+        sid = uuid.uuid5(_LABOUR_NS, f"{r['project_id']}:{r['site_id']}:{r['month']}")
+        words = " · ".join(x for x in (f"Labour wages {r['month']:%B %Y}", r["project"], r["site"]) if x)
+        out[(LABOUR_WAGES, str(sid))] = posting.labour_accrual_entries(r["last_day"], r["project_id"], r["site_id"],
+                                                                      r["amount"], words)
+    for r in await _rows(conn,
+            "SELECT x.id, x.payee_name, x.advances_recovered, x.overtime_amount, x.deductions, w.project_id, w.site_id, "
+            "LEAST(w.period_to, (w.approved_at AT TIME ZONE 'Asia/Kolkata')::date) AS day FROM wage_sheet_rows x "
+            "JOIN wage_sheets w ON w.id = x.sheet_id WHERE w.organization_id = :org AND w.status = 'approved' "
+            "AND (x.advances_recovered > 0 OR x.overtime_amount > 0 OR x.deductions <> '[]'::jsonb)", org):
+        ds = json.loads(r["deductions"]) if isinstance(r["deductions"], str) else (r["deductions"] or [])
+        # A difference carried from an earlier week is not a deduction: the attendance accrual already counts it.
+        deducted = sum((Decimal(str(d.get("amount") or 0)) for d in ds if not d.get("carry_from")), Decimal(0))
+        out[(WAGE_RECOVERY, str(r["id"]))] = posting.wage_row_entries(
+            r["day"], r["project_id"], r["site_id"], r["payee_name"], r["advances_recovered"], r["overtime_amount"],
+            deducted)
     return out
 
 

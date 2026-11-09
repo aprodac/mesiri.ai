@@ -25,6 +25,7 @@ import { qty } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import { MONEY_ROLES } from '@/lib/module-map'
 import { RATE_PERIODS, fetchRates, rate, ratePeriodRange, shortDate, type RateItem, type RatePeriod, type RatePurchase, vendorColour } from '@/lib/rates'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // PRC-14 / PRC-16: Procurement > Rates. What each item cost, from which supplier, over time: four tiles for what
 // needs a look (rates that went up, went down, cheaper elsewhere, spend), filters, one row per item with its trend
@@ -142,7 +143,7 @@ export default function RatesPage() {
 
   if (!(MONEY_ROLES as readonly string[]).includes(role) || forbidden) {
     return (
-      <div className="mx-auto w-full max-w-3xl py-12">
+      <div className="mx-auto w-full py-12">
         <Callout tone="draft" icon={Tags}>Rates are shown to the people who see the company's spending. Ask an admin if you need them.</Callout>
       </div>
     )
@@ -153,15 +154,9 @@ export default function RatesPage() {
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><Tags className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Procurement</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Rates</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={Tags} title="Rates" />
         <div className="flex items-center gap-3">
           {data && <span className="hidden text-sm text-muted-foreground lg:inline">{shortDate(data.date_from)} – {shortDate(data.date_to)} · {sum(filtered, (i) => i.purchases)} purchases</span>}
           <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => data && exportRates(list, data.date_from, data.date_to)} title="The items shown, as a CSV file (opens in Excel)">

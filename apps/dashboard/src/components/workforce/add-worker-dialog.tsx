@@ -19,6 +19,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { createWorkerApi, type CreateWorkerPayload } from '@/lib/api'
+import { RegisterFields } from './register-fields'
+import { emptyRegister, registerPayload, type RegisterValue } from '@/lib/labour-pay'
 
 interface AddWorkerDialogInitialValues {
   name?: string
@@ -70,6 +72,7 @@ export function AddWorkerDialog({ open, onOpenChange, onSuccess, initialValues }
   const [workerType, setWorkerType] = React.useState<'permanent' | 'temporary' | 'contractor'>('permanent')
   const [dailyWage, setDailyWage] = React.useState('800')
   const [contractor, setContractor] = React.useState('')
+  const [register, setRegister] = React.useState<RegisterValue>(emptyRegister())
 
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState('')
@@ -85,6 +88,7 @@ export function AddWorkerDialog({ open, onOpenChange, onSuccess, initialValues }
     setDailyWage(initialValues?.dailyWage != null ? String(initialValues.dailyWage) : '800')
     setContractor(initialValues?.contractor ?? '')
     setWorkerType('permanent')
+    setRegister(emptyRegister())
     setError('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialValues])
@@ -107,6 +111,7 @@ export function AddWorkerDialog({ open, onOpenChange, onSuccess, initialValues }
         default_daily_wage: dailyWage ? parseFloat(dailyWage) : undefined,
         contractor: contractor.trim() || undefined,
         status: 'active',
+        ...registerPayload(register),
       }
       await createWorkerApi(payload)
       onSuccess()
@@ -220,6 +225,8 @@ export function AddWorkerDialog({ open, onOpenChange, onSuccess, initialValues }
               />
             </div>
           </div>
+
+          <RegisterFields value={register} onChange={setRegister} compact />
 
           <DialogFooter className="pt-3 border-t">
             <Button

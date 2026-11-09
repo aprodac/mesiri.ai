@@ -20,6 +20,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { fetchProjectStart, fetchSchedule, plural, shortDay, updateProjectStart, type ProjectStart, type Stage, type StartStep } from '@/lib/schedule'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // ST-05: Planning › Project start. The day a job is won, one page takes it to "work starts": the stage and the
 // contract dates, the BOQ from the estimate Excel, the schedule, sites, the site team on WhatsApp, suppliers and
@@ -46,7 +47,7 @@ export default function ProjectStartPage() {
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-8 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         <Heading />
         <p className="text-sm text-muted-foreground">Pick the project you are starting.</p>
         <ProjectPickList to={(id) => `/planning/setup?project=${id}`} empty="No projects yet. Add one in Projects & Sites first." />
@@ -59,13 +60,7 @@ export default function ProjectStartPage() {
 function Heading({ children }: { children?: React.ReactNode }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200"><Rocket className="size-5" /></span>
-        <div>
-          <div className="text-xs text-muted-foreground">Planning</div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Project start</h1>
-        </div>
-      </div>
+      <ModuleTitle icon={Rocket} title="Project start" />
       {children}
     </header>
   )
@@ -88,7 +83,7 @@ function StartView({ projectId }: { projectId: string }) {
     onError: (e) => toast.error('Not saved', apiErrorMessage(e)),
   })
 
-  if (start.isLoading) return <div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col gap-4 sm:px-2"><div className="h-10 w-64 rounded bg-muted" /><div className="h-24 rounded-xl bg-muted/60" /><div className="h-96 rounded-xl bg-muted/60" /></div>
+  if (start.isLoading) return <div className="mx-auto flex w-full animate-pulse flex-col gap-4 sm:px-2"><div className="h-10 w-64 rounded bg-muted" /><div className="h-24 rounded-xl bg-muted/60" /><div className="h-96 rounded-xl bg-muted/60" /></div>
   if (start.isError || !start.data) return <PageError message="The project did not load." onRetry={() => start.refetch()} back={{ to: '/planning/setup', label: 'All projects' }} />
 
   const d = start.data
@@ -97,7 +92,7 @@ function StartView({ projectId }: { projectId: string }) {
   const sched = schedule.data
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 pb-12 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-5 pb-12 sm:px-2">
       <Heading>
         <div className="flex items-center gap-2 text-sm">
           <Link to={`/projects/${projectId}`} className="font-medium hover:underline">{d.project.name}</Link>

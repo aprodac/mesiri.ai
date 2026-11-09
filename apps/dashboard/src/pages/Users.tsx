@@ -92,7 +92,7 @@ export default function Users() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
         title="Team"
         subtitle={query.isLoading ? 'Loading…' : `${active.length} ${active.length === 1 ? 'person' : 'people'}${inactive ? ` · ${inactive} deactivated` : ''}`}

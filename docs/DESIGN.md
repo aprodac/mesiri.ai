@@ -11,6 +11,87 @@
 
 ---
 
+## Brand (UX-01..03, 9 Nov 2026)
+
+One identity everywhere: sign-in, the app, the favicon and phone icon, PDFs.
+
+| Part | Value | Where |
+|---|---|---|
+| Brand colour | site yellow `#facc15` (hazard tape), dark ink on it | `--primary`; the one primary button per page; the active-row bar; the top-bar stripe |
+| Brand ink | `#1a1d21` near-black; dark gold `#854d0e` for brand words on white | `--foreground`, `--primary-ink` |
+| Sidebar | charcoal `#3E3C3D` (light option per user) | `app-sidebar.tsx` `SIDEBAR_THEMES` |
+| Wordmark | "Mesiri" in Unbounded 700 | `components/brand/mesiri-logo.tsx` |
+| Mark | yellow M on a charcoal tile with a hazard stripe | `public/favicon.svg`, `icon-*.png`, `apple-touch-icon.png`, `site.webmanifest`, `og-image.png` |
+| UI type | IBM Plex Sans; Geist Mono for figures | `index.css` |
+| Greys | one family (`neutral`); `slate`, `stone`, `zinc`, `gray` are aliased to it | `index.css` "One grey, one green, one red" |
+| Meaning colours | success green (emerald; `green` aliased), draft orange/amber, danger red (`rose` aliased), info blue, AI indigo | tokens in §3 |
+| Category colours | teal, sky, violet, fuchsia, cyan stay distinct, only for categories (cost centres, supplier kinds, request states) | `lib/cost.ts`, `lib/vendors.ts`, `lib/requests.ts` |
+
+Rules: the sidebar's icons are one muted colour (the active one takes the ink); colour in the sidebar is only a
+badge (orange waiting, red wrong). No page invents a brand colour. Regenerate the PNG icons from `favicon.svg` when
+the mark changes.
+
+## Navigation (UX-04, 9 Nov 2026)
+
+The sidebar follows a project's story ([plan](plans/ui-story-plan.md) section 4):
+
+1. **Search** (Ctrl K / Cmd K, `components/jump-box.tsx`): any page or project.
+2. **Every day:** Today, Daily reports, Issues, Live.
+3. **Plan · Site · Buy · Money**, in the role's order (`sectionOrder` in `lib/module-map.ts`: a site engineer gets
+   Site first, finance gets Money first). Each module's `section` in `module-map.ts` puts it in one; a module with
+   one visible page is a link, with more a drawer.
+4. **Settings** (admins; `/settings`): the hub for Company, Projects & sites, Team, WhatsApp, scheduled messages,
+   modules. Those pages keep their addresses; the Settings row lights up on them. Others with Automations get that.
+5. **The bell** (top bar, NXT-08, `components/inbox-bell.tsx`): everything waiting for this person (site reports to
+   confirm, material requests, subcontractor bills, RA bill drafts, my tasks due), urgent first; each row opens its
+   record. The date pill keeps today's drafts and the red icon open issues; the bell does not repeat them as badges.
+   [Plan](plans/approvals-inbox-plan.md).
+
+**One home per page.** A page listed in two modules is `shortcut: true` in all but its home, and the sidebar shows
+only the home: BOQ & budget lives in Planning, Requests and Suppliers in Procurement. The breadcrumb (`findPage`)
+follows the home. The planned-modules preview is for platform admins only.
+
+## Page kit (UX-05)
+
+Import page parts from `components/page/page-kit.tsx`: `PageHeader`, `Section`, `IconSection`, `StatStrip`,
+`Callout`, `PageError`, `Segmented` (the DPR pages' parts, re-exported), plus `EmptyState` (what the page is for,
+the first thing to do, the WhatsApp sentence that fills it), `Tile` / `TileGrid` (one question each on Home, the
+whole tile links to its page) and `LinkedStrip` (a record's step before and after in its chain, §4c of the plan).
+A page does not draw its own header, empty box or tile.
+
+---
+
+## Role homes, project hub, connected records (UX-11, UX-12, UX-09)
+
+- **Today opens with the role's own questions** (`components/home/role-home.tsx`): Director (cash and bank, profit
+  this month, clients owe you, you owe suppliers, projects over budget, requests to decide), Project manager
+  (requests, deliveries, over-budget work items, machines), Site engineer (their requests, deliveries, machines),
+  Finance (cash, payments due, receivables, delivered-not-billed, GST, TDS, month close). A tile asks its API only
+  when the role may read it and the module is on, and disappears if the API refuses. Sites reported and open
+  issues stay in the strip below, never repeated in a tile. A new tile is one entry in that file's role order.
+- **The project page is the project's hub** (`components/home/project-hub.tsx`): Plan, Site, Buy, Money tiles,
+  each opening its module with `?project=` (ScopeContext scopes every page by it).
+- **Records link along their chain** (`lib/links.ts`, one builder per record kind, drawn by `LinkedStrip`): an
+  order shows its requests, deliveries and supplier account; a request its site day and orders; an expense its
+  work order, supplier account and project cost; a client bill its BOQ, receivables and project P&L. List pages
+  open a record from `?id=` (GRN from `?q=`), so a link lands on the record itself. A new link is a line in
+  `lib/links.ts`, never a hand-made link in a panel.
+- **Headers:** `DprHeader`'s back line follows the module map on a module's own page and shows on phones only
+  (the top bar's breadcrumb covers laptops); detail pages keep their real "up" link.
+
+## Space, words and help (UX-08, asked 9 Nov 2026)
+
+- **Full width.** A page fills the space beside the sidebar: no `max-w-*` on a page's root (`mx-auto … w-full`).
+  Only dialogs, sheets, centred error states and printable documents keep a width.
+- **No descriptions on the page.** A page shows its title, its figures and its work. What the page is for, an
+  example and the WhatsApp line live in the page's **help** (the ? in the top bar, `components/help-button.tsx`),
+  read from `lib/module-map.ts` (`about`, `example`, `whatsapp`, `related`, the module's other pages). A
+  subtitle is data only: a count, a date, the company, "Pick a project".
+- **Module page header:** `ModuleTitle` from the page kit: one brand icon tile, the module's name from the module
+  map, the title; the page's actions beside it.
+- **Visual cues:** a `Tile` in a state has a bar, a tinted ground and its figure in the state's colour; a `Section`
+  title carries the yellow accent bar. Colour still means state only (§3).
+
 ## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-33)
 
 V1 is one loop — sites send updates on WhatsApp, the engineer confirms, the

@@ -15,6 +15,7 @@ import { RecordTransferDialog } from '@/components/materials/record-transfer-dia
 import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // WEB-50 (Ilan, 5 Nov: "too many tabs"): three views, each with its filters as dropdowns on one toolbar row.
 //   Stock      -- what each site holds, by category, for a period; running low (the default).
@@ -78,18 +79,10 @@ export default function MaterialsPage() {
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       {/* WEB-80: the Requests / Purchase orders header, so Materials and Procurement read as one flow. */}
       <header className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="hidden size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 sm:inline-flex text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-            <Boxes className="size-5" />
-          </span>
-          <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">Materials</div>
-            <h1 className="truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">{VIEW_TITLE[view]}</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={Boxes} title={VIEW_TITLE[view]} />
         {canRecord && (
           <div className="flex shrink-0 items-center gap-2">
             <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog('in')}>

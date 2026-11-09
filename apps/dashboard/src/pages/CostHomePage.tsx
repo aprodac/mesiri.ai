@@ -110,7 +110,7 @@ export default function CostHomePage() {
   const workLeft = rows.reduce((t, r) => t + r.work_not_on_a_line, 0)
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="Cost control" date={q.data ? `${rows.length} projects with a BOQ` : ''} />
       {q.isLoading ? (
         <Skeleton className="h-64 rounded-lg" />

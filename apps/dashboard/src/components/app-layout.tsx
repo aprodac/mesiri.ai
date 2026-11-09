@@ -7,6 +7,9 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
+import { JumpBox } from '@/components/jump-box'
+import { HelpButton } from '@/components/help-button'
+import { InboxBell } from '@/components/inbox-bell'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
@@ -72,6 +75,9 @@ function TopBar() {
               <span className="rounded-full bg-orange-500 px-1.5 text-[11px] font-semibold text-white tabular-nums">{drafts}</span>
             )}
           </Link>
+          <HelpButton />
+          {/* NXT-08: everything waiting for me, each opening its record. */}
+          <InboxBell />
           <Link
             to="/issues"
             className={cn(
@@ -110,6 +116,7 @@ export function AppLayout() {
       >
         Skip to content
       </a>
+      <JumpBox />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>

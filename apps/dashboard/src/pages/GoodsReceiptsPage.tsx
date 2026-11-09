@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useUrlState } from '@/lib/url-state'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ClipboardCheck, Download, Image, Search } from 'lucide-react'
@@ -12,6 +12,7 @@ import { ProjectDot } from '@/components/requests/parts'
 import { VendorTile } from '@/components/orders/order-detail'
 import { cn } from '@/lib/utils'
 import { VendorLink } from '@/components/vendors/vendor-parts'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // PRC-29: Procurement > GRN. Every goods received note: what came against which order, what was accepted into stock
 // and what was turned away (and why), the challan number and photo, who received it. A GRN is made by "Material
@@ -36,7 +37,7 @@ export default function GoodsReceiptsPage() {
   const { scope } = useScope()
   const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
   const siteId = scope.mode === 'site' ? scope.siteId : null
-  const [search, setSearch] = React.useState('')
+  const [search, setSearch] = useUrlState<string>('q', '')  // UX-09: links land on one order's deliveries
   const { data, isLoading, isError } = useQuery({
     queryKey: ['procurement', 'grns', projectId, siteId],
     queryFn: () => fetchGrns({ project_id: projectId, site_id: siteId }),
@@ -51,13 +52,7 @@ export default function GoodsReceiptsPage() {
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200"><ClipboardCheck className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Procurement</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Goods received</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={ClipboardCheck} title="Goods received" />
         <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportGrns(list)}><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
       </header>
 

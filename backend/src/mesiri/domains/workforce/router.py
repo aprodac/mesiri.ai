@@ -154,6 +154,14 @@ class WorkforceWorkerResponse(BaseModel):
     default_daily_wage: Money | None = None
     contractor: str | None = None
     status: str
+    # LW-01: phone, home project and site, team (a labour contractor), wage basis, dates.
+    phone: str | None = None
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+    vendor_id: uuid.UUID | None = None
+    wage_basis: str = "day"
+    joined_on: datetime.date | None = None
+    left_on: datetime.date | None = None
 
 
 class WorkforceWorkersListResponse(BaseModel):
@@ -161,7 +169,19 @@ class WorkforceWorkersListResponse(BaseModel):
     total: int
 
 
-class CreateWorkerRequest(BaseModel):
+class _RegisterFields(BaseModel):
+    """LW-01: who to call, where they work, whose team, how they are paid."""
+
+    phone: str | None = Field(default=None, max_length=20)
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+    vendor_id: uuid.UUID | None = Field(default=None, description="The labour contractor whose team they are in")
+    wage_basis: Literal["day", "month"] | None = None
+    joined_on: datetime.date | None = None
+    left_on: datetime.date | None = None
+
+
+class CreateWorkerRequest(_RegisterFields):
     name: str
     trade: str | None = None
     worker_type: str = "permanent"
@@ -170,7 +190,7 @@ class CreateWorkerRequest(BaseModel):
     status: str = "active"
 
 
-class UpdateWorkerRequest(BaseModel):
+class UpdateWorkerRequest(_RegisterFields):
     name: str | None = None
     trade: str | None = None
     worker_type: str | None = None
@@ -570,17 +590,40 @@ async def create_worker(
 
     repo = PostgresWorkforceReadRepository(conn)
     created_by = auth_context.user_id
+    extra = await _register_fields(conn, auth_context.organization_id, body.model_dump(include=set(_RegisterFields.model_fields)))
+    contractor = extra.pop("contractor", None) or body.contractor
     worker = await repo.create_worker(
         organization_id=auth_context.organization_id,
         name=name,
         trade=normalize_trade(body.trade),
         worker_type=body.worker_type,
         default_daily_wage=body.default_daily_wage,
-        contractor=body.contractor,
+        contractor=contractor,
         status=body.status,
         created_by=created_by,
+        **extra,
     )
     return worker
+
+
+async def _register_fields(conn: AsyncConnection, org: uuid.UUID, fields: dict[str, Any]) -> dict[str, Any]:
+    """LW-01 fields checked against the company: the site belongs to the project, the team is a vendor of ours; a
+    team named here also fills the old free-text ``contractor`` so older reads keep working."""
+    if fields.get("site_id"):
+        p = (await conn.execute(text("SELECT project_id FROM sites WHERE id = :s AND organization_id = :org"),
+                                {"s": fields["site_id"], "org": org})).scalar()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Site not found")
+        fields["project_id"] = fields.get("project_id") or p
+    if fields.get("vendor_id"):
+        name = (await conn.execute(text("SELECT name FROM vendors WHERE id = :v AND organization_id = :org"),
+                                   {"v": fields["vendor_id"], "org": org})).scalar()
+        if name is None:
+            raise HTTPException(status_code=404, detail="Team not found")
+        fields["contractor"] = name
+    if fields.get("phone"):
+        fields["phone"] = "".join(ch for ch in fields["phone"] if ch.isdigit() or ch == "+")
+    return fields
 
 
 @router.patch("/workers/{worker_id}", response_model=WorkforceWorkerResponse)
@@ -605,6 +648,9 @@ async def update_worker(
         raise HTTPException(status_code=404, detail="Worker not found")
 
     patch = body.model_dump(exclude_unset=True)
+    extra = {k: patch[k] for k in list(patch) if k in _RegisterFields.model_fields}
+    if extra:
+        patch.update(await _register_fields(conn, auth_context.organization_id, extra))
     if "trade" in patch:
         patch["trade"] = normalize_trade(patch["trade"])
     if "name" in patch and patch["name"] is not None:

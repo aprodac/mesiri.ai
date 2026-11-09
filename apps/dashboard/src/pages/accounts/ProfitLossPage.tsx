@@ -32,7 +32,7 @@ export default function ProfitLossPage() {
   const span = (a: string, b: string) => (a.slice(0, 7) === b.slice(0, 7) && a.endsWith('-01') ? new Date(`${a}T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : `${formatDay(a)} – ${formatDay(b)}`)
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" date={d?.scope} />
       <BooksTabs current="/accounts/pl" />
       <div className="flex flex-wrap items-center gap-2">

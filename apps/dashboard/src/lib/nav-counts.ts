@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchSiteDaysApi } from '@/lib/api'
-import { fetchInboxCount } from '@/lib/approvals'
 import { fetchAttentionCount } from '@/lib/attention'
 import { useScope } from '@/lib/ScopeContext'
 import { localIsoDate } from '@/lib/site-day'
@@ -8,20 +7,13 @@ import { localIsoDate } from '@/lib/site-day'
 /** Today's numbers for the sidebar and top bar badges (WEB-20): drafts still
  * to confirm and open issues, in the current scope. Same query key as the
  * Today page, so on that page it costs no extra request. */
-export function useNavCounts(): { drafts: number; openIssues: number; waiting: number; attention: number } {
+export function useNavCounts(): { drafts: number; openIssues: number; attention: number } {
   const { scope } = useScope()
   const date = localIsoDate(new Date())
   const projectFilter = scope.mode === 'portfolio' ? undefined : scope.projectId
   const { data } = useQuery({
     queryKey: ['site-days', date, projectFilter],
     queryFn: () => fetchSiteDaysApi(date, projectFilter),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  })
-  // GM-01: decisions waiting for this person (one light request a minute).
-  const waiting = useQuery({
-    queryKey: ['approvals-count', projectFilter],
-    queryFn: () => fetchInboxCount(projectFilter),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
@@ -35,7 +27,6 @@ export function useNavCounts(): { drafts: number; openIssues: number; waiting: n
   const items = data?.items ?? []
   return {
     attention: attention.data?.bad ?? 0,
-    waiting: waiting.data?.total ?? 0,
     drafts: items.reduce((n, s) => n + (s.drafts ?? 0), 0),
     openIssues: items.reduce((n, s) => n + s.open_issues, 0),
   }

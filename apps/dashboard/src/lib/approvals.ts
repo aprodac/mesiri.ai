@@ -1,152 +1,87 @@
 import { api } from './api'
-import { decideRequest } from './requests'
-import { decideBill, decideMeasurement } from './subcontracts'
-import { raBillAction } from './billing'
-import { answerSizeRequest } from './materials'
+import { recordUrl } from './links'
 
-// GM-01: "Waiting for you" -- one list over each module's own statuses. The shapes mirror
-// backend/src/mesiri/domains/approvals (inbox.py builds a row; router.py the routes). Deciding always goes through
-// the module's own route (decideRequest, decideBill, ...): this file only picks which one.
+// NXT-08: the approvals inbox, "what is waiting for me". Backend: domains/approvals (GET /approvals/waiting), a read
+// over each module's own list as the caller, so a row is here exactly when its page would show it to this person.
 
-export type InboxKind = 'material_request' | 'subcontract_bill' | 'measurement' | 'ra_bill' | 'size_request'
-export type InboxTone = 'ok' | 'warn' | 'bad' | 'info'
-export type InboxGroup = 'flagged' | 'older' | 'recent'
+export type WaitingKind = 'site_report' | 'material_request' | 'subcontract_bill' | 'ra_bill' | 'wage_sheet' | 'task'
 
-export interface InboxRow {
-  key: string
-  kind: InboxKind
+export interface WaitingItem {
+  kind: WaitingKind
   id: string
   ref: string | null
   title: string
+  detail: string | null
   project_id: string | null
   project_name: string | null
   site_id: string | null
   site_name: string | null
-  asked_by: string | null
-  since: string
-  /** Only for the roles that see spending. A material request's is an estimate at the last rates. */
-  amount: string | null
-  flagged: boolean
-  /** The one fact that decides it. */
-  fact: string
-  tone: InboxTone
-  actions: string[]
-  link: string
-  group: InboxGroup
-  extra: Record<string, unknown>
+  since: string | null
+  urgent: boolean
+  date?: string
+  count?: number
+  work_order_id?: string
+  /** wage_sheet: the pay week's first day. */
+  period_from?: string
+  amount?: string | null
 }
 
-export type InboxCounts = Record<'total' | InboxGroup | InboxKind, number>
-
-export interface Inbox {
-  items: InboxRow[]
-  counts: InboxCounts
+export interface Waiting {
+  today: string
+  total: number
+  urgent: number
+  counts: Partial<Record<WaitingKind, number>>
+  items: WaitingItem[]
+  unavailable: WaitingKind[]
 }
 
-/** The page's query key; the count badge uses ['approvals-count']. */
-export const INBOX_KEY = ['approvals-inbox'] as const
-
-export async function fetchInbox(projectId?: string | null): Promise<Inbox> {
-  return (await api.get<Inbox>('/approvals/inbox', { params: projectId ? { project_id: projectId } : {} })).data
-}
-
-export async function fetchInboxCount(projectId?: string | null): Promise<InboxCounts> {
-  const res = await api.get<{ counts: InboxCounts }>('/approvals/inbox/count', { params: projectId ? { project_id: projectId } : {} })
-  return res.data.counts
-}
-
-export const KIND_LOOK: Record<InboxKind, { label: string; plural: string; chip: string }> = {
-  material_request: { label: 'Material request', plural: 'Requests', chip: 'bg-info-soft text-info' },
-  subcontract_bill: { label: 'Subcontract bill', plural: 'Bills', chip: 'bg-ai-soft text-ai' },
-  measurement: { label: 'Work to confirm', plural: 'Work', chip: 'bg-teal-100 text-teal-900 dark:bg-teal-950 dark:text-teal-100' },
-  ra_bill: { label: 'RA bill to submit', plural: 'RA bills', chip: 'bg-success-soft text-success' },
-  size_request: { label: 'Unit size', plural: 'Sizes', chip: 'bg-draft-soft text-draft' },
-}
-
-export const TONE_LOOK: Record<InboxTone, string> = {
-  ok: 'bg-success-soft text-success',
-  warn: 'bg-draft-soft text-draft',
-  bad: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
-  info: 'bg-muted text-muted-foreground',
-}
-
-export const GROUP_LOOK: Record<InboxGroup, string> = {
-  flagged: 'Flagged by a check',
-  older: 'Waiting more than 2 days',
-  recent: 'Recent',
-}
-
-/** What a button says and does. `reason`: the module refuses it without one. `primary`: the main yes. */
-export interface InboxAction {
-  action: string
-  label: string
-  /** What the toast says once it is done. */
-  done: string
-  primary?: boolean
-  danger?: boolean
-  reason?: 'required' | 'optional'
-  /** The size answer: a number in the stock unit. */
-  number?: boolean
-}
-
-export function actionsFor(row: InboxRow): InboxAction[] {
-  switch (row.kind) {
-    case 'material_request':
-      return [
-        { action: 'ordered', label: 'Mark ordered', done: 'marked ordered', primary: true },
-        { action: 'sent', label: 'Sent from a site', done: 'marked sent from a site', reason: 'optional' },
-        { action: 'rejected', label: 'Not ordering', done: 'not ordering it', danger: true, reason: 'required' },
-      ]
-    case 'subcontract_bill':
-      return [
-        { action: 'approve', label: row.flagged ? 'Approve anyway' : 'Approve', done: 'approved', primary: !row.flagged, reason: 'required' },
-        { action: 'reject', label: 'Reject', done: 'rejected', danger: true, reason: 'required' },
-      ]
-    case 'measurement':
-      return [
-        { action: 'confirm', label: 'Confirm', done: 'confirmed', primary: true },
-        { action: 'reject', label: 'Reject', done: 'rejected', danger: true, reason: 'optional' },
-      ]
-    case 'ra_bill':
-      return [{ action: 'submit', label: 'Submit to client', done: 'submitted to the client', primary: true }]
-    case 'size_request':
-      return [{ action: 'answer', label: 'Set the size', done: 'size set; the held lines are saved', primary: true, number: true }]
+export async function fetchWaiting(): Promise<Waiting> {
+  const data = (await api.get<Partial<Waiting>>('/approvals/waiting')).data ?? {}
+  return {
+    today: data.today ?? '',
+    total: data.total ?? 0,
+    urgent: data.urgent ?? 0,
+    counts: data.counts ?? {},
+    items: data.items ?? [],
+    unavailable: data.unavailable ?? [],
   }
 }
 
-/** The primary yes, when it is safe to give for many rows at once (D-GM2): nothing flagged, no reason or number
- *  needed, no money sent out. A request's "ordered" and an RA bill's "submit" are decisions about one record each. */
-export function batchAction(row: InboxRow): InboxAction | null {
-  if (row.flagged || row.kind !== 'measurement') return null
-  return actionsFor(row).find((a) => a.primary) ?? null
+/** The groups in the panel, in the order a person deals with them. */
+export const KIND_LABEL: Record<WaitingKind, string> = {
+  site_report: 'Site reports to confirm',
+  material_request: 'Material requests',
+  subcontract_bill: 'Subcontractor bills',
+  ra_bill: 'RA bills in draft',
+  wage_sheet: 'Wages to approve or pay',
+  task: 'My tasks',
 }
+export const KIND_ORDER: WaitingKind[] = ['site_report', 'material_request', 'subcontract_bill', 'ra_bill', 'wage_sheet', 'task']
 
-/** Decide through the module's own route. */
-export async function decide(row: InboxRow, action: string, note?: string): Promise<void> {
-  switch (row.kind) {
+/** Where a row opens: the record's own page (lib/links.ts), never a new screen. */
+export function waitingUrl(item: WaitingItem): string {
+  switch (item.kind) {
+    case 'site_report':
+      return item.date && item.site_id ? recordUrl.siteReport(item.date, item.site_id) : '/today'
     case 'material_request':
-      await decideRequest(row.id, action as 'ordered' | 'sent' | 'rejected', note)
-      return
+      return recordUrl.request(item.id)
     case 'subcontract_bill':
-      await decideBill(row.id, action as 'approve' | 'reject', note ?? '')
-      return
-    case 'measurement':
-      await decideMeasurement(row.id, action as 'confirm' | 'reject', note)
-      return
+      return item.work_order_id ? recordUrl.workOrderBills(item.work_order_id) : '/subcontract/work-orders'
     case 'ra_bill':
-      await raBillAction(row.id, 'submit')
-      return
-    case 'size_request':
-      await answerSizeRequest(row.id, Number(note))
-      return
+      return item.project_id ? recordUrl.raBill(item.id, item.project_id) : '/billing/ra-bills'
+    case 'wage_sheet':
+      // LW-08: the week's sheet, on its site and week.
+      return `/labour/wages?${item.site_id ? `at=${item.site_id}&` : ''}week=${item.period_from ?? ''}`
+    case 'task':
+      return recordUrl.task(item.id)
   }
 }
 
-/** "2 h", "3 d": how long it has waited. */
-export function waited(iso: string, now = new Date()): string {
-  const mins = Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 60000))
-  if (mins < 60) return `${mins} min`
-  const hours = Math.round(mins / 60)
-  if (hours < 24) return `${hours} h`
-  return `${Math.round(hours / 24)} d`
+/** "today", "yesterday", "3 days" from the item's date (the company's today from the API). */
+export function waitedFor(since: string | null, today: string): string {
+  if (!since || !today) return ''
+  const days = Math.round((Date.parse(today.slice(0, 10)) - Date.parse(since.slice(0, 10))) / 86_400_000)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  return `${days} days`
 }

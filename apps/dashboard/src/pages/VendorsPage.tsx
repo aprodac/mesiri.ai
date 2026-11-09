@@ -25,6 +25,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
@@ -124,15 +125,9 @@ export default function VendorsPage() {
   const loading = vendors.isLoading || (seesMoney && payables.isLoading)
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200"><Store className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Finance</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Suppliers</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={Store} title="Suppliers" />
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2" disabled={!shown.length} onClick={exportRows} title="The suppliers shown, as a CSV file (opens in Excel)">
             <Download className="size-4" /> <span className="hidden sm:inline">Export</span>

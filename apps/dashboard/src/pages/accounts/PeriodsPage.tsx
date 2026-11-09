@@ -54,7 +54,7 @@ export default function PeriodsPage() {
   const lastClosed = d?.months.find((m) => m.status === 'closed')
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} crumb="Accounts" title="Months" date={d ? `Year ${d.financial_year}` : undefined} />
       <BooksTabs current="/accounts/periods" />
       {!d ? (

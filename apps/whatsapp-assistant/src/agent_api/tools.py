@@ -120,12 +120,6 @@ ALLOWED: tuple[Allowed, ...] = (
             + _WRITE),
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
-    # GM-01 (9 Nov 2026): every decision waiting for this person, over each module's own statuses (read only).
-    Allowed("waiting_for_me", "GET", "/approvals/inbox",
-            "Everything waiting for THIS person's decision, flagged first, then the oldest (project_id to narrow; kind "
-            "to narrow: material_request, subcontract_bill, measurement, ra_bill, size_request). Each item: kind, id, ref, "
-            "title, project_name, site_name, asked_by, since, amount (only for roles that see spending), flagged, fact (the "
-            "one fact that decides it, in words), group (flagged / older / recent); counts. Only what their role may decide."),
     # GM-04 (9 Nov 2026): what crossed a line for this person, read from each module's own route (read only).
     Allowed("attention", "GET", "/attention",
             "What crossed a line for THIS person, worst first (project_id to narrow): each alert has kind (handover, "
@@ -192,6 +186,26 @@ ALLOWED: tuple[Allowed, ...] = (
         "another crew." + _WRITE,
         hide=("recorded_via",), fixed=(("recorded_via", "whatsapp_text"),),
     ),
+    # Wages and advances (LW-07, plan docs/plans/wages-and-labour-plan.md; SOP rule 22)
+    Allowed("labour_teams", "GET", "/labour/teams",
+            "Labour contractors (their teams): id, name, phone, workers on the register, man-days in the last 30 days."),
+    Allowed("labour_advance_balances", "GET", "/labour/advances/balances",
+            "Each worker's or labour contractor's advance: given, taken back from wages, still outstanding (project_id to "
+            "narrow). Owner, finance and project managers only."),
+    Allowed("give_labour_advance", "POST", "/labour/advances",
+            "Prepare an advance to a worker on the register (worker_id), a labour team (vendor_id from labour_teams) or "
+            "a person in words (payee_name), for a site (site_id) or project, from the money account they named "
+            "(account_id from money_accounts; a site engineer's own cash box). It is taken back from their next "
+            "wages." + _WRITE, hide=("source",), fixed=(("source", "whatsapp"),)),
+    Allowed("wage_sheet", "GET", "/labour/wage-sheets/open",
+            "This week's wages for a site (site_id) or project (project_id); a date for another week. Rows: payee_name, "
+            "man_days, gross, overtime_amount, advances_recovered, deductions, net, paid, due, slip (the payment slip text, as it is "
+            "them); status draft or approved; totals; changed (attendance changed since approval)."),
+    Allowed("approve_wage_sheet", "POST", "/labour/wage-sheets/{sheet_id}/approve",
+            "Prepare approving a week's wage sheet (from wage_sheet) so it can be paid." + _WRITE),
+    Allowed("pay_wages", "POST", "/labour/wage-sheets/{sheet_id}/pay",
+            "Prepare paying an approved wage sheet: one row (row_id; amount for part of it) or every row still due, "
+            "from the money account they named (account_id)." + _WRITE, hide=("source",), fixed=(("source", "whatsapp"),)),
     # Work and issues
     Allowed("work_progress", "GET", "/progress/activities", "Work done / in progress per site, with dates and quantities."),
     Allowed(
@@ -471,8 +485,16 @@ ALLOWED: tuple[Allowed, ...] = (
             "was not in the list." + _WRITE),
     # TM-30 (#230): the dashboard's own route, added by scripts/allow_route.py.
     Allowed("my_requests", "GET", "/me/requests", "The requests this person asked Mesiri for, and where each one is (asked, building, live, dropped)."),
-    # TM-30 (WEB-71): the dashboard"s own route, added by scripts/allow_route.py.
+    # TM-30 (WEB-71): the dashboard's own route, added by scripts/allow_route.py.
     Allowed("add_person", "POST", "/projects/{project_id}/members/by-number", "Prepare adding someone NEW to the company, onto a project, by their name and WhatsApp number (typed, or said in a voice note), with a role (site engineer, project manager, finance, admin). Someone already in the company: add_project_member. fullName: as said; whatsappNumber: the digits as said; role: as said." + _WRITE),
+    # TM-30: the dashboard's own route, added by scripts/allow_route.py.
+    Allowed("waiting", "GET", "/approvals/waiting",
+            "What is waiting for this person, urgent first then oldest: site reports with entries to confirm (today, "
+            "yesterday), material requests to decide, subcontractor bills flagged or sent for approval, RA bills in "
+            "draft, pay weeks whose wages are to approve or pay, their own tasks overdue or due today. Each item: kind, ref, "
+            "title, detail, project_name, "
+            "site_name, since, urgent; plus counts per kind and total. Read only: acting goes through each kind's own "
+            "tool."),
 )
 
 

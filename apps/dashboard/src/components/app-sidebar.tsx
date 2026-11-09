@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Building2,
-  Building,
   LogOut,
-  Users,
   ArrowLeft,
   Activity,
   BarChart3,
@@ -14,16 +11,15 @@ import {
   CalendarDays,
   Sun,
   Moon,
-  HardHat,
-  MessageSquare,
   Clock,
   AlertCircle,
   Palette,
   ListChecks,
   Map as MapIcon,
-  Inbox,
+  Radio,
+  Search,
+  Settings as SettingsIcon,
   BellRing,
-  LayoutDashboard,
 } from 'lucide-react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -50,7 +46,8 @@ import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
 import { useNavCounts } from '@/lib/nav-counts'
-import { MODULE_GROUPS, PAGE_ICONS, findPage, type ModuleGroup } from '@/lib/module-map'
+import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, sectionOrder, type ModuleGroup, type NavSection } from '@/lib/module-map'
+import { openJump } from '@/lib/jump'
 import { usePlannedPreview } from '@/lib/preview'
 
 type NavItem = {
@@ -63,10 +60,8 @@ type NavItem = {
   allowedRoles?: readonly string[]
   // Switched-off modules are hidden (WEB-02); see lib/modules.tsx.
   module?: ModuleKey
-  // The icon's colour (WEB-20), like the More sections' icons.
-  tone?: NavTone
   // Which live count to show as a badge (WEB-20).
-  badge?: 'drafts' | 'issues' | 'waiting' | 'attention'
+  badge?: 'drafts' | 'issues' | 'attention'
   // Small text at the row's end, e.g. "3/6" on Finish setup (SS-19).
   note?: string
   // A planned page (WEB-72), shown only with the preview on.
@@ -79,44 +74,35 @@ type NavCategory = {
   key: string
   title: string
   icon: React.ElementType
-  tone: NavTone
   items: SubItem[]
 }
 
-// Labour is one page since WEB-22 (Attendance | Workers).
 const NON_ADMIN_ROLES = ['PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const
 
-const LABOUR_ITEM: NavItem = { title: 'Attendance', url: '/labour', icon: HardHat, module: 'labour', tone: 'amber' }
-
-// V1 navigation (WEB-21, docs/DESIGN.md "Pages and routes"): the daily
-// pages, then setup. No "More": pages outside V1 were removed, and modules a
-// company has not switched on (WEB-02) are hidden.
+// The sidebar tells the project's story (UX-04, docs/plans/ui-story-plan.md section 4): the daily pages, then
+// PLAN, SITE, BUY and MONEY (in the order the role reaches for them, lib/module-map.ts sectionOrder), then
+// Settings. Each page has one home; a module with one page is a link, with several a drawer. Modules a
+// company has not switched on (WEB-02) and pages a role may not see are hidden.
 const PRIMARY_ITEMS: NavItem[] = [
-  { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
-  // GM-02: every project on one screen. Not the landing page (that is D-GM1, shared layout: Ilan).
-  { title: 'Command centre', url: '/site/command', icon: LayoutDashboard, tone: 'amber' },
-  { title: 'Daily Reports', url: '/reports', icon: FileText, tone: 'sky' },
-  { title: 'Issues', url: '/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
-  // GM-01: every decision waiting for this person (requests, subcontract bills, work to confirm, RA bills, sizes).
-  { title: 'Waiting for you', url: '/site/approvals', icon: Inbox, tone: 'amber', badge: 'waiting' },
+  { title: 'Today', url: '/today', icon: CalendarDays, badge: 'drafts' },
+  { title: 'Daily reports', url: '/reports', icon: FileText },
+  { title: 'Issues', url: '/issues', icon: AlertCircle, badge: 'issues' },
   // GM-04: what crossed a line (over budget, late, to order, not reported, issues left open, hire bills).
-  { title: 'Attention', url: '/site/attention', icon: BellRing, tone: 'rose', badge: 'attention' },
+  { title: 'Attention', url: '/site/attention', icon: BellRing, badge: 'attention' },
+  { title: 'Live', url: '/live', icon: Radio },
 ]
 
-// Site records: everything the sites sent, across days and sites.
+// Site records live in the SITE section.
 const RECORD_ITEMS: NavItem[] = [
-  { title: 'Site log', url: '/site-log', icon: Activity, tone: 'sky' },
-  { title: 'Analytics', url: '/analytics', icon: BarChart3, tone: 'indigo' },
+  { title: 'Site log', url: '/site-log', icon: Activity },
+  { title: 'Analytics', url: '/analytics', icon: BarChart3 },
 ]
 
 const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
-  { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN', tone: 'teal' },
-  { title: 'Team', url: '/team', icon: Users, requiredRole: 'ADMIN', tone: 'violet' },
-  { title: 'Company', url: '/company', icon: Building, requiredRole: 'ADMIN', tone: 'indigo' },
+  { title: 'Settings', url: '/settings', icon: SettingsIcon, requiredRole: 'ADMIN' },
   // WEB-31: the inbox APIs answer admins only. Others who have Automations
   // get that view of the WhatsApp page on its own.
-  { title: 'WhatsApp', url: '/whatsapp', icon: MessageSquare, requiredRole: 'ADMIN', tone: 'green' },
-  { title: 'Automations', url: '/whatsapp?view=automations', icon: Clock, module: 'automations', allowedRoles: NON_ADMIN_ROLES, tone: 'sky' },
+  { title: 'Automations', url: '/whatsapp?view=automations', icon: Clock, module: 'automations', allowedRoles: NON_ADMIN_ROLES },
 ]
 
 function initialsOf(name: string): string {
@@ -198,37 +184,24 @@ const SIDEBAR_THEMES = {
   },
 } as const
 
-// Main navigation icon colours (WEB-20): the same treatment as the More
-// sections -- a coloured icon, no background -- in the shade that reads on
-// the theme. Palette classes are allowed here only: identity colours, not
-// states (docs/DESIGN.md).
-const NAV_TONES = {
-  orange: { charcoal: 'text-orange-300', light: 'text-orange-700 dark:text-orange-300' },
-  sky: { charcoal: 'text-sky-300', light: 'text-sky-700 dark:text-sky-300' },
-  rose: { charcoal: 'text-rose-300', light: 'text-rose-700 dark:text-rose-300' },
-  emerald: { charcoal: 'text-emerald-300', light: 'text-emerald-700 dark:text-emerald-300' },
-  violet: { charcoal: 'text-violet-300', light: 'text-violet-700 dark:text-violet-300' },
-  amber: { charcoal: 'text-amber-300', light: 'text-amber-700 dark:text-amber-300' },
-  green: { charcoal: 'text-green-300', light: 'text-green-700 dark:text-green-300' },
-  teal: { charcoal: 'text-teal-300', light: 'text-teal-700 dark:text-teal-300' },
-  indigo: { charcoal: 'text-indigo-300', light: 'text-indigo-700 dark:text-indigo-300' },
-} as const
-
-type NavTone = keyof typeof NAV_TONES
-
+// One icon colour (UX-03): icons are muted and the active row's icon takes the ink, so colour in the
+// sidebar means only a badge (orange: waiting on someone, red: something is wrong).
 // Badges: orange = waiting on someone, red = something is wrong.
 const BADGE = {
   drafts: 'bg-orange-500 text-white',
   issues: 'bg-rose-500 text-white',
-  waiting: 'bg-yellow-400 text-stone-950',
   attention: 'bg-red-600 text-white',
 } as const
 
 const NAV_LINK_BASE =
   'group/row flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors'
 
+// Settings' pages keep their own addresses (UX-04); the Settings row lights up on any of them.
+const SETTINGS_PATHS = ['/settings', '/projects', '/team', '/company', '/whatsapp']
+
 function checkIsItemActive(pathname: string, itemUrl: string): boolean {
   if (pathname === itemUrl) return true
+  if (itemUrl === '/settings') return SETTINGS_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   if (itemUrl === '/today' && pathname === '/') return true
   if (itemUrl === '/operations/dashboard' && (pathname === '/operations' || pathname === '/operations/dashboard' || pathname === '/overview')) return true
   if (itemUrl === '/finance/expenses' && pathname === '/finance') return true
@@ -288,7 +261,7 @@ function CollapsibleNavCategory({
         )}
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <IconComp className={cn('size-4 shrink-0', NAV_TONES[category.tone][theme])} />
+          <IconComp className={cn('size-4 shrink-0', isChildActive ? S.iconActive : S.icon)} />
           <span className={cn('truncate group-data-[collapsible=icon]:hidden', allSoon && !isChildActive && 'opacity-70')}>{category.title}</span>
         </div>
         <span className={cn('flex items-center gap-1.5 group-data-[collapsible=icon]:hidden', S.chevron)}>
@@ -410,7 +383,7 @@ export function AppSidebar() {
   }
 
   const getUrlWithScope = (baseUrl: string) => {
-    const isOperational = !['/projects', '/team', '/company', '/whatsapp'].includes(baseUrl.split('?')[0])
+    const isOperational = !SETTINGS_PATHS.includes(baseUrl.split('?')[0])
     if (!isOperational) return baseUrl
 
     const params = new URLSearchParams()
@@ -449,44 +422,46 @@ export function AppSidebar() {
   const setupDone = setup.data ? setupCounts(setup.data) : null
   const finishSetup: NavItem | null =
     setup.isCompanyAdmin && !trial.readOnly && setupDone && setupDone.done < setupDone.total
-      ? { title: 'Finish setup', url: SETUP_URL, icon: ListChecks, tone: 'orange', note: `${setupDone.done}/${setupDone.total}` }
+      ? { title: 'Finish setup', url: SETUP_URL, icon: ListChecks, note: `${setupDone.done}/${setupDone.total}` }
       : null
-  // WEB-72: modules from lib/module-map.ts, each with only the pages this role may see. Without
-  // the preview, only working pages; with it, planned ones too, marked Soon.
+  // WEB-72 / UX-04: modules from lib/module-map.ts, each with only the pages this role may see and only their
+  // home entry (a `shortcut` lives in another module). Without the preview, only working pages.
   const [showPlanned, setShowPlanned] = usePlannedPreview()
   const role = (me?.role || '').toUpperCase()
+  const pageVisible = (p: ModuleGroup['pages'][number]) =>
+    !p.shortcut && (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)) && (!p.module || isModuleEnabled(p.module))
   const toCategory = (group: ModuleGroup): NavCategory => ({
     key: group.key,
     title: group.title,
     icon: group.icon,
-    tone: group.tone,
-    items: group.pages
-      .filter((p) => (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)) && (!p.module || isModuleEnabled(p.module)))
-      .map((p) => ({ title: p.navTitle ?? p.title, url: p.url, soon: p.status === 'planned', phase: p.phase })),
+    items: group.pages.filter(pageVisible).map((p) => ({ title: p.navTitle ?? p.title, url: p.url, soon: p.status === 'planned', phase: p.phase })),
   })
-  const groupByKey = (key: string) => MODULE_GROUPS.find((g) => g.key === key)!
-  const financeCategory = isModuleEnabled('finance') ? toCategory(groupByKey('finance')) : null
-  // PRC-22: Materials opens like Finance (Stock, Movements, Items, Requests), from the same module map.
-  const materialsCategory = isModuleEnabled('materials') ? toCategory(groupByKey('materials')) : null
-  // PRC-10: Procurement opens the same way (Purchase orders, Suppliers; more as they are built).
-  const procurementCategory = isModuleEnabled('materials') ? toCategory(groupByKey('procurement')) : null
-  // NXT-11: Equipment opens the same way (Machines, Daily log, Hire check, Vehicles, Shuttering & tools).
-  const equipmentCategory = isModuleEnabled('equipment') ? toCategory(groupByKey('equipment')) : null
-  // NXT-05..07: Subcontract opens the same way (Work orders, Bills & checks, Subcontractors); hidden when empty.
-  const subcontractCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('subcontract')))
-  // ST-04/05: Planning (Project start, Schedule, BOQ & budget): the start of a project; hidden when the role has none.
-  const planningCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('planning')))
-  // CC-01: Cost control opens the same way (BOQ & budget, Budget vs actual, Cost centres); money roles only, so hidden when empty.
-  const costCategory = isModuleEnabled('cost') ? ((c) => (c.items.length ? c : null))(toCategory(groupByKey('cost'))) : null
-  // NXT-01/02: Client billing (Clients, RA bills) the same way; owner, admin and finance only, so hidden when empty.
-  const billingCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('billing')))
-  // ACC-01..05: Accounts (Trial balance, Day book, Ledgers, Chart, Months behind the accounts module; Receivables and
-  // Tally export with finance); owner, admin and finance only, so hidden when empty.
-  const accountsCategory = isModuleEnabled('finance') ? ((c) => (c.items.length ? c : null))(toCategory(groupByKey('accounts'))) : null
-  const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
-  const previewRecords: NavItem[] = groupByKey('site')
-    .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
-    .map((p) => ({ title: p.title, url: p.url, icon: PAGE_ICONS[p.url] ?? Activity, tone: p.status === 'planned' ? undefined : RECORD_ITEMS.find((r) => r.url === p.url)?.tone, soon: p.status === 'planned' }))
+  // A section's entries: a module with one page is a plain link, with several a drawer.
+  type Entry = { kind: 'link'; item: NavItem } | { kind: 'category'; category: NavCategory }
+  const siteGroup = MODULE_GROUPS.find((g) => g.key === 'site')!
+  const sectionEntries = (section: NavSection): Entry[] => {
+    const entries: Entry[] = []
+    if (section === 'site') {
+      // The daily group's other pages (Site log, Analytics; planned ones with the preview) open the SITE section.
+      for (const p of siteGroup.pages.filter((p) => pageVisible(p) && !PRIMARY_ITEMS.some((i) => i.url === p.url))) {
+        entries.push({ kind: 'link', item: { title: p.navTitle ?? p.title, url: p.url, icon: PAGE_ICONS[p.url] ?? RECORD_ITEMS.find((r) => r.url === p.url)?.icon ?? Activity, soon: p.status === 'planned' } })
+      }
+    }
+    for (const group of MODULE_GROUPS.filter((g) => g.section === section && isModuleEnabled(g.module))) {
+      const category = toCategory(group)
+      if (category.items.length === 0) continue
+      if (category.items.length === 1) {
+        const only = category.items[0]
+        entries.push({ kind: 'link', item: { title: group.key === 'labour' ? only.title : group.title, url: only.url, icon: group.icon, soon: only.soon } })
+      } else {
+        entries.push({ kind: 'category', category })
+      }
+    }
+    return entries
+  }
+  const sections = sectionOrder(role)
+    .map((key) => ({ key, title: SECTION_TITLES[key], entries: sectionEntries(key) }))
+    .filter((section) => section.entries.length > 0)
   const renderCategory = (category: NavCategory) => (
     <CollapsibleNavCategory
       key={category.key}
@@ -501,7 +476,7 @@ export function AppSidebar() {
   const renderLink = (item: NavItem) => {
     const ItemIcon = item.icon
     const active = checkIsItemActive(location.pathname, item.url)
-    const count = item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : item.badge === 'waiting' ? counts.waiting : item.badge === 'attention' ? counts.attention : 0
+    const count = item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : item.badge === 'attention' ? counts.attention : 0
     // A plain string className, not NavLink's function form: SidebarMenuButton
     // (asChild -> Radix Slot) merges className as text, which silently drops
     // a function, so the active state never rendered.
@@ -514,7 +489,7 @@ export function AppSidebar() {
             className={cn(NAV_LINK_BASE, S.ring, active ? S.rowActive : S.rowIdle, 'data-[active=true]:font-semibold')}
           >
             <span className="relative shrink-0">
-              <ItemIcon className={cn('size-4', item.tone ? NAV_TONES[item.tone][sidebarTheme] : active ? S.iconActive : S.icon)} />
+              <ItemIcon className={cn('size-4', active ? S.iconActive : S.icon)} />
               {count > 0 && (
                 <span
                   aria-hidden
@@ -533,7 +508,7 @@ export function AppSidebar() {
                   'ml-auto min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums group-data-[collapsible=icon]:hidden',
                   BADGE[item.badge!],
                 )}
-                title={item.badge === 'drafts' ? `${count} items to confirm today` : item.badge === 'waiting' ? `${count} waiting for your decision` : item.badge === 'attention' ? `${count} to act on now` : `${count} open issues`}
+                title={item.badge === 'drafts' ? `${count} items to confirm today` : item.badge === 'attention' ? `${count} to act on now` : `${count} open issues`}
               >
                 {count > 99 ? '99+' : count}
               </span>
@@ -606,52 +581,42 @@ export function AppSidebar() {
         <SidebarContent className={cn('px-1.5 py-1 gap-1', S.scrollbar)}>
           <SidebarGroup className="p-1">
             <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">{PRIMARY_ITEMS.map(renderLink)}</SidebarMenu>
+              <SidebarMenu className="gap-0.5">
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={openJump}
+                    tooltip="Search (Ctrl K)"
+                    className={cn(NAV_LINK_BASE, 'mb-1 border', S.divider, S.rowIdle, S.ring)}
+                  >
+                    <Search className={cn('size-4 shrink-0', S.icon)} />
+                    <span className="truncate">Search</span>
+                    <kbd className="ml-auto rounded border border-current/20 px-1 text-[10px] opacity-60 group-data-[collapsible=icon]:hidden">Ctrl K</kbd>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                {PRIMARY_ITEMS.map(renderLink)}
+              </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {showPlanned ? (
-            <>
-              <SidebarGroup className="p-1">
-                <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>Site records</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu className="gap-0.5">{previewRecords.map(renderLink)}</SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-              <SidebarGroup className="p-1">
-                <SidebarGroupLabel className={cn(GROUP_LABEL, 'flex items-center justify-between', S.label)}>
-                  Modules
+          {sections.map((section) => (
+            <SidebarGroup key={section.key} className="p-1">
+              <SidebarGroupLabel className={cn(GROUP_LABEL, 'flex items-center justify-between', S.label)}>
+                {section.title}
+                {showPlanned && section.key === sections[0].key && (
                   <span className={cn(SOON_PILL, 'normal-case tracking-normal', S.soon)}>Preview</span>
-                </SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu className="gap-0.5">{previewModules.map(renderCategory)}</SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </>
-          ) : (
-            <SidebarGroup className="p-1">
-              <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>Site records</SidebarGroupLabel>
+                )}
+              </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5">
-                  {RECORD_ITEMS.map(renderLink)}
-                  {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
-                  {planningCategory && renderCategory(planningCategory)}
-                  {materialsCategory && renderCategory(materialsCategory)}
-                  {procurementCategory && renderCategory(procurementCategory)}
-                  {equipmentCategory && renderCategory(equipmentCategory)}
-                  {subcontractCategory && renderCategory(subcontractCategory)}
-                  {financeCategory && renderCategory(financeCategory)}
-                  {costCategory && renderCategory(costCategory)}
-                  {billingCategory && renderCategory(billingCategory)}
-                  {accountsCategory && renderCategory(accountsCategory)}
+                  {section.entries.map((entry) => (entry.kind === 'link' ? renderLink(entry.item) : renderCategory(entry.category)))}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-          )}
+          ))}
 
           {visibleManagementItems.length > 0 && (
             <SidebarGroup className="p-1">
-              <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>Setup</SidebarGroupLabel>
+              <SidebarGroupLabel className={cn(GROUP_LABEL, S.label)}>{SECTION_TITLES.settings}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5">
                   {finishSetup && renderLink(finishSetup)}
@@ -680,6 +645,7 @@ export function AppSidebar() {
               </span>
               <span className={cn('text-xs truncate', S.role)}>{roleLabel(me?.role)}</span>
             </div>
+            {me?.is_platform_admin && (
             <button
               type="button"
               onClick={() => setShowPlanned(!showPlanned)}
@@ -690,6 +656,7 @@ export function AppSidebar() {
             >
               <MapIcon className="size-4" />
             </button>
+            )}
           </div>
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">

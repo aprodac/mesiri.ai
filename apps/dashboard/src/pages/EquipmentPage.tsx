@@ -18,6 +18,7 @@ import { exportCsv } from '@/lib/export'
 import { swatch } from '@/lib/requests'
 import { cn } from '@/lib/utils'
 import { STATE_LOOK, fetchMachines, hrs, type Kind, type Machine, type MachineState, inr } from '@/lib/equipment'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-11 / NXT-15: Equipment > Machines (and Vehicles, the same page for kind=vehicle), in the Purchase orders page's
 // visual language: tiles for what needs attention today, tabs, filter pills, the list beside the chosen machine (a
@@ -123,15 +124,9 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
   const Icon = vehicles ? Truck : Construction
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-24 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><Icon className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Equipment</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">{vehicles ? 'Vehicles' : 'Machines'}</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={Icon} title={vehicles ? 'Vehicles' : 'Machines'} />
         <div className="flex items-center gap-3">
           <span className="hidden text-sm text-muted-foreground lg:inline">Today: <strong className="text-foreground tabular-nums">{hrs(String(todayHours))}</strong>{todayFuel ? <> · <strong className="text-foreground tabular-nums">{todayFuel} L</strong> diesel</> : null}</span>
           {monthCost > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">This month: <strong className="text-foreground tabular-nums">{inr(monthCost)}</strong></span>}

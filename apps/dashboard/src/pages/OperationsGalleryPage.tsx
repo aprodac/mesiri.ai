@@ -114,8 +114,6 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
     return [...byDay.entries()].sort(([a], [b]) => b.localeCompare(a))
   }, [shown])
 
-  const scopeLabel =
-    scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
   return (
     <div className={embedded ? 'flex flex-col gap-4' : 'mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2'}>
@@ -128,7 +126,6 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
       ) : (
         <PageHeader
           title="Gallery"
-          subtitle={<>Every photo the sites sent, newest first · {scopeLabel}</>}
           actions={
             <Button variant="ghost" size="icon" className="size-8" onClick={() => query.refetch()} disabled={query.isFetching} title="Refresh" aria-label="Refresh">
               <RefreshCw className={cn('size-4', query.isFetching && 'animate-spin')} />

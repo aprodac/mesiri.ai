@@ -52,7 +52,7 @@ export default function FinanceSettingsPage() {
   const savedLow = Math.round(Number((settings.data as any)?.low_float_threshold ?? 50000))
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-6 pb-8 sm:px-2">
       <PageHeader title="Finance settings" />
 
       <section className="flex flex-col gap-2">

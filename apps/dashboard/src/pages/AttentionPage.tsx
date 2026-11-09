@@ -160,7 +160,7 @@ function AlertRow({ alert, busy, snoozed, onSnooze }: { alert: Alert; busy: bool
             <span className={cn('rounded-full px-2 py-px font-medium', look.chip)}>{look.label}</span>
             <span className="rounded-full bg-muted px-2 py-px text-muted-foreground">{KIND_LABEL[alert.kind]}</span>
             {where && (alert.project_id
-              ? <Link to={`/projects/${alert.project_id}/cockpit`} className="text-muted-foreground hover:text-foreground hover:underline">{where}</Link>
+              ? <Link to={`/projects/${alert.project_id}`} className="text-muted-foreground hover:text-foreground hover:underline">{where}</Link>
               : <span className="text-muted-foreground">{where}</span>)}
           </div>
           <div className="font-semibold">{alert.title}</div>

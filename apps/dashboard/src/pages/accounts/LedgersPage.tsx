@@ -66,7 +66,7 @@ export default function LedgersPage() {
   const sum = (k: Kind) => (d?.ledgers ?? []).filter((l) => kindOf(l) === k).reduce((s, l) => s + Number(l.balance), 0)
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} crumb="Accounts" title="Ledgers" date={d ? `Balances on ${formatDay(d.as_of)}` : undefined} />
       <BooksTabs current="/accounts/ledgers" />
       {!d ? (

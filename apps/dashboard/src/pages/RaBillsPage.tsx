@@ -1,7 +1,9 @@
 import * as React from 'react'
+import { LinkedStrip } from '@/components/page/page-kit'
+import { raBillLinks } from '@/lib/links'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Share2, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +21,7 @@ import {
   raBillAction, rupees, setRaBillQuantity, type RaBill, type RaBillLine,
 } from '@/lib/billing'
 import { cn } from '@/lib/utils'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-02: Client billing › RA bills. A bill is made from the BOQ: work measured on each priced line (the site's own
 // WhatsApp updates) less what earlier bills already billed, at the client rate. The contract's retention, advance
@@ -33,13 +36,9 @@ export default function RaBillsPage() {
   const projectId = usePlanningProject()
   const allowed = mayBill(me?.role)
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
       <header className="flex items-center gap-3">
-        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><ReceiptText className="size-5" /></span>
-        <div>
-          <div className="text-xs text-muted-foreground">Client billing</div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">RA bills</h1>
-        </div>
+        <ModuleTitle icon={ReceiptText} title="RA bills" />
       </header>
       {!allowed ? (
         <p className="text-sm text-muted-foreground">Client bills are for the owner, admins and finance.</p>
@@ -92,6 +91,7 @@ function ProjectBills({ projectId }: { projectId: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setContractOpen(true)}><ScrollText className="size-4" /> Contract terms</Button>
+          <Button size="sm" variant="outline" className="gap-1.5" asChild><Link to={`/billing/client-view?project=${projectId}`}><Share2 className="size-4" /> Share with client</Link></Button>
           <Button size="sm" className="gap-1.5" disabled={create.isPending || hasDraft || !c} onClick={() => create.mutate()} title={!c ? 'Set the contract terms first' : hasDraft ? 'Submit or remove the draft first' : undefined}>
             <FilePlus2 className="size-4" /> New RA bill
           </Button>
@@ -238,6 +238,7 @@ function BillView({ billId, onRemoved }: { billId: string; onRemoved: () => void
         )}
       </dl>
       <CertifyDialog bill={b} open={certifying} onOpenChange={setCertifying} onSaved={put} />
+      <LinkedStrip records={raBillLinks(b)} className="border-t pt-3" />
     </section>
   )
 }

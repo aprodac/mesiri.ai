@@ -401,7 +401,7 @@ export default function CostVariancePage() {
   );
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         {header}
         <p className="text-sm text-muted-foreground">
           For each BOQ line: was the labour worth the work measured? Pick a
@@ -416,7 +416,7 @@ export default function CostVariancePage() {
       ?.response?.status;
     if (siteView && status === 422) {
       return (
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+        <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
           {header}
           <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
             Pick your site in the bar at the top to see its green / red.
@@ -436,7 +436,7 @@ export default function CostVariancePage() {
   const single = dateFrom === dateTo;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       {header}
       <div
         className="flex flex-wrap items-center gap-2"

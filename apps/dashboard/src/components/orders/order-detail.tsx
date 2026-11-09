@@ -14,6 +14,8 @@ import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
 import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, orderMessage, whatsappUrl, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import { NewOrderDialog } from './new-order-dialog'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
+import { LinkedStrip } from '@/components/page/page-kit'
+import { orderLinks } from '@/lib/links'
 import { VendorLink } from '@/components/vendors/vendor-parts'
 
 // PRC-06/08: one order, as the office and the site see it: the supplier, what was ordered and what came per line,
@@ -112,6 +114,8 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
           <Clock className="size-4" strokeWidth={2.4} />{dueWords(order)}
         </div>
       </div>
+
+      <LinkedStrip records={orderLinks(order)} className="border-b px-5 py-3" />
 
       {order.duplicates.length > 0 && open && (
         <div className="mx-5 mt-4 rounded-lg bg-orange-100 px-3 py-2.5 text-sm text-orange-950 dark:bg-orange-950 dark:text-orange-100">

@@ -82,6 +82,11 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
 
     app.add_middleware(TenantResetMiddleware)
 
+    # ADM-01: the company activity log, one recorder for every module's changes.
+    from mesiri.http.activity import ActivityRecorder
+
+    app.add_middleware(ActivityRecorder, source="web", fastapi_app=app)
+
     # Register Routers
     import logging
 
@@ -307,6 +312,41 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("accounts router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.tasks.router import router as tasks_router
+
+        app.include_router(tasks_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("tasks router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.workforce.pay_router import router as labour_pay_router
+
+        app.include_router(labour_pay_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("labour pay router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.approvals.router import router as approvals_router
+
+        app.include_router(approvals_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("approvals router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.audit.activity_router import router as activity_router
+
+        app.include_router(activity_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("activity router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.users.handover_router import router as handover_router
+
+        app.include_router(handover_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("handover router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.procurement.grn_router import router as goods_receipts_router
 
         app.include_router(goods_receipts_router)
@@ -361,6 +401,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         app.include_router(billing_router)
     except Exception as exc:  # noqa: BLE001
         _log.exception("billing router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.client_view.router import router as client_view_router
+
+        app.include_router(client_view_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("client view router not loaded: %s", exc)
 
     try:
         from mesiri.domains.materials.plan_router import router as material_plan_router

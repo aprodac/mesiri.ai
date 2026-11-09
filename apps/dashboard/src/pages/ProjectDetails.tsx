@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ProjectHub } from '@/components/home/project-hub'
 import { Archive, Calculator, Clock, FileText, MapPin, MoreHorizontal, Pencil, Plus, Send, Sparkles, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,7 +27,6 @@ import {
 } from '@/lib/projects'
 import { roleLabel } from '@/lib/permissions'
 import { CHIP, localIsoDate, plural, siteDayPath } from '@/lib/site-day'
-import { useModuleEnabled } from '@/lib/modules'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchBoq, formatRupees, maySeeBoq } from '@/lib/boq'
 import { usePageTitle } from '@/lib/page-title'
@@ -61,7 +61,6 @@ export default function ProjectDetails() {
   const toast = useToast()
   const readOnly = useReadOnly()
   const { me } = useAuth()
-  const isModuleEnabled = useModuleEnabled()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [today] = React.useState(() => localIsoDate(new Date()))
@@ -123,7 +122,7 @@ export default function ProjectDetails() {
 
   if (projectQuery.isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
+      <div className="mx-auto flex w-full flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
         <Skeleton className="h-4 w-40" />
         <Skeleton className="h-8 w-72" />
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -152,7 +151,7 @@ export default function ProjectDetails() {
   const facts = [project.client && `Client: ${project.client}`, project.location, project.code && `Code ${project.code}`].filter(Boolean)
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader
         back={{ to: '/projects', label: 'Projects & Sites' }}
         crumb="Project"
@@ -161,18 +160,6 @@ export default function ProjectDetails() {
         date={facts.join(' · ') || undefined}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {/* GM-03: the project's cockpit (how it is going, and why). */}
-            <Button asChild size="sm" className="font-semibold">
-              <Link to={`/projects/${project.id}/cockpit`}>Cockpit</Link>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <Link to={`/today?project=${project.id}`}>Today's updates</Link>
-            </Button>
-            {isModuleEnabled('finance') && (
-              <Button asChild variant="outline" size="sm">
-                <Link to={`/finance/expenses?project_id=${project.id}`}>Finance</Link>
-              </Button>
-            )}
             {!readOnly && (
               <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setProjectDialogOpen(true)}>
                 <Pencil className="size-3.5" /> Edit details
@@ -209,6 +196,8 @@ export default function ProjectDetails() {
           No sites yet: updates from WhatsApp need a site to land on.
         </Callout>
       ) : null}
+
+      <ProjectHub projectId={project.id} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col">

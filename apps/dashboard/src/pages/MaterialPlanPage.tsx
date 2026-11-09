@@ -12,6 +12,7 @@ import { maySeeBoq } from '@/lib/boq'
 import { fetchMaterialPlan, type MaterialPlan, type MaterialPlanRow } from '@/lib/material-plan'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // MP-02: Planning › Material plan. What the project needs of each material, week by week: the BOQ's work still to
 // do × the materials per unit (MP-01), over the schedule's dates, against what is in stock and on order. Red from
@@ -37,13 +38,7 @@ function dayLabel(iso: string): string {
 function Heading() {
   return (
     <header className="flex min-w-0 items-center gap-3">
-      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200">
-        <PackageSearch className="size-5" />
-      </span>
-      <div className="min-w-0">
-        <div className="text-xs text-muted-foreground">Planning</div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight">Material plan</h1>
-      </div>
+      <ModuleTitle icon={PackageSearch} title="Material plan" />
     </header>
   )
 }
@@ -54,7 +49,7 @@ export default function MaterialPlanPage() {
   const { me } = useAuth()
   if (!maySeeBoq(me?.role)) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-8 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         <Heading />
         <p className="text-sm text-muted-foreground">The material plan is read from the BOQ, so it shows to the people who see the BOQ: owner, admin, finance and project managers.</p>
       </div>
@@ -62,7 +57,7 @@ export default function MaterialPlanPage() {
   }
   if (!projectId) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-8 sm:px-2">
+      <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         <Heading />
         <p className="text-sm text-muted-foreground">Pick a project to see what it needs, and when.</p>
         <ProjectPickList to={(id) => `/planning/materials?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
@@ -111,7 +106,7 @@ function PlanView({ projectId }: { projectId: string }) {
     : []
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Heading />
         <div className="flex items-center gap-2">
@@ -122,10 +117,6 @@ function PlanView({ projectId }: { projectId: string }) {
           <Button asChild variant="outline" size="sm" className="gap-1.5"><Link to={boqLink}><Calculator className="size-3.5" /> BOQ</Link></Button>
         </div>
       </div>
-      <p className="max-w-3xl text-sm text-muted-foreground">
-        The BOQ's work still to do × the materials each unit uses, spread over the schedule's dates, against what is in stock and on order.
-        It updates itself: work site records shrinks the need, and moving an activity moves it.
-      </p>
       {!plan ? (
         <Skeleton className="h-64 w-full" />
       ) : plan.lines_with_norms === 0 ? (

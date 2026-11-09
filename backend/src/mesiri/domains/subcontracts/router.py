@@ -32,6 +32,7 @@ from mesiri.authorization.roles import (
 )
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.subcontracts import rules, store
+from mesiri.http.activity import saves_nothing
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 
 router = APIRouter(prefix="/subcontracts", tags=["subcontracts"])
@@ -574,6 +575,7 @@ async def _check(conn: AsyncConnection, org: uuid.UUID, wo: dict, body: BillIn, 
 
 
 @router.post("/work-orders/{wo_id}/bills/check")
+@saves_nothing  # ADM-01: changes nothing, so not in the activity log
 async def check_bill(wo_id: uuid.UUID, body: BillIn, auth_context: AuthorizationContext = Depends(get_auth_context),
                      conn: AsyncConnection = Depends(get_db_conn)):
     """What a bill would be: passed or flagged (why), and retention / advance / TDS / net payable. Saves nothing."""

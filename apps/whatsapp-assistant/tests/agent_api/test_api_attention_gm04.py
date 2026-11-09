@@ -62,5 +62,5 @@ async def test_anything_to_worry_about_only_reads() -> None:
 def test_the_sop_keeps_each_specific_question_on_its_own_rule() -> None:
     sop = (Path(__file__).resolve().parents[2] / "src/agent_api/SOP.md").read_text(encoding="utf-8")
     assert "call `attention`" in sop
-    assert "cost is rule 20, the\n   schedule rule 15, what to order rule 16, what waits for their decision rule 22" in sop
+    assert "cost is rule 20, the\n   schedule rule 15, what to order rule 16, what waits for their decision is" in sop
     assert "never a rupee when the answer has none" in sop

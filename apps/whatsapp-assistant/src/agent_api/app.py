@@ -39,6 +39,9 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.documents.router",  # DOC-05, DR-08: find a document, what the drawings say
     "mesiri.domains.costing.router",  # CC-11: cost control (green / red, budget vs actual, labour on BOQ lines)
     "mesiri.domains.billing.router",  # NXT-03: RA bills, money received from clients, what they owe
+    "mesiri.domains.tasks.router",  # TSK-04: tasks on WhatsApp (give, list, done with a photo)
+    "mesiri.domains.workforce.pay_router",  # LW-07: advances, wage sheets, labour teams
+    "mesiri.domains.approvals.router",  # NXT-08: "what is waiting for me?" (tool `waiting`)
     "mesiri.domains.admin.my_requests_router",  # request 230: the person's own requests
     "mesiri.domains.approvals.router",  # GM-01: what is waiting for this person's decision
     "mesiri.domains.attention.router",  # GM-04: what crossed a line (over budget, late, to order, ...)
@@ -55,6 +58,10 @@ def build_api_app(database: Any) -> FastAPI:
 
     db_errors.install(app)
     app.add_middleware(TenantResetMiddleware)
+    # ADM-01: changes made on WhatsApp go in the company's activity log too.
+    from mesiri.http.activity import ActivityRecorder
+
+    app.add_middleware(ActivityRecorder, source="whatsapp", fastapi_app=app)
     for module in API_ROUTERS:
         app.include_router(importlib.import_module(module).router)
     app.state.container = SimpleNamespace(material_db=database)

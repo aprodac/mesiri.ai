@@ -59,7 +59,7 @@ class VendorResponse(BaseModel):
     total_amount_paid: Decimal = Decimal("0")
 
 
-KINDS = ("supplier", "subcontractor", "hire", "service")
+KINDS = ("supplier", "subcontractor", "hire", "service", "labour")  # labour: a labour contractor's team (LW-01)
 
 
 class CreateVendorRequest(BaseModel):
@@ -838,6 +838,8 @@ VENDOR_LINKS = (
     ("vendor_contacts", "vendor_id", "contacts"),  # NXT-16
     ("equipment", "vendor_id", "machines"),  # NXT-11: machines hired from them
     ("equipment_hire_bills", "vendor_id", "hire bills"),  # NXT-13
+    ("project_documents", "vendor_id", "documents"),  # DOC-01 (0527 added it; missed here until TSK-01's run)
+    ("tasks", "assignee_vendor_id", "tasks"),  # TSK-01: tasks given to a subcontractor
 )
 #: How a table's rows are this company's (default: its own organization_id).
 _OWNED = {"labour_attendance_lines": "report_id IN (SELECT id FROM labour_attendance_reports WHERE organization_id = :org)"}

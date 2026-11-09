@@ -230,7 +230,7 @@ export default function ProjectDayPage() {
   const severe = report.issues.filter((i) => ['CRITICAL', 'HIGH'].includes((i.severity ?? '').toUpperCase())).length
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
       <div className="flex flex-col gap-3">
         <DprHeader
           back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Today' } : { to: '/reports', label: 'Reports' }}

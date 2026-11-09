@@ -5,6 +5,8 @@ import { Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
 import { StatStrip } from '@/components/dpr-page'
 import { longDate } from '@/lib/site-day'
 import { fetchOneWorkerStatisticsApi, type WorkerStatistics } from '@/lib/api'
+import { LinkedStrip } from '@/components/page/page-kit'
+import { workerLinks } from '@/lib/links'
 
 // WEB-39: the side-panel layout (detail-sheet.tsx): days worked in the head,
 // money in a number strip, the calendar in green.
@@ -160,6 +162,9 @@ export function WorkerStatisticsSheet({
             {stats.trades.length > 0 && <span>{stats.trades.join(', ')}</span>}
             {stats.last_seen && <span>Last on site {day(stats.last_seen)}</span>}
           </SheetHero>
+        ) : null}
+        {stats ? (
+          <LinkedStrip records={workerLinks(stats)} className="border-b px-5 py-3" />
         ) : (
           <div className="border-b px-5 pt-5 pb-4">
             <SheetTitle>{workerName || 'Worker'}</SheetTitle>

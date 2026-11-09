@@ -178,6 +178,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from mesiri.infrastructure.postgres.tenant import TenantResetMiddleware
 
     app.add_middleware(TenantResetMiddleware)
+    # ADM-01: the company activity log (this app serves the dashboard's API in production).
+    from mesiri.http.activity import ActivityRecorder
+
+    app.add_middleware(ActivityRecorder, source="web", fastapi_app=app)
 
     # Admin / Control Plane routes
     try:
@@ -484,13 +488,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.schedule.router", "Schedule"),  # ST-01/04/05: project start, the Gantt, the lifecycle list
         ("mesiri.domains.materials.plan_router", "Material plan"),  # MP-02/03: what to order and when
         ("mesiri.domains.billing.router", "Client billing"),  # NXT-01/02: clients, contracts, RA bills
+        ("mesiri.domains.client_view.router", "Client view"),  # CV-01/02: client links and the public page
         ("mesiri.domains.drawings.router", "Drawing check"),  # DR-04: read a drawing PDF (nothing stored)
         ("mesiri.domains.places.router", "Places"),  # LP-01..05: floors and rooms, progress by place
         ("mesiri.domains.documents.router", "Documents"),  # DOC-01, DR-07/08: documents and drawings register
         ("mesiri.domains.costing.router", "Cost control"),  # CC-01: the cost module (web)
         ("mesiri.domains.finance.tally_router", "Tally export"),  # NXT-12: expenses and payments as Tally XML
         ("mesiri.domains.accounts.router", "Accounts"),  # ACC-01..05: chart of accounts, journals, trial balance
-        ("mesiri.domains.approvals.router", "Waiting for you"),  # GM-01: decisions waiting for a person
+        ("mesiri.domains.tasks.router", "Tasks"),  # TSK-01: who does what, by when (the tasks module)
+        ("mesiri.domains.workforce.pay_router", "Wages and advances"),  # LW-01..05: advances, wage sheets, muster roll
+        ("mesiri.domains.approvals.router", "Approvals inbox"),  # NXT-08: what is waiting for me (the bell)
+        ("mesiri.domains.audit.activity_router", "Activity log"),  # ADM-02: who changed what, when
+        ("mesiri.domains.users.handover_router", "Hand over work"),  # ADM-03: a leaving person's open work
         ("mesiri.domains.attention.router", "Attention"),  # GM-04: what crossed a line
     ):
         try:

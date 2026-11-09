@@ -25,6 +25,9 @@ import PlacesPage from '@/pages/PlacesPage'
 import DocumentsPage from '@/pages/DocumentsPage'
 import LivePlansPage from '@/pages/LivePlansPage'
 import ClientsPage from '@/pages/ClientsPage'
+import ClientLinksPage from '@/pages/ClientLinksPage'
+import ActivityLogPage from '@/pages/ActivityLogPage'
+import ClientViewPage from '@/pages/ClientViewPage'
 import DrawingCheckPage from '@/pages/DrawingCheckPage'
 import RaBillsPage from '@/pages/RaBillsPage'
 import RaBillDocumentPage from '@/pages/RaBillDocumentPage'
@@ -51,10 +54,11 @@ import TdsPage from '@/pages/accounts/TdsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
-import ApprovalsPage from '@/pages/ApprovalsPage'
 import AttentionPage from '@/pages/AttentionPage'
-import ProjectCockpitPage from '@/pages/ProjectCockpitPage'
-import CommandCentrePage from '@/pages/CommandCentrePage'
+import TasksPage from '@/pages/TasksPage'
+import SettingsPage from '@/pages/SettingsPage'
+import WagesPage from '@/pages/WagesPage'
+import AdvancesPage from '@/pages/AdvancesPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
@@ -112,6 +116,7 @@ const mat = (page: React.ReactNode) => <RequireModule module="materials">{page}<
 const eqp = (page: React.ReactNode) => <RequireModule module="equipment">{page}</RequireModule>
 const cst = (page: React.ReactNode) => <RequireModule module="cost">{page}</RequireModule>
 const acc = (page: React.ReactNode) => <RequireModule module="accounts">{page}</RequireModule>
+const tsk = (page: React.ReactNode) => <RequireModule module="tasks">{page}</RequireModule>
 
 export default function App() {
   return (
@@ -119,6 +124,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        {/* CV-03: the client's view of their project, from the secret link. No login, no sidebar. */}
+        <Route path="/c/:token" element={<ClientViewPage />} />
         {/* After signup (SS-18): full screen, outside the sidebar layout. */}
         <Route path="/welcome" element={<RequireAuth><WelcomePage /></RequireAuth>} />
         {/* The report writing itself as messages arrive (WEB-37): full screen, for demos too. */}
@@ -139,9 +146,7 @@ export default function App() {
           <Route path="reports/:date/sites/:siteId" element={<SiteDayPage />} />
           <Route path="reports/:date/projects/:projectId" element={<ProjectDayPage />} />
           <Route path="issues" element={<OperationsIssuesPage />} />
-          <Route path="site/approvals" element={<ApprovalsPage />} />
           <Route path="site/attention" element={<AttentionPage />} />
-          <Route path="site/command" element={<CommandCentrePage />} />
 
           {/* Site records: everything the sites sent, across days. */}
           <Route path="site-log" element={<SiteLogPage />} />
@@ -153,6 +158,8 @@ export default function App() {
           {/* Labour (module): one page, Attendance | Workers (WEB-22). The
               old seven addresses land on the matching view. */}
           <Route path="labour" element={lab(<LabourPage />)} />
+          <Route path="labour/wages" element={lab(<WagesPage />)} />
+          <Route path="labour/advances" element={lab(<AdvancesPage />)} />
           <Route path="labour/workers" element={<Moved to="/labour?view=workers" />} />
           <Route path="labour/*" element={<Moved to="/labour" />} />
 
@@ -182,7 +189,6 @@ export default function App() {
           {/* Setup */}
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
-          <Route path="projects/:id/cockpit" element={<ProjectCockpitPage />} />
           <Route path="projects/:id/boq" element={<ProjectBoqPage />} />
           <Route path="boq" element={<BoqIndexPage />} />
           {/* ST-04 / ST-05: the start of a project and its schedule. */}
@@ -195,12 +201,16 @@ export default function App() {
           <Route path="planning/drawing-check" element={<DrawingCheckPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
           <Route path="billing/ra-bills" element={<RaBillsPage />} />
+          <Route path="billing/client-view" element={<ClientLinksPage />} />
           {/* CC-01 / CC-04 / CC-07: the Cost control module. */}
           <Route path="cost" element={cst(<CostHomePage />)} />
           <Route path="cost/green-red" element={cst(<CostVariancePage />)} />
           <Route path="cost/materials" element={cst(<CostMaterialsPage />)} />
           <Route path="cost/budget" element={cst(<CostBudgetPage />)} />
           <Route path="cost/centres" element={cst(<CostCentresPage />)} />
+          {/* TSK-02: the Tasks module (views by ?view=). The planned page it replaced moves here. */}
+          <Route path="tasks" element={tsk(<TasksPage />)} />
+          <Route path="planning/tasks" element={<Moved to="/tasks" />} />
           {/* WEB-72: planned module pages (lib/module-map.ts). Only shown while "Show planned
               modules" is on; otherwise PlannedPage sends the address to Today. */}
           {PLANNED_PAGES.map(({ page }) => (
@@ -208,6 +218,8 @@ export default function App() {
           ))}
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/activity" element={<ActivityLogPage />} />
           <Route path="company" element={<CompanyDetails />} />
           <Route path="company/messages" element={<Moved to="/whatsapp?view=messages" />} />
           <Route path="whatsapp" element={<WhatsAppPage />} />

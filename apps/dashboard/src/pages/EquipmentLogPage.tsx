@@ -13,6 +13,7 @@ import { useReadOnly } from '@/lib/trial'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { dayWords, errorWords, fetchLogs, hrs, iso, saveLogs, type LogLineInput } from '@/lib/equipment'
+import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-11: Equipment > Daily log. One date, every machine at the sites in view on one screen, typed in place: the
 // fewest taps for whoever fills it in the evening. Machines already logged (on WhatsApp or here) show their figures;
@@ -114,16 +115,10 @@ export default function EquipmentLogPage() {
     rows.filter((r) => r.logged).map((r) => [date, r.projectName, r.siteName, r.name, r.worked, r.idle, r.breakdown, r.reason, r.fuel, r.operator]))
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-28 sm:px-2 md:pb-8">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-28 sm:px-2 md:pb-8">
       <Link to="/equipment" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />Machines</Link>
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><ClipboardPen className="size-5" /></span>
-          <div>
-            <div className="text-xs text-muted-foreground">Equipment</div>
-            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Daily log</h1>
-          </div>
-        </div>
+        <ModuleTitle icon={ClipboardPen} title="Daily log" />
         <div className="flex items-center gap-1.5">
           <Button variant="outline" size="icon" aria-label="Day before" onClick={() => setDate(add(date, -1))}><ChevronLeft className="size-4" /></Button>
           <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold">
@@ -200,7 +195,7 @@ export default function EquipmentLogPage() {
 
       {!readOnly && (
         <div className={cn('fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur transition md:static md:border-0 md:bg-transparent md:p-0', !changed.length && 'translate-y-full md:translate-y-0')}>
-          <div className="mx-auto flex max-w-6xl items-center justify-end gap-3">
+          <div className="flex items-center justify-end gap-3">
             {changed.length > 0 && <span className="text-sm text-muted-foreground">{changed.length} changed</span>}
             {changed.length > 0 && <Button variant="ghost" onClick={() => setEdits({})}>Undo changes</Button>}
             <Button className="gap-2 font-semibold" disabled={!canSave || save.isPending} onClick={() => save.mutate()}><Save className="size-4" />{save.isPending ? 'Saving…' : 'Save'}</Button>

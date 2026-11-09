@@ -65,7 +65,7 @@ export default function TallyExportPage() {
   const empty = s && s.journals + s.payments + s.sales + s.receipts === 0
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/finance/expenses', label: 'Expenses' }} crumb="Accounts" title="Tally export" date="Expenses and payments for your CA" />
       <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-end">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Period">
