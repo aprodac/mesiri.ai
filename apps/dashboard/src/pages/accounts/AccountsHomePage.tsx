@@ -178,7 +178,7 @@ export default function AccountsHomePage() {
                   ))}
                 </ul>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border px-3 py-2">
+                  <Link to="/accounts/gst?range=this_month" className="rounded-lg border px-3 py-2 hover:bg-muted/40">
                     <p className="text-xs text-muted-foreground">GST payable this month</p>
                     <p className={cn('text-lg font-semibold tabular-nums', Number(d.gst_this_month?.payable) < 0 && 'text-success')}>
                       {Number(d.gst_this_month?.payable) < 0 ? `${rupees(d.gst_this_month?.payable ?? 0)} credit` : rupees(d.gst_this_month?.payable ?? 0)}
@@ -186,12 +186,12 @@ export default function AccountsHomePage() {
                     <p className="text-[11px] text-muted-foreground">
                       out {short(d.gst_this_month?.output ?? 0)} − in {short(d.gst_this_month?.input ?? 0)}
                     </p>
-                  </div>
-                  <div className="rounded-lg border px-3 py-2">
+                  </Link>
+                  <Link to="/accounts/tds" className="rounded-lg border px-3 py-2 hover:bg-muted/40">
                     <p className="text-xs text-muted-foreground">TDS to deposit</p>
                     <p className="text-lg font-semibold tabular-nums">{rupees(d.tds_to_deposit ?? 0)}</p>
                     <p className="text-[11px] text-muted-foreground">deducted from subcontractors</p>
-                  </div>
+                  </Link>
                 </div>
                 <Link to="/accounts/cash-bank" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
                   Cash & bank books <ArrowRight className="size-3.5" />

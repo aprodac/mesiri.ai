@@ -590,3 +590,71 @@ export function change(now: string | number, before: string | number | null | un
   if (!b) return null
   return ((Number(now) - b) / Math.abs(b)) * 100
 }
+
+// --- Phase C: GST and TDS (ACC-10, ACC-11) ------------------------------------------------------------------
+
+export interface TaxSplit {
+  igst: string
+  cgst: string
+  sgst: string
+  unknown: string
+}
+export interface GstSale extends TaxSplit {
+  id: string
+  ref: string
+  date: string
+  client: string | null
+  gstin: string | null
+  project: string
+  rate: string | null
+  taxable: string
+  gst: string
+}
+export interface GstPurchase extends TaxSplit {
+  id: string
+  number: string | null
+  date: string
+  supplier: string | null
+  gstin: string | null
+  project: string | null
+  category: string | null
+  rate: string | null
+  taxable: string
+  gst: string
+  claimable: boolean
+  reason: 'no_gstin' | 'not_included' | 'tax_not_below_amount' | null
+}
+export interface Gst extends Period {
+  company_gstin: string | null
+  company_state: string | null
+  sales: GstSale[]
+  purchases: GstPurchase[]
+  output: TaxSplit & { taxable: string; gst: string }
+  input: TaxSplit & { taxable: string; gst: string }
+  payable: string
+  missed: string
+  months: { month: string; output: string; input: string; missed: string; payable: string }[]
+  by_supplier: { supplier: string; gstin: string | null; bills: number; taxable: string; gst: string; claimable: string }[]
+  warnings: { key: string; count: number; amount: string; words: string }[]
+  tie: { output_books: string; input_books: string; agrees: boolean }
+}
+export async function fetchGst(period: Partial<Period>): Promise<Gst> {
+  return (await api.get('/accounts/gst', { params: clean(period) })).data
+}
+
+export interface Tds extends Period {
+  today: string
+  deducted: { id: string; date: string; party: string | null; pan: string | null; section: string; bill: string | null; reference: string | null; bill_amount: string; amount: string; project: string | null }[]
+  deposits: { id: string; date: string; amount: string; from: string | null; words: string | null }[]
+  months: { month: string; deducted: string; deposited: string; left: string; due: string; status: 'deposited' | 'due' | 'overdue' }[]
+  by_party: { party: string; pan: string | null; bills: number; bill_amount: string; amount: string }[]
+  to_deposit: string
+  overdue: string
+  next_due: string | null
+  by_clients: { id: string; ref: string; date: string; client: string | null; pan: string | null; project: string; gross: string; rate: string | null; amount: string }[]
+  by_clients_total: string
+  missing_pan: string[]
+}
+export async function fetchTds(period: Partial<Period>): Promise<Tds> {
+  return (await api.get('/accounts/tds', { params: clean(period) })).data
+}

@@ -46,6 +46,8 @@ import BalanceSheetPage from '@/pages/accounts/BalanceSheetPage'
 import CashBankPage from '@/pages/accounts/CashBankPage'
 import ProjectsBooksPage from '@/pages/accounts/ProjectsBooksPage'
 import ProjectBooksPage from '@/pages/accounts/ProjectBooksPage'
+import GstPage from '@/pages/accounts/GstPage'
+import TdsPage from '@/pages/accounts/TdsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
@@ -218,6 +220,8 @@ export default function App() {
           <Route path="accounts/cash-bank" element={acc(<CashBankPage />)} />
           <Route path="accounts/projects" element={acc(<ProjectsBooksPage />)} />
           <Route path="accounts/projects/:id" element={acc(<ProjectBooksPage />)} />
+          <Route path="accounts/gst" element={acc(<GstPage />)} />
+          <Route path="accounts/tds" element={acc(<TdsPage />)} />
           <Route path="accounts/project-pl" element={<Navigate to="/accounts/projects" replace />} />
           <Route path="accounts/trial-balance" element={acc(<TrialBalancePage />)} />
           <Route path="accounts/day-book" element={acc(<DayBookPage />)} />
