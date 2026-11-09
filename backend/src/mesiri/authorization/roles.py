@@ -131,6 +131,16 @@ def may_act_on_material_requests(role: str | None) -> bool:
 
 # Who may read the company's activity log, who changed what and when (ADM-02, decided in session by Ilan 9 Nov 2026):
 # the owner and admins, for the whole company. Nobody edits or deletes an entry.
+# Who may send a weekly / monthly report to other people, now or on a schedule (RPT-01, PRC-20; reports plan D-R8,
+# approved in session by Ilan, 9 Nov 2026). Anyone may send one to themselves. Each person still gets only what their
+# own access shows (domains/reports/period/send.py builds it with the recipient's access, never the sender's).
+REPORT_SEND_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN", "PROJECT_MANAGER"})
+
+
+def may_send_reports_to_others(role: str | None) -> bool:
+    return str(role or "").strip().upper() in REPORT_SEND_ROLES
+
+
 ACTIVITY_LOG_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN"})
 
 

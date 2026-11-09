@@ -44,7 +44,8 @@ async def _site_names(conn: AsyncConnection, auth: AuthorizationContext, project
 
 async def build(conn: AsyncConnection, auth: AuthorizationContext, *, project_id: uuid.UUID,
                 site_id: uuid.UUID | None, period: periods.Period, enabled: Callable[[str], bool],
-                storage: Any = None, today: datetime.date | None = None) -> dict[str, Any]:
+                storage: Any = None, today: datetime.date | None = None,
+                only: tuple[str, ...] | None = None, with_waiting: bool = True) -> dict[str, Any]:
     from mesiri.application.dpr.project_day import company_today
     from mesiri.domains.schedule.router import _project
 
@@ -60,6 +61,8 @@ async def build(conn: AsyncConnection, auth: AuthorizationContext, *, project_id
     sections: dict[str, dict] = {}
     unavailable: list[str] = []
     for key in ORDER:
+        if only is not None and key not in only:
+            continue
         module = MODULE_OF[key]
         if module is not None and not enabled(module):
             continue
@@ -75,7 +78,7 @@ async def build(conn: AsyncConnection, auth: AuthorizationContext, *, project_id
             logger.exception("period_report.section_failed key=%s project=%s", key, project_id)
             unavailable.append(key)
 
-    waiting = await _waiting(conn, auth, enabled, project_id, site_id)
+    waiting = await _waiting(conn, auth, enabled, project_id, site_id) if with_waiting else []
     noun = NOUN[period.kind]
     return {
         "audience": "internal",

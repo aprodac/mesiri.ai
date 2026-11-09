@@ -72,6 +72,9 @@ def is_due(
         return local.weekday() < 5  # Monday-Friday
     if frequency == "WEEKLY":
         return day_of_week is not None and local.weekday() == day_of_week
+    if frequency == "MONTHLY":
+        # PRC-20: the monthly report goes on the 1st (D-R2: a calendar month, the one just finished).
+        return local.day == 1
     # DAILY, and any unrecognized value -- fail toward "fires every day"
     # rather than "silently never fires", since a typo'd frequency string
     # is far more likely than someone wanting genuinely undefined behaviour.

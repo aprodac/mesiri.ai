@@ -53,10 +53,10 @@ async def photo_bytes(storage: Any, photos: dict | None) -> list[tuple[dict, byt
     return out
 
 
-def render(report: dict[str, Any], company: dict[str, Any], images: list[tuple[dict, bytes]] | None = None) -> bytes:
+def _doc(generated_at: str):
     from fpdf import FPDF
 
-    generated = report["generated_at"][:16].replace("T", " ")
+    generated = generated_at[:16].replace("T", " ")
 
     class Doc(FPDF):
         def footer(self) -> None:
@@ -71,9 +71,27 @@ def render(report: dict[str, Any], company: dict[str, Any], images: list[tuple[d
     pdf.set_auto_page_break(auto=True, margin=16)
     pdf.set_margins(15, 14, 15)
     pdf.add_page()
+    return pdf
+
+
+def _note(pdf, note: dict[str, Any] | None) -> None:
+    """The sender's own line (RPT-01), saved with the sent copy: "Rain stopped work on Thursday"."""
+    if not note or not (note.get("text") or "").strip():
+        return
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(*INK)
+    who = f" - {note['by']}" if note.get("by") else ""
+    pdf.multi_cell(0, 4.8, t(f'Note: "{note["text"].strip()}"{who}'), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+
+
+def render(report: dict[str, Any], company: dict[str, Any], images: list[tuple[dict, bytes]] | None = None,
+           note: dict[str, Any] | None = None) -> bytes:
+    pdf = _doc(report["generated_at"])
     _letterhead(pdf, company)
     _title(pdf, report)
     _headline(pdf, report["headline"])
+    _note(pdf, note)
     _kpis(pdf, report["kpis"][:4])
     _areas(pdf, report["areas"])
     _needs_first(pdf, report["needs_you"][:PAGE_NEEDS])
@@ -422,3 +440,40 @@ def _inr(v: Any) -> str:
     from mesiri.domains.reports.period.headline import inr
 
     return t(inr(v)) if v is not None else "-"
+
+
+# -- the owner's brief (RPT-01) ---------------------------------------------------------------------------------------
+
+def render_portfolio(brief: dict[str, Any], company: dict[str, Any], note: dict[str, Any] | None = None) -> bytes:
+    """Page 1: letterhead, the headline, the totals, one row per project (worst first). Then each project's lines."""
+    pdf = _doc(brief["generated_at"])
+    _letterhead(pdf, company)
+    p = brief["period"]
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*MUTED)
+    sub = f"{_TITLE[p['kind']]}: " + (f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"])
+    pdf.cell(0, 5, t(sub + (" (so far)" if brief.get("running") else "")), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(*INK)
+    pdf.cell(0, 8, "All projects", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    _headline(pdf, brief["headline"])
+    _note(pdf, note)
+    _kpis(pdf, brief["kpis"][:4])
+    money = brief.get("has_bills")
+    head = ["Project", "Done / plan", "Cost", "Finish", "Man-days", "Issues"] + (["Clients owe"] if money else [])
+    widths = [44, 24, 24, 26, 18, 16] + ([28] if money else [])
+    cost_word = {"red": "Over", "amber": "Watch", "green": "On budget", "grey": "No budget"}
+    rows = []
+    for r in brief["projects"]:
+        plan = "No BOQ" if r["progress_to_date"] is None else f"{r['progress_to_date']}%" + \
+            (f" / {round(float(r['expected_to_date']))}%" if r.get("expected_to_date") else "")
+        finish = (_short_day(r["forecast_finish"]) + (f" +{r['slip_days']}d" if r["slip_days"] else "")) \
+            if r.get("forecast_finish") else "No plan"
+        rows.append([("! " if r["status"] == "bad" else "") + r["name"], plan,
+                     cost_word.get(r.get("labour_colour") or "grey", "No budget"), finish, r.get("man_days") or "0",
+                     str(r["open_issues"])] + ([_inr(r.get("owed"))] if money else []))
+    _table(pdf, head, rows, widths, empty="No running projects.", align="LRLLRRR")
+    for r in brief["projects"]:
+        _heading(pdf, r["name"], " ".join([r["lead"], *r["facts"]]))
+    return bytes(pdf.output())

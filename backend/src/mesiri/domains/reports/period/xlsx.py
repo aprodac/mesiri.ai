@@ -109,3 +109,42 @@ def workbook(report: dict[str, Any]) -> bytes:
     buf = io.BytesIO()
     book.save(buf)
     return buf.getvalue()
+
+
+def portfolio_workbook(brief: dict[str, Any]) -> bytes:
+    """The owner's brief (RPT-01): Summary, then one row per project with every figure as a number."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    book = Workbook()
+    cover = book.active
+    cover.title = "Summary"
+    p = brief["period"]
+    cover.append([f"All projects: {p['label']} ({p['range']})"])
+    cover["A1"].font = Font(bold=True, size=13)
+    cover.append([" ".join([brief["headline"]["lead"], *brief["headline"]["facts"]])])
+    cover.append([])
+    for k in brief["kpis"]:
+        cover.append([k["label"], k["value"], k.get("note") or ""])
+    cover.column_dimensions["A"].width = 24
+    cover.column_dimensions["B"].width = 16
+    cover.column_dimensions["C"].width = 60
+    money = bool(brief.get("sees_money"))
+    head = ["Project", "Client", "Status", "Done to date %", "Plan to date %", "Done this period %",
+            "Planned this period %", "Forecast finish", "Days late", "Man-days", "Open issues", "Serious issues",
+            "Needs you", "Top item"]
+    if money:
+        head += ["Spent", "Billed", "Received", "Clients owe", "Over 30 days", "Labour colour"]
+    rows = []
+    for r in brief["projects"]:
+        row = [r["name"], r.get("client"), r["word"], r.get("progress_to_date"), _n(r.get("expected_to_date")),
+               _n(r.get("done_pct")), _n(r.get("plan_pct")), r.get("forecast_finish"), r.get("slip_days"),
+               _n(r.get("man_days")), r["open_issues"], r["serious_issues"], r["needs"], r.get("top")]
+        if money:
+            row += [_n(r.get("spent")), _n(r.get("billed")), _n(r.get("received")), _n(r.get("owed")),
+                    _n(r.get("overdue")), r.get("labour_colour")]
+        rows.append(row)
+    _sheet(book, "Projects", head, rows, [28, 18, 12, 12, 12, 14, 14, 14, 10, 10, 10, 10, 10, 44, 12, 12, 12, 12, 12, 12])
+    buf = io.BytesIO()
+    book.save(buf)
+    return buf.getvalue()

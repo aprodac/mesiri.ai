@@ -40,8 +40,13 @@ async def test_engine():
 
 @pytest.fixture
 async def client(test_engine: AsyncEngine, monkeypatch):
+    from mesiri.infrastructure.objectstorage.dependency import get_object_storage
+    from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage
+
     monkeypatch.setattr("mesiri.domains.shared.modules._database_for", lambda request: None)
     app = create_app()
+    storage = FakeObjectStorage()
+    app.dependency_overrides[get_object_storage] = lambda: storage
 
     async def override_get_db_conn():
         async with test_engine.begin() as conn:
@@ -49,6 +54,7 @@ async def client(test_engine: AsyncEngine, monkeypatch):
 
     app.dependency_overrides[get_db_conn] = override_get_db_conn
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
+        c.storage = storage  # the PDFs a send stored
         yield c
 
 
@@ -64,12 +70,13 @@ async def _org(engine, name: str) -> uuid.UUID:
     return org
 
 
-async def _user(engine, org, role: str) -> tuple[uuid.UUID, str]:
+async def _user(engine, org, role: str, name: str = "T", whatsapp: bool = True) -> tuple[uuid.UUID, str]:
     user_id = uuid.uuid4()
     await _run(engine,
                "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role, status, access_policy, "
-               "created_at, updated_at) VALUES (:id, :org, :e, 'hash', 'T', :role, 'active', CAST(:p AS jsonb), now(), "
-               "now())", id=user_id, org=org, e=f"{uuid.uuid4().hex[:8]}@example.com", role=role, p=_ALL)
+               "whatsapp_number, created_at, updated_at) VALUES (:id, :org, :e, 'hash', :name, :role, 'active', "
+               "CAST(:p AS jsonb), :wa, now(), now())", id=user_id, org=org, e=f"{uuid.uuid4().hex[:8]}@example.com",
+               role=role, p=_ALL, name=name, wa=f"+9190{uuid.uuid4().int % 10**8:08d}" if whatsapp else None)
     return user_id, create_access_token(data={"sub": str(user_id), "org": str(org), "role": role})
 
 
@@ -81,8 +88,8 @@ def _h(token: str) -> dict:
 async def ctx(test_engine):
     org = await _org(test_engine, "Report Org")
     project, site = uuid.uuid4(), uuid.uuid4()
-    admin_id, admin = await _user(test_engine, org, "admin")
-    _, engineer = await _user(test_engine, org, "site_engineer")
+    admin_id, admin = await _user(test_engine, org, "admin", "Ilan Usman")
+    engineer_id, engineer = await _user(test_engine, org, "site_engineer", "Sajan K")
     await _run(test_engine, "INSERT INTO projects (id, organization_id, name, client, created_at, updated_at) "
                "VALUES (:id, :org, 'Villa Kakkanad', 'Thomas Mathew', now() - interval '40 days', now())",
                id=project, org=org)
@@ -96,9 +103,12 @@ async def ctx(test_engine):
     other = await _org(test_engine, "Other Org")
     _, stranger = await _user(test_engine, other, "admin")
     yield {"org": org, "other": other, "project": project, "site": site, "admin": admin, "admin_id": admin_id,
-           "engineer": engineer, "stranger": stranger, "cat": cat, "today": today}
+           "engineer": engineer, "engineer_id": engineer_id, "stranger": stranger, "cat": cat, "today": today}
     async with test_engine.begin() as conn:
         for sql in (
+            "DELETE FROM report_snapshots WHERE organization_id = :org",
+            "DELETE FROM notifications WHERE organization_id = :org",
+            "DELETE FROM automations WHERE organization_id = :org",
             "DELETE FROM site_issues WHERE organization_id = :org",
             "DELETE FROM activity_quantities WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :org)",
             "DELETE FROM activities WHERE organization_id = :org",
@@ -249,3 +259,146 @@ async def test_pdf_and_excel_are_the_same_report(client, ctx, test_engine):
     labour = book["Labour"]
     days = [row for row in labour.iter_rows(min_row=2, values_only=True) if row[0] and str(row[0])[:2] == "20"]
     assert sum(Decimal(str(r[1])) for r in days) == Decimal(18)
+
+
+
+# -- R2: the owner's brief, sending, sent copies, schedules (RPT-01, PRC-20) -----------------------------------------
+
+async def _second_project(engine, ctx, name: str = "Aluva Warehouse") -> uuid.UUID:
+    pid = uuid.uuid4()
+    await _run(engine, "INSERT INTO projects (id, organization_id, name, created_at, updated_at) "
+               "VALUES (:id, :org, :n, now(), now())", id=pid, org=ctx["org"], n=name)
+    return pid
+
+
+def _week(ctx) -> dict:
+    today = ctx["today"]
+    return {"period": "custom", "date_from": str(today - 6 * D), "date_to": str(today)}
+
+
+async def test_the_brief_lists_every_running_project_worst_first(client, ctx, test_engine):
+    await _seed(client, test_engine, ctx)
+    await _second_project(test_engine, ctx)
+    q = f"period=custom&date_from={ctx['today'] - 6 * D}&date_to={ctx['today']}"
+    r = await client.get(f"/reports/portfolio?{q}", headers=_h(ctx["admin"]))
+    assert r.status_code == 200, r.text
+    brief = r.json()
+    names = [p["name"] for p in brief["projects"]]
+    assert names == ["Villa Kakkanad", "Aluva Warehouse"]  # the one with the late activity and the issue first
+    assert brief["projects"][0]["status"] == "bad" and brief["projects"][0]["serious_issues"] == 1
+    assert brief["headline"]["lead"].startswith("2 projects, 1 needs you")
+    assert brief["totals"]["man_days"] == "18"
+    eng = (await client.get(f"/reports/portfolio?{q}", headers=_h(ctx["engineer"]))).json()
+    assert eng["sees_money"] is False and "₹" not in str(eng)
+    pdf = await client.get(f"/reports/portfolio/pdf?{q}", headers=_h(ctx["admin"]))
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    xlsx = await client.get(f"/reports/portfolio/xlsx?{q}", headers=_h(ctx["admin"]))
+    assert xlsx.status_code == 200 and xlsx.content[:2] == b"PK"
+
+
+async def test_a_send_freezes_a_copy_per_person_as_they_may_see_it(client, ctx, test_engine):
+    await _seed(client, test_engine, ctx)
+    nowa_id, _ = await _user(test_engine, ctx["org"], "finance", "Divya", whatsapp=False)
+    outsider = uuid.uuid4()
+    body = {"scope": "project", "project_id": str(ctx["project"]), **_week(ctx), "note": "Rain on Thursday",
+            "recipient_user_ids": [str(ctx["admin_id"]), str(ctx["engineer_id"]), str(nowa_id), str(outsider)]}
+    r = await client.post("/reports/send", json=body, headers=_h(ctx["admin"]))
+    assert r.status_code == 200, r.text
+    out = r.json()
+    people = {p["name"]: p for p in out["people"]}
+    assert out["queued"] == 2 and out["skipped"] == 2
+    assert people["Divya"]["reason"] == "no WhatsApp number"
+    assert people["Someone"]["reason"] == "not in this company"
+    assert people["Ilan Usman"]["sees_money"] is True and people["Sajan K"]["sees_money"] is False
+
+    rows = (await _run(test_engine, "SELECT n.rule_key, n.payload, n.status, rs.report, rs.note, rs.pdf_object_key, "
+                                    "u.full_name FROM report_snapshots rs JOIN notifications n ON n.id = rs.notification_id "
+                                    "JOIN users u ON u.id = rs.recipient_user_id WHERE rs.send_id = :s",
+                       s=uuid.UUID(out["send_id"]))).mappings().all()
+    by = {r["full_name"]: r for r in rows}
+    assert set(by) == {"Ilan Usman", "Sajan K"}
+    for r in rows:
+        assert r["rule_key"] == f"period_report:{out['send_id']}" and r["status"] == "pending"
+        assert r["payload"]["template"]["name"] == "mesiri_period_report"
+        assert len(r["payload"]["template"]["body_params"]) == 3
+        assert r["payload"]["document_filename"].startswith("Villa-Kakkanad-")
+        assert "Note from Ilan Usman: Rain on Thursday" in r["payload"]["message"]
+        assert (await client.storage.get_object(r["pdf_object_key"])).data.startswith(b"%PDF")
+    assert "money" in by["Ilan Usman"]["report"]["sections"]
+    assert "money" not in by["Sajan K"]["report"]["sections"] and "₹" not in str(by["Sajan K"]["report"])
+
+    sent = (await client.get(f"/reports/sent?project_id={ctx['project']}", headers=_h(ctx["admin"]))).json()
+    assert sent["sends"][0]["note"] == "Rain on Thursday"
+    assert {p["word"] for p in sent["sends"][0]["people"]} == {"Waiting to go"}
+    admin_copy = next(p["snapshot_id"] for p in sent["sends"][0]["people"] if p["name"] == "Ilan Usman")
+    one = await client.get(f"/reports/sent/{admin_copy}", headers=_h(ctx["admin"]))
+    assert one.status_code == 200 and one.json()["changed_since"] == []
+    assert (await client.get(f"/reports/sent/{admin_copy}", headers=_h(ctx["engineer"]))).status_code == 404
+    pdf = await client.get(f"/reports/sent/{admin_copy}/pdf", headers=_h(ctx["admin"]))
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+
+    # A late attendance: the sent copy keeps its figures and says what moved.
+    report = uuid.uuid4()
+    await _run(test_engine, "INSERT INTO labour_attendance_reports (id, organization_id, project_id, site_id, "
+               "occurred_date, recorded_via, created_at, created_by) VALUES (:id, :org, :p, :s, :d, 'whatsapp_text', "
+               "clock_timestamp(), :u)", id=report, org=ctx["org"], p=ctx["project"], s=ctx["site"],
+               d=ctx["today"] - 5 * D, u=ctx["admin_id"])
+    await _run(test_engine, "INSERT INTO labour_attendance_lines (id, report_id, trade, headcount, daily_wage, "
+               "created_at) VALUES (:id, :r, 'mason', 3, 1100, now())", id=uuid.uuid4(), r=report)
+    later = (await client.get(f"/reports/sent/{admin_copy}", headers=_h(ctx["admin"]))).json()
+    assert {"label": "Man-days", "sent": "18", "now": "21"} in later["changed_since"]
+    assert later["report"]["sections"]["labour"]["man_days"] == "18"
+
+
+async def test_only_managers_send_to_others_and_names_are_never_guessed(client, ctx, test_engine):
+    body = {"scope": "project", "project_id": str(ctx["project"]), **_week(ctx)}
+    r = await client.post("/reports/send", json={**body, "recipient_user_ids": [str(ctx["admin_id"])]},
+                          headers=_h(ctx["engineer"]))
+    assert r.status_code == 403
+    mine = await client.post("/reports/send", json=body, headers=_h(ctx["engineer"]))
+    assert mine.status_code == 200 and mine.json()["queued"] == 1
+    await _user(test_engine, ctx["org"], "project_manager", "Sajan M")
+    r = await client.post("/reports/send", json={**body, "recipient_names": ["sajan"]}, headers=_h(ctx["admin"]))
+    assert r.status_code == 422 and "Sajan K" in r.json()["detail"] and "Sajan M" in r.json()["detail"]
+    r = await client.post("/reports/send", json={**body, "recipient_names": ["Sajan K"]}, headers=_h(ctx["admin"]))
+    assert r.status_code == 200 and [p["name"] for p in r.json()["people"]] == ["Sajan K"]
+    r = await client.post("/reports/send", json={**body, "recipient_names": ["Nobody Here"]}, headers=_h(ctx["admin"]))
+    assert r.status_code == 422 and "No one called" in r.json()["detail"]
+
+
+async def test_a_schedule_goes_by_itself_once_a_day_and_can_be_stopped(client, ctx, test_engine):
+    from mesiri.domains.reports.period.send import run_scheduled
+
+    await _seed(client, test_engine, ctx)
+    h = _h(ctx["admin"])
+    r = await client.post("/reports/schedules", headers=h, json={
+        "project_id": str(ctx["project"]), "frequency": "WEEKLY", "day_of_week": 0, "time_of_day": "08:00",
+        "recipient_user_ids": [str(ctx["engineer_id"])], "note": "Weekly for site"})
+    assert r.status_code == 201, r.text
+    sched = r.json()
+    assert sched["recipients"] == [{"user_id": str(ctx["engineer_id"]), "name": "Sajan K"}]
+    assert (await client.post("/reports/schedules", headers=_h(ctx["engineer"]), json={
+        "frequency": "MONTHLY", "recipient_user_ids": [str(ctx["admin_id"])]})).status_code == 403
+    monthly = await client.post("/reports/schedules", headers=_h(ctx["engineer"]), json={"frequency": "MONTHLY"})
+    assert monthly.status_code == 201 and monthly.json()["day_of_week"] is None
+    listed = (await client.get(f"/reports/schedules?project_id={ctx['project']}", headers=h)).json()["schedules"]
+    assert [s["id"] for s in listed] == [sched["id"]]
+    brief_schedules = (await client.get("/reports/schedules?scope=portfolio", headers=h)).json()["schedules"]
+    assert [s["frequency"] for s in brief_schedules] == ["MONTHLY"]
+
+    row = dict((await _run(test_engine, "SELECT * FROM automations WHERE id = :id",
+                           id=uuid.UUID(sched["id"]))).mappings().one())
+    assert row["action"] == "SEND_PERIOD_REPORT" and row["audience"] == "USERS"
+    async with test_engine.begin() as conn:
+        first = await run_scheduled(conn, client.storage, row, [str(ctx["engineer_id"])])
+    async with test_engine.begin() as conn:
+        again = await run_scheduled(conn, client.storage, row, [str(ctx["engineer_id"])])
+    assert first["queued"] == 1 and first["period"]["kind"] == "week"
+    assert again["queued"] == 0 and again["people"][0]["reason"] == "already sent to them today"
+    n = (await _run(test_engine, "SELECT rule_key, payload FROM notifications WHERE organization_id = :org AND "
+                                 "rule_key = :k", org=ctx["org"], k=f"automation:{sched['id']}")).mappings().all()
+    assert len(n) == 1 and "Note from Ilan Usman: Weekly for site" in n[0]["payload"]["message"]
+
+    assert (await client.delete(f"/reports/schedules/{sched['id']}", headers=_h(ctx["engineer"]))).status_code == 403
+    assert (await client.delete(f"/reports/schedules/{sched['id']}", headers=h)).status_code == 200
+    assert (await client.get(f"/reports/schedules?project_id={ctx['project']}", headers=h)).json()["schedules"] == []

@@ -40,9 +40,9 @@ router = APIRouter(
     dependencies=[Depends(require_module("automations"))],
 )
 
-_VALID_ACTIONS = {"SEND_DPR", "COMPLIANCE_SUMMARY", "REMINDER"}
+_VALID_ACTIONS = {"SEND_DPR", "COMPLIANCE_SUMMARY", "REMINDER", "SEND_PERIOD_REPORT"}
 _VALID_AUDIENCES = {"SELF", "USERS", "ROLE", "NON_REPORTERS"}
-_VALID_FREQUENCIES = {"DAILY", "WEEKDAYS", "WEEKLY"}
+_VALID_FREQUENCIES = {"DAILY", "WEEKDAYS", "WEEKLY", "MONTHLY"}
 # Matches projects/router.py's _CREATE_ROLES exactly -- same roles that may
 # create a Project/Site may target an automation at someone else.
 _TARGET_OTHERS_ROLES = {"ADMIN", "PROJECT_MANAGER"}
@@ -51,12 +51,12 @@ _TARGET_OTHERS_ROLES = {"ADMIN", "PROJECT_MANAGER"}
 class AutomationRequest(BaseModel):
     project_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
-    action: Literal["SEND_DPR", "COMPLIANCE_SUMMARY", "REMINDER"]
+    action: Literal["SEND_DPR", "COMPLIANCE_SUMMARY", "REMINDER", "SEND_PERIOD_REPORT"]
     audience: Literal["SELF", "USERS", "ROLE", "NON_REPORTERS"]
     audience_user_ids: list[uuid.UUID] | None = None
     audience_role: str | None = None
     message: str | None = None
-    frequency: Literal["DAILY", "WEEKDAYS", "WEEKLY"] = "DAILY"
+    frequency: Literal["DAILY", "WEEKDAYS", "WEEKLY", "MONTHLY"] = "DAILY"
     day_of_week: int | None = None
     time_of_day: str
     timezone: str = "UTC"
@@ -71,6 +71,9 @@ class AutomationRequest(BaseModel):
             raise ValueError("message is required when action is REMINDER")
         if self.action == "SEND_DPR" and self.site_id is None:
             raise ValueError("site_id is required when action is SEND_DPR (a DPR is site-scoped)")
+        if self.action == "SEND_PERIOD_REPORT" and self.frequency not in ("WEEKLY", "MONTHLY"):
+            # PRC-20: a weekly report every week (Monday to Sunday just finished), a monthly one on the 1st.
+            raise ValueError("A period report is sent WEEKLY (the week just finished) or MONTHLY (on the 1st)")
         if self.frequency == "WEEKLY" and self.day_of_week is None:
             raise ValueError("day_of_week is required when frequency is WEEKLY")
         if self.day_of_week is not None and not (0 <= self.day_of_week <= 6):
@@ -88,12 +91,12 @@ class AutomationUpdateRequest(BaseModel):
 
     project_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
-    action: Literal["SEND_DPR", "COMPLIANCE_SUMMARY", "REMINDER"] | None = None
+    action: Literal["SEND_DPR", "COMPLIANCE_SUMMARY", "REMINDER", "SEND_PERIOD_REPORT"] | None = None
     audience: Literal["SELF", "USERS", "ROLE", "NON_REPORTERS"] | None = None
     audience_user_ids: list[uuid.UUID] | None = None
     audience_role: str | None = None
     message: str | None = None
-    frequency: Literal["DAILY", "WEEKDAYS", "WEEKLY"] | None = None
+    frequency: Literal["DAILY", "WEEKDAYS", "WEEKLY", "MONTHLY"] | None = None
     day_of_week: int | None = None
     time_of_day: str | None = None
     timezone: str | None = None
@@ -140,7 +143,14 @@ async def create_automation(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    if _requires_admin_or_pm(req.audience) and auth_context.role.upper() not in _TARGET_OTHERS_ROLES:
+    if req.action == "SEND_PERIOD_REPORT":
+        # PRC-20: one rule for who sends a report to others, now or on a schedule (roles.may_send_reports_to_others).
+        from mesiri.authorization.roles import may_send_reports_to_others
+
+        if _requires_admin_or_pm(req.audience) and not may_send_reports_to_others(auth_context.role):
+            raise HTTPException(status_code=403, detail="Owners, admins and project managers send reports to others. "
+                                                        "You can schedule one for yourself.")
+    elif _requires_admin_or_pm(req.audience) and auth_context.role.upper() not in _TARGET_OTHERS_ROLES:
         raise HTTPException(
             status_code=403,
             detail="Only an admin or project manager can create an automation that targets other people",
@@ -178,7 +188,15 @@ async def update_automation(
 
     fields = req.model_dump(exclude_unset=True)
     new_audience = fields.get("audience", existing["audience"])
-    if _requires_admin_or_pm(new_audience) and auth_context.role.upper() not in _TARGET_OTHERS_ROLES:
+    new_action = fields.get("action", existing["action"])
+    if new_action == "SEND_PERIOD_REPORT":
+        from mesiri.authorization.roles import may_send_reports_to_others
+
+        if fields.get("frequency", existing["frequency"]) not in ("WEEKLY", "MONTHLY"):
+            raise HTTPException(status_code=422, detail="A period report is sent WEEKLY or MONTHLY")
+        if _requires_admin_or_pm(new_audience) and not may_send_reports_to_others(auth_context.role):
+            raise HTTPException(status_code=403, detail="Owners, admins and project managers send reports to others.")
+    elif _requires_admin_or_pm(new_audience) and auth_context.role.upper() not in _TARGET_OTHERS_ROLES:
         raise HTTPException(
             status_code=403,
             detail="Only an admin or project manager can target an automation at other people",
