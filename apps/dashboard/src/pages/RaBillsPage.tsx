@@ -3,7 +3,7 @@ import { LinkedStrip } from '@/components/page/page-kit'
 import { raBillLinks } from '@/lib/links'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Share2, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -94,6 +94,7 @@ function ProjectBills({ projectId }: { projectId: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setContractOpen(true)}><ScrollText className="size-4" /> Contract terms</Button>
+          <Button size="sm" variant="outline" className="gap-1.5" asChild><Link to={`/billing/client-view?project=${projectId}`}><Share2 className="size-4" /> Share with client</Link></Button>
           <Button size="sm" className="gap-1.5" disabled={create.isPending || hasDraft || !c} onClick={() => create.mutate()} title={!c ? 'Set the contract terms first' : hasDraft ? 'Submit or remove the draft first' : undefined}>
             <FilePlus2 className="size-4" /> New RA bill
           </Button>

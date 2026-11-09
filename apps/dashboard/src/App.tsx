@@ -25,6 +25,8 @@ import PlacesPage from '@/pages/PlacesPage'
 import DocumentsPage from '@/pages/DocumentsPage'
 import LivePlansPage from '@/pages/LivePlansPage'
 import ClientsPage from '@/pages/ClientsPage'
+import ClientLinksPage from '@/pages/ClientLinksPage'
+import ClientViewPage from '@/pages/ClientViewPage'
 import DrawingCheckPage from '@/pages/DrawingCheckPage'
 import RaBillsPage from '@/pages/RaBillsPage'
 import RaBillDocumentPage from '@/pages/RaBillDocumentPage'
@@ -118,6 +120,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        {/* CV-03: the client's view of their project, from the secret link. No login, no sidebar. */}
+        <Route path="/c/:token" element={<ClientViewPage />} />
         {/* After signup (SS-18): full screen, outside the sidebar layout. */}
         <Route path="/welcome" element={<RequireAuth><WelcomePage /></RequireAuth>} />
         {/* The report writing itself as messages arrive (WEB-37): full screen, for demos too. */}
@@ -190,6 +194,7 @@ export default function App() {
           <Route path="planning/drawing-check" element={<DrawingCheckPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
           <Route path="billing/ra-bills" element={<RaBillsPage />} />
+          <Route path="billing/client-view" element={<ClientLinksPage />} />
           {/* CC-01 / CC-04 / CC-07: the Cost control module. */}
           <Route path="cost" element={cst(<CostHomePage />)} />
           <Route path="cost/green-red" element={cst(<CostVariancePage />)} />
