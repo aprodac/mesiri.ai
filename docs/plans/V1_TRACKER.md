@@ -49,7 +49,7 @@
 | Mesiri inside WhatsApp groups: ~8-person limit, quiet mode, one group = one site, DPR to the group, identity + labour messages from groups; how groups are created and people invited ([plan](../execution/WHATSAPP_GROUPS_PLAN.md#creating-a-group-and-inviting-people-proposed-waiting-for-a-yes)) | WA-87 | **Approved 28 Oct (Ilan)**, incl. the creation / invite flow |
 | Cost control and finance decisions D-CC4, D-CC8, D-N3, SEC-04, full books vs Tally, CC-17 review | SEC-04, CC-25, NXT-03, NXT-12, CC-17, D-CC4 engineer view | **Decided 8 Nov (Ilan: "do the recommended"):** D-CC8 cost before claimable GST when the supplier has a GSTIN and the bill says GST is included, else the full amount, flagged; SEC-04 adding or renaming expense categories: owner, admin, finance; D-CC4 money (rates, earned, cost, margins, balances): owner, admin, finance, PM; site engineers see their own sites' green / red and quantities, never rupees or rates; D-N3 client bills and receivables: owner, admin, finance; books: Tally export first, full Accounts later (V1.1); CC-17 reviewed in session and kept. |
 | Accounts decisions D-ACC1..D-ACC12 | ACC-01..ACC-23 | **Decided 9 Nov (Ilan: "go build it", recommended defaults):** books posted by a sweep from the records (no write path in other modules changes); a change after close posted on the first open day, flagged; Mesiri keeps the books, Tally export stays; wages booked when paid; deliveries not billed accrued at month end; owner / admin / finance read, close and (later) post vouchers, owner / admin reopen, PM project P&L only; April–March, INR; Tally groups seeded; WDV depreciation; overheads to projects off by default; separate books per company; new module `accounts`, off by default. |
-| UI story decisions D-UX1..D-UX5 (brand direction, sidebar sections, Settings page, ⌘K, login look) ([plan](ui-story-plan.md#9-decisions-needed-proposed-default-in-bold)) | UX-01, UX-04, UX-06 | **Open (9 Nov).** Defaults proposed in the plan |
+| UI story decisions D-UX1..D-UX5 (brand direction, sidebar sections, Settings page, ⌘K, login look) ([plan](ui-story-plan.md#9-decisions-needed-proposed-default-in-bold)) | UX-01, UX-04, UX-06 | **Decided 9 Nov (in session): the defaults** — keep yellow + charcoal, Plan / Site / Buy / Money, one Settings page, ⌘K, keep the sign-in demo restyled |
 
 ---
 
@@ -784,7 +784,7 @@ Why: 33% of v3 material save calls refused (31 Oct - 7 Nov); TMT and M-sand aske
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| UX-01 | **Brand decision and foundation:** one token set (light + dark), hard-coded palette re-pointed to tokens by meaning, stale comments fixed, DESIGN_SYSTEM.md reduced to a pointer, brand page in DESIGN.md | M | Must | D-UX1 | todo | — | Waits for D-UX1 (default: keep yellow + charcoal). Closes WEB-14 |
+| UX-01 | **Brand foundation:** one token set (light + dark), hard-coded palette re-pointed to tokens by meaning, stale comments fixed, DESIGN_SYSTEM.md reduced to a pointer, brand page in DESIGN.md | M | Must | D-UX1 | todo | — | D-UX1 decided: keep yellow + charcoal. Closes WEB-14 |
 | UX-02 | **Brand assets:** favicon (missing today), app icon, web manifest, social image, same mark on login, sidebar and PDFs | S | Must | UX-01 | todo | — |  |
 | UX-03 | **Calm sidebar:** one icon colour instead of a colour per item; planned-modules preview moves to the super-admin menu | S | Must | UX-01 | todo | — |  |
 | UX-04 | **Navigation by the story:** Today / Reports / Issues / Live, then PLAN, SITE, BUY, MONEY sections; one home per page (BOQ, Requests, Suppliers are in two drawers today); Settings page with tabs (owners see no setup today); role order; redirects; ⌘K jump | M | Must | UX-05, D-UX2..4 | todo | — |  |
@@ -792,7 +792,9 @@ Why: 33% of v3 material save calls refused (31 Oct - 7 Nov); TMT and M-sand aske
 | UX-06 | **First-run story:** login / signup / welcome in the app's brand; one skippable path Welcome → first project → who reports → connect WhatsApp → first update → Today; Today's empty state is the next step | M | Must | UX-01, UX-05, D-UX5 | todo | — |  |
 | UX-07 | **Empty states that lead:** every module page says what it is for, the first thing to do, and the WhatsApp sentence that fills it | S | Must | UX-05 | todo | — |  |
 | UX-08 | **Pages onto the kit, section by section** (PLAN, SITE, BUY, MONEY); absorbs WEB-52's repeated-subtitle sweep | L | Must | UX-04, UX-05 | todo | — |  |
-| UX-09 | **Connected records:** request ↔ order ↔ GRN ↔ bill ↔ payment ↔ ledger; BOQ line ↔ work ↔ cost ↔ RA bill; worker ↔ attendance ↔ cost, as a Linked strip in each detail panel | M | Later | UX-05 | todo | — |  |
+| UX-09 | **Connected records** (plan §4c): request ↔ order ↔ GRN ↔ bill ↔ payment ↔ ledger; BOQ line ↔ work ↔ cost ↔ RA bill; worker ↔ attendance ↔ cost, as a Linked strip in each detail panel | M | Must | UX-05 | todo | — | Asked 9 Nov: "connection of each module is very important" |
+| UX-11 | **A home for each role** (plan §4b): Today becomes Home with a tile set for Director, PM, Site engineer, Finance from existing APIs; sidebar order per role | M | Must | UX-05 | todo | — | Asked 9 Nov: "role specific dashboard is very important" |
+| UX-12 | **Project hub** (plan §4c): the project page summarises every module for that project and opens each scoped to it; setup in a tab | M | Must | UX-05 | todo | — | |
 | UX-10 | **Screenshot check for every built page** (390 / 1440 px, light / dark, stubbed API; fails on blank page or console error), run before each UX push | S | Must | — | todo | — | Build first, with UX-01 |
 
 ## Done log
