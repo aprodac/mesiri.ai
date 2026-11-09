@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast-notification'
 import { PageError } from '@/components/dpr-page'
+import { ModuleTitle } from '@/components/page/page-kit'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { useAuth } from '@/lib/AuthContext'
 import { billDay, mayBill } from '@/lib/billing'
@@ -28,13 +29,9 @@ export default function ClientLinksPage() {
   const allowed = mayBill(me?.role)
   const projectId = usePlanningProject()
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 pb-8 sm:px-2">
-      <header className="flex items-center gap-3">
-        <span className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><Share2 className="size-5" /></span>
-        <div>
-          <div className="text-xs text-muted-foreground">Client billing</div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Client view</h1>
-        </div>
+    <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <ModuleTitle icon={Share2} title="Client view" />
       </header>
       <p className="text-sm text-muted-foreground">
         Send your client a link to their project. They open it on the phone, no login, and see progress, milestones,

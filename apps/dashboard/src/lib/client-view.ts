@@ -18,7 +18,7 @@ export interface ClientLink {
 
 export async function fetchClientLinks(projectId?: string | null): Promise<ClientLink[]> {
   const url = projectId ? `/projects/${projectId}/client-links` : '/client-links'
-  return (await api.get<{ links: ClientLink[] }>(url)).data.links
+  return (await api.get<{ links?: ClientLink[] }>(url)).data?.links ?? []
 }
 
 export async function createClientLink(projectId: string, label: string | null): Promise<{ link: ClientLink; token: string }> {
