@@ -58,6 +58,8 @@ LEDGERS: tuple[tuple[str, str, str, str], ...] = (
     ("retention_payable", "Retention payable", "current_liabilities", "Retention held back from subcontractors"),
     ("bank_charges", "Bank charges", "indirect_expenses", "Charges the bank takes"),
     ("round_off", "Round off", "indirect_expenses", "Rounding differences"),
+    ("overheads_allocated", "Head office overheads allocated", "indirect_expenses",
+     "Each project's monthly share of head-office costs, when sharing is on (nil company-wide)"),
 )
 
 #: The groups a linked ledger is made in (``link_kind`` -> group code). Money accounts depend on the account type.
