@@ -490,6 +490,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.costing.router", "Cost control"),  # CC-01: the cost module (web)
         ("mesiri.domains.finance.tally_router", "Tally export"),  # NXT-12: expenses and payments as Tally XML
         ("mesiri.domains.accounts.router", "Accounts"),  # ACC-01..05: chart of accounts, journals, trial balance
+        ("mesiri.domains.tasks.router", "Tasks"),  # TSK-01: who does what, by when (the tasks module)
     ):
         try:
             import importlib

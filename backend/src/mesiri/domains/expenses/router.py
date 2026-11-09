@@ -759,18 +759,9 @@ async def _attachment_responses(
 
 
 async def _photo_is_ours(conn: AsyncConnection, organization_id: uuid.UUID, key: str) -> bool:
-    """Only a file this company's own WhatsApp received: a key names no company, so
-    without this a caller could attach (and then read) another company's photo."""
-    owned = (
-        await conn.execute(
-            text(
-                "SELECT 1 FROM inbound_messages "
-                "WHERE organization_id = :org AND media_object_key = :key LIMIT 1"
-            ),
-            {"org": organization_id, "key": key},
-        )
-    ).first()
-    return owned is not None
+    from mesiri.domains.shared.media import photo_is_ours
+
+    return await photo_is_ours(conn, organization_id, key)
 
 
 class AddBill(BaseModel):
