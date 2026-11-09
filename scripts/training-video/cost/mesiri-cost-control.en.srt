@@ -1,0 +1,112 @@
+1
+00:00:01,600 --> 00:00:07,403
+You know how much your site spent today.
+
+2
+00:00:07,853 --> 00:00:12,631
+But was the work done for that money? That is the real question.
+
+3
+00:00:13,081 --> 00:00:19,652
+Say four masons and two helpers. One day's wages: ₹6,400.
+
+4
+00:00:20,102 --> 00:00:27,441
+Was ₹6,400 worth of work done? Until now, nobody had a clear answer.
+
+5
+00:00:27,891 --> 00:00:34,376
+Mesiri Cost control answers it, for every BOQ item, every day.
+
+6
+00:00:34,826 --> 00:00:40,202
+In the dashboard, Cost control sits below Finance, with six pages.
+
+7
+00:00:40,652 --> 00:00:51,745
+Site engineers type nothing new: the work, attendance, materials and bills they already send on WhatsApp are the data.
+
+8
+00:00:52,195 --> 00:00:57,059
+The Overview lists every project, worst first.
+
+9
+00:00:57,509 --> 00:01:08,091
+Green Villa says Watch: at today's rate it will finish about ₹3.9 lakh over budget.
+
+10
+00:01:08,541 --> 00:01:11,954
+Lake View Apartments is on budget.
+
+11
+00:01:12,404 --> 00:01:22,644
+It starts from the BOQ: each item's quantity, client rate and budget rate, the work done, and the budget it earned.
+
+12
+00:01:23,094 --> 00:01:36,577
+When today's work comes in, Mesiri suggests its BOQ line. One click confirms it. Nothing is counted on a guess, or twice.
+
+13
+00:01:37,027 --> 00:01:47,267
+Green / red is the GM's page. Each day is green or red: the labour spent against the labour budget the work earned.
+
+14
+00:01:47,717 --> 00:02:05,722
+Then every BOQ line, worst first, with the reason. Electrical conduits: ₹11,950 of labour for 44 points. ₹272 a point, against a budget of ₹96. Red.
+
+15
+00:02:06,172 --> 00:02:11,292
+Plinth beam is green: the work was worth more than the labour it took.
+
+16
+00:02:11,742 --> 00:02:17,715
+Labour nobody has put on a BOQ line is shown apart. It is never guessed into a line.
+
+17
+00:02:18,165 --> 00:02:28,747
+Putting it on a line takes a moment: pick the line and the man-days, press Put on line. A day can be split over several lines.
+
+18
+00:02:29,197 --> 00:02:38,839
+Budget vs actual gives the full picture: budget, earned, spent, and the forecast at completion.
+
+19
+00:02:39,289 --> 00:02:50,383
+Here labour is under budget, but materials are ₹66,000 over what the work has earned. That needs a look now.
+
+20
+00:02:50,833 --> 00:03:03,206
+Materials vs BOQ checks each material against what the work needed by the BOQ norms. Cement: the work needed 364 bags; 418 were used.
+
+21
+00:03:03,656 --> 00:03:13,640
+It also says what is still needed to finish, beyond stock and open orders, so a shortage shows up early.
+
+22
+00:03:14,090 --> 00:03:27,743
+Cost centres shows where the money went: materials, labour, machines, fuel, site overheads. Its total matches Finance exactly.
+
+23
+00:03:28,193 --> 00:03:36,641
+If a category has no cost centre, Mesiri says so openly. The owner fixes it in one click.
+
+24
+00:03:37,091 --> 00:03:45,027
+Budget vs actual and Green / red export to Excel, for the CA and the MD.
+
+25
+00:03:45,477 --> 00:03:56,656
+Every evening the owner and project manager get a cost card on WhatsApp, and can ask Mesiri how cost is going today.
+
+26
+00:03:57,106 --> 00:04:10,589
+Money is for the owner, admin, finance and project managers. A site engineer sees their own site's green or red and quantities, never the money.
+
+27
+00:04:11,039 --> 00:04:16,756
+Know where costs are running over, before you release the payment.
+
+28
+00:04:17,206 --> 00:04:22,838
+Mesiri Cost control: make sure every rupee spent gets its work done.
+
