@@ -43,6 +43,7 @@ import PeriodsPage from '@/pages/accounts/PeriodsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
+import ApprovalsPage from '@/pages/ApprovalsPage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
@@ -127,6 +128,7 @@ export default function App() {
           <Route path="reports/:date/sites/:siteId" element={<SiteDayPage />} />
           <Route path="reports/:date/projects/:projectId" element={<ProjectDayPage />} />
           <Route path="issues" element={<OperationsIssuesPage />} />
+          <Route path="site/approvals" element={<ApprovalsPage />} />
 
           {/* Site records: everything the sites sent, across days. */}
           <Route path="site-log" element={<SiteLogPage />} />

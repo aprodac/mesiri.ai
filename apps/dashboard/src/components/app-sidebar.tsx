@@ -21,6 +21,7 @@ import {
   Palette,
   ListChecks,
   Map as MapIcon,
+  Inbox,
 } from 'lucide-react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -63,7 +64,7 @@ type NavItem = {
   // The icon's colour (WEB-20), like the More sections' icons.
   tone?: NavTone
   // Which live count to show as a badge (WEB-20).
-  badge?: 'drafts' | 'issues'
+  badge?: 'drafts' | 'issues' | 'waiting'
   // Small text at the row's end, e.g. "3/6" on Finish setup (SS-19).
   note?: string
   // A planned page (WEB-72), shown only with the preview on.
@@ -92,6 +93,8 @@ const PRIMARY_ITEMS: NavItem[] = [
   { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
   { title: 'Daily Reports', url: '/reports', icon: FileText, tone: 'sky' },
   { title: 'Issues', url: '/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
+  // GM-01: every decision waiting for this person (requests, subcontract bills, work to confirm, RA bills, sizes).
+  { title: 'Waiting for you', url: '/site/approvals', icon: Inbox, tone: 'amber', badge: 'waiting' },
 ]
 
 // Site records: everything the sites sent, across days and sites.
@@ -211,6 +214,7 @@ type NavTone = keyof typeof NAV_TONES
 const BADGE = {
   drafts: 'bg-orange-500 text-white',
   issues: 'bg-rose-500 text-white',
+  waiting: 'bg-yellow-400 text-stone-950',
 } as const
 
 const NAV_LINK_BASE =
@@ -490,7 +494,7 @@ export function AppSidebar() {
   const renderLink = (item: NavItem) => {
     const ItemIcon = item.icon
     const active = checkIsItemActive(location.pathname, item.url)
-    const count = item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : 0
+    const count = item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : item.badge === 'waiting' ? counts.waiting : 0
     // A plain string className, not NavLink's function form: SidebarMenuButton
     // (asChild -> Radix Slot) merges className as text, which silently drops
     // a function, so the active state never rendered.
@@ -522,7 +526,7 @@ export function AppSidebar() {
                   'ml-auto min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums group-data-[collapsible=icon]:hidden',
                   BADGE[item.badge!],
                 )}
-                title={item.badge === 'drafts' ? `${count} items to confirm today` : `${count} open issues`}
+                title={item.badge === 'drafts' ? `${count} items to confirm today` : item.badge === 'waiting' ? `${count} waiting for your decision` : `${count} open issues`}
               >
                 {count > 99 ? '99+' : count}
               </span>
