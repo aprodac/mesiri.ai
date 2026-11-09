@@ -16,7 +16,7 @@ handover       the schedule forecasts the handover after its target   bad       
 late           an activity is past its end and not done               bad on the critical path, else warn
 order          a material must be ordered today (or by tomorrow)      bad / warn  /projects/{id}/material-plan
 unreported     a working site sent nothing by the project's cut-off   warn      /dpr/site-days
-issue          past its due date (GM-06), or open for 2+ days         bad if overdue / high / critical, else warn
+issue          an issue open for 2+ days                              bad if high / critical, else warn
 hire           a hire bill asks for more than the machine's log       warn      /equipment/hire-check
 =============  =====================================================  ========  ============================
 
@@ -208,11 +208,8 @@ def report_alerts(site_days: dict[str, Any], now_local: datetime.datetime) -> li
     return out
 
 
-def issue_alerts(issues: list[dict[str, Any]], now: datetime.datetime, names: dict[str, str],
-                 today: datetime.date | None = None) -> list[dict[str, Any]]:
-    """Issues past their due date (GM-06), or open ISSUE_DAYS days or more. Overdue, high and critical are bad.
-    The detail says who is on it and by when. ``names``: project and site names."""
-    today = today or now.date()
+def issue_alerts(issues: list[dict[str, Any]], now: datetime.datetime, names: dict[str, str]) -> list[dict[str, Any]]:
+    """Issues open for ISSUE_DAYS days or more; high / critical ones are bad. ``names``: project and site names."""
     out = []
     for i in issues:
         occurred = i["occurred_at"] if isinstance(i["occurred_at"], datetime.datetime) else \
@@ -220,24 +217,15 @@ def issue_alerts(issues: list[dict[str, Any]], now: datetime.datetime, names: di
         if occurred.tzinfo is None:
             occurred = occurred.replace(tzinfo=datetime.UTC)
         age = (now - occurred).days
-        due = i.get("due_on")
-        due = due if isinstance(due, datetime.date) or due is None else datetime.date.fromisoformat(str(due)[:10])
-        overdue = due is not None and due < today
-        if age < ISSUE_DAYS and not overdue:
+        if age < ISSUE_DAYS:
             continue
         what = (i.get("narrative") or str(i.get("issue_type") or "Issue").replace("_", " ").capitalize()).strip()
         what = what if len(what) <= 70 else what[:67].rstrip() + "…"
-        who = i.get("assigned_user_name") or ("someone" if i.get("assigned_user_id") else None)
-        if who is None:
-            owner = "no one is on it"
-        elif due is not None:
-            owner = f"{who} said by {_day(due)}"
-        else:
-            owner = f"{who} is on it, no date given"
+        owner = "no one is on it" if not i.get("assigned_user_id") else "someone is on it"
         severity = str(i.get("severity") or "").upper()
-        title = f"Overdue since {_day(due)}: {what}" if overdue else f"Open {_days(age)}: {what}"
-        out.append(_alert(f"issue:{i['id']}", "issue", "bad" if overdue or severity in ("HIGH", "CRITICAL") else "warn",
-                          title, f"{severity.capitalize() or 'Medium'} · {owner}", project_id=i["project_id"],
+        out.append(_alert(f"issue:{i['id']}", "issue", "bad" if severity in ("HIGH", "CRITICAL") else "warn",
+                          f"Open {_days(age)}: {what}",
+                          f"{severity.capitalize() or 'Medium'} · {owner}", project_id=i["project_id"],
                           project_name=names.get(str(i["project_id"])), site_name=names.get(str(i["site_id"])),
                           since=occurred.isoformat(), action="Open issues", link="/issues"))
     return out

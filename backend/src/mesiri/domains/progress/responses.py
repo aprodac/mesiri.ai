@@ -98,9 +98,6 @@ class SiteIssueResponse(BaseModel):
     status: str
     resolution_notes: str | None = None
     assigned_user_id: uuid.UUID | None = None
-    #: GM-06: who is on it (name) and by when they said it would be sorted.
-    assigned_user_name: str | None = None
-    due_on: datetime.date | None = None
     reported_by_user_id: uuid.UUID | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime

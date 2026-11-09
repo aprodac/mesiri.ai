@@ -94,7 +94,7 @@ async def collect(conn: AsyncConnection, auth: AuthorizationContext, *, enabled:
             issues += (page or {}).get("items", [])
         if issues:
             alerts += rules.issue_alerts(issues, datetime.datetime.now(datetime.UTC),
-                                         await _names(conn, auth.organization_id, issues), today)
+                                         await _names(conn, auth.organization_id, issues))
     if "cost" in enabled and any(p["has_boq"] for p in projects):
         book = await _quiet(portfolio(auth=auth, conn=conn))
         if book:

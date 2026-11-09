@@ -136,18 +136,3 @@ def test_project_forecast_over_budget_only_when_red_and_over():
     assert [x["key"] for x in a] == ["budget:p1"] and a[0]["title"] == "Forecast ₹12,40,000 over budget"
     assert a[0]["detail"] == ("At this rate labour, material will cost ₹3,32,40,000 against a budget of ₹3,20,00,000; "
                               "41.0% done, 52.3% spent")
-
-
-def test_issue_overdue_is_bad_and_names_who_said_by_when():
-    now = datetime.datetime(2026, 11, 9, 9, tzinfo=datetime.UTC)
-    base = {"project_id": "p1", "site_id": "s1", "severity": "LOW", "issue_type": "OTHER", "narrative": "Props short",
-            "assigned_user_id": "u1", "assigned_user_name": "Anil"}
-    fresh_overdue = {**base, "id": "i1", "occurred_at": "2026-11-08T08:00:00+00:00", "due_on": "2026-11-08"}
-    on_time = {**base, "id": "i2", "occurred_at": "2026-11-05T08:00:00+00:00", "due_on": "2026-11-12"}
-    fresh_on_time = {**base, "id": "i3", "occurred_at": "2026-11-08T08:00:00+00:00", "due_on": "2026-11-12"}
-    a = rules.issue_alerts([fresh_overdue, on_time, fresh_on_time], now, {}, TODAY)
-    assert [(x["key"], x["severity"]) for x in a] == [("issue:i1", "bad"), ("issue:i2", "warn")]
-    assert a[0]["title"] == "Overdue since Sun 8 Nov: Props short" and a[0]["detail"] == "Low · Anil said by Sun 8 Nov"
-    assert a[1]["detail"] == "Low · Anil said by Thu 12 Nov"
-    no_date = rules.issue_alerts([{**on_time, "due_on": None}], now, {}, TODAY)
-    assert no_date[0]["detail"] == "Low · Anil is on it, no date given"
