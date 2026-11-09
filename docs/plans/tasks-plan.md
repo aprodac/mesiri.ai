@@ -2,7 +2,8 @@
 
 **Status:** TSK-01 built 9 Nov 2026 (the module, tables `tasks` / `task_events` in 0533, the API under `/tasks`);
 TSK-02 built 9 Nov (`06469c90`): the module on the web (sidebar group, `/tasks`, task panel, new task dialog) and
-`GET /tasks/options`. TSK-03..07 to do. **Tasks is its own module** (`tasks` switch, own sidebar group, own
+`GET /tasks/options`. TSK-03 built 9 Nov (`97662f73`): tasks from issues and the schedule, place, BOQ line with
+progress from the BOQ's own count (per site; not per place yet), migration 0537. TSK-04..07 to do. **Tasks is its own module** (`tasks` switch, own sidebar group, own
 routes under `/tasks`), asked in session by Adarsh on 9 Nov ("want new module proper"), the same way Cost control
 became one (CC-17). Tracker section **TSK** in [V1_TRACKER.md](V1_TRACKER.md).
 **Why now:** module 05 "Task & Work Management" is the only module in Phase 1 of the Capability Framework with
