@@ -82,9 +82,16 @@ through the after-close rule).
 Who: the company's statements are the money roles'; `/accounts/projects`, `/accounts/projects/{id}`, a project's
 `/accounts/pl` and `/accounts/home?project_id` are also its project manager's (D-ACC6).
 
+## Phase C: GST and TDS ()
+
+GST is read from the records (they carry the GSTIN and rate) and tied to the Output / Input GST ledgers. Claimable
+input follows D-CC8 (supplier GSTIN and GST said as included), the same rule as posting; the rest is "credit missed"
+with its reason. Place of supply: the company's GSTIN (letterhead, ) against the other party's first
+two digits: same state CGST + SGST, else IGST, unknown without both. TDS deducted is the payments from the TDS payable
+money account; deposits are transfers into it, applied oldest month first; due on the 7th (March: 30 April).
+
 ## Not built yet
 
-GST
-and TDS registers (ACC-10, 11), manual vouchers (ACC-12), bank reconciliation (ACC-13), the close checklist
+Manual vouchers (ACC-12), bank reconciliation (ACC-13), the close checklist
 (ACC-14's rest), the delivery accrual (ACC-15), year end (ACC-16..18), Tally from the journals (ACC-19), WhatsApp
 reads (ACC-20). The sweep runs before each read, not yet on the scheduler.
