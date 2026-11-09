@@ -451,8 +451,15 @@ ALLOWED: tuple[Allowed, ...] = (
             "was not in the list." + _WRITE),
     # TM-30 (#230): the dashboard's own route, added by scripts/allow_route.py.
     Allowed("my_requests", "GET", "/me/requests", "The requests this person asked Mesiri for, and where each one is (asked, building, live, dropped)."),
-    # TM-30 (WEB-71): the dashboard"s own route, added by scripts/allow_route.py.
+    # TM-30 (WEB-71): the dashboard's own route, added by scripts/allow_route.py.
     Allowed("add_person", "POST", "/projects/{project_id}/members/by-number", "Prepare adding someone NEW to the company, onto a project, by their name and WhatsApp number (typed, or said in a voice note), with a role (site engineer, project manager, finance, admin). Someone already in the company: add_project_member. fullName: as said; whatsappNumber: the digits as said; role: as said." + _WRITE),
+    # TM-30: the dashboard's own route, added by scripts/allow_route.py.
+    Allowed("waiting", "GET", "/approvals/waiting",
+            "What is waiting for this person, urgent first then oldest: site reports with entries to confirm (today, "
+            "yesterday), material requests to decide, subcontractor bills flagged or sent for approval, RA bills in "
+            "draft, their own tasks overdue or due today. Each item: kind, ref, title, detail, project_name, "
+            "site_name, since, urgent; plus counts per kind and total. Read only: acting goes through each kind's own "
+            "tool."),
 )
 
 
