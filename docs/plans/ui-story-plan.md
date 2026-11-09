@@ -5,6 +5,7 @@
 > especially UI and UX: brand, theme, sidebar, the first screens"). Tracker items `UX-01`..`UX-12` in
 > [V1_TRACKER.md](V1_TRACKER.md). Continues WEB-25 / WEB-52 and closes WEB-14.
 >
+> **Built 9 Nov 2026** (UX-01..06, 09..12 done; UX-07 and UX-08 partly: see the tracker rows for what is left).
 > Phase 1 (investigation) findings are in §2. The plan is §3 onward. Decisions needed before building are in §9.
 
 ---
