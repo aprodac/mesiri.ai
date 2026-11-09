@@ -26,6 +26,7 @@ import DocumentsPage from '@/pages/DocumentsPage'
 import LivePlansPage from '@/pages/LivePlansPage'
 import ClientsPage from '@/pages/ClientsPage'
 import ClientLinksPage from '@/pages/ClientLinksPage'
+import ActivityLogPage from '@/pages/ActivityLogPage'
 import ClientViewPage from '@/pages/ClientViewPage'
 import DrawingCheckPage from '@/pages/DrawingCheckPage'
 import RaBillsPage from '@/pages/RaBillsPage'
@@ -216,6 +217,7 @@ export default function App() {
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/activity" element={<ActivityLogPage />} />
           <Route path="company" element={<CompanyDetails />} />
           <Route path="company/messages" element={<Moved to="/whatsapp?view=messages" />} />
           <Route path="whatsapp" element={<WhatsAppPage />} />

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Building, Building2, ChevronRight, Clock, ListChecks, MessageSquare, Puzzle, Users } from 'lucide-react'
+import { Building, Building2, ChevronRight, Clock, History, ListChecks, MessageSquare, Puzzle, Users } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 import { MODULE_NAMES, useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { SETUP_URL, setupCounts, useSetupProgress } from '@/lib/setup'
@@ -15,6 +15,7 @@ const ROWS = [
   { title: 'Projects & sites', about: 'Each project, its sites, who reports from each and who gets the reports.', url: '/projects', icon: Building2 },
   { title: 'Team', about: 'Everyone who uses Mesiri, their role and their sites. Invite by WhatsApp number.', url: '/team', icon: Users },
   { title: 'WhatsApp', about: 'Conversations with Mesiri, every message sent and received, and site groups.', url: '/whatsapp', icon: MessageSquare },
+  { title: 'Activity log', about: 'Who changed what, when: every save, edit and approval, on the web and on WhatsApp.', url: '/settings/activity', icon: History },
   { title: 'Scheduled messages', about: 'Reminders and summaries Mesiri sends on a timetable.', url: '/whatsapp?view=automations', icon: Clock, module: 'automations' as ModuleKey },
 ]
 

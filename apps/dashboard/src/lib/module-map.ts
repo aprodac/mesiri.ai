@@ -353,6 +353,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { title: 'Team', url: '/team', status: 'built', phase: 'V1', about: 'Everyone who reports to or reads from Mesiri, with their role and sites.', example: 'Arun, site engineer, Main building.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
       { title: 'Company', url: '/company', status: 'built', phase: 'V1', about: 'Company details, letterhead, logo and report settings.', example: 'GSTIN, address and logo on every PDF.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
       { title: 'WhatsApp', url: '/whatsapp', status: 'built', phase: 'V1', about: 'Conversations with Mesiri, every message, and scheduled messages.', example: "Arun's 6 pm update and Mesiri's reply.", roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
+      { title: 'Activity log', url: '/settings/activity', status: 'built', phase: 'V1', about: 'Who changed what, when: every save, edit, delete and approval, on the web and on WhatsApp, newest first. Read only.', example: 'Meera · Submit RA bill RA-02 · 4:10 pm · Web.', tracker: 'ADM-01, ADM-02', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
     ],
   },
 ]

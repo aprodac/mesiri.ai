@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FolderLock, KeyRound, MessageSquare, MessageSquareOff, Pencil, Trash2, UserCheck, UserX } from 'lucide-react'
+import { ArrowRightLeft, FolderLock, KeyRound, MessageSquare, MessageSquareOff, Pencil, Trash2, UserCheck, UserX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +12,7 @@ import { Callout, DprAside, DprHeader, DprSection, PageError } from '@/component
 import { AccessManagerDialog, AddEditUserDialog, WhatsAppManagerDialog } from '@/components/user-dialogs'
 import { MyRequests } from '@/components/my-requests'
 import { useAuth } from '@/lib/AuthContext'
+import { HandoverDialog } from '@/components/team/handover-dialog'
 import { UserWhatsAppMessagesTab } from '@/components/user-whatsapp-messages-tab'
 import { deleteUser, fetchUser, updateUser, updateUserStatus, type User } from '@/lib/api'
 import { isOrgWide, useMemberships } from '@/lib/team'
@@ -35,7 +36,7 @@ export default function UserDetails() {
   const readOnly = useReadOnly()
   const queryClient = useQueryClient()
   const siteNames = useSiteNames()
-  const [dialog, setDialog] = React.useState<'edit' | 'access' | 'whatsapp' | 'status' | 'delete' | 'password' | null>(null)
+  const [dialog, setDialog] = React.useState<'edit' | 'access' | 'whatsapp' | 'status' | 'delete' | 'password' | 'handover' | null>(null)
 
   const query = useQuery<User>({ queryKey: ['user-details', id], queryFn: () => fetchUser(id), enabled: !!id })
   const memberships = useMemberships()
@@ -218,6 +219,10 @@ export default function UserDetails() {
               <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setDialog('password')}>
                 <KeyRound className="size-3.5" /> Set a new password
               </Button>
+              {/* ADM-03: their open tasks and schedule activities to someone else. */}
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setDialog('handover')}>
+                <ArrowRightLeft className="size-3.5" /> Hand over open work
+              </Button>
               <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setDialog('status')}>
                 {active ? <UserX className="size-3.5" /> : <UserCheck className="size-3.5" />}
                 {active ? 'Deactivate' : 'Make active'}
@@ -229,6 +234,8 @@ export default function UserDetails() {
           )}
         </DprAside>
       </div>
+
+      <HandoverDialog userId={user.id} name={user.full_name} open={dialog === 'handover'} onClose={() => setDialog(null)} />
 
       <Dialog open={dialog === 'status' || dialog === 'delete'} onOpenChange={(open) => !open && setDialog(null)}>
         <DialogContent className="sm:max-w-md">
