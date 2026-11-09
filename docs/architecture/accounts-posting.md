@@ -63,9 +63,28 @@ supplier ledger's bills and payments; deliveries not billed wait for the month-e
 (books vs Receivables). A difference is shown, never hidden: typically a payment row saved without its money
 movement (older data), which the books do not count because no money left an account.
 
-## Not in Phase A
+## Phase B: statements (`statements.py`)
 
-P&L and balance sheet (ACC-06), cash and bank books (ACC-07), project P&L (ACC-08), the Accounts home (ACC-09), GST
+All read from the journal lines. **P&L**: top groups map to Tally's layout (`PL_SECTION`): Sales / Direct income less
+Purchases / Direct expenses is the gross profit; plus Indirect income less Indirect expenses, the net profit; custom
+groups follow their top group. **Balance sheet**: balances on a day; P&L ledgers fold into capital as "this year"
+(since 1 April) and "earlier years". **Cash and bank**: linked money-account ledgers held as assets (the TDS payable
+account is a liability and stays out). **Project position**: the project's own lines (client and supplier balances,
+retention / TDS receivable, advances, receipts and payments for it). **Home**: those, plus GST of the month and TDS
+to deposit.
+
+**Overheads (ACC-23)**: a second posting pass, after every other source, builds one `overhead` entry per finished
+month: the head-office project's expense lines plus expense lines with no project, shared over the other projects by
+their cost or billing that month, on the ledger "Head office overheads allocated" (Dr each project, Cr the head
+office): nil company-wide. Settings in `accounting_settings` (migration 0532); off removes the entries (closed months
+through the after-close rule).
+
+Who: the company's statements are the money roles'; `/accounts/projects`, `/accounts/projects/{id}`, a project's
+`/accounts/pl` and `/accounts/home?project_id` are also its project manager's (D-ACC6).
+
+## Not built yet
+
+GST
 and TDS registers (ACC-10, 11), manual vouchers (ACC-12), bank reconciliation (ACC-13), the close checklist
 (ACC-14's rest), the delivery accrual (ACC-15), year end (ACC-16..18), Tally from the journals (ACC-19), WhatsApp
 reads (ACC-20). The sweep runs before each read, not yet on the scheduler.

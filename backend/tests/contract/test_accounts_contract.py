@@ -319,3 +319,86 @@ async def test_the_books_are_off_until_the_module_is_switched_on(test_engine, mo
         assert r.status_code == 403 and r.json()["detail"]["code"] == "MODULE_DISABLED"
     finally:
         await _run(test_engine, "DELETE FROM organizations WHERE id = :id", id=ids["org"])
+
+
+async def test_phase_b_statements_agree_with_the_books_for_the_company_and_the_project(client, test_engine):
+    """ACC-06..09, 22, 23: P&L, balance sheet, cash and bank, project position and P&L, the home; overheads shared."""
+    ids = await _company(test_engine)
+    h = {"Authorization": f"Bearer {ids['admin']}"}
+    month, day = ids["month"], ids["day"]
+    end = (month.replace(day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
+    try:
+        r = await client.post("/billing/receipts", headers=h, json={
+            "ra_bill_id": str(ids["ra"]), "kind": "bill", "amount": "50000", "received_on": str(day),
+            "account_id": str(ids["bank"])})
+        assert r.status_code == 201, r.text
+        # P&L: 1,00,000 billed; 10,000 + 700 materials and 50,000 subcontract work: gross and net profit 39,300.
+        pl = (await client.get(f"/accounts/pl?date_from={month}&date_to={end}&compare=previous", headers=h)).json()
+        t = pl["totals"]
+        assert (t["income"], t["direct"], t["gross_profit"], t["net_profit"]) == ("100000.00", "60700.00", "39300.00", "39300.00")
+        assert pl["prior_totals"]["net_profit"] == "0.00" and pl["compare"]["kind"] == "previous"
+        assert (await client.get(f"/accounts/pl?date_from={month}&date_to={end}&project_id={ids['project']}",
+                                 headers=h)).json()["totals"]["net_profit"] == "39300.00"
+
+        bs = (await client.get("/accounts/balance-sheet", headers=h)).json()
+        assert bs["balanced"] is True and bs["total_assets"] == bs["total_liabilities"]
+        assert bs["year_profit"] == "39300.00" or month < datetime.date.fromisoformat(bs["year_start"])
+
+        cb = (await client.get(f"/accounts/cash-bank?date_from={month}", headers=h)).json()
+        assert {a["name"]: a["closing"] for a in cb["accounts"]} == {"SBI current": "160000.00", "Block A petty cash": "3000.00"}
+        assert cb["total"]["in"] == "173000.00"  # opening 1,00,000 + 20,000 put in + 50,000 + 3,000 moved in
+
+        pb = (await client.get(f"/accounts/projects/{ids['project']}?date_from={month}&date_to={end}", headers=h)).json()
+        pos = pb["position"]
+        assert (pos["billed"], pos["receivable"], pos["retention_held_by_client"], pos["tds_deducted_by_client"]) == (
+            "100000.00", "61000.00", "5000.00", "2000.00")
+        assert (pos["received"], pos["paid_out"], pos["cost"], pos["profit"]) == ("50000.00", "5000.00", "60700.00", "39300.00")
+        assert pos["owed_to_suppliers"] == "56300.00"  # Malabar 6,800 on this project + Ajay 49,500
+        assert {c["cost_centre"]: c["amount"] for c in pb["centres"]} == {"subcontract": "50000.00", "materials": "10700.00"}
+
+        table = (await client.get(f"/accounts/projects?date_from={month}&date_to={end}", headers=h)).json()
+        villa = next(p for p in table["projects"] if p["name"] == "Villa")
+        assert (villa["billed"], villa["cost"], villa["profit"], villa["margin"]) == ("100000.00", "60700.00", "39300.00", "39.30")
+
+        home = (await client.get("/accounts/home", headers=h)).json()
+        assert home["cash_bank"]["total"] == "163000.00" and home["receivable"] == "61000.00"
+        assert home["payable"] == "55000.00" and home["tds_to_deposit"] == "500.00"  # 4,800 + 49,500 + 700 own pocket
+
+        # Who: a project manager sees the project's books, never the company's.
+        _, pm = await _user(test_engine, ids["org"], "PROJECT_MANAGER")
+        p = {"Authorization": f"Bearer {pm}"}
+        assert (await client.get(f"/accounts/projects/{ids['project']}", headers=p)).status_code == 200
+        assert (await client.get(f"/accounts/home?project_id={ids['project']}", headers=p)).status_code == 200
+        for path in ("/accounts/balance-sheet", "/accounts/pl", "/accounts/home", "/accounts/cash-bank"):
+            assert (await client.get(path, headers=p)).status_code == 403, path
+        _, eng = await _user(test_engine, ids["org"], "SITE_ENGINEER")
+        assert (await client.get(f"/accounts/projects/{ids['project']}",
+                                 headers={"Authorization": f"Bearer {eng}"})).status_code == 403
+
+        # Overheads (ACC-23): the office's 3,000 that month shared to Villa (the only other project with cost).
+        office = uuid.uuid4()
+        await _run(test_engine, "INSERT INTO projects (id, organization_id, name, created_at, updated_at) "
+                   "VALUES (:id, :org, 'Head office', now(), now())", id=office, org=ids["org"])
+        await _run(test_engine, "INSERT INTO expenses (id, organization_id, project_id, amount, occurred_date, created_by, "
+                   "category_id, workflow_status) VALUES (gen_random_uuid(), :org, :p, 3000, :d, :u, :c, 'confirmed')",
+                   org=ids["org"], p=office, d=day, u=ids["admin_id"], c=ids["materials"])
+        _, fin = await _user(test_engine, ids["org"], "FINANCE")
+        assert (await client.put("/accounts/settings", headers={"Authorization": f"Bearer {fin}"},
+                                 json={"overhead_basis": "cost"})).status_code == 403
+        r = await client.put("/accounts/settings", headers=h, json={"overhead_basis": "cost", "head_office_project_id": str(office)})
+        assert r.status_code == 200 and r.json()["head_office_project"] == "Head office"
+        vp = (await client.get(f"/accounts/pl?date_from={month}&date_to={end}&project_id={ids['project']}", headers=h)).json()
+        assert (vp["overheads"], vp["totals"]["net_profit"], vp["net_before_overheads"]) == ("3000.00", "36300.00", "39300.00")
+        company = (await client.get(f"/accounts/pl?date_from={month}&date_to={end}", headers=h)).json()
+        assert company["totals"]["net_profit"] == "36300.00"  # sharing moves cost between projects, adds none
+        table = (await client.get(f"/accounts/projects?date_from={month}&date_to={end}", headers=h)).json()
+        assert next(p for p in table["projects"] if p["name"] == "Villa")["overheads"] == "3000.00"
+        tb = (await client.get(f"/accounts/trial-balance?date_from={month}", headers=h)).json()
+        assert tb["totals"]["balanced"]
+        oh = next(r for r in tb["rows"] if r["code"] == "overheads_allocated")
+        assert (oh["debit"], oh["credit"], oh["closing"]) == ("3000.00", "3000.00", "0.00")  # nil company-wide
+        await client.put("/accounts/settings", headers=h, json={"overhead_basis": None})
+        vp = (await client.get(f"/accounts/pl?date_from={month}&date_to={end}&project_id={ids['project']}", headers=h)).json()
+        assert vp["overheads"] == "0.00" and vp["totals"]["net_profit"] == "39300.00"  # switched off: taken back
+    finally:
+        await _run(test_engine, "DELETE FROM organizations WHERE id = :id", id=ids["org"])

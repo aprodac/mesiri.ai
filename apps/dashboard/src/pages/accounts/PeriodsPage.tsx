@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarCheck2, History, Lock, LockOpen } from 'lucide-react'
 import { BooksClosed, BooksTabs } from '@/components/accounts/books'
+import { YearStrip } from '@/components/accounts/visuals'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -67,6 +68,12 @@ export default function PeriodsPage() {
               { label: 'Changed after close', value: String(late), icon: History, tone: late ? 'warn' : 'default' },
             ]}
           />
+          <div className="rounded-xl border px-3 py-3">
+            <p className="mb-2 text-xs text-muted-foreground">
+              Year {d.financial_year}: closed months locked, open ones with their vouchers, this month ringed.
+            </p>
+            <YearStrip fyStart={Number(d.financial_year.slice(0, 4))} months={d.months.map((m) => ({ month: m.month, status: m.status, entries: Number(m.entries) }))} today={d.today} />
+          </div>
           <Callout tone="muted" icon={Lock}>
             Close a month once the CA has checked it: its books stay as they are. If a bill of that month is changed later, nothing on site is stopped; the difference is posted on the first open day and marked "changed after close", so you see it.
           </Callout>

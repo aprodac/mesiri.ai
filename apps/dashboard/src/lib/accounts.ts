@@ -393,3 +393,200 @@ export function scopeParams(scope: { mode: string; projectId?: string; siteId?: 
   if (scope.mode === 'project') return { project_id: scope.projectId }
   return {}
 }
+
+// --- Phase B: statements (ACC-06..09, ACC-22, ACC-23) -------------------------------------------------------
+
+export interface PlLedger {
+  ledger_id: string
+  name: string
+  amount: string
+  prior: string | null
+  is_overheads: boolean
+}
+export interface PlGroup {
+  group_id: string | null
+  name: string
+  amount: string
+  prior: string | null
+  ledgers: PlLedger[]
+}
+export interface PlTotals {
+  income: string
+  direct: string
+  gross_profit: string
+  other_income: string
+  indirect: string
+  net_profit: string
+  gross_margin: string | null
+  net_margin: string | null
+}
+export interface ProfitLoss {
+  sections: { income: PlGroup[]; direct: PlGroup[]; other_income: PlGroup[]; indirect: PlGroup[] }
+  totals: PlTotals
+  prior_totals: PlTotals | null
+  overheads: string
+  net_before_overheads: string
+  compare: { kind: string; date_from: string; date_to: string } | null
+}
+export type Compare = '' | 'previous' | 'last_year'
+
+export async function fetchPl(period: Partial<Period>, scope: Scope, compare: Compare): Promise<ProfitLoss & Period & { scope: string }> {
+  return (await api.get('/accounts/pl', { params: clean({ ...period, ...scope, compare }) })).data
+}
+
+export interface BsSub {
+  group_id: string | null
+  name: string
+  amount: string
+  ledgers: { ledger_id: string; name: string; amount: string }[]
+}
+export interface BsGroup {
+  group_id: string
+  name: string
+  code: string | null
+  nature: Nature
+  amount: string
+  subgroups: BsSub[]
+}
+export interface BalanceSheet {
+  as_of: string
+  year_start: string
+  liabilities: BsGroup[]
+  assets: BsGroup[]
+  total_assets: string
+  total_liabilities: string
+  balanced: boolean
+  year_profit: string
+  earlier_profit: string
+}
+export async function fetchBalanceSheet(asOf?: string): Promise<BalanceSheet> {
+  return (await api.get('/accounts/balance-sheet', { params: clean({ as_of: asOf }) })).data
+}
+
+export interface CashAccount {
+  ledger_id: string
+  name: string
+  account_id: string
+  group: string
+  opening: string
+  in: string
+  out: string
+  closing: string
+  lines: number
+}
+export interface CashBank extends Period {
+  scope: string
+  accounts: CashAccount[]
+  days: { date: string; in: string; out: string }[]
+  total: { opening: string; in: string; out: string; closing: string }
+}
+export async function fetchCashBank(period: Partial<Period>, scope: Scope): Promise<CashBank> {
+  return (await api.get('/accounts/cash-bank', { params: clean({ ...period, ...scope }) })).data
+}
+
+export interface ProjectRow {
+  project_id: string
+  name: string
+  billed: string
+  cost: string
+  overheads: string
+  profit: string
+  margin: string | null
+  receivable: string
+  payable: string
+}
+export interface OverheadSettings {
+  overhead_basis: 'cost' | 'billing' | null
+  head_office_project_id: string | null
+  head_office_project: string | null
+}
+export async function fetchProjectsBooks(period: Partial<Period>): Promise<Period & OverheadSettings & { projects: ProjectRow[]; total: Omit<ProjectRow, 'project_id' | 'name'> }> {
+  return (await api.get('/accounts/projects', { params: clean(period) })).data
+}
+
+export interface Position {
+  as_of: string
+  billed: string
+  gst_billed: string
+  receivable: string
+  retention_held_by_client: string
+  tds_deducted_by_client: string
+  advance_received: string
+  received: string
+  paid_out: string
+  owed_to_suppliers: string
+  owed_to_staff: string
+  cost: string
+  overheads: string
+  profit: string
+  margin: string | null
+  cash_in_hand: string
+}
+export interface MonthFigure {
+  month: string
+  income: string
+  cost: string
+  profit: string
+}
+export interface ProjectBooks extends Period {
+  scope: string
+  project_id: string
+  pl: ProfitLoss
+  centres: { cost_centre: string; amount: string }[]
+  position: Position
+  months: MonthFigure[]
+  budget: { budget: string | null; forecast: string | null; spent: string; kinds: { label: string; budget: string | null; actual: string | null; forecast: string | null }[] } | null
+}
+export async function fetchProjectBooks(projectId: string, period: Partial<Period>): Promise<ProjectBooks> {
+  return (await api.get(`/accounts/projects/${projectId}`, { params: clean(period) })).data
+}
+
+export interface Home {
+  today: string
+  financial_year: string
+  scope: string
+  this_month: PlTotals & Period
+  last_month: PlTotals & Period
+  year: PlTotals & Period
+  months: MonthFigure[]
+  projects: ProjectRow[]
+  cash_bank?: { accounts: CashAccount[]; total: string }
+  receivable?: string
+  payable?: string
+  gst_this_month?: { output: string; input: string; payable: string }
+  tds_to_deposit?: string
+  attention?: { key: string; words: string; amount: string | null; ledger_id: string | null; to: string }[]
+  position?: Position
+}
+export async function fetchHome(projectId?: string): Promise<Home> {
+  return (await api.get('/accounts/home', { params: clean({ project_id: projectId }) })).data
+}
+
+export async function fetchOverheads(): Promise<OverheadSettings> {
+  return (await api.get('/accounts/settings')).data
+}
+export async function saveOverheads(body: { overhead_basis: 'cost' | 'billing' | null; head_office_project_id: string | null }) {
+  return (await api.put('/accounts/settings', body)).data
+}
+
+/** Who may open a project's books (D-ACC6): the money roles, and a project's manager. */
+export const mayReadProjectBooks = (role: string | null | undefined) =>
+  mayReadBooks(role) || String(role ?? '').toUpperCase() === 'PROJECT_MANAGER'
+
+/** ₹12.4 L / ₹1.2 cr: a figure short enough for a chart label or a tile. */
+export function short(v: string | number): string {
+  const n = Number(v)
+  const a = Math.abs(n)
+  const sign = n < 0 ? '−' : ''
+  if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(a >= 1e8 ? 0 : 1)} cr`
+  if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(a >= 1e6 ? 0 : 1)} L`
+  if (a >= 1e3) return `${sign}₹${(a / 1e3).toFixed(0)}k`
+  return `${sign}₹${a.toFixed(0)}`
+}
+
+/** Change against a prior figure, as a percentage (null when there is nothing to compare). */
+export function change(now: string | number, before: string | number | null | undefined): number | null {
+  const b = Number(before ?? 0)
+  if (!b) return null
+  return ((Number(now) - b) / Math.abs(b)) * 100
+}

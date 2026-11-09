@@ -173,6 +173,57 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
     return out
 
 
+OVERHEAD = "overhead"
+_OVERHEAD_NS = uuid.UUID("6f1d3c52-6e7e-4a43-9d38-2b1b1f0a0c23")
+
+
+async def overhead_settings(conn: AsyncConnection, org: uuid.UUID) -> dict[str, Any]:
+    row = (await conn.execute(text(
+        "SELECT s.overhead_basis, s.head_office_project_id, p.name FROM accounting_settings s "
+        "LEFT JOIN projects p ON p.id = s.head_office_project_id WHERE s.organization_id = :org"),
+        {"org": org})).first()
+    return {"overhead_basis": row[0] if row else None, "head_office_project_id": str(row[1]) if row and row[1] else None,
+            "head_office_project": row[2] if row else None}
+
+
+async def overhead_basis(conn: AsyncConnection, org: uuid.UUID) -> str | None:
+    return (await overhead_settings(conn, org))["overhead_basis"]
+
+
+async def overhead_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """ACC-23 (off by default): each finished month's head-office costs (the head-office project's expenses, and
+    expense lines with no project) shared over the other projects by their cost or their billing that month. Off:
+    nothing (entries made before are taken back)."""
+    from mesiri.application.dpr import project_day
+
+    settings = await overhead_settings(conn, org)
+    basis, office = settings["overhead_basis"], settings["head_office_project_id"]
+    if basis not in ("cost", "billing"):
+        return {}
+    this_month = (await project_day.company_today(conn, org)).replace(day=1)
+    rows = await _rows(conn,
+        "SELECT date_trunc('month', jl.entry_date)::date AS m, jl.project_id, "
+        "SUM(CASE WHEN g.nature = 'expense' THEN jl.debit - jl.credit ELSE 0 END) AS cost, "
+        "SUM(CASE WHEN l.code = 'contract_revenue' THEN jl.credit - jl.debit ELSE 0 END) AS billed "
+        "FROM journal_lines jl JOIN journal_entries j ON j.id = jl.entry_id JOIN ledgers l ON l.id = jl.ledger_id "
+        "JOIN ledger_groups g ON g.id = l.group_id WHERE jl.organization_id = :org AND j.source_kind <> 'overhead' "
+        "GROUP BY 1, 2", org)
+    months: dict[datetime.date, dict[str, Any]] = defaultdict(lambda: {"head_office": _ZERO, "shares": {}})
+    for r in rows:
+        if r["m"] >= this_month:
+            continue  # a month is shared once it is over
+        m = months[r["m"]]
+        if r["project_id"] is None or str(r["project_id"]) == office:
+            m["head_office"] += Decimal(r["cost"])
+        else:
+            m["shares"][str(r["project_id"])] = Decimal(r["cost"] if basis == "cost" else r["billed"])
+    out = {}
+    for start, m in months.items():
+        key = (OVERHEAD, str(uuid.uuid5(_OVERHEAD_NS, f"{org}:{start:%Y-%m}")))
+        out[key] = posting.overhead_entries(periods.month_end(start), m["head_office"], m["shares"], basis, office)
+    return out
+
+
 # --- ledgers -------------------------------------------------------------------------------------------------------
 
 _LINK_NAMES = {
@@ -250,13 +301,23 @@ async def sweep(conn: AsyncConnection, org: uuid.UUID) -> dict[str, int]:
     await conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"mesiri-accounts:{org}"})
     await chart.ensure_chart(conn, org)
     await sync_names(conn, org)
-    desired = await read_sources(conn, org)
-    fps = {k: posting.fingerprint(v) for k, v in desired.items()}
+    stats = await _apply(conn, org, await read_sources(conn, org), overheads=False)
+    # Second pass: the head office's share of each project (ACC-23) is worked out from the lines just posted.
+    more = await _apply(conn, org, await overhead_sources(conn, org), overheads=True)
+    for k in ("posted", "reposted", "removed", "after_close", "skipped"):
+        stats[k] += more[k]
+    return stats
 
+
+async def _apply(conn: AsyncConnection, org: uuid.UUID, desired: dict[tuple[str, str], list[dict[str, Any]]],
+                 overheads: bool) -> dict[str, int]:
+    """Write what changed among these sources (``overheads``: only the overhead allocation, else everything else)."""
+    fps = {k: posting.fingerprint(v) for k, v in desired.items()}
     existing: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for r in await _rows(conn,
             "SELECT id, source_kind, source_id, source_part, fingerprint, entry_date, voucher_type, financial_year, "
-            "number FROM journal_entries WHERE organization_id = :org AND source_kind <> 'manual'", org):
+            "number FROM journal_entries WHERE organization_id = :org AND source_kind <> 'manual' AND "
+            + ("source_kind = 'overhead'" if overheads else "source_kind <> 'overhead'"), org):
         existing[(r["source_kind"], str(r["source_id"]))].append(r)
     empty = posting.fingerprint([])
     def first_day(k: tuple[str, str]) -> datetime.date:

@@ -411,3 +411,219 @@ async def post_now(auth: AuthorizationContext = Depends(get_auth_context), conn:
     total = (await conn.execute(text("SELECT COUNT(*) FROM journal_entries WHERE organization_id = :org"),
                                 {"org": auth.organization_id})).scalar()
     return _out({**stats, "entries": total})
+
+
+# --- Phase B: statements (ACC-06..09, ACC-22, ACC-23) --------------------------------------------------------------
+
+PROJECT_ROLES = frozenset({"PROJECT_MANAGER"})
+
+
+async def _ready_projects(conn: AsyncConnection, auth: AuthorizationContext,
+                          project_id: uuid.UUID | None = None) -> set[uuid.UUID] | None:
+    """Project P&L and position (D-ACC6): the money roles see every project; a project manager only theirs. Returns
+    the projects the caller may see (None: all), after posting what changed."""
+    role = str(auth.role or "").upper()
+    if may_manage_money(role):
+        allowed = None
+    elif role in PROJECT_ROLES:
+        allowed = None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
+    else:
+        raise HTTPException(status_code=403, detail="Project P&L is for the owner, an admin, finance or the project's manager.")
+    if project_id is not None and allowed is not None and project_id not in allowed:
+        raise HTTPException(status_code=403, detail="Not authorized for this project")
+    await sweep.sweep(conn, auth.organization_id)
+    return allowed
+
+
+@router.get("/pl")
+async def profit_and_loss(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                          project_id: uuid.UUID | None = None, site_id: uuid.UUID | None = None,
+                          compare: str | None = Query(None, pattern="^(previous|last_year)$"),
+                          auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-06: income and costs, gross and net profit, for the company, a project (its manager too) or a site."""
+    from mesiri.domains.accounts import statements
+
+    if project_id is not None and not may_manage_money(auth.role):
+        await _ready_projects(conn, auth, project_id)
+    else:
+        await _ready(conn, auth)
+    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    scope = await _scope_words(conn, auth.organization_id, project_id, site_id)
+    pl = await statements.profit_and_loss(conn, auth.organization_id, date_from, date_to, project_id, site_id, compare)
+    return _out({"date_from": date_from, "date_to": date_to, "scope": scope, **pl})
+
+
+@router.get("/balance-sheet")
+async def balance_sheet(as_of: datetime.date | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-06: the company's balance sheet on a day (a project has its position instead)."""
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.accounts import statements
+
+    await _ready(conn, auth)
+    as_of = as_of or await project_day.company_today(conn, auth.organization_id)
+    return _out(await statements.balance_sheet(conn, auth.organization_id, as_of))
+
+
+@router.get("/cash-bank")
+async def cash_and_bank(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                        project_id: uuid.UUID | None = None, site_id: uuid.UUID | None = None,
+                        auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-07: every cash box and bank account, opening, in, out, closing, and each day's money in and out."""
+    from mesiri.domains.accounts import statements
+
+    await _ready(conn, auth)
+    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    scope = await _scope_words(conn, auth.organization_id, project_id, site_id)
+    book = await statements.cash_bank(conn, auth.organization_id, date_from, date_to, project_id, site_id)
+    return _out({"date_from": date_from, "date_to": date_to, "scope": scope, **book})
+
+
+@router.get("/projects")
+async def projects(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                   auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-08: every project's P&L in the period (billed, cost, head-office share, profit, margin) and what it is
+    owed and owes today, best first. A project manager sees their projects."""
+    from mesiri.domains.accounts import statements
+
+    allowed = await _ready_projects(conn, auth)
+    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    rows = await statements.projects_table(conn, auth.organization_id, date_from, date_to, allowed)
+    total = {k: sum((Decimal(r[k]) for r in rows), Decimal(0)) for k in ("billed", "cost", "overheads", "profit",
+                                                                         "receivable", "payable")}
+    total["margin"] = statements.pct(total["profit"], total["billed"])
+    return _out({"date_from": date_from, "date_to": date_to, "projects": rows, "total": total,
+                 **await sweep.overhead_settings(conn, auth.organization_id)})
+
+
+async def _budget(conn: AsyncConnection, auth: AuthorizationContext, project_id: uuid.UUID) -> dict[str, Any] | None:
+    """Cost control's BOQ budget, spending and forecast for the project, when it has them (CC-18): beside the books."""
+    try:
+        from mesiri.domains.costing.router import _scope as cost_scope
+        from mesiri.domains.costing.router import budget_for
+
+        async with conn.begin_nested():
+            b = await budget_for(conn, auth.organization_id, project_id, cost_scope(auth, project_id, None))
+    except Exception:  # noqa: BLE001 -- no BOQ, or the cost module cannot read it: the books stand alone
+        return None
+    kinds = b.get("kinds") or []
+
+    def total(key: str) -> Decimal | None:
+        vals = [Decimal(str(k[key])) for k in kinds if k.get(key) not in (None, "")]
+        return sum(vals, Decimal(0)) if vals else None
+    return {"budget": total("budget"), "forecast": total("forecast"), "spent": Decimal(str(b.get("total_spent") or 0)),
+            "kinds": [{"label": k["label"], "budget": k.get("budget"), "actual": k.get("actual"),
+                       "forecast": k.get("forecast")} for k in kinds]}
+
+
+@router.get("/projects/{project_id}")
+async def project_books(project_id: uuid.UUID, date_from: datetime.date | None = None,
+                        date_to: datetime.date | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-08: one project: its P&L by cost centre and group, its position today, its months, and Cost control's
+    BOQ budget and forecast beside them."""
+    from mesiri.domains.accounts import statements
+
+    await _ready_projects(conn, auth, project_id)
+    org = auth.organization_id
+    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    scope = await _scope_words(conn, org, project_id, None)
+    pl = await statements.profit_and_loss(conn, org, date_from, date_to, project_id)
+    centres = [{"cost_centre": r[0], "amount": Decimal(r[1])} for r in (await conn.execute(text(
+        "SELECT COALESCE(jl.cost_centre, 'not_set'), SUM(jl.debit - jl.credit) FROM journal_lines jl "
+        "JOIN ledgers l ON l.id = jl.ledger_id JOIN ledger_groups g ON g.id = l.group_id "
+        "WHERE jl.organization_id = :org AND jl.project_id = :p AND g.nature = 'expense' "
+        "AND COALESCE(l.code, '') <> :oh AND jl.entry_date BETWEEN :f AND :t GROUP BY 1 ORDER BY 2 DESC"),
+        {"org": org, "p": project_id, "f": date_from, "t": date_to, "oh": statements.OVERHEADS}))]
+    return _out({"date_from": date_from, "date_to": date_to, "scope": scope, "project_id": project_id,
+                 "pl": pl, "centres": centres,
+                 "position": await statements.position(conn, org, project_id, date_to),
+                 "months": await statements.monthly(conn, org, periods.fy_start(date_to), date_to, project_id),
+                 "budget": await _budget(conn, auth, project_id)})
+
+
+@router.get("/home")
+async def home(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+               conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-09: the owner's one screen: cash and bank today, owed to us and by us, this month against last, the year
+    by month, GST this month, TDS to deposit, the projects, what needs the accountant. ``project_id``: that
+    project's own home (its position instead of the company's cash)."""
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.accounts import statements
+
+    if project_id is not None and not may_manage_money(auth.role):
+        allowed = await _ready_projects(conn, auth, project_id)
+    else:
+        await _ready(conn, auth)
+        allowed = None
+    org = auth.organization_id
+    today = await project_day.company_today(conn, org)
+    month = today.replace(day=1)
+    last_end = month - datetime.timedelta(days=1)
+    last = last_end.replace(day=1)
+    fy = periods.fy_start(today)
+    this_pl = await statements.profit_and_loss(conn, org, month, today, project_id)
+    last_pl = await statements.profit_and_loss(conn, org, last, last_end, project_id)
+    year_pl = await statements.profit_and_loss(conn, org, fy, today, project_id)
+    out: dict[str, Any] = {
+        "today": today, "financial_year": periods.fy_label(today),
+        "scope": await _scope_words(conn, org, project_id, None),
+        "this_month": {"date_from": month, "date_to": today, **this_pl["totals"]},
+        "last_month": {"date_from": last, "date_to": last_end, **last_pl["totals"]},
+        "year": {"date_from": fy, "date_to": today, **year_pl["totals"]},
+        "months": await statements.monthly(conn, org, fy, today, project_id),
+        "projects": (await statements.projects_table(conn, org, fy, today, allowed))[:8] if project_id is None else [],
+    }
+    if project_id is None:
+        cb = await statements.cash_bank(conn, org, today, today)
+        ledgers = await chart.ledgers(conn, org)
+        bal = await reports.balances(conn, org, today)
+        from mesiri.domains.subcontracts.store import TDS_ACCOUNT
+
+        tds = next((r for r in ledgers if r["link_kind"] == "money_account" and r["name"] == TDS_ACCOUNT), None)
+        by_id = {r["id"]: r for r in ledgers}
+        out.update({
+            "cash_bank": {"accounts": cb["accounts"], "total": cb["total"]["closing"]},
+            "receivable": sum((v for k, v in bal.items() if k in by_id and (by_id[k]["link_kind"] == "client"
+                                                                              or by_id[k]["code"] == "no_client")), Decimal(0)),
+            "payable": -sum((v for k, v in bal.items() if k in by_id and by_id[k]["link_kind"] in ("vendor", "staff")),
+                            Decimal(0)),
+            "gst_this_month": await statements.gst_for(conn, org, month, today),
+            "tds_to_deposit": -bal.get(tds["id"], Decimal(0)) if tds else Decimal(0),
+            "attention": await statements.attention(conn, org, today),
+        })
+    else:
+        out["position"] = await statements.position(conn, org, project_id, today)
+    return _out(out)
+
+
+class SettingsIn(BaseModel):
+    overhead_basis: str | None = Field(default=None, pattern="^(cost|billing)$")
+    head_office_project_id: uuid.UUID | None = None
+
+
+@router.get("/settings")
+async def get_settings(auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    _require(auth)
+    return await sweep.overhead_settings(conn, auth.organization_id)
+
+
+@router.put("/settings")
+async def put_settings(body: SettingsIn, auth: AuthorizationContext = Depends(get_auth_context),
+                       conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-23 (D-ACC11): share head-office costs over projects each finished month, by cost or billing; null: off.
+    The owner or an admin (it changes every project's profit)."""
+    _require(auth)
+    if str(auth.role or "").upper() not in REOPEN_ROLES:
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can change how overheads are shared.")
+    if body.head_office_project_id is not None:
+        await _scope_words(conn, auth.organization_id, body.head_office_project_id, None)  # the company's own
+    await conn.execute(text(
+        "INSERT INTO accounting_settings (organization_id, overhead_basis, head_office_project_id, updated_by) "
+        "VALUES (:org, :b, :p, :u) ON CONFLICT (organization_id) DO UPDATE SET overhead_basis = EXCLUDED.overhead_basis, "
+        "head_office_project_id = EXCLUDED.head_office_project_id, updated_by = EXCLUDED.updated_by, updated_at = now()"),
+        {"org": auth.organization_id, "b": body.overhead_basis, "p": body.head_office_project_id, "u": auth.user_id})
+    stats = await sweep.sweep(conn, auth.organization_id)
+    return {**await sweep.overhead_settings(conn, auth.organization_id), "posted": stats}

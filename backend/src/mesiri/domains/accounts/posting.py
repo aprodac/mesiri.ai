@@ -216,3 +216,24 @@ def opening_vendor_entries(v: dict[str, Any]) -> list[dict[str, Any]]:
              line(link("vendor", v["id"]), amount, False)]
     return [entry("main", v["opening_balance_date"], "journal", f"Opening balance · {v.get('name') or 'supplier'}",
                   lines)]
+
+
+def overhead_entries(month_end: datetime.date, head_office: Decimal, shares: dict[str, Decimal],
+                     basis: str, from_project: Any = None) -> list[dict[str, Any]]:
+    """ACC-23: a month's head-office costs shared over the projects by ``basis`` (their cost or their billing that
+    month): Dr "Head office overheads allocated" on each project, Cr the same ledger on the head-office project (or no
+    project). Nil for the company; each project's P&L carries its share. The last project takes the rounding."""
+    head_office = money(head_office)
+    weights = {p: Decimal(w) for p, w in shares.items() if Decimal(w) > 0}
+    total = sum(weights.values(), _ZERO)
+    if head_office <= 0 or total <= 0:
+        return []
+    lines, given = [], _ZERO
+    ordered = sorted(weights)
+    for i, p in enumerate(ordered):
+        part = head_office - given if i == len(ordered) - 1 else money(head_office * weights[p] / total)
+        given += part
+        lines.append(line(code("overheads_allocated"), part, True, project_id=p))
+    lines.append(line(code("overheads_allocated"), head_office, False, project_id=from_project))
+    words = f"Head office costs of {month_end:%B %Y} shared over projects by their {basis}"
+    return [entry("main", month_end, "journal", words, lines)]
