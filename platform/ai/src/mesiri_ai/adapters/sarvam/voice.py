@@ -1,7 +1,10 @@
 """Sarvam text-to-speech (WEB-63): Mesiri's voice on the dashboard's Live.
 
-One short line in, one WAV out (Sarvam's ``bulbul:v2``, which speaks Malayalam,
-English, Hindi and the other Indian languages). The ``sarvamai`` SDK is imported
+One short line in, one WAV out (Sarvam's ``bulbul:v3``, which speaks Malayalam,
+English, Hindi and the other Indian languages). The model and voice come from the
+settings (``tts_model``, ``tts_speaker``) when set: Sarvam retired ``bulbul:v2``
+and its ``anushka`` voice in Nov 2026 (INF-34), and the next retirement should be
+a setting on the server, not a release. The ``sarvamai`` SDK is imported
 lazily and only here (the architecture test keeps provider SDKs inside
 ``adapters/``). Same key, timeout and retry policy as the speech-to-text adapter.
 Sarvam bills text-to-speech by characters; the count goes in the usage report.
@@ -15,9 +18,9 @@ from typing import Any
 from ... import usage
 from ...core.fallback import call_with_resilience
 
-VOICE_MODEL = "bulbul:v2"
-#: A clear voice that speaks every language bulbul:v2 has.
-DEFAULT_SPEAKER = "anushka"
+VOICE_MODEL = "bulbul:v3"
+#: A clear voice that speaks every language bulbul:v3 has (Malayalam included; v2's voices are gone).
+DEFAULT_SPEAKER = "priya"
 #: The languages Live speaks in (Sarvam's codes).
 LANGUAGES = frozenset({"en-IN", "ml-IN", "hi-IN", "ta-IN", "kn-IN", "te-IN"})
 
@@ -25,9 +28,10 @@ LANGUAGES = frozenset({"en-IN", "ml-IN", "hi-IN", "ta-IN", "kn-IN", "te-IN"})
 class SarvamVoice:
     provider = "sarvam"
 
-    def __init__(self, settings: Any, *, speaker: str = DEFAULT_SPEAKER) -> None:
+    def __init__(self, settings: Any, *, speaker: str | None = None) -> None:
         self._settings = settings
-        self._speaker = speaker
+        self._speaker = speaker or getattr(settings, "tts_speaker", None) or DEFAULT_SPEAKER
+        self._model = getattr(settings, "tts_model", None) or VOICE_MODEL
         self._client: Any | None = None
 
     @property
@@ -53,7 +57,7 @@ class SarvamVoice:
 
             def _call() -> Any:
                 return client.text_to_speech.convert(
-                    text=text, language_code=language_code, speaker=self._speaker, model=VOICE_MODEL, pace=1.05
+                    text=text, language_code=language_code, speaker=self._speaker, model=self._model, pace=1.05
                 )
 
             return await asyncio.to_thread(_call)
@@ -70,7 +74,7 @@ class SarvamVoice:
             usage.ProviderUsage(
                 provider=self.provider,
                 operation="text_to_speech",
-                model=VOICE_MODEL,
+                model=self._model,
                 correlation_id=correlation_id,
                 latency_ms=latency_ms,
                 extra={"characters": len(text)},

@@ -117,6 +117,10 @@ class SarvamSettings(_Section):
     # timeout × 3). 1 retry caps the same failure mode at 14s while still
     # absorbing a single transient blip, matching GeminiSettings' policy.
     max_retries: int = 1
+    # Mesiri's voice on Live (WEB-63). Sarvam retires voice models (bulbul:v2 answered 400 "deprecated" from Nov
+    # 2026, INF-34); when it does again, set MESIRI_SARVAM__TTS_MODEL / __TTS_SPEAKER on the server, no deploy.
+    tts_model: str = "bulbul:v3"
+    tts_speaker: str = "priya"
 
 
 class GeminiSettings(_Section):

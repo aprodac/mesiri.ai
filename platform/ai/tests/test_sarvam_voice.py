@@ -19,8 +19,8 @@ class _TTS:
         return SimpleNamespace(audios=[base64.b64encode(b"RIFFwav").decode()])
 
 
-def _voice() -> tuple[SarvamVoice, _TTS]:
-    settings = SimpleNamespace(api_key=SimpleNamespace(get_secret_value=lambda: "k"), timeout_seconds=5.0, max_retries=0)
+def _voice(**extra) -> tuple[SarvamVoice, _TTS]:  # noqa: ANN003
+    settings = SimpleNamespace(api_key=SimpleNamespace(get_secret_value=lambda: "k"), timeout_seconds=5.0, max_retries=0, **extra)
     voice = SarvamVoice(settings)
     tts = _TTS()
     voice._client = SimpleNamespace(text_to_speech=tts)
@@ -30,7 +30,25 @@ def _voice() -> tuple[SarvamVoice, _TTS]:
 async def test_a_line_comes_back_as_wav():
     voice, tts = _voice()
     assert await voice.speak("ഇന്ന് 50 ചാക്ക്", "ml-IN") == b"RIFFwav"
-    assert tts.calls[0]["language_code"] == "ml-IN" and tts.calls[0]["model"] == "bulbul:v2"
+    assert tts.calls[0]["language_code"] == "ml-IN"
+    # INF-34: bulbul:v2 and its anushka voice were retired (Sarvam answers 400); v3 with a v3 voice.
+    assert tts.calls[0]["model"] == "bulbul:v3" and tts.calls[0]["speaker"] == "priya"
+
+
+async def test_the_server_settings_can_change_the_model_and_voice():
+    voice, tts = _voice(tts_model="bulbul:v4-flash", tts_speaker="shubh")
+    await voice.speak("Six masons today", "en-IN")
+    assert tts.calls[0]["model"] == "bulbul:v4-flash" and tts.calls[0]["speaker"] == "shubh"
+
+
+def test_no_retired_voice_is_the_default():
+    """The guard: a retired model or voice must never come back as the default."""
+    from mesiri.bootstrap.settings import SarvamSettings
+    from mesiri_ai.adapters.sarvam import voice as mod
+
+    retired_models, retired_speakers = {"bulbul:v1", "bulbul:v2"}, {"anushka", "meera", "arvind", "manisha", "vidya", "abhilash", "karun", "hitesh"}
+    for model, speaker in ((mod.VOICE_MODEL, mod.DEFAULT_SPEAKER), (SarvamSettings().tts_model, SarvamSettings().tts_speaker)):
+        assert model not in retired_models and speaker not in retired_speakers
 
 
 async def test_a_language_live_does_not_speak_is_refused():
