@@ -291,3 +291,70 @@ async def test_options_list_what_a_task_can_name(client, co, test_engine):
     assert fin["may_create"] is False
     assert (await client.get("/tasks/options", params={"project_id": str(uuid.uuid4())},
                              headers=co["pm"])).status_code == 404
+
+
+# -- TSK-03: links and progress ------------------------------------------------------------------------------------
+
+async def _boq_line(client, co, work: str, qty: str) -> tuple[str, str]:
+    r = await client.post(f"/projects/{co['project']}/boq/sections", json={"name": "Structure"}, headers=co["admin"])
+    assert r.status_code == 201, r.text
+    section = r.json()["id"]
+    r = await client.post(f"/projects/{co['project']}/boq/sections/{section}/lines",
+                          json={"work": work, "unit": "cum", "planned_quantity": qty}, headers=co["admin"])
+    assert r.status_code == 201, r.text
+    body = r.json()
+    lines = [ln for s in body["sections"] for ln in s["lines"]] if "sections" in body else [body]
+    return section, next(ln["id"] for ln in lines if ln["work"] == work)
+
+
+async def _measure(engine, co, line_id: str, qty: str, day: datetime.date, site_id) -> None:
+    """A work update from site counted on a BOQ line (what WhatsApp saves)."""
+    act = uuid.uuid4()
+    await _exec(engine, "INSERT INTO activities (id, organization_id, project_id, site_id, activity_date, status) "
+                        "VALUES (:id, :org, :p, :s, :d, 'COMPLETED')", id=act, org=co["org"], p=co["project"],
+                s=site_id, d=day)
+    await _exec(engine, "INSERT INTO activity_quantities (id, activity_id, unit_id, quantity, measurement_type, "
+                        "planned_item_id) VALUES (gen_random_uuid(), :a, (SELECT unit_id FROM work_package_planned_items "
+                        "WHERE id = :l), :q, 'ACHIEVED', :l)", a=act, l=uuid.UUID(line_id), q=qty)
+
+
+async def test_progress_is_read_from_work_on_the_line_since_the_task_and_at_its_site(client, co, test_engine):
+    section, line = await _boq_line(client, co, "PCC 1:4:8", "40")
+    today = datetime.date.today()
+    await _measure(test_engine, co, line, "5", today - 3 * D, co["main"])  # before the task: not counted
+    task = (await _give(client, co, site_id=str(co["main"]), planned_item_id=line, expected_quantity="20")).json()
+    assert task["work_package_id"] == section  # the line's section, filled in
+    assert task["line"]["work"] == "PCC 1:4:8" and task["progress"]["done"] == "0"
+    await _measure(test_engine, co, line, "6", today, co["main"])
+    await _measure(test_engine, co, line, "4", today, co["annex"])  # another site: not this task's
+    one = (await client.get(f"/tasks/{task['id']}", headers=co["pm"])).json()
+    assert one["progress"]["done"] == "6" and one["progress"]["pct"] == 30 and one["progress"]["unit"] == "cum"
+    listed = (await client.get("/tasks", params={"view": "all"}, headers=co["pm"])).json()["items"]
+    assert next(t for t in listed if t["id"] == task["id"])["progress"]["done"] == "6"
+    # finishing the task records nothing (D-T4): the BOQ still shows only what site recorded
+    await client.post(f"/tasks/{task['id']}/status", json={"status": "done"}, headers=co["pm"])
+    boq = (await client.get(f"/projects/{co['project']}/boq", headers=co["admin"])).json()
+    done = next(ln for s in boq["sections"] for ln in s["lines"] if ln["id"] == line)
+    assert float(done["done_quantity"]) == 15.0
+
+
+async def test_a_task_from_an_issue_names_it(client, co, test_engine):
+    issue = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO site_issues (id, organization_id, project_id, site_id, issue_type, severity, "
+                             "status, narrative, occurred_at, created_at, updated_at) VALUES (:id, :org, :p, :s, "
+                             "'MATERIAL_SHORTAGE', 'HIGH', 'OPEN', 'No shuttering plates', now(), now(), now())",
+                id=issue, org=co["org"], p=co["project"], s=co["main"])
+    task = (await _give(client, co, title="Bring 60 plates from Annex", site_issue_id=str(issue))).json()
+    assert task["issue"]["narrative"] == "No shuttering plates" and task["issue"]["status"] == "OPEN"
+    opts = (await client.get("/tasks/options", params={"project_id": str(co["project"])}, headers=co["arun"])).json()
+    assert "places" in opts and "lines" in opts and all("client_rate" not in ln for ln in opts["lines"])
+
+
+async def test_a_boq_line_under_a_task_can_still_be_deleted(client, co):
+    """0537: deleting a BOQ line a task expects a quantity of was refused by the task's check (found by the BOQ tests)."""
+    _, line = await _boq_line(client, co, "Brickwork 230 mm", "30")
+    task = (await _give(client, co, planned_item_id=line, expected_quantity="10")).json()
+    gone = await client.delete(f"/projects/{co['project']}/boq/lines/{line}", headers=co["admin"])
+    assert gone.status_code in (200, 204), gone.text
+    after = (await client.get(f"/tasks/{task['id']}", headers=co["pm"])).json()
+    assert after["line"] is None and after["progress"] is None and after["status"] == "open"

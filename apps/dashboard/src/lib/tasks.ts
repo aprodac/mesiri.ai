@@ -44,6 +44,12 @@ export interface Task {
   updated_at: string
   overdue: boolean
   days_late: number
+  /** The site issue it fixes (TSK-03). */
+  issue: { id: string; type: string | null; narrative: string | null; status: string | null } | null
+  /** The BOQ line its work counts against. */
+  line: { id: string; work: string | null; unit: string | null } | null
+  /** Work site recorded on that line since the task started, at its site; never typed (D-T4). */
+  progress: { done: string; expected: string | null; unit: string | null; other_unit: number; pct: number | null } | null
 }
 
 export interface TaskEvent {
@@ -69,6 +75,8 @@ export interface TaskOptions {
   sites: { id: string; name: string }[]
   people: { id: string; name: string; role: string }[]
   subcontractors: { id: string; name: string }[]
+  places: { id: string; label: string; site_id: string | null }[]
+  lines: { id: string; work: string; unit: string; planned_quantity: string; work_package_id: string; section: string | null }[]
   may_create: boolean
 }
 
@@ -111,6 +119,17 @@ export interface NewTask {
   assignee_user_id?: string | null
   assignee_vendor_id?: string | null
   assignee_team?: string | null
+  place_id?: string | null
+  work_package_id?: string | null
+  planned_item_id?: string | null
+  expected_quantity?: string | null
+  site_issue_id?: string | null
+}
+
+/** What a "Make a task" button already knows (an issue, a schedule activity): filled into the new task. */
+export type TaskPrefill = Partial<Pick<NewTask, 'project_id' | 'title' | 'notes' | 'site_id' | 'work_package_id' | 'site_issue_id'>> & {
+  /** Shown above the form: what the task is made from ("From the issue: No shuttering plates"). */
+  from?: string
 }
 
 export async function createTask(payload: NewTask): Promise<Task> {
@@ -146,6 +165,9 @@ export const STATUS_LOOK: Record<TaskStatus, { label: string; chip: string; dot:
   done: { label: 'Done', chip: 'bg-success-soft text-success', dot: 'bg-green-700' },
   cancelled: { label: 'Cancelled', chip: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/60' },
 }
+
+/** Who gives tasks (backend logic.CREATE_ROLES); the API refuses the rest. */
+export const CREATE_ROLES = ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER']
 
 export const PRIORITY_LABEL: Record<TaskPriority, string> = { normal: 'Normal', high: 'High', urgent: 'Urgent' }
 

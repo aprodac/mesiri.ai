@@ -3,6 +3,7 @@ import { Search, Plus, RefreshCw, CheckCircle2, Check, TriangleAlert } from 'luc
 import { CircleDot as IcCircleDot, Siren as IcSiren, Clock as IcClock } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
+  fetchSiteIssueApi,
   fetchSiteIssuesApi,
   createSiteIssueApi,
   resolveSiteIssueApi,
@@ -26,6 +27,7 @@ import { useSiteNames } from '@/lib/site-names'
 import { useUrlState } from '@/lib/url-state'
 import { plural } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
+import { MakeTaskButton } from '@/components/tasks/make-task-button'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -189,6 +191,16 @@ export default function OperationsIssuesPage() {
   React.useEffect(() => {
     loadIssues()
   }, [loadIssues])
+
+  // TSK-03: /issues?id=… (a task's "Fixes the issue" link) opens that issue, even a closed one the list hides.
+  const [linkedId, setLinkedId] = useUrlState<string>('id', '')
+  React.useEffect(() => {
+    if (!linkedId) return
+    fetchSiteIssueApi(linkedId)
+      .then((issue) => { setSelectedIssue(issue); setInspectSheetOpen(true) })
+      .catch(() => toast.error('Issue not found', 'It may have been removed, or it is on a site you do not see.'))
+      .finally(() => setLinkedId(''))
+  }, [linkedId, setLinkedId, toast])
 
   // Status "Open (not closed)", search, then the owner's order: most severe
   // first, and within a severity the longest-open first (WEB-07).
@@ -738,6 +750,14 @@ function IssuePanel({
               Acknowledge
             </Button>
           )}
+          {/* TSK-03: someone's job, by a day; the task links back to this issue. */}
+          <MakeTaskButton prefill={{
+            project_id: issue.project_id,
+            site_id: issue.site_id,
+            site_issue_id: issue.id,
+            title: issue.narrative ? `Fix: ${issue.narrative}`.slice(0, 200) : `Fix the ${humanizeIssueType(issue.issue_type).toLowerCase()}`,
+            from: `From the issue: ${humanizeIssueType(issue.issue_type)} on ${site}${issue.narrative ? ` — ${issue.narrative}` : ''}`,
+          }} />
           <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground" onClick={onWontFix}>
             Won't fix
           </Button>

@@ -414,6 +414,12 @@ export async function fetchSiteIssuesApi(params: {
   return res.data
 }
 
+/** One issue by id, open or closed (TSK-03: a task's link to the issue it fixes). */
+export async function fetchSiteIssueApi(issueId: string): Promise<SiteIssueItem> {
+  const res = await api.get<SiteIssueItem>(`/progress/issues/${issueId}`)
+  return res.data
+}
+
 export async function createSiteIssueApi(payload: {
   project_id: string
   site_id: string

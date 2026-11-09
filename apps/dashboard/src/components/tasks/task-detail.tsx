@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, Check, CirclePause, MapPin, MessageCircle, Play, RotateCcw, Send } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AlertCircle, Ban, Check, CirclePause, MapPin, MessageCircle, Play, Ruler, RotateCcw, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -157,6 +158,22 @@ export function TaskDetail({ task: row, today, inSheet = false }: { task: Task; 
       </dl>
       {t.notes && <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm whitespace-pre-line">{t.notes}</p>}
 
+      {(t.issue || t.line) && (
+        <section className="flex flex-col gap-2" aria-label="Linked">
+          {t.issue && (
+            <Link to={`/issues?id=${t.issue.id}&project=${t.project_id}`} className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted/40">
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="text-muted-foreground">Fixes the issue: </span>
+                <span className="font-medium">{t.issue.narrative || (t.issue.type ?? '').replace(/_/g, ' ').toLowerCase()}</span>
+                {t.issue.status && <span className="ml-1.5 text-xs text-muted-foreground">({t.issue.status.toLowerCase().replace('_', ' ')})</span>}
+              </span>
+            </Link>
+          )}
+          {t.line && <LineProgress task={t} />}
+        </section>
+      )}
+
       <section className="flex flex-col gap-3 border-t pt-3" aria-label="History">
         <h3 className="text-sm font-semibold">History</h3>
         {task === undefined && <div className="h-16 animate-pulse rounded-lg bg-muted/50" />}
@@ -191,6 +208,40 @@ export function TaskDetail({ task: row, today, inSheet = false }: { task: Task; 
           </form>
         )}
       </section>
+    </div>
+  )
+}
+
+/** The BOQ line a task counts against, and how much site recorded on it since the task started (never typed). */
+export function LineProgress({ task: t, compact = false }: { task: Task; compact?: boolean }) {
+  const p = t.progress
+  if (!t.line) return null
+  const words = p ? `${p.done}${p.expected ? ` of ${p.expected}` : ''} ${p.unit ?? t.line.unit ?? ''} done` : ''
+  if (compact) {
+    return p?.pct != null ? (
+      <span className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-success" style={{ width: `${p.pct}%` }} /></span>
+        <span className="tabular-nums">{words}</span>
+      </span>
+    ) : null
+  }
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border px-3 py-2 text-sm">
+      <span className="flex items-start gap-2">
+        <Ruler className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <span><span className="text-muted-foreground">BOQ line: </span><span className="font-medium">{t.line.work}</span></span>
+      </span>
+      {p && (
+        <>
+          {p.pct != null && (
+            <span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-success" style={{ width: `${p.pct}%` }} /></span>
+          )}
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {words} since the task started{t.site_name ? `, at ${t.site_name}` : ''}, from site's work updates
+            {p.other_unit > 0 && ` · ${p.other_unit} update${p.other_unit > 1 ? 's' : ''} in another unit not added`}
+          </span>
+        </>
+      )}
     </div>
   )
 }

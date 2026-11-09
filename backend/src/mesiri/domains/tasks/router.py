@@ -157,7 +157,7 @@ def _choose(message: str, options: list[str]) -> HTTPException:
 
 # -- shape -------------------------------------------------------------------------------------------------------------
 
-def _out(task: dict[str, Any], today: datetime.date) -> dict[str, Any]:
+def _out(task: dict[str, Any], today: datetime.date, progress: dict | None = None) -> dict[str, Any]:
     keep = ("id", "project_id", "project_name", "site_id", "site_name", "number", "title", "notes", "status",
             "priority", "due_date", "assignee_user_id", "assignee_name", "assignee_vendor_id",
             "assignee_vendor_name", "assignee_team", "place_id", "place_name", "work_package_id", "activity_name",
@@ -165,10 +165,23 @@ def _out(task: dict[str, Any], today: datetime.date) -> dict[str, Any]:
             "done_by", "source", "created_by", "created_by_name", "created_at", "updated_at")
     out = {k: task.get(k) for k in keep}
     out["ref"] = logic.ref(task["number"])
+    out["expected_quantity"] = store.num(task["expected_quantity"]) if task.get("expected_quantity") is not None else None
     out["assigned_to"] = task.get("assignee_name") or task.get("assignee_vendor_name") or task.get("assignee_team")
     out["overdue"] = logic.is_overdue(task["status"], task.get("due_date"), today)
     out["days_late"] = logic.days_late(task["status"], task.get("due_date"), today)
+    out["issue"] = ({"id": task["site_issue_id"], "type": task.get("issue_type"), "narrative": task.get("issue_narrative"),
+                     "status": task.get("issue_status")} if task.get("site_issue_id") else None)
+    out["line"] = ({"id": task["planned_item_id"], "work": task.get("line_work"), "unit": task.get("line_unit")}
+                   if task.get("planned_item_id") else None)
+    out["progress"] = progress
     return out
+
+
+async def _shaped(conn: AsyncConnection, auth: AuthorizationContext, task_id: uuid.UUID) -> dict[str, Any]:
+    """A task as every write answers it: the row, its links and its progress (the same shape as the list)."""
+    task = await store.one(conn, auth.organization_id, task_id)
+    done = await store.progress(conn, auth.organization_id, [task])
+    return _out(task, await _today(conn, auth), done.get(task_id))
 
 
 # -- routes ------------------------------------------------------------------------------------------------------------
@@ -206,7 +219,8 @@ async def list_tasks(
     today = await _today(conn, auth)
     rows = [r for r in rows if _visible(auth, r) and _due_fits(r, due, today)]
     rows.sort(key=lambda r: logic.sort_key(r, today))
-    return {"items": [_out(r, today) for r in rows], "today": today}
+    done = await store.progress(conn, auth.organization_id, rows)
+    return {"items": [_out(r, today, done.get(r["id"])) for r in rows], "today": today}
 
 
 def _statuses(words: str | None) -> tuple[str, ...]:
@@ -251,13 +265,15 @@ async def summary(auth: AuthorizationContext = Depends(get_auth_context),
 async def options(project_id: uuid.UUID, auth: AuthorizationContext = Depends(get_auth_context),
                   conn: AsyncConnection = Depends(get_db_conn)):
     """What a task on this project can name: its sites (those this person sees), the people it can be for (the
-    same list ``POST /tasks`` matches names against) and the company's subcontractors."""
+    same list ``POST /tasks`` matches names against), the company's subcontractors, the project's places and its
+    BOQ lines (no rates)."""
     org = auth.organization_id
     if not _project_in_scope(auth, project_id) or await store.project(conn, org, project_id) is None:
         raise HTTPException(status_code=404, detail="Project not found")
     sites = [s for s in await store.sites(conn, org, project_id) if _site_in_scope(auth, project_id, s["id"])]
     return {"sites": sites, "people": await store.people(conn, org, project_id),
-            "subcontractors": await store.subcontractors(conn, org), "may_create": logic.may_create(auth.role)}
+            "subcontractors": await store.subcontractors(conn, org), "places": await store.places(conn, org, project_id),
+            "lines": await store.boq_lines(conn, org, project_id), "may_create": logic.may_create(auth.role)}
 
 
 @router.post("", status_code=201)
@@ -287,6 +303,8 @@ async def create_task(body: TaskIn, auth: AuthorizationContext = Depends(get_aut
         v["place_id"] = await _place(conn, org, body.project_id, body.place)
     if v["expected_quantity"] is not None and v["planned_item_id"] is None:
         raise HTTPException(status_code=422, detail="An expected quantity needs the BOQ line it counts against")
+    if v["planned_item_id"] is not None and v["work_package_id"] is None:
+        v["work_package_id"] = await store.section_of_line(conn, v["planned_item_id"])
     if v["site_id"] is not None and not _site_in_scope(auth, body.project_id, v["site_id"]):
         raise HTTPException(status_code=403, detail="Not authorized for this site")
     errors = await store.link_errors(conn, org, body.project_id, v)
@@ -298,7 +316,7 @@ async def create_task(body: TaskIn, auth: AuthorizationContext = Depends(get_aut
     task_id = await store.insert(conn, org, body.project_id, number, v, source=body.source, user_id=auth.user_id)
     await store.add_event(conn, org, task_id, "created", user_id=auth.user_id, source=body.source,
                           to_status=logic.OPEN, media_object_key=body.media_object_key)
-    return _out(await store.one(conn, org, task_id), await _today(conn, auth))
+    return await _shaped(conn, auth, task_id)
 
 
 async def _place(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, words: str) -> uuid.UUID:
@@ -322,7 +340,7 @@ async def get_task(task_id: uuid.UUID, auth: AuthorizationContext = Depends(get_
     history = await store.events(conn, auth.organization_id, task_id)
     for e in history:
         e["photo_url"] = await signed_media_url(object_storage, e.pop("media_object_key"))
-    out = _out(task, await _today(conn, auth))
+    out = _out(task, await _today(conn, auth), (await store.progress(conn, auth.organization_id, [task])).get(task_id))
     out["history"] = history
     out["may"] = {"edit": logic.may_edit(auth.role, auth.user_id, task),
                   "cancel": logic.may_move(auth.role, auth.user_id, task, logic.CANCELLED),
@@ -362,7 +380,7 @@ async def update_task(task_id: uuid.UUID, body: TaskPatch, auth: AuthorizationCo
         await store.update(conn, task_id, changes)
         await store.add_event(conn, org, task_id, "changed", user_id=auth.user_id, source=body.source,
                               changes={k: [task.get(k), v] for k, v in changes.items()})
-    return _out(await store.one(conn, org, task_id), await _today(conn, auth))
+    return await _shaped(conn, auth, task_id)
 
 
 @router.post("/{task_id}/status")
@@ -392,7 +410,7 @@ async def move_task(task_id: uuid.UUID, body: StatusIn, auth: AuthorizationConte
     await store.add_event(conn, org, task_id, "status", user_id=auth.user_id, source=body.source,
                           from_status=task["status"], to_status=body.status, words=body.note,
                           media_object_key=body.media_object_key)
-    return _out(await store.one(conn, org, task_id), await _today(conn, auth))
+    return await _shaped(conn, auth, task_id)
 
 
 @router.post("/{task_id}/comments", status_code=201)

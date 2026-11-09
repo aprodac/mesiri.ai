@@ -11,6 +11,7 @@ import { formatQuantity } from '@/lib/boq'
 import { addDays, daysBetween, plural, shortDay, STATE_WORDS, type Activity, type ActivityUpdate, type Schedule } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
 import { STATE_BAR } from './gantt'
+import { MakeTaskButton } from '@/components/tasks/make-task-button'
 
 // ST-04: one activity, everything about it in one place: where it stands and why, what it pushes, the BOQ lines
 // site measured, who is doing it (work orders), what is stuck (issues), the last site update; and, for those who
@@ -108,6 +109,18 @@ export function ActivityPanel({
         </div>
         {onClose && <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X className="size-4" /></Button>}
       </header>
+
+      {/* TSK-03: give someone the next piece of this activity; the task counts against its BOQ lines. */}
+      {a.state !== 'done' && (
+        <div className="border-b px-4 py-2.5">
+          <MakeTaskButton prefill={{
+            project_id: projectId,
+            work_package_id: a.id,
+            title: a.name,
+            from: `From the schedule: ${a.name}${a.end ? `, planned to finish ${new Date(`${a.end}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}` : ''}`,
+          }} />
+        </div>
+      )}
 
       {/* Progress against the calendar */}
       {a.start && !a.milestone && (
