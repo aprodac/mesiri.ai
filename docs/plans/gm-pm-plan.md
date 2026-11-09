@@ -104,6 +104,25 @@ sent to the dashboard page, never said done in chat.
 - Dashboard: the bell and Command centre's "red items". WhatsApp: only the critical ones, batched, max 3 a day per
   person (no spam). Each alert computed from existing reads; one small table `attention_seen` for read / snoozed.
 
+**As built (9 Nov 2026).** `domains/attention/` (`rules.py` pure, one rule per signal; `feed.py`; `router.py`):
+`GET /attention` (`project_id`), `GET /attention/count`, `POST /attention/snooze` (`key`, `days` 1-7),
+`DELETE /attention/snooze/{key}`; mounted in all three apps. Each signal is read through **its module's own route
+function as the caller**; a route that refuses (role, project) is skipped, so who sees what stays the module's rule
+(SEC-01; D-CC4: a site engineer's cost alerts have quantities and man-days, never rupees). Signals: handover forecast
+after its target (bad); a project's forecast at completion red against its budget (bad; the cost portfolio, CC-19,
+so the dashboard and the alert agree; owner, admin, finance, PM); a late activity (bad on the critical path, else warn); a red BOQ line over the last 7 days
+(bad; Cost control switch); a material to order today (bad) or by tomorrow (warn); a working site with nothing by its
+project's reporting cut-off (default 18:00, warn); an issue open 2+ days (bad if high / critical; says whether anyone is
+on it, from `assigned_user_id`); a hire bill above its log (warn; Equipment switch). At most 3 of one kind per project,
+the last saying how many more. Snoozes: migration **0533** `attention_snoozes` (person, key, until; additive, RLS):
+"Not today" hides an alert for that person until tomorrow; still true then, it is back; "Show again" undoes it.
+Dashboard: Site > **Attention** (`/site/attention`) with a red sidebar badge (act-now count, refreshed every 5 min).
+WhatsApp: v3 `attention` + SOP rule 23 for the general question only; one-thing questions keep rules 15, 16, 20, 22.
+**No new WhatsApp push**: the order-by note (MP-03), the delay note (ST-06) and the evening cost card (CC-11) already
+send these; a fourth push would repeat them. The morning brief (GM-08) will carry the act-now ones.
+**Cost:** one call per source per project (schedule always; cost and plan only for projects with a BOQ): ~27 ms for
+2 projects locally; not measured at 20+ projects (a risk: cache or batch if it grows).
+
 ### GM-05 This week (lookahead; was NXT-10, ST-10)
 - Board per site, Mon–Sat columns: activities from the schedule due this week (ST-04) plus free-text tasks.
   Work updates from WhatsApp tick them (planned item / activity link from CC-04). Saturday: what slipped,
