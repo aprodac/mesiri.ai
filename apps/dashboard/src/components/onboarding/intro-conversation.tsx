@@ -118,7 +118,7 @@ function Stroke({ now, at, ms = 500, ...line }: { now: number; at: number; ms?: 
 function SitePhoto({ now }: { now: number }) {
   const courses = Array.from({ length: 9 }, (_, i) => 70 + i * 8)
   return (
-    <svg viewBox="0 0 440 240" className="block w-full max-w-[440px] border border-foreground" role="img" aria-label="Site photo: brickwork on the second floor, east side">
+    <svg viewBox="0 0 440 240" className="block w-full max-w-[440px] rounded-lg border" role="img" aria-label="Site photo: brickwork on the second floor, east side">
       <g className="stroke-foreground" strokeWidth={1.5} fill="none">
         <Stroke now={now} at={100} x1={20} y1={222} x2={420} y2={222} />
         {[60, 220, 380].map((x, i) => (
@@ -268,7 +268,7 @@ function PromiseScene({ onStart }: { onStart: () => void }) {
       </h1>
       <Reveal at={1700} className="@2xl:col-start-2">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <Button size="lg" className="rounded-none px-6" onClick={onStart}>
+          <Button size="lg" className="px-6" onClick={onStart}>
             Start free trial
           </Button>
           <span className="text-sm text-muted-foreground">No forms. No typing. Any language.</span>

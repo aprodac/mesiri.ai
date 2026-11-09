@@ -52,7 +52,8 @@ export default function Signup() {
   return (
     // Narrow: the form first, the intro under it (nobody should have to
     // scroll past a slideshow to sign up). Desktop: side by side.
-    <div className="flex min-h-svh flex-col bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px]">
+    <div className="flex min-h-svh flex-col bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr]">
+      <div aria-hidden className="h-[3px] bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)] lg:col-span-2" />
       <section aria-label="How Mesiri works" className="border-t px-4 pb-14 sm:px-8 lg:border-t-0 lg:px-12">
         <IntroConversation
           belowForm

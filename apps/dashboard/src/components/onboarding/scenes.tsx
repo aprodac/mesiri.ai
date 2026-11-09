@@ -42,11 +42,11 @@ export function SceneSteps({
             className="group grid gap-2 text-left disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground"
           >
             <span className="relative block h-[2px] overflow-hidden bg-border" aria-hidden="true">
-              <span className="absolute inset-y-0 left-0 bg-foreground" style={{ width: `${fill * 100}%` }} />
+              <span className="absolute inset-y-0 left-0 bg-primary" style={{ width: `${fill * 100}%` }} />
             </span>
             <span
               className={cn(
-                'truncate font-mono text-[11px] uppercase tracking-[0.06em] tabular-nums',
+                'truncate text-xs font-medium tabular-nums',
                 i === index ? 'text-foreground' : 'text-muted-foreground',
                 !step.disabled && i !== index && 'group-hover:text-foreground',
                 step.disabled && 'opacity-50',
