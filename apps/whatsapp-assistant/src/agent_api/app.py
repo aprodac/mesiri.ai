@@ -56,6 +56,10 @@ def build_api_app(database: Any) -> FastAPI:
 
     db_errors.install(app)
     app.add_middleware(TenantResetMiddleware)
+    # ADM-01: changes made on WhatsApp go in the company's activity log too.
+    from mesiri.http.activity import ActivityRecorder
+
+    app.add_middleware(ActivityRecorder, source="whatsapp", fastapi_app=app)
     for module in API_ROUTERS:
         app.include_router(importlib.import_module(module).router)
     app.state.container = SimpleNamespace(material_db=database)

@@ -129,6 +129,26 @@ def may_act_on_material_requests(role: str | None) -> bool:
     return str(role or "").strip().upper() in MATERIAL_REQUEST_ROLES
 
 
+# Who may read the company's activity log, who changed what and when (ADM-02, decided in session by Ilan 9 Nov 2026):
+# the owner and admins, for the whole company. Nobody edits or deletes an entry.
+ACTIVITY_LOG_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN"})
+
+
+def may_read_activity_log(role: str | None) -> bool:
+    """True if `role` may read the company activity log."""
+    return str(role or "").strip().upper() in ACTIVITY_LOG_ROLES
+
+
+# Who may hand a person's open work to someone else (ADM-03, decided in session by Ilan 9 Nov 2026): the owner and
+# admins, the roles that run the Team page.
+HANDOVER_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN"})
+
+
+def may_hand_over_work(role: str | None) -> bool:
+    """True if `role` may move a person's open tasks and schedule activities to another person."""
+    return str(role or "").strip().upper() in HANDOVER_ROLES
+
+
 # Who may give which role when adding a person (WA-67, audit SET-01). An
 # admin may give any role; a project manager only their own level or below,
 # as the dashboard (Team page, admins only) never lets anyone else make an

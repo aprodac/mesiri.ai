@@ -82,6 +82,11 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
 
     app.add_middleware(TenantResetMiddleware)
 
+    # ADM-01: the company activity log, one recorder for every module's changes.
+    from mesiri.http.activity import ActivityRecorder
+
+    app.add_middleware(ActivityRecorder, source="web", fastapi_app=app)
+
     # Register Routers
     import logging
 
@@ -312,6 +317,20 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         app.include_router(approvals_router)
     except Exception as exc:  # noqa: BLE001
         _log.exception("approvals router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.audit.activity_router import router as activity_router
+
+        app.include_router(activity_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("activity router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.users.handover_router import router as handover_router
+
+        app.include_router(handover_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("handover router not loaded: %s", exc)
 
     try:
         from mesiri.domains.procurement.grn_router import router as goods_receipts_router

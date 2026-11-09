@@ -30,6 +30,7 @@ from mesiri.authorization.roles import may_view_expenses
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.schedule import logic, store
 from mesiri.domains.shared.modules import require_module
+from mesiri.http.activity import mark_saved_nothing
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 
 router = APIRouter(tags=["schedule"], dependencies=[Depends(require_module("dpr"))])
@@ -325,7 +326,7 @@ async def _respond(conn: AsyncConnection, auth: AuthorizationContext, project_id
 
 
 @router.patch("/projects/{project_id}/schedule/activities/{activity_id}")
-async def update_activity(project_id: uuid.UUID, activity_id: uuid.UUID, body: ActivityUpdate,
+async def update_activity(project_id: uuid.UUID, activity_id: uuid.UUID, body: ActivityUpdate, response: Response,
                           auth: AuthorizationContext = Depends(get_auth_context),
                           conn: AsyncConnection = Depends(get_db_conn)):
     """Change one activity. A new start or end moves the activities after it that would now start too early
@@ -347,6 +348,7 @@ async def update_activity(project_id: uuid.UUID, activity_id: uuid.UUID, body: A
     if body.preview:
         await savepoint.rollback()
         result["saved"] = False
+        mark_saved_nothing(response)  # ADM-01: a preview is not a change
     else:
         await savepoint.commit()
     return result

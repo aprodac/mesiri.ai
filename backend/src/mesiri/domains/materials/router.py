@@ -57,6 +57,7 @@ from mesiri.domains.materials.validation import (
 )
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import assert_downloadable_url
+from mesiri.http.activity import saves_nothing
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
@@ -473,6 +474,7 @@ async def material_import_template(auth_context: AuthorizationContext = Depends(
 
 
 @router.post("/import/preview")
+@saves_nothing  # ADM-01: changes nothing, so not in the activity log
 async def preview_material_import(
     body: MaterialImportFile,
     auth_context: AuthorizationContext = Depends(get_auth_context),

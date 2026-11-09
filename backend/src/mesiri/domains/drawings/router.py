@@ -20,6 +20,7 @@ from mesiri.domains.drawings import pdf_text
 from mesiri.domains.drawings.read import read_pdf
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
+from mesiri.http.activity import saves_nothing
 
 router = APIRouter(prefix="/drawings", tags=["drawings"], dependencies=[Depends(require_module("dpr"))])
 
@@ -32,6 +33,7 @@ _reads = asyncio.Semaphore(2)
 
 
 @router.post("/read")
+@saves_nothing  # ADM-01: changes nothing, so not in the activity log
 async def read_drawing(request: Request, auth: AuthorizationContext = Depends(get_auth_context)):
     if not may_view_expenses(auth.role):
         raise HTTPException(status_code=403, detail="The drawing check is for the people who plan the project")

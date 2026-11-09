@@ -42,6 +42,7 @@ from mesiri.authorization.roles import may_view_expenses
 from mesiri.domains.progress.boq import line_amounts, line_progress, suggest_line, totals
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
+from mesiri.http.activity import saves_nothing
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
@@ -596,6 +597,7 @@ async def boq_import_template(project_id: uuid.UUID, auth: AuthorizationContext 
 
 
 @router.post("/import/preview")
+@saves_nothing  # ADM-01: changes nothing, so not in the activity log
 async def boq_import_preview(project_id: uuid.UUID, body: BoqImportFile,
                              auth: AuthorizationContext = Depends(get_auth_context),
                              conn: AsyncConnection = Depends(get_db_conn)):
