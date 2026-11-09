@@ -88,6 +88,16 @@ sent to the dashboard page, never said done in chat.
 - Click a cell to open the cockpit at that panel. Filter: my projects / all; stage (Running only by default).
 - Money columns only for `may_view_expenses`; a site engineer never lands here (D-CC4 stays).
 
+**As built (9 Nov 2026), as a page.** `/site/command` (`CommandCentrePage.tsx`), dashboard only, no new API: six
+company-wide reads, each the module's own (lifecycle list for stage and schedule; cost portfolio, money roles only;
+today's site days; open issues; Waiting for you; Attention). Tiles: sites reported today, waiting for you, act now,
+projects late. One row per project, worst first (act-now alerts, then late handover and red forecast), stage tabs
+(running and handover / tender and won / closed): schedule, done against spent, cost colour and this week's, sites
+reported today, issues (oldest, overdue), waiting, what to order; a row opens the cockpit, a cell the page behind it,
+the chevron shows each site. Sidebar: after Today. **Not done: the landing page** stays Today; making this the first
+page owners, admins and PMs see, and reordering the sidebar, is D-GM1 (= D-CC5, shared layout) for Ilan; once
+approved it is the index route and one sidebar line.
+
 ### GM-03 Project cockpit (project home; part of CC-12)
 - Header: stage, handover date planned vs forecast, % done (BOQ earned), % spent, health.
 - **"Why is it red" panel** first: the top three reasons in words, each with the number and a link

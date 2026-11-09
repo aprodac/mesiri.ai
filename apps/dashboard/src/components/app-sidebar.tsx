@@ -23,6 +23,7 @@ import {
   Map as MapIcon,
   Inbox,
   BellRing,
+  LayoutDashboard,
 } from 'lucide-react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -92,6 +93,8 @@ const LABOUR_ITEM: NavItem = { title: 'Attendance', url: '/labour', icon: HardHa
 // company has not switched on (WEB-02) are hidden.
 const PRIMARY_ITEMS: NavItem[] = [
   { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
+  // GM-02: every project on one screen. Not the landing page (that is D-GM1, shared layout: Ilan).
+  { title: 'Command centre', url: '/site/command', icon: LayoutDashboard, tone: 'amber' },
   { title: 'Daily Reports', url: '/reports', icon: FileText, tone: 'sky' },
   { title: 'Issues', url: '/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
   // GM-01: every decision waiting for this person (requests, subcontract bills, work to confirm, RA bills, sizes).

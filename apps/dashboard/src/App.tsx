@@ -54,6 +54,7 @@ import PlannedPage from '@/pages/PlannedPage'
 import ApprovalsPage from '@/pages/ApprovalsPage'
 import AttentionPage from '@/pages/AttentionPage'
 import ProjectCockpitPage from '@/pages/ProjectCockpitPage'
+import CommandCentrePage from '@/pages/CommandCentrePage'
 import { PLANNED_PAGES } from '@/lib/module-map'
 import DailyReportsPage from '@/pages/DailyReportsPage'
 import MaterialsPage from '@/pages/MaterialsPage'
@@ -140,6 +141,7 @@ export default function App() {
           <Route path="issues" element={<OperationsIssuesPage />} />
           <Route path="site/approvals" element={<ApprovalsPage />} />
           <Route path="site/attention" element={<AttentionPage />} />
+          <Route path="site/command" element={<CommandCentrePage />} />
 
           {/* Site records: everything the sites sent, across days. */}
           <Route path="site-log" element={<SiteLogPage />} />

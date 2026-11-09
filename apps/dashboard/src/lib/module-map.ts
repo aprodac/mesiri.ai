@@ -27,6 +27,7 @@ import {
   Rocket,
   Stamp,
   BellRing,
+  LayoutDashboard,
   type LucideIcon,
 } from 'lucide-react'
 import type { ModuleKey } from './modules'
@@ -96,6 +97,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { title: 'Daily reports', url: '/reports', status: 'built', phase: 'V1', about: 'Every DPR, newest first.', example: 'Last evening\'s PDF that went to the owner.' },
       { title: 'Weekly & monthly', url: '/reports/period', status: 'planned', phase: 'V1', about: 'A week or a month in one report: work, labour, materials and money, as PDF and Excel.', example: 'October report to the MD on the 1st: 3 sites, ₹42 L spent, 2 delays.', tracker: 'PRC-19, PRC-20', related: [{ title: 'Daily reports', url: '/reports' }] },
       { title: 'Issues', url: '/issues', status: 'built', phase: 'V1', about: 'Hindrances reported from site, open until someone acts.', example: 'No water since morning; shuttering team didn\'t come.' },
+      { title: 'Command centre', url: '/site/command', status: 'built', phase: 'V1', about: 'Every project on one screen, worst first: schedule, done against spent, cost colour, who reported today, issues, what waits for you and what to order. Each cell opens the page behind it.', example: 'Marina Heights: 6 days late, red, 2 sites silent, 3 waiting for you.', tracker: 'GM-02', related: [{ title: 'Today', url: '/today' }] },
       { title: 'Attention', url: '/site/attention', status: 'built', phase: 'V1', about: 'What crossed a line: over budget, late, to order, a site that sent nothing, an issue left open, a hire bill above its log. Each says by how much and opens the page that acts on it.', example: 'Slab 6F is 3 days late, on the critical path. Order steel 12 mm today.', tracker: 'GM-04', related: [{ title: 'Green / red', url: '/cost/green-red' }, { title: 'Schedule', url: '/planning/schedule' }] },
       { title: 'Waiting for you', url: '/site/approvals', status: 'built', phase: 'V1', about: 'Every decision waiting for you in one place: material requests, subcontract bills, work to confirm, RA bills, unit sizes. Flagged first, each with the fact that decides it.', example: 'Plastering bill: 220 sqm more than measured. Cement 250 bags: 40 at site.', tracker: 'GM-01', related: [{ title: 'Requests', url: '/materials/requests' }, { title: 'Bills & checks', url: '/subcontract/bills' }] },
       { title: 'Site log', url: '/site-log', status: 'built', phase: 'V1', about: 'Everything the sites sent: work, photos, all entries.', example: '5 m³ poured on grid B, with photos.' },
@@ -313,6 +315,7 @@ export const PAGE_ICONS: Record<string, LucideIcon> = {
   '/reports/period': CalendarRange,
   '/site/approvals': Stamp,
   '/site/attention': BellRing,
+  '/site/command': LayoutDashboard,
   '/site/safety': ShieldAlert,
   '/site/snags': ListTodo,
   '/boq': Calculator,
