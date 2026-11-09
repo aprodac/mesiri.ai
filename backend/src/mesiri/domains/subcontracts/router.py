@@ -941,11 +941,22 @@ async def value(
 @router.get("/bills/waiting")
 async def bills_waiting(auth_context: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
     """Bills waiting for a person (flagged or sent by a subcontractor): what Today and the approvals list show."""
-    if not may_view_expenses(auth_context.role):
-        return []
-    wos = await store.fetch(conn, auth_context.organization_id, project_ids=_scope(auth_context))
     return [{**b, "vendor_name": w["vendor_name"], "project_name": w["project_name"], "site_name": w["site_name"]}
-            for w in wos for b in w["bills"] if b["check_status"] in ("waiting", "flagged")]
+            for b, w in await waiting_bills(conn, auth_context)]
+
+
+async def waiting_bills(conn: AsyncConnection, auth: AuthorizationContext,
+                        project_ids: set[uuid.UUID] | None = None) -> list[tuple[dict, dict]]:
+    """The one rule for "a bill waiting for a person": waiting or flagged, for the roles that see spending, in the
+    caller's projects (``project_ids`` narrows further). Each with its work order. Used by ``/bills/waiting`` and the
+    approvals inbox (GM-01)."""
+    if not may_view_expenses(auth.role):
+        return []
+    scope = _scope(auth)
+    if project_ids is not None:
+        scope = project_ids if scope is None else scope & project_ids
+    wos = await store.fetch(conn, auth.organization_id, project_ids=scope)
+    return [(b, w) for w in wos for b in w["bills"] if b["check_status"] in ("waiting", "flagged")]
 
 
 # --- status moves (last: its path would otherwise catch /advance, /bills, ...) -------------------------
