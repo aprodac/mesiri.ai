@@ -286,6 +286,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("tally export router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.accounts.router import router as accounts_router
+
+        app.include_router(accounts_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("accounts router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.procurement.grn_router import router as goods_receipts_router
 
         app.include_router(goods_receipts_router)

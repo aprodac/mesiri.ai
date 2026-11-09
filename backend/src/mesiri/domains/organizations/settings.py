@@ -108,6 +108,8 @@ MODULES: dict[str, str] = {
     "equipment": "Machines and vehicles: hours, idle and breakdown, diesel, hire; shuttering and tools",
     "automations": "User-defined scheduled messages",
     "cost": "Cost control: budget against actual, cost centres, work done and earned against the BOQ",
+    "accounts": "Accounts: the company's books (chart of accounts, journals, trial balance, ledgers), posted from the "
+                "records automatically",
 }
 
 # Short names for the control panel's module switches (SA-07).
@@ -119,6 +121,7 @@ MODULE_LABELS: dict[str, str] = {
     "equipment": "Equipment",
     "automations": "Automations",
     "cost": "Cost control",
+    "accounts": "Accounts",
 }
 
 # DPR is the product: a company without it has nothing to use.
