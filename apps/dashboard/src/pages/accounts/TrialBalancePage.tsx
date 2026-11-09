@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BadgeCheck, ChevronRight, CircleAlert, ListTree, Scale, Search, TriangleAlert } from 'lucide-react'
 import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { DrCr, NATURE_DOT, NatureDot, ShareBar } from '@/components/accounts/visuals'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -71,18 +72,21 @@ function buildTree(groups: LedgerGroup[], rows: TrialRow[], q: string): Node[] {
   return roots.filter(total)
 }
 
-function Amounts({ opening, debit, credit, closing, strong }: { opening: number | string; debit: number | string; credit: number | string; closing: number | string; strong?: boolean }) {
+function Amounts({ opening, debit, credit, closing, strong, bar }: { opening: number | string; debit: number | string; credit: number | string; closing: number | string; strong?: boolean; bar?: number }) {
   return (
     <>
       <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">{drCr(opening)}</td>
       <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{cell(debit)}</td>
       <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{cell(credit)}</td>
-      <td className={cn('px-3 py-2 text-right tabular-nums', strong && 'font-semibold')}>{drCr(closing)}</td>
+      <td className="px-3 py-2 text-right">
+        <DrCr value={closing} strong={strong} />
+        {bar && <ShareBar value={Number(closing)} max={bar} className="ml-auto mt-1 w-24" />}
+      </td>
     </>
   )
 }
 
-function GroupRows({ node, depth, open, toggle, onLedger, forceOpen }: { node: Node; depth: number; open: Set<string>; toggle: (id: string) => void; onLedger: (r: TrialRow) => void; forceOpen: boolean }) {
+function GroupRows({ node, depth, open, toggle, onLedger, forceOpen, max }: { node: Node; depth: number; open: Set<string>; toggle: (id: string) => void; onLedger: (r: TrialRow) => void; forceOpen: boolean; max: number }) {
   const isOpen = forceOpen || open.has(node.group.id)
   const pad = { paddingLeft: `${0.75 + depth * 1}rem` }
   return (
@@ -91,15 +95,16 @@ function GroupRows({ node, depth, open, toggle, onLedger, forceOpen }: { node: N
         <td className="py-2 pr-3 font-medium" style={pad}>
           <span className="inline-flex items-center gap-1">
             <ChevronRight className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-90')} />
+            {depth === 0 && <NatureDot nature={node.group.nature} />}
             {node.group.name}
           </span>
         </td>
-        <Amounts opening={node.opening} debit={node.debit} credit={node.credit} closing={node.closing} strong />
+        <Amounts opening={node.opening} debit={node.debit} credit={node.credit} closing={node.closing} strong bar={depth === 0 ? max : undefined} />
       </tr>
       {isOpen && (
         <>
           {node.children.map((c) => (
-            <GroupRows key={c.group.id} node={c} depth={depth + 1} open={open} toggle={toggle} onLedger={onLedger} forceOpen={forceOpen} />
+            <GroupRows key={c.group.id} node={c} depth={depth + 1} open={open} toggle={toggle} onLedger={onLedger} forceOpen={forceOpen} max={max} />
           ))}
           {node.rows.map((r) => (
             <tr
@@ -199,6 +204,8 @@ export default function TrialBalancePage() {
   const onLedger = (r: TrialRow) => navigate(`/accounts/ledgers/${r.ledger_id}${keep ? `?${keep}` : ''}`)
   const t = d?.totals
   const headOffice = d?.rows.find((r) => r.code === 'head_office')
+  const max = Math.max(0, ...tree.map((n) => Math.abs(n.closing)))
+  const natures = [...new Set(tree.map((n) => n.group.nature))]
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
@@ -206,6 +213,13 @@ export default function TrialBalancePage() {
         back={{ to: '/finance/money', label: 'Money' }}
         crumb="Accounts"
         title="Trial balance"
+        chip={
+          t && (
+            <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', t.balanced ? 'bg-success-soft text-success' : 'bg-destructive/10 text-destructive')}>
+              {t.balanced ? <BadgeCheck className="size-3.5" /> : <CircleAlert className="size-3.5" />} {t.balanced ? 'Balanced' : 'Does not balance'}
+            </span>
+          )
+        }
         date={d ? `${d.financial_year} · ${d.scope}` : undefined}
         action={d && <ExcelButton path="/accounts/trial-balance/export" params={{ ...period, ...sp }} name={`trial-balance-${period.date_from}-to-${period.date_to}`} />}
       />
@@ -254,6 +268,13 @@ export default function TrialBalancePage() {
                   <Button size="sm" variant="ghost" onClick={() => setAll((a) => !a)}>
                     {all ? 'Collapse all' : 'Expand all'}
                   </Button>
+                  <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="Kinds of group">
+                    {natures.map((n) => (
+                      <span key={n} className="inline-flex items-center gap-1.5">
+                        <span className={cn('size-2 rounded-full', NATURE_DOT[n])} /> {NATURE_LABEL[n]}
+                      </span>
+                    ))}
+                  </span>
                 </div>
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full text-sm">
@@ -268,7 +289,7 @@ export default function TrialBalancePage() {
                     </thead>
                     <tbody className="divide-y">
                       {tree.map((n) => (
-                        <GroupRows key={n.group.id} node={n} depth={0} open={open} toggle={toggle} onLedger={onLedger} forceOpen={all || !!q.trim()} />
+                        <GroupRows key={n.group.id} node={n} depth={0} open={open} toggle={toggle} onLedger={onLedger} forceOpen={all || !!q.trim()} max={max} />
                       ))}
                     </tbody>
                     <tfoot>

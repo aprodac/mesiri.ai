@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowUpRight, History, ScrollText } from 'lucide-react'
 import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, VoucherSheet, usePeriod } from '@/components/accounts/books'
+import { BalanceLine, DrCr } from '@/components/accounts/visuals'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -77,6 +78,11 @@ export default function LedgerStatementPage() {
               {d.ledger.notes}
             </Callout>
           )}
+          {d.lines.length > 1 && (
+            <div className="rounded-xl border px-4 py-3">
+              <BalanceLine points={[{ date: formatDay(d.date_from), balance: Number(d.opening) }, ...d.lines.map((l) => ({ date: formatDay(l.date), balance: Number(l.balance) }))]} />
+            </div>
+          )}
           <DprSection icon={ScrollText} title="Entries" meta={d.lines.length || undefined}>
             {d.lines.length === 0 ? (
               <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">No entry in this ledger in the period{scope.mode !== 'portfolio' ? ` on ${d.scope}` : ''}.</p>
@@ -101,7 +107,7 @@ export default function LedgerStatementPage() {
                       <td className="px-3 py-2 text-right tabular-nums">{drCr(d.opening)}</td>
                     </tr>
                     {d.lines.map((l) => (
-                      <tr key={l.line_id} className="cursor-pointer align-top hover:bg-muted/40" onClick={() => setOpenId(l.entry_id)}>
+                      <tr key={l.line_id} className={cn('cursor-pointer align-top hover:bg-muted/40', l.after_close && 'bg-draft-soft/30')} onClick={() => setOpenId(l.entry_id)}>
                         <td className="px-3 py-2 whitespace-nowrap">{formatDay(l.date)}</td>
                         <td className="px-3 py-2">
                           <span className="flex items-center gap-1.5">
@@ -117,7 +123,9 @@ export default function LedgerStatementPage() {
                         </td>
                         <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{cell(l.debit)}</td>
                         <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{cell(l.credit)}</td>
-                        <td className={cn('px-3 py-2 text-right tabular-nums whitespace-nowrap')}>{drCr(l.balance)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <DrCr value={l.balance} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -127,7 +135,9 @@ export default function LedgerStatementPage() {
                       <td className="px-3 py-2">Closing balance</td>
                       <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{rupees(d.debit)}</td>
                       <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{rupees(d.credit)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{drCr(d.closing)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <DrCr value={d.closing} strong />
+                      </td>
                     </tr>
                   </tfoot>
                 </table>

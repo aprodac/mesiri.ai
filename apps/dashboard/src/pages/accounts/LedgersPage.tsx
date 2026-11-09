@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BookUser, Search } from 'lucide-react'
 import { BooksClosed, BooksTabs } from '@/components/accounts/books'
+import { DrCr, NatureDot, ShareBar } from '@/components/accounts/visuals'
 import { DprHeader, DprSection, PageError, Segmented, StatStrip } from '@/components/dpr-page'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -60,6 +61,7 @@ export default function LedgersPage() {
   const list = (d?.ledgers ?? [])
     .filter((l) => (kind === 'all' || kindOf(l) === kind) && (!used || l.lines > 0 || words) && (!words || l.name.toLowerCase().includes(words)))
     .sort((a, b) => Math.abs(Number(b.balance)) - Math.abs(Number(a.balance)) || a.name.localeCompare(b.name))
+  const top = Math.max(0, ...list.map((l) => Math.abs(Number(l.balance))))
   const count = (k: Kind) => (d?.ledgers ?? []).filter((l) => (k === 'all' || kindOf(l) === k) && l.lines > 0).length
   const sum = (k: Kind) => (d?.ledgers ?? []).filter((l) => kindOf(l) === k).reduce((s, l) => s + Number(l.balance), 0)
 
@@ -109,14 +111,19 @@ export default function LedgersPage() {
                   <li key={l.id}>
                     <Link to={`/accounts/ledgers/${l.id}`} className="flex flex-col gap-0.5 px-4 py-2.5 text-sm hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4">
                       <span className="min-w-0 flex-1">
-                        <span className={cn('block truncate font-medium', !l.is_active && 'text-muted-foreground line-through')}>{l.name}</span>
+                        <span className={cn('flex items-center gap-2 truncate font-medium', !l.is_active && 'text-muted-foreground line-through')}>
+                          <NatureDot nature={l.nature} /> {l.name}
+                        </span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {[groups.get(l.group_id), l.link_kind ? LINK_LABEL[l.link_kind] : null, l.lines ? `${l.lines} ${l.lines === 1 ? 'entry' : 'entries'}` : 'no entries', l.last_used ? `last ${formatDay(l.last_used)}` : null]
                             .filter(Boolean)
                             .join(' · ')}
                         </span>
                       </span>
-                      <span className="font-semibold tabular-nums">{drCr(l.balance)}</span>
+                      <span className="flex w-full flex-col items-end gap-1 sm:w-44">
+                        <DrCr value={l.balance} strong />
+                        <ShareBar value={Number(l.balance)} max={top} className="w-full sm:w-32" />
+                      </span>
                     </Link>
                   </li>
                 ))}

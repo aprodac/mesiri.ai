@@ -1,8 +1,9 @@
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { BookOpenText, CalendarDays, History, Search } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, BookOpenText, CalendarDays, History, Search } from 'lucide-react'
 import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, VoucherSheet, usePeriod } from '@/components/accounts/books'
+import { VoucherBadge } from '@/components/accounts/visuals'
 import { DprHeader, DprSection, PageError, Segmented, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,14 +19,6 @@ import { cn } from '@/lib/utils'
 // move, Enter to open. Backend: GET /accounts/day-book.
 
 const TYPES: (VoucherType | '')[] = ['', 'purchase', 'payment', 'receipt', 'sales', 'contra', 'journal']
-const TYPE_TONE: Record<VoucherType, string> = {
-  purchase: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-  payment: 'bg-rose-500/10 text-rose-700 dark:text-rose-400',
-  receipt: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-  sales: 'bg-sky-500/10 text-sky-700 dark:text-sky-400',
-  contra: 'bg-violet-500/10 text-violet-700 dark:text-violet-400',
-  journal: 'bg-muted text-muted-foreground',
-}
 const PAGE = 200
 
 function useDebounced<T>(value: T, ms = 300): T {
@@ -41,6 +34,30 @@ function summary(e: Entry): string {
   const dr = e.lines.filter((l) => Number(l.debit) > 0).map((l) => l.ledger)
   const cr = e.lines.filter((l) => Number(l.credit) > 0).map((l) => l.ledger)
   return `${dr.join(', ')} → ${cr.join(', ')}`
+}
+
+/** A day's money in (receipts) and out (payments), each with its arrow; the rest is counted. */
+function DayMoney({ list }: { list: Entry[] }) {
+  const sum = (t: VoucherType) => list.filter((e) => e.voucher_type === t).reduce((s, e) => s + Number(e.amount), 0)
+  const got = sum('receipt')
+  const paid = sum('payment')
+  return (
+    <span className="flex flex-wrap items-center justify-end gap-x-3 text-xs text-muted-foreground tabular-nums">
+      {got > 0 && (
+        <span className="inline-flex items-center gap-0.5">
+          <ArrowDownLeft className="size-3.5 text-success" /> in {rupees(got)}
+        </span>
+      )}
+      {paid > 0 && (
+        <span className="inline-flex items-center gap-0.5">
+          <ArrowUpRight className="size-3.5 text-destructive" /> out {rupees(paid)}
+        </span>
+      )}
+      <span>
+        {list.length} voucher{list.length === 1 ? '' : 's'}
+      </span>
+    </span>
+  )
 }
 
 export default function DayBookPage() {
@@ -162,9 +179,7 @@ export default function DayBookPage() {
                   <section key={day} className="rounded-lg border">
                     <header className="flex items-baseline justify-between border-b bg-muted/30 px-4 py-2 text-sm">
                       <h3 className="font-medium">{formatDay(day)}</h3>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {list.length} voucher{list.length === 1 ? '' : 's'} · {rupees(list.reduce((s, e) => s + Number(e.amount), 0))}
-                      </span>
+                      <DayMoney list={list} />
                     </header>
                     <ul className="divide-y">
                       {list.map((e) => {
@@ -181,7 +196,7 @@ export default function DayBookPage() {
                               className={cn('flex w-full flex-col gap-1 px-4 py-2.5 text-left text-sm hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4', cursor === i && 'bg-muted/60 ring-1 ring-inset ring-ring')}
                             >
                               <span className="flex shrink-0 items-center gap-2 sm:w-44">
-                                <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', TYPE_TONE[e.voucher_type])}>{VOUCHER_LABEL[e.voucher_type]}</span>
+                                <VoucherBadge type={e.voucher_type} label={VOUCHER_LABEL[e.voucher_type]} />
                                 <span className="text-xs text-muted-foreground tabular-nums">{e.ref}</span>
                               </span>
                               <span className="min-w-0 flex-1">
