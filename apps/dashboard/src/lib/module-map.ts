@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   Rocket,
   Stamp,
+  BellRing,
   type LucideIcon,
 } from 'lucide-react'
 import type { ModuleKey } from './modules'
@@ -95,6 +96,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { title: 'Daily reports', url: '/reports', status: 'built', phase: 'V1', about: 'Every DPR, newest first.', example: 'Last evening\'s PDF that went to the owner.' },
       { title: 'Weekly & monthly', url: '/reports/period', status: 'planned', phase: 'V1', about: 'A week or a month in one report: work, labour, materials and money, as PDF and Excel.', example: 'October report to the MD on the 1st: 3 sites, ₹42 L spent, 2 delays.', tracker: 'PRC-19, PRC-20', related: [{ title: 'Daily reports', url: '/reports' }] },
       { title: 'Issues', url: '/issues', status: 'built', phase: 'V1', about: 'Hindrances reported from site, open until someone acts.', example: 'No water since morning; shuttering team didn\'t come.' },
+      { title: 'Attention', url: '/site/attention', status: 'built', phase: 'V1', about: 'What crossed a line: over budget, late, to order, a site that sent nothing, an issue left open, a hire bill above its log. Each says by how much and opens the page that acts on it.', example: 'Slab 6F is 3 days late, on the critical path. Order steel 12 mm today.', tracker: 'GM-04', related: [{ title: 'Green / red', url: '/cost/green-red' }, { title: 'Schedule', url: '/planning/schedule' }] },
       { title: 'Waiting for you', url: '/site/approvals', status: 'built', phase: 'V1', about: 'Every decision waiting for you in one place: material requests, subcontract bills, work to confirm, RA bills, unit sizes. Flagged first, each with the fact that decides it.', example: 'Plastering bill: 220 sqm more than measured. Cement 250 bags: 40 at site.', tracker: 'GM-01', related: [{ title: 'Requests', url: '/materials/requests' }, { title: 'Bills & checks', url: '/subcontract/bills' }] },
       { title: 'Site log', url: '/site-log', status: 'built', phase: 'V1', about: 'Everything the sites sent: work, photos, all entries.', example: '5 m³ poured on grid B, with photos.' },
       { title: 'Quality checks', url: '/site/quality', status: 'planned', phase: 'V1.5', about: 'Checklists before key work and test results after it.', example: 'Before the slab pour: cover blocks, shuttering level. Cube test at 7 and 28 days.', related: [{ title: 'Site log', url: '/site-log' }] },
@@ -310,6 +312,7 @@ export const PAGE_ICONS: Record<string, LucideIcon> = {
   '/site/quality': ClipboardCheck,
   '/reports/period': CalendarRange,
   '/site/approvals': Stamp,
+  '/site/attention': BellRing,
   '/site/safety': ShieldAlert,
   '/site/snags': ListTodo,
   '/boq': Calculator,
