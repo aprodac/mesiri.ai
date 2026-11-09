@@ -1937,6 +1937,7 @@ export interface DprHistoryItem {
 
 export async function fetchDprHistoryApi(params: {
   project_id?: string
+  site_id?: string
   level?: 'site' | 'project'
   status?: string
   date_from?: string

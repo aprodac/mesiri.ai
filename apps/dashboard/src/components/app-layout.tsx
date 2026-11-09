@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { AlertCircle, CalendarDays, ChevronRight, Map as MapIcon } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ScopeBar } from '@/components/scope-bar'
+import { ScopeNote } from '@/components/scope-note'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
@@ -123,6 +124,7 @@ export function AppLayout() {
           <TopBar />
           <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 p-4 outline-none">
             <TrialBanner />
+            <ScopeNote />
             <Outlet />
           </div>
         </SidebarInset>

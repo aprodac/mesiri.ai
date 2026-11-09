@@ -92,6 +92,28 @@ A page does not draw its own header, empty box or tile.
 - **Visual cues:** a `Tile` in a state has a bar, a tinted ground and its figure in the state's colour; a `Section`
   title carries the yellow accent bar. Colour still means state only (§3).
 
+## What the pages show: all projects, a project, a site (SCP-01..04, asked 9 Nov 2026)
+
+Every page's data is for one of three levels, picked in the top bar. The level matters more than anything else on
+the page: the same "₹61k owed" means the company, one project or one site.
+
+- **The top bar** (`components/scope-bar.tsx`) shows the pick as a path in a bordered pill:
+  `All projects › Villa Kakkanad › Compound wall`. Parts above the current level take you up one click (desktop);
+  the last part opens the panel. Colours never change: all projects blue (globe), a project green (building), a site
+  orange (pin) (`lib/scope-look.ts`).
+- **The panel** ("Show data for") lists Recent picks, All projects, then every project with its sites under it, each
+  with today's reporting (the Today page's rule, `hasUpdates`). One click picks a project or a site. A search box
+  appears past six rows. Phones get it as a bottom sheet.
+- **One choice, no switcher.** The pill is a plain label when there is nothing to switch to (a site engineer with
+  one site), and then names the site's project beside it.
+- **Each page says what it shows** (`components/scope-note.tsx`, one line above the page when a project or site is
+  picked): "Showing Compound wall (Villa Kakkanad) only", or, in amber, "Showing all of Villa Kakkanad. This page
+  doesn't split by site", or "Company-wide. This page shows every project". Nothing is said with All projects picked.
+- **The table** `lib/scope-levels.ts` gives each route its level (`site`, `project`, `company`). A new page adds its
+  row; a page that starts following the site moves its row. Record pages (one bill, one machine) have none.
+- **Roles land where they work** (`lib/ScopeContext.tsx`): owner and finance on All projects, a project manager on
+  their first project, a site engineer on their first site (never a whole project).
+
 ## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-33)
 
 V1 is one loop — sites send updates on WhatsApp, the engineer confirms, the

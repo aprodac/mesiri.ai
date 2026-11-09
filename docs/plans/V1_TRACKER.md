@@ -837,6 +837,16 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 | TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | todo | — | |
 | TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | todo | — | |
 
+## SCP — What the pages show: company, project, site (asked 9 Nov 2026, approved by Ilan in session)
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|---|
+| SCP-01 | **Top-bar switcher:** the pick as a path whose parts go up a level; one panel (search, recent, all projects, each project with its sites and today's reporting) instead of nested hover menus; bottom sheet on phones; a plain label when there is one choice | M | Must | — | done | Claude (session 9 Nov) | `components/scope-bar.tsx`, `lib/scope-look.ts`, `lib/scope-recent.ts`. Docs: DESIGN.md "What the pages show" |
+| SCP-02 | **Each page says what it shows:** a line above the page (only this site / all of the project, doesn't split by site / company-wide) from one table of route levels | S | Must | SCP-01 | done | Claude (session 9 Nov) | `components/scope-note.tsx`, `lib/scope-levels.ts` |
+| SCP-03 | **Pages that ignored the pick follow it:** Today and Daily reports narrow to the site; Clients, Cost control overview, Subcontractors and Bills & checks narrow to the project/site (`/subcontracts/bills/waiting` now returns `project_id`, `site_id`) | S | Must | SCP-02 | done | Claude (session 9 Nov) | Still company-wide and labelled so: Receivables (client money on account is not per project), Finance reports (server report is company-only), Balance sheet, Ledgers, GST, TDS |
+| SCP-04 | **Roles land where they work:** a site engineer is put on their site, not the whole project; the switcher shows when there is more than one choice (a site engineer with two sites gets one), not when a role has more than one level | S | Must | SCP-01 | done | Claude (session 9 Nov) | `lib/ScopeContext.tsx` |
+| SCP-05 | Receivables and Finance reports per project (server: filter open bills, receipts and the statement by project) | S | Should | SCP-03 | todo | — | Then move their rows in `lib/scope-levels.ts` to `project` |
+
 ## LW — Labour, wages and advances ([plan](wages-and-labour-plan.md), 9 Nov 2026)
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |

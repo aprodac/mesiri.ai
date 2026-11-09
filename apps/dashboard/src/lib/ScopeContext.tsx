@@ -7,9 +7,9 @@ import { allowedScopes } from './permissions'
 import { fetchProjects, fetchSites } from './projects'
 import type { AppScope, ProjectItem, SiteItem } from './scope-types'
 import { Button } from '@/components/ui/button'
+import { rememberRecent } from './scope-recent'
 
 const SCOPE_STORAGE_KEY = 'mesiri_dashboard_scope'
-
 type ScopeContextType = {
   scope: AppScope
   setPortfolioScope: () => void
@@ -338,6 +338,22 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     )
   }, [siteId, sites, isSitesLoading, isSitesFetching, hasAttemptedSiteRefetch, setSearchParams])
 
+  // SCP-04: a role that works at site level only (site engineer) is never left looking at a whole project: with
+  // only ?project= in the address (a project link, its first visit), it moves to the first of its sites there.
+  const siteOnly = allowed.includes('site') && !allowed.includes('project') && !allowed.includes('portfolio')
+  React.useEffect(() => {
+    if (!siteOnly || !projectId || siteId || isSitesLoading || isSitesFetching) return
+    const first = sites[0]
+    if (!first || first.projectId !== projectId) return
+    setSearchParams(
+      (prev) => {
+        prev.set('site', first.id)
+        return prev
+      },
+      { replace: true }
+    )
+  }, [siteOnly, projectId, siteId, sites, isSitesLoading, isSitesFetching, setSearchParams])
+
   const setPortfolioScope = () => {
     setSearchParams((prev) => {
       prev.delete('project')
@@ -347,6 +363,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   }
 
   const setProjectScope = (project: ProjectItem) => {
+    rememberRecent({ projectId: project.id })
     setSearchParams((prev) => {
       prev.set('project', project.id)
       prev.delete('site')
@@ -355,6 +372,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   }
 
   const setSiteScope = (project: ProjectItem, site: SiteItem) => {
+    rememberRecent({ projectId: project.id, siteId: site.id })
     setSearchParams((prev) => {
       prev.set('project', project.id)
       prev.set('site', site.id)

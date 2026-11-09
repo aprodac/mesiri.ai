@@ -946,7 +946,8 @@ async def bills_waiting(auth_context: AuthorizationContext = Depends(get_auth_co
     if not may_view_expenses(auth_context.role):
         return []
     wos = await store.fetch(conn, auth_context.organization_id, project_ids=_scope(auth_context))
-    return [{**b, "vendor_name": w["vendor_name"], "project_name": w["project_name"], "site_name": w["site_name"]}
+    return [{**b, "vendor_name": w["vendor_name"], "project_name": w["project_name"], "site_name": w["site_name"],
+             "project_id": w["project_id"], "site_id": w["site_id"]}
             for w in wos for b in w["bills"] if b["check_status"] in ("waiting", "flagged")]
 
 

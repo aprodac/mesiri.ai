@@ -8,6 +8,7 @@ import { formatRupees, maySeeBoq } from '@/lib/boq'
 import { fetchPortfolio, type PortfolioRow, type VarianceColour } from '@/lib/cost'
 import { usePageTitle } from '@/lib/page-title'
 import { COLOUR_DOT, COLOUR_TEXT } from '@/lib/cost-colours'
+import { useScope } from '@/lib/ScopeContext'
 import { cn } from '@/lib/utils'
 
 // CC-22: the Cost control home. Every project with a BOQ, worst forecast first (CC-19): budget, % done against
@@ -93,6 +94,7 @@ export default function CostHomePage() {
   usePageTitle('Cost control')
   const allowed = maySeeBoq(me?.role)
   const q = useQuery({ queryKey: ['cost', 'portfolio'], queryFn: fetchPortfolio, enabled: allowed })
+  const { scope } = useScope()
 
   if (!allowed) {
     return (
@@ -103,7 +105,8 @@ export default function CostHomePage() {
     )
   }
   if (q.isError) return <PageError message="Cost control could not be loaded." onRetry={() => q.refetch()} back={{ to: '/today', label: 'Today' }} />
-  const rows = q.data?.projects ?? []
+  // SCP-03: with a project picked, that project's row and totals.
+  const rows = (q.data?.projects ?? []).filter((r) => scope.mode === 'portfolio' || r.project_id === scope.projectId)
   const sum = (pick: (r: PortfolioRow) => string | null) => rows.reduce((t, r) => t + Number(pick(r) ?? 0), 0)
   const over = rows.filter((r) => r.colour === 'red').length
   const labourLeft = sum((r) => r.labour_not_on_a_line)
@@ -111,12 +114,12 @@ export default function CostHomePage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="Cost control" date={q.data ? `${rows.length} projects with a BOQ` : ''} />
+      <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="Cost control" date={q.data ? scope.mode === 'portfolio' ? `${rows.length} projects with a BOQ` : scope.projectName : ''} />
       {q.isLoading ? (
         <Skeleton className="h-64 rounded-lg" />
       ) : rows.length === 0 ? (
         <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6">
-          <p className="font-medium">No project has a BOQ yet.</p>
+          <p className="font-medium">{scope.mode === 'portfolio' ? 'No project has a BOQ yet.' : `${scope.projectName} has no BOQ yet.`}</p>
           <p className="text-sm text-muted-foreground">
             Cost control sets what is spent against each project's BOQ budget.{' '}
             <Link to="/boq" className="font-medium underline underline-offset-2">

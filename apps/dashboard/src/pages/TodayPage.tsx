@@ -210,7 +210,12 @@ export default function TodayPage() {
     refetchInterval: 120_000,
   })
 
-  const sites = React.useMemo(() => daysQuery.data?.items ?? [], [daysQuery.data])
+  // SCP-03: with a site picked, that site's card and figures only (the request is per project).
+  const pickedSite = scope.mode === 'site' ? scope.siteId : null
+  const sites = React.useMemo(
+    () => (daysQuery.data?.items ?? []).filter((s) => !pickedSite || s.site_id === pickedSite),
+    [daysQuery.data, pickedSite],
+  )
   const projects = React.useMemo(() => daysQuery.data?.projects ?? [], [daysQuery.data])
   const siteNames = React.useMemo(() => new Map(sites.map((s) => [s.site_id, s.site_name])), [sites])
 

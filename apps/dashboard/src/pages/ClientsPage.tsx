@@ -12,6 +12,7 @@ import { PageError } from '@/components/dpr-page'
 import { useAuth } from '@/lib/AuthContext'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
+import { useScope } from '@/lib/ScopeContext'
 import { createClient, fetchClients, mayBill, rupees, updateClient, type Client, type ClientInput } from '@/lib/billing'
 import { ModuleTitle } from '@/components/page/page-kit'
 
@@ -32,6 +33,10 @@ export default function ClientsPage() {
   const { me } = useAuth()
   const allowed = mayBill(me?.role)
   const query = useQuery({ queryKey: ['billing-clients'], queryFn: fetchClients, enabled: allowed })
+  // SCP-03: with a project picked, the clients of that project.
+  const { scope } = useScope()
+  const projectId = scope.mode === 'portfolio' ? null : scope.projectId
+  const clients = query.data && projectId ? query.data.filter((c) => c.projects?.some((p) => p.id === projectId)) : query.data
   const [editing, setEditing] = React.useState<Client | 'new' | null>(null)
 
   return (
@@ -44,15 +49,15 @@ export default function ClientsPage() {
         <p className="text-sm text-muted-foreground">Clients, contracts and bills are for the owner, admins and finance.</p>
       ) : query.isError ? (
         <PageError message="The clients did not load." onRetry={() => query.refetch()} back={{ to: '/', label: 'Home' }} />
-      ) : !query.data ? (
+      ) : !clients ? (
         <Skeleton className="h-40 w-full" />
-      ) : query.data.length === 0 ? (
+      ) : clients.length === 0 ? (
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          No clients yet. Add one here, or set a project's client and contract from Planning › Project start.
+          {projectId ? 'No client is set for this project yet. Add one here,' : 'No clients yet. Add one here,'} or set a project's client and contract from Planning › Project start.
         </p>
       ) : (
         <ul className="divide-y rounded-lg border">
-          {query.data.map((c) => {
+          {clients.map((c) => {
             const total = c.projects?.reduce((s, p) => s + Number(p.contract_value || 0), 0) ?? 0
             return (
               <li key={c.id} className="flex flex-wrap items-start justify-between gap-3 p-3">
