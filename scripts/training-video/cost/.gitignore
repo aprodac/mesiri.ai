@@ -1,0 +1,6 @@
+# Local only: demo login tokens, the voice key, build output and the video itself.
+*.token
+.sarvam_key
+build/
+*.mp4
+*.wav
