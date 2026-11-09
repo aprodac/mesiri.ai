@@ -798,6 +798,24 @@ Why: 33% of v3 material save calls refused (31 Oct - 7 Nov); TMT and M-sand aske
 | UX-12 | **Project hub** (plan §4c): the project page summarises every module for that project and opens each scoped to it; setup in a tab | M | Must | UX-05 | todo | — | |
 | UX-10 | **Screenshot check for every built page** (390 / 1440 px, light / dark, stubbed API; fails on blank page or console error), run before each UX push | S | Must | — | todo | — | Build first, with UX-01 |
 
+## TSK — Tasks: who does what, by when ([plan](tasks-plan.md), 9 Nov 2026)
+
+Module 05 of the Capability Framework, the only Phase 1 module with nothing built ([gap analysis](capability-framework-gap-analysis.md)). **Its own module** (`tasks` switch, on by default, own sidebar group, `/tasks`), asked by Adarsh 9 Nov (D-T1); the module catalogue is a shared component, so the report names it for Alan, as CC-17 did. D-T2..D-T6 in the plan are recommendations, not yet confirmed.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TSK-01 | **Tasks module and API:** `tasks` in the module catalogue (on by default, switched on where a list is stored, mounted in backend, production and agent apps); tables `tasks`, `task_events` (0533, additive, RLS); `domains/tasks`: list, summary, create (site / place / person by id or in words), get, patch, status moves, comments with photo; unit + contract tests | M | Must | — | doing | Claude (session 9 Nov, Adarsh) | `require_module("tasks")`; shared component (module catalogue): named in the report for Alan |
+| TSK-02 | **Tasks module on the web:** own sidebar group (`module: 'tasks'`), `/tasks` (Mine / All / Overdue / Done), quick add, task panel with history, status buttons, photo; `RequireModule` guard; `/planning/tasks` → `/tasks` | M | Must | TSK-01, UX-05 | todo | — | |
+| TSK-03 | **Links:** "Make a task" from an Issue and a schedule activity; place; BOQ line with progress read from site work (never typed) | M | Must | TSK-01, TSK-02 | todo | — | Closing a task never records work (D-T4) |
+| TSK-04 | **Tasks on WhatsApp (v3):** `tasks`, `give_task`, `task_status`, `task_comment` in `ALLOWED`; SOP section (task vs work report vs issue); assistant tests | S | Must | TSK-01 | todo | — | |
+| TSK-05 | **Morning card and overdue note** on WhatsApp (`tasks_morning`, `tasks_overdue`), once a day, none when empty | S | Must | TSK-01 | todo | — | |
+| TSK-06 | **Sidebar counts and Today card** (my open, overdue) | S | Should | TSK-02 | todo | — | |
+| TSK-07 | **Walkthrough for the team:** what to tell site, with the WhatsApp sentences | S | Should | TSK-02..05 | todo | — | |
+| TSK-08 | Subtasks and recurring tasks | M | Later | TSK-01 | todo | — | |
+| TSK-09 | Checklist templates on a task (base for Quality, module 16) | M | Later | TSK-01 | todo | — | |
+| TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | todo | — | |
+| TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | todo | — | |
+
 ## Done log
 
 | Date | ID / work | Commit |
