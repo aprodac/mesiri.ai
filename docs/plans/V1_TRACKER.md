@@ -836,7 +836,7 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 | CV-13 | **Office side:** preview as client, client's phone per link (`wa.me/<phone>`), opens per tab | S | Should | CV-03 | todo | — | |
 | TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
-| TSK-12 | **Photo on a task from the web:** attach a photo when closing a task or in a comment (upload, like an expense bill: a photo or PDF, kept in object storage, shown in the history) | S | Should | TSK-02 | todo | — | Needed now that Tasks is web only: photos were to come from WhatsApp (TSK-04, deferred) |
+| TSK-12 | **Photo on a task from the web:** attach a photo when closing a task or in a comment (upload, like an expense bill: a photo or PDF, kept in object storage, shown in the history) | S | Should | TSK-02 | done | Claude (f5b1eff3) | Needed now that Tasks is web only: photos were to come from WhatsApp (TSK-04, deferred) |
 
 ## SCP — What the pages show: company, project, site (asked 9 Nov 2026, approved by Ilan in session)
 
