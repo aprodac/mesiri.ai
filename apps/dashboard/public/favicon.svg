@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Mesiri</title>
+  <rect width="64" height="64" rx="14" fill="#1a1d21"/>
+  <path d="M14 47V17h8.5L32 31.5 41.5 17H50v30h-8V30.5l-10 14.5-10-14.5V47z" fill="#facc15"/>
+  <path d="M0 55h64v9H0z" fill="#facc15" clip-path="inset(0 round 0 0 14 14)"/>
+  <path d="M8 55l-6 9h6l6-9zM24 55l-6 9h6l6-9zM40 55l-6 9h6l6-9zM56 55l-6 9h6l6-9z" fill="#1a1d21"/>
+</svg>

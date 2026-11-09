@@ -3,10 +3,9 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Mesiri V1 look (tracker WEB-01; ground made plain white in WEB-25,
-   see docs/DESIGN.md): a white ground with neutral greys, near-black ink, one site-orange accent kept for
-   primary actions and attention, and dedicated status tokens for the
-   confirmed / draft / info / AI states the DPR screens are built from.
+/* The Mesiri brand (UX-01, docs/DESIGN.md "Brand"): a white ground with one neutral grey, near-black ink,
+   site yellow (#facc15, hazard tape) for the one primary action per page and the brand marks, a charcoal
+   sidebar, and dedicated status tokens for the confirmed / draft / info / AI states.
    Every shadcn component reads these, so this block IS the theme. */
 :root {
   --radius: 0.625rem;
@@ -67,8 +66,7 @@
   --card-foreground: #ecebe7;
   --popover: #1c1e22;
   --popover-foreground: #ecebe7;
-  /* Lighter orange with dark text: white on the light-theme orange would
-     fall under 4.5:1 against this ground's button sizes. */
+  /* Site yellow keeps dark text in both themes (white on yellow is under 4.5:1). */
   --primary: #facc15;
   --primary-foreground: #1a1d21;
   --primary-ink: #fde047;
@@ -165,6 +163,91 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* One grey, one green, one red (UX-01). Pages used four grey families (slate, stone, zinc, gray) next to
+   neutral, green next to emerald, rose next to red, purple next to violet: the same meaning in two shades
+   that sit side by side. Aliased here so every page gets one family per meaning without touching its
+   classes; categorical colours (teal, sky, violet, fuchsia, cyan: cost centres, supplier kinds, request
+   states) stay distinct. Remove a line to bring a family back. */
+@theme inline {
+  --color-slate-50: var(--color-neutral-50);
+  --color-slate-100: var(--color-neutral-100);
+  --color-slate-200: var(--color-neutral-200);
+  --color-slate-300: var(--color-neutral-300);
+  --color-slate-400: var(--color-neutral-400);
+  --color-slate-500: var(--color-neutral-500);
+  --color-slate-600: var(--color-neutral-600);
+  --color-slate-700: var(--color-neutral-700);
+  --color-slate-800: var(--color-neutral-800);
+  --color-slate-900: var(--color-neutral-900);
+  --color-slate-950: var(--color-neutral-950);
+  --color-stone-50: var(--color-neutral-50);
+  --color-stone-100: var(--color-neutral-100);
+  --color-stone-200: var(--color-neutral-200);
+  --color-stone-300: var(--color-neutral-300);
+  --color-stone-400: var(--color-neutral-400);
+  --color-stone-500: var(--color-neutral-500);
+  --color-stone-600: var(--color-neutral-600);
+  --color-stone-700: var(--color-neutral-700);
+  --color-stone-800: var(--color-neutral-800);
+  --color-stone-900: var(--color-neutral-900);
+  --color-stone-950: var(--color-neutral-950);
+  --color-zinc-50: var(--color-neutral-50);
+  --color-zinc-100: var(--color-neutral-100);
+  --color-zinc-200: var(--color-neutral-200);
+  --color-zinc-300: var(--color-neutral-300);
+  --color-zinc-400: var(--color-neutral-400);
+  --color-zinc-500: var(--color-neutral-500);
+  --color-zinc-600: var(--color-neutral-600);
+  --color-zinc-700: var(--color-neutral-700);
+  --color-zinc-800: var(--color-neutral-800);
+  --color-zinc-900: var(--color-neutral-900);
+  --color-zinc-950: var(--color-neutral-950);
+  --color-gray-50: var(--color-neutral-50);
+  --color-gray-100: var(--color-neutral-100);
+  --color-gray-200: var(--color-neutral-200);
+  --color-gray-300: var(--color-neutral-300);
+  --color-gray-400: var(--color-neutral-400);
+  --color-gray-500: var(--color-neutral-500);
+  --color-gray-600: var(--color-neutral-600);
+  --color-gray-700: var(--color-neutral-700);
+  --color-gray-800: var(--color-neutral-800);
+  --color-gray-900: var(--color-neutral-900);
+  --color-gray-950: var(--color-neutral-950);
+  --color-green-50: var(--color-emerald-50);
+  --color-green-100: var(--color-emerald-100);
+  --color-green-200: var(--color-emerald-200);
+  --color-green-300: var(--color-emerald-300);
+  --color-green-400: var(--color-emerald-400);
+  --color-green-500: var(--color-emerald-500);
+  --color-green-600: var(--color-emerald-600);
+  --color-green-700: var(--color-emerald-700);
+  --color-green-800: var(--color-emerald-800);
+  --color-green-900: var(--color-emerald-900);
+  --color-green-950: var(--color-emerald-950);
+  --color-rose-50: var(--color-red-50);
+  --color-rose-100: var(--color-red-100);
+  --color-rose-200: var(--color-red-200);
+  --color-rose-300: var(--color-red-300);
+  --color-rose-400: var(--color-red-400);
+  --color-rose-500: var(--color-red-500);
+  --color-rose-600: var(--color-red-600);
+  --color-rose-700: var(--color-red-700);
+  --color-rose-800: var(--color-red-800);
+  --color-rose-900: var(--color-red-900);
+  --color-rose-950: var(--color-red-950);
+  --color-purple-50: var(--color-violet-50);
+  --color-purple-100: var(--color-violet-100);
+  --color-purple-200: var(--color-violet-200);
+  --color-purple-300: var(--color-violet-300);
+  --color-purple-400: var(--color-violet-400);
+  --color-purple-500: var(--color-violet-500);
+  --color-purple-600: var(--color-violet-600);
+  --color-purple-700: var(--color-violet-700);
+  --color-purple-800: var(--color-violet-800);
+  --color-purple-900: var(--color-violet-900);
+  --color-purple-950: var(--color-violet-950);
 }
 
 @layer base {
