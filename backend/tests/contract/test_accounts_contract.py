@@ -204,6 +204,12 @@ async def test_a_month_of_records_posts_balanced_books_that_agree_with_every_mod
         assert {ln["project"] for ln in bill["lines"]} == {"Villa"} and {ln["site"] for ln in bill["lines"]} == {"Block A"}
         paid = [e for e in book["entries"] if e["source"].get("expense_id") == str(ids["bill"])]
         assert len(paid) == 1 and paid[0]["voucher_type"] == "payment"
+        # Numbered in date order within each kind of voucher, as a book is read.
+        for kind in {e["voucher_type"] for e in book["entries"]}:
+            mine = [e for e in book["entries"] if e["voucher_type"] == kind]
+            assert [e["number"] for e in sorted(mine, key=lambda e: (e["date"], e["number"]))] == sorted(e["number"] for e in mine)
+        receipt = next(e for e in book["entries"] if e["voucher_type"] == "receipt" and "RA-01" in (e["narration"] or ""))
+        assert receipt["narration"].count("RA-01") == 1  # said once, not twice
         found = (await client.get(f"/accounts/day-book?date_from={ids['month']}&q=Malabar", headers=h)).json()
         assert found["count"] == 3  # the bill, the payment, the on-account payment
 
@@ -281,6 +287,14 @@ async def test_the_chart_is_seeded_editable_and_kept_to_its_company(client, test
         assert r.status_code == 200 and r.json()["name"] == "Contract receipts"
         assert (await client.post("/accounts/groups", headers=h,
                                   json={"name": "office", "parent_id": indirect["id"]})).status_code == 409
+
+        # Money that came in for a receipt no longer there (its project was deleted) stays a client's, never capital.
+        await _run(test_engine, "INSERT INTO money_transactions (id, organization_id, transaction_type, to_account_id, amount, "
+                   "source_type, source_id, occurred_date, created_by) VALUES (gen_random_uuid(), :o, 'fund_received', :a, 900, "
+                   "'client_receipt', gen_random_uuid(), :d, :u)", o=ids["org"], a=ids["bank"], d=ids["day"], u=ids["admin_id"])
+        tb = (await client.get(f"/accounts/trial-balance?date_from={ids['month']}", headers=h)).json()
+        assert next(r for r in tb["rows"] if r["code"] == "no_client")["closing"] == "-900.00"
+        assert next(r for r in tb["rows"] if r["code"] == "funds_introduced")["closing"] == "-20000.00"  # only the real one
 
         # Who: a project manager and a site engineer never see the books; another company never sees a ledger.
         _, pm = await _user(test_engine, ids["org"], "PROJECT_MANAGER")

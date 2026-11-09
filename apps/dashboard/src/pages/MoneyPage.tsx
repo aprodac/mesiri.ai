@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { BooksLink } from '@/components/accounts/books'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeftRight, CheckCircle2, ChevronRight, Download, Filter, HandCoins, Landmark, MoreHorizontal, PiggyBank, Plus, TriangleAlert, Undo2, Wallet } from 'lucide-react'
@@ -219,6 +220,8 @@ export default function MoneyPage() {
           <h1 className="text-2xl leading-tight font-semibold tracking-tight">Money</h1>
         </div>
       </div>
+      <div className="flex items-center gap-2">
+        <BooksLink to="/accounts/ledgers?kind=money" label="Bank & cash books" className="hidden sm:inline-flex" />
       {canMove && (
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2" disabled={active.length < 2} onClick={() => setDialog('transfer')}>
@@ -231,6 +234,7 @@ export default function MoneyPage() {
           )}
         </div>
       )}
+      </div>
     </header>
   )
   const switcher = (

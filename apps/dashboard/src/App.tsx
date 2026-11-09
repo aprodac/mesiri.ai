@@ -34,6 +34,12 @@ import CostVariancePage from '@/pages/CostVariancePage'
 import CostHomePage from '@/pages/CostHomePage'
 import CostMaterialsPage from '@/pages/CostMaterialsPage'
 import TallyExportPage from '@/pages/TallyExportPage'
+import TrialBalancePage from '@/pages/accounts/TrialBalancePage'
+import DayBookPage from '@/pages/accounts/DayBookPage'
+import LedgersPage from '@/pages/accounts/LedgersPage'
+import LedgerStatementPage from '@/pages/accounts/LedgerStatementPage'
+import ChartOfAccountsPage from '@/pages/accounts/ChartOfAccountsPage'
+import PeriodsPage from '@/pages/accounts/PeriodsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
@@ -93,6 +99,7 @@ const lab = (page: React.ReactNode) => <RequireModule module="labour">{page}</Re
 const mat = (page: React.ReactNode) => <RequireModule module="materials">{page}</RequireModule>
 const eqp = (page: React.ReactNode) => <RequireModule module="equipment">{page}</RequireModule>
 const cst = (page: React.ReactNode) => <RequireModule module="cost">{page}</RequireModule>
+const acc = (page: React.ReactNode) => <RequireModule module="accounts">{page}</RequireModule>
 
 export default function App() {
   return (
@@ -199,6 +206,13 @@ export default function App() {
           <Route path="finance/money" element={fin(<MoneyPage />)} />
           <Route path="finance/vendors" element={fin(<VendorsPage />)} />
           <Route path="accounts/tally" element={fin(<TallyExportPage />)} />
+          <Route path="accounts" element={<Navigate to="/accounts/trial-balance" replace />} />
+          <Route path="accounts/trial-balance" element={acc(<TrialBalancePage />)} />
+          <Route path="accounts/day-book" element={acc(<DayBookPage />)} />
+          <Route path="accounts/ledgers" element={acc(<LedgersPage />)} />
+          <Route path="accounts/ledgers/:id" element={acc(<LedgerStatementPage />)} />
+          <Route path="accounts/chart" element={acc(<ChartOfAccountsPage />)} />
+          <Route path="accounts/periods" element={acc(<PeriodsPage />)} />
           <Route path="accounts/receivables" element={fin(<ReceivablesPage />)} />
           <Route path="finance/vendors/:id" element={fin(<VendorPage />)} />
           <Route path="finance/settings" element={fin(<FinanceSettingsPage />)} />

@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { HandCoins, Landmark, ReceiptText, Undo2 } from 'lucide-react'
+import { BooksLink } from '@/components/accounts/books'
 import { ReceiveMoneyDialog } from '@/components/billing/receive-money-dialog'
 import { DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
@@ -63,9 +64,12 @@ export default function ReceivablesPage() {
         title="Receivables"
         date="What clients owe"
         action={
-          <Button size="sm" className="gap-1.5" onClick={() => setDialog({ open: true, bill: null })}>
-            <HandCoins className="size-4" /> Money received
-          </Button>
+          <div className="flex items-center gap-2">
+            <BooksLink to="/accounts/ledgers?kind=client" label="Client ledgers" className="hidden sm:inline-flex" />
+            <Button size="sm" className="gap-1.5" onClick={() => setDialog({ open: true, bill: null })}>
+              <HandCoins className="size-4" /> Money received
+            </Button>
+          </div>
         }
       />
       {owed.isLoading || !d ? (

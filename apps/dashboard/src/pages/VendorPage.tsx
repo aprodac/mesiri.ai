@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
+import { BooksLink } from '@/components/accounts/books'
 import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
@@ -189,6 +190,7 @@ export default function VendorPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 print:hidden">
+            <BooksLink to={`/accounts/ledgers?link=vendor:${v.id}`} label="Ledger" className="hidden sm:inline-flex" />
             {canManage && (
               <Button className="gap-1.5 font-semibold" onClick={() => setPaying([])}>
                 <HandCoins className="size-4" /> Pay

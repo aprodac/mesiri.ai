@@ -120,8 +120,11 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
         src, sid = m.get("source_type"), _s(m.get("source_id"))
         if m["type"] == "transfer":
             return None
-        if src == "client_receipt" and sid in receipts:
-            return receipt_counter(receipts[sid])
+        if src == "client_receipt":
+            if sid in receipts:
+                return receipt_counter(receipts[sid])
+            # The receipt is gone (its project was deleted) but the money came in: still a client's, never capital.
+            return {"ledger": posting.code("no_client"), "words": "Received from a client (receipt removed)"}
         if src == "expense_payment" and sid in payments:
             p = payments[sid]
             c = payment_counter(p, p["expense_id"], m["date"])
@@ -155,8 +158,8 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
             counter = {**counter, "words": f"Payment undone · {counter['words']}"}
         if m["type"] == "reversal" and counter and m.get("source_type") == "client_receipt":
             counter = {**counter, "words": f"Receipt cancelled · {counter['words']}"}
-        if m["type"] == "reversal" and counter:
-            tx["description"] = None
+        if counter and (m["type"] == "reversal" or m.get("source_type") == "client_receipt"):
+            tx["description"] = None  # the counter's words already say it
         out[(MONEY, str(m["id"]))] = posting.money_entries(tx, counter)
 
     for b in bills:
@@ -256,9 +259,14 @@ async def sweep(conn: AsyncConnection, org: uuid.UUID) -> dict[str, int]:
             "number FROM journal_entries WHERE organization_id = :org AND source_kind <> 'manual'", org):
         existing[(r["source_kind"], str(r["source_id"]))].append(r)
     empty = posting.fingerprint([])
-    todo = [k for k in set(desired) | set(existing)
+    def first_day(k: tuple[str, str]) -> datetime.date:
+        days = [e["date"] for e in desired.get(k, [])] + [x["entry_date"] for x in existing.get(k, [])]
+        return min(days) if days else datetime.date.max
+
+    # Oldest first, so a first posting numbers the vouchers in date order (later ones follow, as in Tally).
+    todo = sorted((k for k in set(desired) | set(existing)
             if not (existing.get(k) and all(x["fingerprint"] == fps.get(k, empty) for x in existing[k]))
-            and (desired.get(k) or existing.get(k))]
+            and (desired.get(k) or existing.get(k))), key=lambda k: (first_day(k), k))
     stats = {"posted": 0, "reposted": 0, "removed": 0, "after_close": 0, "skipped": 0, "sources": len(desired)}
     if not todo:
         return stats
