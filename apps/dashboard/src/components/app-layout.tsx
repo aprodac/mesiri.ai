@@ -9,6 +9,7 @@ import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
 import { JumpBox } from '@/components/jump-box'
 import { HelpButton } from '@/components/help-button'
+import { InboxBell } from '@/components/inbox-bell'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
@@ -75,6 +76,8 @@ function TopBar() {
             )}
           </Link>
           <HelpButton />
+          {/* NXT-08: everything waiting for me, each opening its record. */}
+          <InboxBell />
           <Link
             to="/issues"
             className={cn(

@@ -11,6 +11,11 @@ export const recordUrl = {
   order: (id: string) => `/procurement/orders?tab=all&id=${id}`,
   supplier: (id: string, tab: 'account' | 'orders' = 'account') => `/finance/vendors/${id}?tab=${tab}`,
   siteDay: (projectId: string, siteId: string) => `/today?project=${projectId}&site=${siteId}`,
+  // NXT-08: the approvals inbox opens each record where it is decided.
+  siteReport: (date: string, siteId: string) => `/reports/${date}/sites/${siteId}`,
+  task: (id: string) => `/tasks?id=${id}`,
+  raBill: (id: string, projectId: string) => `/billing/ra-bills?project=${projectId}&bill=${id}`,
+  workOrderBills: (workOrderId: string) => `/subcontract/work-orders/${workOrderId}?tab=bills`,
 }
 
 /** BUY → PAY: the requests an order came from; the supplier's account (bills, payments) it goes to. */
