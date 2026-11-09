@@ -75,9 +75,12 @@ async def _site_project(conn: AsyncConnection, org: uuid.UUID, site_id: uuid.UUI
 # -- summary -----------------------------------------------------------------------------------------------------------
 
 @router.get("/pay/summary")
-async def pay_summary(auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+async def pay_summary(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                      conn: AsyncConnection = Depends(get_db_conn)):
     _money_role(auth)
-    return await store.owed_summary(conn, auth.organization_id, _scope(auth))
+    if project_id is not None:
+        _reach(auth, project_id)
+    return await store.owed_summary(conn, auth.organization_id, _scope(auth), project_id)
 
 
 # -- advances ----------------------------------------------------------------------------------------------------------

@@ -1,15 +1,14 @@
 import * as React from 'react'
 import { useSearchParams, useLocation, matchPath } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import { allowedScopes } from './permissions'
 import { fetchProjects, fetchSites } from './projects'
 import type { AppScope, ProjectItem, SiteItem } from './scope-types'
 import { Button } from '@/components/ui/button'
-import { rememberRecent } from './scope-recent'
+import { forgetStoredScope, readStartProject, readStoredScope, rememberRecent, storeScope } from './scope-recent'
 
-const SCOPE_STORAGE_KEY = 'mesiri_dashboard_scope'
 type ScopeContextType = {
   scope: AppScope
   setPortfolioScope: () => void
@@ -18,6 +17,11 @@ type ScopeContextType = {
   isPortfolioMode: boolean
   isProjectMode: boolean
   isSiteMode: boolean
+  /** SCP-05: the view before a link (WhatsApp, a notification, a record on another project) changed it; null otherwise. */
+  arrivedFrom: AppScope | null
+  /** Back to that view. */
+  goBackFromLink: () => void
+  dismissArrival: () => void
 }
 
 const ScopeContext = React.createContext<ScopeContextType | null>(null)
@@ -40,18 +44,23 @@ function isScopeAllowed(scope: AppScope, allowed: string[]): boolean {
   return allowed.includes(scope.mode)
 }
 
-function forgetStoredScope() {
-  try {
-    localStorage.removeItem(SCOPE_STORAGE_KEY)
-  } catch {
-    // storage unavailable: nothing to forget
-  }
-}
-
 export function ScopeProvider({ children }: { children: React.ReactNode }) {
   const { me } = useAuth()
+  const userId = me?.user_id
   const allowed = useAllowedScopes()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const queryClient = useQueryClient()
+  const [searchParams, setSearchParamsRaw] = useSearchParams()
+  // Every change the app makes on its own (restoring, landing a role, dropping a dead site) goes through here, so a
+  // change that did not (a link, Back) can be told apart and announced (SCP-05).
+  const internalChange = React.useRef(false)
+  const setSearchParams: typeof setSearchParamsRaw = React.useCallback(
+    (next, opts) => {
+      internalChange.current = true
+      return setSearchParamsRaw(next, opts)
+    },
+    [setSearchParamsRaw]
+  )
+  const [arrivedFrom, setArrivedFrom] = React.useState<AppScope | null>(null)
   const location = useLocation()
 
   const projectId = searchParams.get('project')
@@ -183,20 +192,22 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     const urlProject = searchParams.get('project')
     if (urlProject) {
       hasResolvedInitialScope.current = true
+      // Opened from a link that names a project: say so, with the way back to the whole company (SCP-05).
+      if (allowed.includes('portfolio')) setArrivedFrom({ mode: 'portfolio' })
       return // Scope is already explicitly set in URL
     }
 
     hasResolvedInitialScope.current = true
 
-    // 1. Try restoring from localStorage
+    // 1. This login's own last pick (a pick from another login, or from before SCP-05, is never restored)
     try {
-      const stored = localStorage.getItem(SCOPE_STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored) as AppScope
+      const parsed = readStoredScope()
+      if (parsed) {
         // A stored project that was deleted, or belongs to an account that used this browser
         // before, must not be put in the URL: it would block every page with "doesn't exist".
         const stillVisible =
           parsed.mode !== 'portfolio' && projects.some((p) => p.id === parsed.projectId)
+        if (parsed.mode === 'portfolio' && allowed.includes('portfolio')) return
         if (stillVisible && isScopeAllowed(parsed, allowed)) {
           if (parsed.mode === 'site') restoredSiteId.current = parsed.siteId
           setSearchParams(
@@ -217,23 +228,42 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       // ignore malformed scope
     }
 
-    // 2. No localStorage or disallowed, fallback based on role permissions
+    // 2. Where the role works (SCP-05): owner and finance on all projects; a site engineer on the first project
+    // where they have a site, and that site; a project manager on the project they said they mostly work on, else
+    // their first.
     if (allowed.includes('portfolio')) {
       return
     }
 
-    // For project-restricted roles, fall back to first accessible project
-    const defaultProject = projects[0]
-    if (defaultProject) {
+    const land = (projectId: string, siteId?: string) =>
       setSearchParams(
         (prev) => {
-          prev.set('project', defaultProject.id)
+          prev.set('project', projectId)
+          if (siteId) prev.set('site', siteId)
           return prev
         },
         { replace: true }
       )
+
+    if (!allowed.includes('project')) {
+      void (async () => {
+        for (const p of projects) {
+          try {
+            const own = await queryClient.fetchQuery({ queryKey: ['scope-sites', p.id], queryFn: () => fetchSites(p.id), staleTime: 60_000 })
+            if (own.length) return land(p.id, own[0].id)
+          } catch {
+            // that project's sites did not load: try the next
+          }
+        }
+        if (projects[0]) land(projects[0].id)
+      })()
+      return
     }
-  }, [me, projects, allowed, searchParams, setSearchParams, routeProjectId])
+
+    const start = readStartProject(userId)
+    const defaultProject = projects.find((p) => p.id === start) ?? projects[0]
+    if (defaultProject) land(defaultProject.id)
+  }, [me, userId, projects, allowed, searchParams, setSearchParams, routeProjectId, queryClient])
 
   // Derive scope state dynamically from the URL parameters
   const scope = React.useMemo<AppScope>(() => {
@@ -311,13 +341,25 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       (scope.mode === 'project' || sites.some((s) => s.id === scope.siteId)))
 
   React.useEffect(() => {
-    if (scope.mode === 'portfolio' || !validation.isValid || !scopeIsResolved) return
-    try {
-      localStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify(scope))
-    } catch {
-      // storage unavailable: the scope still works from the URL
-    }
+    // Not before the first restore has run: the empty address of a reload would overwrite the pick it is restoring.
+    if (!hasResolvedInitialScope.current || !validation.isValid || !scopeIsResolved) return
+    // All projects is stored too, so a later reload in this login does not jump to a project.
+    storeScope(scope)
   }, [scope, validation.isValid, scopeIsResolved])
+
+  // SCP-05: a change of view the app did not make (a link, Back, a notification) is announced on the page, with the
+  // way back; any pick in the top bar clears it.
+  const scopeKey = scope.mode === 'portfolio' ? 'all' : `${scope.projectId}:${scope.mode === 'site' ? scope.siteId : ''}`
+  const lastScope = React.useRef<{ key: string; scope: AppScope } | null>(null)
+  React.useEffect(() => {
+    if (!scopeIsResolved) return
+    const prev = lastScope.current
+    lastScope.current = { key: scopeKey, scope }
+    // Same view, new data (projects or sites reloaded): keep the mark for a change still on its way.
+    if (prev?.key === scopeKey) return
+    if (prev) setArrivedFrom(internalChange.current ? null : prev.scope)
+    internalChange.current = false
+  }, [scopeKey, scope, scopeIsResolved])
 
   // A site that came from storage and no longer exists: drop it, stay on the project.
   React.useEffect(() => {
@@ -355,6 +397,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   }, [siteOnly, projectId, siteId, sites, isSitesLoading, isSitesFetching, setSearchParams])
 
   const setPortfolioScope = () => {
+    setArrivedFrom(null)
     setSearchParams((prev) => {
       prev.delete('project')
       prev.delete('site')
@@ -363,7 +406,8 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   }
 
   const setProjectScope = (project: ProjectItem) => {
-    rememberRecent({ projectId: project.id })
+    rememberRecent(userId, { projectId: project.id })
+    setArrivedFrom(null)
     setSearchParams((prev) => {
       prev.set('project', project.id)
       prev.delete('site')
@@ -372,7 +416,8 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   }
 
   const setSiteScope = (project: ProjectItem, site: SiteItem) => {
-    rememberRecent({ projectId: project.id, siteId: site.id })
+    rememberRecent(userId, { projectId: project.id, siteId: site.id })
+    setArrivedFrom(null)
     setSearchParams((prev) => {
       prev.set('project', project.id)
       prev.set('site', site.id)
@@ -460,6 +505,20 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
         isPortfolioMode: scope.mode === 'portfolio',
         isProjectMode: scope.mode === 'project',
         isSiteMode: scope.mode === 'site',
+        arrivedFrom,
+        goBackFromLink: () => {
+          const from = arrivedFrom
+          setArrivedFrom(null)
+          if (!from) return
+          setSearchParams((prev) => {
+            prev.delete('project')
+            prev.delete('site')
+            if (from.mode !== 'portfolio') prev.set('project', from.projectId)
+            if (from.mode === 'site') prev.set('site', from.siteId)
+            return prev
+          })
+        },
+        dismissArrival: () => setArrivedFrom(null),
       }}
     >
       {children}

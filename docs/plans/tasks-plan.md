@@ -8,8 +8,9 @@ TSK-04 (WhatsApp tools) and TSK-05 (WhatsApp morning card and overdue note) are 
 that build on them. TSK-12 built 9 Nov: a photo or PDF from the web, with a comment or by "Done with photo" (the expense-bill
 rule: shrunk in the page, 700 KB, checked against its bytes, kept under `org/{org}/tasks/{task}/`). TSK-06 built 9 Nov: sidebar counts (My tasks: mine open,
 orange; Overdue: late, red; the closed drawer shows the red one first) and a My tasks card on Today (mine, late first,
-and how many are late for others), both from `GET /tasks/summary`, which now takes the picked project. Left for the
-web: TSK-07 (walkthrough). Sections 7 and 8 below describe the deferred WhatsApp work and stay as the design for when it comes. **Tasks is its own module** (`tasks` switch, own sidebar group, own
+and how many are late for others), both from `GET /tasks/summary`, which now takes the picked project. TSK-07 built 9 Nov:
+[the walkthrough](../training/tasks/tasks-walkthrough.md) (web only, real screenshots). Every web item is built;
+what remains is the deferred WhatsApp work and the Later items (TSK-08..11). Sections 7 and 8 below describe the deferred WhatsApp work and stay as the design for when it comes. **Tasks is its own module** (`tasks` switch, own sidebar group, own
 routes under `/tasks`), asked in session by Adarsh on 9 Nov ("want new module proper"), the same way Cost control
 became one (CC-17). Tracker section **TSK** in [V1_TRACKER.md](V1_TRACKER.md).
 **Why now:** module 05 "Task & Work Management" is the only module in Phase 1 of the Capability Framework with
@@ -194,8 +195,9 @@ Languages: the three the other alerts use (`alerts.words`).
 
 - `src/lib/tasks.ts`: types, query hooks, mutations (the same shape as `lib/schedule.ts`).
 - Built on the page kit in `components/page/` (UX-05: PageHeader, FilterBar, ListDetail, EmptyState) and placed
-  in its own sidebar group (placed by the UX-04 story order, next to Planning), so it matches the pages being
-  moved onto the kit.
+  in its own sidebar section, TASKS, with its pages as rows (`flat` group in `lib/module-map.ts`), first after the
+  daily pages for everyone but finance (Adarsh, 9 Nov: "own sidebar section"), so it matches the pages being moved
+  onto the kit.
 - **The module on the web:** `tasks` in `lib/modules.ts` (`ModuleKey`, `MODULE_NAMES`: "Tasks"); a `tsk()` guard
   in `App.tsx` (`RequireModule module="tasks"`, like `cst()`); its own **Tasks** group in `lib/module-map.ts` with
   `module: 'tasks'`, hidden when the module is off. `/planning/tasks` redirects to `/tasks` and the Planning

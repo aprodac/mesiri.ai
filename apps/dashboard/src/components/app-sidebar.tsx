@@ -20,7 +20,7 @@ import {
   Search,
   Settings as SettingsIcon,
 } from 'lucide-react'
-import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Sidebar,
   SidebarContent,
@@ -61,6 +61,10 @@ type NavItem = {
   module?: ModuleKey
   // Which live count to show as a badge (WEB-20).
   badge?: 'drafts' | 'issues'
+  // A page's own live count (TSK-06), as on a drawer's page.
+  count?: SubCount
+  // Lit only on its own view (?view=), as a drawer's page is: a section's flat rows (Tasks).
+  exact?: boolean
   // Small text at the row's end, e.g. "3/6" on Finish setup (SS-19).
   note?: string
   // A planned page (WEB-72), shown only with the preview on.
@@ -473,6 +477,13 @@ export function AppSidebar() {
     for (const group of MODULE_GROUPS.filter((g) => g.section === section && isModuleEnabled(g.module))) {
       const category = toCategory(group)
       if (category.items.length === 0) continue
+      if (group.flat) {
+        // Its own section (Tasks): each page is a row, with its icon and its count.
+        for (const p of category.items) {
+          entries.push({ kind: 'link', item: { title: p.title, url: p.url, icon: PAGE_ICONS[p.url] ?? group.icon, soon: p.soon, count: p.count, exact: true } })
+        }
+        continue
+      }
       if (category.items.length === 1) {
         const only = category.items[0]
         entries.push({ kind: 'link', item: { title: group.key === 'labour' ? only.title : group.title, url: only.url, icon: group.icon, soon: only.soon } })
@@ -498,15 +509,16 @@ export function AppSidebar() {
 
   const renderLink = (item: NavItem) => {
     const ItemIcon = item.icon
-    const active = checkIsItemActive(location.pathname, item.url)
-    const count = item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : 0
-    // A plain string className, not NavLink's function form: SidebarMenuButton
-    // (asChild -> Radix Slot) merges className as text, which silently drops
-    // a function, so the active state never rendered.
+    const active = item.exact ? isSubItemActive(location.pathname, location.search, item.url) : checkIsItemActive(location.pathname, item.url)
+    const tone = item.count?.tone ?? item.badge
+    const count = item.count ? item.count.n : item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : 0
+    // A plain string className: SidebarMenuButton (asChild -> Radix Slot) merges className as text, which silently
+    // drops a function, so the active state never rendered. A Link, not a NavLink: NavLink sets aria-current from
+    // the path alone, so every ?view= of a page (the Tasks rows, Automations under /whatsapp) was "current".
     return (
       <SidebarMenuItem key={item.title}>
         <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
-          <NavLink
+          <Link
             to={getUrlWithScope(item.url)}
             aria-current={active ? 'page' : undefined}
             className={cn(NAV_LINK_BASE, S.ring, active ? S.rowActive : S.rowIdle, 'data-[active=true]:font-semibold')}
@@ -516,7 +528,7 @@ export function AppSidebar() {
               {count > 0 && (
                 <span
                   aria-hidden
-                  className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[item.badge!])}
+                  className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[tone!])}
                 />
               )}
             </span>
@@ -529,14 +541,14 @@ export function AppSidebar() {
               <span
                 className={cn(
                   'ml-auto min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums group-data-[collapsible=icon]:hidden',
-                  BADGE[item.badge!],
+                  BADGE[tone!],
                 )}
-                title={item.badge === 'drafts' ? `${count} items to confirm today` : `${count} open issues`}
+                title={item.count ? `${count} ${item.count.label}` : item.badge === 'drafts' ? `${count} items to confirm today` : `${count} open issues`}
               >
                 {count > 99 ? '99+' : count}
               </span>
             )}
-          </NavLink>
+          </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
     )

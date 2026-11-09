@@ -380,17 +380,20 @@ async def payments(conn: AsyncConnection, row_ids: list) -> list[dict[str, Any]]
         {"ids": row_ids})
 
 
-async def owed_summary(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None) -> dict[str, Any]:
-    """For Home and the project hub: wages approved and not paid, drafts waiting, advances outstanding."""
-    scope = " AND w.project_id = ANY(:projects)" if project_ids is not None else ""
-    params: dict[str, Any] = {"org": org, **({"projects": list(project_ids)} if project_ids is not None else {})}
+async def owed_summary(conn: AsyncConnection, org: uuid.UUID, project_ids: set | None,
+                       project_id: uuid.UUID | None = None) -> dict[str, Any]:
+    """For Home and the project hub: wages approved and not paid, drafts waiting, advances outstanding; for one project
+    when ``project_id`` is given (SCP-06: the Home tile follows the project picked)."""
+    scope = (" AND w.project_id = ANY(:projects)" if project_ids is not None else "") + (" AND w.project_id = :p" if project_id else "")
+    params: dict[str, Any] = {"org": org, **({"projects": list(project_ids)} if project_ids is not None else {}),
+                              **({"p": project_id} if project_id else {})}
     row = (await conn.execute(text(
         "SELECT COALESCE(SUM(CASE WHEN w.status = 'approved' THEN GREATEST(r.net - r.paid, 0) END), 0) AS due, "
         "COUNT(DISTINCT CASE WHEN w.status = 'approved' AND r.net > r.paid THEN r.id END) AS due_rows, "
         "COUNT(DISTINCT CASE WHEN w.status = 'draft' AND r.net > 0 THEN w.id END) AS drafts "
         "FROM wage_sheets w JOIN wage_sheet_rows r ON r.sheet_id = w.id WHERE w.organization_id = :org" + scope),
         params)).mappings().one()
-    balances = await advance_balances(conn, org, project_ids=project_ids)
+    balances = await advance_balances(conn, org, project_id=project_id, project_ids=project_ids)
     out = sum((v for v in balances.values() if v > 0), Decimal(0))
     return {"due": pay.money(row["due"]), "due_rows": int(row["due_rows"] or 0), "drafts": int(row["drafts"] or 0),
             "advances_outstanding": pay.money(out), "advance_payees": sum(1 for v in balances.values() if v > 0)}

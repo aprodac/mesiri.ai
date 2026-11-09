@@ -6,7 +6,7 @@ import { useModuleEnabled } from '@/lib/modules'
 import { fetchTaskSummary, type TaskSummary } from '@/lib/tasks'
 
 /** Today's numbers for the sidebar and top bar badges (WEB-20): drafts still
- * to confirm and open issues, in the current scope. Same query key as the
+ * to confirm and open issues, in the current scope (project or site). Same query key as the
  * Today page, so on that page it costs no extra request. */
 export function useNavCounts(): { drafts: number; openIssues: number } {
   const { scope } = useScope()
@@ -18,7 +18,8 @@ export function useNavCounts(): { drafts: number; openIssues: number } {
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
-  const items = data?.items ?? []
+  // SCP-06: with a site picked, that site's counts (the request is per project).
+  const items = (data?.items ?? []).filter((s) => scope.mode !== 'site' || s.site_id === scope.siteId)
   return {
     drafts: items.reduce((n, s) => n + (s.drafts ?? 0), 0),
     openIssues: items.reduce((n, s) => n + s.open_issues, 0),

@@ -811,7 +811,7 @@ Why: 33% of v3 material save calls refused (31 Oct - 7 Nov); TMT and M-sand aske
 | TSK-04 | **Tasks on WhatsApp (v3):** `tasks`, `give_task`, `task_status`, `task_comment` in `ALLOWED`; SOP section (task vs work report vs issue); assistant tests | S | Must | TSK-01 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-05 | **Morning card and overdue note** on WhatsApp (`tasks_morning`, `tasks_overdue`), once a day, none when empty | S | Must | TSK-01 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-06 | **Sidebar counts and Today card** (my open, overdue) | S | Should | TSK-02 | done | Claude (b971de29) | |
-| TSK-07 | **Walkthrough for the team:** what to tell site, with the WhatsApp sentences | S | Should | TSK-02..05 | todo | — | |
+| TSK-07 | **Walkthrough for the team:** what to tell site (web only now; the WhatsApp sentences come with TSK-04) | S | Should | TSK-02..05 | done | Claude (0b08466e) | |
 | TSK-08 | Subtasks and recurring tasks | M | Later | TSK-01 | todo | — | |
 | TSK-09 | Checklist templates on a task (base for Quality, module 16) | M | Later | TSK-01 | todo | — | |
 
@@ -837,6 +837,7 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 | TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | deferred | — | **Not now: Tasks is web only** (Adarsh, 9 Nov: "now only want to be web, dont need in whatsapp"). |
 | TSK-12 | **Photo on a task from the web:** attach a photo when closing a task or in a comment (upload, like an expense bill: a photo or PDF, kept in object storage, shown in the history) | S | Should | TSK-02 | done | Claude (f5b1eff3) | Needed now that Tasks is web only: photos were to come from WhatsApp (TSK-04, deferred) |
+| TSK-13 | **Tasks as its own sidebar section** (TASKS, pages as rows, counts on them), not a drawer under SITE | S | Should | TSK-06 | done | Claude (92e2eb81) | Adarsh, 9 Nov: "own sidebar section". Also fixed aria-current on sidebar rows with ?view= |
 
 ## SCP — What the pages show: company, project, site (asked 9 Nov 2026, approved by Ilan in session)
 
@@ -846,7 +847,10 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 | SCP-02 | **Each page says what it shows:** a line above the page (only this site / all of the project, doesn't split by site / company-wide) from one table of route levels | S | Must | SCP-01 | done | Claude (session 9 Nov) | `components/scope-note.tsx`, `lib/scope-levels.ts` |
 | SCP-03 | **Pages that ignored the pick follow it:** Today and Daily reports narrow to the site; Clients, Cost control overview, Subcontractors and Bills & checks narrow to the project/site (`/subcontracts/bills/waiting` now returns `project_id`, `site_id`) | S | Must | SCP-02 | done | Claude (session 9 Nov) | Still company-wide and labelled so: Receivables (client money on account is not per project), Finance reports (server report is company-only), Balance sheet, Ledgers, GST, TDS |
 | SCP-04 | **Roles land where they work:** a site engineer is put on their site, not the whole project; the switcher shows when there is more than one choice (a site engineer with two sites gets one), not when a role has more than one level | S | Must | SCP-01 | done | Claude (session 9 Nov) | `lib/ScopeContext.tsx` |
-| SCP-05 | Receivables and Finance reports per project (server: filter open bills, receipts and the statement by project) | S | Should | SCP-03 | todo | — | Then move their rows in `lib/scope-levels.ts` to `project` |
+| SCP-05 | **Login and links:** the pick is kept for one login only (a new login starts where the role works: owner/finance all projects, a site engineer on the first project where they have a site, a project manager on the project they said they mostly work on, asked once when they have more than one); a link or Back that changes the view says so with the way back; recent picks per person | M | Must | SCP-01 | done | Claude (session 9 Nov) | `lib/scope-recent.ts`, `lib/ScopeContext.tsx`, `components/start-project-dialog.tsx`, `components/scope-note.tsx`. A pick stored before this is ignored once (everyone starts at their role's level after the deploy) |
+| SCP-06 | **Today's tiles and the badge follow the pick:** a tile that cannot narrow says "Company" or "Whole project"; Clients owe you and cost tiles narrow to the project; wages summary takes `project_id`; the heading names the project or site; the issues badge counts the site | S | Must | SCP-02 | done | Claude (session 9 Nov) | `components/home/role-home.tsx`, `Tile tag`, `lib/nav-counts.ts`, `/labour/pay/summary?project_id=` |
+| SCP-07 | **No page without a level:** a built page of the module map with no row in `lib/scope-levels.ts` logs a console error in dev, which fails `scripts/screens.mjs` | S | Must | SCP-02 | done | Claude (session 9 Nov) | `components/scope-note.tsx` |
+| SCP-08 | Receivables and Finance reports per project (server: filter open bills, receipts and the statement by project) | S | Should | SCP-03 | todo | — | Then move their rows in `lib/scope-levels.ts` to `project` |
 
 ## LW — Labour, wages and advances ([plan](wages-and-labour-plan.md), 9 Nov 2026)
 

@@ -5,6 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { fetchSiteDaysApi } from '@/lib/api'
+import { useAuth } from '@/lib/AuthContext'
 import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
 import { readRecentScopes } from '@/lib/scope-recent'
 import { SCOPE_ICON, SCOPE_TONE, useScopeTree, type Tree } from '@/lib/scope-look'
@@ -128,6 +129,7 @@ export function ScopeBar() {
 type Reporting = Map<string, { reported: boolean; workers: number }>
 
 function ScopePanel({ tree, onDone, inMenu }: { tree: Tree; onDone: () => void; inMenu: boolean }) {
+  const { me } = useAuth()
   const { scope, setPortfolioScope, setProjectScope, setSiteScope } = useScope()
   const allowed = useAllowedScopes()
   const [q, setQ] = React.useState('')
@@ -157,7 +159,7 @@ function ScopePanel({ tree, onDone, inMenu }: { tree: Tree; onDone: () => void; 
   const recent = React.useMemo(() => {
     if (needle) return []
     const cur = scope.mode === 'portfolio' ? '' : `${scope.projectId}:${scope.mode === 'site' ? scope.siteId : ''}`
-    return readRecentScopes()
+    return readRecentScopes(me?.user_id)
       .filter((r) => `${r.projectId}:${r.siteId ?? ''}` !== cur)
       .map((r) => {
         const t = tree.find((x) => x.project.id === r.projectId)
@@ -167,7 +169,7 @@ function ScopePanel({ tree, onDone, inMenu }: { tree: Tree; onDone: () => void; 
       })
       .filter((x): x is { project: ProjectItem; site: SiteItem | undefined } => !!x)
       .slice(0, 3)
-  }, [needle, scope, tree, pickProject, pickSite])
+  }, [needle, scope, tree, pickProject, pickSite, me?.user_id])
 
   const go = (fn: () => void) => () => {
     fn()

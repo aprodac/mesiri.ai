@@ -161,8 +161,11 @@ export function Tile({
   children,
   loading,
   className,
+  tag,
 }: {
   label: string
+  /** SCP-06: a figure wider than the project or site picked says so: "Company", "Whole project". */
+  tag?: string
   value?: React.ReactNode
   hint?: React.ReactNode
   to: string
@@ -182,7 +185,10 @@ export function Tile({
       )}
     >
       <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-        <span className="truncate">{label}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{label}</span>
+          {tag && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">{tag}</span>}
+        </span>
         <ArrowRight className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
       </span>
       {loading ? (

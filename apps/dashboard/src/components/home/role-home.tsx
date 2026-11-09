@@ -69,10 +69,13 @@ export function RoleHome() {
   const requests = useQuery({ queryKey: ['home', 'requests', projectId, siteId], queryFn: () => fetchRequests({ project_id: projectId, site_id: siteId }), enabled: wants.requests, ...opts })
   const orders = useQuery({ queryKey: ['home', 'orders', projectId, siteId], queryFn: () => fetchOrders({ project_id: projectId, site_id: siteId }), enabled: wants.orders, ...opts })
   const portfolio = useQuery({ queryKey: ['home', 'portfolio'], queryFn: fetchPortfolio, enabled: wants.portfolio, ...opts })
-  const wagesQ = useQuery({ queryKey: ['home', 'wages'], queryFn: fetchPaySummary, enabled: wants.wages, ...opts })
+  const wagesQ = useQuery({ queryKey: ['home', 'wages', projectId], queryFn: () => fetchPaySummary(projectId), enabled: wants.wages, ...opts })
   const machines = useQuery({ queryKey: ['home', 'machines', projectId, siteId], queryFn: () => fetchMachines({ project_id: projectId, site_id: siteId }), enabled: wants.machines, ...opts })
 
   const tiles: React.ReactNode[] = []
+  // SCP-06: a tile whose figure is wider than what is picked says so (the page line says "only this site").
+  const wider = (level: 'company' | 'project') =>
+    level === 'company' ? (scope.mode !== 'portfolio' ? 'Company' : undefined) : scope.mode === 'site' ? 'Whole project' : undefined
   const show = (q: { isError: boolean }, want: boolean) => want && !q.isError
 
   // --- the questions, in the order each role asks them -------------------------------------------------
@@ -80,25 +83,35 @@ export function RoleHome() {
     <Tile key="cash" label="Cash and bank" to="/accounts/cash-bank" loading={home.isLoading} value={home.data?.cash_bank ? short(home.data.cash_bank.total) : undefined}
       hint={home.data?.cash_bank ? `${plural(home.data.cash_bank.accounts.length, 'account')} today` : undefined} />
   )
-  const owedToUs = receivables.data
-  const old = owedToUs ? n(owedToUs.buckets['61_90']) + n(owedToUs.buckets['90_plus']) : 0
+  // With a project picked: its open bills only (money on account stays with the client, not a project).
+  const owedToUs = React.useMemo(() => {
+    const d = receivables.data
+    if (!d || !projectId) return d ? { outstanding: n(d.outstanding), old: n(d.buckets['61_90']) + n(d.buckets['90_plus']), clients: d.clients.length } : undefined
+    const bills = d.clients.flatMap((c) => c.open_bills.filter((b) => b.project_id === projectId).map((b) => ({ ...b, client: c.client })))
+    return {
+      outstanding: bills.reduce((t, b) => t + n(b.left), 0),
+      old: bills.filter((b) => b.bucket === '61_90' || b.bucket === '90_plus').reduce((t, b) => t + n(b.left), 0),
+      clients: new Set(bills.map((b) => b.client)).size,
+    }
+  }, [receivables.data, projectId])
+  const old = owedToUs?.old ?? 0
   const receivableTile = show(receivables, wants.receivables) && (
-    <Tile key="receivable" label="Clients owe you" to="/accounts/receivables" loading={receivables.isLoading} tone={old > 0 ? 'attention' : 'default'}
+    <Tile key="receivable" label="Clients owe you" tag={wider('project')} to="/accounts/receivables" loading={receivables.isLoading} tone={old > 0 ? 'attention' : 'default'}
       value={owedToUs ? short(owedToUs.outstanding) : undefined}
-      hint={owedToUs ? (old > 0 ? `${short(old)} over 60 days` : `${plural(owedToUs.clients.length, 'client')}`) : undefined} />
+      hint={owedToUs ? (old > 0 ? `${short(old)} over 60 days` : `${plural(owedToUs.clients, 'client')}`) : undefined} />
   )
   const owe = payables.data?.totals
   const payableTile = show(payables, wants.payables) && (
-    <Tile key="payable" label={role === 'FINANCE' ? 'Payments due' : 'You owe suppliers'} to="/finance/vendors" loading={payables.isLoading}
+    <Tile key="payable" label={role === 'FINANCE' ? 'Payments due' : 'You owe suppliers'} tag={wider('project')} to="/finance/vendors" loading={payables.isLoading}
       tone={owe && n(owe.overdue) > 0 ? 'bad' : 'default'} value={owe ? short(owe.payable) : undefined}
       hint={owe ? (n(owe.overdue) > 0 ? `${short(owe.overdue)} overdue` : 'Nothing overdue') : undefined} />
   )
   const unbilledTile = show(payables, wants.payables) && role === 'FINANCE' && owe && n(owe.unbilled) > 0 && (
-    <Tile key="unbilled" label="Delivered, not billed" to="/finance/vendors" tone="attention" value={short(owe.unbilled)} hint="Deliveries waiting for the supplier's bill" />
+    <Tile key="unbilled" label="Delivered, not billed" tag={wider('project')} to="/finance/vendors" tone="attention" value={short(owe.unbilled)} hint="Deliveries waiting for the supplier's bill" />
   )
   const month = home.data?.this_month
   const profitTile = show(home, wants.home) && role === 'ADMIN' && (
-    <Tile key="profit" label="Profit this month" to="/accounts/pl" loading={home.isLoading} tone={month && n(month.net_profit) < 0 ? 'bad' : 'default'}
+    <Tile key="profit" label="Profit this month" tag={wider('project')} to="/accounts/pl" loading={home.isLoading} tone={month && n(month.net_profit) < 0 ? 'bad' : 'default'}
       value={month ? short(month.net_profit) : undefined}
       hint={month ? `${short(month.income)} billed · ${short(n(month.direct) + n(month.indirect))} cost` : undefined} />
   )
@@ -111,18 +124,19 @@ export function RoleHome() {
   )
   const lastOpen = months.data?.months.filter((m) => m.status === 'open' && m.ends_on < today).at(-1)
   const closeTile = show(months, wants.months) && months.data && (
-    <Tile key="close" label="Month close" to="/accounts/periods" tone={lastOpen ? 'attention' : 'good'}
+    <Tile key="close" label="Month close" tag={wider('company')} to="/accounts/periods" tone={lastOpen ? 'attention' : 'good'}
       value={lastOpen ? `${monthName(lastOpen.starts_on)} open` : 'Up to date'} hint={lastOpen ? 'Close it once the bills are in' : 'Every past month is closed'} />
   )
-  const projectsRed = portfolio.data?.projects.filter((p) => p.colour === 'red') ?? []
-  const redLines = portfolio.data?.projects.reduce((sum, p) => sum + (p.week?.red_lines ?? 0), 0) ?? 0
-  const costTile = show(portfolio, wants.portfolio) && (portfolio.isLoading || (portfolio.data?.projects.length ?? 0) > 0) && (
+  const costRows = (portfolio.data?.projects ?? []).filter((p) => !projectId || p.project_id === projectId)
+  const projectsRed = costRows.filter((p) => p.colour === 'red')
+  const redLines = costRows.reduce((sum, p) => sum + (p.week?.red_lines ?? 0), 0) ?? 0
+  const costTile = show(portfolio, wants.portfolio) && (portfolio.isLoading || costRows.length > 0) && (
     role === 'ADMIN' ? (
-      <Tile key="cost" label="Projects over budget" to="/cost" loading={portfolio.isLoading} tone={projectsRed.length ? 'bad' : 'good'}
-        value={portfolio.data ? `${projectsRed.length} of ${portfolio.data.projects.length}` : undefined}
+      <Tile key="cost" label="Projects over budget" tag={wider('project')} to="/cost" loading={portfolio.isLoading} tone={projectsRed.length ? 'bad' : 'good'}
+        value={portfolio.data ? `${projectsRed.length} of ${costRows.length}` : undefined}
         hint={projectsRed[0] ? `Worst: ${projectsRed[0].name}` : 'All on or under budget'} />
     ) : (
-      <Tile key="red" label="Work items over budget this week" to="/cost/green-red" loading={portfolio.isLoading} tone={redLines ? 'bad' : 'good'}
+      <Tile key="red" label="Work items over budget this week" tag={wider('project')} to="/cost/green-red" loading={portfolio.isLoading} tone={redLines ? 'bad' : 'good'}
         value={portfolio.data ? String(redLines) : undefined} hint={redLines ? 'Labour above what the work earned' : 'All green or amber'} />
     )
   )
@@ -151,7 +165,7 @@ export function RoleHome() {
   )
   const w = wagesQ.data
   const wagesTile = show(wagesQ, wants.wages) && (wagesQ.isLoading || (w && (n(w.due) > 0 || w.drafts > 0 || n(w.advances_outstanding) > 0))) && (
-    <Tile key="wages" label="Wages" to="/labour/wages" loading={wagesQ.isLoading} tone={w && n(w.due) > 0 ? 'attention' : w && w.drafts ? 'info' : 'default'}
+    <Tile key="wages" label="Wages" tag={wider('project')} to="/labour/wages" loading={wagesQ.isLoading} tone={w && n(w.due) > 0 ? 'attention' : w && w.drafts ? 'info' : 'default'}
       value={w ? (n(w.due) > 0 ? `${short(w.due)} to pay` : w.drafts ? `${w.drafts} week${w.drafts > 1 ? 's' : ''} to approve` : 'Up to date') : undefined}
       hint={w ? (n(w.advances_outstanding) > 0 ? `${short(w.advances_outstanding)} advance to take back` : 'No advance outstanding') : undefined} />
   )
@@ -166,7 +180,13 @@ export function RoleHome() {
   if (tiles.length === 0) return null
 
   return (
-    <Section title={TITLES[role].title} note={TITLES[role].note}>
+    <Section
+      title={
+        // SCP-06: the heading names what is picked; "your company" over one site's figures misleads.
+        scope.mode === 'site' && role !== 'SITE_ENGINEER' ? `${scope.siteName} today` : scope.mode === 'project' && role === 'ADMIN' ? `${scope.projectName} today` : TITLES[role].title
+      }
+      note={TITLES[role].note}
+    >
       <TileGrid>{tiles}</TileGrid>
     </Section>
   )

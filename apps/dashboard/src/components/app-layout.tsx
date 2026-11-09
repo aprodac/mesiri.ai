@@ -4,6 +4,7 @@ import { AlertCircle, CalendarDays, ChevronRight, Map as MapIcon } from 'lucide-
 import { AppSidebar } from '@/components/app-sidebar'
 import { ScopeBar } from '@/components/scope-bar'
 import { ScopeNote } from '@/components/scope-note'
+import { StartProjectDialog } from '@/components/start-project-dialog'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
@@ -118,6 +119,7 @@ export function AppLayout() {
         Skip to content
       </a>
       <JumpBox />
+      <StartProjectDialog />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>

@@ -16,6 +16,7 @@ import {
   PRIORITY_LABEL,
   STATUS_LOOK,
   commentOnTask,
+  dayWords,
   dueWords,
   eventWords,
   fetchTask,
@@ -149,7 +150,7 @@ export function TaskDetail({ task: row, today, inSheet = false }: { task: Task; 
         <dd>
           {t.may.edit && !readOnly ? (
             <Input type="date" className="h-8 w-44" value={t.due_date ?? ''} onChange={(e) => change.mutate({ due_date: e.target.value || null })} />
-          ) : (t.due_date ?? 'No date')}
+          ) : (t.due_date ? dayWords(t.due_date) : 'No date')}
         </dd>
         <dt className="text-muted-foreground">Priority</dt>
         <dd>
