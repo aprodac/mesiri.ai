@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { ProjectWhy } from '@/components/home/project-why'
 import { useAuth } from '@/lib/AuthContext'
 import { useModuleEnabled } from '@/lib/modules'
 import { MONEY_ROLES } from '@/lib/module-map'
@@ -32,6 +33,8 @@ export function ProjectHub({ projectId }: { projectId: string }) {
   const waiting = requests.data?.counts.waiting ?? 0
 
   return (
+    <>
+    <ProjectWhy projectId={projectId} />
     <Section title="This project across Mesiri" note="Each opens already filtered to this project">
       <TileGrid className="xl:grid-cols-4">
         <Tile label="Plan" to={`/planning/schedule?${q}`} value="Schedule" hint="What is late and what it pushes" />
@@ -62,5 +65,6 @@ export function ProjectHub({ projectId }: { projectId: string }) {
         )}
       </TileGrid>
     </Section>
+    </>
   )
 }

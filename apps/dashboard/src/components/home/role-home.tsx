@@ -13,6 +13,7 @@ import { fetchPortfolio } from '@/lib/cost'
 import { fetchMachines } from '@/lib/equipment'
 import { fetchPaySummary } from '@/lib/labour-pay'
 import { Section, Tile, TileGrid } from '@/components/page/page-kit'
+import { ProjectBoard } from '@/components/home/project-board'
 import { localIsoDate, plural } from '@/lib/site-day'
 
 // A home for each role (UX-11, docs/plans/ui-story-plan.md section 4b). Today opens with the role's own
@@ -166,8 +167,12 @@ export function RoleHome() {
   if (tiles.length === 0) return null
 
   return (
-    <Section title={TITLES[role].title} note={TITLES[role].note}>
-      <TileGrid>{tiles}</TileGrid>
-    </Section>
+    <>
+      <Section title={TITLES[role].title} note={TITLES[role].note}>
+        <TileGrid>{tiles}</TileGrid>
+      </Section>
+      {/* GM-02: every project worst first, for the roles that run several (all projects in scope only). */}
+      {(role === 'ADMIN' || role === 'PROJECT_MANAGER') && scope.mode === 'portfolio' && <ProjectBoard withMoney={cost} />}
+    </>
   )
 }
