@@ -1,0 +1,440 @@
+1
+00:00:02,400 --> 00:00:14,773
+Welcome. This video teaches you Mesiri Accounts: what it does, the accounting behind it, and how to sell it.
+
+2
+00:00:15,123 --> 00:00:26,302
+By the end, you will be able to sit with a builder and his accountant and answer every question with confidence.
+
+3
+00:00:26,652 --> 00:00:33,223
+We will follow Anjali, the accountant of a construction company, through her day in Mesiri.
+
+4
+00:00:36,573 --> 00:00:44,253
+Today, a builder's site team records expenses on WhatsApp, in notebooks and in Excel.
+
+5
+00:00:44,603 --> 00:00:51,685
+Then an accountant types the same bills again into Tally, weeks later.
+
+6
+00:00:52,035 --> 00:01:01,251
+So the owner sees his profit only when the CA sends the quarter's figures. By then it is too late to act.
+
+7
+00:01:01,601 --> 00:01:14,572
+Mesiri Accounts removes that retyping. Every bill, payment and client receipt already in Mesiri becomes an accounting entry on its own.
+
+8
+00:01:14,922 --> 00:01:22,858
+The owner sees cash, profit and what is owed today, not next quarter. That is our promise.
+
+9
+00:01:26,208 --> 00:01:33,888
+First, a little accounting. Every rupee has two sides: where it came from, and where it went.
+
+10
+00:01:34,238 --> 00:01:41,833
+This is called double entry. One side is the debit, the other is the credit. They are always equal.
+
+11
+00:01:42,183 --> 00:01:53,020
+Example: a cement bill of ₹11,800 from Malabar Steel, with ₹1,800 GST inside it.
+
+12
+00:01:53,370 --> 00:02:09,839
+Materials gets a debit of ₹10,000. Input GST gets a debit of ₹1,800. Malabar gets a credit of ₹11,800, because we owe them.
+
+13
+00:02:10,189 --> 00:02:23,331
+Debits ₹11,800, credits ₹11,800. Equal. Mesiri checks this on every single entry, and refuses one that does not balance.
+
+14
+00:02:26,681 --> 00:02:31,033
+An easy way to remember debit and credit.
+
+15
+00:02:31,383 --> 00:02:41,025
+Debit is what the company has, or what it spent: cash in the bank, money clients owe us, cement, wages.
+
+16
+00:02:41,375 --> 00:02:56,650
+Credit is where it came from, or whom we owe: suppliers we must pay, the owner's capital, the income from bills to clients.
+
+17
+00:02:57,000 --> 00:03:12,701
+So a supplier's ledger normally shows a credit balance: that is what we owe him. A client's ledger shows a debit: that is what he owes us.
+
+18
+00:03:16,051 --> 00:03:27,657
+Each account is called a ledger. Every supplier, every client, every bank account and every expense head has its own ledger.
+
+19
+00:03:28,007 --> 00:03:38,332
+Ledgers sit in groups. Mesiri uses the same groups as Tally, so the CA feels at home.
+
+20
+00:03:38,682 --> 00:03:51,226
+Five kinds: assets, what we own. Liabilities, what we owe. Capital, the owner's money. Income. And expenses.
+
+21
+00:03:51,576 --> 00:03:59,085
+Remember these five colours. You will see them on every screen of Mesiri Accounts.
+
+22
+00:04:02,435 --> 00:04:09,433
+Now, the software. Anjali logs in as the accountant. Her role is Finance.
+
+23
+00:04:09,783 --> 00:04:26,081
+Her home screen answers the owner's four questions at once: how much cash do we have, who owes us, whom do we owe, and are we making profit.
+
+24
+00:04:26,431 --> 00:04:33,343
+Profit this month is compared with last month, with an arrow up or down.
+
+25
+00:04:33,693 --> 00:04:48,371
+The chart shows the whole financial year, April to March, month by month. Green bars are profit, red bars are loss. Tap a month for its figures.
+
+26
+00:04:48,721 --> 00:04:56,145
+On the right: each bank and cash account, the GST to pay this month, and the TDS to deposit.
+
+27
+00:04:56,495 --> 00:05:07,247
+And at the top, a list for the accountant: things that need her attention, like money received with no client set.
+
+28
+00:05:10,597 --> 00:05:18,533
+Here is the magic, and your strongest selling point. Anjali did not type any of this.
+
+29
+00:05:18,883 --> 00:05:26,477
+A site engineer sends a bill photo on WhatsApp. Mesiri reads it and records the expense.
+
+30
+00:05:26,827 --> 00:05:38,177
+The moment it is confirmed, Accounts posts a purchase entry: materials and GST debited, the supplier credited.
+
+31
+00:05:38,527 --> 00:05:51,753
+When finance pays the supplier, a payment entry. When the client pays an RA bill, a receipt entry. Transfers to site petty cash, a contra entry.
+
+32
+00:05:52,103 --> 00:06:02,770
+Subcontractor bills with TDS and retention, client RA bills with GST, retention and TDS, all of them, automatically.
+
+33
+00:06:03,120 --> 00:06:09,349
+If a bill is corrected later, the entry corrects itself. Nobody types anything twice.
+
+34
+00:06:12,699 --> 00:06:21,489
+The day book is every entry, day by day. Accountants call each entry a voucher.
+
+35
+00:06:21,839 --> 00:06:33,188
+Six kinds of voucher, each with its own colour and icon: purchase, payment, receipt, sales, contra and journal.
+
+36
+00:06:33,538 --> 00:06:44,973
+Each day shows the money that came in and went out. She can search a supplier, a number, or any word.
+
+37
+00:06:45,323 --> 00:06:53,003
+She opens a voucher with a tap, or with the arrow keys and Enter, like Tally.
+
+38
+00:06:53,353 --> 00:07:02,227
+Every voucher shows its debits and credits, the project and site, and a button that opens the original bill with its photo.
+
+39
+00:07:02,577 --> 00:07:10,769
+This is what makes the CA trust it: every figure traces back to the record it came from.
+
+40
+00:07:14,119 --> 00:07:20,093
+Every ledger has its statement. Here is Malabar Steel, a supplier.
+
+41
+00:07:20,443 --> 00:07:31,963
+Each line says what it was against: 'By' for what we owe him, 'To' for what we paid. And a running balance after every line.
+
+42
+00:07:32,313 --> 00:07:38,286
+The line on top shows how the balance moved over the period.
+
+43
+00:07:38,636 --> 00:07:47,511
+The closing balance, a credit, is what we still owe Malabar. It matches the supplier page in Finance exactly.
+
+44
+00:07:47,861 --> 00:07:58,954
+Any ledger can be downloaded to Excel and sent to the supplier or the client. No more arguments over who owes what.
+
+45
+00:08:02,304 --> 00:08:10,837
+The trial balance lists every ledger's balance. The total debits must equal the total credits.
+
+46
+00:08:11,187 --> 00:08:15,283
+The green badge at the top says it: balanced.
+
+47
+00:08:15,633 --> 00:08:24,081
+Groups open to show their ledgers, coloured by their kind, with a bar showing their size.
+
+48
+00:08:24,431 --> 00:08:37,146
+Mesiri also checks the books against the other modules: every bank account against Finance, every supplier against the supplier ledger, every client against Receivables.
+
+49
+00:08:37,496 --> 00:08:46,712
+If anything differs, it says so and shows which one. It never hides a difference.
+
+50
+00:08:47,062 --> 00:08:58,582
+The trial balance works for the whole company, one project or one site, using the selector at the top.
+
+51
+00:09:01,932 --> 00:09:09,185
+The chart of accounts is the list of all groups and ledgers.
+
+52
+00:09:09,535 --> 00:09:22,421
+It comes ready, with Tally's groups and the ledgers a builder needs: contract revenue, GST, TDS, retention, mobilisation advance.
+
+53
+00:09:22,771 --> 00:09:34,291
+Each supplier, client, bank account and expense head gets its ledger on its own, the first time it is used. Nothing to set up.
+
+54
+00:09:34,641 --> 00:09:43,771
+The accountant can still add ledgers, rename them, or move them to another group, the way her CA likes it.
+
+55
+00:09:47,121 --> 00:09:50,705
+The profit and loss statement. First, the idea.
+
+56
+00:09:51,055 --> 00:10:06,330
+Income is what we billed clients, before GST. Direct costs are what the work itself cost: materials, labour, subcontractors, machines.
+
+57
+00:10:06,680 --> 00:10:18,968
+Income minus direct costs is the gross profit. Then subtract the office costs, the indirect expenses, and you get the net profit.
+
+58
+00:10:19,318 --> 00:10:25,633
+In Mesiri, it reads exactly like that, with the margin as a percentage.
+
+59
+00:10:25,983 --> 00:10:38,015
+She can compare with the period before, or the same period last year. Arrows show what went up or down.
+
+60
+00:10:38,365 --> 00:10:45,191
+Tap a group to see its ledgers, and a ledger to see its entries.
+
+61
+00:10:48,541 --> 00:10:58,099
+The balance sheet is a photograph of one day: what the company owns, against what it owes plus the owner's capital.
+
+62
+00:10:58,449 --> 00:11:03,910
+Both sides must be equal. That is why it is called a balance sheet.
+
+63
+00:11:04,260 --> 00:11:12,025
+Mesiri shows the two sides next to each other, for any date, with this year's profit added to capital.
+
+64
+00:11:15,375 --> 00:11:24,079
+Cash and bank shows every bank account and site petty cash box: opening, money in, money out, closing.
+
+65
+00:11:24,429 --> 00:11:35,779
+The chart shows each day's money in and out. Moves between our own accounts are left out, so it shows real money only.
+
+66
+00:11:36,129 --> 00:11:41,334
+The balances are the same as the Money page in Finance, to the rupee.
+
+67
+00:11:44,684 --> 00:11:48,951
+This is the screen owners love: which project makes money.
+
+68
+00:11:49,301 --> 00:11:57,749
+For every project: billed, cost, profit and margin, and what the client owes and what we owe for it.
+
+69
+00:11:58,099 --> 00:12:08,509
+Open a project and you see its position: billed, received, still owed, retention the client is holding, TDS the client deducted.
+
+70
+00:12:08,859 --> 00:12:18,075
+Where the cost went, by cost centre: materials, labour, subcontract, machines.
+
+71
+00:12:18,425 --> 00:12:28,239
+And the BOQ budget from Cost Control right beside the books. If the forecast goes over the budget, it says so in red.
+
+72
+00:12:28,589 --> 00:12:36,695
+A project manager can see his own project's books, but never the company's.
+
+73
+00:12:37,045 --> 00:12:50,699
+If the owner wants, office costs like rent and salaries can be shared over the projects each month, so each project's profit is after its share.
+
+74
+00:12:54,049 --> 00:13:00,193
+Now GST. Every builder worries about it, so learn this well.
+
+75
+00:13:00,543 --> 00:13:10,356
+Output GST is the GST we charge clients on RA bills. Input GST is the GST we paid on purchases.
+
+76
+00:13:10,706 --> 00:13:19,837
+We pay the government output minus input. Input GST we can deduct is called input tax credit.
+
+77
+00:13:20,187 --> 00:13:32,731
+But input credit is allowed only if the supplier has a GSTIN on the bill. A bill from a supplier with no GSTIN: that GST is lost.
+
+78
+00:13:33,081 --> 00:13:45,027
+Within Kerala, GST is split half CGST and half SGST. With a party in another state, it is IGST.
+
+79
+00:13:48,377 --> 00:13:56,313
+Mesiri's GST page gives the month's figures in the return's own terms, ready for the CA.
+
+80
+00:13:56,663 --> 00:14:07,757
+Output GST, input GST we can claim, and the net to pay, split into IGST, CGST and SGST.
+
+81
+00:14:08,107 --> 00:14:19,797
+And the credit missed: bills whose GST cannot be claimed, and why. Usually, the supplier's GSTIN is missing.
+
+82
+00:14:20,147 --> 00:14:33,971
+Tell the customer this: Mesiri shows the money you are losing on GST every month, while there is still time to fix it. That alone can pay for Mesiri.
+
+83
+00:14:34,321 --> 00:14:43,708
+The green badge says the GST figures agree with the books. And everything downloads to Excel for the CA.
+
+84
+00:14:47,058 --> 00:15:03,186
+TDS means tax deducted at source. When we pay a subcontractor, the law says we keep back a small part, one or two percent, under section 194C.
+
+85
+00:15:03,536 --> 00:15:10,875
+That money belongs to the government. It must be deposited by the 7th of the next month. Late means interest.
+
+86
+00:15:11,225 --> 00:15:24,025
+Clients do the same to us: they deduct TDS from our RA bills. That TDS is ours to claim against our tax.
+
+87
+00:15:27,375 --> 00:15:37,017
+Mesiri deducts TDS when a subcontractor's bill is checked, and keeps it in a TDS payable account.
+
+88
+00:15:37,367 --> 00:15:46,839
+The TDS page shows each month: deducted, deposited, still to deposit, and the due date. Late months turn red.
+
+89
+00:15:47,189 --> 00:15:58,624
+It lists each subcontractor with his PAN, and the TDS clients deducted from our bills, to match with Form 26AS.
+
+90
+00:16:01,974 --> 00:16:09,910
+Once the CA has checked a month, Anjali closes it. Closed months are locked.
+
+91
+00:16:10,260 --> 00:16:22,633
+If a bill from a closed month is changed later, the site is never blocked. The difference is posted on the first open day, and marked as changed after close.
+
+92
+00:16:22,983 --> 00:16:34,674
+Only the owner or an admin can reopen a month, and they must give a reason. This is the control accountants and auditors look for.
+
+93
+00:16:38,024 --> 00:16:43,400
+Know the roles. The owner, admins and finance see the books.
+
+94
+00:16:43,750 --> 00:16:50,406
+A project manager sees only his own projects' profit and position.
+
+95
+00:16:50,756 --> 00:16:58,863
+Site engineers and supervisors never see money in the books. They just keep sending their updates on WhatsApp.
+
+96
+00:16:59,213 --> 00:17:06,551
+Accounts is an add-on module. The Mesiri team switches it on for a company.
+
+97
+00:17:09,901 --> 00:17:13,571
+Now, how to sell it. Four points.
+
+98
+00:17:13,921 --> 00:17:24,246
+One: no double typing. Site records become the books on their own. The accountant reviews instead of retyping.
+
+99
+00:17:24,596 --> 00:17:29,289
+Two: profit today, per project, not after the quarter.
+
+100
+00:17:29,639 --> 00:17:36,551
+Three: GST credit that would have been lost is shown every month.
+
+101
+00:17:36,901 --> 00:17:49,957
+Four: it speaks the CA's language, Tally's groups, Tally export and Excel, so the CA is your friend, not your enemy.
+
+102
+00:17:53,307 --> 00:17:55,867
+Questions you will hear.
+
+103
+00:17:56,217 --> 00:18:10,297
+'We already use Tally.' Answer: keep it. Mesiri keeps the books from the site, and exports vouchers to Tally for the CA. No retyping.
+
+104
+00:18:10,647 --> 00:18:26,605
+'Can I trust the numbers?' Answer: every entry must balance, or it is refused. And the books are checked against bank, suppliers and clients every time.
+
+105
+00:18:26,955 --> 00:18:39,072
+'Will my accountant lose her job?' Answer: no. She stops typing and starts checking. Her work becomes more valuable.
+
+106
+00:18:39,422 --> 00:18:48,297
+'What about wages?' Answer: wages enter the books when they are paid. Attendance stays in the Labour module.
+
+107
+00:18:51,647 --> 00:18:58,815
+Let's recap. Every rupee has two sides, debit and credit, always equal.
+
+108
+00:18:59,165 --> 00:19:12,989
+Mesiri turns site records into the books automatically: day book, ledgers, trial balance, profit and loss, balance sheet, cash and bank.
+
+109
+00:19:13,339 --> 00:19:22,981
+Project profit, GST and TDS are ready every month, and the CA gets Excel and Tally.
+
+110
+00:19:23,331 --> 00:19:30,670
+You now know more accounting than most of our customers. Go and sell it with confidence. Thank you.
+
