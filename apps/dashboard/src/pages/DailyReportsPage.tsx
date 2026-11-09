@@ -182,6 +182,8 @@ export default function DailyReportsPage() {
 
   const filters = {
     project_id: projectFilter,
+    // SCP-03: with a site picked, that site's reports.
+    site_id: scope.mode === 'site' ? scope.siteId : undefined,
     level: level || undefined,
     status: status || undefined,
     date_from: dateFrom || undefined,

@@ -16,6 +16,7 @@ import { rupees } from '@/lib/expenses'
 import { day, fetchPayables, vendorUrl } from '@/lib/vendors'
 import { cn } from '@/lib/utils'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { useScope } from '@/lib/ScopeContext'
 import {
   CHECK_LOOK, WO_LOOK, fetchBillsWaiting, fetchStatement, fetchWorkOrder, fetchWorkOrders, n, statementText, waLink, woUrl, workOrderText,
   type WoBill,
@@ -33,7 +34,11 @@ export function BillsChecksPage() {
   const navigate = useNavigate()
   const waiting = useQuery({ queryKey: ['subcontracts', 'waiting'], queryFn: fetchBillsWaiting })
   const [deciding, setDeciding] = React.useState<{ bill: WoBill; decision: 'approve' | 'reject' } | null>(null)
-  const list = waiting.data ?? []
+  // SCP-03: with a project or a site picked, its bills only.
+  const { scope } = useScope()
+  const list = (waiting.data ?? []).filter(
+    (b) => scope.mode === 'portfolio' || (b.project_id === scope.projectId && (scope.mode !== 'site' || b.site_id === scope.siteId)),
+  )
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center gap-3">
@@ -79,8 +84,11 @@ export function BillsChecksPage() {
 export function SubcontractorsPage() {
   usePageTitle('Subcontractors')
   const navigate = useNavigate()
-  const wos = useQuery({ queryKey: ['subcontracts', 'list', ''], queryFn: () => fetchWorkOrders() })
-  const pay = useQuery({ queryKey: ['finance', 'payables', 'sub'], queryFn: () => fetchPayables({ include_settled: true }), retry: false })
+  // SCP-03: with a project picked, the subcontractors working on it and their figures there.
+  const { scope } = useScope()
+  const projectId = scope.mode === 'portfolio' ? '' : scope.projectId
+  const wos = useQuery({ queryKey: ['subcontracts', 'list', projectId], queryFn: () => fetchWorkOrders(projectId ? { project_id: projectId } : {}) })
+  const pay = useQuery({ queryKey: ['finance', 'payables', 'sub', projectId], queryFn: () => fetchPayables({ include_settled: true, ...(projectId ? { project_id: projectId } : {}) }), retry: false })
   const money = !!wos.data?.with_money
   const teams = React.useMemo(() => {
     const by = new Map<string, { id: string; name: string; open: number; value: number; done: number; billed: number; payable: number; held: number; advance: number; check: number; sites: Set<string> }>()

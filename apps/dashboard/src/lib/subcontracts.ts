@@ -83,6 +83,9 @@ export interface WoBill {
   vendor_name?: string
   project_name?: string
   site_name?: string | null
+  /** On the waiting list only (SCP-03). */
+  project_id?: string
+  site_id?: string | null
 }
 
 export interface WoTotals {
