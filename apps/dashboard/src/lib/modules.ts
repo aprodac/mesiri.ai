@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/AuthContext'
  * Mirrors the backend catalogue in domains/organizations/settings.py.
  * `dpr` is always on.
  */
-export type ModuleKey = 'dpr' | 'labour' | 'materials' | 'finance' | 'equipment' | 'automations' | 'cost'
+export type ModuleKey = 'dpr' | 'labour' | 'materials' | 'finance' | 'equipment' | 'automations' | 'cost' | 'accounts'
 
 export const MODULE_NAMES: Record<ModuleKey, string> = {
   dpr: 'Daily progress',
@@ -15,6 +15,7 @@ export const MODULE_NAMES: Record<ModuleKey, string> = {
   equipment: 'Equipment',
   automations: 'Automations',
   cost: 'Cost control',
+  accounts: 'Accounts',
 }
 
 /**

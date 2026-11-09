@@ -450,7 +450,7 @@ export function AppSidebar() {
     icon: group.icon,
     tone: group.tone,
     items: group.pages
-      .filter((p) => (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)))
+      .filter((p) => (showPlanned || p.status === 'built') && (!p.roles || p.roles.includes(role)) && (!p.module || isModuleEnabled(p.module)))
       .map((p) => ({ title: p.navTitle ?? p.title, url: p.url, soon: p.status === 'planned', phase: p.phase })),
   })
   const groupByKey = (key: string) => MODULE_GROUPS.find((g) => g.key === key)!
@@ -469,6 +469,9 @@ export function AppSidebar() {
   const costCategory = isModuleEnabled('cost') ? ((c) => (c.items.length ? c : null))(toCategory(groupByKey('cost'))) : null
   // NXT-01/02: Client billing (Clients, RA bills) the same way; owner, admin and finance only, so hidden when empty.
   const billingCategory = ((c) => (c.items.length ? c : null))(toCategory(groupByKey('billing')))
+  // ACC-01..05: Accounts (Trial balance, Day book, Ledgers, Chart, Months behind the accounts module; Receivables and
+  // Tally export with finance); owner, admin and finance only, so hidden when empty.
+  const accountsCategory = isModuleEnabled('finance') ? ((c) => (c.items.length ? c : null))(toCategory(groupByKey('accounts'))) : null
   const previewModules = MODULE_GROUPS.filter((g) => g.key !== 'site' && isModuleEnabled(g.module)).map(toCategory)
   const previewRecords: NavItem[] = groupByKey('site')
     .pages.filter((p) => !PRIMARY_ITEMS.some((i) => i.url === p.url))
@@ -629,6 +632,7 @@ export function AppSidebar() {
                   {financeCategory && renderCategory(financeCategory)}
                   {costCategory && renderCategory(costCategory)}
                   {billingCategory && renderCategory(billingCategory)}
+                  {accountsCategory && renderCategory(accountsCategory)}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

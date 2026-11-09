@@ -1,7 +1,9 @@
 # Accounts: a full accounting and finance module (plan, 9 Nov 2026)
 
 > Asked by Ilan, 9 Nov 2026: "create a plan and let's create full accounting and finance module with rich UX".
-> Status: **plan, waiting for approval** (Phase 2 of the protocol). Accounts is security-sensitive (who can post,
+> Status: **approved by Ilan, 9 Nov 2026, with every recommended default; Phase A built** (ACC-01..05, see
+> [accounts-posting.md](../architecture/accounts-posting.md) for what was built and how it differs from §5).
+> Was: plan, waiting for approval (Phase 2 of the protocol). Accounts is security-sensitive (who can post,
 > close and reopen the books) and touches shared components (roles, module map, every money record as a source),
 > so it does not start in autonomous mode. Decisions D-ACC1..D-ACC12 below each carry a recommended default.
 
