@@ -307,6 +307,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("labour pay router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.approvals.router import router as approvals_router
+
+        app.include_router(approvals_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("approvals router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.procurement.grn_router import router as goods_receipts_router
 
         app.include_router(goods_receipts_router)

@@ -14,9 +14,16 @@ CLAUDE.md checks and push as usual; add an SOP.md line only if the model needs o
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
+
+
+def _q(value: str) -> str:
+    """A double-quoted Python string literal for ``value`` (apostrophes kept as they are)."""
+    return json.dumps(value, ensure_ascii=False)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "apps" / "whatsapp-assistant"
@@ -67,8 +74,10 @@ def add_to_tools(text: str, method: str, path: str, name: str, description: str,
     end = text.index("\n)\n", text.index("ALLOWED: tuple[Allowed, ...] = ("))
     desc = description.strip().rstrip(".") + "."
     write = " + _WRITE" if method != "GET" else ""
+    # Double-quoted literals (the file's style) built with json.dumps, never by swapping quote characters: that
+    # turned every apostrophe into a stray '"' ("each module"s own tool" broke tools.py, NXT-08).
     entry = (f"\n    # TM-30{f' ({ref})' if ref else ''}: the dashboard's own route, added by scripts/allow_route.py.\n"
-             f"    Allowed({name!r}, {method!r}, {path!r}, {desc!r}{write}),").replace("'", '"')
+             f"    Allowed({_q(name)}, {_q(method)}, {_q(path)}, {_q(desc)}{write}),")
     return text[:end] + entry + text[end:]
 
 
