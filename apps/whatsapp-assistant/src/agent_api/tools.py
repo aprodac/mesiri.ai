@@ -481,6 +481,14 @@ ALLOWED: tuple[Allowed, ...] = (
             "title, detail, project_name, "
             "site_name, since, urgent; plus counts per kind and total. Read only: acting goes through each kind's own "
             "tool."),
+    # TM-30 (PRC-19): the dashboard's own route, added by scripts/allow_route.py.
+    Allowed("period_report", "GET", "/reports/period", "A week or a month of one project (or one site): the headline, key figures against plan and the last period, what needs the person, and each section (work, schedule, labour, materials, money, issues, photos, data check). period week, month or custom; date: any day in it (default the last finished one)."),
+    # TM-30 (RPT-01): the dashboard's own route, added by scripts/allow_route.py.
+    Allowed("portfolio_report", "GET", "/reports/portfolio", "The owner's brief: every running project this person sees, one row each, the one that needs them most first (done against plan, cost, finish, man-days, issues, money still owed to the company)."),
+    # TM-30 (PRC-20): the dashboard's own route, added by scripts/allow_route.py.
+    Allowed("send_report_to", "POST", "/reports/send", "Send a weekly or monthly report on WhatsApp to other people (recipient_names: their names as said), with an optional note. scope project (project_id) or portfolio (all projects). Each person gets it as their own access shows." + _WRITE),
+    # TM-30 (PRC-20): the dashboard's own route, added by scripts/allow_route.py.
+    Allowed("schedule_report", "POST", "/reports/schedules", "Set a report to go by itself: frequency WEEKLY (the week just finished; day_of_week 0 = Monday) or MONTHLY (last month, on the 1st), time_of_day HH:MM (default 08:00); project_id for one project, none for all projects; recipient_names: names as said (none: the person asking)." + _WRITE),
 )
 
 

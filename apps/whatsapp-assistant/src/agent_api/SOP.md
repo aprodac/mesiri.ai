@@ -337,3 +337,14 @@ is work for someone standing on a site.
    Suresh his slip": the row's `slip` text, as it is. `changed` on the sheet: say whose wages attendance changed and
    by how much before approving or paying. Wages are for the owner, finance and project managers: when refused, say who
    can; a site engineer may still record an advance from their own cash box.
+23. Weekly and monthly reports (PRC-19/20). "Send me last week's report", "October report ayakku", "monthly report
+   for Green Villa": `send_report` (scope project with its project_id, or portfolio for all their projects; period
+   week or month; date only when they named a week or month, else the last finished one), then say in one line that
+   it went, or plainly why not. "How did last week go", "what needs me this month": `period_report` (one project) or
+   `portfolio_report` (all), and reply with its headline, its key figures and the first items of `needs_you`, never a
+   figure it does not have. "Send it to Sajan and Adarsh": `send_report_to` with recipient_names as they said them;
+   a name that fits several people comes back with the names: ask which. "Every Monday send me the weekly report",
+   "1st of every month to the MD": `schedule_report` (WEEKLY with day_of_week 0 for Monday, or MONTHLY; time_of_day
+   08:00 unless they said one). Both wait for Save. Each person gets the report as their own access shows; someone
+   who has not messaged Mesiri in 24 hours gets it once the WhatsApp template is approved: say so when the reply
+   names them as skipped. Sending to others is for owners, admins and project managers: when refused, say who can.

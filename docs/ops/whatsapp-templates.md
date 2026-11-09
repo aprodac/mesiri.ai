@@ -62,6 +62,7 @@ Submitted on the **Mesiri** WhatsApp account (named Paraclete until 24 Oct) (ID 
 | `mesiri_product_update` | **To submit** (SA-37, 7 Nov). Until approved, an announcement waits for each person's next message (up to its hold, 7 days by default) |
 | `mesiri_group_invite` | In review (submitted 29 Oct, WA-87; reworded to pass as Utility, see below) |
 | `mesiri_dpr_delivery` | In review |
+| `mesiri_period_report` | **To submit** (PRC-13 / PRC-20, 9 Nov). Until approved, a weekly / monthly report reaches only people who messaged in the last 24 h; the rest are skipped with the reason, shown on the report page |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
 | `mesiri_login_code` | **Approved (Active)**. Refused at first ("does not have permission") because the business portfolio (StarShape, renamed Aprodac on 24 Oct) was not verified; verified as **APRODAC PRIVATE LIMITED** on 24 Oct (public-records match, director Mohammed Sahel), then submitted and approved at once. **Switched on 24 Oct**: `WHATSAPP_APPROVED_TEMPLATES=mesiri_login_code` on the server (sender: whatsapp) |
 | `mesiri_trial_ending` | Skipped (Ilan, 24 Oct): Meta only accepts it as Marketing; the in-window reminder is enough for now. Owners silent for 24 h get no trial-ending reminder |
@@ -247,6 +248,23 @@ when nobody was reached the alert goes to the team WhatsApp group instead.
 Sample values: `{{1}}` = `worker`, `{{2}}` = `dpr.render_failed project=Skyline Towers`.
 
 To switch it on: add `mesiri_ops_alert` to `WHATSAPP_APPROVED_TEMPLATES`.
+
+### `mesiri_period_report` — the weekly / monthly report (PRC-20)
+
+Sent by a report's Send or its schedule (every Monday, or the 1st of the month) to a person who has not messaged in
+24 h. In the window the same report goes as a text summary with the PDF.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_period_report` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | Document (the report PDF) |
+| Body | `{{1}} report for {{2}}. {{3}} The PDF is attached; reply here to ask about it.` |
+| Footer | `Sent by Mesiri` |
+| Buttons | None |
+
+Example: `Weekly report for Villa Kakkanad, Week 45 (2 – 8 Nov 2026). Work is behind plan; ₹4 L of RA-3 unpaid for 47 days. The PDF is attached; reply here to ask about it.`
 
 ### `mesiri_product_update` — news from the Mesiri team (SA-37)
 

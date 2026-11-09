@@ -24,6 +24,7 @@ DEFAULT_DASHBOARD_URL = "https://app.whatsapp.mesiri.ai"
 PAGES: dict[str, tuple[str, str]] = {
     "today": ("/today", "today across the company's sites"),
     "reports": ("/reports", "the daily reports (DPRs)"),
+    "period_reports": ("/reports/period", "the weekly and monthly reports, with what was sent and what goes by itself"),
     "site_day": ("/reports/{date}/sites/{site_id}", "one site's day: work, labour, materials, issues, photos"),
     "project_day": ("/reports/{date}/projects/{project_id}", "one project's day, all its sites"),
     "site_log": ("/site-log", "work done, day by day"),

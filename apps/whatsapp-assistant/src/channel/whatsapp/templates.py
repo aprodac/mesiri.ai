@@ -185,6 +185,17 @@ PRODUCT_UPDATE = TemplateSpec(
     body_param_count=1,
 )
 
+#: The weekly / monthly report (PRC-20, PRC-13) for a person who has not messaged in 24 h. Header: the PDF.
+#: Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "{{1}} report for {{2}}. {{3}} The PDF is attached; reply here to ask about it."
+PERIOD_REPORT = TemplateSpec(
+    name="mesiri_period_report",
+    language="en",
+    category="UTILITY",
+    body_param_count=3,
+    header="document",
+)
+
 TEMPLATES: dict[str, TemplateSpec] = {
     spec.name: spec
     for spec in (
@@ -194,6 +205,7 @@ TEMPLATES: dict[str, TemplateSpec] = {
         JOIN_REQUEST,
         LOGIN_CODE,
         OPS_ALERT,
+        PERIOD_REPORT,
         PRODUCT_UPDATE,
         REQUEST_FIXED,
         SITE_DAY_REVIEW,

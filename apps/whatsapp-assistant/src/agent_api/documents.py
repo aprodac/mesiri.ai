@@ -62,3 +62,70 @@ def _file_name(disposition: str | None, fallback: str) -> str:
     if disposition and 'filename="' in disposition:
         return disposition.split('filename="', 1)[1].split('"', 1)[0] or fallback
     return f"{fallback}.pdf"
+
+
+# -- PRC-20: "send me last week's report" -- the report PDF itself, in this chat ------------------------------------
+
+SEND_REPORT = "send_report"
+REPORT_TOOL = ToolSpec(name=SEND_REPORT, description=(
+    "Send the weekly or monthly report as a PDF in this chat, to the person asking: scope project (project_id; "
+    "site_id for one site) or portfolio (all their projects); period week or month (custom: date_from and date_to); "
+    "date: any day in it, none for the last finished one. Only when they ask for the report itself."),
+    parameters={"type": "object", "required": ["scope", "period"], "properties": {
+        "scope": {"type": "string", "enum": ["project", "portfolio"]},
+        "project_id": {"type": "string"}, "site_id": {"type": "string"},
+        "period": {"type": "string", "enum": ["week", "month", "custom"]},
+        "date": {"type": "string", "description": "YYYY-MM-DD"},
+        "date_from": {"type": "string"}, "date_to": {"type": "string"}}})
+
+
+def report_path(arguments: dict[str, Any]) -> str | None:
+    """The PDF route for the report asked for, as the person (the API's own access rules); None when it cannot be."""
+    from urllib.parse import urlencode
+
+    scope = arguments.get("scope")
+    params: dict[str, str] = {"period": str(arguments.get("period") or "week")}
+    if params["period"] not in ("week", "month", "custom"):
+        return None
+    for key in ("date", "date_from", "date_to"):
+        if arguments.get(key):
+            params[key] = str(arguments[key])[:10]
+    if scope == "portfolio":
+        return f"/reports/portfolio/pdf?{urlencode(params)}"
+    if scope != "project":
+        return None
+    for key in ("project_id", "site_id"):
+        raw = str(arguments.get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            params[key] = str(uuid.UUID(raw))
+        except ValueError:
+            return None
+    if "project_id" not in params:
+        return None
+    return f"/reports/period/pdf?{urlencode(params)}"
+
+
+async def send_report(client: ApiClient, send_document: Callable[..., Awaitable[Any]], wa_id: str,
+                      arguments: dict[str, Any]) -> dict[str, Any]:
+    path = report_path(arguments)
+    if path is None:
+        return {"status": "not sent: say which project (project_id from list_projects), or all projects"}
+    status, data, headers = await client.fetch_bytes(path)
+    if status in (403, 404):
+        return {"status": "not sent: this person cannot open that project's report"}
+    if status == 422:
+        return {"status": "not sent: that period is not possible (not started yet, or more than 92 days)"}
+    if status != 200 or not data:
+        return {"status": "not sent; tell them to ask again in a minute"}
+    name = _file_name({k.lower(): v for k, v in headers.items()}.get("content-disposition"), "report")
+    try:
+        sent = await send_document(wa_id, data, filename=name, caption="", mime_type="application/pdf",
+                                   shows=f"period report {name}")
+    except Exception:  # noqa: BLE001 -- the model tells them it did not go
+        _log.exception("agent_api.send_report_failed")
+        sent = False
+    if not sent:
+        return {"status": "not sent; tell them to ask again in a minute"}
+    return {"status": "sent to their WhatsApp", "sent": name}

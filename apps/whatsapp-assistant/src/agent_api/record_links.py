@@ -31,6 +31,8 @@ RECORD_PAGES: dict[str, str | None] = {
     "record_expense": "expense",
     "set_site_conditions": "site_day",
     "send_dpr": "reports",
+    "send_report_to": "period_reports",  # PRC-20: the page lists what went and to whom
+    "schedule_report": "period_reports",
     "add_material": "materials",
     "update_material": "materials",
     "add_material_alias": "materials",

@@ -218,9 +218,9 @@ async def _send_one(
             await sender.send_document(
                 wa_id,
                 stored.data,
-                filename="DPR.pdf",
+                filename=_document_filename(payload),
                 mime_type=_DOCUMENT_MIME_TYPE,
-                shows="Daily progress report (DPR) PDF",
+                shows=payload.get("document_shows") or "Daily progress report (DPR) PDF",
             )
         except Exception:  # noqa: BLE001
             # The status text already went out -- a failed document fetch/
@@ -232,6 +232,12 @@ async def _send_one(
                 "notification.document_send_failed object_key=%s", object_key, exc_info=True
             )
     return True
+
+
+def _document_filename(payload: dict[str, Any]) -> str:
+    """The PDF's name in the chat: the payload's own (PRC-20: "Villa-Kakkanad-week-45.pdf"), else the DPR's."""
+    name = str(payload.get("document_filename") or "").strip()
+    return name if name.lower().endswith(".pdf") and "/" not in name and len(name) <= 80 else "DPR.pdf"
 
 
 async def _send_template(
@@ -261,7 +267,7 @@ async def _send_template(
                 "notification.template_document_failed object_key=%s", object_key, exc_info=True
             )
             return False
-        header_document = (stored.data, "DPR.pdf")
+        header_document = (stored.data, _document_filename(row.get("payload") or {}))
 
     return await sender.send_template(
         wa_id,

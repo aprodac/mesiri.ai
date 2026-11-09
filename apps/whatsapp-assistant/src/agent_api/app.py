@@ -42,6 +42,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.tasks.router",  # TSK-04: tasks on WhatsApp (give, list, done with a photo)
     "mesiri.domains.workforce.pay_router",  # LW-07: advances, wage sheets, labour teams
     "mesiri.domains.approvals.router",  # NXT-08: "what is waiting for me?" (tool `waiting`)
+    "mesiri.domains.reports.period.router",  # PRC-19/20: the weekly / monthly report and the owner's brief
     "mesiri.domains.admin.my_requests_router",  # request 230: the person's own requests
     "mesiri.domains.identity.preferences_router",  # WA-169: the reply language they chose
 )

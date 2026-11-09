@@ -613,8 +613,14 @@ class ApiWhatsApp:
             if self._send_document is not None:
                 # DOC-05: "send me the latest S-101": the code fetches the file through the API and sends it.
                 wa, send_file = message.sender.wa_id, self._send_document
-                run["actions"] = {documents.SEND_DOCUMENT: (
-                    documents.TOOL, lambda arguments: documents.send(client, send_file, wa, arguments))}
+                run["actions"] = {
+                    documents.SEND_DOCUMENT: (
+                        documents.TOOL, lambda arguments: documents.send(client, send_file, wa, arguments)),
+                    # PRC-20: "send me last week's report": the report PDF, fetched as the person.
+                    documents.SEND_REPORT: (
+                        documents.REPORT_TOOL,
+                        lambda arguments: documents.send_report(client, send_file, wa, arguments)),
+                }
             try:
                 turn = await self._agent.run(client, **run)
                 _lap("v3_model_tools")

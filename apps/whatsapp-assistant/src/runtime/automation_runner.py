@@ -125,6 +125,23 @@ async def _queue_due_automations(conn: Any, *, db: Any) -> int:
         if not due:
             continue
 
+        if automation["action"] == "SEND_PERIOD_REPORT":
+            # PRC-20: the weekly / monthly report. Each person gets it as their own access shows, so the backend
+            # builds, freezes and queues one copy per person (domains/reports/period/send.py); drained below.
+            try:
+                recipients = await resolve_audience(
+                    db=db, compliance_query=compliance_query, automation=automation
+                )
+                result = await _send_period_report(conn, automation, recipients)
+                logger.info("automation_runner.period_report automation_id=%s queued=%s skipped=%s",
+                            automation["id"], result["queued"], result["skipped"])
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.period_report_failed automation_id=%s", automation["id"])
+                continue
+            await automations_repo.mark_run(automation_id=automation["id"], ran_on=_local_date(automation, now_utc))
+            fired += 1
+            continue
+
         try:
             recipients = await resolve_audience(
                 db=db, compliance_query=compliance_query, automation=automation
@@ -160,6 +177,14 @@ async def _queue_due_automations(conn: Any, *, db: Any) -> int:
         fired += 1
 
     return fired
+
+
+async def _send_period_report(conn: Any, automation: dict[str, Any], recipients: list[str]) -> dict[str, Any]:
+    from mesiri.bootstrap.settings import Settings as BackendSettings
+    from mesiri.domains.reports.period.send import run_scheduled
+    from mesiri.infrastructure.objectstorage import build_object_storage
+
+    return await run_scheduled(conn, build_object_storage(BackendSettings()), automation, recipients)
 
 
 def _local_date(automation: dict[str, Any], now_utc: datetime.datetime) -> datetime.date:
