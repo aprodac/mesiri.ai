@@ -54,6 +54,7 @@ import TdsPage from '@/pages/accounts/TdsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
+import PeriodReportPage from '@/pages/PeriodReportPage'
 import TasksPage from '@/pages/TasksPage'
 import SettingsPage from '@/pages/SettingsPage'
 import WagesPage from '@/pages/WagesPage'
@@ -142,6 +143,8 @@ export default function App() {
           {/* Daily */}
           <Route path="today" element={<TodayPage />} />
           <Route path="reports" element={<DailyReportsPage />} />
+          {/* PRC-19: the weekly / monthly report (reports plan R1). */}
+          <Route path="reports/period" element={<PeriodReportPage />} />
           <Route path="reports/:date/sites/:siteId" element={<SiteDayPage />} />
           <Route path="reports/:date/projects/:projectId" element={<ProjectDayPage />} />
           <Route path="issues" element={<OperationsIssuesPage />} />
