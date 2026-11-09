@@ -821,9 +821,9 @@ Module 30 of the Capability Framework. Security-sensitive (outside people see co
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CV-01 | **Links:** `client_links` (migration 0534, token stored only as SHA-256), make / list / revoke for owner, admin, finance (`may_manage_money`) | S | Must | NXT-01 | doing | Claude (session 9 Nov) | |
-| CV-02 | **Public read** `GET /client/{token}`: company name and logo, progress and milestones, photos from approved/published site reports, submitted/certified RA bills with received and due, payments; fixed allow-list, no rates or costs | M | Must | CV-01 | doing | Claude (session 9 Nov) | |
-| CV-03 | **Web:** `/c/:token` (no login, phone first); "Share with client" on the project's contract; `/billing/client-view` lists links with revoke | M | Must | CV-02 | doing | Claude (session 9 Nov) | |
+| CV-01 | **Links:** `client_links` (migration 0534, token stored only as SHA-256), make / list / revoke for owner, admin, finance (`may_manage_money`) | S | Must | NXT-01 | done | Claude (session 9 Nov) | **Done `b8d4a1d`**. Plan: [client-view-plan](client-view-plan.md) |
+| CV-02 | **Public read** `GET /client/{token}`: company name and logo, progress and milestones, photos from approved/published site reports, submitted/certified RA bills with received and due, payments; fixed allow-list, no rates or costs | M | Must | CV-01 | done | Claude (session 9 Nov) | **Done `b8d4a1d`**. Plan: [client-view-plan](client-view-plan.md) |
+| CV-03 | **Web:** `/c/:token` (no login, phone first); "Share with client" on the project's contract; `/billing/client-view` lists links with revoke | M | Must | CV-02 | done | Claude (session 9 Nov) | **Done `cb0022f`**, aligned `e21a56e`. Plan: [client-view-plan](client-view-plan.md) |
 | CV-04 | Client asks or complains from the page (goes to the PM as an Issue) | M | Later | CV-03 | todo | — | Module 30 "client requests" |
 | TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | todo | — | |
 | TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | todo | — | |
