@@ -814,6 +814,17 @@ Module 05 of the Capability Framework, the only Phase 1 module with nothing buil
 | TSK-07 | **Walkthrough for the team:** what to tell site, with the WhatsApp sentences | S | Should | TSK-02..05 | todo | — | |
 | TSK-08 | Subtasks and recurring tasks | M | Later | TSK-01 | todo | — | |
 | TSK-09 | Checklist templates on a task (base for Quality, module 16) | M | Later | TSK-01 | todo | — | |
+
+## CV — Client view: the client sees their project from a link ([plan](client-view-plan.md), 9 Nov 2026)
+
+Module 30 of the Capability Framework. Security-sensitive (outside people see company data): approved in session by Ilan 9 Nov 2026 — a secret link per project (no login, revocable), progress **and** bills, never rates, costs or suppliers.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CV-01 | **Links:** `client_links` (migration 0534, token stored only as SHA-256), make / list / revoke for owner, admin, finance (`may_manage_money`) | S | Must | NXT-01 | doing | Claude (session 9 Nov) | |
+| CV-02 | **Public read** `GET /client/{token}`: company name and logo, progress and milestones, photos from approved/published site reports, submitted/certified RA bills with received and due, payments; fixed allow-list, no rates or costs | M | Must | CV-01 | doing | Claude (session 9 Nov) | |
+| CV-03 | **Web:** `/c/:token` (no login, phone first); "Share with client" on the project's contract; `/billing/client-view` lists links with revoke | M | Must | CV-02 | doing | Claude (session 9 Nov) | |
+| CV-04 | Client asks or complains from the page (goes to the PM as an Issue) | M | Later | CV-03 | todo | — | Module 30 "client requests" |
 | TSK-10 | Tasks from meeting minutes (module 20) | M | Later | TSK-04 | todo | — | |
 | TSK-11 | Tasks for a subcontractor's own contacts on WhatsApp | S | Later | TSK-04, NXT-16 | todo | — | |
 

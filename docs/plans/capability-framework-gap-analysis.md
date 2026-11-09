@@ -385,9 +385,9 @@ All 6 capabilities missing.
 | Client, architect, engineer, consultant directory | 🟡 | Clients only |
 | Meetings, commitments, decisions | ❌ | |
 | Submissions, approvals, comments | ❌ | |
-| Share approved progress reports and documents | 🟡 | DPR sent to project recipients on WhatsApp |
+| Share approved progress reports and documents | 🟡 | DPR sent to project recipients on WhatsApp; client view link shows photos from approved site reports (CV-02) |
 | Client requests, complaints, feedback | ❌ | |
-| Controlled client access | 🟡 | Client view placeholder (V1.5); report recipients only |
+| Controlled client access | ✅ | Client view (CV-01..CV-03, 9 Nov 2026): a revocable secret link per project, read only, no rates or costs |
 
 ### 31. Legal, Permits & Compliance (Phase 3): Partly done
 
