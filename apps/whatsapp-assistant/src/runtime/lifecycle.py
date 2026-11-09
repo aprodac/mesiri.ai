@@ -498,6 +498,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.tasks.router", "Tasks"),  # TSK-01: who does what, by when (the tasks module)
         ("mesiri.domains.workforce.pay_router", "Wages and advances"),  # LW-01..05: advances, wage sheets, muster roll
         ("mesiri.domains.approvals.router", "Approvals inbox"),  # NXT-08: what is waiting for me (the bell)
+        ("mesiri.domains.reports.period.router", "Period report"),  # PRC-19: a week or a month, page, PDF, Excel
         ("mesiri.domains.audit.activity_router", "Activity log"),  # ADM-02: who changed what, when
         ("mesiri.domains.users.handover_router", "Hand over work"),  # ADM-03: a leaving person's open work
     ):

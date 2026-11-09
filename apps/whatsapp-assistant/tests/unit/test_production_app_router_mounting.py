@@ -132,6 +132,13 @@ def test_goods_received_rates_and_boq_routes_are_mounted():
         assert expected in paths, f"{expected} not mounted on the production app"
 
 
+def test_period_report_routes_are_mounted():
+    """PRC-19: the weekly / monthly report page, its PDF and its Excel."""
+    paths = _production_app_paths()
+    for expected in ("/reports/period", "/reports/period/pdf", "/reports/period/xlsx"):
+        assert expected in paths, f"{expected} not mounted on the production app"
+
+
 # Backend-app routers that production serves with its own modules (same paths), so not mounted from mesiri here.
 _REPLACED_IN_PRODUCTION = {
     "mesiri.domains.admin.router",  # admin.router (control panel)

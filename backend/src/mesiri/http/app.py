@@ -319,6 +319,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("approvals router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.reports.period.router import router as period_report_router
+
+        app.include_router(period_report_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("period report router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.audit.activity_router import router as activity_router
 
         app.include_router(activity_router)

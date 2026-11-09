@@ -59,11 +59,16 @@ async def _company(conn: AsyncConnection, storage: ObjectStoragePort, org: uuid.
                   "brand_color": view.get("brand_color"), "logo_url": view.get("logo_url")}, COMPANY_FIELDS)
 
 
-async def _photos(conn: AsyncConnection, storage: ObjectStoragePort, org: uuid.UUID,
-                  project_id: uuid.UUID) -> list[dict[str, Any]]:
+async def approved_photos(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, *,
+                          date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                          limit: int = PHOTO_LIMIT) -> list[dict[str, Any]]:
+    """Photos of site work from days whose site report was confirmed (approved or sent), newest first: the one rule
+    for "a photo that may leave the company". The client view reads it, and so does the period report (PRC-19,
+    D-R6), with a date range. Rows carry the stored key; signing a link is the caller's."""
     day = local_date_sql("pa.created_at", ":org")
+    between = (f" AND {day} >= :f" if date_from else "") + (f" AND {day} <= :t" if date_to else "")
     rows = (await conn.execute(text(f"""
-        SELECT pa.media_object_key, pa.caption, a.work_type, {day} AS day
+        SELECT pa.media_object_key, pa.caption, a.work_type, a.site_id, {day} AS day
           FROM progress_attachments pa
           JOIN activities a ON a.id = pa.parent_id
          WHERE pa.parent_type = 'ACTIVITY'
@@ -74,11 +79,17 @@ async def _photos(conn: AsyncConnection, storage: ObjectStoragePort, org: uuid.U
                SELECT 1 FROM daily_reports dr
                 WHERE dr.organization_id = :org AND dr.project_id = a.project_id AND dr.site_id = a.site_id
                   AND dr.level::text = 'SITE' AND dr.status::text IN ('APPROVED', 'PUBLISHED')
-                  AND dr.report_date = {day})
+                  AND dr.report_date = {day}){between}
          ORDER BY pa.created_at DESC, pa.id
-         LIMIT :n"""), {"org": org, "p": project_id, "n": PHOTO_LIMIT})).mappings().all()  # noqa: S608 (SQL from code)
+         LIMIT :n"""), {"org": org, "p": project_id, "n": limit,  # noqa: S608 (SQL from code)
+                       **({"f": date_from} if date_from else {}), **({"t": date_to} if date_to else {})})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+async def _photos(conn: AsyncConnection, storage: ObjectStoragePort, org: uuid.UUID,
+                  project_id: uuid.UUID) -> list[dict[str, Any]]:
     out = []
-    for r in rows:
+    for r in await approved_photos(conn, org, project_id):
         url = await signed_media_url(storage, r["media_object_key"])
         if url:
             out.append(_keep({"url": url, "caption": r["caption"], "date": r["day"], "work": r["work_type"]},
