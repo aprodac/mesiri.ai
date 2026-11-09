@@ -67,6 +67,7 @@ import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage'
 import PurchaseOrderDocumentPage from './pages/PurchaseOrderDocumentPage'
 import GoodsReceiptsPage from './pages/GoodsReceiptsPage'
 import RatesPage from './pages/RatesPage'
+import PendingDeliveriesPage from './pages/PendingDeliveriesPage'
 import ExpensesPage from '@/pages/ExpensesPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
 import FinanceSettingsPage from '@/pages/FinanceSettingsPage'
@@ -178,6 +179,8 @@ export default function App() {
           {/* PRC-29: goods received notes. */}
           <Route path="procurement/grn" element={mat(<GoodsReceiptsPage />)} />
           <Route path="procurement/rates" element={mat(<RatesPage />)} />
+          {/* PRC-45: order lines still to come, by date or supplier. */}
+          <Route path="procurement/pending" element={mat(<PendingDeliveriesPage />)} />
 
           {/* NXT-11 / NXT-13 / NXT-14 / NXT-15: Equipment (module). */}
           <Route path="equipment" element={eqp(<EquipmentPage />)} />

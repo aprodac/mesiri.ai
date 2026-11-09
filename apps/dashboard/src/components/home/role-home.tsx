@@ -152,7 +152,7 @@ export function RoleHome() {
   const dueToday = openOrders.filter((o) => o.expected_date === today).length
   const lateOrders = openOrders.filter((o) => o.expected_date && o.expected_date < today).length
   const deliveryTile = show(orders, wants.orders) && (
-    <Tile key="deliveries" label="Deliveries" to="/procurement/orders" loading={orders.isLoading} tone={lateOrders ? 'bad' : dueToday ? 'info' : 'default'}
+    <Tile key="deliveries" label="Deliveries" to={lateOrders ? '/procurement/pending?show=late' : '/procurement/pending'} loading={orders.isLoading} tone={lateOrders ? 'bad' : dueToday ? 'info' : 'default'}
       value={orders.data ? `${dueToday} due today` : undefined}
       hint={orders.data ? (lateOrders ? `${plural(lateOrders, 'order')} late` : `${plural(openOrders.length, 'order')} still coming`) : undefined} />
   )
