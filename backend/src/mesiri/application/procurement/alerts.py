@@ -182,6 +182,12 @@ async def queue_reminders(conn: AsyncConnection, organization_id: uuid.UUID, *, 
 
     async with conn.begin_nested():
         queued += await queue_material_reminders(conn, organization_id, today)
+    # GM-08 with TSK-05: from 8 am company time, one morning message per person (act now, waiting, my tasks).
+    from mesiri.domains.attention.brief import queue_morning_briefs
+    from mesiri.domains.attention.feed import local_now
+
+    async with conn.begin_nested():
+        queued += await queue_morning_briefs(conn, organization_id, today, await local_now(conn, organization_id))
     # CC-11: after the project's cut-off, today's green / amber / red per BOQ line to the people who run it.
     from mesiri.domains.costing.reminders import queue_cost_cards
 

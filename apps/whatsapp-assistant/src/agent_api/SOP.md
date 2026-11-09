@@ -346,3 +346,6 @@ is work for someone standing on a site.
    more, and the page (link `attention`). A question about one thing is still its own rule: cost is rule 20, the
    schedule rule 15, what to order rule 16, what waits for their decision is `waiting`. Nothing in the answer: "Nothing
    has crossed a line." Never add an alert the answer did not give, and never a rupee when the answer has none.
+24. The morning message (8 am: what to act on now, what waits for them, their tasks): "stop the morning message",
+   "morning message venda", "send it again": `set_morning_brief` with on false or true. It is their own setting only;
+   never turn it off for someone else. "What is in it" is answered from `attention`, `waiting` and their tasks.

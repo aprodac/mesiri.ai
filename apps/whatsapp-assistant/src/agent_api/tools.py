@@ -461,6 +461,10 @@ ALLOWED: tuple[Allowed, ...] = (
             "one_unit_equals = how many of the stock unit in ONE of that unit). On Save it is set for the whole "
             "company and every line that waited for it saves, converted." + _WRITE),
     # WA-169: the language this person's replies are always in (users.reply_language); the dashboard sets it too.
+    # GM-08 (9 Nov 2026): the person's own 8 am brief (tasks, waiting, act now), on or off.
+    Allowed("set_morning_brief", "PUT", "/me/morning-brief",
+            "Prepare turning the person's own 8 am morning message on (on=true) or off (on=false), when they ask: "
+            "\"stop the morning message\", \"morning message venda\", \"send the morning summary again\"." + _WRITE),
     Allowed("set_reply_language", "PUT", "/me/reply-language",
             "Set the language this person's replies are ALWAYS in, whatever they write in next: english, "
             "manglish (Malayalam in English letters), malayalam (Malayalam script), hindi, hinglish; auto = follow "

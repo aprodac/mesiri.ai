@@ -179,6 +179,16 @@ dialog, and what slipped. The Monday note (ST-06) now names the week's open task
 - 8 am to GM / PM (company setting): sites expected today, waiting for you (count + top 3 with buttons), anything
   red overnight, what must be ordered today. One message, three languages, same template rules as the DPR.
 
+**As built on main (9 Nov 2026), with TSK-05.** One morning message per person, never two:
+`domains/attention/brief.py` in the reminder pass (every 15 minutes; from 8:00 company time; once a day per person,
+checked before any work). It holds, read **as the person** (`AuthorizationService.resolve_from_jwt`): act-now alerts
+(GM-04; owner, admin, PM), what waits for them (NXT-08), and their own tasks -- due today, overdue, how many more this
+week (TSK-05's card). Nothing when all are empty. English / Manglish / Malayalam. Each person's switch:
+`users.morning_brief` (migration **0538**, on by default), `PUT /me/morning-brief`, `GET /me/preferences`; on WhatsApp
+`set_morning_brief`, SOP rule 24. Through the notification queue, waiting for their 24-hour window: a Meta template to
+send it outside the window is an ops task. TSK-05's separate overdue note to the giver and PM is not built: the PM's
+brief lists the overdue tasks in their projects' alerts only when Attention raises them.
+
 ### GM-09 Compare sites
 - Two to four sites side by side: rate of progress per BOQ trade, labour productivity (units per man-day), cost
   per unit. Answers "why is Marina's plastering costing more than Green Villa's?".

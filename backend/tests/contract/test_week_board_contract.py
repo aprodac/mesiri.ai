@@ -50,7 +50,6 @@ async def test_the_monday_note_carries_the_tasks(client, ctx, test_engine):
     await _task(client, ctx, "Concrete pump booked", mon + 2 * D)
     slab = await _section(client, ctx, "Slab 6F")
     await _patch(client, ctx, slab, start=str(mon), end=str(mon + 3 * D))
-    await _exec(test_engine, "UPDATE users SET whatsapp_number = '+919000000001' WHERE id = :u", u=ctx["admin_id"])
     await _exec(test_engine, "UPDATE projects SET stage = 'running' WHERE id = :p", p=ctx["project"])
     async with test_engine.begin() as conn:
         await queue_schedule_reminders(conn, ctx["org"], mon)

@@ -195,7 +195,7 @@ TITLES: dict[str, str] = {
     "undo_expense": "Take back expense", "pay_expense": "Pay expense",
     "update_material": "Change material", "add_standard_categories": "Standard categories",
     "set_unit_conversion": "Material size", "answer_size_request": "Material size",
-    "set_reply_language": "Reply language", "add_expense_category": "New expense category",
+    "set_reply_language": "Reply language", "set_morning_brief": "Morning message", "add_expense_category": "New expense category",
     "create_project": "New project", "update_project": "Change project", "add_site": "New site",
     "update_site": "Change site", "add_project_member": "Add to project", "add_material_alias": "Other name",
     "add_person": "Add person",

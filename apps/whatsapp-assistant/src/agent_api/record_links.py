@@ -69,6 +69,7 @@ RECORD_PAGES: dict[str, str | None] = {
     "approve_subcontract_bill": "subcontract_bills",
     "reject_subcontract_bill": "subcontract_bills",  # PRC-11: the bill (expense) the deliveries went on, its id in the path
     "set_reply_language": None,
+    "set_morning_brief": None,  # GM-08: a person's own setting, no page
     # NXT-11: machines.
     "log_machines": "machine_log",
     "add_machine": "machines",
