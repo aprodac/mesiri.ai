@@ -11,6 +11,7 @@ import { fetchRequests } from '@/lib/requests'
 import { fetchOrders } from '@/lib/orders'
 import { fetchPortfolio } from '@/lib/cost'
 import { fetchMachines } from '@/lib/equipment'
+import { fetchPaySummary } from '@/lib/labour-pay'
 import { Section, Tile, TileGrid } from '@/components/page/page-kit'
 import { localIsoDate, plural } from '@/lib/site-day'
 
@@ -57,6 +58,8 @@ export function RoleHome() {
     orders: materials && role !== 'FINANCE',
     portfolio: cost && (role === 'ADMIN' || role === 'PROJECT_MANAGER'),
     machines: equipment && (role === 'PROJECT_MANAGER' || role === 'SITE_ENGINEER'),
+    // LW-08: wages approved and not paid, sheets waiting, advances still to take back (the roles that see wages).
+    wages: isModuleEnabled('labour') && (MONEY_ROLES as readonly string[]).includes(rawRole),
   }
   const opts = { retry: false, staleTime: 60_000 } as const
   const home = useQuery({ queryKey: ['home', 'accounts', projectId], queryFn: () => fetchHome(projectId), enabled: wants.home, ...opts })
@@ -66,6 +69,7 @@ export function RoleHome() {
   const requests = useQuery({ queryKey: ['home', 'requests', projectId, siteId], queryFn: () => fetchRequests({ project_id: projectId, site_id: siteId }), enabled: wants.requests, ...opts })
   const orders = useQuery({ queryKey: ['home', 'orders', projectId, siteId], queryFn: () => fetchOrders({ project_id: projectId, site_id: siteId }), enabled: wants.orders, ...opts })
   const portfolio = useQuery({ queryKey: ['home', 'portfolio'], queryFn: fetchPortfolio, enabled: wants.portfolio, ...opts })
+  const wagesQ = useQuery({ queryKey: ['home', 'wages'], queryFn: fetchPaySummary, enabled: wants.wages, ...opts })
   const machines = useQuery({ queryKey: ['home', 'machines', projectId, siteId], queryFn: () => fetchMachines({ project_id: projectId, site_id: siteId }), enabled: wants.machines, ...opts })
 
   const tiles: React.ReactNode[] = []
@@ -145,12 +149,18 @@ export function RoleHome() {
       value={machineCounts ? `${machineCounts.working} working` : undefined}
       hint={machineCounts ? [machineCounts.breakdown ? `${machineCounts.breakdown} broken down` : '', machineCounts.not_logged ? `${machineCounts.not_logged} not logged` : ''].filter(Boolean).join(' · ') || 'All logged' : undefined} />
   )
+  const w = wagesQ.data
+  const wagesTile = show(wagesQ, wants.wages) && (wagesQ.isLoading || (w && (n(w.due) > 0 || w.drafts > 0 || n(w.advances_outstanding) > 0))) && (
+    <Tile key="wages" label="Wages" to="/labour/wages" loading={wagesQ.isLoading} tone={w && n(w.due) > 0 ? 'attention' : w && w.drafts ? 'info' : 'default'}
+      value={w ? (n(w.due) > 0 ? `${short(w.due)} to pay` : w.drafts ? `${w.drafts} week${w.drafts > 1 ? 's' : ''} to approve` : 'Up to date') : undefined}
+      hint={w ? (n(w.advances_outstanding) > 0 ? `${short(w.advances_outstanding)} advance to take back` : 'No advance outstanding') : undefined} />
+  )
   const order: Record<Role, (React.ReactNode | false | null | undefined | 0)[]> = {
     // Sites reported and open issues are the strip right under these tiles, so they are not repeated here.
-    ADMIN: [cashTile, profitTile, receivableTile, payableTile, costTile, requestTile],
-    PROJECT_MANAGER: [requestTile, deliveryTile, costTile, machineTile],
+    ADMIN: [cashTile, profitTile, receivableTile, payableTile, wagesTile, costTile, requestTile],
+    PROJECT_MANAGER: [requestTile, deliveryTile, wagesTile, costTile, machineTile],
     SITE_ENGINEER: [requestTile, deliveryTile, machineTile],
-    FINANCE: [cashTile, payableTile, receivableTile, unbilledTile, gstTile, tdsTile, closeTile],
+    FINANCE: [cashTile, payableTile, wagesTile, receivableTile, unbilledTile, gstTile, tdsTile, closeTile],
   }
   for (const tile of order[role]) if (tile) tiles.push(tile)
   if (tiles.length === 0) return null

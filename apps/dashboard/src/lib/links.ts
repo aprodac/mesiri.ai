@@ -69,10 +69,29 @@ export function workOrderLinks(wo: { id: string; vendor_id: string; vendor_name:
   ]
 }
 
-/** WORK → COST: a worker's days come from attendance; what they cost lands on the BOQ lines' labour. */
+/** WORK → COST: a worker's days come from attendance; then their wages and advances, and the labour cost. */
 export function workerLinks(worker: { trades: string[]; contractors: string[] }): LinkedRecord[] {
   return [
     ...worker.trades.slice(0, 3).map((t) => ({ kind: 'Attendance', label: t, status: 'every day on site', url: `/labour?trade=${encodeURIComponent(t)}`, side: 'before' as const })),
+    { kind: 'Wages', label: 'This week', status: 'days × wage − advance', url: '/labour/wages', side: 'after' },
+    { kind: 'Advances', label: 'Outstanding', url: '/labour/advances', side: 'after' },
     { kind: 'Labour cost', label: 'Green / red', status: 'labour against the budget it earned', url: '/cost/green-red', side: 'after' },
+  ]
+}
+
+/** LW-08: a wage sheet row: its days (the muster roll and each site day), its advances; then the money it was paid
+ *  from, a team's account, and the project's labour cost. */
+export function wageRowLinks(sheet: { project_id: string; site_id: string | null; period_from: string },
+  row: { vendor_id: string | null; payee_name: string; payments: { id: string }[] }): LinkedRecord[] {
+  const month = sheet.period_from.slice(0, 7)
+  return [
+    ...(sheet.site_id ? [
+      { kind: 'Muster roll', label: month, status: 'every day of the month', url: `/labour?view=muster&at=${sheet.site_id}&month=${month}`, side: 'before' as const },
+      { kind: 'Site day', label: 'Attendance', url: recordUrl.siteDay(sheet.project_id, sheet.site_id), side: 'before' as const },
+    ] : []),
+    { kind: 'Advances', label: row.payee_name, status: 'given and taken back', url: '/labour/advances', side: 'before' },
+    ...(row.vendor_id ? [{ kind: 'Team account', label: row.payee_name, url: recordUrl.supplier(row.vendor_id), side: 'after' as const }] : []),
+    ...(row.payments.length ? [{ kind: 'Cash book', label: 'Money paid', status: `${row.payments.length} payment${row.payments.length > 1 ? 's' : ''}`, url: '/accounts/cash-bank', side: 'after' as const }] : []),
+    { kind: 'Labour cost', label: 'Budget vs actual', url: `/cost/budget?project=${sheet.project_id}`, side: 'after' },
   ]
 }

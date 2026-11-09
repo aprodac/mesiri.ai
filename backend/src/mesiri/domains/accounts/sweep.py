@@ -216,7 +216,8 @@ async def labour_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[st
             "JOIN wage_sheets w ON w.id = x.sheet_id WHERE w.organization_id = :org AND w.status = 'approved' "
             "AND (x.advances_recovered > 0 OR x.overtime_amount > 0 OR x.deductions <> '[]'::jsonb)", org):
         ds = json.loads(r["deductions"]) if isinstance(r["deductions"], str) else (r["deductions"] or [])
-        deducted = sum((Decimal(str(d.get("amount") or 0)) for d in ds), Decimal(0))
+        # A difference carried from an earlier week is not a deduction: the attendance accrual already counts it.
+        deducted = sum((Decimal(str(d.get("amount") or 0)) for d in ds if not d.get("carry_from")), Decimal(0))
         out[(WAGE_RECOVERY, str(r["id"]))] = posting.wage_row_entries(
             r["day"], r["project_id"], r["site_id"], r["payee_name"], r["advances_recovered"], r["overtime_amount"],
             deducted)

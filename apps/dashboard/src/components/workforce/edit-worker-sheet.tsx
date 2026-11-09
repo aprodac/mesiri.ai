@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { updateWorkerApi, type WorkforceWorkerItem } from '@/lib/api'
+import { RegisterFields } from './register-fields'
+import { emptyRegister, registerPayload, type RegisterValue } from '@/lib/labour-pay'
 
 interface EditWorkerSheetProps {
   worker: WorkforceWorkerItem | null
@@ -30,6 +32,7 @@ export function EditWorkerSheet({ worker, open, onOpenChange, onSuccess }: EditW
   const [dailyWage, setDailyWage] = React.useState('')
   const [contractor, setContractor] = React.useState('')
   const [status, setStatus] = React.useState<'active' | 'inactive'>('active')
+  const [register, setRegister] = React.useState<RegisterValue>(emptyRegister())
 
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState('')
@@ -42,6 +45,7 @@ export function EditWorkerSheet({ worker, open, onOpenChange, onSuccess }: EditW
       setDailyWage(worker.default_daily_wage ? String(worker.default_daily_wage) : '')
       setContractor(worker.contractor || '')
       setStatus(worker.status || 'active')
+      setRegister(emptyRegister(worker))
     }
   }, [worker])
 
@@ -65,6 +69,7 @@ export function EditWorkerSheet({ worker, open, onOpenChange, onSuccess }: EditW
         default_daily_wage: dailyWage ? parseFloat(dailyWage) : undefined,
         contractor: contractor.trim() || undefined,
         status,
+        ...registerPayload(register),
       })
       onSuccess()
       onOpenChange(false)
@@ -142,6 +147,7 @@ export function EditWorkerSheet({ worker, open, onOpenChange, onSuccess }: EditW
               <Input id="edit-contractor" value={contractor} onChange={(e) => setContractor(e.target.value)} placeholder="Own worker" />
             </div>
           </div>
+          <RegisterFields value={register} onChange={setRegister} />
         </form>
 
         <SheetFooter className="flex-row items-center gap-2 border-t px-5 py-3">

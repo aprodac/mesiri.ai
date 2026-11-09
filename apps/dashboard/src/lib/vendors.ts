@@ -7,13 +7,14 @@ import { MONEY_ROLES } from './module-map'
 // (domains/vendors/ledger.py): a priced delivery is owed until its bill comes, then the bill; a payment leaves the
 // account once and pays the oldest bills first; what is left stays with the supplier as an advance.
 
-export type VendorKind = 'supplier' | 'subcontractor' | 'hire' | 'service'
+export type VendorKind = 'supplier' | 'subcontractor' | 'hire' | 'service' | 'labour'
 
 export const KINDS: Record<VendorKind, { label: string; plural: string; chip: string }> = {
   supplier: { label: 'Supplier', plural: 'Suppliers', chip: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100' },
   subcontractor: { label: 'Subcontractor', plural: 'Subcontractors', chip: 'bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-100' },
   hire: { label: 'Hire', plural: 'Hire (machines)', chip: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100' },
   service: { label: 'Service', plural: 'Services', chip: 'bg-stone-200 text-stone-800 dark:bg-stone-800 dark:text-stone-100' },
+  labour: { label: 'Labour team', plural: 'Labour teams', chip: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100' },
 }
 
 export interface Vendor {

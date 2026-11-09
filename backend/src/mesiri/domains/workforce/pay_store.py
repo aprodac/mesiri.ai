@@ -225,31 +225,69 @@ async def computed_rows(conn: AsyncConnection, org: uuid.UUID, sheet: dict[str, 
     return pay.build_rows(lines, await worker_team(conn, org), await teams(conn, org))
 
 
+async def carry_ins(conn: AsyncConnection, org: uuid.UUID, sheet: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Differences from earlier weeks of the same site that were paid (so cannot be reopened) and whose attendance
+    changed after approval, not yet carried anywhere: payee key -> carry entries for this draft's deductions. Earned
+    more -> a negative deduction (added to pay); earned less -> a deduction. Each is carried once (``carry_from``)."""
+    earlier = await _rows(conn, _SHEET_SELECT + " AND w.project_id = :p AND COALESCE(w.site_id, :none) = :s "
+                          "AND w.status = 'approved' AND w.period_to < :f",
+                          {"org": org, "p": sheet["project_id"], "s": sheet["site_id"] or _NO_SITE, "none": _NO_SITE,
+                           "f": sheet["period_from"]})
+    if not earlier:
+        return {}
+    done = {(c.get("carry_from"), r["payee_key"]) for r in await _rows(conn,
+            "SELECT x.payee_key, x.deductions FROM wage_sheet_rows x JOIN wage_sheets w ON w.id = x.sheet_id "
+            "WHERE w.organization_id = :org AND w.project_id = :p", {"org": org, "p": sheet["project_id"]})
+            for c in (json.loads(r["deductions"]) if isinstance(r["deductions"], str) else r["deductions"] or [])
+            if c.get("carry_from")}
+    out: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for e in earlier:
+        rows = await sheet_rows(conn, e["id"])
+        if not any(Decimal(r["paid"]) > 0 for r in rows):
+            continue  # nothing paid: that week is reopened and corrected itself, not carried
+        for c in await changed_since_approval(conn, org, e, rows):
+            if (str(e["id"]), c["payee_key"]) in done or not c["difference"]:
+                continue
+            words = f"Week {e['period_from']:%d %b}–{e['period_to']:%d %b}: attendance changed after paying"
+            out[c["payee_key"]].append({"reason": words, "amount": str(pay.money(-c["difference"])),
+                                        "carry_from": str(e["id"]), "payee_name": c["payee_name"]})
+    return out
+
+
 async def refresh(conn: AsyncConnection, org: uuid.UUID, sheet: dict[str, Any]) -> None:
-    """A draft sheet follows attendance: rows recomputed, the payer's deductions and recovery kept, paid rows kept."""
+    """A draft sheet follows attendance: rows recomputed, the payer's deductions and recovery kept, paid rows kept,
+    and differences from earlier paid weeks carried in once."""
     fresh = await computed_rows(conn, org, sheet)
     kept = {r["payee_key"]: r for r in await sheet_rows(conn, sheet["id"])}
     owed = await advance_balances(conn, org, sheet["project_id"], exclude_sheet=sheet["id"], until=sheet["period_to"])
-    for key in set(fresh) | set(kept):
-        row = fresh.get(key) or {**{k: kept[key][k] for k in ("worker_id", "vendor_id", "payee_name")}, "payee_key": key,
-                                 "trades": kept[key]["trades"], "days": 0, "man_days": 0, "unpriced_man_days": 0,
+    carried = await carry_ins(conn, org, sheet)
+    for key in set(fresh) | set(kept) | set(carried):
+        base = kept.get(key) or {"worker_id": None, "vendor_id": key.split(":", 1)[1] if key.startswith("vendor:") else None,
+                                 "payee_name": (carried.get(key) or [{}])[0].get("payee_name") or key, "trades": None}
+        if key.startswith("worker:") and not kept.get(key):
+            base["worker_id"] = key.split(":", 1)[1]
+        row = fresh.get(key) or {**{k: base[k] for k in ("worker_id", "vendor_id", "payee_name")}, "payee_key": key,
+                                 "trades": base["trades"], "days": 0, "man_days": 0, "unpriced_man_days": 0,
                                  "overtime_hours": 0, "gross": Decimal(0), "overtime_amount": Decimal(0)}
         old = kept.get(key)
-        deductions = old["deductions"] if old else []
+        deductions = (old["deductions"] if old else []) + [
+            {k: v for k, v in c.items() if k != "payee_name"} for c in carried.get(key, [])]
         if not fresh.get(key) and old and not Decimal(old["paid"] or 0) and not deductions:
             await conn.execute(text("DELETE FROM wage_sheet_rows WHERE id = :id"), {"id": old["id"]})
             continue
+        values_ded = json.dumps(deductions)
         recovered = Decimal(old["advances_recovered"]) if old and old["recovery_set"] else None
         money = pay.settle({**row, "deductions": deductions}, owed.get(key, Decimal(0)), recovered)
         values = {"org": org, "sheet": sheet["id"], "key": key, "worker_id": row["worker_id"], "vendor_id": row["vendor_id"],
                   "name": row["payee_name"], "trades": row["trades"], "days": row["days"], "man_days": row["man_days"],
                   "unpriced": row["unpriced_man_days"], "ot_hours": row["overtime_hours"], "gross": row["gross"],
-                  "ot": row["overtime_amount"], "rec": money["advances_recovered"], "net": money["net"]}
+                  "ot": row["overtime_amount"], "rec": money["advances_recovered"], "net": money["net"], "ded": values_ded}
         await conn.execute(text(
             "INSERT INTO wage_sheet_rows (organization_id, sheet_id, payee_key, worker_id, vendor_id, payee_name, trades, "
-            "days, man_days, unpriced_man_days, overtime_hours, gross, overtime_amount, advances_recovered, net) VALUES "
-            "(:org, :sheet, :key, :worker_id, :vendor_id, :name, :trades, :days, :man_days, :unpriced, :ot_hours, :gross, "
-            ":ot, :rec, :net) ON CONFLICT (sheet_id, payee_key) DO UPDATE SET worker_id = EXCLUDED.worker_id, "
+            "days, man_days, unpriced_man_days, overtime_hours, gross, overtime_amount, advances_recovered, net, deductions) "
+            "VALUES (:org, :sheet, :key, :worker_id, :vendor_id, :name, :trades, :days, :man_days, :unpriced, :ot_hours, "
+            ":gross, :ot, :rec, :net, CAST(:ded AS jsonb)) ON CONFLICT (sheet_id, payee_key) DO UPDATE SET "
+            "deductions = EXCLUDED.deductions, worker_id = EXCLUDED.worker_id, "
             "vendor_id = EXCLUDED.vendor_id, payee_name = EXCLUDED.payee_name, trades = EXCLUDED.trades, days = EXCLUDED.days, "
             "man_days = EXCLUDED.man_days, unpriced_man_days = EXCLUDED.unpriced_man_days, "
             "overtime_hours = EXCLUDED.overtime_hours, gross = EXCLUDED.gross, overtime_amount = EXCLUDED.overtime_amount, "
@@ -299,8 +337,12 @@ async def set_row(conn: AsyncConnection, org: uuid.UUID, sheet: dict[str, Any], 
         sets += ["advances_recovered = :rec", "recovery_set = true"]
         params["rec"] = pay.money(recovered)
     if deductions is not None:
+        # Carried differences from earlier weeks are the system's, not the payer's: an edit keeps them.
+        current = next((r for r in await sheet_rows(conn, sheet["id"]) if r["id"] == row_id), None)
+        carries = [d for d in (current["deductions"] if current else []) if d.get("carry_from")]
         sets.append("deductions = CAST(:ded AS jsonb)")
-        params["ded"] = json.dumps([{"reason": d["reason"], "amount": str(pay.money(d["amount"]))} for d in deductions])
+        params["ded"] = json.dumps(carries + [{"reason": d["reason"], "amount": str(pay.money(d["amount"]))}
+                                              for d in deductions if not d.get("carry_from")])
     await conn.execute(text(f"UPDATE wage_sheet_rows SET {', '.join(sets)} WHERE id = :id AND sheet_id = :sheet"), params)
     await refresh(conn, org, sheet)
 

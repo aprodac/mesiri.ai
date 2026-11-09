@@ -39,6 +39,7 @@ export function ProjectHub({ projectId }: { projectId: string }) {
         <Tile label="Plan" to={`/planning/documents?${q}`} value="Documents" hint="Latest revisions, permits, contract" />
         <Tile label="Site" to={`/today?${q}`} value="Today's updates" hint="What each site sent today" />
         {materials && <Tile label="Site" to={`/materials?view=stock&${q}`} value="Stock" hint="What is there and how long it lasts" />}
+        {isModuleEnabled('labour') && <Tile label="Site" to={`/labour?${q}`} value="Labour" hint="Attendance, muster roll, teams" />}
         {isModuleEnabled('equipment') && <Tile label="Site" to={`/equipment?${q}`} value="Machines" hint="Hours, idle, diesel, hire" />}
         {materials && (
           <Tile label="Buy · Requests" to={`/materials/requests?${q}`} loading={requests.isLoading} tone={waiting ? 'attention' : 'default'}
@@ -49,6 +50,7 @@ export function ProjectHub({ projectId }: { projectId: string }) {
             value={orders.data ? `${openOrders} open` : undefined} hint={orders.data ? plural(orders.data.items.length, 'order') + ' in all' : undefined} />
         )}
         {money && <Tile label="Buy" to={`/subcontract/work-orders?${q}`} value="Work orders" hint="Who does which work at what rate" />}
+        {isModuleEnabled('labour') && money && <Tile label="Money" to={`/labour/wages?${q}`} value="Wages" hint="This week's pay, advances taken back" />}
         {cost && (
           <Tile label="Money · Budget vs actual" to={`/cost/budget?${q}`} loading={portfolio.isLoading}
             tone={row?.colour === 'red' ? 'bad' : row?.colour === 'green' ? 'good' : row?.colour === 'amber' ? 'attention' : 'default'}
