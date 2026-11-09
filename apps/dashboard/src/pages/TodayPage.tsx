@@ -25,6 +25,9 @@ import { Callout, DprAside, DprSection, PageHeader, StatStrip } from '@/componen
 import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
 import { SuppliersWaiting } from '@/components/vendors/vendor-parts'
+import { RoleHome } from '@/components/home/role-home'
+import { EmptyState } from '@/components/page/page-kit'
+import { useAuth } from '@/lib/AuthContext'
 import { BillsWaitingLine } from '@/components/subcontracts/parts'
 import {
   CHIP,
@@ -190,6 +193,10 @@ export default function TodayPage() {
   const projectFilter = scope.mode === 'portfolio' ? undefined : scope.projectId
   const [busySite, setBusySite] = React.useState<string | null>(null)
   const [busyProject, setBusyProject] = React.useState<string | null>(null)
+  const { me } = useAuth()
+  const isAdmin = (me?.role || '').toUpperCase() === 'ADMIN'
+  // Finance works from the books, not sites: no "you have no sites" box for them (UX-11).
+  const isFinance = (me?.role || '').toUpperCase() === 'FINANCE'
   const readOnly = useReadOnly()
 
   const daysQuery = useQuery({
@@ -339,6 +346,7 @@ export default function TodayPage() {
         }
       />
 
+      {isToday && <RoleHome />}
       {isToday && <TimeSaved />}
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
@@ -357,13 +365,25 @@ export default function TodayPage() {
           ))}
         </div>
       ) : projects.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
-          <p className="text-sm font-medium">No active sites yet</p>
-          <p className="text-sm text-muted-foreground">Add a project and its sites, and each day's updates show here.</p>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/projects">Projects & Sites</Link>
-          </Button>
-        </div>
+        // UX-06/07: an empty company is the next step, not a dead end.
+        isAdmin ? (
+          <EmptyState
+            icon={Building2}
+            title="Start your first project"
+            about="Name the project and its sites, bring the BOQ from your Excel if you have one, and add the person who reports from site. Each day's updates then show here."
+            action={
+              <Button asChild size="sm">
+                <Link to="/planning/setup">Start a project</Link>
+              </Button>
+            }
+          />
+        ) : isFinance ? null : (
+          <EmptyState
+            icon={Building2}
+            title="No sites for you yet"
+            about="Your company admin adds you to a project's sites. Once they do, each day's updates show here."
+          />
+        )
       ) : (
         <>
           {attention.length > 0 && (

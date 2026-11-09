@@ -23,6 +23,8 @@ import {
   type RequestOrder,
 } from '@/lib/requests'
 import { ORDER_LOOK } from '@/lib/orders'
+import { LinkedStrip } from '@/components/page/page-kit'
+import { requestLinks } from '@/lib/links'
 import { Avatar, CategoryTile, CoverBar, ProjectDot, StatusChip } from './parts'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
 import { NewRequestDialog } from './new-request-dialog'
@@ -145,6 +147,7 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
         </div>
       )}
 
+      <LinkedStrip records={requestLinks(request)} className="border-b px-5 py-3" />
       <History request={request} />
 
       {(request.may_edit || request.may_reopen) && (

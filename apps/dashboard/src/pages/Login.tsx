@@ -34,7 +34,8 @@ export default function Login() {
   // Desktop: the intro conversation (SS-18) on the left, as on signup.
   // Narrower, only the form: someone signing in has come to work.
   return (
-    <div className="min-h-svh bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px]">
+    <div className="min-h-svh bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr]">
+      <div aria-hidden className="h-[3px] bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)] lg:col-span-2" />
       <section aria-label="How Mesiri works" className="hidden px-12 pb-14 lg:block">
         <IntroConversation
           onStart={() => navigate('/signup')}

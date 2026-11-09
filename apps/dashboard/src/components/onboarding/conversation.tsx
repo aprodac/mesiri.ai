@@ -82,10 +82,10 @@ export function Words({ text, at, step = 70, className }: { text: string; at?: n
   )
 }
 
-/** The small uppercase mono label used for times and column heads. */
+/** The small label for times and column heads, in the app's own label style (UX-06: no mono capitals). */
 export function Label({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <span className={cn('font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground tabular-nums', className)}>
+    <span className={cn('text-xs font-medium text-muted-foreground tabular-nums', className)}>
       {children}
     </span>
   )

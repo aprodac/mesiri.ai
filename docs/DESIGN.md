@@ -57,6 +57,24 @@ A page does not draw its own header, empty box or tile.
 
 ---
 
+## Role homes, project hub, connected records (UX-11, UX-12, UX-09)
+
+- **Today opens with the role's own questions** (`components/home/role-home.tsx`): Director (cash and bank, profit
+  this month, clients owe you, you owe suppliers, projects over budget, requests to decide), Project manager
+  (requests, deliveries, over-budget work items, machines), Site engineer (their requests, deliveries, machines),
+  Finance (cash, payments due, receivables, delivered-not-billed, GST, TDS, month close). A tile asks its API only
+  when the role may read it and the module is on, and disappears if the API refuses. Sites reported and open
+  issues stay in the strip below, never repeated in a tile. A new tile is one entry in that file's role order.
+- **The project page is the project's hub** (`components/home/project-hub.tsx`): Plan, Site, Buy, Money tiles,
+  each opening its module with `?project=` (ScopeContext scopes every page by it).
+- **Records link along their chain** (`lib/links.ts`, one builder per record kind, drawn by `LinkedStrip`): an
+  order shows its requests, deliveries and supplier account; a request its site day and orders; an expense its
+  work order, supplier account and project cost; a client bill its BOQ, receivables and project P&L. List pages
+  open a record from `?id=` (GRN from `?q=`), so a link lands on the record itself. A new link is a line in
+  `lib/links.ts`, never a hand-made link in a panel.
+- **Headers:** `DprHeader`'s back line follows the module map on a module's own page and shows on phones only
+  (the top bar's breadcrumb covers laptops); detail pages keep their real "up" link.
+
 ## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-33)
 
 V1 is one loop — sites send updates on WhatsApp, the engineer confirms, the

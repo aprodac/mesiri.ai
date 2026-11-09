@@ -10,6 +10,8 @@ import { BILL_ACCEPT, billFile } from '@/lib/bill-upload'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { addExpenseBillApi, fetchExpenseAttachmentsApi } from '@/lib/api'
 import { ExpensePayments } from './expense-payments'
+import { LinkedStrip } from '@/components/page/page-kit'
+import { expenseLinks } from '@/lib/links'
 import { BillDeliveries } from './bill-deliveries'
 import { VendorLink } from '@/components/vendors/vendor-parts'
 import { Link } from 'react-router-dom'
@@ -218,6 +220,8 @@ export function ExpenseDetailSheet({ open, onOpenChange, expense, readOnly, onOp
             <BillDeliveries key={expense.id} expenseId={expense.id} vendorId={expense.vendor_id} vendorName={expense.vendor_name}
               projectId={expense.project_id} amount={expense.amount} canManage={!!canPay && !readOnly} hideList={!!more.data?.source_invoice} />
           )}
+
+          <LinkedStrip records={expenseLinks(expense, more.data?.work_order)} className="border-t pt-3" />
 
           {!expense.reversed && <ExpensePayments key={`${expense.id}:${payNow ? 1 : 0}`} expenseId={expense.id} owedTo={expense.owed_to} canPay={!!canPay && !readOnly} startOpen={payNow} />}
 

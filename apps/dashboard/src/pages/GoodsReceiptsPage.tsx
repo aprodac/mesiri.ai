@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useUrlState } from '@/lib/url-state'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ClipboardCheck, Download, Image, Search } from 'lucide-react'
@@ -36,7 +36,7 @@ export default function GoodsReceiptsPage() {
   const { scope } = useScope()
   const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
   const siteId = scope.mode === 'site' ? scope.siteId : null
-  const [search, setSearch] = React.useState('')
+  const [search, setSearch] = useUrlState<string>('q', '')  // UX-09: links land on one order's deliveries
   const { data, isLoading, isError } = useQuery({
     queryKey: ['procurement', 'grns', projectId, siteId],
     queryFn: () => fetchGrns({ project_id: projectId, site_id: siteId }),

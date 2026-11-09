@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { EmptyState } from '@/components/page/page-kit'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Activity as ActivityIcon,
@@ -490,14 +491,13 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
       ) : loading ? (
         <div className="flex flex-col divide-y">{Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)}</div>
       ) : days.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
-          <ActivityIcon className="size-6 text-muted-foreground" />
-          <p className="text-sm font-medium">{hasActiveFilters ? 'Nothing matches these filters' : 'No work reported yet'}</p>
-          <p className="text-sm text-muted-foreground">
-            {hasActiveFilters ? 'Try clearing them.' : 'Work the sites send on WhatsApp shows here.'}
-          </p>
-          {hasActiveFilters && <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button>}
-        </div>
+        <EmptyState
+          icon={ActivityIcon}
+          title={hasActiveFilters ? 'Nothing matches these filters' : 'No work reported yet'}
+          about={hasActiveFilters ? 'Try clearing them.' : 'Every piece of work the sites send on WhatsApp lands here, with its photos, newest first.'}
+          whatsapp={hasActiveFilters ? undefined : 'First-floor slab shuttering done, 6 masons, 4 helpers'}
+          action={hasActiveFilters ? <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button> : undefined}
+        />
       ) : (
         <>
         {/* Desktop: one ledger table, newest first (WEB-34). */}

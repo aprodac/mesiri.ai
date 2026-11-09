@@ -131,12 +131,12 @@ function Invite({ number, siteName }: { number: string | null; siteName: string 
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <Button asChild className="rounded-none">
+        <Button asChild>
           <a href={link} target="_blank" rel="noreferrer">
             Open WhatsApp
           </a>
         </Button>
-        <button type="button" className="border-b border-foreground font-mono text-xs uppercase tracking-[0.06em]" onClick={copy}>
+        <button type="button" className="text-sm font-medium text-primary-ink underline underline-offset-2" onClick={copy}>
           Copy number
         </button>
       </div>
@@ -164,7 +164,7 @@ function Waiting({ gaveUp }: { gaveUp: boolean }) {
         Try something like {EXAMPLE} The moment it arrives, you see what Mesiri understood and the report it makes.
       </p>
       {gaveUp && (
-        <Button asChild variant="outline" className="justify-self-start rounded-none">
+        <Button asChild variant="outline" className="justify-self-start">
           <Link to="/today">Go to Today</Link>
         </Button>
       )}
@@ -334,17 +334,17 @@ export default function WelcomePage() {
             </p>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
               {!allConfirmed ? (
-                <Button className="rounded-none" disabled={confirm.isPending} onClick={() => detail.data && confirm.mutate(detail.data)}>
+                <Button disabled={confirm.isPending} onClick={() => detail.data && confirm.mutate(detail.data)}>
                   {confirm.isPending ? 'Confirming…' : 'Looks right'}
                 </Button>
               ) : (
-                <Button asChild className="rounded-none">
+                <Button asChild>
                   <Link to="/today">Go to Today</Link>
                 </Button>
               )}
               <Link
                 to={siteDayPath(site.site_id, today)}
-                className="border-b border-foreground font-mono text-xs uppercase tracking-[0.06em]"
+                className="text-sm font-medium text-primary-ink underline underline-offset-2"
               >
                 Change something
               </Link>
@@ -366,7 +366,9 @@ export default function WelcomePage() {
   )
 
   return (
-    <div className="min-h-svh bg-background px-4 pb-16 sm:px-8 lg:px-12">
+    <div className="min-h-svh bg-background">
+      <div aria-hidden className="h-[3px] bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
+      <div className="px-4 pb-16 sm:px-8 lg:px-12">
       <div className="mx-auto max-w-[1120px] @container">
         <header className="flex flex-wrap items-baseline justify-between gap-4 pt-7 pb-4">
           <MesiriWordmark className="text-lg" />
@@ -397,13 +399,14 @@ export default function WelcomePage() {
         ) : !site ? (
           <div className="grid gap-3 py-7">
             <p className="m-0">Add a site first, then send its update.</p>
-            <Button asChild variant="outline" className="justify-self-start rounded-none">
+            <Button asChild variant="outline" className="justify-self-start">
               <Link to="/projects">Projects & sites</Link>
             </Button>
           </div>
         ) : (
           <SceneStage stacked={false} index={scenes.index} now={now} scenes={[sendScene, understoodScene, reportScene]} />
         )}
+      </div>
       </div>
     </div>
   )
