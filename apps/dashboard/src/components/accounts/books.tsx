@@ -63,7 +63,7 @@ export function usePeriod(fallback: Exclude<PresetKey, 'custom'> = 'fy') {
 
 export function PeriodBar({ state }: { state: ReturnType<typeof usePeriod> }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
       <Segmented<PresetKey> label="Period" value={state.range} options={PRESETS.map((p) => ({ value: p, label: PRESET_LABEL[p] }))} onChange={state.setRange} />
       {state.range === 'custom' ? (
         <div className="flex items-center gap-1.5 text-sm">
@@ -81,6 +81,11 @@ export function PeriodBar({ state }: { state: ReturnType<typeof usePeriod> }) {
 }
 
 const PAGES = [
+  { to: '/accounts', label: 'Home' },
+  { to: '/accounts/pl', label: 'Profit & loss' },
+  { to: '/accounts/balance-sheet', label: 'Balance sheet' },
+  { to: '/accounts/cash-bank', label: 'Cash & bank' },
+  { to: '/accounts/projects', label: 'Projects' },
   { to: '/accounts/trial-balance', label: 'Trial balance' },
   { to: '/accounts/day-book', label: 'Day book' },
   { to: '/accounts/ledgers', label: 'Ledgers' },
