@@ -1,17 +1,19 @@
 """WEB-60 (5 Nov, Ilan's voice note "മേസിരി എന്തൊക്കെ ചെയ്യാൻ പറ്റും"): the question about what Mesiri can do left no
-sign in the turn (no tool: the answer comes from the prompt's "What Mesiri does" block), so the dashboard's Live could
+sign in the turn (no tool: the answer came from the prompt's "What Mesiri does" block), so the dashboard's Live could
 not play Mesiri's introduction for it. The model now calls ``explain_mesiri`` first (SOP rule 11): it writes nothing and
 is in the turn's calls, where the Live feed reads it.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any
 
 from tests.agent_api.replaykit import RecordedApi, _real_tools
 from tests.agent_api.test_api_lose_nothing_198 import Runs
 
 from agent_api.agent import EXPLAIN, SOP, ApiAgent
+from agent_api.tools import what_mesiri_does
 
 EXPLAIN_CALL = (EXPLAIN, {})
 
@@ -64,3 +66,16 @@ async def test_guard_an_entry_is_not_marked() -> None:
     model = Runs(["Hello Ilan! Site-ile update ayakkaamo?"])
     turn, _ = await _turn(model, "Hello sukhamaano")
     assert EXPLAIN not in _tools(turn)
+
+
+async def test_the_block_is_sent_by_the_call_not_on_every_message() -> None:
+    """WA-272 (10 Nov: about 43,000 input tokens on every model call): the "What Mesiri does" block (about 2,400 of
+    them) rode on every message for a question asked now and then. It comes back from ``explain_mesiri`` instead."""
+    tools = _real_tools()
+    agent = ApiAgent(Runs(["Hello!"]), tools)  # type: ignore[arg-type]
+    assert "What Mesiri does (from your tools" not in agent.system_prompt(sender_name="Ravi", today=dt.date(2026, 11, 10))
+
+    model = Runs([[EXPLAIN_CALL], "I record attendance, materials, work and issues."])
+    turn, _ = await _turn(model, "what can you do?")
+    returned = turn.calls[0]["result"]["what_mesiri_does"]
+    assert returned == what_mesiri_does(tools) and "Record (" in returned

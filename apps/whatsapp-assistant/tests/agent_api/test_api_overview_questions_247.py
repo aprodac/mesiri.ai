@@ -96,7 +96,8 @@ async def test_guard_a_turn_that_already_read_is_left_alone() -> None:
     assert model.calls == 1
 
 
-async def test_what_can_mesiri_do_is_in_the_system_context_and_writes_nothing() -> None:
+async def test_what_can_mesiri_do_is_answered_from_the_block_and_writes_nothing() -> None:
+    """WA-272: the block is no longer on every message; ``explain_mesiri`` returns it (rule 11 asks for that call)."""
     seen: list[str] = []
 
     class Spy(Runs):
@@ -104,15 +105,16 @@ async def test_what_can_mesiri_do_is_in_the_system_context_and_writes_nothing() 
             seen.append(system)
             return await super().run_tools(system, *args, **kwargs)
 
-    model = Spy(["Mesiri records attendance, work, materials, issues and expenses; answers progress, stock and attendance; "
-                 "sends the daily report."])
+    model = Spy([[("explain_mesiri", {})],
+                 "Mesiri records attendance, work, materials, issues and expenses; answers progress, stock and "
+                 "attendance; sends the daily report."])
     turn, api = await _turn(model, "Mesiri-kku enthokke cheyyaam?")
     block = what_mesiri_does(_real_tools())
-    assert block in seen[0]
+    assert block not in seen[0] and turn.calls[0]["result"]["what_mesiri_does"] == block
     # [249]: the block is in plain words (the model copied tool names into its answer); every group is there.
     assert all(head in block for head in ("Record (", "Ask (", "Reports ("))
     assert not any(name in block for name in ("record_attendance", "record_receipt", "work_progress", "send_dpr"))
-    assert turn.calls == [] and not turn.pending and api.seen == [] and model.calls == 1
+    assert [c["tool"] for c in turn.calls] == ["explain_mesiri"] and not turn.pending and api.seen == []
 
 
 def test_the_block_follows_the_tool_list() -> None:

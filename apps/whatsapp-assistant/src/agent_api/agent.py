@@ -592,7 +592,8 @@ _ASK_TOOL = ToolSpec(name=ASK, description=(
 EXPLAIN = "explain_mesiri"
 _EXPLAIN_TOOL = ToolSpec(name=EXPLAIN, description=(
     "Call this first, once, when the person asks what Mesiri can do, how it helps, or how it works. It writes "
-    "nothing. Then answer from the What Mesiri does block."), parameters={"type": "object", "properties": {}})
+    "nothing and returns the What Mesiri does block. Then answer from that block."),
+    parameters={"type": "object", "properties": {}})
 #: WA-268 (requests [272] [273], 6 Nov: a spoken "I don't know, M-sand would be in cubic metres" to the size question
 #: got the same question again; only the exact words of the "Don't know" button were taken): the model reads that they
 #: do not know, in any words or language, and says so with this call; the code then gives the way out the button gives.
@@ -661,7 +662,9 @@ class ApiAgent:
     def system_prompt(self, *, sender_name: str, today: dt.date, ready: list[PendingWrite] | None = None,
                       facts: str = "") -> str:
         who = f"You are talking to {sender_name}. " if sender_name else ""
-        prompt = f"{self._sop}\n\n{what_mesiri_does(self._tools)}\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
+        # WA-272: the "What Mesiri does" block (about 2,400 tokens) was here on every message; it now comes back
+        # from explain_mesiri, the call SOP rule 11 asks for first on that one question.
+        prompt = f"{self._sop}\n\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
         if facts:
             prompt += f"\n\n{facts}"
         if ready:
@@ -875,8 +878,9 @@ class ApiAgent:
                 size_unknown.append(True)
                 return ToolOutcome(content={"status": "the code answers them now: write nothing more"})
             if name == EXPLAIN:
-                return ToolOutcome(content={"status": "answer from the What Mesiri does block, in their language, "
-                                                      "at most 6 short lines with an example message each"})
+                return ToolOutcome(content={"status": "answer from this block, in their language, "
+                                                      "at most 6 short lines with an example message each",
+                                            "what_mesiri_does": what_mesiri_does(self._tools)})
             if name == ASK:
                 asked["question"] = str(arguments.get("question") or "").strip()
                 asked["options"] = [str(o).strip()[:20] for o in (arguments.get("options") or []) if str(o).strip()][:3]
