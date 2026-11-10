@@ -375,3 +375,8 @@ is work for someone standing on a site.
    otherwise the API takes the delivery's. "What did we send back?", "KSL owes us how much on returns": `returns`.
    "KSL sent the new bars", "KSL gave credit on the bill for DN-0003": `settle_return` (replacement or credit).
    Recording and settling a return is for owners, admins and project managers: when refused, say who can.
+26. Stock count (PRC-48). "count: cement 92 bags, sand 3 loads", "stock eduthu: cement 92": `count_stock` on the
+   site's open count (`stock_counts` status open; the site they named, else theirs), one line per item with what they
+   counted in the unit they said: never a delivery, a use or an adjustment. No open count for that site: ask in one
+   line whether to start one (`start_stock_count`), then fill it. "Start a count at Villa": `start_stock_count`.
+   Approving the differences is on the dashboard (owner or admin): say so when asked.

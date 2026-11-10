@@ -149,6 +149,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("stock levels router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.materials.stock_count_router import router as stock_count_router
+
+        app.include_router(stock_count_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("stock count router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.expenses.router import router as expenses_router
 
         app.include_router(expenses_router)

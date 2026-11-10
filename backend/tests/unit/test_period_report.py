@@ -118,6 +118,9 @@ def _sections():
                    "change_pct": "-5.9", "wages": "186000.00",
                    "by_trade": [{"label": "Mason", "man_days": "180"}], "by_day": [],
                    "by_site": [], "trend": [{"man_days": "400"}, {"man_days": "412"}]},
+        "stock_value": {"key": "stock_value", "title": "Stock value", "status": "good", "total": "120000.00", "items": 4,
+                        "unpriced": 0, "slow_moving": 0, "slow_moving_value": "0.00", "by_category": [], "top": [],
+                        "link": "/materials/value"},
         "materials": {"key": "materials", "title": "Materials", "status": "warn", "received_items": 3,
                       "used_items": 5, "running_low": 1,
                       "rows": [{"material": "Cement", "unit": "bag", "category": "Cement", "running_low": True,
@@ -262,7 +265,7 @@ async def test_engine_names_a_failing_section_and_hides_nothing_else(stubbed, mo
     r = await _build(pid)
     assert r["unavailable"] == ["materials"]
     assert "issues" not in r["sections"] and "materials" not in r["sections"]
-    assert r["order"] == ["work", "schedule", "labour", "money", "photos", "completeness"]
+    assert r["order"] == ["work", "schedule", "labour", "stock_value", "money", "photos", "completeness"]
     assert r["headline"]["lead"] and r["kpis"] and r["areas"]
 
 
@@ -270,6 +273,7 @@ async def test_money_is_never_read_for_a_role_that_does_not_see_spending(stubbed
     pid, read = stubbed
     r = await _build(pid, role="SITE_ENGINEER")
     assert "money" not in read and "money" not in r["sections"] and r["sees_money"] is False
+    assert "stock_value" not in read and "stock_value" not in r["sections"]  # PRC-49: money roles only
     assert all(k["key"] not in ("spent", "billed") for k in r["kpis"])
 
 

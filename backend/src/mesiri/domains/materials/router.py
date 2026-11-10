@@ -1246,6 +1246,38 @@ async def stock_summary(
     )
 
 
+@router.get("/stock-value")
+async def stock_value(
+    as_of: datetime.date | None = Query(default=None, description="The day; default: today (company date)."),
+    project_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-49: what the stock on hand is worth, per site and material: quantity x the weighted average rate of its
+    deliveries (D-P2-4, GST per D-CC8); totals, by main category, the top 10, and slow-moving (not used in 30 days).
+    Money roles only (D-CC4). Same project and site scope as /stock-summary."""
+    from mesiri.authorization.roles import may_view_expenses
+    from mesiri.domains.materials.valuation import stock_value as value_of
+
+    if not may_view_expenses(auth_context.role):
+        raise HTTPException(status_code=403, detail="Stock value is for the roles that see the company's spending.")
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied or _site_filter_denied(auth_context, project_id, site_id):
+        return {"as_of": None, "total": "0.00", "items": 0, "unpriced": 0, "slow_moving": 0,
+                "slow_moving_value": "0.00", "by_category": [], "top": [], "rows": []}
+    if as_of is None:
+        from mesiri.application.dpr import project_day
+
+        as_of = await project_day.company_today(conn, auth_context.organization_id)
+    out = await value_of(conn, auth_context.organization_id, as_of=as_of, project_ids=project_ids, site_id=site_id)
+    sites = {str(r.id): r.name for r in (await conn.execute(text(
+        "SELECT id, name FROM sites WHERE organization_id = :org"), {"org": auth_context.organization_id})).all()}
+    for row in out["rows"]:
+        row["site_name"] = sites.get(row["site_id"] or "", "")
+    return out
+
+
 async def _on_order_now(conn: AsyncConnection, organization_id: uuid.UUID, date_to: datetime.date) -> dict:
     from mesiri.application.dpr import project_day
     from mesiri.domains.procurement.orders import on_order_by_site

@@ -369,6 +369,19 @@ async def materials(ctx: Ctx) -> dict[str, Any]:
     }
 
 
+async def stock_value(ctx: Ctx) -> dict[str, Any]:
+    """PRC-49: what the stock on hand is worth at the end of the period (money roles only), and what is slow-moving."""
+    from mesiri.domains.materials.router import stock_value as route
+
+    v = await route(as_of=ctx.period.end, project_id=ctx.project_id, site_id=ctx.site_id, auth_context=ctx.auth,
+                    conn=ctx.conn)
+    return {"key": "stock_value", "title": "Stock value", "status": "warn" if v["slow_moving"] else "good" if v["items"] else "none",
+            "total": v["total"], "items": v["items"], "unpriced": v["unpriced"], "slow_moving": v["slow_moving"],
+            "slow_moving_value": v["slow_moving_value"], "by_category": v["by_category"],
+            "top": [{k: r[k] for k in ("material", "site_name", "on_hand", "unit", "value", "slow_moving")} for r in v["top"]],
+            "link": "/materials/value"}
+
+
 # -- money ------------------------------------------------------------------------------------------------------------
 
 async def _spent(ctx: Ctx, period: Period) -> dict[str, Any]:
@@ -554,11 +567,13 @@ def _span(ctx: Ctx) -> tuple[datetime.date, datetime.date]:
 
 
 SECTIONS = {
-    "work": work, "schedule": schedule, "labour": labour, "materials": materials, "money": money_section,
+    "work": work, "schedule": schedule, "labour": labour, "materials": materials, "stock_value": stock_value,
+    "money": money_section,
     "issues": issues, "photos": photos, "completeness": completeness,
 }
 #: The module switch each section needs (``organization.settings.MODULES``); None: always on.
 MODULE_OF: dict[str, str | None] = {
-    "work": "dpr", "schedule": "dpr", "labour": "labour", "materials": "materials", "money": "finance",
+    "work": "dpr", "schedule": "dpr", "labour": "labour", "materials": "materials", "stock_value": "materials",
+    "money": "finance",
     "issues": "dpr", "photos": "dpr", "completeness": "dpr",
 }

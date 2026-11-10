@@ -233,6 +233,18 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare marking a return settled (find it with returns, or its number DN-0003): how replacement (they "
             "sent new material; receipt_id of that delivery when known) or credit (taken off their bill or payment), "
             "note in their words." + _WRITE),
+    # PRC-48: the physical stock count (Materials > Stock count). Book frozen at the start; approving the differences
+    # into the ledger is the dashboard's (admin / owner).
+    Allowed("stock_counts", "GET", "/materials/stock-counts",
+            "Stock counts (SC-0001 ...): status open, approved, cancelled or all; site_id for one site. Also due: the "
+            "sites not counted in 30 days, and last_counted per site."),
+    Allowed("start_stock_count", "POST", "/materials/stock-counts",
+            "Prepare starting a stock count for a site: scope all (default), category (category_id) or top (the 20 "
+            "most valuable). The book quantity is frozen now." + _WRITE),
+    Allowed("count_stock", "PUT", "/materials/stock-counts/{count_id}/lines",
+            "Prepare what was counted on the site's open count (find it with stock_counts status open and the site): "
+            "per item material_id + counted in the unit they said (unit_id when not the stock unit); reason when they "
+            "said why it differs (wastage, theft, wrong_entry, unrecorded_use, found, other)." + _WRITE),
     # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),

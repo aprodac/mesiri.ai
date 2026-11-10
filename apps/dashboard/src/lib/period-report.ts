@@ -93,6 +93,18 @@ export interface Sections {
     trend: { label: string; from: string; man_days: string }[]
     link: string
   }
+  /** PRC-49: what the stock on hand is worth at the period's end (money roles only). */
+  stock_value?: {
+    status: Tone
+    total: string
+    items: number
+    unpriced: number
+    slow_moving: number
+    slow_moving_value: string
+    by_category: { category: string; value: string }[]
+    top: { material: string; site_name: string; on_hand: string; unit: string; value: string | null; slow_moving: boolean }[]
+    link: string
+  }
   materials?: {
     status: Tone
     received_items: number
