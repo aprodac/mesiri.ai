@@ -55,10 +55,14 @@ from runtime.team_notify import poke_watch_soon
 
 from . import bill_photo, documents
 from .agent import (
+    CHANGE_READY,
+    CORRECT_SAVED,
     DONT_KNOW,
+    DROP_READY,
     LANGUAGE_LINES,
     PERSON_TOOL,
     SAVE_AS_SAID,
+    SAVE_READY,
     SIZE_UNKNOWN,
     SIZE_WAY_OUT,
     SOP,
@@ -568,6 +572,12 @@ class ApiWhatsApp:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending") or []])
             needs = list(state.get("size_needed") or [])
+            if not ready and not needs and not state.get("asked") and is_bare_cancel(text):
+                # WA-274 (live run, 10 Nov: a bare "cancel" with nothing waiting got today's cement stock and the
+                # project count; [285], 7 Nov: the updates after it were swallowed): the code can tell from the
+                # words and the state, so the code answers and no model turn runs (SOP rule 5 said the same line).
+                await self._trace_turn(message, {"text": text, "calls": [], "nothing_to_cancel": True}, started)
+                return ReplySpec(text=_in(state.get("language"), "api.nothing_to_cancel", NOTHING_TO_CANCEL))
             if needs and is_dont_know(text):
                 # [232]: nobody knows: a material with no stock yet can be counted in the unit they said (a way out for
                 # the admin too); else the line is held (for the admin, or until the admin themself sets the size).
@@ -731,6 +741,10 @@ class ApiWhatsApp:
             from runtime.agent.wording import say
 
             words = f"{words}\n\n{say('api.not_held', state.get('language') or 'english', lines=' · '.join(turn.not_held))}"
+        if card_speaks(turn, calls, words, unchanged=unchanged, tools=self._agent._tools) and not got_why:
+            # WA-274: the card the code draws says what is held and that Save keeps it; the model's line above it only
+            # repeated that, or said more than is true ("issue aayi report cheythu" for an issue only held, 10 Nov).
+            words = ""
         reply = self._reply(words, turn.pending, state, turn.options, state.get("language"))
         await self._save_state(ctx, state)
         return reply
@@ -1975,6 +1989,35 @@ def same_list_now(state: dict, batch: str) -> str:
     if batch != state.get("batch") and current and (state.get("cards") or {}).get(batch) == current:
         return str(state["batch"])
     return batch
+
+
+def is_bare_cancel(text: str | None) -> bool:
+    """WA-274: the whole message is "cancel" / "venda" / "വേണ്ട" (the shared check of the runtime, not a new list)."""
+    from runtime.agent.material_direction import is_cancel
+
+    return is_cancel(text)
+
+
+#: WA-274: the tools that only change what waits or what is saved: a turn made of these looked nothing up.
+_LIST_TOOLS = frozenset({SAVE_READY, DROP_READY, CHANGE_READY, CORRECT_SAVED})
+
+
+def card_speaks(turn: Any, calls: list[dict], words: str, *, unchanged: bool, tools: dict[str, Any]) -> bool:
+    """WA-274 (reliability plan step 3, first part): True when the model's words above a card are only talk about
+    the card, so the card alone goes out. That is: the turn changed the list, saved and refused nothing, asked
+    nothing (no question, no options, no "?" in its words), passed nothing to the team and looked nothing up (every
+    call was a write or a change of the list). The model then cannot say "saved", "reported" or "ready" over a
+    list that is only held, in any language, with no pattern to keep up."""
+    if not turn.pending or unchanged or turn.saved or turn.options or turn.question or turn.not_held:
+        return False
+    if "?" in (words or "") or "؟" in (words or ""):
+        return False
+    for call in calls:
+        name = str(call.get("tool") or "")
+        api = tools.get(name)
+        if name not in _LIST_TOOLS and (api is None or not api.is_write):
+            return False  # a read, a link, a note to the team, an explanation: its words are the answer
+    return True
 
 
 def nothing_on_card(tap: str, state: dict) -> str:
