@@ -31,6 +31,10 @@ on:
         description: "everyday (5 conversations) or all"
         required: false
         default: "everyday"
+      cap_inr:
+        description: "Budget for this run in rupees (empty: vars.SOP_EVAL_NIGHTLY_CAP_INR, else 40). A full set on a dearer model needs about 100."
+        required: false
+        default: ""
 
 # One live-model run at a time: the key has a per-minute token cap.
 concurrency:
@@ -83,7 +87,7 @@ jobs:
         if: steps.plan.outputs.run == 'true'
         env:
           DAILY_CAP_INR: ${{ vars.SOP_EVAL_DAILY_CAP_INR || '25' }}
-          NIGHTLY_CAP_INR: ${{ vars.SOP_EVAL_NIGHTLY_CAP_INR || '40' }}
+          NIGHTLY_CAP_INR: ${{ inputs.cap_inr || vars.SOP_EVAL_NIGHTLY_CAP_INR || '40' }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             usd=$(python3 "$BUDGET" remaining "$LEDGER" "$DAILY_CAP_INR")
