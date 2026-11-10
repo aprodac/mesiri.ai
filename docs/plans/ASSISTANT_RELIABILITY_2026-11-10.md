@@ -117,6 +117,16 @@ Sahal, asus) on test or own companies.
   updates are now held and the masons are counted right (6, "aaru"), but "20 bag cement" with no verb was held
   as used, and the test wants received. The words do not say which; whether to ask is a product question.
 
+### 3.9 Model comparison and the card check's record (10 Nov, WA-140, WA-264)
+
+- All 15 saved conversations on both models, same code: `gemini-3.5-flash-lite` 13 right (wrong: `716730f2`),
+  32 calls, 52 s; `gemini-3.6-flash` 13 right (wrong: `83168ef0`, "what can Mesiri do" also sent to the team),
+  39 calls, 82 s, 2.5 times the price. No gain shown: production stays on Flash-Lite. The set is too small and too
+  easy to separate two models; it needs the failed chats of 29 Oct to 8 Nov.
+- The card check (shadow since 8 Nov) has written no verdict: production had 2 assistant turns on 9 Nov and 2 on
+  10 Nov, none with a card (65 to 105 turns a day on 4 to 8 Nov). There is nothing yet to decide "blocking" on.
+- The routing table has a fallback provider for voice only; the assistant's own route (`api_agent`) has none.
+
 ### 3.5 Classic (the old engine)
 
 - **All 6 companies are on v3** (`assistant_mode = api`); new companies start on v3. WA-137 can be closed.
