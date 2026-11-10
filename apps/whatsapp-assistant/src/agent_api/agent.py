@@ -1342,6 +1342,13 @@ class ApiAgent:
                 if name == ADD_TOOL and body.get("name"):
                     note += (f" Lines for it (what came, a unit size) name it material_id \"{NEW}{body['name']}\": "
                              "prepare them now, in this turn; they save after it.")
+                if name == PROJECT_TOOL and body.get("name"):
+                    # [277] (live, 10 Nov: the SOP line alone left the model asking "which site?" for the cement): said
+                    # where the model reads it, as for a new material above.
+                    note += (f" An update my message gives for this project (what came or was used, labour, work, "
+                             f"an issue: \"there\", \"athil\", \"avide\") is prepared now, in this turn, with any "
+                             f"site_id you have: the code puts it on {body['name']} and Save creates the project "
+                             "first. Never ask which site for it.")
                 return ToolOutcome(content={"status": "ready, NOT saved", "note": note + size_hint + account_note})
             response = await client.call(tool.method, path, params=params)
             if response.status == 422 and (fixed_params := meant_params(params, response.body)) is not None:
