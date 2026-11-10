@@ -106,6 +106,17 @@ Sahal, asus) on test or own companies.
 - **Not verified:** voice, vision, translation and extraction on the new model with a real call; whether
   Flash-Lite answers as well as 2.5 Flash (5 conversations is too few).
 
+### 3.8 The first prompt cut (10 Nov, WA-272)
+
+- The "What Mesiri does" block (9,400 characters) left the system prompt; `explain_mesiri` returns it. The
+  `confirm_line` description, repeated on 66 write tools (13,300 characters), is one short line.
+- Measured on the eval: about 8% less input a call (the estimate fell from 2.62 to 2.42 rupees a call). Small:
+  tool parameter structure (about 38,000 characters) and the SOP are untouched. The large cut is still tools on
+  demand, which waits for Ilan's answer.
+- Eval after the cut, `gemini-3.5-flash-lite`: 4 of 5 right. `716730f2` still fails, differently: all three
+  updates are now held and the masons are counted right (6, "aaru"), but "20 bag cement" with no verb was held
+  as used, and the test wants received. The words do not say which; whether to ask is a product question.
+
 ### 3.5 Classic (the old engine)
 
 - **All 6 companies are on v3** (`assistant_mode = api`); new companies start on v3. WA-137 can be closed.
