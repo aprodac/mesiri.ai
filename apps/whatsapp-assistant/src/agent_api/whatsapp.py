@@ -336,6 +336,10 @@ class ApiWhatsApp:
         elif tap.startswith(SIZE_PREFIX):
             said = "(tapped to confirm a size)"
             reply = await self._on_size_tap(tap[len(SIZE_PREFIX):], ctx)
+        elif tap.startswith(OPTION_PREFIX) and said and (closed := await self._closed_question(tap, ctx)) is not None:
+            # WA-266: a button of a question that is no longer the open one never answers another question.
+            said = "(tapped an option of an earlier question)"
+            reply = closed
         elif tap.startswith(OPTION_PREFIX) and said:
             reply = await self._on_words(said, message, ctx)
         elif message.modality is InputModality.TEXT and said:
@@ -1203,6 +1207,37 @@ class ApiWhatsApp:
 
     # (WA-263: a tap on a card that is done says what happened to it, never "nothing waiting to save" for a Cancel.)
 
+    async def _closed_question(self, tap: str, ctx: Any) -> ReplySpec | None:
+        """WA-266: what a tap on an EARLIER question's button gets, or None when the button belongs to the question
+        open now (or is from before buttons named their question): the tap then goes on as the person's answer.
+
+        An option tap used to arrive as its title alone ("Other", "Keep 9 pm"): a short reply, so it was taken as
+        the answer to whatever question was open by then, or as a new request with no meaning. The code now says
+        that question is closed and shows what IS waiting: the open question with its buttons, else the list with
+        Save. Nothing changes in the state: no line is answered, dropped or saved by a stale tap."""
+        asked_id = question_of(tap)
+        if asked_id is None:
+            return None
+        state = await self._state(ctx)
+        if asked_id == state.get("asked_id"):
+            return None
+        language = state.get("language")
+        line = _in(language, "api.question_closed", QUESTION_CLOSED)
+        entries = _without_stale_sends([PendingWrite.from_json(e) for e in state.get("pending") or []])
+        asked = state.get("asked") or {}
+        options = [str(o) for o in asked.get("options") or []]
+        if state.get("asked_id") and options:
+            rows = option_rows(state["asked_id"], options)
+            if entries and state.get("batch") and len(rows) < 3:
+                rows.append(ListRow(id=f"{SAVE_PREFIX}{state['batch']}", title="Save"))
+            return ReplySpec(text=f"{line}\n\n{asked.get('question') or ''}".strip(), buttons=tuple(rows))
+        if entries and state.get("batch"):
+            listed = "\n".join(f"{i}. {without_ids(e.summary)}" for i, e in enumerate(entries, 1))
+            heading = READY_SEND_HEADING if only_sends(entries) else READY_HEADING
+            return _save_buttons(f"{line}\n\n{heading}\n{listed}\n\n{press_line(entries, language)}",
+                                 state["batch"], send=only_sends(entries))
+        return ReplySpec(text=line)
+
     async def _on_edit(self, tap: str, ctx: Any) -> ReplySpec:
         """WA-208: "✏️ Edit" on a ready list. One line: ask its right figure at once; several: pick the line first.
         The next message (typed or a voice note) changes only that line."""
@@ -1348,6 +1383,8 @@ class ApiWhatsApp:
         elif not pending:
             state.pop("pending_at", None)
         state["batch"] = uuid.uuid4().hex[:8] if pending else None  # a new list: older buttons no longer act
+        # WA-266: the question this reply asks (None when it asks none): only ITS buttons answer it.
+        state["asked_id"] = uuid.uuid4().hex[:8] if options else None
         from runtime.agent.reply_clean import whatsapp_bold
 
         text = whatsapp_bold(words) or "OK."
@@ -1365,7 +1402,7 @@ class ApiWhatsApp:
             if not options:
                 text = f"{text}\n\n{press_line(pending, language)}"
         if options:
-            rows = [ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])]
+            rows = option_rows(state["asked_id"], options)
             if pending and len(rows) < 3:  # WA-197: a size question too: the line is on the list, Save holds it
                 # [229]: one line waits for an answer, the others are held: Save stays on the same reply
                 # (last, so the option taps keep their numbers; WhatsApp allows 3 buttons).
@@ -1408,7 +1445,7 @@ class ApiWhatsApp:
         remember_card(state)  # WA-263
         try:
             await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled", "unsaved", "cards",
-                                                               "saved_batch")
+                                                               "saved_batch", "asked_id")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -1873,6 +1910,25 @@ def _all_languages(key: str, english: str) -> tuple[str, ...]:
 
 #: The done-card line in every language (for checks that do not know the person's language).
 NOTHING_ON_CARD_WORDS = _all_languages("api.nothing_on_card", NOTHING_ON_CARD)
+
+
+#: WA-266: a tap on a button of a question that is no longer the open one.
+QUESTION_CLOSED = "That question is closed now, so I haven't used that answer."
+
+
+def option_rows(asked_id: str | None, options: list[str]) -> list[ListRow]:
+    """WA-266: a question's buttons (WhatsApp shows three). Each names its question (``apiag:opt:<question>:<n>``), so
+    a tap on it later is known to belong to that question and no other."""
+    mark = f"{asked_id}:" if asked_id else ""
+    return [ListRow(id=f"{OPTION_PREFIX}{mark}{i}", title=o) for i, o in enumerate(options[:3])]
+
+
+def question_of(tap: str) -> str | None:
+    """WA-266: the question an option button belongs to; None for a button from before they named one
+    (``apiag:opt:<n>``: still taken as the answer, as it always was)."""
+    rest = tap[len(OPTION_PREFIX):] if tap.startswith(OPTION_PREFIX) else ""
+    asked_id, sep, _number = rest.rpartition(":")
+    return asked_id if sep and asked_id else None
 
 
 def remember_card(state: dict) -> None:

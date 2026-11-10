@@ -568,6 +568,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "उस कार्ड में अब कुछ बाकी नहीं है: वह सेव, कैंसल या रोका जा चुका है। जो चाहिए भेजिए, मैं तैयार कर दूँगा।",
         "hinglish": "Us card mein ab kuch baaki nahi hai: woh save, cancel ya hold ho chuka hai. Jo chahiye bhejiye, main ready kar dunga.",
     },
+    "api.question_closed": {
+        "english": "That question is closed now, so I haven't used that answer.",
+        "manglish": "Aa chodyam ippo close aayi, athukondu aa utharam njan eduthittilla.",
+        "malayalam": "ആ ചോദ്യം ഇപ്പോൾ ക്ലോസ് ആയി, അതുകൊണ്ട് ആ ഉത്തരം ഞാൻ എടുത്തിട്ടില്ല.",
+        "hindi": "वह सवाल अब बंद हो चुका है, इसलिए मैंने वह जवाब नहीं लिया।",
+        "hinglish": "Woh sawaal ab band ho chuka hai, isliye maine woh jawaab nahi liya.",
+    },
     "api.nothing_to_cancel": {
         "english": "There is nothing waiting to cancel.",
         "manglish": "Cancel cheyyaan onnum baakki illa.",

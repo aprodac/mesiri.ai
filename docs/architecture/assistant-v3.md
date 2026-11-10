@@ -186,7 +186,7 @@ Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
    unit id in code (`units.py`, the shared `runtime.unit_words` table), when prepared and when
    saved; an unknown unit gets unit buttons before Save.
 
-Entries wait per person in Redis for a day (an older list's buttons do nothing).
+Entries wait per person in Redis for a day. Every button names what it belongs to: Save / Edit / Cancel carry their card's id, and an older card's tap acts on that card's own lines still waiting (WA-263); a question's option buttons carry the question's id, and a tap on a question that is no longer the open one is answered by the code, changes nothing, and shows what is waiting now (WA-266).
 
 ## Fewest taps (SOP rule 1)
 
