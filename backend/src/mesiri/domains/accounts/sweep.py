@@ -34,6 +34,11 @@ _ZERO = Decimal(0)
 EXPENSE, MONEY, RA_BILL, OPENING_ACCOUNT, OPENING_VENDOR = "expense", "money", "ra_bill", "opening_account", "opening_vendor"
 #: LW-06: a site's month of attendance at its wage; an advance taken back on a wage sheet.
 LABOUR_WAGES, WAGE_RECOVERY = "labour_wages", "wage_recovery"
+#: ACC-12 manual vouchers; ACC-15 a month's deliveries not billed; ACC-16 a fixed asset (cost, depreciation, sale).
+VOUCHER, ACCRUAL, FIXED_ASSET = "voucher", "accrual", "fixed_asset"
+#: ACC-13: a bank statement line booked as a new money movement (``money_transactions.source_type``).
+BANK_LINE_SOURCE = "bank_statement_line"
+_ACCRUAL_NS = uuid.UUID("0b8e6a52-3f0c-4d5e-8a1b-6c2f9d7e4b13")
 _LABOUR_NS = uuid.UUID("2c0c7a8e-5d1b-4f7e-9a63-1d6f0b9e4a71")
 
 
@@ -78,6 +83,9 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
     # LW-06: advances and wage payments name their project and site for the money movement's other side.
     from mesiri.domains.workforce.pay_store import ADVANCE_SOURCE, PAYMENT_SOURCE
 
+    bank_booked = {str(r["money_transaction_id"]): r for r in await _rows(conn,
+        "SELECT k.money_transaction_id, k.ledger_id, k.project_id, b.description, b.reference FROM bank_bookings k "
+        "LEFT JOIN bank_statement_lines b ON b.id = k.line_id WHERE k.organization_id = :org", org)}
     labour_money = {str(r["id"]): r for r in await _rows(conn,
         "SELECT id, project_id, site_id, payee_name AS who FROM labour_advances WHERE organization_id = :org "
         "UNION ALL SELECT p.id, w.project_id, w.site_id, r.payee_name AS who FROM wage_payments p "
@@ -151,6 +159,11 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
             return {"ledger": posting.code("labour_advances" if src == ADVANCE_SOURCE else "wages_payable"),
                     "project_id": r.get("project_id"), "site_id": r.get("site_id"),
                     "words": ("Advance to " if src == ADVANCE_SOURCE else "Wages paid to ") + (r.get("who") or "labour")}
+        if src == BANK_LINE_SOURCE and str(m["id"]) in bank_booked:
+            b = bank_booked[str(m["id"])]
+            return {"ledger": posting.ledger_id(b["ledger_id"]), "project_id": b["project_id"],
+                    "voucher_type": "journal",
+                    "words": " · ".join(x for x in ("From the bank statement", b["description"], b["reference"]) if x)}
         if m["type"] == "reversal" and src == "money_transaction" and sid in moves and depth < 3:
             c = counter_of(moves[sid], depth + 1)
             return {**c, "words": f"Undone: {c['words']}"} if c else None
@@ -184,6 +197,9 @@ async def read_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str,
         out[(RA_BILL, str(b["id"]))] = posting.ra_bill_entries(
             {**b, "ref": ref, "words": " · ".join(x for x in (f"{ref} running bill", b["project"]) if x)})
     out.update(await labour_sources(conn, org))
+    out.update(await voucher_sources(conn, org))
+    out.update(await accrual_sources(conn, org))
+    out.update(await asset_sources(conn, org))
     for a in accounts.values():
         out[(OPENING_ACCOUNT, str(a["id"]))] = posting.opening_account_entries(a)
     for v in vendors.values():
@@ -221,6 +237,80 @@ async def labour_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[st
         out[(WAGE_RECOVERY, str(r["id"]))] = posting.wage_row_entries(
             r["day"], r["project_id"], r["site_id"], r["payee_name"], r["advances_recovered"], r["overtime_amount"],
             deducted)
+    return out
+
+
+async def voucher_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """ACC-12: each manual voucher as typed (a cancelled one posts nothing: the sweep takes it out)."""
+    lines: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in await _rows(conn,
+            "SELECT voucher_id, ledger_id, debit, credit, project_id, site_id, cost_centre FROM account_voucher_lines "
+            "WHERE organization_id = :org ORDER BY voucher_id, line_no", org):
+        lines[str(r["voucher_id"])].append(r)
+    return {(VOUCHER, str(v["id"])): posting.voucher_entries({**v, "lines": lines.get(str(v["id"]), [])})
+            for v in await _rows(conn, "SELECT id, voucher_date AS date, status, narration FROM account_vouchers "
+                                       "WHERE organization_id = :org", org)}
+
+
+async def accrual_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """ACC-15 (D-ACC5): for each finished month, the priced deliveries received by its last day whose supplier bill
+    had not come by then (a bill dated later counts from its date, so a closed month's accrual never changes), by
+    project and site. The supplier ledger's terms: a delivery is owed once, on the delivery or on its bill; returned
+    or reversed deliveries are left out; before a supplier's opening date their opening balance stands for it."""
+    from mesiri.application.dpr import project_day
+
+    rows = await _rows(conn,
+        "SELECT r.project_id, r.site_id, r.occurred_date AS d, "
+        "COALESCE(r.total_cost, r.unit_cost * r.quantity) AS amount, "
+        "(SELECT MIN(be.occurred_date) FROM material_invoices bi JOIN expenses be ON be.id = bi.expense_id "
+        " WHERE bi.id = r.invoice_id AND be.workflow_status = 'confirmed') AS billed_on "
+        "FROM material_receipts r LEFT JOIN vendors v ON v.id = r.vendor_id "
+        "WHERE r.organization_id = :org AND r.vendor_id IS NOT NULL AND r.quantity > 0 "
+        "AND (r.unit_cost IS NOT NULL OR r.total_cost IS NOT NULL) AND r.movement_reason = 'RECEIVED' "
+        "AND r.transfer_id IS NULL AND r.reverses_movement_id IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM material_usage x WHERE x.reverses_movement_id = r.id) "
+        "AND NOT EXISTS (SELECT 1 FROM material_receipts y WHERE y.reverses_movement_id = r.id) "
+        "AND (v.opening_balance_date IS NULL OR COALESCE(v.opening_balance, 0) = 0 OR r.occurred_date >= v.opening_balance_date)",
+        org)
+    if not rows:
+        return {}
+    this_month = (await project_day.company_today(conn, org)).replace(day=1)
+    out: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    month = min(r["d"] for r in rows).replace(day=1)
+    while month < this_month:
+        end = periods.month_end(month)
+        parts: dict[tuple, Decimal] = defaultdict(Decimal)
+        count = 0
+        for r in rows:
+            if r["d"] <= end and (r["billed_on"] is None or r["billed_on"] > end):
+                parts[(_s(r["project_id"]), _s(r["site_id"]))] += Decimal(r["amount"])
+                count += 1
+        key = (ACCRUAL, str(uuid.uuid5(_ACCRUAL_NS, f"{org}:{month:%Y-%m}")))
+        words = f"Deliveries not billed at {end:%d %b %Y} ({count})"
+        out[key] = posting.accrual_entries(end, [{"project_id": p, "site_id": s_, "amount": v}
+                                                 for (p, s_), v in sorted(parts.items(), key=str) if v > 0], words)
+        month = end + datetime.timedelta(days=1)
+    return out
+
+
+async def asset_sources(conn: AsyncConnection, org: uuid.UUID) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """ACC-16: each fixed asset's cost, each finished year's depreciation and its sale (``posting.asset_entries``)."""
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.accounts import depreciation
+
+    assets = await _rows(conn,
+        "SELECT a.*, e.occurred_date AS expense_date, e.category_id AS expense_category_id FROM fixed_assets a "
+        "LEFT JOIN expenses e ON e.id = a.expense_id AND e.workflow_status = 'confirmed' "
+        "WHERE a.organization_id = :org", org)
+    if not assets:
+        return {}
+    today = await project_day.company_today(conn, org)
+    out = {}
+    for a in assets:
+        if a["expense_id"] and not a["expense_category_id"]:
+            a = {**a, "expense_id": None}  # its bill is no longer confirmed: the asset stands on its own value
+        ledger = chart.ASSET_CLASSES.get(a["asset_class"], chart.ASSET_CLASSES["plant"])["ledger"]
+        out[(FIXED_ASSET, str(a["id"]))] = posting.asset_entries(a, depreciation.schedule(a, today), ledger)
     return out
 
 
@@ -290,11 +380,19 @@ async def _resolver(conn: AsyncConnection, org: uuid.UUID, refs: set[tuple]) -> 
     """Ledger id per reference, making the linked ledgers that do not exist yet (named after their record)."""
     groups = {r["code"]: r["id"] for r in await chart.groups(conn, org) if r["code"]}
     found: dict[tuple, uuid.UUID] = {}
-    for r in await chart.ledgers(conn, org):
+    all_ledgers = await chart.ledgers(conn, org)
+    for r in all_ledgers:
         if r["code"]:
             found[("code", r["code"])] = r["id"]
         if r["link_kind"]:
             found[("link", r["link_kind"], str(r["link_id"]))] = r["id"]
+    known = {r["id"] for r in all_ledgers}
+    for ref in refs:
+        if ref[0] == "id":
+            lid = uuid.UUID(ref[1])
+            if lid not in known:
+                raise LookupError(f"ledger {lid} is not this company's")
+            found[ref] = lid
     missing = [ref for ref in refs if ref not in found]
     if missing:
         names: dict[str, dict[str, dict]] = {}
@@ -393,7 +491,6 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, desired: dict[tuple[str,
     numbers: dict[tuple[str, str], int] = {(r["voucher_type"], r["financial_year"]): r["n"] for r in await _rows(conn,
         "SELECT voucher_type, financial_year, MAX(number) AS n FROM journal_entries WHERE organization_id = :org "
         "GROUP BY voucher_type, financial_year", org)}
-    ledger_ref = {v: k for k, v in ledger_of.items()}
     touched_days: set[datetime.date] = set()
 
     async def write_lines(entry_id: uuid.UUID, e: dict[str, Any]) -> None:
@@ -423,7 +520,7 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, desired: dict[tuple[str,
         if kept or want_closed:
             kept_lines = []
             if kept:
-                kept_lines = [{**r, "ledger": ledger_ref.get(r["ledger_id"]) or ("id", str(r["ledger_id"])),
+                kept_lines = [{**r, "ledger": ("id", str(r["ledger_id"])),
                                "project_id": _s(r["project_id"]), "site_id": _s(r["site_id"])}
                               for r in (await conn.execute(text(
                                   "SELECT ledger_id, debit, credit, project_id, site_id, cost_centre FROM journal_lines "
@@ -435,7 +532,13 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, desired: dict[tuple[str,
             day = periods.first_open_day(closed, first)
             label = f"{first:%b %Y}"
             words = (want[0]["narration"] if want else (kept and "Record removed")) or "Record changed"
-            adj = adjustment(want_closed, kept_lines, day, f"Changed after {label} was closed · {words}")
+            # Net by ledger id: the record names a ledger by code, link or id, the closed lines by id.
+            by_id = [{**e, "lines": [{**ln, "ledger": ("id", str(ledger_of[ln["ledger"]]))} for ln in e["lines"]]}
+                     for e in want_closed]
+            for e in by_id:
+                for ln in e["lines"]:
+                    ledger_of[ln["ledger"]] = uuid.UUID(ln["ledger"][1])
+            adj = adjustment(by_id, kept_lines, day, f"Changed after {label} was closed · {words}")
             if adj:
                 adj["after_close"] = True
                 new_open.append(adj)

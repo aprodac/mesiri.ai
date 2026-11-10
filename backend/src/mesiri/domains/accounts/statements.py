@@ -368,3 +368,124 @@ async def attention(conn: AsyncConnection, org: uuid.UUID, today: datetime.date)
         out.append({"key": "after_close", "words": f"{late} change{'s' if late != 1 else ''} to closed months this year.",
                     "amount": None, "ledger_id": None, "to": "/accounts/day-book?late=1"})
     return out
+
+
+# --- ACC-18: cash flow (direct method) -----------------------------------------------------------------------------
+
+#: What the other side of a cash or bank line says the money was for (first match wins). ``kind`` is the section.
+CASH_HEADS: tuple[tuple[str, str, str], ...] = (
+    ("clients", "operating", "Received from clients"),
+    ("suppliers", "operating", "Paid to suppliers and subcontractors"),
+    ("labour", "operating", "Wages and advances to labour"),
+    ("staff", "operating", "Repaid to staff (own pocket) and expenses"),
+    ("taxes", "operating", "GST and TDS"),
+    ("other_operating", "operating", "Other income and expenses"),
+    ("assets", "investing", "Fixed assets bought or sold"),
+    ("capital", "financing", "Capital and funds put in or taken out"),
+    ("loans", "financing", "Loans taken or repaid"),
+    ("own_accounts", "other", "Moved from or to the company's other accounts"),
+    ("opening", "other", "Opening balances entered (not money that moved)"),
+)
+_HEAD_SECTION = {k: s for k, s, _ in CASH_HEADS}
+_HEAD_LABEL = {k: w for k, _, w in CASH_HEADS}
+
+
+def cash_head(led: dict[str, Any], top_code: str | None) -> str:
+    """Pure: which head a counterpart ledger puts money under."""
+    code_, link = led.get("code"), led.get("link_kind")
+    if code_ == "opening_difference":
+        return "opening"
+    if link == "client" or code_ in ("no_client", "advance_received", "tds_receivable", "retention_receivable"):
+        return "clients"
+    if link == "vendor" or code_ in ("retention_payable", "grni"):
+        return "suppliers"
+    if code_ in ("wages_payable", "labour_advances", "labour_wages"):
+        return "labour"
+    if link == "staff" or code_ == "expenses_payable":
+        return "staff"
+    if top_code == "fixed_assets" or code_ in ("asset_sale_receivable",):
+        return "assets"
+    if top_code == "loans":
+        return "loans"
+    if top_code == "capital":
+        return "capital"
+    if top_code == "duties_taxes" or code_ in ("input_gst", "output_gst") or link == "money_account":
+        return "taxes"
+    return "other_operating"
+
+
+async def cash_flow(conn: AsyncConnection, org: uuid.UUID, date_from: datetime.date, date_to: datetime.date,
+                    project_id=None, site_id=None) -> dict[str, Any]:
+    """Money in and out of cash and bank in the period, by what it was for: operating, investing, financing (the
+    direct method, from the books' own cash and bank lines). A move between the company's own accounts is not a flow.
+    An entry's cash is shared over its other lines by their amounts (one bill paid in part to a supplier and in part
+    as TDS lands in both heads). Opening + net = closing, the same as Cash & bank."""
+    cash = await cash_bank(conn, org, date_from, date_to, project_id, site_id)
+    scope, params = _scope(project_id, site_id)
+    ledgers = {r["id"]: r for r in await chart.ledgers(conn, org)}
+    groups = await chart.groups(conn, org)
+    roots = _roots(groups)
+    is_cash = {lid for lid, r in ledgers.items() if r["link_kind"] == "money_account" and r["nature"] == "asset"}
+    rows = (await conn.execute(text(
+        "SELECT jl.entry_id, jl.ledger_id, jl.debit, jl.credit, jl.project_id, jl.site_id, "
+        "date_trunc('month', j.entry_date)::date AS m "
+        "FROM journal_lines jl JOIN journal_entries j ON j.id = jl.entry_id WHERE jl.organization_id = :org "
+        "AND jl.entry_date BETWEEN :f AND :t AND jl.entry_id IN (SELECT x.entry_id FROM journal_lines x "
+        " JOIN ledgers xl ON xl.id = x.ledger_id JOIN ledger_groups xg ON xg.id = xl.group_id "
+        " WHERE x.organization_id = :org AND x.entry_date BETWEEN :f AND :t AND xl.link_kind = 'money_account' "
+        " AND xg.nature = 'asset'" + scope.replace("jl.", "x.") + ")"),
+        {"org": org, "f": date_from, "t": date_to, **params})).mappings().all()
+    entries: dict[Any, list] = {}
+    for r in rows:
+        entries.setdefault(r["entry_id"], []).append(r)
+    heads: dict[str, dict[str, Decimal]] = {k: {"in": _ZERO, "out": _ZERO} for k, _, _ in CASH_HEADS}
+    months: dict[datetime.date, dict[str, Decimal]] = {}
+    for lines in entries.values():
+        # The cash moved by this entry within the scope (a site's petty cash, a project's money), and its other lines.
+        mine = [ln for ln in lines if ln["ledger_id"] in is_cash]
+        if project_id is not None:
+            mine = [ln for ln in mine if ln["project_id"] == project_id]
+        if site_id is not None:
+            mine = [ln for ln in mine if ln["site_id"] == site_id]
+        net = sum((Decimal(ln["debit"]) - Decimal(ln["credit"]) for ln in mine), _ZERO)
+        other = [ln for ln in lines if ln["ledger_id"] not in is_cash]
+        if not net:
+            continue  # a move between own accounts
+        if not other:  # a project's or site's money moved from or to the company's other accounts
+            heads["own_accounts"]["in" if net > 0 else "out"] += abs(net)
+            m = months.setdefault(lines[0]["m"], {"in": _ZERO, "out": _ZERO})
+            m["in" if net > 0 else "out"] += abs(net)
+            continue
+        weights = []
+        for ln in other:
+            led = ledgers.get(ln["ledger_id"])
+            if led is None:
+                continue
+            top = roots.get(led["group_id"])
+            # The side that balances the cash: money in is credited elsewhere, money out debited.
+            w = (Decimal(ln["credit"]) - Decimal(ln["debit"])) if net > 0 else (Decimal(ln["debit"]) - Decimal(ln["credit"]))
+            if w > 0:
+                weights.append((cash_head(led, top["code"] if top else None), w))
+        total = sum((w for _, w in weights), _ZERO)
+        if not total:
+            weights, total = [("other_operating", Decimal(1))], Decimal(1)
+        given = _ZERO
+        for i, (head, w) in enumerate(sorted(weights, key=lambda x: -x[1])):
+            part = abs(net) - given if i == len(weights) - 1 else (abs(net) * w / total).quantize(Decimal("0.01"))
+            given += part
+            heads[head]["in" if net > 0 else "out"] += part
+        m = months.setdefault(lines[0]["m"], {"in": _ZERO, "out": _ZERO})
+        m["in" if net > 0 else "out"] += abs(net)
+    sections = {}
+    for key in ("operating", "investing", "financing", "other"):
+        items = [{"key": k, "label": _HEAD_LABEL[k], "in": v["in"], "out": v["out"], "net": v["in"] - v["out"]}
+                 for k, v in heads.items() if _HEAD_SECTION[k] == key and (v["in"] or v["out"])]
+        sections[key] = {"items": items, "in": sum((i["in"] for i in items), _ZERO),
+                         "out": sum((i["out"] for i in items), _ZERO), "net": sum((i["net"] for i in items), _ZERO)}
+    net = sum((s["net"] for s in sections.values()), _ZERO)
+    opening = cash["total"]["opening"]
+    return {"opening": opening, "sections": sections, "net": net, "closing": opening + net,
+            "books_closing": cash["total"]["closing"], "agrees": opening + net == cash["total"]["closing"],
+            "accounts": cash["accounts"],
+            "months": [{"month": k.strftime("%Y-%m"), "in": v["in"], "out": v["out"], "net": v["in"] - v["out"]}
+                       for k, v in sorted(months.items())]}

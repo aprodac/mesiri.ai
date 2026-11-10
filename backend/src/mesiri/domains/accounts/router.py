@@ -45,7 +45,6 @@ router = APIRouter(prefix="/accounts", tags=["accounts"], dependencies=[Depends(
 
 REOPEN_ROLES = frozenset({"OWNER", "ADMIN", "SUPER_ADMIN"})
 VOUCHER_TYPES = ("journal", "payment", "receipt", "contra", "sales", "purchase")
-_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _out(value: Any) -> Any:
@@ -110,8 +109,13 @@ async def _company(conn: AsyncConnection, org: uuid.UUID) -> str:
     return (await conn.execute(text("SELECT name FROM organizations WHERE id = :o"), {"o": org})).scalar() or "Company"
 
 
-def _xlsx(content: bytes, name: str) -> Response:
-    return Response(content=content, media_type=_XLSX, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+FORMAT = Query("xlsx", alias="format", pattern="^(xlsx|pdf)$", description="xlsx (Excel) or pdf")
+
+
+def _file(d: export.Doc, fmt: str, name: str) -> Response:
+    """ACC-21: a report as Excel or PDF (``export.render``), named ``name`` + its extension."""
+    content, media, ext = export.render(d, fmt)
+    return Response(content=content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}.{ext}"'})
 
 
 # --- chart of accounts ---------------------------------------------------------------------------------------------
@@ -259,14 +263,14 @@ async def trial_balance(date_from: datetime.date | None = None, date_to: datetim
 @router.get("/trial-balance/export")
 async def trial_balance_export(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
                                project_id: uuid.UUID | None = None, site_id: uuid.UUID | None = None,
-                               auth: AuthorizationContext = Depends(get_auth_context),
+                               fmt: str = FORMAT, auth: AuthorizationContext = Depends(get_auth_context),
                                conn: AsyncConnection = Depends(get_db_conn)):
     await _ready(conn, auth)
     date_from, date_to = await _period(conn, auth, date_from, date_to)
     scope = await _scope_words(conn, auth.organization_id, project_id, site_id)
     tb = await reports.trial_balance(conn, auth.organization_id, date_from, date_to, project_id, site_id)
     content = export.trial_balance(await _company(conn, auth.organization_id), scope, date_from, date_to, tb)
-    return _xlsx(content, f"trial-balance-{date_from}-to-{date_to}.xlsx")
+    return _file(content, fmt, f"trial-balance-{date_from}-to-{date_to}")
 
 
 async def _day_book(conn, auth, date_from, date_to, voucher_type, ledger_id, project_id, site_id, q, after_close,
@@ -297,13 +301,13 @@ async def day_book(date_from: datetime.date | None = None, date_to: datetime.dat
 async def day_book_export(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
                           voucher_type: str | None = None, ledger_id: uuid.UUID | None = None,
                           project_id: uuid.UUID | None = None, site_id: uuid.UUID | None = None, q: str | None = None,
-                          auth: AuthorizationContext = Depends(get_auth_context),
+                          fmt: str = FORMAT, auth: AuthorizationContext = Depends(get_auth_context),
                           conn: AsyncConnection = Depends(get_db_conn)):
     await _ready(conn, auth)
     date_from, date_to, scope, book = await _day_book(conn, auth, date_from, date_to, voucher_type, ledger_id,
                                                       project_id, site_id, q, False, 20000, 0)
     content = export.day_book(await _company(conn, auth.organization_id), scope, date_from, date_to, book)
-    return _xlsx(content, f"day-book-{date_from}-to-{date_to}.xlsx")
+    return _file(content, fmt, f"day-book-{date_from}-to-{date_to}")
 
 
 @router.get("/entries/{entry_id}")
@@ -333,7 +337,7 @@ async def statement(ledger_id: uuid.UUID, date_from: datetime.date | None = None
 @router.get("/ledgers/{ledger_id}/statement/export")
 async def statement_export(ledger_id: uuid.UUID, date_from: datetime.date | None = None,
                            date_to: datetime.date | None = None, project_id: uuid.UUID | None = None,
-                           site_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                           site_id: uuid.UUID | None = None, fmt: str = FORMAT, auth: AuthorizationContext = Depends(get_auth_context),
                            conn: AsyncConnection = Depends(get_db_conn)):
     await _ready(conn, auth)
     date_from, date_to = await _period(conn, auth, date_from, date_to)
@@ -343,7 +347,7 @@ async def statement_export(ledger_id: uuid.UUID, date_from: datetime.date | None
         raise HTTPException(status_code=404, detail="Ledger not found.")
     content = export.ledger_statement(await _company(conn, auth.organization_id), scope, date_from, date_to, st)
     slug = re.sub(r"[^a-z0-9]+", "-", st["ledger"]["name"].lower()).strip("-") or "ledger"
-    return _xlsx(content, f"{slug}-{date_from}-to-{date_to}.xlsx")
+    return _file(content, fmt, f"{slug}-{date_from}-to-{date_to}")
 
 
 @router.get("/checks")
@@ -401,6 +405,14 @@ async def reopen_period(month: str, body: ReopenIn, auth: AuthorizationContext =
     _require(auth)
     if str(auth.role or "").upper() not in REOPEN_ROLES:
         raise HTTPException(status_code=403, detail="Only the owner or an admin can reopen a closed month.")
+    from mesiri.domains.accounts import (
+        years,  # ACC-17: a closed year's months stay closed until the year is reopened
+    )
+
+    for ys, ye in await years.closed_years(conn, auth.organization_id):
+        if ys <= start <= ye:
+            raise HTTPException(status_code=409, detail=f"The year {periods.fy_label(start)} is closed. Reopen the "
+                                                        "year first (Accounts › Year end), then this month.")
     await periods.set_status(conn, auth.organization_id, start, "open", auth.user_id, body.reason.strip())
     return await list_periods(auth, conn)
 
@@ -516,6 +528,22 @@ async def _budget(conn: AsyncConnection, auth: AuthorizationContext, project_id:
     return {"budget": total("budget"), "forecast": total("forecast"), "spent": Decimal(str(b.get("total_spent") or 0)),
             "kinds": [{"label": k["label"], "budget": k.get("budget"), "actual": k.get("actual"),
                        "forecast": k.get("forecast")} for k in kinds]}
+
+
+@router.get("/projects/export")  # ACC-21; before /projects/{project_id}
+async def projects_export(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
+                          fmt: str = FORMAT, auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    from mesiri.domains.accounts import statements
+
+    allowed = await _ready_projects(conn, auth)
+    date_from, date_to = await _period(conn, auth, date_from, date_to)
+    rows = await statements.projects_table(conn, auth.organization_id, date_from, date_to, allowed)
+    total = {k: sum((Decimal(r[k]) for r in rows), Decimal(0)) for k in ("billed", "cost", "overheads", "profit",
+                                                                         "receivable", "payable")}
+    total["margin"] = statements.pct(total["profit"], total["billed"])
+    return _file(export.projects(await _company(conn, auth.organization_id), date_from, date_to, rows, total), fmt,
+                 f"project-pl-{date_from}-to-{date_to}")
 
 
 @router.get("/projects/{project_id}")
@@ -651,14 +679,14 @@ async def gst_summary(date_from: datetime.date | None = None, date_to: datetime.
 
 @router.get("/gst/export")
 async def gst_export(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
-                     auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+                     fmt: str = FORMAT, auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
     from mesiri.domains.accounts import tax
 
     await _ready(conn, auth)
     date_from, date_to = await _tax_period(conn, auth, date_from, date_to)
     g = await tax.gst(conn, auth.organization_id, date_from, date_to)
-    return _xlsx(export.gst(await _company(conn, auth.organization_id), date_from, date_to, g),
-                 f"gst-{date_from}-to-{date_to}.xlsx")
+    return _file(export.gst(await _company(conn, auth.organization_id), date_from, date_to, g), fmt,
+                 f"gst-{date_from}-to-{date_to}")
 
 
 @router.get("/tds")
@@ -678,7 +706,7 @@ async def tds_register(date_from: datetime.date | None = None, date_to: datetime
 
 @router.get("/tds/export")
 async def tds_export(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
-                     auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+                     fmt: str = FORMAT, auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
     from mesiri.application.dpr import project_day
     from mesiri.domains.accounts import tax
 
@@ -686,5 +714,11 @@ async def tds_export(date_from: datetime.date | None = None, date_to: datetime.d
     date_from, date_to = await _tax_period(conn, auth, date_from, date_to)
     today = await project_day.company_today(conn, auth.organization_id)
     t = await tax.tds(conn, auth.organization_id, date_from, date_to, today)
-    return _xlsx(export.tds(await _company(conn, auth.organization_id), date_from, date_to, t),
-                 f"tds-{date_from}-to-{date_to}.xlsx")
+    return _file(export.tds(await _company(conn, auth.organization_id), date_from, date_to, t), fmt,
+                 f"tds-{date_from}-to-{date_to}")
+
+
+# Phases D to F (ACC-12, 13, 16, 17, 18, 21): their own file, behind this router's module gate and prefix.
+from mesiri.domains.accounts.control_router import router as _control  # noqa: E402
+
+router.include_router(_control)

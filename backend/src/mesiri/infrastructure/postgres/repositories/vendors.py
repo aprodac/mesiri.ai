@@ -71,7 +71,7 @@ class PostgresVendorRepository:
         res = await self.conn.execute(stmt)
         return [_row_to_vendor(r) for r in res.mappings().all()]
 
-    async def list_with_metrics(self, organization_id: uuid.UUID) -> list[dict]:
+    async def list_with_metrics(self, organization_id: uuid.UUID, project_id: uuid.UUID | None = None) -> list[dict]:
         """List all vendors for org along with expense count and total amount paid."""
         exp_count = sa.func.count(_expenses.c.id).label("expense_count")
         exp_sum = sa.func.coalesce(sa.func.sum(_expenses.c.amount), 0).label("total_amount")
@@ -88,6 +88,8 @@ class PostgresVendorRepository:
                     sa.and_(
                         _expenses.c.vendor_id == _vendors.c.id,
                         _expenses.c.workflow_status == "confirmed",
+                        # SCP-08: one project's spending (None: the whole company, as before).
+                        sa.true() if project_id is None else _expenses.c.project_id == project_id,
                     ),
                 )
             )

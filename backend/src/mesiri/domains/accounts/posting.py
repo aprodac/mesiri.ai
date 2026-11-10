@@ -270,3 +270,84 @@ def overhead_entries(month_end: datetime.date, head_office: Decimal, shares: dic
     lines.append(line(code("overheads_allocated"), head_office, False, project_id=from_project))
     words = f"Head office costs of {month_end:%B %Y} shared over projects by their {basis}"
     return [entry("main", month_end, "journal", words, lines)]
+
+
+def ledger_id(value: Any) -> Ref:
+    """A ledger named by its id: a line the accountant chose (a manual voucher, a bank line booked)."""
+    return ("id", str(value))
+
+
+def voucher_entries(v: dict[str, Any]) -> list[dict[str, Any]]:
+    """ACC-12: a manual voucher posted as it was typed (a cancelled one posts nothing, so the sweep takes it out).
+
+    ``v``: id, date, status, narration, lines [{ledger_id, debit, credit, project_id, site_id, cost_centre}]."""
+    if v.get("status") != "posted":
+        return []
+    lines = []
+    for ln in v["lines"]:
+        debit = money(ln.get("debit"))
+        lines.append(line(ledger_id(ln["ledger_id"]), debit if debit else money(ln.get("credit")), bool(debit),
+                          project_id=ln.get("project_id"), site_id=ln.get("site_id"), cost_centre=ln.get("cost_centre")))
+    projects = {ln["project_id"] for ln in lines}
+    return [entry("main", v["date"], "journal", v["narration"], lines, next(iter(projects)) if len(projects) == 1 else None)]
+
+
+def accrual_entries(month_end: datetime.date, parts: list[dict[str, Any]], words: str) -> list[dict[str, Any]]:
+    """ACC-15 (D-ACC5): deliveries on site at a month's end whose bill has not come: Dr "Materials received, bill
+    awaited" (the month's cost, as cost control counts a delivery), Cr "Goods received not invoiced", per project and
+    site; reversed on the 1st of the next month, when the bill (or the next month's accrual) takes over.
+
+    ``parts``: [{project_id, site_id, amount}]."""
+    lines = []
+    for p in parts:
+        at = {"project_id": p.get("project_id"), "site_id": p.get("site_id")}
+        lines += [line(code("materials_unbilled"), p["amount"], True, cost_centre="materials", **at),
+                  line(code("grni"), p["amount"], False, **at)]
+    main = entry("main", month_end, "journal", words, lines)
+    if not main["lines"]:
+        return []
+    nxt = month_end + datetime.timedelta(days=1)
+    return [main, reverse(main, "reverse", nxt, f"Reversed: {words}")]
+
+
+def asset_entries(a: dict[str, Any], years: list[dict[str, Any]], ledger: str) -> list[dict[str, Any]]:
+    """ACC-16: a fixed asset in the books. ``years``: its depreciation schedule (``depreciation.schedule``); ``ledger``:
+    its class's ledger code.
+
+    - **Cost**: bought through an expense: Dr the class ledger, Cr the expense's category (the bill stays as it is,
+      only its ledger changes from cost to asset), on the bill's date; owned before the books: Dr the class ledger,
+      Cr "Opening balance difference", at its value at the start of that year.
+    - **Depreciation**, each year once it is over: Dr Depreciation, Cr the class ledger.
+    - **Sold or scrapped**: Cr the class ledger its book value, Dr "Assets sold, money to receive" what it fetched,
+      the difference to "Loss or gain on assets sold".
+
+    ``a``: id, name, cost, opening_depreciation, acquired_on, books_from, expense_id, expense_date,
+    expense_category_id, project_id, site_id, disposed_on, disposal_value."""
+    at = {"project_id": a.get("project_id"), "site_id": a.get("site_id")}
+    out = []
+    if a.get("expense_id") and a.get("expense_category_id"):
+        out.append(entry("cost", a["expense_date"], "journal", f"{a['name']} bought: to fixed assets", [
+            line(code(ledger), a["cost"], True, **at),
+            line(link("expense_category", a["expense_category_id"]), a["cost"], False, **at)], a.get("project_id")))
+    else:
+        opening = money(a["cost"]) - money(a.get("opening_depreciation"))
+        out.append(entry("cost", a.get("books_from") or a["acquired_on"], "journal",
+                         f"Opening value · {a['name']}", [
+                             line(code(ledger), opening, True, **at),
+                             line(code("opening_difference"), opening, False, **at)], a.get("project_id")))
+    for y in years:
+        if not y["posted"]:
+            continue
+        out.append(entry(f"dep:{y['financial_year']}", y["post_on"], "journal",
+                         f"Depreciation {y['financial_year']} · {a['name']}", [
+                             line(code("depreciation"), y["depreciation"], True, **at),
+                             line(code(ledger), y["depreciation"], False, **at)], a.get("project_id")))
+    if a.get("disposed_on") is not None:
+        last = years[-1] if years and years[-1].get("disposed_on") else None
+        book = last["closing"] if last else money(a["cost"]) - money(a.get("opening_depreciation"))
+        sold = money(a.get("disposal_value"))
+        out.append(entry("disposal", a["disposed_on"], "journal", f"{a['name']} sold or scrapped", [
+            line(code(ledger), book, False, **at),
+            line(code("asset_sale_receivable"), sold, True, **at),
+            line(code("asset_disposal"), book - sold, True, **at)], a.get("project_id")))
+    return [e for e in out if e["lines"]]

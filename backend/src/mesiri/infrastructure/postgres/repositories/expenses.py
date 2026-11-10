@@ -300,7 +300,7 @@ class PostgresExpenseCategoryRepository:
             )
         return await self.list_active(organization_id)
 
-    async def list_with_metrics(self, organization_id: uuid.UUID) -> list[dict]:
+    async def list_with_metrics(self, organization_id: uuid.UUID, project_id: uuid.UUID | None = None) -> list[dict]:
         """List categories for org along with expense count and total spend."""
         exp_count = sa.func.count(_expenses.c.id).label("expense_count")
         exp_sum = sa.func.coalesce(sa.func.sum(_expenses.c.amount), 0).label("total_amount")
@@ -317,6 +317,8 @@ class PostgresExpenseCategoryRepository:
                     sa.and_(
                         _expenses.c.category_id == _expense_categories.c.id,
                         _expenses.c.workflow_status == "confirmed",
+                        # SCP-08: one project's spending (None: the whole company, as before).
+                        sa.true() if project_id is None else _expenses.c.project_id == project_id,
                     ),
                 )
             )

@@ -65,7 +65,37 @@ LEDGERS: tuple[tuple[str, str, str, str], ...] = (
     ("wages_payable", "Wages payable", "current_liabilities", "Wages earned on site and not yet paid"),
     ("labour_advances", "Advances to labour", "loans_advances",
      "Advances given to workers and labour contractors, until taken back from their wages"),
+    # ACC-13: what a bank statement shows that nobody recorded.
+    ("bank_interest", "Bank interest received", "indirect_income", "Interest the bank pays into an account"),
+    # ACC-15 (D-ACC5): deliveries without their bill at a month's end, reversed on the 1st of the next month.
+    ("materials_unbilled", "Materials received, bill awaited", "purchases",
+     "Deliveries on site at a month's end whose supplier bill has not come (reversed the next day)"),
+    ("grni", "Goods received not invoiced", "current_liabilities",
+     "What is owed for those deliveries until their bills come"),
+    # ACC-16 (D-ACC9): the register's classes, depreciation, and assets sold or scrapped.
+    ("depreciation", "Depreciation", "indirect_expenses", "Fixed assets written down each year (Fixed assets)"),
+    ("asset_disposal", "Loss or gain on assets sold", "indirect_expenses",
+     "An asset sold or scrapped: its book value less what it fetched (a gain is a credit)"),
+    ("asset_sale_receivable", "Assets sold, money to receive", "loans_advances",
+     "What a sold asset fetched, until the money is received"),
+    ("fa_plant", "Plant & machinery", "fixed_assets", "Mixers, vibrators, cranes, JCBs, pumps"),
+    ("fa_shuttering", "Shuttering & scaffolding", "fixed_assets", "Plates, props, scaffold pipes, centering"),
+    ("fa_vehicles", "Vehicles", "fixed_assets", "Cars, pickups, tippers"),
+    ("fa_computers", "Computers", "fixed_assets", "Laptops, desktops, printers, phones"),
+    ("fa_furniture", "Furniture & fittings", "fixed_assets", "Office and site office furniture"),
+    ("fa_buildings", "Buildings", "fixed_assets", "Office, store or yard buildings the company owns"),
 )
+
+#: ACC-16: each class of fixed asset, its ledger and defaults (D-ACC9): the Income-tax WDV rate (Appendix I) and a
+#: useful life for SLM (Companies Act Schedule II). Defaults only: each asset keeps its own, the CA checks them.
+ASSET_CLASSES: dict[str, dict[str, Any]] = {
+    "plant": {"ledger": "fa_plant", "label": "Plant & machinery", "rate": 15, "life": 15},
+    "shuttering": {"ledger": "fa_shuttering", "label": "Shuttering & scaffolding", "rate": 15, "life": 12},
+    "vehicles": {"ledger": "fa_vehicles", "label": "Vehicles", "rate": 15, "life": 8},
+    "computers": {"ledger": "fa_computers", "label": "Computers", "rate": 40, "life": 3},
+    "furniture": {"ledger": "fa_furniture", "label": "Furniture & fittings", "rate": 10, "life": 10},
+    "buildings": {"ledger": "fa_buildings", "label": "Buildings", "rate": 10, "life": 60},
+}
 
 #: The groups a linked ledger is made in (``link_kind`` -> group code). Money accounts depend on the account type.
 LINK_GROUP = {"vendor": "sundry_creditors", "client": "sundry_debtors", "expense_category": "direct_expenses",

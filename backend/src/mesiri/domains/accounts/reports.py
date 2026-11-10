@@ -226,7 +226,16 @@ async def ledger_statement(conn: AsyncConnection, org: uuid.UUID, ledger_id: uui
                     "source_kind": r["source_kind"]})
     debit = sum((Decimal(r["debit"]) for r in rows), _ZERO)
     credit = sum((Decimal(r["credit"]) for r in rows), _ZERO)
-    return {"ledger": {**{k: v for k, v in led.items() if k not in ("id", "group_id", "link_id")},
+    # ACC-21: a supplier's or client's statement can be sent to them on WhatsApp: their name and phone.
+    party = None
+    if led["link_kind"] in ("vendor", "client"):
+        table = "vendors" if led["link_kind"] == "vendor" else "clients"
+        p = (await conn.execute(text(
+            f"SELECT name, phone FROM {table} WHERE id = :id AND organization_id = :org"),  # noqa: S608 (fixed names)
+            {"id": led["link_id"], "org": org})).mappings().first()
+        if p:
+            party = {"kind": led["link_kind"], "name": p["name"], "phone": p["phone"]}
+    return {"party": party, "ledger": {**{k: v for k, v in led.items() if k not in ("id", "group_id", "link_id")},
                        "id": str(led["id"]), "group_id": str(led["group_id"]),
                        "link_id": str(led["link_id"]) if led["link_id"] else None},
             "opening": opening, "debit": debit, "credit": credit, "closing": opening + debit - credit,

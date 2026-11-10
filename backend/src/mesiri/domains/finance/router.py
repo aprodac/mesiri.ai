@@ -527,6 +527,7 @@ async def simulate_whatsapp_sandbox(
 @router.get("/reports/statement", response_model=FinanceReportStatementResponse)
 async def generate_financial_report_statement(
     report_type: str = "pnl",
+    project_id: uuid.UUID | None = None,
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
@@ -534,17 +535,33 @@ async def generate_financial_report_statement(
     # 8 Nov 2026: had no role check (every expense, account and vendor of the company to any user with Finance).
     from mesiri.authorization.roles import may_view_expenses
 
-    if not may_view_expenses(auth_context.role) or not auth_context.project_scope.grants_all_org_projects:
+    # SCP-08 (10 Nov 2026): ``project_id`` narrows every figure to one project (its expenses by category and
+    # supplier, its own cash boxes); the company-wide report stays for the roles that see all spending.
+    if not may_view_expenses(auth_context.role):
         raise HTTPException(status_code=403, detail="Company reports are for the roles that see all spending.")
+    if project_id is None and not auth_context.project_scope.grants_all_org_projects:
+        raise HTTPException(status_code=403, detail="Company reports are for the roles that see all spending.")
+    if project_id is not None:
+        owned = (await conn.execute(sa.text("SELECT 1 FROM projects WHERE id = :p AND organization_id = :org"),
+                                    {"p": project_id, "org": auth_context.organization_id})).first()
+        if owned is None:
+            raise HTTPException(status_code=404, detail="Project not found.")
+        if not auth_context.project_scope.grants_all_org_projects and project_id not in auth_context.project_scope.project_ids:
+            raise HTTPException(status_code=403, detail="Not authorized for this project")
     exp_repo = PostgresExpenseRepository(conn)
     acc_repo = PostgresMoneyAccountRepository(conn)
     cat_repo = PostgresExpenseCategoryRepository(conn)
     vendor_repo = PostgresVendorRepository(conn)
 
-    expenses = await exp_repo.list_confirmed(auth_context.organization_id)
+    expenses = await exp_repo.list_confirmed(auth_context.organization_id, project_id=project_id)
     accounts = await acc_repo.list_accounts(auth_context.organization_id)
-    cat_metrics = await cat_repo.list_with_metrics(auth_context.organization_id)
-    vendor_metrics = await vendor_repo.list_with_metrics(auth_context.organization_id)
+    if project_id is not None:
+        accounts = [a for a in accounts if a.project_id == project_id]
+    cat_metrics = await cat_repo.list_with_metrics(auth_context.organization_id, project_id)
+    vendor_metrics = await vendor_repo.list_with_metrics(auth_context.organization_id, project_id)
+    if project_id is not None:  # only what the project spent on
+        cat_metrics = [m for m in cat_metrics if m["expense_count"]]
+        vendor_metrics = [m for m in vendor_metrics if m["expense_count"]]
 
     total_outflows = sum((e.amount for e in expenses), Decimal("0"))
     total_inflows = Decimal("0")
