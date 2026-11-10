@@ -82,7 +82,8 @@ RECORDED = load(r"""{
 EXPECT = {
     "must_call": ['record_attendance', 'record_work'],
     "must_not_call": [],
-    "pending": ['Plastering done on 2nd floor at Green Villa', '6 masons worked today at Green Villa'],
+    # WA-271: the entries, not the model's exact sentence (10 Nov: both were held, in other words, and it "failed").
+    "pending": ["plaster", "mason"],
 }
 
 

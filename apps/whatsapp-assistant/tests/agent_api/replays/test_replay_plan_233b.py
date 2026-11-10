@@ -37,6 +37,7 @@ async def test_replay_plan_233b() -> None:
     assert [e.summary for e in turn.pending] == []
 
 
+@pytest.mark.nightly  # WA-271: the nightly run only, to keep a push's eval small
 @pytest.mark.live
 async def test_replay_plan_233b_live() -> None:
     turn, _api = await replay(RECORDED, live=True)

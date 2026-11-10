@@ -44,7 +44,8 @@ RECORDED = load(r"""{
 EXPECT = {
     "must_call": ['send_dpr'],
     "must_not_call": [],
-    "pending": ["Today's DPR report"],
+    # WA-271: the send is held; its wording is the model's here (the replay has no project list for the code's line).
+    "pending": ["report"],
 }
 
 

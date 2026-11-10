@@ -49,6 +49,7 @@ async def test_replay_plan_243() -> None:
     assert turn.pending[0].summary.endswith("pani eduthu")  # the card line stays in their words
 
 
+@pytest.mark.nightly  # WA-271: the nightly run only, to keep a push's eval small
 @pytest.mark.live
 async def test_replay_plan_243_live() -> None:
     turn, _api = await replay(RECORDED, live=True)

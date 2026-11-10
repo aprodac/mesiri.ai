@@ -57,7 +57,7 @@ def fetch(correlation_id: str) -> dict:
 
 
 def render(recorded: dict, name: str) -> str:
-    recorded = _mask({k: recorded.get(k) for k in ("correlation_id", "day", "text", "facts", "calls", "reply", "pending", "asked")})
+    recorded = _mask({k: recorded.get(k) for k in ("correlation_id", "day", "text", "facts", "before", "calls", "reply", "pending", "asked")})
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "turn"
     tools = [c.get("tool") for c in recorded.get("calls") or []]
     pending = recorded.get("pending") or []

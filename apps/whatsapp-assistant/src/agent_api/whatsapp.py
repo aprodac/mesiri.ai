@@ -672,6 +672,9 @@ class ApiWhatsApp:
             "text": text, "calls": calls,
             # WA-148: what the model started from, so a replay on the real model sees the same sites and materials.
             "facts": facts[:FACTS_IN_TRACE],
+            # WA-271: the few messages before this one and the list that was waiting, so a replay of "can't I see it?"
+            # or "so it is no use to me?" has what the question was about (two saved conversations could not be judged).
+            "before": before_in_trace(history), "ready": [e.summary for e in ready][:10],
             "stop_reason": turn.stop_reason,
             "saved": [{"summary": r.pending.summary, "status": r.status,
                        **({} if r.ok else {"reason": _detail(r.body)[:300]})} for r in turn.saved],
@@ -1473,6 +1476,17 @@ class ApiWhatsApp:
 
 SEND_TOOLS = ("send_dpr",)
 PENDING_MAX_AGE_S = 4 * 3600  # a ready list nobody saved in four hours is dropped, not carried
+
+
+#: WA-271: how much of the conversation before a turn its trace keeps (messages, characters each).
+BEFORE_IN_TRACE = 6
+BEFORE_CHARS = 400
+
+
+def before_in_trace(history: list[Any] | None) -> list[dict[str, str]]:
+    """WA-271: the last few messages before this one ({role, text}), cut short, for the turn's trace."""
+    return [{"role": str(getattr(m, "role", "")), "text": str(getattr(m, "text", ""))[:BEFORE_CHARS]}
+            for m in (history or [])[-BEFORE_IN_TRACE:]]
 
 
 def state_key(organization_id: Any, user_id: Any) -> str:

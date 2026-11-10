@@ -39,7 +39,9 @@ RECORDED = load(r"""{
 
 #: What the real model must do with these words (edit: this is the spec of the fix).
 EXPECT = {
-    "must_call": ["work_progress"],
+    # WA-271: "so in short it is no use to me?" alone does not ask for progress (the question before it did, and this
+    # trace has no earlier messages): what this message can be held to is that it is answered, not passed to the team.
+    "must_call": [],
     "must_not_call": ["tell_the_team"],
     "pending": [],
 }
@@ -54,6 +56,7 @@ async def test_replay_bee2ae4a() -> None:
     assert [e.summary for e in turn.pending] == []
 
 
+@pytest.mark.nightly  # WA-271: the nightly run only, to keep a push's eval small
 @pytest.mark.live
 async def test_replay_bee2ae4a_live() -> None:
     turn, _api = await replay(RECORDED, live=True)

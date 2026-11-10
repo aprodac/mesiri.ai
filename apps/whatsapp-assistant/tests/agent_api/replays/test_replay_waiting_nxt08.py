@@ -51,6 +51,7 @@ async def test_waiting_scripted_lists_what_the_api_returned() -> None:
     assert "MR-12" in turn.reply and "RA-02" in turn.reply
 
 
+@pytest.mark.nightly  # WA-271: the nightly run only, to keep a push's eval small
 @pytest.mark.live
 @pytest.mark.parametrize("case", [ASKED, SIBLING], ids=["manglish", "english"])
 async def test_waiting_live(case: dict) -> None:
@@ -58,6 +59,7 @@ async def test_waiting_live(case: dict) -> None:
     assert check(turn, EXPECT) == []
 
 
+@pytest.mark.nightly  # WA-271: the nightly run only, to keep a push's eval small
 @pytest.mark.live
 async def test_my_requests_is_not_waiting_live() -> None:
     turn, _api = await replay(GUARD, live=True)

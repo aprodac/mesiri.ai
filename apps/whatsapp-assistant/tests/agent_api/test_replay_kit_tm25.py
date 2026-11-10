@@ -71,3 +71,41 @@ async def test_guard_the_live_replay_skips_without_a_key(monkeypatch) -> None:
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(pytest.skip.Exception):
         await replay(RECORDED, live=True)
+
+
+async def test_a_wrong_turn_says_what_the_model_did_271() -> None:
+    """WA-271: a failed expectation carries what the model called, what waits and what it said."""
+    turn, _api = await replay({"text": "hi", "calls": [], "reply": "Namaskaram."})
+    wrong = check(turn, {"must_call": ["record_receipt"], "pending": ["cement"]})
+    assert wrong[0] == "did not call record_receipt" and wrong[-1].startswith("(it called nothing; waiting: nothing; said: ")
+    assert "Namaskaram." in wrong[-1]
+
+
+async def test_the_messages_before_reach_the_model_271() -> None:
+    """WA-271: a recorded turn's earlier messages are the model's history in the replay."""
+    from unittest.mock import patch
+
+    from agent_api.agent import ApiAgent
+
+    seen: dict = {}
+    real = ApiAgent.run
+
+    async def run(self, client, text, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        seen["history"] = [(m.role, m.text) for m in kwargs.get("history") or []]
+        return await real(self, client, text, **kwargs)
+
+    with patch.object(ApiAgent, "run", run):
+        await replay({"text": "Ink kanan pattule?", "calls": [], "reply": "Sheri.",
+                      "before": [{"role": "user", "text": "ente complaints evide?"}, {"role": "model", "text": "Nokkam."}]})
+    assert seen["history"] == [("user", "ente complaints evide?"), ("model", "Nokkam.")]
+
+
+def test_the_trace_keeps_the_last_few_messages_cut_short_271() -> None:
+    from types import SimpleNamespace
+
+    from agent_api.whatsapp import BEFORE_CHARS, BEFORE_IN_TRACE, before_in_trace
+
+    history = [SimpleNamespace(role="user", text=f"{i} " + "x" * 1000) for i in range(20)]
+    kept = before_in_trace(history)
+    assert len(kept) == BEFORE_IN_TRACE and kept[-1]["text"].startswith("19 ") and len(kept[0]["text"]) == BEFORE_CHARS
+    assert before_in_trace(None) == []

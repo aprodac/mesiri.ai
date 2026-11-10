@@ -18,6 +18,7 @@ from typing import Any
 from agent_api.agent import ApiAgent, ApiTurn
 from agent_api.client import ApiResponse
 from mesiri_ai.fakes import FakeToolCallingProvider
+from mesiri_ai.models import ChatMessage
 
 #: Tools the agent handles itself (no API call).
 _OWN = {"ask", "tell_the_team", "web_link", "save_ready_entries", "drop_ready_entries"}
@@ -88,8 +89,12 @@ async def replay(recorded: dict[str, Any], *, facts: str = "", reply: str | None
     api = recorded_api(recorded, tools)
     model = live_provider() if live else FakeToolCallingProvider(script)
     facts = facts or str(recorded.get("facts") or "")
+    # WA-271: the messages before this one, when the trace kept them (turns traced from 10 Nov 2026).
+    history = [ChatMessage(role=str(m.get("role") or "user"), text=str(m.get("text") or ""))
+               for m in recorded.get("before") or [] if isinstance(m, dict)]
     turn = await ApiAgent(model, tools).run(
-        api, recorded.get("text", ""), facts=facts, correlation_id=recorded.get("correlation_id"))  # type: ignore[arg-type]
+        api, recorded.get("text", ""), facts=facts, history=history,  # type: ignore[arg-type]
+        correlation_id=recorded.get("correlation_id"))
     return turn, api
 
 
@@ -109,4 +114,8 @@ def check(turn: ApiTurn, expect: dict[str, Any]) -> list[str]:
         if len(turn.pending) != len(want):
             wrong.append(f"{len(turn.pending)} entries waiting, expected {len(want)}: {summaries}")
         wrong += [f"no waiting entry mentions {w!r}" for w in want if w.lower() not in summaries]
+    if wrong:
+        # WA-271: what the model did, in the failure itself (the eval's summary line is all the team group sees).
+        waiting = " | ".join(e.summary for e in turn.pending)
+        wrong.append(f"(it called {called or 'nothing'}; waiting: {waiting or 'nothing'}; said: {(turn.reply or '')[:160]!r})")
     return wrong

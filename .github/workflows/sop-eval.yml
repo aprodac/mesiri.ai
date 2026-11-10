@@ -5,9 +5,9 @@
 # Not a deploy gate (Ilan, 2 Nov: the Gemini key's monthly cap failed every gated deploy): it runs next to the
 # deploy and a failure is posted in the team group.
 #
-# WA-265: what it may spend (a conversation is about one rupee: ~18k tokens in, a few turns).
+# WA-265: what it may spend (10 Nov, measured: 15 conversations, 36 model calls, about 20 rupees: ~1.4 each).
 # - A push runs the everyday set only (replays not marked `nightly`), inside what is left of the day's cap
-#   (vars.SOP_EVAL_DAILY_CAP_INR, default 40 rupees; the ledger lives in the Actions cache, UTC day). When the cap
+#   (vars.SOP_EVAL_DAILY_CAP_INR, default 25 rupees; the ledger lives in the Actions cache, UTC day). When the cap
 #   is used, the conversations left are skipped, not failed, and nothing is posted.
 # - The nightly run (02:47 IST) runs every saved conversation, only when the assistant changed in the last day,
 #   inside its own budget (vars.SOP_EVAL_NIGHTLY_CAP_INR, default 40 rupees).
@@ -84,7 +84,7 @@ jobs:
         id: budget
         if: steps.plan.outputs.run == 'true'
         env:
-          DAILY_CAP_INR: ${{ vars.SOP_EVAL_DAILY_CAP_INR || '40' }}
+          DAILY_CAP_INR: ${{ vars.SOP_EVAL_DAILY_CAP_INR || '25' }}
           NIGHTLY_CAP_INR: ${{ vars.SOP_EVAL_NIGHTLY_CAP_INR || '40' }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then

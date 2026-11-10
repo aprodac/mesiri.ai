@@ -53,7 +53,10 @@ async def test_replay_1cf50cb8() -> None:
     assert [e.summary for e in turn.pending] == []
 
 
+@pytest.mark.nightly  # WA-271: the nightly run only, to keep a push's eval small
 @pytest.mark.live
+@pytest.mark.xfail(strict=False, reason="WA-271: 'Ink kanan pattule?' (can't I see it?) needs the message before it, "
+                                        "which this 4 Nov trace does not have; turns traced from 10 Nov keep it")
 async def test_replay_1cf50cb8_live() -> None:
     turn, _api = await replay(RECORDED, live=True)
     assert check(turn, EXPECT) == []
