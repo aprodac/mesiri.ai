@@ -43,6 +43,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.documents.router",  # DOC-05, DR-08: find a document, what the drawings say
     "mesiri.domains.costing.router",  # CC-11: cost control (green / red, budget vs actual, labour on BOQ lines)
     "mesiri.domains.billing.router",  # NXT-03: RA bills, money received from clients, what they owe
+    "mesiri.domains.accounts.router",  # ACC-20: the books' reads (cash, profit, GST, TDS, cash flow)
     "mesiri.domains.tasks.router",  # TSK-04: tasks on WhatsApp (give, list, done with a photo)
     "mesiri.domains.workforce.pay_router",  # LW-07: advances, wage sheets, labour teams
     "mesiri.domains.approvals.router",  # NXT-08: "what is waiting for me?" (tool `waiting`)

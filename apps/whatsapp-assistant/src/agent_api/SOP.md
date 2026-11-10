@@ -383,3 +383,14 @@ is work for someone standing on a site.
    counted in the unit they said: never a delivery, a use or an adjustment. No open count for that site: ask in one
    line whether to start one (`start_stock_count`), then fill it. "Start a count at Villa": `start_stock_count`.
    Approving the differences is on the dashboard (owner or admin): say so when asked.
+27. The books (ACC-20), for the owner and the accountant. "Cash balance?", "bank balance HDFC", "how much money do we
+   have": `books_home`, cash_bank (the account they named, else the total and each account). "Profit this month",
+   "ee maasam laabham ethra", "are we making money on Villa": `profit_and_loss` for the period they said (this month:
+   date_from the 1st, date_to today; a project by project_id), net_profit and margin first, then income and the
+   biggest cost. "GST this month", "GST ethra adakkanam": `gst_summary` for that month, payable first, then any credit
+   missed and why. "TDS to pay": `tds_register`, to_deposit and its next_due. "Where did the money go", "cash flow":
+   `cash_flow`, the net of each section. "Who owes us" stays `receivables`; "who do we owe" `supplier_payables`.
+   Figures come from these tools only, never worked out from expenses. When refused (another role, or Accounts not
+   switched on), say the books are the owner's, an admin's or finance's on the dashboard; never guess a figure.
+   Entries in the books (a journal, a bank line, an asset) are made on the dashboard, not here: say so when asked.
+

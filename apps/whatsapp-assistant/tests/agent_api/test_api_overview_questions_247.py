@@ -134,4 +134,8 @@ def test_topic_comes_from_the_tools_not_a_word_list() -> None:
     assert "stock_levels" in read_tools_for("how much cement stock is left", tools)
     assert read_tools_for("post our brochure on instagram", tools) == []
     # NXT-03: a client's bills are a topic Mesiri reads now; emailing one is still a missing feature after the look.
-    assert set(read_tools_for("send my invoice to the client by email", tools)) == {"ra_bills", "receivables"}
+    # ACC-20 (10 Nov): the books' reads that speak of clients (what they owe, TDS they deducted) are found too, by their
+    # own words, as the rule says; every tool found is about clients, none is unrelated.
+    found = set(read_tools_for("send my invoice to the client by email", tools))
+    assert {"ra_bills", "receivables"} <= found
+    assert all("client" in tools[n].spec.description.casefold() for n in found), found

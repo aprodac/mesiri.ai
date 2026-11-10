@@ -409,6 +409,29 @@ ALLOWED: tuple[Allowed, ...] = (
             "What each client owes, most first: outstanding, by age (buckets 0_30, 31_60, 61_90, 90_plus), open_bills "
             "(ref, bill_date, due, received, left, days), unapplied (money received not on a bill yet), "
             "advance_received, last_received_on."),
+    # ACC-20 (10 Nov 2026): the books, read only, for the owner and the accountant (the API refuses the other roles,
+    # and a company without the Accounts module). Posting a voucher stays on the dashboard.
+    Allowed("books_home", "GET", "/accounts/home",
+            "The company's books today: cash_bank (each account's closing, total), receivable (clients owe us), "
+            "payable (we owe suppliers and staff), this_month / last_month / year (income, direct, gross_profit, "
+            "net_profit, net_margin), gst_this_month (output, input, payable), tds_to_deposit, projects (best first: "
+            "billed, cost, profit, margin), attention. project_id: that project's own (position instead of cash)."),
+    Allowed("profit_and_loss", "GET", "/accounts/pl",
+            "Profit and loss for a period (date_from, date_to as YYYY-MM-DD; default this financial year to today) of "
+            "the company, a project (project_id) or a site (site_id): totals (income, direct, gross_profit, "
+            "net_profit, margins), sections of groups with ledgers; compare previous or last_year adds prior_totals."),
+    Allowed("cash_bank_book", "GET", "/accounts/cash-bank",
+            "Each cash box and bank account for a period (date_from, date_to): opening, in, out, closing, and each "
+            "day's money in and out; total."),
+    Allowed("cash_flow", "GET", "/accounts/cash-flow",
+            "Where money came from and went in a period (date_from, date_to; project_id or site_id to narrow): opening, "
+            "sections operating / investing / financing / other, each with items (label, in, out, net), net, closing."),
+    Allowed("gst_summary", "GET", "/accounts/gst",
+            "GST for a period (date_from, date_to; one month for a return): output (on RA bills), input (claimable), "
+            "payable, missed (credit lost and why, in warnings), by month."),
+    Allowed("tds_register", "GET", "/accounts/tds",
+            "TDS deducted from subcontractors (194C) and what is still to_deposit with its next_due date and overdue; "
+            "TDS clients deducted from our RA bills (by_clients_total)."),
     Allowed("record_client_receipt", "POST", "/billing/receipts",
             "Prepare recording money a client paid into one of the company's accounts (account_id from "
             "money_accounts): kind bill with ra_bill_id (from ra_bills) when they named a bill; advance for a "
