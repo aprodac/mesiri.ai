@@ -840,6 +840,8 @@ VENDOR_LINKS = (
     ("equipment_hire_bills", "vendor_id", "hire bills"),  # NXT-13
     ("project_documents", "vendor_id", "documents"),  # DOC-01 (0527 added it; missed here until TSK-01's run)
     ("tasks", "assignee_vendor_id", "tasks"),  # TSK-01: tasks given to a subcontractor
+    ("rfq_vendors", "vendor_id", "quotes"),  # PRC-40 (0540 added it; missed here until PRC-46's run)
+    ("material_returns", "vendor_id", "returns"),  # PRC-46: material sent back and its debit note
 )
 #: How a table's rows are this company's (default: its own organization_id).
 _OWNED = {"labour_attendance_lines": "report_id IN (SELECT id FROM labour_attendance_reports WHERE organization_id = :org)"}

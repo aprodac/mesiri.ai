@@ -1,7 +1,8 @@
+import * as React from 'react'
 import { useUrlState } from '@/lib/url-state'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardCheck, Download, Image, Search } from 'lucide-react'
+import { ClipboardCheck, Download, Image, PackageX, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useScope } from '@/lib/ScopeContext'
 import { usePageTitle } from '@/lib/page-title'
@@ -13,6 +14,9 @@ import { VendorTile } from '@/components/orders/order-detail'
 import { cn } from '@/lib/utils'
 import { VendorLink } from '@/components/vendors/vendor-parts'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { NewReturnDialog } from '@/components/returns/new-return-dialog'
+import { useAuth } from '@/lib/AuthContext'
+import { mayReturn, seesMoney } from '@/lib/returns'
 
 // PRC-29: Procurement > GRN. Every goods received note: what came against which order, what was accepted into stock
 // and what was turned away (and why), the challan number and photo, who received it. A GRN is made by "Material
@@ -48,6 +52,10 @@ export default function GoodsReceiptsPage() {
     ? all.filter((g) => [g.ref, g.order_ref, g.vendor_name, g.challan_no ?? '', g.site_name, ...g.lines.map((l) => l.material)].some((x) => x.toLowerCase().includes(q)))
     : all
   const rejectedCount = all.filter((g) => g.lines.some((l) => Number(l.rejected) > 0)).length
+  // PRC-46: what was turned away at the gate goes back to the supplier with a debit note.
+  const { me } = useAuth()
+  const navigate = useNavigate()
+  const [returning, setReturning] = React.useState<string | null>(null)
 
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
@@ -103,6 +111,11 @@ export default function GoodsReceiptsPage() {
                     </div>
                   </div>
                 </div>
+                {rejected && mayReturn(me?.role) && (
+                  <Button size="sm" variant="outline" className="shrink-0 gap-1.5 self-start" onClick={() => setReturning(g.id)}>
+                    <PackageX className="size-3.5" /> Return rejected
+                  </Button>
+                )}
                 {g.photo_url ? (
                   <a href={g.photo_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/50"><Image className="size-3.5" /> Challan photo</a>
                 ) : (
@@ -113,6 +126,7 @@ export default function GoodsReceiptsPage() {
           })}
         </ul>
       )}
+      <NewReturnDialog open={!!returning} onOpenChange={(o) => !o && setReturning(null)} from={returning ? { grn_id: returning } : null} money={seesMoney(me?.role)} onCreated={(r) => navigate(`/procurement/returns?id=${r.id}`)} />
     </div>
   )
 }

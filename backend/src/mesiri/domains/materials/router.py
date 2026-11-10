@@ -1185,8 +1185,17 @@ async def list_inventory(
     from mesiri.domains.procurement.orders import on_order_by_site
 
     coming = await on_order_by_site(conn, auth_context.organization_id)
+    # PRC-47: the minimum the office set for the site, and whether it holds less now.
+    from mesiri.domains.materials.stock_levels import levels_by_site
+
+    levels = await levels_by_site(conn, auth_context.organization_id)
     for row in rows:
-        row["on_order"] = coming.get((str(row.get("site_id")), str(row.get("material_id"))), Decimal(0))
+        key = (str(row.get("site_id")), str(row.get("material_id")))
+        row["on_order"] = coming.get(key, Decimal(0))
+        level = levels.get(key)
+        if level is not None:
+            row["min_qty"], row["reorder_qty"] = level["min_qty"], level["reorder_qty"]
+            row["below_min"] = Decimal(str(row.get("current_stock") or 0)) < Decimal(str(level["min_qty"]))
     return rows
 
 
@@ -1218,6 +1227,7 @@ async def stock_summary(
     if (date_to - date_from).days > 366:
         raise HTTPException(status_code=422, detail="A period is at most a year.")
     from mesiri.authorization.roles import may_view_expenses
+    from mesiri.domains.materials.stock_levels import levels_by_site
 
     return await PostgresMaterialReadRepository(conn).get_stock_summary(
         auth_context.organization_id,
@@ -1231,7 +1241,41 @@ async def stock_summary(
         with_money=may_view_expenses(auth_context.role),
         # PRC-27: what is still to come counts for "running low", for a period that reaches today.
         on_order=await _on_order_now(conn, auth_context.organization_id, date_to),
+        # PRC-47: the minimum set per site and material (below it is the row's chip and counts as running low).
+        levels=await levels_by_site(conn, auth_context.organization_id),
     )
+
+
+@router.get("/stock-value")
+async def stock_value(
+    as_of: datetime.date | None = Query(default=None, description="The day; default: today (company date)."),
+    project_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-49: what the stock on hand is worth, per site and material: quantity x the weighted average rate of its
+    deliveries (D-P2-4, GST per D-CC8); totals, by main category, the top 10, and slow-moving (not used in 30 days).
+    Money roles only (D-CC4). Same project and site scope as /stock-summary."""
+    from mesiri.authorization.roles import may_view_expenses
+    from mesiri.domains.materials.valuation import stock_value as value_of
+
+    if not may_view_expenses(auth_context.role):
+        raise HTTPException(status_code=403, detail="Stock value is for the roles that see the company's spending.")
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied or _site_filter_denied(auth_context, project_id, site_id):
+        return {"as_of": None, "total": "0.00", "items": 0, "unpriced": 0, "slow_moving": 0,
+                "slow_moving_value": "0.00", "by_category": [], "top": [], "rows": []}
+    if as_of is None:
+        from mesiri.application.dpr import project_day
+
+        as_of = await project_day.company_today(conn, auth_context.organization_id)
+    out = await value_of(conn, auth_context.organization_id, as_of=as_of, project_ids=project_ids, site_id=site_id)
+    sites = {str(r.id): r.name for r in (await conn.execute(text(
+        "SELECT id, name FROM sites WHERE organization_id = :org"), {"org": auth_context.organization_id})).all()}
+    for row in out["rows"]:
+        row["site_name"] = sites.get(row["site_id"] or "", "")
+    return out
 
 
 async def _on_order_now(conn: AsyncConnection, organization_id: uuid.UUID, date_to: datetime.date) -> dict:
@@ -1578,14 +1622,16 @@ async def create_inflow(
     return result
 
 
-async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContext, body: MaterialInflowCreate) -> dict:
-    """One delivery (or opening stock, adjustment) with every rule of ``POST /materials/inflows``: the route and the
-    Excel import (PRC-05) both record through here. Raises ``HTTPException`` for a refused line."""
+async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContext, body: MaterialInflowCreate, *,
+                        adjust_allowed: bool = False) -> dict:
+    """One delivery (or opening stock, adjustment) with every rule of ``POST /materials/inflows``: the route, the
+    Excel import (PRC-05) and an approved stock count (PRC-48) all record through here. ``adjust_allowed``: the caller
+    checked who may (record_outflow's rule). Raises ``HTTPException`` for a refused line."""
     if not is_valid_receipt_reason(body.movement_reason):
         raise HTTPException(
             status_code=422, detail=f"Invalid inflow movement_reason: {body.movement_reason}"
         )
-    if body.movement_reason in ELEVATED_REASONS and not role_can_adjust(auth_context.role):
+    if body.movement_reason in ELEVATED_REASONS and not adjust_allowed and not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to record adjustment movements")
     if body.quantity <= 0:
         raise HTTPException(status_code=422, detail="quantity must be greater than zero")
@@ -1728,12 +1774,23 @@ async def create_outflow(
         replayed = await _claim_idempotency_key(conn, idempotency_key, "material_outflow_rest")
         if replayed is not None:
             return {**replayed, "status": "replayed"}
+    result = await record_outflow(conn, auth_context, body)
+    if idempotency_key:
+        await _complete_idempotency_key(conn, idempotency_key, result)
+    return result
 
+
+async def record_outflow(conn: AsyncConnection, auth_context: AuthorizationContext, body: MaterialOutflowCreate, *,
+                         adjust_allowed: bool = False) -> dict:
+    """One use (or return to the supplier, adjustment out) with every rule of ``POST /materials/outflows``: the route,
+    a return to the supplier (PRC-46) and an approved stock count (PRC-48) all post through here. ``adjust_allowed``:
+    the caller has already checked who may (a count approval's own rule, D-P2-2), so an adjustment is not refused
+    by ``role_can_adjust``. Raises ``HTTPException`` for a refused line."""
     if not is_valid_usage_reason(body.movement_reason):
         raise HTTPException(
             status_code=422, detail=f"Invalid outflow movement_reason: {body.movement_reason}"
         )
-    if body.movement_reason in ADJUSTMENT_REASONS and not role_can_adjust(auth_context.role):
+    if body.movement_reason in ADJUSTMENT_REASONS and not adjust_allowed and not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to record adjustment movements")
     if body.quantity <= 0:
         raise HTTPException(status_code=422, detail="quantity must be greater than zero")
@@ -1830,10 +1887,7 @@ async def create_outflow(
             "occurred_date_source": "reported",
         },
     )
-    result = {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
-    if idempotency_key:
-        await _complete_idempotency_key(conn, idempotency_key, result)
-    return result
+    return {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
 
 
 # ---------------------------------------------------------------------------

@@ -2089,7 +2089,7 @@ def _results(report: dict) -> dict:
     return {(r["sheet"], r["row"]): (r["result"], r["message"]) for r in report["rows"]}
 
 
-async def test_the_import_template_has_the_three_sheets(client, admin_ctx):
+async def test_the_import_template_has_its_sheets(client, admin_ctx):
     import io
 
     from openpyxl import load_workbook
@@ -2098,7 +2098,7 @@ async def test_the_import_template_has_the_three_sheets(client, admin_ctx):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/vnd.openxmlformats")
     book = load_workbook(io.BytesIO(resp.content))
-    assert book.sheetnames == ["How to fill", "Items", "Vendors", "Opening stock"]
+    assert book.sheetnames == ["How to fill", "Items", "Vendors", "Opening stock", "Minimum stock"]
     assert [c.value for c in book["Items"][1]] == ["Main category", "Sub-category", "Item", "Unit", "Item code",
                                                     "Other names"]
 

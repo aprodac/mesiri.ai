@@ -201,6 +201,50 @@ ALLOWED: tuple[Allowed, ...] = (
             "for an item needs reason in their words. One purchase order per supplier; if an open order already has "
             "the material the save is refused and says which; prepare again with confirm_duplicate only when they "
             "say it is separate." + _WRITE),
+    # PRC-47: minimum stock per site (Materials > Stock): set it, see what is below it. The rule (below minimum, what
+    # an order, RFQ or request already covers, how much to order) is the API's.
+    Allowed("below_minimum", "GET", "/materials/stock-levels/below",
+            "What each site holds less of than the minimum the office set (filter by project or site): per item what "
+            "is held (closing), the minimum (min_qty), how much to order (to_order) and covered_by when an open "
+            "order, RFQ or request is already buying it. For 'what is below minimum?', 'minimum-il kuravu enthokke'."),
+    Allowed("minimum_stock", "GET", "/materials/stock-levels",
+            "The minimums set per site and material (min_qty, reorder_qty), and who set them."),
+    Allowed("suggest_minimum_stock", "GET", "/materials/stock-levels/suggest",
+            "A minimum per item of a site from its last week's use plus the supplier's lead time (nothing saved): "
+            "for 'what minimum should I keep at Villa?'."),
+    Allowed("set_minimum_stock", "PUT", "/materials/stock-levels",
+            "Prepare the minimum a site should hold of a material (the office: admin, owner, project manager): "
+            "site_id, material_id, min_qty in the unit they said (unit_id when not the stock unit), reorder_qty when "
+            "they said how much to order when it goes below. min_qty 0 when they say no minimum any more." + _WRITE,
+            hide=("source",), fixed=(("source", "whatsapp"),)),
+    # PRC-46: material sent back to a supplier (Procurement > Returns). The debit note, the stock going down and the
+    # supplier's balance are the API's.
+    Allowed("returns", "GET", "/procurement/returns",
+            "Material sent back to suppliers (DN-0001 ...): status open (waiting for pickup or sent back), waiting, "
+            "sent, settled or all; filter by supplier (vendor_id), project or site. Each: the supplier, what went back "
+            "and why (what), the debit note's total, and its timeline; counts.owed_to_you: what suppliers owe back."),
+    Allowed("return_to_supplier", "POST", "/procurement/returns",
+            "Prepare sending material back to a supplier ('12 steel bars bent, returning to KSL'; the office: admin, "
+            "owner, project manager): supplier in their words, the site, per item material_id + quantity in the unit "
+            "they said (unit_id) + reason (damaged, short, wrong_size, excess, quality_failed), rate only when they "
+            "said one (else the delivery's). It leaves the site's stock and the supplier's debit note lowers what is "
+            "owed to them at once." + _WRITE, hide=("vendor_id", "photos", "source"), fixed=(("source", "whatsapp"),)),
+    Allowed("settle_return", "POST", "/procurement/returns/{return_id}/settle",
+            "Prepare marking a return settled (find it with returns, or its number DN-0003): how replacement (they "
+            "sent new material; receipt_id of that delivery when known) or credit (taken off their bill or payment), "
+            "note in their words." + _WRITE),
+    # PRC-48: the physical stock count (Materials > Stock count). Book frozen at the start; approving the differences
+    # into the ledger is the dashboard's (admin / owner).
+    Allowed("stock_counts", "GET", "/materials/stock-counts",
+            "Stock counts (SC-0001 ...): status open, approved, cancelled or all; site_id for one site. Also due: the "
+            "sites not counted in 30 days, and last_counted per site."),
+    Allowed("start_stock_count", "POST", "/materials/stock-counts",
+            "Prepare starting a stock count for a site: scope all (default), category (category_id) or top (the 20 "
+            "most valuable). The book quantity is frozen now." + _WRITE),
+    Allowed("count_stock", "PUT", "/materials/stock-counts/{count_id}/lines",
+            "Prepare what was counted on the site's open count (find it with stock_counts status open and the site): "
+            "per item material_id + counted in the unit they said (unit_id when not the stock unit); reason when they "
+            "said why it differs (wastage, theft, wrong_entry, unrecorded_use, found, other)." + _WRITE),
     # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),

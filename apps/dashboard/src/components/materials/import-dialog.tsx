@@ -15,15 +15,16 @@ import {
   type ImportSheet,
 } from '@/lib/materials'
 
-// PRC-05: the onboarding import. Download the template, fill Items / Vendors / Opening stock, upload, see what
+// PRC-05: the onboarding import. Download the template, fill Items / Vendors / Opening stock (/ Minimum stock, PRC-47), upload, see what
 // will happen row by row, then import. Rows already in Mesiri are left as they are; a refused row says why.
 
-const SHEETS: ImportSheet[] = ['Items', 'Vendors', 'Opening stock']
+const SHEETS: ImportSheet[] = ['Items', 'Vendors', 'Opening stock', 'Minimum stock']
 const WORDS: Record<ImportResult, string> = {
   added: 'new',
   placed: 'put in a category',
   updated: 'details updated',
   existing: 'already in Mesiri',
+  removed: 'minimum removed',
   problem: 'cannot go in',
 }
 
@@ -91,7 +92,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={template.isPending} onClick={() => template.mutate()}>
               <Download className="size-3.5" /> {template.isPending ? 'Preparing…' : 'Download the template'}
             </Button>
-            <span className="text-muted-foreground">Sheets: Items, Vendors, Opening stock.</span>
+            <span className="text-muted-foreground">Sheets: Items, Vendors, Opening stock, Minimum stock.</span>
           </div>
 
           <div className="grid gap-1.5">

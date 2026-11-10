@@ -488,6 +488,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.equipment.router", "Equipment"),  # NXT-11
         ("mesiri.domains.schedule.router", "Schedule"),  # ST-01/04/05: project start, the Gantt, the lifecycle list
         ("mesiri.domains.materials.plan_router", "Material plan"),  # MP-02/03: what to order and when
+        ("mesiri.domains.materials.stock_levels_router", "Minimum stock"),  # PRC-47: minimum per site, below it
+        ("mesiri.domains.procurement.returns_router", "Returns"),
+        ("mesiri.domains.materials.stock_count_router", "Stock count"),  # PRC-48: count, review, approve  # PRC-46: returns to suppliers, debit notes
         ("mesiri.domains.billing.router", "Client billing"),  # NXT-01/02: clients, contracts, RA bills
         ("mesiri.domains.client_view.router", "Client view"),  # CV-01/02: client links and the public page
         ("mesiri.domains.drawings.router", "Drawing check"),  # DR-04: read a drawing PDF (nothing stored)

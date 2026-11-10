@@ -6,10 +6,11 @@ import { SheetTitle } from '@/components/ui/sheet'
 import { CategoryTile, StatusChip, UrgencyChip } from '@/components/requests/parts'
 import { ORDER_LOOK, dueWords } from '@/lib/orders'
 import { ago } from '@/lib/requests'
-import { lasts, type StockFlow } from '@/lib/stock-flow'
+import { lasts, lowWords, type StockFlow } from '@/lib/stock-flow'
 import { formatMoney, type StockSummaryRow } from '@/lib/materials'
 import { qty } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
+import { BelowMinimumChip, MinimumBar, MinimumEditor } from '@/components/stock/minimum'
 import { StockBook } from './material-ledger-sheet'
 
 // WEB-77: Materials > Stock, one item at one site -- what is here, what is coming on orders, what the site has asked
@@ -41,6 +42,7 @@ export function StockItemPanel({
   others,
   othersLoading,
   canMove,
+  canSetMinimum,
   onMove,
 }: {
   row: StockSummaryRow
@@ -58,6 +60,8 @@ export function StockItemPanel({
   others: OtherSiteStock[]
   othersLoading?: boolean
   canMove: boolean
+  /** PRC-47: the office sets the minimum here. */
+  canSetMinimum?: boolean
   onMove: (from: StockSummaryRow) => void
 }) {
   const closing = Number(row.closing)
@@ -81,7 +85,7 @@ export function StockItemPanel({
             {qty(row.closing)} <span className="text-base font-medium text-muted-foreground">{row.unit} here</span>
           </p>
           {row.running_low ? (
-            <span className="rounded-full bg-draft-soft px-2.5 py-1 text-xs font-semibold text-draft">{out ? 'Out' : `Lasts ${lasts(row.days_left ?? 0)}`}</span>
+            <span className="rounded-full bg-draft-soft px-2.5 py-1 text-xs font-semibold text-draft">{out || row.days_left === null ? lowWords(row) : `Lasts ${lasts(row.days_left)}`}</span>
           ) : (
             row.days_left !== null && <span className="text-sm text-muted-foreground">Lasts {lasts(row.days_left)}</span>
           )}
@@ -134,6 +138,26 @@ export function StockItemPanel({
         )}
       </div>
 
+      {(canSetMinimum || !!row.min_qty) && (
+        <Section title="Minimum stock">
+          {!!row.min_qty && Number(row.min_qty) > 0 && (
+            <div className="flex items-center gap-2 text-sm">
+              <MinimumBar row={row} className="flex-1" />
+              <span className="shrink-0 tabular-nums">
+                min <span className="font-semibold">{qty(row.min_qty)}</span> {row.unit}
+                {row.reorder_qty && <span className="text-muted-foreground"> · order {qty(row.reorder_qty)}</span>}
+              </span>
+              {row.below_min && <BelowMinimumChip />}
+            </div>
+          )}
+          {canSetMinimum ? (
+            <MinimumEditor key={`${row.site_id}:${row.material_id}:${row.min_qty ?? ''}`} row={row} />
+          ) : (
+            <p className="text-xs text-muted-foreground">Set by the office. Below it, they are told each morning.</p>
+          )}
+        </Section>
+      )}
+
       <Section title="At other sites" count={othersLoading ? undefined : others.length} empty="No other site has this item.">
         {othersLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
@@ -153,7 +177,7 @@ export function StockItemPanel({
                 </span>
                 {Number(o.row.closing) > 0 && (
                   <span className={cn('text-[11px]', o.row.running_low ? 'font-semibold text-draft' : 'text-muted-foreground')}>
-                    {o.row.running_low ? `Low · ${lasts(o.row.days_left ?? 0)}` : lasts(o.row.days_left) || ''}
+                    {o.row.running_low ? `Low · ${lowWords(o.row)}` : lasts(o.row.days_left) || ''}
                   </span>
                 )}
               </span>

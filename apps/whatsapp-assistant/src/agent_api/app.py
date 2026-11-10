@@ -24,6 +24,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.procurement.router",  # PRC-22: material requests (what a site asks for)
     "mesiri.domains.procurement.orders_router",  # PRC-23: a saved delivery put on its purchase order
     "mesiri.domains.procurement.rfqs_router",  # PRC-44: quotations (ask suppliers, record quotes, compare, award)
+    "mesiri.domains.procurement.returns_router",  # PRC-46: material sent back to a supplier, its debit note
     "mesiri.domains.timeline.router",
     "mesiri.domains.workforce.router",
     "mesiri.domains.progress.router",
@@ -36,6 +37,8 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.equipment.router",  # NXT-11: machines, their day logs, hire check
     "mesiri.domains.schedule.router",  # ST-04: the project schedule (Gantt)
     "mesiri.domains.materials.plan_router",  # MP-04: the material plan (what to order and when)
+    "mesiri.domains.materials.stock_count_router",  # PRC-48: the physical stock count ("count: cement 92 bags")
+    "mesiri.domains.materials.stock_levels_router",  # PRC-47: minimum stock per site, what is below it
     "mesiri.domains.places.router",  # LP-04: floors and rooms, what is left on a floor
     "mesiri.domains.documents.router",  # DOC-05, DR-08: find a document, what the drawings say
     "mesiri.domains.costing.router",  # CC-11: cost control (green / red, budget vs actual, labour on BOQ lines)

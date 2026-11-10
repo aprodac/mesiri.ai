@@ -26,7 +26,7 @@ from mesiri.domains.reports.period.sections import MODULE_OF, SECTIONS, Ctx
 logger = logging.getLogger(__name__)
 
 #: Sections in the order the page, the PDF and the Excel show them.
-ORDER = ("work", "schedule", "labour", "materials", "money", "issues", "photos", "completeness")
+ORDER = ("work", "schedule", "labour", "materials", "stock_value", "money", "issues", "photos", "completeness")
 NOUN = {"week": "week", "month": "month", "custom": "period"}
 
 
@@ -66,7 +66,7 @@ async def build(conn: AsyncConnection, auth: AuthorizationContext, *, project_id
         module = MODULE_OF[key]
         if module is not None and not enabled(module):
             continue
-        if key == "money" and not ctx.money:
+        if key in ("money", "stock_value") and not ctx.money:
             continue
         try:
             async with conn.begin_nested():  # one section failing must not abort the others' reads

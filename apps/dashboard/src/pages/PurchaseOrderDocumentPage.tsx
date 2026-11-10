@@ -4,6 +4,7 @@ import { ArrowLeft, MessageCircle, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { fetchBranding } from '@/lib/api'
 import { fetchOrder, orderMessage, rupees, whatsappUrl } from '@/lib/orders'
+import { Letterhead, Signatory } from '@/components/documents/letterhead'
 
 // PRC-26: the purchase order as a document for the supplier, on the company's letterhead. Print it or save it as a
 // PDF from the browser; or send it from your own WhatsApp. Mesiri never claims it was sent: the person sends it.
@@ -25,7 +26,6 @@ export default function PurchaseOrderDocumentPage() {
   if (order.isError) return <p className="p-8 text-sm text-muted-foreground">This order could not be opened.</p>
   if (!o) return <p className="p-8 text-sm text-muted-foreground">Loading…</p>
   const money = o.value !== null
-  const colour = b?.brand_color || '#1f2937'
   const company = b?.letterhead_name || b?.company_name || ''
 
   return (
@@ -47,23 +47,11 @@ export default function PurchaseOrderDocumentPage() {
       </div>
 
       <article className="mx-auto max-w-[210mm] bg-white px-10 py-9 text-[13px] text-neutral-900 shadow-sm print:max-w-none print:px-0 print:py-0 print:shadow-none">
-        <header className="flex items-start justify-between gap-6 border-b-4 pb-4" style={{ borderColor: colour }}>
-          <div className="flex items-center gap-3">
-            {b?.logo_url && <img src={b.logo_url} alt="" className="h-14 w-auto object-contain" />}
-            <div>
-              <div className="text-xl font-bold" style={{ color: colour }}>{company}</div>
-              {b?.address && <div className="max-w-[90mm] whitespace-pre-line text-neutral-600">{b.address}</div>}
-              <div className="text-neutral-600">{[b?.phone, b?.email].filter(Boolean).join(' · ')}</div>
-              {b?.gstin && <div className="text-neutral-600">GSTIN {b.gstin}</div>}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-lg font-bold tracking-wide">PURCHASE ORDER</div>
-            <div className="font-semibold tabular-nums">{o.ref}</div>
-            {o.their_ref && <div className="text-neutral-600">Ref {o.their_ref}</div>}
-            <div className="text-neutral-600">{day(o.created_at.slice(0, 10))}</div>
-          </div>
-        </header>
+        <Letterhead brand={b} title="PURCHASE ORDER">
+          <div className="font-semibold tabular-nums">{o.ref}</div>
+          {o.their_ref && <div className="text-neutral-600">Ref {o.their_ref}</div>}
+          <div className="text-neutral-600">{day(o.created_at.slice(0, 10))}</div>
+        </Letterhead>
 
         <section className="mt-5 grid grid-cols-2 gap-6">
           <div>
@@ -119,14 +107,7 @@ export default function PurchaseOrderDocumentPage() {
           </section>
         )}
 
-        <footer className="mt-14 flex items-end justify-between gap-6">
-          <div className="text-neutral-600">Ordered by {o.created_by_name ?? '—'}</div>
-          <div className="text-center">
-            <div className="mb-1 h-10 w-48 border-b border-neutral-400" />
-            <div className="font-semibold">{b?.signatory_name ?? 'Authorised signatory'}</div>
-            {b?.signatory_designation && <div className="text-neutral-600">{b.signatory_designation}</div>}
-          </div>
-        </footer>
+        <Signatory brand={b} left={<>Ordered by {o.created_by_name ?? '—'}</>} />
       </article>
     </div>
   )

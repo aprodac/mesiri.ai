@@ -877,8 +877,8 @@ export async function dismissSizeRequest(id: string): Promise<void> {
 // Excel import (PRC-05): items with categories, vendors, opening stock
 // ---------------------------------------------------------------------
 
-export type ImportSheet = 'Items' | 'Vendors' | 'Opening stock'
-export type ImportResult = 'added' | 'existing' | 'placed' | 'updated' | 'problem'
+export type ImportSheet = 'Items' | 'Vendors' | 'Opening stock' | 'Minimum stock'
+export type ImportResult = 'added' | 'existing' | 'placed' | 'updated' | 'removed' | 'problem'
 
 export interface ImportReport {
   // false for a preview: nothing was saved.
@@ -933,8 +933,12 @@ export interface StockSummaryRow {
   days_left: number | null
   /** PRC-27: still to come on open purchase orders (for a period that reaches today). */
   on_order?: string
-  /** Counts what is on order: stock already ordered is not "what to order". */
+  /** Counts what is on order: stock already ordered is not "what to order". PRC-47: also under the minimum set. */
   running_low: boolean
+  /** PRC-47: the minimum set for this site (stock unit), how much to order when below, and whether it holds less. */
+  min_qty?: string | null
+  reorder_qty?: string | null
+  below_min?: boolean
   // Only for roles that see the company's spending; null for the rest.
   spend: string | null
   spend_complete: boolean | null
@@ -949,6 +953,90 @@ export interface StockSummaryFilters {
   category_id?: string
   /** PRC-00: one item at every site this person can see. */
   material_id?: string
+}
+
+// ---------------------------------------------------------------------
+// Minimum stock and reorder (PRC-47)
+// ---------------------------------------------------------------------
+export interface StockLevelSaved {
+  id?: string
+  site_id: string
+  material_id: string
+  min_qty?: string
+  reorder_qty?: string | null
+  removed?: boolean
+  said: string
+}
+
+export interface StockLevelIn {
+  site_id: string
+  material_id: string
+  /** 0: no minimum any more. */
+  min_qty: string
+  reorder_qty?: string | null
+  source?: 'typed' | 'suggested'
+}
+
+export async function setStockLevel(body: StockLevelIn): Promise<StockLevelSaved> {
+  const res = await api.put<StockLevelSaved>('/materials/stock-levels', body)
+  return res.data
+}
+
+export async function setStockLevels(levels: StockLevelIn[]): Promise<{ items: StockLevelSaved[] }> {
+  const res = await api.post<{ items: StockLevelSaved[] }>('/materials/stock-levels/bulk', { levels })
+  return res.data
+}
+
+export interface StockLevelSuggestion {
+  site_id: string
+  material_id: string
+  material: string
+  unit: string
+  main_category: string | null
+  used_last_week: string
+  closing: string
+  lead_days: number
+  supplier: string | null
+  min_qty: string
+  reorder_qty: string
+  current_min: string | null
+}
+
+export async function suggestStockLevels(siteId: string): Promise<{ site_name: string; items: StockLevelSuggestion[] }> {
+  const res = await api.get<{ site_name: string; items: StockLevelSuggestion[] }>('/materials/stock-levels/suggest', { params: { site_id: siteId } })
+  return res.data
+}
+
+export interface BelowMinimumRow {
+  site_id: string
+  site_name: string
+  project_id: string
+  project_name: string
+  material_id: string
+  material: string
+  unit: string
+  unit_id: string
+  closing: string
+  on_order: string
+  min_qty: string
+  reorder_qty: string | null
+  /** What a draft request or RFQ asks for: the reorder quantity, else back to twice the minimum. */
+  to_order: string
+  short_by: string
+  /** "on order", "RFQ-0004", "REQ-0012": already being bought (no alert). */
+  covered_by: string | null
+}
+
+export interface BelowMinimum {
+  items: BelowMinimumRow[]
+  total: number
+  not_covered: number
+  sites: { site_id: string; site_name: string; project_id: string; project_name: string; items: number; to_buy: { material_id: string; unit_id: string; quantity: string }[] }[]
+}
+
+export async function fetchBelowMinimum(params: { project_id?: string; site_id?: string } = {}): Promise<BelowMinimum> {
+  const res = await api.get<BelowMinimum>('/materials/stock-levels/below', { params })
+  return res.data
 }
 
 export async function fetchStockSummary(filters: StockSummaryFilters = {}): Promise<StockSummaryRow[]> {

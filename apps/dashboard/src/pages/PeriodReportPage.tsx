@@ -86,6 +86,7 @@ const SECTION_META: Record<keyof Sections, { title: string; icon: React.Componen
   schedule: { title: 'Schedule', icon: CalendarRange, tile: 'bg-draft-soft text-draft' },
   labour: { title: 'Labour', icon: HardHat, tile: 'bg-muted text-foreground/70' },
   materials: { title: 'Materials', icon: Package, tile: 'bg-muted text-foreground/70' },
+  stock_value: { title: 'Stock value', icon: IndianRupee, tile: 'bg-muted text-foreground/70' },
   money: { title: 'Money', icon: IndianRupee, tile: 'bg-success-soft text-success' },
   issues: { title: 'Issues', icon: TriangleAlert, tile: 'bg-destructive/10 text-destructive' },
   photos: { title: 'Photos', icon: Camera, tile: 'bg-muted text-foreground/70' },
@@ -379,6 +380,28 @@ function LabourSection({ l }: { l: NonNullable<Sections['labour']> }) {
   )
 }
 
+function StockValueSection({ v }: { v: NonNullable<Sections['stock_value']> }) {
+  if (!v.items) return <Empty>No stock on hand at the end of this period.</Empty>
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <p>
+        <strong className="tabular-nums">{inr(v.total)}</strong> on hand ({v.items} items)
+        {v.slow_moving > 0 && <> · <span className="text-draft">{inr(v.slow_moving_value)} not used in 30 days ({v.slow_moving})</span></>}
+        {v.unpriced > 0 && <span className="text-muted-foreground"> · {v.unpriced} with no rate yet</span>}
+      </p>
+      <ul className="divide-y rounded-lg border">
+        {v.top.slice(0, 5).map((r) => (
+          <li key={`${r.site_name}:${r.material}`} className="flex items-center justify-between gap-2 px-3 py-1.5">
+            <span className="min-w-0 truncate">{r.material} <span className="text-muted-foreground">· {r.site_name}</span></span>
+            <span className="shrink-0 tabular-nums">{r.value ? inr(r.value) : '—'}</span>
+          </li>
+        ))}
+      </ul>
+      <Link to={v.link} className="text-xs font-medium underline-offset-2 hover:underline">Stock value →</Link>
+    </div>
+  )
+}
+
 function MaterialsSection({ m }: { m: NonNullable<Sections['materials']> }) {
   if (m.rows.length === 0) return <Empty>Nothing was received or used in this period.</Empty>
   const money = m.rows.some((r) => r.spend !== undefined)
@@ -546,6 +569,7 @@ function SectionBody({ k, s }: { k: keyof Sections; s: Sections }) {
     case 'schedule': return s.schedule ? <ScheduleSection s={s.schedule} /> : null
     case 'labour': return s.labour ? <LabourSection l={s.labour} /> : null
     case 'materials': return s.materials ? <MaterialsSection m={s.materials} /> : null
+    case 'stock_value': return s.stock_value ? <StockValueSection v={s.stock_value} /> : null
     case 'money': return s.money ? <MoneySection m={s.money} /> : null
     case 'issues': return s.issues ? <IssuesSection i={s.issues} /> : null
     case 'photos': return s.photos ? <PhotosSection p={s.photos} /> : null

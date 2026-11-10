@@ -142,6 +142,20 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("materials router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.materials.stock_levels_router import router as stock_levels_router
+
+        app.include_router(stock_levels_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("stock levels router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.materials.stock_count_router import router as stock_count_router
+
+        app.include_router(stock_count_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("stock count router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.expenses.router import router as expenses_router
 
         app.include_router(expenses_router)
@@ -359,6 +373,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         app.include_router(rfqs_router)
     except Exception as exc:  # noqa: BLE001
         _log.exception("quotations router not loaded: %s", exc)
+
+    try:
+        from mesiri.domains.procurement.returns_router import router as returns_router
+
+        app.include_router(returns_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("returns router not loaded: %s", exc)
 
     try:
         from mesiri.domains.progress.router import router as progress_router

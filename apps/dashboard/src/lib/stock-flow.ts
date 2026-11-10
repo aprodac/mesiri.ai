@@ -41,3 +41,11 @@ export function buildFlows(requests: MaterialRequest[], orders: PurchaseOrder[])
 
 export const lasts = (days: number | null) => (days === null ? '' : days < 1 ? 'under 1 day' : `~${days} ${days === 1 ? 'day' : 'days'}`)
 
+/** A running-low row's chip: out, how long it lasts, or (PRC-47) "Below min" when nothing was used and only the
+ * minimum makes it low -- never "under 1 day" for stock nobody is using. */
+export function lowWords(row: { closing: string; days_left: number | null; below_min?: boolean }): string {
+  if (Number(row.closing) <= 0) return 'Out'
+  if (row.days_left === null) return row.below_min ? 'Below min' : 'Low'
+  return lasts(row.days_left)
+}
+

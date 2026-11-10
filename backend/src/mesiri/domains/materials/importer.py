@@ -3,15 +3,16 @@
 Onboarding a full-project builder means hundreds of items under their categories, the shops they buy from and what
 each site holds on day one. Typing them is the work the client said they do today; the import takes their sheet.
 
-One workbook, three sheets (``template_bytes`` writes it, with a "How to fill" sheet):
+One workbook, four sheets (``template_bytes`` writes it, with a "How to fill" sheet):
 
 - **Items**: Main category, Sub-category, Item, Unit, Item code, Other names
 - **Vendors**: Vendor, Phone, GSTIN, Address
 - **Opening stock**: Project, Site, Item, Quantity, Date
+- **Minimum stock** (PRC-47): Project, Site, Item, Minimum, Reorder qty
 
 Nothing here has rules of its own: a category, an item, a vendor and an opening stock line are made by the same
 code as the dashboard's own buttons (``create_material``, ``record_inflow``, ``vendor_for_name``, the categories
-repository), so the import refuses exactly what they refuse. Each row runs in its own savepoint: a refused row is
+repository, ``PUT /materials/stock-levels``), so the import refuses exactly what they refuse. Each row runs in its own savepoint: a refused row is
 listed with the reason and the rest go on. ``run`` makes the changes; the preview runs the very same code inside a
 savepoint it rolls back, so what the preview says is what the import does.
 """
@@ -30,14 +31,16 @@ if TYPE_CHECKING:
 
     from mesiri.authorization.context import AuthorizationContext
 
-ITEMS, VENDORS, OPENING = "Items", "Vendors", "Opening stock"
+ITEMS, VENDORS, OPENING, MINIMUM = "Items", "Vendors", "Opening stock", "Minimum stock"
 COLUMNS: dict[str, tuple[str, ...]] = {
     ITEMS: ("Main category", "Sub-category", "Item", "Unit", "Item code", "Other names"),
     VENDORS: ("Vendor", "Phone", "GSTIN", "Address"),
     OPENING: ("Project", "Site", "Item", "Quantity", "Date"),
+    MINIMUM: ("Project", "Site", "Item", "Minimum", "Reorder qty"),
 }
 #: The column a row cannot do without, per sheet.
-_REQUIRED = {ITEMS: ("Item", "Unit"), VENDORS: ("Vendor",), OPENING: ("Site", "Item", "Quantity")}
+_REQUIRED = {ITEMS: ("Item", "Unit"), VENDORS: ("Vendor",), OPENING: ("Site", "Item", "Quantity"),
+             MINIMUM: ("Site", "Item", "Minimum")}
 MAX_ROWS = 5000
 MAX_BYTES = 5 * 1024 * 1024
 #: Rows listed back one by one (the counts always cover all of them).
@@ -55,6 +58,9 @@ _HOW_TO = (
     "Opening stock: what a site holds before you start with Mesiri. Once per site and item.",
     "  Project can be left empty when the site name is only used once.",
     "  Quantity is in the item's unit. Date (optional) defaults to today.",
+    "Minimum stock: the least a site should hold of an item; below it, Mesiri tells the office each morning.",
+    "  Minimum is in the item's unit. Reorder qty (optional): how much to ask for when it goes below.",
+    "  A row for an item and site that already has a minimum changes it; Minimum 0 removes it.",
     "",
     "Upload the file in Materials > Catalogue > Import from Excel. You see what will happen before anything is saved.",
     "Rows already in Mesiri are left as they are; an item that has no category yet is put in the one given here.",
@@ -83,7 +89,7 @@ class SheetRow:
 @dataclass
 class ImportReport:
     counts: dict[str, dict[str, int]] = field(
-        default_factory=lambda: {ITEMS: {}, VENDORS: {}, OPENING: {}, "Categories": {}}
+        default_factory=lambda: {ITEMS: {}, VENDORS: {}, OPENING: {}, MINIMUM: {}, "Categories": {}}
     )
     rows: list[dict[str, Any]] = field(default_factory=list)
     problems: int = 0
@@ -160,7 +166,7 @@ def read_workbook(data: bytes) -> list[SheetRow]:
             if len(rows) > MAX_ROWS:
                 raise ImportFileError(f"The file has more than {MAX_ROWS} rows. Split it into smaller files.")
     if not rows:
-        raise ImportFileError("No rows to import: fill the Items, Vendors or Opening stock sheet.")
+        raise ImportFileError("No rows to import: fill the Items, Vendors, Opening stock or Minimum stock sheet.")
     return rows
 
 
@@ -198,7 +204,7 @@ async def _apply(conn: AsyncConnection, auth: AuthorizationContext, rows: list[S
     report = ImportReport()
     categories_before = await category_count()
     context = _Context(conn, auth, report)
-    handlers = {ITEMS: context.item, VENDORS: context.vendor, OPENING: context.opening}
+    handlers = {ITEMS: context.item, VENDORS: context.vendor, OPENING: context.opening, MINIMUM: context.minimum}
     for row in rows:
         name = row.text("Item") or row.text("Vendor")
         try:
@@ -381,6 +387,35 @@ class _Context:
             ),
         )
         return "added", "" if not result.get("converted") else str(result["converted"])
+
+    async def minimum(self, row: SheetRow) -> tuple[str, str]:
+        """PRC-47: one site's minimum for one item, set as ``PUT /materials/stock-levels`` sets it."""
+        from mesiri.domains.materials.stock_levels_router import LevelIn, _office, _save
+        from mesiri.infrastructure.postgres.repositories.materials import (
+            PostgresMaterialCatalogRepository,
+        )
+
+        _office(self.auth)
+        _, site_id = await self._site(row.text("Project"), row.text("Site"))
+        catalog = PostgresMaterialCatalogRepository(self.conn)
+        item = row.text("Item")
+        material = await catalog.get_by_name(self.auth.organization_id, item) or await catalog.find_by_alias(
+            self.auth.organization_id, item
+        )
+        if material is None:
+            raise _RowProblem(f"'{item}' is not an item yet: add it on the Items sheet.")
+        values = []
+        for column in ("Minimum", "Reorder qty"):
+            raw = row.text(column).replace(",", "")
+            try:
+                values.append(Decimal(raw) if raw else None)
+            except InvalidOperation as exc:
+                raise _RowProblem(f"{column} '{row.text(column)}' is not a number.") from exc
+        if values[0] is None or values[0] < 0 or (values[1] is not None and values[1] <= 0):
+            raise _RowProblem("Minimum must be 0 or more, and Reorder qty more than 0.")
+        result = await _save(self.conn, self.auth, LevelIn(site_id=site_id, material_id=material["id"],
+                                                           min_qty=values[0], reorder_qty=values[1], source="excel"))
+        return ("removed" if result.get("removed") else "added"), result["said"]
 
     async def _site(self, project: str, site: str) -> tuple[uuid.UUID, uuid.UUID]:
         from sqlalchemy import text
