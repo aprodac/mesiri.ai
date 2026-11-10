@@ -637,6 +637,12 @@ class ApiWhatsApp:
                 await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
                 turn = await self._agent.run(client, **run)
                 _lap("v3_model_retry")
+            if turn.size_unknown and needs:
+                # WA-268: "I don't know" in their own words (typed or spoken) is the "Don't know" button: the same way
+                # out, drawn by the code. The model's words for this turn are not sent.
+                if any(n.get("no_stock") for n in needs):
+                    return await self._size_way_out(ctx, state, ready, next(n for n in needs if n.get("no_stock")))
+                return await self._hold_for_size(ctx, client, state, ready)
         except Exception as exc:  # noqa: BLE001 -- the model or a tool failed
             _log.exception("agent_api.run_failed user=%s", ctx.user_id)
             return await self._failed(exc, text, message, ctx, state, started)

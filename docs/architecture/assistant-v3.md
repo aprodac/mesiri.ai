@@ -162,6 +162,8 @@ build and the test. Every write also takes `confirm_line`: the line the person c
 Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
 `save_ready_entries` / `drop_ready_entries` (only offered when entries wait), and `tell_the_team`
 (`feedback.py`; v2's tool until WA-134, one definition).
+While a size question is open the model also has `size_not_known` (WA-268): it reads "I don't know" in any
+words, and the code answers as it does for the 🤷 button.
 
 ## Saving
 

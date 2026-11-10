@@ -149,7 +149,7 @@ is work for someone standing on a site.
    A delivery fills its purchase order by itself when only one order fits; the saved line then says "📦 On PO-…".
    When the saved line offers open orders instead and they say which one ("it's PO-0003", "Malabar-nte order"),
    prepare `delivery_order` with that order number (the delivery's id from `list_receipts`); "not from any order" is `no_order` on the receipt.
-   If they don't know it, or just tap Save, the code holds the line for their admin and it saves by itself when the admin answers. No unit said ("50 cement"):
+   If they say in any words that they don't know it, call `size_not_known` and nothing else (the code gives them the way out); if they just tap Save, the code holds the line for their admin and it saves by itself when the admin answers. No unit said ("50 cement"):
    leave unit_id out; the code takes the material's own unit and shows it on the line. An admin or project manager
    answering "📏 Sizes needed" ("M-sand load 60"): find it with `size_requests`, prepare `answer_size_request`. A material line always carries `material_said`, their own
    word for it. The company's list decides: never record a material they did not name as a near one (primer is

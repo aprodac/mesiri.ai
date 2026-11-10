@@ -256,6 +256,8 @@ class ApiTurn:
     reply_fixed: list[str] = field(default_factory=list)
     #: [243]: the reply language set this turn by the code ("auto" = cleared), "" when none was set.
     language_set: str = ""
+    #: WA-268: they said, in their own words, that they do not know the open size (``size_not_known``).
+    size_unknown: bool = False
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -591,6 +593,15 @@ EXPLAIN = "explain_mesiri"
 _EXPLAIN_TOOL = ToolSpec(name=EXPLAIN, description=(
     "Call this first, once, when the person asks what Mesiri can do, how it helps, or how it works. It writes "
     "nothing. Then answer from the What Mesiri does block."), parameters={"type": "object", "properties": {}})
+#: WA-268 (requests [272] [273], 6 Nov: a spoken "I don't know, M-sand would be in cubic metres" to the size question
+#: got the same question again; only the exact words of the "Don't know" button were taken): the model reads that they
+#: do not know, in any words or language, and says so with this call; the code then gives the way out the button gives.
+SIZE_NOT_KNOWN = "size_not_known"
+_SIZE_NOT_KNOWN_TOOL = ToolSpec(name=SIZE_NOT_KNOWN, description=(
+    "Call this, and nothing else, when the person says in ANY words or language that they do not know the size you "
+    "asked for (\"ariyilla\", \"I don't know\", \"not sure\", \"pata nahi\", \"ask the supplier\"). It writes "
+    "nothing: the code answers them with the way out. Never guess a size and never ask the same size again."),
+    parameters={"type": "object", "properties": {}})
 DROP_READY = "drop_ready_entries"
 #: 2 Nov ([205], Paraclette: a project renamed by voice vanished from the list): a correction to a waiting entry
 #: is ONE step the code applies in place. Drop-then-prepare let the model stop halfway and still say "ready".
@@ -707,6 +718,7 @@ class ApiAgent:
             e is not None and e.idempotency_key == n.get("key") and SIZE_UNKNOWN.search(e.summary) for e in waiting)]
         taken_need = next((n for n in open_sizes if answers_size(text, n)), None)
         code_lines: dict[tuple[str, str], str] = {}  # [232]: (material, from unit) -> the line the code drew
+        size_unknown: list[bool] = []  # WA-268: the model read "I don't know the size" in their words
         dropped = "" if taken_need is not None or answers_question(text, open_question) else str(
             (open_question or {}).get("question") or " / ".join((open_question or {}).get("options") or []))
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
@@ -859,6 +871,9 @@ class ApiAgent:
                 if "url" in built:
                     links.append(built["url"])
                 return ToolOutcome(content=built)
+            if name == SIZE_NOT_KNOWN:
+                size_unknown.append(True)
+                return ToolOutcome(content={"status": "the code answers them now: write nothing more"})
             if name == EXPLAIN:
                 return ToolOutcome(content={"status": "answer from the What Mesiri does block, in their language, "
                                                       "at most 6 short lines with an example message each"})
@@ -1308,6 +1323,8 @@ class ApiAgent:
 
         specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, _EXPLAIN_TOOL, *feedback_specs(), web_link_spec()] + (
             list(_READY_TOOLS) if waiting else [])
+        if open_sizes and taken_need is None:
+            specs.append(_SIZE_NOT_KNOWN_TOOL)  # WA-268: only while a size question is open and unanswered
         specs += [spec for spec, _ in (actions or {}).values()]
         if saved_list:
             specs.append(_CORRECT_SAVED_SPEC)
@@ -1329,6 +1346,10 @@ class ApiAgent:
             system += (f"\n\nThis message is NOT an answer to your last question (\"{dropped}\"): that question is dropped. "
                        "It is a new, separate request: do exactly what it asks. Do not ask that question again unless "
                        "this new request needs it. This note is for you only: never repeat or mention it.")
+        if open_sizes and taken_need is None:
+            asked_sizes = "; ".join(size_question(n, "english") for n in open_sizes[:3])
+            system += (f"\n\nA size you asked is still open ({asked_sizes}). If this message says they do not know it, "
+                       f"in any words, call `{SIZE_NOT_KNOWN}` and nothing else. This note is for you only.")
         messages =[*(history or []), ChatMessage(role="user", text=text)]
         extra = {"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}
 
@@ -1529,7 +1550,8 @@ class ApiAgent:
                        stop_reason=result.stop_reason, question=without_internals(asked.get("question", "")),
                        options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
-                       size_needed=size_needed, language_set=next(iter(language_set), ""))
+                       size_needed=size_needed, language_set=next(iter(language_set), ""),
+                       size_unknown=bool(size_unknown))
 
 
 _NUMBER = re.compile(r"(?<![\d.])\d+(?:\.\d+)?(?![\d.])")
