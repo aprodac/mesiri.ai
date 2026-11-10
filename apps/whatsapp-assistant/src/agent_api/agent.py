@@ -484,6 +484,27 @@ def site_options(names: list[str]) -> list[str]:
 
 #: [265]: the site of a project that has none yet; Save adds the site (named as the project) and puts its id in.
 SITE_OF = "site-of:"
+#: [277]: the project a line goes to when it is being created in the same message; Save makes it first and fills the id.
+NEW_PROJECT = "new-project:"
+
+
+def project_made_here(text: str, places: Places | None, new: list[PendingWrite]) -> str:
+    """[277] (7 Nov, New India: "add the project Hospital ... 100 bags cement unloaded there" saved the cement at
+    another site): the name of the ONE project this message is creating, when the message names no site or project
+    that already exists; else "". An update said with it ("athil", "avide", "there") is about it: the code can tell
+    from what the turn holds, with no list of pointing words."""
+    making = [str(e.body.get("name") or "").strip() for e in new if e.tool == PROJECT_TOOL]
+    if len(making) != 1 or not making[0]:
+        return ""
+    said = " ".join(text.casefold().split())
+    for name in _place_names(places):
+        if not _same_name(name, making[0]) and _named(name, said):
+            return ""  # they named a place that exists: the update is for that one
+    return making[0]
+
+
+def _same_name(a: str, b: str) -> bool:
+    return " ".join(a.casefold().split()) == " ".join(b.casefold().split())
 
 
 def place_of_project(place: Place | list[str], tool: ApiTool) -> bool:
@@ -936,7 +957,17 @@ class ApiAgent:
             size_hint = ""  # WA-166: a held line for a new material that needs its size asked in this turn
             filled_unit = ""  # WA-197: the unit the code filled in (none was said), shown on the line
             line_key = ""  # WA-197: the key of a line held with its size asked (the "Don't know" hold uses it)
-            if decides_site and site_scoped(tool):
+            made_here = project_made_here(text, places, new) if site_scoped(tool) else ""
+            if made_here:
+                # [277]: the update is about the project this message creates: it goes on it, whatever site the model
+                # picked; Save makes the project and its first site, then this line.
+                ref = f"{NEW_PROJECT}{made_here}"
+                arguments = {k: v for k, v in arguments.items() if k != "site_id"}
+                arguments["site_id"] = f"{SITE_OF}{ref}"
+                if "project_id" in tool.body_fields:
+                    arguments["project_id"] = ref
+                site_note = f" · 📍 *{made_here}* (new project)"
+            elif decides_site and site_scoped(tool):
                 # [213]: the code decides where a report goes, never the model (it took the project just created).
                 working = working_place(places, [e for e in waiting if e is not None] + new)
                 place = decide_site(text, places, arguments.get("site_id"), arguments.get("project_id"), working)  # type: ignore[arg-type]
@@ -1004,7 +1035,8 @@ class ApiAgent:
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
             found_now: set[str] = set()
-            for p in [p for p in tool.uuid_path if tool.is_write and not _is_uuid(arguments[p])]:
+            for p in [p for p in tool.uuid_path if tool.is_write and not _is_uuid(arguments[p])
+                      and not str(arguments[p]).startswith(SITE_OF)]:  # [265] [277]: Save fills a site it makes
                 # PRC-32 (7 Nov: "REQ-0001 cement athu 250 aakku" held request_id "REQ-0001" and the Save failed, 422;
                 # told to look it up, the model gave up): the code finds the record by the number people see, from
                 # the collection's own list route; only when it cannot is the model told which list tool to use.
@@ -2417,9 +2449,11 @@ async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[s
     API's own checks (access, validation, stock guard) decide; a refusal comes back as-is. Results come back in the
     order given."""
     def rank(i: int) -> int:
-        return 0 if pending[i].tool == ADD_TOOL else 1 if pending[i].tool in SETTINGS_FIRST else 2
+        # [277]: a new project too comes before the lines that go on it.
+        return 0 if pending[i].tool in (ADD_TOOL, PROJECT_TOOL) else 1 if pending[i].tool in SETTINGS_FIRST else 2
 
     created: dict[str, str] = {}  # the new material's name (alias_key) -> its id
+    projects_made: dict[str, str] = {}  # [277]: a project made by this Save, by name -> its id
     sites_made: dict[str, str | None] = {}  # [265]: project id -> the site Save found or added for it
     done: dict[int, WriteResult] = {}
     for i in sorted(range(len(pending)), key=rank):
@@ -2432,6 +2466,13 @@ async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[s
                                                              "yet (adding it did not save)"})
                 continue
             entry = _with_material(entry, ref, material_id)
+        if (project_ref := _project_ref(entry)) is not None:
+            made_id = projects_made.get(" ".join(project_ref.removeprefix(NEW_PROJECT).casefold().split()))
+            if made_id is None:
+                done[i] = WriteResult(entry, 424, {"detail": f"the project {project_ref.removeprefix(NEW_PROJECT)} "
+                                                             "was not created, so this was not saved"})
+                continue
+            entry = _with_project(entry, project_ref, made_id)
         if (site_ref := _site_ref(entry)) is not None:
             project_id = site_ref.removeprefix(SITE_OF)
             if project_id not in sites_made:
@@ -2445,6 +2486,7 @@ async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[s
             # [265]: a project made on WhatsApp gets its first site, named as it, so updates can go to it at once.
             pid = str(done[i].body["id"])
             sites_made[pid] = await site_for_project(client, pid, str(done[i].body.get("name") or entry.body.get("name") or ""))
+            projects_made[" ".join(str(entry.body.get("name") or "").casefold().split())] = pid
         if entry.tool == ADD_TOOL and (existing := _already_there(done[i])):
             # [246]: added elsewhere while the card waited (the dashboard, another message): the material is in the
             # list, so the add counts as done and its lines go on the one already there, never refused with it.
@@ -2474,6 +2516,20 @@ def _with_material(entry: PendingWrite, ref: str, material_id: str) -> PendingWr
     body = {**entry.body, "material_id": material_id} if entry.body.get("material_id") == ref else entry.body
     return PendingWrite(tool=entry.tool, method=entry.method, path=entry.path.replace(ref, material_id),
                         params=entry.params, body=body, summary=entry.summary, idempotency_key=entry.idempotency_key)
+
+
+def _project_ref(entry: PendingWrite) -> str | None:
+    """[277]: ``new-project:<name>`` when the entry goes on a project the same Save creates."""
+    for value in (str(entry.body.get("project_id") or ""), str(entry.body.get("site_id") or "").removeprefix(SITE_OF)):
+        if value.startswith(NEW_PROJECT):
+            return value
+    m = re.search(rf"({re.escape(NEW_PROJECT)}[^/]+)", entry.path or "")
+    return m.group(1) if m else None
+
+
+def _with_project(entry: PendingWrite, ref: str, project_id: str) -> PendingWrite:
+    body = {k: (v.replace(ref, project_id) if isinstance(v, str) and ref in v else v) for k, v in entry.body.items()}
+    return replace(entry, path=entry.path.replace(ref, project_id), body=body)
 
 
 def _with_site(entry: PendingWrite, ref: str, site_id: str) -> PendingWrite:
