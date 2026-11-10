@@ -1185,8 +1185,17 @@ async def list_inventory(
     from mesiri.domains.procurement.orders import on_order_by_site
 
     coming = await on_order_by_site(conn, auth_context.organization_id)
+    # PRC-47: the minimum the office set for the site, and whether it holds less now.
+    from mesiri.domains.materials.stock_levels import levels_by_site
+
+    levels = await levels_by_site(conn, auth_context.organization_id)
     for row in rows:
-        row["on_order"] = coming.get((str(row.get("site_id")), str(row.get("material_id"))), Decimal(0))
+        key = (str(row.get("site_id")), str(row.get("material_id")))
+        row["on_order"] = coming.get(key, Decimal(0))
+        level = levels.get(key)
+        if level is not None:
+            row["min_qty"], row["reorder_qty"] = level["min_qty"], level["reorder_qty"]
+            row["below_min"] = Decimal(str(row.get("current_stock") or 0)) < Decimal(str(level["min_qty"]))
     return rows
 
 
@@ -1218,6 +1227,7 @@ async def stock_summary(
     if (date_to - date_from).days > 366:
         raise HTTPException(status_code=422, detail="A period is at most a year.")
     from mesiri.authorization.roles import may_view_expenses
+    from mesiri.domains.materials.stock_levels import levels_by_site
 
     return await PostgresMaterialReadRepository(conn).get_stock_summary(
         auth_context.organization_id,
@@ -1231,6 +1241,8 @@ async def stock_summary(
         with_money=may_view_expenses(auth_context.role),
         # PRC-27: what is still to come counts for "running low", for a period that reaches today.
         on_order=await _on_order_now(conn, auth_context.organization_id, date_to),
+        # PRC-47: the minimum set per site and material (below it is the row's chip and counts as running low).
+        levels=await levels_by_site(conn, auth_context.organization_id),
     )
 
 

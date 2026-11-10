@@ -120,6 +120,11 @@ class MaterialStockResponse(BaseModel):
     stock_state: str
     #: PRC-27: still to come on open purchase orders for this site and material.
     on_order: Decimal = Decimal(0)
+    #: PRC-47: the minimum the office set for this site and material, the reorder quantity, and whether the site
+    #: holds less than the minimum now. None / False when no minimum is set.
+    min_qty: Decimal | None = None
+    reorder_qty: Decimal | None = None
+    below_min: bool = False
 
 
 class MaterialCatalogResponse(BaseModel):
@@ -228,8 +233,14 @@ class MaterialStockSummaryResponse(BaseModel):
     days_left: int | None = None
     #: PRC-27: still to come on open purchase orders (counted only for a period that reaches today).
     on_order: Decimal = Decimal(0)
-    #: At or below zero, or under 3 days left at that use, counting what is still to come on open orders.
+    #: At or below zero, or under 3 days left at that use, counting what is still to come on open orders; or (PRC-47)
+    #: under the minimum set for the site, counting what is coming.
     running_low: bool
+    #: PRC-47: the minimum set for this site and material (stock unit), the reorder quantity, and whether the site
+    #: held less than the minimum at the end of the period. None / False when no minimum is set.
+    min_qty: Decimal | None = None
+    reorder_qty: Decimal | None = None
+    below_min: bool = False
     #: PRC-17d, only for roles that see expenses (SEC-01); None for the rest: the known cost of what was delivered
     #: in the period, whether every delivery had a cost, and the latest rate paid (any site).
     spend: Decimal | None = None

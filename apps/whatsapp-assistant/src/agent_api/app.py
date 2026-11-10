@@ -36,6 +36,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.equipment.router",  # NXT-11: machines, their day logs, hire check
     "mesiri.domains.schedule.router",  # ST-04: the project schedule (Gantt)
     "mesiri.domains.materials.plan_router",  # MP-04: the material plan (what to order and when)
+    "mesiri.domains.materials.stock_levels_router",  # PRC-47: minimum stock per site, what is below it
     "mesiri.domains.places.router",  # LP-04: floors and rooms, what is left on a floor
     "mesiri.domains.documents.router",  # DOC-05, DR-08: find a document, what the drawings say
     "mesiri.domains.costing.router",  # CC-11: cost control (green / red, budget vs actual, labour on BOQ lines)

@@ -1,6 +1,7 @@
 # Procurement phase 2: quotations, returns, stock control, supplier performance (plan, 9 Nov 2026)
 
-> **Status:** plan written 9 Nov 2026. Built: PRC-34 (step 0, GST on deliveries and orders), PRC-45 (Pending deliveries), PRC-40..44 (Quotations; as built: the quote's terms sit on `rfq_vendors`, no separate `quotations` table; no RFQ PDF, the WhatsApp text is the RFQ; quote photos read on WhatsApp only; no quotes-due reminder yet). Tracker items `PRC-40`..`PRC-52` in
+> **Status:** plan written 9 Nov 2026. Built: PRC-34 (step 0, GST on deliveries and orders), PRC-45 (Pending deliveries), PRC-40..44 (Quotations; as built: the quote's terms sit on `rfq_vendors`, no separate `quotations` table; no RFQ PDF, the WhatsApp text is the RFQ; quote photos read on WhatsApp only; no quotes-due reminder yet), PRC-47
+> (Minimum stock and reorder, 10 Nov; as built: see §5.4). Tracker items `PRC-40`..`PRC-52` in
 > [V1_TRACKER.md](V1_TRACKER.md) (PRC section).
 > **Follows:** [procurement-plan.md](procurement-plan.md) (PRC-00..37, built 5–9 Nov) and the gaps listed in
 > [capability-framework-gap-analysis.md](capability-framework-gap-analysis.md) modules 07, 08, 09.
@@ -153,6 +154,22 @@ Additive.
   quantities. No duplicate alert when an open order or RFQ already covers it.
 - WhatsApp: "set minimum cement at Villa 100 bags", "what is below minimum?".
 - Data: `stock_levels` (site, material, min_qty, reorder_qty). Additive.
+
+**As built (PRC-47, 10 Nov 2026).** Migration 0541 (`stock_levels`, RLS). Routes `domains/materials/stock_levels_router.py`
+(`/materials/stock-levels`: list, PUT one (min 0 removes), bulk, DELETE, `/suggest`, `/below`), rules in
+`stock_levels.py` and `stock_summary.py` (`finish_row` takes the minimum: `below_min` is what the site holds now under
+it; `running_low` also when held + on order is under it; no minimum, no change). "Covered" = enough on open orders,
+or a live RFQ, or a **waiting material request** for that site and material (requests added to the plan's "order or
+RFQ": a request is already "someone is buying it", and the draft request would otherwise be refused as a duplicate).
+Draft quantity = the reorder quantity, else back to twice the minimum. Suggest = (7 + supplier lead days, 2 when not
+set) days of the last week's average use; reorder two weeks' use. Excel: a fourth sheet "Minimum stock". The daily
+note (`stock_below_minimum`, one per project and person a day, admin / owner / PM, through the existing reminder pass)
+carries **two links** ("Make request: …", "Get quotes: …") to Materials › Stock `?reorder=<site>&make=request|rfq`,
+which opens the draft request / RFQ with the reorder quantities. Links, not WhatsApp quick-reply buttons: a
+quick-reply tap reaches v3 only as its title ("Make request") without the site or items, so it could not open the
+right draft (the "a tap carries less than the message" class). v3 tools: `below_minimum`, `minimum_stock`,
+`suggest_minimum_stock`, `set_minimum_stock` + SOP rule 24. Who sets: admin, owner, PM (`may_act_on_material_requests`,
+as orders, PRC-12 may change it).
 
 ### 5.5 Physical stock count — `Materials › Stock count` (PRC-48)
 

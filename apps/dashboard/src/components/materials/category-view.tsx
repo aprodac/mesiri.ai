@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Boxes, ChevronDown, ChevronRight, ClipboardList, MapPin, PackageX, Search, TrendingDown, TriangleAlert, Truck } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Boxes, ChevronDown, ChevronRight, ClipboardList, MapPin, PackageX, Search, Target, TrendingDown, TriangleAlert, Truck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -10,6 +11,8 @@ import { PeriodSelect } from '@/components/filter-select'
 import { CategoryTile, FilterPill, type FilterOption } from '@/components/requests/parts'
 import { NewRequestDialog, type RequestPrefill } from '@/components/requests/new-request-dialog'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
+import { NewRfqDialog, type RfqPrefill } from '@/components/quotations/new-rfq-dialog'
+import { BelowMinimumChip, MinimumBar, MinimumCell, SuggestMinimumsDialog } from '@/components/stock/minimum'
 import { CHIP, qty } from '@/lib/site-day'
 import { useSiteNames } from '@/lib/site-names'
 import { useUrlState } from '@/lib/url-state'
@@ -19,13 +22,13 @@ import { useScope } from '@/lib/ScopeContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { periodRange, type Period } from '@/lib/period'
 import { cn, toLocalISODate } from '@/lib/utils'
-import { categoryTree, fetchMaterialCategories, fetchStockSummary, formatMoney, type StockSummaryRow } from '@/lib/materials'
+import { categoryTree, fetchBelowMinimum, fetchMaterialCategories, fetchStockSummary, formatMoney, type StockSummaryRow } from '@/lib/materials'
 import { fetchRequests, swatch } from '@/lib/requests'
 import { fetchOrders } from '@/lib/orders'
 import { RecordInflowDialog } from './record-inflow-dialog'
 import { RecordTransferDialog, type TransferPrefill } from './record-transfer-dialog'
 import { StockItemPanel, type OtherSiteStock } from './stock-item-panel'
-import { NO_FLOW, buildFlows, flowKey, lasts, type StockFlow } from '@/lib/stock-flow'
+import { NO_FLOW, buildFlows, flowKey, lasts, lowWords, type StockFlow } from '@/lib/stock-flow'
 
 // Materials > Stock (PRC-17d, WEB-50, WEB-77). What each site held before the period, what came, what was used and
 // what is left, by main category -- the client's "previous stock, consumption, current balance at a glance" -- now
@@ -36,6 +39,9 @@ import { NO_FLOW, buildFlows, flowKey, lasts, type StockFlow } from '@/lib/stock
 // PRC-00 (Ilan, 7 Nov): with several sites on screen (project or company view), the same item at each site is one
 // row with its total and where it is ("Green Villa 117 · Site B out"); a tap opens the per-site rows. The item
 // panel lists the item at the other sites, with "Move here" (one transfer record, BE-32) before ordering more.
+// PRC-47: the minimum per site and item -- a "Below minimum" tile and chip, a bar of what is held against it, set in
+// place in the list (office), "Minimums" suggests them for a site from use; the morning note's links land here
+// (?reorder=<site>&make=request|rfq) and open a draft request or RFQ with the reorder quantities.
 
 const NONE = '__none__'
 const sum = (values: (string | null)[]) => values.reduce((n, v) => n + (v ? Number(v) : 0), 0)
@@ -43,7 +49,7 @@ const subOf = (r: StockSummaryRow) => (r.category?.includes(' › ') ? r.categor
 const signed = (v: string, sign: '+' | '−') => (Number(v) ? `${sign}${qty(String(Math.abs(Number(v))))}` : '—')
 const OFFICE = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER']
 
-type Show = '' | 'low' | 'out' | 'coming' | 'asked' | 'all'
+type Show = '' | 'low' | 'below' | 'out' | 'coming' | 'asked' | 'all'
 
 const add = (rows: StockSummaryRow[], field: 'opening' | 'received' | 'used' | 'adjusted' | 'closing' | 'on_order') =>
   String(rows.reduce((n, r) => n + Number(r[field] ?? 0), 0))
@@ -119,7 +125,11 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
   const [site, setSite] = useUrlState<string>('at', '')
   const [q, setQ] = useUrlState<string>('q', '')
   const [opened, setOpened] = useUrlState<string>('item', '')
-  const [dialog, setDialog] = React.useState<'ask' | 'order' | 'came' | 'move' | null>(null)
+  const [dialog, setDialog] = React.useState<'ask' | 'order' | 'came' | 'move' | 'minimums' | 'reorder-request' | 'reorder-rfq' | null>(null)
+  // PRC-47: the morning note's "Make request" / "Get quotes" links.
+  const [reorderSite] = useUrlState<string>('reorder', '')
+  const [reorderMake] = useUrlState<string>('make', '')
+  const [, setParams] = useSearchParams()
   const [movePrefill, setMovePrefill] = React.useState<TransferPrefill | null>(null)
   const [open, setOpen] = React.useState<Set<string>>(() => new Set())
   const toggle = (key: string) =>
@@ -164,6 +174,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
   const matchesShow = React.useCallback(
     (r: StockSummaryRow, s: Show) =>
       s === 'low' ? r.running_low
+        : s === 'below' ? !!r.below_min
         : s === 'out' ? isOut(r)
           : s === 'coming' ? Number(r.on_order ?? 0) > 0
             : s === 'asked' ? flowOf(r).asked > 0
@@ -206,6 +217,8 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
   const other = shown.some((g) => g.list.some((r) => Number(r.adjusted) !== 0))
   const coming = shown.some((g) => g.list.some((r) => Number(r.on_order) > 0))
   const asked = shown.some((g) => g.list.some((r) => flowOf(r).asked > 0))
+  // PRC-47: the Minimum column, for the office (to set one) or when one is set.
+  const minCol = canOrder || shown.some((g) => g.list.some((r) => !!r.min_qty))
   const filtered = category !== 'all' || !!show || !!needle || !!site
 
   const current = inSite.find((r) => `${r.site_id}:${r.material_id}` === opened) ?? null
@@ -229,11 +242,13 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
 
   const tiles: { value: Exclude<Show, '' | 'all'>; label: string; count: number; icon: LucideIcon; iconTone: string; ring: string; numTone?: string }[] = [
     { value: 'low', label: 'Running low', count: inSite.filter((r) => r.running_low).length, icon: TrendingDown, iconTone: 'bg-orange-200 text-orange-950 dark:bg-orange-900 dark:text-orange-100', ring: 'ring-orange-500' },
+    { value: 'below', label: 'Below minimum', count: inSite.filter((r) => r.below_min).length, icon: Target, iconTone: 'bg-orange-100 text-orange-900 dark:bg-orange-950 dark:text-orange-100', ring: 'ring-orange-400' },
     { value: 'out', label: 'Out of stock', count: inSite.filter(isOut).length, icon: PackageX, iconTone: 'bg-destructive text-white', ring: 'ring-destructive' },
     { value: 'coming', label: 'Coming on orders', count: inSite.filter((r) => Number(r.on_order ?? 0) > 0).length, icon: Truck, iconTone: 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-100', ring: 'ring-blue-500' },
     { value: 'asked', label: 'Asked for', count: inSite.filter((r) => flowOf(r).asked > 0).length, icon: ClipboardList, iconTone: 'bg-yellow-100 text-yellow-900 dark:bg-yellow-950 dark:text-yellow-100', ring: 'ring-yellow-500' },
   ]
   for (const t of tiles) if (t.value === 'out' && t.count > 0) t.numTone = 'text-destructive'
+  for (const t of tiles) if (t.value === 'below' && t.count > 0) t.numTone = 'text-orange-700 dark:text-orange-400'
 
   const siteOptions: FilterOption[] = React.useMemo(() => {
     const ids = [...new Set(all.map((r) => r.site_id).filter(Boolean))] as string[]
@@ -245,12 +260,43 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [all, siteNames])
 
+  // PRC-47: "Make request" / "Get quotes" from the morning note: the site's items below minimum that nothing is buying
+  // yet, with the reorder quantities, as a draft the person checks and sends.
+  const reorder = useQuery({
+    queryKey: ['materials', 'stock-levels', 'below', reorderSite],
+    queryFn: () => fetchBelowMinimum({ site_id: reorderSite }),
+    enabled: !!reorderSite && canAsk,
+  })
+  const reorderGroup = reorder.data?.sites.find((x) => x.site_id === reorderSite)
+  React.useEffect(() => {
+    if (!reorderSite || !reorder.data) return
+    if (reorderGroup && reorderGroup.to_buy.length > 0) setDialog(reorderMake === 'rfq' && canOrder ? 'reorder-rfq' : 'reorder-request')
+  }, [reorderSite, reorderMake, reorder.data, reorderGroup, canOrder])
+  const reorderLines = (reorderGroup?.to_buy ?? []).map((l) => ({ material_id: l.material_id, quantity: l.quantity }))
+  const endReorder = () => {
+    setDialog(null)
+    // Both in one change: two URL setters in a row each start from the same old URL, and the second keeps the first.
+    setParams((prev) => {
+      prev.delete('reorder')
+      prev.delete('make')
+      return prev
+    }, { replace: true })
+  }
+  const reorderRequest: RequestPrefill | null = reorderGroup ? { project_id: reorderGroup.project_id, site_id: reorderGroup.site_id, lines: reorderLines } : null
+  const reorderRfq: RfqPrefill | null = reorderGroup ? { project_id: reorderGroup.project_id, site_id: reorderGroup.site_id, site_name: reorderGroup.site_name, lines: reorderLines } : null
+  const reorderNothing = !!reorderSite && !!reorder.data && !(reorderGroup && reorderGroup.to_buy.length > 0)
+
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2">
       {leading}
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {!siteId && siteOptions.length > 1 && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={siteOptions} onChange={setSite} />}
         <PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />
+        {canOrder && siteOptions.length > 0 && (
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" title="Minimum stock per item, suggested from use" onClick={() => setDialog('minimums')}>
+            <Target className="size-4" /> <span className="hidden sm:inline">Minimums</span>
+          </Button>
+        )}
         <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-2.5">
           <Search className="size-4 text-muted-foreground" />
           <span className="sr-only">Search items</span>
@@ -297,6 +343,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
       others={others}
       othersLoading={elsewhere.isLoading}
       canMove={canRecord}
+      canSetMinimum={canOrder}
       onMove={(from) => {
         if (!from.site_id || !current.site_id) return
         setMovePrefill({ from_project_id: from.project_id, from_site_id: from.site_id, to_project_id: current.project_id, to_site_id: current.site_id, material_id: current.material_id })
@@ -334,7 +381,13 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
     <div className="flex flex-col gap-4">
       {toolbar}
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3">
+      {reorderNothing && (
+        <Callout tone="draft" icon={Target} action={<Button variant="outline" size="sm" className="bg-background" onClick={endReorder}>OK</Button>}>
+          Nothing at {reorderGroup?.site_name ?? 'this site'} needs ordering now: it is above its minimums, or an order, RFQ or request already covers it.
+        </Callout>
+      )}
+
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
         {tiles.map((t) => {
           const on = show === t.value
           return (
@@ -493,6 +546,13 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
                                   </span>
                                   <StockChip row={r} />
                                 </span>
+                                {!!r.min_qty && Number(r.min_qty) > 0 && (
+                                  <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                    <MinimumBar row={r} className="flex-1" />
+                                    <span className="shrink-0 tabular-nums">min {qty(r.min_qty)}</span>
+                                    {r.below_min && <BelowMinimumChip />}
+                                  </span>
+                                )}
                                 {(Number(r.on_order) > 0 || f.asked > 0) && (
                                   <span className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
                                     {Number(r.on_order) > 0 && <span className="rounded-md bg-blue-100 px-1.5 py-0.5 text-blue-950 dark:bg-blue-950 dark:text-blue-100">+{qty(r.on_order ?? '0')} coming</span>}
@@ -527,6 +587,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
                       {coming && <th className="px-3 py-2 text-right font-semibold" title="Still to come on open purchase orders">Coming</th>}
                       {asked && <th className="px-3 py-2 text-right font-semibold" title="Asked for on requests waiting for the office">Asked</th>}
                       <th className="px-3 py-2 font-semibold">Lasts</th>
+                      {minCol && <th className="px-3 py-2 font-semibold" title="The least this site should hold; below it the office is told each morning">Minimum</th>}
                       {money && <th className="px-3 py-2 text-right font-semibold">Last rate</th>}
                       {money && <th className="px-3 py-2 text-right font-semibold">Spend</th>}
                     </tr>
@@ -542,7 +603,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
                         <React.Fragment key={b.key}>
                           {heading && (
                             <tr className="bg-muted/20">
-                              <td colSpan={12} className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                              <td colSpan={13} className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">
                                 {sub}
                               </td>
                             </tr>
@@ -565,7 +626,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
                                   <span className="block truncate">{expanded ? `${b.rows.length} sites` : whereItIs(b, siteNames)}</span>
                                 </td>
                               )}
-                              <StockCells row={b.total} asked={askedAll} other={other} coming={coming} askedCol={asked} money={money} lastsCell={<SitesChip bundle={b} />} bold />
+                              <StockCells row={b.total} asked={askedAll} other={other} coming={coming} askedCol={asked} money={money} lastsCell={<SitesChip bundle={b} />} minCell={minCol ? <td className="px-3 py-2" /> : null} bold />
                             </tr>
                           )}
                           {(!many || expanded) &&
@@ -579,7 +640,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
                                 >
                                   <td className={cn('px-3 py-2 font-medium', many && 'pl-9 font-normal text-muted-foreground')}>{many ? '└' : r.material_name}</td>
                                   {showSite && <td className={cn('px-3 py-2', many ? 'font-medium' : 'text-muted-foreground')}>{siteNames.get(r.site_id ?? '')?.name ?? 'Site'}</td>}
-                                  <StockCells row={r} asked={flowOf(r).asked} other={other} coming={coming} askedCol={asked} money={money} lastsCell={<StockChip row={r} />} />
+                                  <StockCells row={r} asked={flowOf(r).asked} other={other} coming={coming} askedCol={asked} money={money} lastsCell={<StockChip row={r} />} minCell={minCol ? <MinimumCell row={r} canSet={canOrder} /> : null} />
                                 </tr>
                               )
                             })}
@@ -605,6 +666,9 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
 
       <NewRequestDialog open={dialog === 'ask'} onOpenChange={(o) => setDialog(o ? 'ask' : null)} scope={scope} prefill={askPrefill} />
       <NewOrderDialog open={dialog === 'order'} onOpenChange={(o) => setDialog(o ? 'order' : null)} scope={scope} prefill={orderPrefill} />
+      <NewRequestDialog open={dialog === 'reorder-request'} onOpenChange={(o) => !o && endReorder()} scope={scope} prefill={reorderRequest} />
+      <NewRfqDialog open={dialog === 'reorder-rfq'} onOpenChange={(o) => !o && endReorder()} scope={scope} prefill={reorderRfq} />
+      <SuggestMinimumsDialog open={dialog === 'minimums'} onOpenChange={(o) => setDialog(o ? 'minimums' : null)} sites={siteOptions} initialSite={siteId ?? site} />
       <RecordTransferDialog open={dialog === 'move'} onOpenChange={(o) => setDialog(o ? 'move' : null)} scope={scope} prefill={movePrefill} />
       <RecordInflowDialog
         open={dialog === 'came'}
@@ -618,7 +682,9 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
 
 /** How long it lasts, as the row's one status: out, running low (orange), or the plain days. */
 function StockChip({ row: r }: { row: StockSummaryRow }) {
-  if (r.running_low) return <span className={cn(CHIP, 'shrink-0 bg-draft-soft text-draft')}>{Number(r.closing) <= 0 ? 'Out' : lasts(r.days_left ?? 0)}</span>
+  // PRC-47: low only because of the minimum (nothing used): the minimum's own chip says it once.
+  if (r.running_low && r.below_min && r.days_left === null && Number(r.closing) > 0) return <span className="shrink-0 text-muted-foreground">—</span>
+  if (r.running_low) return <span className={cn(CHIP, 'shrink-0 bg-draft-soft text-draft')}>{lowWords(r)}</span>
   return <span className="shrink-0 text-muted-foreground">{lasts(r.days_left) || '—'}</span>
 }
 
@@ -642,6 +708,7 @@ function StockCells({
   askedCol,
   money,
   lastsCell,
+  minCell,
   bold,
 }: {
   row: StockSummaryRow
@@ -651,6 +718,7 @@ function StockCells({
   askedCol: boolean
   money: boolean
   lastsCell: React.ReactNode
+  minCell?: React.ReactNode
   bold?: boolean
 }) {
   return (
@@ -665,6 +733,7 @@ function StockCells({
       {coming && <td className="px-3 py-2 text-right tabular-nums text-info">{Number(r.on_order) > 0 ? `+${qty(r.on_order ?? '0')}` : <span className="text-muted-foreground">—</span>}</td>}
       {askedCol && <td className="px-3 py-2 text-right tabular-nums">{asked > 0 ? <span className="font-semibold">{qty(String(asked))}</span> : <span className="text-muted-foreground">—</span>}</td>}
       <td className="px-3 py-2">{lastsCell}</td>
+      {minCell}
       {money && <td className="px-3 py-2 text-right tabular-nums">{r.last_rate ? formatMoney(r.last_rate) : '—'}</td>}
       {money && (
         <td className="px-3 py-2 text-right tabular-nums">

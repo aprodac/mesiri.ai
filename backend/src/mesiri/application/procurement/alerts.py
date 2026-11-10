@@ -182,6 +182,11 @@ async def queue_reminders(conn: AsyncConnection, organization_id: uuid.UUID, *, 
 
     async with conn.begin_nested():
         queued += await queue_material_reminders(conn, organization_id, today)
+    # PRC-47: items below the minimum the office set for a site, not already on an order, RFQ or request.
+    from mesiri.domains.materials.stock_levels import queue_reorder_reminders
+
+    async with conn.begin_nested():
+        queued += await queue_reorder_reminders(conn, organization_id, today)
     # CC-11: after the project's cut-off, today's green / amber / red per BOQ line to the people who run it.
     from mesiri.domains.costing.reminders import queue_cost_cards
 

@@ -201,6 +201,22 @@ ALLOWED: tuple[Allowed, ...] = (
             "for an item needs reason in their words. One purchase order per supplier; if an open order already has "
             "the material the save is refused and says which; prepare again with confirm_duplicate only when they "
             "say it is separate." + _WRITE),
+    # PRC-47: minimum stock per site (Materials > Stock): set it, see what is below it. The rule (below minimum, what
+    # an order, RFQ or request already covers, how much to order) is the API's.
+    Allowed("below_minimum", "GET", "/materials/stock-levels/below",
+            "What each site holds less of than the minimum the office set (filter by project or site): per item what "
+            "is held (closing), the minimum (min_qty), how much to order (to_order) and covered_by when an open "
+            "order, RFQ or request is already buying it. For 'what is below minimum?', 'minimum-il kuravu enthokke'."),
+    Allowed("minimum_stock", "GET", "/materials/stock-levels",
+            "The minimums set per site and material (min_qty, reorder_qty), and who set them."),
+    Allowed("suggest_minimum_stock", "GET", "/materials/stock-levels/suggest",
+            "A minimum per item of a site from its last week's use plus the supplier's lead time (nothing saved): "
+            "for 'what minimum should I keep at Villa?'."),
+    Allowed("set_minimum_stock", "PUT", "/materials/stock-levels",
+            "Prepare the minimum a site should hold of a material (the office: admin, owner, project manager): "
+            "site_id, material_id, min_qty in the unit they said (unit_id when not the stock unit), reorder_qty when "
+            "they said how much to order when it goes below. min_qty 0 when they say no minimum any more." + _WRITE,
+            hide=("source",), fixed=(("source", "whatsapp"),)),
     # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),
