@@ -1,6 +1,6 @@
 """What an AI call or a WhatsApp message costs (BE-25). Pure, no I/O.
 
-Prices as of 15 Oct 2026. When a provider changes a price, change it here and
+Prices as of 15 Oct 2026; Gemini 3.x added 10 Nov 2026. When a provider changes a price, change it here and
 bump PRICE_REF: every cost row records the PRICE_REF it was priced with, so
 old rows keep meaning what they meant.
 
@@ -16,6 +16,14 @@ official site and cross-checked):
   mesiri_ai/model_names.py): input 0.10 (audio 0.30), output 0.40, cached
   0.01 (audio 0.03) -- from LiteLLM's price file (same release as above),
   which lists the page's 2.5 Flash figures exactly.
+- Gemini 3.5 Flash-Lite, 3.6 Flash and 3.8 Flash (read from Google's pricing
+  page, https://aistudio.google.com/docs/pricing, on 10 Nov 2026; production
+  moved from 2.5 Flash to 3.5 Flash-Lite that day, and Google routes 2.5
+  Flash to it from 1 Dec 2026). 3.5 Flash-Lite: input 0.30 for every kind of
+  input (audio too), output 2.50 incl. thinking, cached input 0.03. 3.6 and
+  3.8 Flash: input 0.75, output 3.75, cached 0.075 **through 31 Dec 2026**;
+  from 1 Jan 2027 the page lists 1.50 / 7.50 / 0.15 -- change them here then.
+  Cache storage (per token-hour) is not counted for any model.
 - DeepSeek `deepseek-flash` (DeepSeek-V4.1-Flash), USD per 1M tokens:
   https://api-docs.deepseek.com/quick_start/pricing/ -- peak: cache hit
   0.006, cache miss 0.30, output 1.20; "off-peak rates are half of the peak
@@ -49,7 +57,7 @@ import math
 from dataclasses import dataclass
 from decimal import Decimal
 
-PRICE_REF = "2026-10-15"
+PRICE_REF = "2026-11-10"
 
 USD = "USD"
 INR = "INR"
@@ -82,6 +90,17 @@ _GEMINI_25_FLASH_LITE = TokenPrices(
     audio_input=Decimal("0.30"),
     cached_audio_input=Decimal("0.03"),
 )
+_GEMINI_35_FLASH_LITE = TokenPrices(
+    input=Decimal("0.30"),
+    output=Decimal("2.50"),
+    cached_input=Decimal("0.03"),
+)
+# Through 31 Dec 2026; 1.50 / 7.50 / 0.15 from 1 Jan 2027 (see the sources above).
+_GEMINI_3X_FLASH = TokenPrices(
+    input=Decimal("0.75"),
+    output=Decimal("3.75"),
+    cached_input=Decimal("0.075"),
+)
 # Peak; off-peak is half (see _deepseek_off_peak).
 _DEEPSEEK_FLASH_PEAK = TokenPrices(
     input=Decimal("0.30"),
@@ -92,6 +111,9 @@ _DEEPSEEK_FLASH_PEAK = TokenPrices(
 TOKEN_PRICES: dict[tuple[str, str], TokenPrices] = {
     ("gemini", "gemini-2.5-flash"): _GEMINI_25_FLASH,
     ("gemini", "gemini-2.5-flash-lite"): _GEMINI_25_FLASH_LITE,
+    ("gemini", "gemini-3.5-flash-lite"): _GEMINI_35_FLASH_LITE,
+    ("gemini", "gemini-3.6-flash"): _GEMINI_3X_FLASH,
+    ("gemini", "gemini-3.8-flash"): _GEMINI_3X_FLASH,
     ("deepseek", "deepseek-flash"): _DEEPSEEK_FLASH_PEAK,
 }
 

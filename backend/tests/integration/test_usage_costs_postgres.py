@@ -102,7 +102,7 @@ async def test_ai_call_is_priced_and_attributed_through_its_message(conn, record
     assert row["cost_native"] == Decimal("0.75")
     assert row["cost_currency"] == "USD"
     assert row["cost_inr"] == Decimal("0.75") * Decimal("96.29")
-    assert row["price_ref"] == "2026-10-15"
+    assert row["price_ref"] == "2026-11-10"
 
 
 async def test_unknown_model_is_stored_without_a_cost(conn, recorder) -> None:

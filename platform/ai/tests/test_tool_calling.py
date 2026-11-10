@@ -268,10 +268,32 @@ async def test_resolver_retries_on_the_fallback_model_only_before_any_tool_ran(m
 
 async def test_gemini_turns_thinking_off_on_flash_but_not_on_pro() -> None:
     flash, flash_models = _provider([_text_response("ok")])
+    flash._settings = flash._settings.model_copy(update={"model": "gemini-2.5-flash"})
     await flash.run_tools("sys", MESSAGES, TOOLS, _echo)
     assert flash_models.requests[0]["config"].thinking_config.thinking_budget == 0
+    assert flash_models.requests[0]["config"].thinking_config.thinking_level is None
 
     pro, pro_models = _provider([_text_response("ok")])
     pro._settings = pro._settings.model_copy(update={"model": "gemini-2.5-pro"})
     await pro.run_tools("sys", MESSAGES, TOOLS, _echo)
     assert pro_models.requests[0]["config"].thinking_config is None
+
+
+@pytest.mark.parametrize(
+    ("model", "level"),
+    [
+        ("gemini-3.5-flash-lite", "MINIMAL"),  # production's model from 10 Nov 2026
+        ("gemini-3.6-flash", "MINIMAL"),
+        ("gemini-3.8-flash", "LOW"),  # has no "minimal"
+        ("gemini-flash-latest", "LOW"),  # a name that doesn't say: the level every 3.x Flash accepts
+    ],
+)
+async def test_gemini_3_asks_for_least_thinking_by_level_not_by_budget(model: str, level: str) -> None:
+    # 10 Nov 2026: gemini-3.5-flash-lite refused every call (400 INVALID_ARGUMENT) while the request
+    # carried 2.x's thinking_budget=0.
+    provider, models = _provider([_text_response("ok")])
+    provider._settings = provider._settings.model_copy(update={"model": model})
+    await provider.run_tools("sys", MESSAGES, TOOLS, _echo)
+    thinking = models.requests[0]["config"].thinking_config
+    assert thinking.thinking_budget is None
+    assert thinking.thinking_level.value == level

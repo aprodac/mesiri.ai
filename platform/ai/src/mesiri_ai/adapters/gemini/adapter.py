@@ -659,6 +659,38 @@ def _looks_untranslated(translated_text: str) -> bool:
     return (non_latin / len(letters)) > 0.3
 
 
+#: Gemini 3.x models that accept the "minimal" thinking level (Google's thinking page, 10 Nov 2026).
+#: gemini-3.8-flash does not: its lowest is "low", which every 3.x Flash accepts.
+_MINIMAL_THINKING = ("gemini-3.5-flash-lite", "gemini-3.6-flash")
+
+
+def _least_thinking(model: str) -> Any:
+    """The setting that asks `model` for as little reasoning as it allows, or
+    None to leave the model's default.
+
+    Schema-filling and tool-routing calls don't need long reasoning (it was
+    the difference between ~1s and ~4s a round on 2.5 Flash). How to ask
+    depends on the model family, and the wrong form is refused outright:
+    on 10 Nov 2026 every saved conversation failed with 400 INVALID_ARGUMENT
+    on gemini-3.5-flash-lite because the request carried the 2.x form.
+
+    - Pro models can't switch thinking off (a zero budget is rejected): None.
+    - Gemini 2.x: ``thinking_budget=0``.
+    - Gemini 3.x and later (and names that don't say, e.g. a "-latest"
+      alias): ``thinking_level``, "minimal" where the model has it, else "low".
+    """
+    from google.genai import types  # lazy
+
+    name = (model or "").strip().lower()
+    if "pro" in name:
+        return None
+    if name.startswith("gemini-2."):
+        return types.ThinkingConfig(thinking_budget=0)
+    if name.startswith(_MINIMAL_THINKING):
+        return types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
+    return types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
+
+
 class GeminiProvider:
     provider = "gemini"
 
@@ -714,9 +746,11 @@ class GeminiProvider:
                     # pass this: reasoning measurably helps parsing messy
                     # handwritten attendance sheets, so it keeps the
                     # model's default budget.
-                    config_kwargs["thinking_config"] = types.ThinkingConfig(
-                        thinking_budget=thinking_budget
-                    )
+                    # (thinking_budget is only ever 0 here: "least thinking",
+                    # asked in the form this model accepts.)
+                    least = _least_thinking(self._settings.model)
+                    if least is not None:
+                        config_kwargs["thinking_config"] = least
                 kwargs["config"] = types.GenerateContentConfig(**config_kwargs)
             # The SDK's native async surface, not the sync one wrapped in
             # asyncio.to_thread as this used to be. to_thread borrows from the
@@ -999,10 +1033,7 @@ class GeminiProvider:
             # difference between ~1s and ~4s a round. The Pro models cannot
             # switch thinking off (the API rejects a zero budget), so a
             # premium route leaves it at the model's default.
-            thinking_config=(
-                None if "pro" in self._settings.model.lower()
-                else types.ThinkingConfig(thinking_budget=0)
-            ),
+            thinking_config=_least_thinking(self._settings.model),
         )
         contents: list[Any] = [
             types.Content(role=m.role, parts=[types.Part(text=m.text)]) for m in messages

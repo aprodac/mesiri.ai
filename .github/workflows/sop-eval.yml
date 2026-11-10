@@ -10,9 +10,10 @@
 # at high prices: evalbudget.py); conversations the budget no longer covers are skipped, not failed.
 # Before any conversation, one 1-token call checks the key. A refused key costs nothing and the group is told
 # once a day.
-# Model: vars.SOP_EVAL_MODEL, else gemini-flash-latest (3 Nov: the CI key's Google project can't use
-# gemini-2.5-flash, "no longer available to new users"; production's older key still uses it). Set the variable
-# to production's model once the CI key can use it: until then this is close to production, not the same model.
+# Model: vars.SOP_EVAL_MODEL, else gemini-3.5-flash-lite, production's model since 10 Nov 2026 (ai_active_routes,
+# api_agent). Keep it the same as production: when production's model changes, change the default here (or the
+# variable). Never a "-latest" alias: on 10 Nov gemini-flash-latest was billing at the 3.8 Flash rate, 2.5 times
+# production's, and it moves without notice.
 name: SOP eval
 
 on:
@@ -23,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       model:
-        description: "Gemini model (empty: vars.SOP_EVAL_MODEL, else gemini-flash-latest)"
+        description: "Gemini model (empty: vars.SOP_EVAL_MODEL, else gemini-3.5-flash-lite, production's)"
         required: false
         default: ""
       set:
@@ -48,7 +49,7 @@ jobs:
         ${{ github.workspace }}/shared/contracts/src:${{ github.workspace }}/platform/ai/src:${{ github.workspace }}/backend/src:${{ github.workspace }}/apps/whatsapp-assistant/src:${{ github.workspace }}/apps/whatsapp-assistant
       MESIRI_ENVIRONMENT: test
       MESIRI_OBJECT_STORAGE__PROVIDER: fake
-      GEMINI_MODEL: ${{ inputs.model || vars.SOP_EVAL_MODEL || 'gemini-flash-latest' }}
+      GEMINI_MODEL: ${{ inputs.model || vars.SOP_EVAL_MODEL || 'gemini-3.5-flash-lite' }}
       BUDGET: apps/whatsapp-assistant/tests/agent_api/evalbudget.py
       LEDGER: /tmp/sop-eval-ledger/ledger.json
     steps:

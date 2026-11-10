@@ -27,6 +27,27 @@ def test_gemini_text_call() -> None:
     assert cost == prices.Cost(Decimal("2.80"), "USD")
 
 
+def test_gemini_35_flash_lite_is_priced_with_audio_at_the_text_rate() -> None:
+    # Production's model from 10 Nov 2026: one input price for every kind of input.
+    cost = prices.ai_cost(
+        provider="gemini",
+        model="gemini-3.5-flash-lite",
+        at=_PEAK,
+        input_tokens=3_000_000,
+        audio_input_tokens=1_000_000,
+        cached_input_tokens=1_000_000,
+        output_tokens=1_000_000,
+    )
+    # 1M plain at 0.30 + 1M audio at 0.30 + 1M cached at 0.03 + 1M out at 2.50
+    assert cost == prices.Cost(Decimal("3.13"), "USD")
+
+
+@pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.8-flash"])
+def test_gemini_3x_flash_is_priced(model: str) -> None:
+    cost = prices.ai_cost(provider="gemini", model=model, at=_PEAK, input_tokens=1_000_000, output_tokens=1_000_000)
+    assert cost == prices.Cost(Decimal("4.50"), "USD")
+
+
 def test_gemini_audio_and_cached_input_are_priced_separately() -> None:
     cost = prices.ai_cost(
         provider="gemini",
