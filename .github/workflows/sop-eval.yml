@@ -5,34 +5,31 @@
 # Not a deploy gate (Ilan, 2 Nov: the Gemini key's monthly cap failed every gated deploy): it runs next to the
 # deploy and a failure is posted in the team group.
 #
-# WA-265: what it may spend (10 Nov, measured: 15 conversations, 36 model calls, about 20 rupees: ~1.4 each).
-# - A push runs the everyday set only (replays not marked `nightly`), inside what is left of the day's cap
-#   (vars.SOP_EVAL_DAILY_CAP_INR, default 25 rupees; the ledger lives in the Actions cache, UTC day). When the cap
-#   is used, the conversations left are skipped, not failed, and nothing is posted.
-# - The nightly run (02:47 IST) runs every saved conversation, only when the assistant changed in the last day,
-#   inside its own budget (vars.SOP_EVAL_NIGHTLY_CAP_INR, default 40 rupees).
-# - Before any conversation, one 1-token call checks the key. A refused key costs nothing and the group is told
-#   once a day, not once a push.
+# WA-265 / WA-272: what it may spend. It runs BY HAND only (see `on:` below). A run is the everyday set (5
+# conversations) unless "all" is chosen, inside a budget (vars.SOP_EVAL_NIGHTLY_CAP_INR, default 40 rupees, counted
+# at high prices: evalbudget.py); conversations the budget no longer covers are skipped, not failed.
+# Before any conversation, one 1-token call checks the key. A refused key costs nothing and the group is told
+# once a day.
 # Model: vars.SOP_EVAL_MODEL, else gemini-flash-latest (3 Nov: the CI key's Google project can't use
 # gemini-2.5-flash, "no longer available to new users"; production's older key still uses it). Set the variable
 # to production's model once the CI key can use it: until then this is close to production, not the same model.
 name: SOP eval
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - apps/whatsapp-assistant/src/agent_api/**
-      - apps/whatsapp-assistant/tests/agent_api/replays/**
-      - apps/whatsapp-assistant/tests/agent_api/replaykit.py
-  schedule:
-    - cron: "17 21 * * *"  # 02:47 IST
+  # WA-272 (Ilan, 10 Nov: "this is actually costly for us"): by hand only. One full run was 36 model calls and
+  # 1.4 million input tokens (about 39,000 a call); the team bot's cost line put it at 95 rupees, this file's own
+  # estimate at 20, and the key's 40 and 50 rupee top-ups were both used up. No run on a push and none at night
+  # until a run is cheap (a smaller prompt). Start one from Actions > SOP eval > Run workflow, or the team bot.
   workflow_dispatch:
     inputs:
       model:
         description: "Gemini model (empty: vars.SOP_EVAL_MODEL, else gemini-flash-latest)"
         required: false
         default: ""
+      set:
+        description: "everyday (5 conversations) or all"
+        required: false
+        default: "everyday"
 
 # One live-model run at a time: the key has a per-minute token cap.
 concurrency:
@@ -64,7 +61,7 @@ jobs:
           n=$(ls apps/whatsapp-assistant/tests/agent_api/replays/test_replay_*.py 2>/dev/null | wc -l)
           run=true; marks="live and not nightly"
           if [ "$n" = "0" ]; then run=false; echo "No saved conversations."; fi
-          if [ "${{ github.event_name }}" != "push" ]; then marks="live"; fi
+          if [ "${{ inputs.set }}" = "all" ]; then marks="live"; fi
           if [ "${{ github.event_name }}" = "schedule" ]; then
             changed=$(git log --since='26 hours ago' --format=%h -- apps/whatsapp-assistant/src/agent_api \
               apps/whatsapp-assistant/tests/agent_api/replays apps/whatsapp-assistant/tests/agent_api/replaykit.py | head -1)

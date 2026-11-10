@@ -1,6 +1,6 @@
 """WA-265: keep the real-model eval's Gemini spend small and known.
 
-The "SOP eval" workflow runs saved conversations on the real model. Each one costs about one rupee, so the
+The "SOP eval" workflow runs saved conversations on the real model. Each one costs a few rupees (see Prices), so the
 workflow keeps a ledger for the day (a small JSON file in the Actions cache) and gives every run what is left of
 the day's cap. ``replays/conftest.py`` reads the same usage log during the run and skips the conversations the
 budget no longer covers. Standard library only: the workflow runs this file before anything is installed.
@@ -9,8 +9,10 @@ budget no longer covers. Standard library only: the workflow runs this file befo
     python evalbudget.py add <ledger.json> <usage log.jsonl>         -> adds the run's spend, prints it in rupees
     python evalbudget.py told <ledger.json> <what>                   -> exit 0 the first time today, 1 after
 
-Prices: Gemini Flash, USD per 1M tokens, as in ``mesiri.domains.usage.prices`` (15 Oct 2026). A newer Flash
-model the table has no price for is counted at the same rates: an estimate that is good enough for a cap.
+Prices: on purpose on the high side. 10 Nov 2026: one run (36 calls, 1.4 million input tokens, 8,000 output) was
+20 rupees by the Gemini 2.5 Flash table with cached input discounted, 95 rupees on the team bot's cost line, and the
+key's top-ups ran out faster than the low figure allows. Until the real bill is known, input is counted at the
+rate the team bot's figure implies and cached input gets no discount, so the cap stops a run early, not late.
 """
 
 from __future__ import annotations
@@ -21,9 +23,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-USD_PER_M_INPUT = 0.30
-USD_PER_M_CACHED = 0.03
-USD_PER_M_OUTPUT = 2.50
+USD_PER_M_INPUT = 0.75
+USD_PER_M_CACHED = 0.75
+USD_PER_M_OUTPUT = 3.00
 #: Rupees per dollar for the cap (an estimate; the cap is in rupees because that is what the team reads).
 INR_PER_USD = 88.0
 

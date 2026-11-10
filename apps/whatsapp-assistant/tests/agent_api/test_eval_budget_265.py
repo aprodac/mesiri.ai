@@ -14,16 +14,16 @@ def _log(path: Path, calls: list[dict]) -> Path:
     return path
 
 
-def test_a_call_is_priced_with_cached_input_cheaper() -> None:
+def test_a_call_is_priced_and_cached_input_is_never_dearer() -> None:
     plain = evalbudget.call_usd({"input_tokens": 1_000_000, "output_tokens": 0})
     cached = evalbudget.call_usd({"input_tokens": 1_000_000, "cached_input_tokens": 1_000_000, "output_tokens": 0})
     assert plain == evalbudget.USD_PER_M_INPUT
-    assert cached == evalbudget.USD_PER_M_CACHED
+    assert cached == evalbudget.USD_PER_M_CACHED <= plain
 
 
 def test_spend_of_a_log_and_of_no_log(tmp_path: Path) -> None:
     log = _log(tmp_path / "u.jsonl", [{"input_tokens": 18_000, "output_tokens": 120}] * 3)
-    one = (18_000 * 0.30 + 120 * 2.50) / 1_000_000
+    one = (18_000 * evalbudget.USD_PER_M_INPUT + 120 * evalbudget.USD_PER_M_OUTPUT) / 1_000_000
     assert abs(evalbudget.spent_usd(log) - 3 * one) < 1e-12
     assert evalbudget.spent_usd(tmp_path / "missing.jsonl") == 0.0
 
@@ -34,8 +34,8 @@ def test_ledger_adds_up_over_a_day_and_starts_again_the_next(tmp_path: Path) -> 
     assert evalbudget.main(["add", str(ledger_path), str(log)]) == 0
     assert evalbudget.main(["add", str(ledger_path), str(log)]) == 0
     today = evalbudget.read_ledger(ledger_path)
-    assert abs(today["usd"] - 0.60) < 1e-9
-    assert evalbudget.remaining_usd(today, cap_inr=88.0) == 1.0 - today["usd"]
+    assert abs(today["usd"] - 2 * evalbudget.USD_PER_M_INPUT) < 1e-9
+    assert evalbudget.remaining_usd(today, cap_inr=880.0) == 10.0 - today["usd"]
     assert evalbudget.remaining_usd(today, cap_inr=10.0) == 0.0
     assert evalbudget.read_ledger(ledger_path, today="2999-01-01")["usd"] == 0.0
 
@@ -55,8 +55,8 @@ def test_the_group_is_told_once_a_day(tmp_path: Path) -> None:
 
 def test_a_run_stops_when_its_budget_is_used(tmp_path: Path) -> None:
     log = _log(tmp_path / "u.jsonl", [{"input_tokens": 1_000_000, "output_tokens": 0}])
-    assert budget_left("0.31", str(log))
-    assert not budget_left("0.30", str(log))
+    assert budget_left(str(evalbudget.USD_PER_M_INPUT + 0.01), str(log))
+    assert not budget_left(str(evalbudget.USD_PER_M_INPUT), str(log))
     assert not budget_left("0", str(log))
 
 
