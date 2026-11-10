@@ -1,5 +1,10 @@
 """Small Sarvam helpers for the training video (translate, speak, transcribe). The key is added by the proxy."""
-import base64, json, ssl, time, urllib.request, uuid
+import base64
+import json
+import ssl
+import time
+import urllib.request
+import uuid
 
 CTX = ssl.create_default_context(cafile="/root/.ccr/ca-bundle.crt")
 H = {"api-subscription-key": "set-by-proxy"}
@@ -25,11 +30,13 @@ def _post(path, body, files=None, tries=4):
         except urllib.error.HTTPError as e:
             msg = e.read()[:400]
             if e.code in (429, 500, 502, 503) and i < tries - 1:
-                time.sleep(2 ** (i + 1)); continue
-            raise RuntimeError(f"{path} {e.code} {msg}")
+                time.sleep(2 ** (i + 1))
+                continue
+            raise RuntimeError(f"{path} {e.code} {msg}") from e
         except Exception:
             if i < tries - 1:
-                time.sleep(2 ** (i + 1)); continue
+                time.sleep(2 ** (i + 1))
+                continue
             raise
 
 

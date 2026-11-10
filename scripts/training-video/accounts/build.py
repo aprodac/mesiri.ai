@@ -5,7 +5,12 @@ time the English subtitles to each spoken line, and assemble with ffmpeg.
   python3 build.py frames    write slides and jobs, render frames with Playwright
   python3 build.py video     assemble mesiri-accounts-training.mp4 (+ .srt, + the Malayalam script)
 """
-import hashlib, json, os, subprocess, sys, wave
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import wave
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -109,6 +114,7 @@ def video():
     pcm, concat, subs, script_md = [], [], [], ["# Mesiri Accounts: training script (Malayalam voice, English subtitles)\n"]
     t = 0.0
     last_scene = None
+    concat_last: list[str] = []
 
     def add_image(img: str, seconds: float):
         concat.append(f"file '{img}'\nduration {seconds:.3f}\n")
@@ -142,7 +148,10 @@ def video():
     concat.append(f"file '{concat_last[0]}'\n")
     open(os.path.join(OUT, "frames.txt"), "w").write("".join(concat))
     with wave.open(os.path.join(OUT, "voice.wav"), "wb") as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE); w.writeframes(b"".join(pcm))
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(b"".join(pcm))
     srt = "".join(f"{i}\n{srt_time(a)} --> {srt_time(b)}\n{text}\n\n" for i, (a, b, text) in enumerate(subs, 1))
     open(os.path.join(HERE, "mesiri-accounts-training.en.srt"), "w").write(srt)
     open(os.path.join(HERE, "mesiri-accounts-training-script.md"), "w").write("".join(script_md))
