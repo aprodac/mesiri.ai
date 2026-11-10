@@ -221,8 +221,11 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
   production watch flags cancels and take-backs / corrections (`undo_*`, `correct_work`) as quiet failures (WA-147).
 - **Saved conversations on the real model (WA-148):** a complaint becomes a replay test
   (`scripts/replay_to_test.py`); its live half runs the real model on today's `SOP.md` with the same words, facts
-  (kept in the trace, 6,000 characters) and API answers. The `SOP eval` workflow runs them all whenever
+  (kept in the trace, 6,000 characters) and API answers. The `SOP eval` workflow runs them whenever
   `agent_api/` or a replay changes, and posts a failure in the team group (not a deploy gate).
+  Spend is capped (WA-265): a push runs the everyday set (replays not marked `nightly`) inside a daily cap
+  (`SOP_EVAL_DAILY_CAP_INR`, default 40 rupees), the nightly run does every conversation on days the assistant
+  changed, and a refused key is caught by a 1-token check and reported once a day.
 - **"Is this how you want it?" (TM-33, on since 2 Nov, Alan approved; `MESIRI_PREVIEWS`):** for a UX or feature request the team bot
   sends a picture of the planned reply with *Confirm* / *Change it* through `runtime/previews.py` (only to the person
   who asked, v3 companies, 24-hour window, once); the taps are answered by code in every mode (`preview_feedback`).

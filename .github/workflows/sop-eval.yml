@@ -3,9 +3,19 @@
 # the real model reads today's SOP.md and tools on the person's own words and the API's recorded answers, and must
 # do what the test's EXPECT says. A change to SOP.md that fixes one conversation and breaks another shows here.
 # Not a deploy gate (Ilan, 2 Nov: the Gemini key's monthly cap failed every gated deploy): it runs next to the
-# deploy and a failure is posted in the team group. Costs one model turn per saved conversation.
-# Model: gemini-flash-latest (3 Nov: the CI key's Google project can't use gemini-2.5-flash, "no longer available
-# to new users"; production's older key still uses it). Close to production, not the same model.
+# deploy and a failure is posted in the team group.
+#
+# WA-265: what it may spend (a conversation is about one rupee: ~18k tokens in, a few turns).
+# - A push runs the everyday set only (replays not marked `nightly`), inside what is left of the day's cap
+#   (vars.SOP_EVAL_DAILY_CAP_INR, default 40 rupees; the ledger lives in the Actions cache, UTC day). When the cap
+#   is used, the conversations left are skipped, not failed, and nothing is posted.
+# - The nightly run (02:47 IST) runs every saved conversation, only when the assistant changed in the last day,
+#   inside its own budget (vars.SOP_EVAL_NIGHTLY_CAP_INR, default 40 rupees).
+# - Before any conversation, one 1-token call checks the key. A refused key costs nothing and the group is told
+#   once a day, not once a push.
+# Model: vars.SOP_EVAL_MODEL, else gemini-flash-latest (3 Nov: the CI key's Google project can't use
+# gemini-2.5-flash, "no longer available to new users"; production's older key still uses it). Set the variable
+# to production's model once the CI key can use it: until then this is close to production, not the same model.
 name: SOP eval
 
 on:
@@ -15,12 +25,14 @@ on:
       - apps/whatsapp-assistant/src/agent_api/**
       - apps/whatsapp-assistant/tests/agent_api/replays/**
       - apps/whatsapp-assistant/tests/agent_api/replaykit.py
+  schedule:
+    - cron: "17 21 * * *"  # 02:47 IST
   workflow_dispatch:
     inputs:
       model:
-        description: "Gemini model"
-        required: true
-        default: "gemini-flash-latest"
+        description: "Gemini model (empty: vars.SOP_EVAL_MODEL, else gemini-flash-latest)"
+        required: false
+        default: ""
 
 # One live-model run at a time: the key has a per-minute token cap.
 concurrency:
@@ -39,34 +51,98 @@ jobs:
         ${{ github.workspace }}/shared/contracts/src:${{ github.workspace }}/platform/ai/src:${{ github.workspace }}/backend/src:${{ github.workspace }}/apps/whatsapp-assistant/src:${{ github.workspace }}/apps/whatsapp-assistant
       MESIRI_ENVIRONMENT: test
       MESIRI_OBJECT_STORAGE__PROVIDER: fake
+      GEMINI_MODEL: ${{ inputs.model || vars.SOP_EVAL_MODEL || 'gemini-flash-latest' }}
+      BUDGET: apps/whatsapp-assistant/tests/agent_api/evalbudget.py
+      LEDGER: /tmp/sop-eval-ledger/ledger.json
     steps:
       - uses: actions/checkout@v4
-      - name: Any saved conversations?
-        id: corpus
+        with:
+          fetch-depth: 300
+      - name: What to run
+        id: plan
         run: |
           n=$(ls apps/whatsapp-assistant/tests/agent_api/replays/test_replay_*.py 2>/dev/null | wc -l)
-          echo "count=$n" >> "$GITHUB_OUTPUT"
-          echo "$n saved conversation(s)"
+          run=true; marks="live and not nightly"
+          if [ "$n" = "0" ]; then run=false; echo "No saved conversations."; fi
+          if [ "${{ github.event_name }}" != "push" ]; then marks="live"; fi
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            changed=$(git log --since='26 hours ago' --format=%h -- apps/whatsapp-assistant/src/agent_api \
+              apps/whatsapp-assistant/tests/agent_api/replays apps/whatsapp-assistant/tests/agent_api/replaykit.py | head -1)
+            if [ -z "$changed" ]; then run=false; echo "The assistant did not change in the last day: nothing to spend on."; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "marks=$marks" >> "$GITHUB_OUTPUT"
+          echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - name: Today's spend so far
+        if: steps.plan.outputs.run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sop-eval-ledger
+          key: sop-eval-ledger-${{ steps.plan.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: sop-eval-ledger-${{ steps.plan.outputs.day }}-
+      - name: Budget for this run
+        id: budget
+        if: steps.plan.outputs.run == 'true'
+        env:
+          DAILY_CAP_INR: ${{ vars.SOP_EVAL_DAILY_CAP_INR || '40' }}
+          NIGHTLY_CAP_INR: ${{ vars.SOP_EVAL_NIGHTLY_CAP_INR || '40' }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            usd=$(python3 "$BUDGET" remaining "$LEDGER" "$DAILY_CAP_INR")
+          else
+            usd=$(python3 "$BUDGET" remaining /tmp/sop-eval-own-ledger.json "$NIGHTLY_CAP_INR")
+          fi
+          echo "usd=$usd" >> "$GITHUB_OUTPUT"
+          if [ "$usd" = "0.0000" ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Today's eval cap (${DAILY_CAP_INR} rupees) is used: this push is not checked on the real model. The nightly run checks everything."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "This run may spend up to \$$usd"
+          fi
+      - name: Can the key use the model? (one 1-token call)
+        id: key
+        if: steps.budget.outputs.go == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
+          TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+          TEAMMATE_PROJECT: mesiri
+        run: |
+          code=$(curl -s -o /tmp/key-check.json -w '%{http_code}' --max-time 30 \
+            -H "x-goog-api-key: ${GEMINI_API_KEY}" -H 'content-type: application/json' \
+            -d '{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":1}}' \
+            "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" || echo 000)
+          if [ "$code" = "200" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          why=$(python3 -c "import json;print((json.load(open('/tmp/key-check.json')).get('error') or {}).get('status',''))" 2>/dev/null || true)
+          echo "::error::The CI model key was refused for ${GEMINI_MODEL}: HTTP ${code} ${why}"
+          if python3 "$BUDGET" told "$LEDGER" key_refused; then
+            url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            python3 teammate/inbox.py post "🙋 *Needs you:* the real-model check of saved conversations can't run: the CI model key was refused for ${GEMINI_MODEL} (HTTP ${code} ${why}). Nothing was spent. No push is checked on the real model until the key (CI_GEMINI_API_KEY) works; I'll say this once a day. ${url}" \
+              || echo "::warning::Team WhatsApp group not reached"
+          fi
+          exit 1
       - uses: astral-sh/setup-uv@v5
-        if: steps.corpus.outputs.count != '0'
+        if: steps.key.outputs.ok == 'true'
         with:
           python-version: '3.11'
           enable-cache: true
-      - if: steps.corpus.outputs.count != '0'
+      - if: steps.key.outputs.ok == 'true'
         run: uv venv --python 3.11 --clear && uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
       - name: Real model, today's SOP.md
         id: run
-        if: steps.corpus.outputs.count != '0'
+        if: steps.key.outputs.ok == 'true'
         env:
           PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
           GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ inputs.model || 'gemini-flash-latest' }}
+          MESIRI_EVAL_BUDGET_USD: ${{ steps.budget.outputs.usd }}
+          MARKS: ${{ steps.plan.outputs.marks }}
         run: |
           set -o pipefail
           cd /tmp
           "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
             "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/agent_api/replays" \
-            --rootdir=/tmp -ra -m live --import-mode=importlib -o asyncio_mode=auto 2>&1 | tee /tmp/sop-eval.txt
+            --rootdir=/tmp -ra -m "$MARKS" --import-mode=importlib -o asyncio_mode=auto 2>&1 | tee /tmp/sop-eval.txt
       - name: Tell the team group when a saved conversation now goes wrong
         if: failure() && steps.run.outcome == 'failure'
         env:
@@ -76,16 +152,34 @@ jobs:
           failed=$(grep -E '^FAILED' /tmp/sop-eval.txt | sed -E 's#.*/test_replay_([a-z0-9_]+)\.py::.*#\1#' | sort -u | head -8 | tr '\n' ' ')
           url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           # 3 Nov: the CI key couldn't use the model at all (404 "no longer available to new users") and the group was
-          # told the model "gets conversations wrong". A run that never reached the model says so instead.
+          # told the model "gets conversations wrong". A run that never reached the model says so instead (the key
+          # check above catches a key refused from the start; this is a key refused part-way, e.g. a cap reached).
           if grep -qE "status_code = (401|403|404|429)|no longer available|API key not valid|RESOURCE_EXHAUSTED|PERMISSION_DENIED" /tmp/sop-eval.txt; then
             why=$(grep -oE "no longer available to new users|API key not valid|RESOURCE_EXHAUSTED|PERMISSION_DENIED|status_code = [0-9]+" /tmp/sop-eval.txt | head -1)
-            msg="🙋 *Needs you:* the real-model check of saved conversations couldn't run after ${GITHUB_SHA::7}: the CI model key was refused (${why}). Nothing is known about the conversations until the key (CI_GEMINI_API_KEY) can use ${GEMINI_MODEL:-the model}. ${url}"
+            python3 "$BUDGET" told "$LEDGER" key_refused || exit 0
+            msg="🙋 *Needs you:* the real-model check of saved conversations couldn't finish after ${GITHUB_SHA::7}: the CI model key was refused part-way (${why}). Nothing is known about the conversations until the key (CI_GEMINI_API_KEY) can use ${GEMINI_MODEL:-the model}. I'll say this once a day. ${url}"
           else
             msg="🧪 SOP eval: the real model now gets saved conversation(s) wrong after ${GITHUB_SHA::7}: ${failed}. Details: ${url}"
           fi
           python3 teammate/inbox.py post "$msg" || echo "::warning::Team WhatsApp group not reached"
+      - name: Add this run to today's spend
+        if: ${{ always() && steps.budget.outputs.go == 'true' }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "This run: $(python3 "$BUDGET" add "$LEDGER" "$MESIRI_USAGE_LOG") rupees (estimate)"
+          else
+            mkdir -p /tmp/sop-eval-ledger
+            echo "This run: $(python3 "$BUDGET" add /tmp/sop-eval-own-ledger.json "$MESIRI_USAGE_LOG") rupees (estimate, outside the push cap)"
+          fi
+          cat "$LEDGER" 2>/dev/null || true
+      - name: Keep today's spend for the next run
+        if: ${{ always() && steps.budget.outputs.go == 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/sop-eval-ledger
+          key: sop-eval-ledger-${{ steps.plan.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Report this run's Gemini spend to the team bot
-        if: ${{ always() && steps.corpus.outputs.count != '0' }}
+        if: ${{ always() && steps.key.outputs.ok == 'true' }}
         env:
           PYTHONPATH: ${{ github.workspace }}/backend/src
           TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
