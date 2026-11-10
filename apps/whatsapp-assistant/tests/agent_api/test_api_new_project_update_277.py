@@ -87,3 +87,11 @@ async def test_the_line_says_so_when_the_project_could_not_be_made() -> None:
         await client.close()
     assert not result.ok and result.status == 424 and "Hospital" in str(result.body)
     assert not [p for _m, p, _b in seen if p == "/progress/issues"]  # never saved somewhere else instead
+
+
+async def test_the_model_is_told_with_the_project_that_its_update_goes_on_it() -> None:
+    # Live, 10 Nov: with only the SOP line the model held the project and asked which site the cement went to.
+    turn, client, _seen = await _run("New project Hospital. No drawings there", _NEW)
+    await client.close()
+    note = turn.calls[0]["result"]["note"]
+    assert "prepared now, in this turn" in note and "Hospital" in note and "Never ask which site" in note
