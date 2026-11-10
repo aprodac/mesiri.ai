@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, History, ScrollText } from 'lucide-react'
+import { ArrowUpRight, History, MessageCircle, ScrollText } from 'lucide-react'
 import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, VoucherSheet, usePeriod } from '@/components/accounts/books'
 import { BalanceLine, DrCr } from '@/components/accounts/visuals'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
-import { LINK_LABEL, cell, drCr, fetchStatement, formatDay, linkedRecord, mayReadBooks, rupees, scopeParams } from '@/lib/accounts'
+import { LINK_LABEL, cell, drCr, fetchStatement, formatDay, linkedRecord, mayReadBooks, partyStatementText, rupees, scopeParams } from '@/lib/accounts'
+import { waLink } from '@/lib/subcontracts'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +55,13 @@ export default function LedgerStatementPage() {
                 </Button>
               )}
               <ExcelButton path={`/accounts/ledgers/${id}/statement/export`} params={{ ...period, ...sp }} name={`${d.ledger.name}-${period.date_from}-to-${period.date_to}`} />
+              {d.party && (
+                <Button asChild size="sm" variant="outline" className="gap-1.5" title={d.party.phone ? `To ${d.party.phone}; attach the PDF` : 'No phone on their record: pick the chat in WhatsApp'}>
+                  <a href={waLink(d.party.phone, partyStatementText(d, me?.organization_name ?? 'Mesiri'))} target="_blank" rel="noreferrer">
+                    <MessageCircle className="size-3.5" /> Send on WhatsApp
+                  </a>
+                </Button>
+              )}
             </div>
           )
         }

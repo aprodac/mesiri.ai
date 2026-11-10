@@ -67,12 +67,13 @@ export interface ReceiptInput {
 
 export const BUCKET_LABEL: Record<Bucket, string> = { '0_30': '0–30 days', '31_60': '31–60 days', '61_90': '61–90 days', '90_plus': 'Over 90 days' }
 
-export async function fetchReceivables(): Promise<Receivables> {
-  return (await api.get<Receivables>('/billing/receivables')).data
+// SCP-08: one project's (the scope bar's) when a project is picked; the whole company otherwise.
+export async function fetchReceivables(projectId?: string): Promise<Receivables> {
+  return (await api.get<Receivables>('/billing/receivables', { params: projectId ? { project_id: projectId } : undefined })).data
 }
 
-export async function fetchClientReceipts(): Promise<ClientReceipt[]> {
-  return (await api.get<{ receipts: ClientReceipt[] }>('/billing/receipts')).data.receipts
+export async function fetchClientReceipts(projectId?: string): Promise<ClientReceipt[]> {
+  return (await api.get<{ receipts: ClientReceipt[] }>('/billing/receipts', { params: projectId ? { project_id: projectId } : undefined })).data.receipts
 }
 
 export async function recordClientReceipt(body: ReceiptInput) {

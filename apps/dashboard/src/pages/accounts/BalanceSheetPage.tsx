@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BadgeCheck, ChevronRight, CircleAlert, Scale } from 'lucide-react'
-import { BooksClosed, BooksTabs } from '@/components/accounts/books'
+import { BooksClosed, BooksTabs, ExcelButton } from '@/components/accounts/books'
 import { NatureDot } from '@/components/accounts/visuals'
 import { DprHeader, PageError, StatStrip } from '@/components/dpr-page'
 import { Input } from '@/components/ui/input'
@@ -104,6 +104,7 @@ export default function BalanceSheetPage() {
         }
         date={d ? `as on ${formatDay(d.as_of)} · whole company` : undefined}
         action={
+          <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             As on
             <Input
@@ -118,6 +119,8 @@ export default function BalanceSheetPage() {
               className="h-8 w-[150px] dark:[color-scheme:dark]"
             />
           </label>
+          {d && <ExcelButton path="/accounts/balance-sheet/export" params={{ as_of: d.as_of }} name={`balance-sheet-${d.as_of}`} />}
+          </div>
         }
       />
       <BooksTabs current="/accounts/balance-sheet" />

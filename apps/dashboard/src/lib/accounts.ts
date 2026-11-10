@@ -142,6 +142,8 @@ export interface StatementLine {
 
 export interface Statement extends Period {
   scope: string
+  /** ACC-21: a supplier's or client's ledger, to send them their statement. */
+  party: { kind: 'vendor' | 'client'; name: string; phone: string | null } | null
   ledger: {
     id: string
     name: string
@@ -288,12 +290,6 @@ export async function renameGroup(id: string, name: string) {
   return (await api.patch(`/accounts/groups/${id}`, { name })).data
 }
 
-/** An Excel file of a report; the name is made here (the API host does not expose Content-Disposition). */
-export async function downloadAccountsExcel(path: string, params: object, name: string): Promise<{ blob: Blob; filename: string }> {
-  const res = await api.get(path, { params: clean(params), responseType: 'blob' })
-  return { blob: res.data as Blob, filename: `${name.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'books'}.xlsx` }
-}
-
 // --- figures ---------------------------------------------------------------------------------------------------
 
 const INR = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -361,6 +357,10 @@ export function sourceLink(s: EntrySource): { to: string; label: string } | null
   if (s.kind === 'ra_bill' && s.id) return { to: `/billing/ra-bills/${s.id}/document`, label: 'Open the RA bill' }
   if (s.kind === 'opening_vendor' && s.id) return { to: `/finance/vendors/${s.id}`, label: 'Open the supplier' }
   if (s.kind === 'opening_account') return { to: '/finance/money', label: 'Open Money' }
+  if (s.kind === 'voucher' && s.id) return { to: `/accounts/vouchers?open=${s.id}`, label: 'Open the voucher' }
+  if (s.kind === 'fixed_asset' && s.id) return { to: `/accounts/assets?open=${s.id}`, label: 'Open the asset' }
+  if (s.kind === 'accrual') return { to: '/procurement/pending', label: 'Deliveries waiting for a bill' }
+  if (s.kind === 'money' && s.money_source === 'bank_statement_line') return { to: '/accounts/bank-reco', label: 'Open bank reconciliation' }
   if (s.kind === 'money') {
     if (s.expense_id) return { to: `/finance/expenses/${s.expense_id}`, label: 'Open the expense it paid' }
     if (s.vendor_id) return { to: `/finance/vendors/${s.vendor_id}`, label: 'Open the supplier' }
@@ -658,3 +658,327 @@ export interface Tds extends Period {
 export async function fetchTds(period: Partial<Period>): Promise<Tds> {
   return (await api.get('/accounts/tds', { params: clean(period) })).data
 }
+
+
+// --- Phases D to F (ACC-12, 13, 16, 17, 18, 21) ------------------------------------------------------------
+
+export type FileFormat = 'xlsx' | 'pdf'
+
+/** A report as Excel or PDF (ACC-21): the same route, ?format=. The name is made here (the API host does not expose
+ * Content-Disposition). */
+export async function downloadAccountsFile(path: string, params: object, name: string, format: FileFormat): Promise<{ blob: Blob; filename: string }> {
+  const res = await api.get(path, { params: clean({ ...params, format }), responseType: 'blob' })
+  return { blob: res.data as Blob, filename: `${name.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'books'}.${format}` }
+}
+
+// ACC-12: manual vouchers
+export interface VoucherLine {
+  ledger_id: string
+  ledger?: string
+  debit: string
+  credit: string
+  project_id: string | null
+  project?: string | null
+  site_id: string | null
+  site?: string | null
+  cost_centre: string | null
+}
+export interface Voucher {
+  id: string
+  date: string
+  narration: string
+  status: 'posted' | 'cancelled'
+  ref: string | null
+  entry_id: string | null
+  amount: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  cancelled_by: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
+  lines: VoucherLine[]
+}
+export interface VoucherInput {
+  date: string
+  narration: string
+  lines: { ledger_id: string; debit?: string; credit?: string; project_id?: string | null; site_id?: string | null; cost_centre?: string | null }[]
+}
+export async function fetchVouchers(period: Partial<Period>): Promise<Period & { vouchers: Voucher[]; total: string }> {
+  return (await api.get('/accounts/vouchers', { params: clean(period) })).data
+}
+export async function saveVoucher(body: VoucherInput, id?: string): Promise<Voucher> {
+  return (id ? await api.put(`/accounts/vouchers/${id}`, body) : await api.post('/accounts/vouchers', body)).data
+}
+export async function cancelVoucher(id: string, reason: string): Promise<Voucher> {
+  return (await api.post(`/accounts/vouchers/${id}/cancel`, { reason })).data
+}
+
+// ACC-13: bank reconciliation
+export type LineStatus = 'open' | 'matched' | 'booked' | 'ignored'
+export interface BankMovement {
+  id: string
+  date: string
+  amount: string
+  description: string | null
+  party: string | null
+  type?: string
+  inflow?: boolean
+}
+export interface BankLine {
+  id: string
+  date: string
+  description: string | null
+  reference: string | null
+  amount: string
+  balance: string | null
+  status: LineStatus
+  booked_ledger: string | null
+  settled_by: string | null
+  movement: BankMovement | null
+  suggestions: BankMovement[]
+}
+export interface BankAccountSummary {
+  id: string
+  name: string
+  account_type: string
+  lines: number
+  open: number
+  last_line: string | null
+}
+export interface Reconciliation {
+  as_of: string
+  books: string
+  paid_not_in_bank: string
+  received_not_in_bank: string
+  bank_only_in: string
+  bank_only_out: string
+  explained_bank: string
+  statement: string | null
+  difference: string | null
+}
+export interface BankOverview {
+  account: { id: string; name: string; type: string }
+  statements: { id: string; file_name: string | null; period_from: string; period_to: string; closing_balance: string | null; lines: number; skipped: number; created_at: string; uploaded_by: string | null }[]
+  lines: BankLine[]
+  not_in_bank: BankMovement[]
+  counts: Record<LineStatus, number>
+  total: number
+  reconciled_pct: number | null
+  reconciliation: Reconciliation | null
+  books_today: string
+}
+export interface StatementImport {
+  lines: number
+  new: number
+  already_imported: number
+  columns: Record<string, number>
+  header_row: number
+  date_from: string
+  date_to: string
+  money_in: string
+  money_out: string
+  closing_balance: string | null
+  sample: { date: string; description: string | null; reference: string | null; amount: string; balance: string | null }[]
+  statement_id?: string
+  matched?: number
+}
+export async function fetchBankAccounts(): Promise<{ accounts: BankAccountSummary[] }> {
+  return (await api.get('/accounts/bank')).data
+}
+export async function fetchBank(accountId: string): Promise<BankOverview> {
+  return (await api.get(`/accounts/bank/${accountId}`)).data
+}
+export async function uploadStatement(accountId: string, file: File, preview: boolean): Promise<StatementImport> {
+  const form = new FormData()
+  form.append('file', file)
+  return (await api.post(`/accounts/bank/${accountId}/statements`, form, { params: { preview } })).data
+}
+export async function bankLineAction(lineId: string, action: 'match' | 'book' | 'ignore' | 'undo', body?: object): Promise<BankOverview> {
+  return (await api.post(`/accounts/bank/lines/${lineId}/${action}`, body ?? {})).data
+}
+
+// ACC-16: fixed assets
+export type AssetClass = 'plant' | 'shuttering' | 'vehicles' | 'computers' | 'furniture' | 'buildings'
+export interface AssetYear {
+  financial_year: string
+  starts_on: string
+  ends_on: string
+  opening: string
+  depreciation: string
+  closing: string
+  post_on: string
+  posted: boolean
+  disposed_on: string | null
+}
+export interface FixedAsset {
+  id: string
+  name: string
+  asset_class: AssetClass
+  class_label: string
+  cost: string
+  acquired_on: string
+  put_to_use_on: string | null
+  method: 'wdv' | 'slm'
+  rate: string | null
+  useful_life_years: string | null
+  salvage_value: string
+  opening_depreciation: string
+  books_from: string | null
+  expense_id: string | null
+  expense_number: string | null
+  supplier: string | null
+  project_id: string | null
+  project: string | null
+  site_id: string | null
+  site: string | null
+  disposed_on: string | null
+  disposal_value: string | null
+  notes: string | null
+  value: string
+  this_year: string
+  status: 'in_use' | 'sold'
+  years: AssetYear[]
+}
+export interface AssetRegister {
+  today: string
+  financial_year: string
+  assets: FixedAsset[]
+  classes: { asset_class: AssetClass; label: string; count: number; cost: string; value: string; this_year: string }[]
+  totals: { count: number; cost: string; value: string; this_year: string }
+  method: 'wdv' | 'slm'
+  class_defaults: { asset_class: AssetClass; label: string; rate: number; life: number; ledger: string }[]
+}
+export interface AssetBill {
+  id: string
+  expense_number: string | null
+  occurred_date: string
+  amount: string
+  cost: string
+  description: string | null
+  supplier: string | null
+  category: string | null
+  project: string | null
+  project_id: string | null
+  site_id: string | null
+}
+export interface AssetInput {
+  name: string
+  asset_class: AssetClass
+  cost: string
+  acquired_on: string
+  put_to_use_on?: string | null
+  method?: 'wdv' | 'slm' | null
+  rate?: string | null
+  useful_life_years?: string | null
+  salvage_value?: string
+  opening_depreciation?: string
+  books_from?: string | null
+  expense_id?: string | null
+  project_id?: string | null
+  site_id?: string | null
+  notes?: string | null
+}
+export async function fetchAssets(): Promise<AssetRegister> {
+  return (await api.get('/accounts/assets')).data
+}
+export async function fetchAssetBills(): Promise<{ bills: AssetBill[] }> {
+  return (await api.get('/accounts/assets/candidates')).data
+}
+export async function saveAsset(body: AssetInput, id?: string): Promise<FixedAsset> {
+  return (id ? await api.put(`/accounts/assets/${id}`, body) : await api.post('/accounts/assets', body)).data
+}
+export async function disposeAsset(id: string, disposed_on: string | null, disposal_value: string | null): Promise<FixedAsset> {
+  return (await api.post(`/accounts/assets/${id}/dispose`, { disposed_on, disposal_value })).data
+}
+export async function deleteAsset(id: string) {
+  await api.delete(`/accounts/assets/${id}`)
+}
+export async function setAssetMethod(method: 'wdv' | 'slm') {
+  return (await api.put('/accounts/assets/method', { method })).data
+}
+
+// ACC-17: year end
+export interface CheckItem {
+  key: string
+  ok: boolean
+  words: string
+  to: string | null
+  blocks: boolean
+  amount: string | null
+}
+export interface FinancialYear {
+  financial_year: string
+  starts_on: string
+  ends_on: string
+  status: 'open' | 'closed'
+  is_current: boolean
+  over: boolean
+  profit: string
+  /** Earlier years' profit or loss, already in capital; with the ledgers and this year's, Dr = Cr. */
+  earlier_profit: string
+  closed_at: string | null
+  closed_by: string | null
+  reopened_at: string | null
+  reopened_by: string | null
+  reopen_reason: string | null
+  carried_profit: string | null
+  drift: string | null
+}
+export interface YearDetail extends FinancialYear {
+  checklist: CheckItem[]
+  carried: { ledger_id: string; name: string; group: string; nature: Nature; balance: string }[]
+}
+export async function fetchYears(): Promise<{ today: string; years: FinancialYear[] }> {
+  return (await api.get('/accounts/years')).data
+}
+export async function fetchYear(fy: string): Promise<YearDetail> {
+  return (await api.get(`/accounts/years/${fy}`)).data
+}
+export async function closeYear(fy: string, acknowledge: boolean): Promise<YearDetail> {
+  return (await api.post(`/accounts/years/${fy}/close`, { acknowledge })).data
+}
+export async function reopenYear(fy: string, reason: string): Promise<YearDetail> {
+  return (await api.post(`/accounts/years/${fy}/reopen`, { reason })).data
+}
+
+// ACC-18: cash flow
+export interface CashFlowItem {
+  key: string
+  label: string
+  in: string
+  out: string
+  net: string
+}
+export interface CashFlowSection {
+  items: CashFlowItem[]
+  in: string
+  out: string
+  net: string
+}
+export interface CashFlow extends Period {
+  scope: string
+  opening: string
+  closing: string
+  net: string
+  books_closing: string
+  agrees: boolean
+  sections: Record<'operating' | 'investing' | 'financing' | 'other', CashFlowSection>
+  months: { month: string; in: string; out: string; net: string }[]
+}
+export async function fetchCashFlow(period: Partial<Period>, scope: Scope): Promise<CashFlow> {
+  return (await api.get('/accounts/cash-flow', { params: clean({ ...period, ...scope }) })).data
+}
+
+/** ACC-21: a supplier's or client's statement as a WhatsApp message (sent from the person's own WhatsApp). */
+export function partyStatementText(st: Statement, company: string): string {
+  const owedToUs = Number(st.closing) > 0
+  const close = Number(st.closing)
+  const who = st.party?.kind === 'client' ? 'you owe us' : 'we owe you'
+  const verdict = !close ? 'Nothing is due either way.' : (owedToUs === (st.party?.kind === 'client') ? `*${who[0].toUpperCase()}${who.slice(1)} ${rupees(close)}*` : `*Paid ahead: ${rupees(close)}*`)
+  const lines = st.lines.slice(-12).map((l) => `${formatDay(l.date)} ${l.narration ?? l.ref}: ${Number(l.debit) ? `${rupees(l.debit)} Dr` : `${rupees(l.credit)} Cr`}`)
+  return [`*${company}: account statement for ${st.party?.name ?? st.ledger.name}*`, `${formatDay(st.date_from)} to ${formatDay(st.date_to)}`, '',
+    `Opening ${drCr(st.opening)}`, ...(st.lines.length > 12 ? [`… ${st.lines.length - 12} earlier entries`] : []), ...lines, '',
+    `Closing ${drCr(st.closing)}. ${verdict}`, 'The PDF has every entry; tell us if anything differs from your books.'].join('\n')
+}
+

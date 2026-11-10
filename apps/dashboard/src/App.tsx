@@ -51,6 +51,11 @@ import ProjectsBooksPage from '@/pages/accounts/ProjectsBooksPage'
 import ProjectBooksPage from '@/pages/accounts/ProjectBooksPage'
 import GstPage from '@/pages/accounts/GstPage'
 import TdsPage from '@/pages/accounts/TdsPage'
+import VouchersPage from '@/pages/accounts/VouchersPage'
+import BankRecoPage from '@/pages/accounts/BankRecoPage'
+import AssetsPage from '@/pages/accounts/AssetsPage'
+import YearEndPage from '@/pages/accounts/YearEndPage'
+import CashFlowPage from '@/pages/accounts/CashFlowPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
@@ -259,6 +264,11 @@ export default function App() {
           <Route path="accounts/projects/:id" element={acc(<ProjectBooksPage />)} />
           <Route path="accounts/gst" element={acc(<GstPage />)} />
           <Route path="accounts/tds" element={acc(<TdsPage />)} />
+          <Route path="accounts/vouchers" element={acc(<VouchersPage />)} />
+          <Route path="accounts/bank-reco" element={acc(<BankRecoPage />)} />
+          <Route path="accounts/assets" element={acc(<AssetsPage />)} />
+          <Route path="accounts/year-end" element={acc(<YearEndPage />)} />
+          <Route path="accounts/cash-flow" element={acc(<CashFlowPage />)} />
           <Route path="accounts/project-pl" element={<Navigate to="/accounts/projects" replace />} />
           <Route path="accounts/trial-balance" element={acc(<TrialBalancePage />)} />
           <Route path="accounts/day-book" element={acc(<DayBookPage />)} />

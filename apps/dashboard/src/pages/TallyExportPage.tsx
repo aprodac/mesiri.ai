@@ -62,11 +62,12 @@ export default function TallyExportPage() {
     }
   }
   const s = q.data
-  const empty = s && s.journals + s.payments + s.sales + s.receipts === 0
+  const books = s?.source === 'books'
+  const empty = s && (books ? !s.vouchers : s.journals + s.payments + s.sales + s.receipts === 0)
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/finance/expenses', label: 'Expenses' }} crumb="Accounts" title="Tally export" date="Expenses and payments for your CA" />
+      <DprHeader back={{ to: '/finance/expenses', label: 'Expenses' }} crumb="Accounts" title="Tally export" date={books ? 'Your books, voucher by voucher, for your CA' : 'Expenses and payments for your CA'} />
       <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-end">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Period">
           {presets.map((p) => {
@@ -104,6 +105,23 @@ export default function TallyExportPage() {
       ) : q.isLoading || !s ? (
         <Skeleton className="h-24 rounded-lg" />
       ) : (
+        books ? (
+          <>
+            <StatStrip
+              stats={[
+                { label: 'Vouchers', value: String(s.vouchers ?? 0), hint: `₹${Number(s.total ?? 0).toLocaleString('en-IN')} debited` },
+                { label: 'Journals / purchases', value: String(s.journals), hint: 'expenses, provisions, depreciation' },
+                { label: 'Payments / receipts', value: `${s.payments} / ${s.receipts}`, hint: 'bank and cash' },
+                { label: 'Sales / contra', value: `${s.sales} / ${s.contras ?? 0}`, hint: 'RA bills / own transfers' },
+                { label: 'Ledgers', value: String(s.ledgers), hint: s.groups ? `and ${s.groups} groups of your own` : "in Tally's own groups" },
+              ]}
+            />
+            <Callout tone="info" icon={BookOpenCheck}>
+              Accounts is on, so this is exactly what your books hold for the period: every voucher in the day book, manual vouchers, depreciation and the month-end accruals included{s.after_close ? `, and ${s.after_close} change${s.after_close === 1 ? '' : 's'} posted after a month was closed` : ''}. Importing the same period again updates the same vouchers.
+            </Callout>
+            {empty && <p className="text-sm text-muted-foreground">Nothing in the books in this period.</p>}
+          </>
+        ) : (
         <>
           <StatStrip
             stats={[
@@ -111,11 +129,12 @@ export default function TallyExportPage() {
               { label: 'Payments', value: String(s.payments), hint: 'Payment vouchers' },
               { label: 'RA bills / received', value: `${s.sales} / ${s.receipts}`, hint: 'Sales / Receipt vouchers' },
               { label: 'Ledgers', value: String(s.ledgers), hint: 'created if missing' },
-              { label: 'GST split out', value: String(s.gst_split), hint: s.gst_not_split ? `${s.gst_not_split} said as not included` : 'to Input GST' },
+              { label: 'GST split out', value: String(s.gst_split ?? 0), hint: s.gst_not_split ? `${s.gst_not_split} said as not included` : 'to Input GST' },
             ]}
           />
           {empty && <p className="text-sm text-muted-foreground">No confirmed expense or payment in this period.</p>}
         </>
+        )
       )}
 
       <DprSection icon={BookOpenCheck} title="What goes into Tally">

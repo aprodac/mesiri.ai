@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
+import { useScope } from '@/lib/ScopeContext'
 import { formatRupees } from '@/lib/boq'
 import { mayManageMoney } from '@/lib/cost'
 import { apiErrorMessage } from '@/lib/logo-upload'
@@ -32,8 +33,10 @@ export default function ReceivablesPage() {
   const qc = useQueryClient()
   usePageTitle('Receivables')
   const allowed = mayManageMoney(me?.role)
-  const owed = useQuery({ queryKey: ['billing', 'receivables'], queryFn: fetchReceivables, enabled: allowed })
-  const receipts = useQuery({ queryKey: ['billing', 'receipts'], queryFn: fetchClientReceipts, enabled: allowed })
+  const { scope } = useScope()
+  const projectId = scope.mode === 'portfolio' ? undefined : scope.projectId
+  const owed = useQuery({ queryKey: ['billing', 'receivables', projectId], queryFn: () => fetchReceivables(projectId), enabled: allowed })
+  const receipts = useQuery({ queryKey: ['billing', 'receipts', projectId], queryFn: () => fetchClientReceipts(projectId), enabled: allowed })
   const [dialog, setDialog] = React.useState<{ open: boolean; bill: OpenBill | null }>({ open: false, bill: null })
   const takeBack = useMutation({
     mutationFn: cancelClientReceipt,

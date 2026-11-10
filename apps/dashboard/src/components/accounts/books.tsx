@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, BookOpenCheck, CalendarRange, FileSpreadsheet, History, Lock } from 'lucide-react'
+import { ArrowUpRight, BookOpenCheck, CalendarRange, FileSpreadsheet, FileText, History, Lock } from 'lucide-react'
 import { Segmented } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,13 +12,14 @@ import {
   PRESET_LABEL,
   VOUCHER_LABEL,
   cell,
-  downloadAccountsExcel,
+  downloadAccountsFile,
   fetchEntry,
   formatDay,
   mayReadBooks,
   presetPeriod,
   rupees,
   sourceLink,
+  type FileFormat,
   type Period,
   type PresetKey,
 } from '@/lib/accounts'
@@ -85,14 +86,19 @@ const PAGES = [
   { to: '/accounts/pl', label: 'Profit & loss' },
   { to: '/accounts/balance-sheet', label: 'Balance sheet' },
   { to: '/accounts/cash-bank', label: 'Cash & bank' },
+  { to: '/accounts/cash-flow', label: 'Cash flow' },
   { to: '/accounts/projects', label: 'Projects' },
   { to: '/accounts/gst', label: 'GST' },
   { to: '/accounts/tds', label: 'TDS' },
   { to: '/accounts/trial-balance', label: 'Trial balance' },
   { to: '/accounts/day-book', label: 'Day book' },
+  { to: '/accounts/vouchers', label: 'Vouchers' },
+  { to: '/accounts/bank-reco', label: 'Bank reconciliation' },
+  { to: '/accounts/assets', label: 'Fixed assets' },
   { to: '/accounts/ledgers', label: 'Ledgers' },
   { to: '/accounts/chart', label: 'Chart of accounts' },
   { to: '/accounts/periods', label: 'Months' },
+  { to: '/accounts/year-end', label: 'Year end' },
 ]
 
 /** The Accounts pages in one row, keeping the period and scope as you move between them. */
@@ -104,8 +110,15 @@ export function BooksTabs({ current }: { current: string }) {
     if (v) keep.set(k, v)
   }
   const qs = keep.toString()
+  const nav = React.useRef<HTMLElement>(null)
+  // The page you are on stays in sight in the scrolling row.
+  React.useEffect(() => {
+    const el = nav.current?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (el && nav.current) nav.current.scrollLeft = Math.max(0, el.offsetLeft - nav.current.clientWidth / 2 + el.clientWidth / 2)
+  }, [current])
   return (
-    <nav aria-label="Accounts" className="-mx-1 flex gap-1 overflow-x-auto px-1">
+    // w-0 min-w-full: the row scrolls inside the page's width instead of widening it (17 pages do not fit a laptop).
+    <nav ref={nav} aria-label="Accounts" className="flex w-0 min-w-full gap-1 overflow-x-auto">
       {PAGES.map((p) => (
         <Link
           key={p.to}
@@ -123,24 +136,30 @@ export function BooksTabs({ current }: { current: string }) {
   )
 }
 
+/** ACC-21: the report as Excel or PDF for the CA (the same route, ?format=). Every Accounts report uses this. */
 export function ExcelButton({ path, params, name }: { path: string; params: object; name: string }) {
   const toast = useToast()
-  const [busy, setBusy] = React.useState(false)
-  const run = async () => {
-    setBusy(true)
+  const [busy, setBusy] = React.useState<FileFormat | null>(null)
+  const run = async (format: FileFormat) => {
+    setBusy(format)
     try {
-      const { blob, filename } = await downloadAccountsExcel(path, params, name)
+      const { blob, filename } = await downloadAccountsFile(path, params, name, format)
       downloadBlob(filename, blob)
     } catch (err) {
-      toast.error('Could not make the Excel file', apiErrorMessage(err))
+      toast.error(`Could not make the ${format === 'pdf' ? 'PDF' : 'Excel file'}`, apiErrorMessage(err))
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
   return (
-    <Button size="sm" variant="outline" className="gap-1.5" onClick={run} disabled={busy}>
-      <FileSpreadsheet className="size-3.5" /> {busy ? 'Preparing…' : 'Excel'}
-    </Button>
+    <div className="flex gap-1.5">
+      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => run('xlsx')} disabled={!!busy}>
+        <FileSpreadsheet className="size-3.5" /> {busy === 'xlsx' ? 'Preparing…' : 'Excel'}
+      </Button>
+      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => run('pdf')} disabled={!!busy}>
+        <FileText className="size-3.5" /> {busy === 'pdf' ? 'Preparing…' : 'PDF'}
+      </Button>
+    </div>
   )
 }
 

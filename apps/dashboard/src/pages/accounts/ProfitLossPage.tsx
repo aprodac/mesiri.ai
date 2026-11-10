@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { BadgeIndianRupee, Building2, Receipt, TrendingUp } from 'lucide-react'
-import { BooksClosed, BooksTabs, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, usePeriod } from '@/components/accounts/books'
 import { PlStatement } from '@/components/accounts/pl-statement'
 import { pctText } from '@/components/accounts/visuals'
 import { Callout, DprHeader, DprSection, PageError, Segmented, StatStrip } from '@/components/dpr-page'
@@ -33,7 +33,7 @@ export default function ProfitLossPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" date={d?.scope} />
+      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" date={d?.scope} action={d && <ExcelButton path="/accounts/pl/export" params={{ ...period, ...sp, compare }} name={`profit-and-loss-${period.date_from}-to-${period.date_to}`} />} />
       <BooksTabs current="/accounts/pl" />
       <div className="flex flex-wrap items-center gap-2">
         <PeriodBar state={periodState} />

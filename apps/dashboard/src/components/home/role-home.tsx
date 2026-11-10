@@ -63,7 +63,7 @@ export function RoleHome() {
   }
   const opts = { retry: false, staleTime: 60_000 } as const
   const home = useQuery({ queryKey: ['home', 'accounts', projectId], queryFn: () => fetchHome(projectId), enabled: wants.home, ...opts })
-  const receivables = useQuery({ queryKey: ['home', 'receivables'], queryFn: fetchReceivables, enabled: wants.receivables, ...opts })
+  const receivables = useQuery({ queryKey: ['home', 'receivables'], queryFn: () => fetchReceivables(), enabled: wants.receivables, ...opts })
   const payables = useQuery({ queryKey: ['home', 'payables', projectId], queryFn: () => fetchPayables({ project_id: projectId }), enabled: wants.payables, ...opts })
   const months = useQuery({ queryKey: ['home', 'months'], queryFn: fetchMonths, enabled: wants.months, ...opts })
   const requests = useQuery({ queryKey: ['home', 'requests', projectId, siteId], queryFn: () => fetchRequests({ project_id: projectId, site_id: siteId }), enabled: wants.requests, ...opts })

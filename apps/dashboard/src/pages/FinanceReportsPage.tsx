@@ -40,6 +40,7 @@ import {
   fetchFinanceReportApi,
   type FinanceReportStatementItem,
 } from '@/lib/api'
+import { useScope } from '@/lib/ScopeContext'
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
@@ -59,6 +60,9 @@ const REPORT_TYPES = [
 
 export default function FinanceReportsPage() {
   const toast = useToast()
+  // SCP-08: the picked project's figures (its expenses, suppliers and cash boxes); all projects: the company's.
+  const { scope } = useScope()
+  const projectId = scope.mode === 'portfolio' ? undefined : scope.projectId
 
   const [activeReport, setActiveReport] = React.useState('pnl')
   const [datePreset, setDatePreset] = React.useState('ALL')
@@ -69,14 +73,14 @@ export default function FinanceReportsPage() {
   const loadStatement = React.useCallback(async () => {
     setLoading(true)
     try {
-      const data = await fetchFinanceReportApi({ report_type: activeReport })
+      const data = await fetchFinanceReportApi({ report_type: activeReport, project_id: projectId })
       if (data) setStatement(data)
     } catch (err) {
       console.warn('Failed to load financial report statement:', err)
     } finally {
       setLoading(false)
     }
-  }, [activeReport])
+  }, [activeReport, projectId])
 
   React.useEffect(() => {
     loadStatement()
