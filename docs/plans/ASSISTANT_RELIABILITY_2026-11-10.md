@@ -62,8 +62,8 @@ Sahal, asus) on test or own companies.
     messages before a turn, so new saved conversations carry their context.
   - 1 is open: `716730f2`, three updates in one voice note; the model did not record the cement as a delivery.
     The eval now reports what the model called and said, but no run has happened since.
-- It runs `gemini-flash-latest`; production runs `gemini-2.5-flash`. Set the repository variable
-  `SOP_EVAL_MODEL` once the CI key can use production's model.
+- ~~It runs `gemini-flash-latest`; production runs `gemini-2.5-flash`.~~ Since 10 Nov both run
+  `gemini-3.5-flash-lite` (section 3.7).
 - The test company's trial ended on 4 Nov ([262]), so live checks get "trial ended".
 - The daily digests of 5 to 9 Nov: 0 fixes confirmed by a real use; 25 to 29% right first time.
 
@@ -87,6 +87,24 @@ Sahal, asus) on test or own companies.
 - **Use in production, last 10 days:** 558 turns; only 38 of the 121 tools were called at all; about 20 carry
   nearly every call (`record_receipt` 74, `tell_the_team` 45, `record_usage` 24, `record_attendance` 22,
   `add_material` 18, `set_unit_conversion` 16, `create_project` 15, ...); 297 turns called no tool.
+
+### 3.7 The model (decided and changed later on 10 Nov, WA-273)
+
+- **Why now:** Google shuts `gemini-2.5-flash` on 1 Dec 2026 and routes it to `gemini-3.5-flash-lite` from that day.
+- **Choice:** `gemini-3.5-flash-lite` for production and the eval. Same price as 2.5 Flash (input 0.30, output
+  2.50, cached 0.03 USD per 1M). The step up, `gemini-3.6-flash` / `gemini-3.8-flash`, is 0.75 / 3.75 / 0.075 and
+  doubles on 1 Jan 2027: to be compared on the saved conversations once the prompt is smaller (WA-140).
+- **Changed in production** (control panel, 03:29 UTC): agent, api_agent, extraction, translation, vision, voice.
+- **It broke first.** Every adapter call sent 2.x's `thinking_budget=0`, which 3.x refuses (400 INVALID_ARGUMENT):
+  5 of 5 saved conversations failed. Fixed in `8501ced` (`_least_thinking`: a thinking level for 3.x). No customer
+  message arrived between the switch and the fix's deploy.
+- **First run on it (5 conversations, 9 calls, about 40,000 input tokens a call):** 3 right; `434a6325` did the
+  right thing and failed on a word in the expectation (corrected); `716730f2` got a 503 from Google, so it is
+  still not judged.
+- **The eval's 95 rupees:** `gemini-flash-latest` was almost certainly billing at the 3.8 Flash rate (1.4M input
+  x 0.75 USD is the 95 rupees). The same run on 3.5 Flash-Lite is about 37. The eval no longer uses an alias.
+- **Not verified:** voice, vision, translation and extraction on the new model with a real call; whether
+  Flash-Lite answers as well as 2.5 Flash (5 conversations is too few).
 
 ### 3.5 Classic (the old engine)
 
@@ -116,6 +134,7 @@ Sahal, asus) on test or own companies.
 | `5b83f66` | WA-268 | "I don't know the size" in any words takes the same way out as the button (`size_not_known`) |
 | `269a34a` | WA-271 | Eval failures say what the model did; traces keep the six messages before a turn; four expectations corrected |
 | `aa1e002` | WA-272 | Eval runs by hand only; its cost estimate uses the high figure |
+| `8501ced` | WA-273 | Gemini 3.x: thinking asked by level; new models priced; the eval pinned to production's model |
 
 Tests: the assistant suite passed after each code change (5,053 at the last full run); ruff clean.
 

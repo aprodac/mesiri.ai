@@ -45,7 +45,9 @@ EXPECT = {
     "must_call": ['send_dpr'],
     "must_not_call": [],
     # WA-271: the send is held; its wording is the model's here (the replay has no project list for the code's line).
-    "pending": ["report"],
+    # WA-273: so one held entry in any words ("" is in every summary): gemini-3.5-flash-lite called send_dpr and
+    # held "Send today's DPR", which is right, and failed on the word "report".
+    "pending": [""],
 }
 
 
