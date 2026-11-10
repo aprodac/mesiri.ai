@@ -1,7 +1,7 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertTriangle, Copy, History, Undo2, CheckCircle2, FileText, MessageSquare, ArrowRight } from 'lucide-react'
+import { Loader2, AlertTriangle, Copy, History, Undo2, CheckCircle2, FileText, MessageSquare, ArrowRight, PackageX } from 'lucide-react'
 import { Sheet, SheetContent, SheetFooter, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils'
 import { MaterialLedgerSheet } from './material-ledger-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
 import { CorrectionDialog } from './correction-dialog'
+import { NewReturnDialog } from '@/components/returns/new-return-dialog'
+import { mayReturn, seesMoney } from '@/lib/returns'
 
 // One movement in plain words (WEB-29): what, where, when, who -- names, not ids.
 // WEB-36: laid out like every side panel (detail-sheet.tsx): a tinted head
@@ -35,6 +37,9 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
   const [ledgerOpen, setLedgerOpen] = React.useState(false)
   const [invoiceOpen, setInvoiceOpen] = React.useState(false)
   const [correctionOpen, setCorrectionOpen] = React.useState(false)
+  // PRC-46: a delivery from a supplier can go back to them (the office).
+  const [returning, setReturning] = React.useState(false)
+  const navigate = useNavigate()
   const [copied, setCopied] = React.useState(false)
 
   const {
@@ -235,6 +240,11 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
                   </Button>
                 )
               )}
+              {direction === 'IN' && movement.movement_reason === 'RECEIVED' && !movement.already_reversed && mayReturn(me?.role) && (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReturning(true)}>
+                  <PackageX className="size-3.5" /> Return to supplier
+                </Button>
+              )}
               <Button size="icon" variant="ghost" className="ml-auto size-8 text-muted-foreground" onClick={copyId} title={copied ? 'Copied' : 'Copy reference (for support)'} aria-label="Copy reference">
                 {copied ? <CheckCircle2 className="size-4 text-success" /> : <Copy className="size-4" />}
               </Button>
@@ -252,6 +262,10 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
           open={ledgerOpen}
           onOpenChange={setLedgerOpen}
         />
+      )}
+
+      {direction === 'IN' && id && (
+        <NewReturnDialog open={returning} onOpenChange={setReturning} from={{ receipt_id: id }} money={seesMoney(me?.role)} onCreated={(r) => navigate(`/procurement/returns?id=${r.id}`)} />
       )}
 
       {receipt?.invoice_id && <InvoiceDetailsSheet invoiceId={receipt.invoice_id} open={invoiceOpen} onOpenChange={setInvoiceOpen} />}

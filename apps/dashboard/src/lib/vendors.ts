@@ -104,7 +104,7 @@ export interface Advance {
   reference: string | null
 }
 
-export type LineKind = 'opening' | 'delivery' | 'bill' | 'staff_paid' | 'payment'
+export type LineKind = 'opening' | 'delivery' | 'bill' | 'staff_paid' | 'debit_note' | 'payment'
 
 export interface LedgerLine {
   id: string
@@ -119,7 +119,7 @@ export interface LedgerLine {
   project: string | null
   site: string | null
   ref: string | null
-  links: { expense_id?: string; receipt_id?: string; order_id?: string; payment_id?: string; account_id?: string }
+  links: { expense_id?: string; receipt_id?: string; order_id?: string; payment_id?: string; account_id?: string; return_id?: string }
   bill_left?: string
   mismatches?: number
   on_account?: boolean
@@ -157,6 +157,7 @@ export const LINE_LOOK: Record<LineKind, { label: string; dot: string }> = {
   delivery: { label: 'Delivered', dot: 'bg-amber-500' },
   bill: { label: 'Bill', dot: 'bg-sky-600' },
   staff_paid: { label: 'Paid by staff', dot: 'bg-violet-500' },
+  debit_note: { label: 'Debit note', dot: 'bg-orange-500' },
   payment: { label: 'Paid', dot: 'bg-green-600' },
 }
 

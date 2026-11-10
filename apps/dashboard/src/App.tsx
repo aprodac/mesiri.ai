@@ -69,6 +69,8 @@ import GoodsReceiptsPage from './pages/GoodsReceiptsPage'
 import RatesPage from './pages/RatesPage'
 import PendingDeliveriesPage from './pages/PendingDeliveriesPage'
 import QuotationsPage from './pages/QuotationsPage'
+import ReturnsPage from './pages/ReturnsPage'
+import DebitNoteDocumentPage from './pages/DebitNoteDocumentPage'
 import ExpensesPage from '@/pages/ExpensesPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
 import FinanceSettingsPage from '@/pages/FinanceSettingsPage'
@@ -134,6 +136,7 @@ export default function App() {
         <Route path="/live" element={<RequireAuth><LivePage /></RequireAuth>} />
         {/* PRC-26: the purchase order for the supplier, full screen so it prints clean. */}
         <Route path="/procurement/orders/:id/document" element={<RequireAuth><PurchaseOrderDocumentPage /></RequireAuth>} />
+        <Route path="/procurement/returns/:id/document" element={<RequireAuth><DebitNoteDocumentPage /></RequireAuth>} />
         {/* NXT-02: the RA bill for the client, full screen so it prints clean. */}
         <Route path="/billing/ra-bills/:id/document" element={<RequireAuth><RaBillDocumentPage /></RequireAuth>} />
         {/* NXT-05 / NXT-17: the work order and a subcontractor's statement, full screen so they print clean. */}
@@ -184,6 +187,8 @@ export default function App() {
           <Route path="procurement/pending" element={mat(<PendingDeliveriesPage />)} />
           {/* PRC-40..44: ask suppliers for quotes, compare, order the chosen ones. */}
           <Route path="procurement/quotations" element={mat(<QuotationsPage />)} />
+          {/* PRC-46: material sent back to suppliers, and the debit notes. */}
+          <Route path="procurement/returns" element={mat(<ReturnsPage />)} />
 
           {/* NXT-11 / NXT-13 / NXT-14 / NXT-15: Equipment (module). */}
           <Route path="equipment" element={eqp(<EquipmentPage />)} />

@@ -1590,14 +1590,16 @@ async def create_inflow(
     return result
 
 
-async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContext, body: MaterialInflowCreate) -> dict:
-    """One delivery (or opening stock, adjustment) with every rule of ``POST /materials/inflows``: the route and the
-    Excel import (PRC-05) both record through here. Raises ``HTTPException`` for a refused line."""
+async def record_inflow(conn: AsyncConnection, auth_context: AuthorizationContext, body: MaterialInflowCreate, *,
+                        adjust_allowed: bool = False) -> dict:
+    """One delivery (or opening stock, adjustment) with every rule of ``POST /materials/inflows``: the route, the
+    Excel import (PRC-05) and an approved stock count (PRC-48) all record through here. ``adjust_allowed``: the caller
+    checked who may (record_outflow's rule). Raises ``HTTPException`` for a refused line."""
     if not is_valid_receipt_reason(body.movement_reason):
         raise HTTPException(
             status_code=422, detail=f"Invalid inflow movement_reason: {body.movement_reason}"
         )
-    if body.movement_reason in ELEVATED_REASONS and not role_can_adjust(auth_context.role):
+    if body.movement_reason in ELEVATED_REASONS and not adjust_allowed and not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to record adjustment movements")
     if body.quantity <= 0:
         raise HTTPException(status_code=422, detail="quantity must be greater than zero")
@@ -1740,12 +1742,23 @@ async def create_outflow(
         replayed = await _claim_idempotency_key(conn, idempotency_key, "material_outflow_rest")
         if replayed is not None:
             return {**replayed, "status": "replayed"}
+    result = await record_outflow(conn, auth_context, body)
+    if idempotency_key:
+        await _complete_idempotency_key(conn, idempotency_key, result)
+    return result
 
+
+async def record_outflow(conn: AsyncConnection, auth_context: AuthorizationContext, body: MaterialOutflowCreate, *,
+                         adjust_allowed: bool = False) -> dict:
+    """One use (or return to the supplier, adjustment out) with every rule of ``POST /materials/outflows``: the route,
+    a return to the supplier (PRC-46) and an approved stock count (PRC-48) all post through here. ``adjust_allowed``:
+    the caller has already checked who may (a count approval's own rule, D-P2-2), so an adjustment is not refused
+    by ``role_can_adjust``. Raises ``HTTPException`` for a refused line."""
     if not is_valid_usage_reason(body.movement_reason):
         raise HTTPException(
             status_code=422, detail=f"Invalid outflow movement_reason: {body.movement_reason}"
         )
-    if body.movement_reason in ADJUSTMENT_REASONS and not role_can_adjust(auth_context.role):
+    if body.movement_reason in ADJUSTMENT_REASONS and not adjust_allowed and not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to record adjustment movements")
     if body.quantity <= 0:
         raise HTTPException(status_code=422, detail="quantity must be greater than zero")
@@ -1842,10 +1855,7 @@ async def create_outflow(
             "occurred_date_source": "reported",
         },
     )
-    result = {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
-    if idempotency_key:
-        await _complete_idempotency_key(conn, idempotency_key, result)
-    return result
+    return {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
 
 
 # ---------------------------------------------------------------------------

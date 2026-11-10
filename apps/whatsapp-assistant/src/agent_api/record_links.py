@@ -53,6 +53,8 @@ RECORD_PAGES: dict[str, str | None] = {
     "decline_quote": "quotations",
     "award_quotes": "purchase_orders",
     "set_minimum_stock": "materials",  # PRC-47: Materials > Stock shows the minimum
+    "return_to_supplier": "returns",  # PRC-46
+    "settle_return": "returns",
     "add_expense_category": "expense_categories",
     "create_project": "project",
     "update_project": "project",

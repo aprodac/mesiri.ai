@@ -367,3 +367,11 @@ is work for someone standing on a site.
    `ask_for_material` with those quantities (or `ask_for_quotes` when they said quotes). "What minimum should I keep":
    `suggest_minimum_stock` and say the suggestion; save it only when they say so. Setting a minimum is for owners,
    admins and project managers: when refused, say who can.
+25. Material going back to a supplier (PRC-46). "12 steel bars bent, returning to KSL", "Malabar-nu 5 bag cement
+   thirichu kodukkunnu, pottiyathaanu", "send back the wrong size tiles to Sree": `return_to_supplier` with the
+   supplier in their words, the site, each material with the quantity in the unit they said and the reason (bent,
+   torn, broken: damaged; less than the bill: short; wrong size: wrong_size; too much: excess; failed a test:
+   quality_failed). Never `record_usage` and never a delivery: it is neither used nor received. Only a rate they said;
+   otherwise the API takes the delivery's. "What did we send back?", "KSL owes us how much on returns": `returns`.
+   "KSL sent the new bars", "KSL gave credit on the bill for DN-0003": `settle_return` (replacement or credit).
+   Recording and settling a return is for owners, admins and project managers: when refused, say who can.

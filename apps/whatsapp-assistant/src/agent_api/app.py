@@ -24,6 +24,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.procurement.router",  # PRC-22: material requests (what a site asks for)
     "mesiri.domains.procurement.orders_router",  # PRC-23: a saved delivery put on its purchase order
     "mesiri.domains.procurement.rfqs_router",  # PRC-44: quotations (ask suppliers, record quotes, compare, award)
+    "mesiri.domains.procurement.returns_router",  # PRC-46: material sent back to a supplier, its debit note
     "mesiri.domains.timeline.router",
     "mesiri.domains.workforce.router",
     "mesiri.domains.progress.router",

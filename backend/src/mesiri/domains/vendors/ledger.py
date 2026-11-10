@@ -13,6 +13,9 @@ A read model over what already exists (cost-control-plan D-CC3), no ledger table
 - **Payment** (−): money paid from an account (``expense_payments`` with money: a bill payment, or an on-account
   payment, CC-10). Parts of an on-account payment applied to bills (``advance_id``) move no money and are not listed
   again; they only decide which bills are paid.
+- **Debit note** (−, PRC-46): material sent back to the supplier (``procurement/returns.py``), worth what they charged
+  for it; it lowers what is owed at once (D-P2-3) and stays when the return is settled (a replacement delivery is
+  owed again as a delivery; credit on a bill is already this line). A cancelled return has none.
 
 Balance = what we owe them; below zero, they hold our money (an advance).
 """
@@ -33,7 +36,7 @@ from mesiri.domains.procurement.rates import BILLED_SQL
 _C = Decimal("0.01")
 #: Age buckets for unpaid bills and unbilled deliveries, in days since their date.
 BUCKETS = ((0, 30, "0_30"), (31, 60, "31_60"), (61, 90, "61_90"), (91, None, "90_plus"))
-_KIND_ORDER = {"opening": 0, "delivery": 1, "bill": 2, "staff_paid": 3, "payment": 4}
+_KIND_ORDER = {"opening": 0, "delivery": 1, "bill": 2, "staff_paid": 3, "debit_note": 4, "payment": 5}
 
 
 def money(v: Decimal | int | None) -> str:
@@ -268,6 +271,13 @@ async def fetch_entries(
             "on_account": on_account, "advance_left": money(left) if on_account else None,
             "recorded_by": r["recorded_by"],
         })
+
+    # PRC-46: debit notes for material sent back (within the same window and project scope).
+    from mesiri.domains.procurement.returns import ledger_lines
+
+    for e in await ledger_lines(conn, org, vendor_id=vendor_id, projects=projects, until=until):
+        if after_start(e["vendor_id"], e["date"]):
+            entries.append(e)
 
     entries.sort(key=lambda e: (e["date"], _KIND_ORDER[e["kind"]],
                                 e["created_at"] or datetime.datetime.min.replace(tzinfo=datetime.UTC)))

@@ -217,6 +217,22 @@ ALLOWED: tuple[Allowed, ...] = (
             "site_id, material_id, min_qty in the unit they said (unit_id when not the stock unit), reorder_qty when "
             "they said how much to order when it goes below. min_qty 0 when they say no minimum any more." + _WRITE,
             hide=("source",), fixed=(("source", "whatsapp"),)),
+    # PRC-46: material sent back to a supplier (Procurement > Returns). The debit note, the stock going down and the
+    # supplier's balance are the API's.
+    Allowed("returns", "GET", "/procurement/returns",
+            "Material sent back to suppliers (DN-0001 ...): status open (waiting for pickup or sent back), waiting, "
+            "sent, settled or all; filter by supplier (vendor_id), project or site. Each: the supplier, what went back "
+            "and why (what), the debit note's total, and its timeline; counts.owed_to_you: what suppliers owe back."),
+    Allowed("return_to_supplier", "POST", "/procurement/returns",
+            "Prepare sending material back to a supplier ('12 steel bars bent, returning to KSL'; the office: admin, "
+            "owner, project manager): supplier in their words, the site, per item material_id + quantity in the unit "
+            "they said (unit_id) + reason (damaged, short, wrong_size, excess, quality_failed), rate only when they "
+            "said one (else the delivery's). It leaves the site's stock and the supplier's debit note lowers what is "
+            "owed to them at once." + _WRITE, hide=("vendor_id", "photos", "source"), fixed=(("source", "whatsapp"),)),
+    Allowed("settle_return", "POST", "/procurement/returns/{return_id}/settle",
+            "Prepare marking a return settled (find it with returns, or its number DN-0003): how replacement (they "
+            "sent new material; receipt_id of that delivery when known) or credit (taken off their bill or payment), "
+            "note in their words." + _WRITE),
     # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),

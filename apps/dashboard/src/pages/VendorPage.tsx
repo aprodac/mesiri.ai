@@ -15,6 +15,7 @@ import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
 import { VendorRates } from '@/components/rates/vendor-rates'
+import { VendorReturns } from '@/components/returns/vendor-returns'
 import { BillDeliveriesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
 import { VendorMachines } from '@/components/equipment/vendor-machines'
@@ -40,7 +41,7 @@ import {
 // rest forward, print and export), the open bills with due dates (tick and pay), deliveries with no bill yet (record
 // their bill, or put them on one typed earlier), payments (use an advance, undo), what it charged, and its details.
 
-type Tab = 'account' | 'bills' | 'unbilled' | 'payments' | 'work' | 'rates' | 'details'
+type Tab = 'account' | 'bills' | 'unbilled' | 'payments' | 'work' | 'rates' | 'returns' | 'details'
 type Period = 'all' | 'month' | 'last' | '90d'
 
 const PERIODS: { value: Period; label: string }[] = [
@@ -146,6 +147,7 @@ export default function VendorPage() {
     { value: 'payments', label: 'Payments', count: payments.length, money: true },
     ...(v?.kind === 'subcontractor' ? [{ value: 'work' as Tab, label: 'Work orders' }] : []),
     { value: 'rates', label: 'Rates', money: true },
+    { value: 'returns', label: 'Returns', money: true },  // PRC-46
     { value: 'details', label: 'Details' },
   ]
   const shownTab = !seesMoney ? 'details' : tab
@@ -313,9 +315,10 @@ export default function VendorPage() {
                     const open = () => {
                       if (x.links.expense_id) navigate(`/finance/expenses/${x.links.expense_id}`)
                       else if (x.links.order_id) navigate(`/procurement/orders?id=${x.links.order_id}&tab=all`)
+                      else if (x.links.return_id) navigate(`/procurement/returns?id=${x.links.return_id}`)
                       else if (x.kind === 'payment') setTab('payments')
                     }
-                    const clickable = !!(x.links.expense_id || x.links.order_id || x.kind === 'payment')
+                    const clickable = !!(x.links.expense_id || x.links.order_id || x.links.return_id || x.kind === 'payment')
                     return (
                       <tr key={x.id} className={cn(clickable && 'cursor-pointer hover:bg-muted/30')} onClick={clickable ? open : undefined}>
                         <td className="px-3 py-2 align-top whitespace-nowrap text-muted-foreground">{day(x.date)}</td>
@@ -505,6 +508,7 @@ export default function VendorPage() {
       )}
 
       {shownTab === 'rates' && v && <div className="rounded-xl border bg-card"><VendorRates vendorId={v.id} /></div>}
+      {shownTab === 'returns' && v && <VendorReturns vendorId={v.id} readOnly={readOnly} />}
       {shownTab === 'work' && v && <VendorWorkOrders vendorId={v.id} vendorName={v.name} canManage={!readOnly && (canManage || mayGiveWork(role))} />}
 
       {/* NXT-11: a hire company's machines, on its account and its details. */}

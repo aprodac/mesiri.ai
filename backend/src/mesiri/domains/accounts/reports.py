@@ -269,7 +269,8 @@ async def checks(conn: AsyncConnection, org: uuid.UUID, as_of: datetime.date) ->
     entries_, state = await vendor_ledger.fetch_entries(conn, org, vendor_id=None, projects=None, until=as_of)
     owed: dict[str, Decimal] = defaultdict(Decimal)
     for e in entries_:
-        if e["kind"] != "delivery":
+        # Deliveries not billed and debit notes (PRC-46) are not in the books yet: the books follow bills and payments.
+        if e["kind"] not in ("delivery", "debit_note"):
             owed[str(e["vendor_id"])] += Decimal(e["owe"]) - Decimal(e["paid"])
     suppliers = []
     for vid, v in state["vendors"].items():
