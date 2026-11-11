@@ -70,7 +70,7 @@ PAGES: dict[str, tuple[str, str]] = {
 
 #: WA-277 (round 5b, `give_daily_reports`): pages whose content a tool gives in the chat itself. "Give daily
 #: reports" was answered with the reports page's link and nothing else on the real model, and a written rule
-#: did not move it; the link's own result now names the tools, where the model reads it mid-turn (as WA-275).
+#: did not move it, nor did a note beside the link: the link is held back once and its result names the tools.
 IN_CHAT: dict[str, tuple[str, ...]] = {
     "reports": ("day_summary", "send_dpr"),
     "period_reports": ("period_report",),
@@ -82,9 +82,9 @@ def in_chat_note(page: str, available: Any) -> str:
     names = [name for name in IN_CHAT.get(page, ()) if name in available]
     if not names:
         return ""
-    return ("A link alone is not the answer unless they asked for the link itself: "
-            + " / ".join(f"`{name}`" for name in names) + " gives it here in the chat. If you have not called it "
-            "in this turn, call it now and answer from it; the link goes below the answer.")
+    return ("They get the thing itself, not a link to it: " + " / ".join(f"`{name}`" for name in names)
+            + " gives it here in the chat. Call it now and answer from it. Only when they asked for the link or the "
+            "web page itself, call web_link again with the same page: it is given then.")
 
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

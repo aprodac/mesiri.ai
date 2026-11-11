@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 from agent_api.feedback import TELL_THE_TEAM, feedback_instruction
 from agent_api.feedback import specs as feedback_specs
-from agent_api.links import WEB_LINK, build_link, in_chat_note
+from agent_api.links import IN_CHAT, WEB_LINK, build_link, in_chat_note
 from agent_api.links import spec as web_link_spec
 from mesiri.domains.materials.names import alias_key
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
@@ -749,6 +749,8 @@ class ApiAgent:
         acted: list[str] = []
         unit_ask: list[str] = []  # buttons for a unit (or a person, [207]) nobody could settle; cleared once settled
         links: list[str] = []  # WA-141: dashboard links built this turn
+        handled: set[str] = set()  # the tools the handler ran this turn
+        link_held: set[str] = set()  # WA-277: pages whose link was held back once this turn (links.IN_CHAT)
         changed: list[int] = []  # [205]: waiting entries corrected in place this turn
         repeat_asked: list[str] = []  # WA-154: creates asked about this turn
         code_told: list[dict[str, Any]] = []  # WA-155: passed to the team by the code
@@ -958,6 +960,7 @@ class ApiAgent:
                 + (f", and that if it is {near} they can just say so" if near else "") + ".")})
 
         async def handler(name: str, arguments: dict) -> ToolOutcome:
+            handled.add(name)
             if name == TELL_THE_TEAM:
                 # TM-18 / WA-126: the same feedback tool as v2. It writes nothing: the call is in the
                 # turn's trace, which the team bot's production watch reads, builds, and reports back.
@@ -965,10 +968,16 @@ class ApiAgent:
             if name == WEB_LINK:
                 # WA-141: the dashboard address is built by the code, never written by the model.
                 built = build_link(arguments, today=today.isoformat())
+                page = str(arguments.get("page") or "")
+                if "url" in built and page not in link_held and not handled & set(IN_CHAT.get(page, ())) and (
+                        note := in_chat_note(page, self._tools)):
+                    # WA-277 (round 5b and after): "Give daily reports" got the reports page's link and no report
+                    # on the real model; a rule in the SOP and then a note beside the link were both passed over.
+                    # The link is held back once: the tool that gives the thing here first, or the link asked again.
+                    link_held.add(page)
+                    return ToolOutcome(content={"status": "no link yet", "note": note})
                 if "url" in built:
                     links.append(built["url"])
-                    if note := in_chat_note(str(arguments.get("page") or ""), self._tools):
-                        built = {**built, "note": note}
                 return ToolOutcome(content=built)
             if name == tool_areas.OPEN:
                 area = str(arguments.get("area") or "").strip()
