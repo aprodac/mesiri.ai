@@ -28,7 +28,7 @@ on:
         required: false
         default: ""
       set:
-        description: "everyday (5 conversations), areas (5 cases: is the right tool area opened, WA-277 round 1), hard (the 12 hardest, rounds 2 to 4) or all"
+        description: "everyday (5 conversations), areas (5 cases: is the right tool area opened, WA-277 round 1), hard (the 12 hardest, rounds 2 to 4), rest (every conversation that is not in hard or areas) or all"
         required: false
         default: "everyday"
       cap_inr:
@@ -75,6 +75,7 @@ jobs:
           if [ "${{ inputs.set }}" = "all" ]; then marks="live"; fi
           if [ "${{ inputs.set }}" = "hard" ]; then marks="live and hard"; fi
           if [ "${{ inputs.set }}" = "areas" ]; then marks="live and areas"; fi
+          if [ "${{ inputs.set }}" = "rest" ]; then marks="live and not hard and not areas"; fi
           if [ "${{ github.event_name }}" = "schedule" ]; then
             changed=$(git log --since='26 hours ago' --format=%h -- apps/whatsapp-assistant/src/agent_api \
               apps/whatsapp-assistant/tests/agent_api/replays apps/whatsapp-assistant/tests/agent_api/replaykit.py | head -1)
