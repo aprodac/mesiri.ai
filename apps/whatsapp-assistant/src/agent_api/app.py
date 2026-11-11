@@ -9,7 +9,7 @@ so a tool call runs the dashboard's code, auth and company checks with no networ
 from __future__ import annotations
 
 import importlib
-from types import SimpleNamespace
+from functools import cached_property
 from typing import Any
 
 from fastapi import FastAPI
@@ -52,7 +52,29 @@ API_ROUTERS: tuple[str, ...] = (
 )
 
 
-def build_api_app(database: Any) -> FastAPI:
+class _Container:
+    """What the routers' dependencies read from ``app.state.container``: the worker's database pool
+    (``get_db_conn``, ``modules._database_for``) and the object storage (``get_object_storage``).
+
+    [285] (live, 11 Nov): only the database was here, so every route that takes the storage dependency (the period
+    report, and DPR, materials, expenses, progress, tasks, workforce, places, documents, orders, returns) raised
+    AttributeError -> 500 -> the person read "could not check it right now". The storage is the worker's own when it
+    hands one in, else built once from the same settings the dashboard's app uses."""
+
+    def __init__(self, database: Any, object_storage: Any = None) -> None:
+        self.material_db = database
+        if object_storage is not None:
+            self.__dict__["object_storage"] = object_storage
+
+    @cached_property
+    def object_storage(self) -> Any:
+        from mesiri.bootstrap.settings import get_settings
+        from mesiri.infrastructure.objectstorage import build_object_storage
+
+        return build_object_storage(get_settings())
+
+
+def build_api_app(database: Any, object_storage: Any = None) -> FastAPI:
     from mesiri.infrastructure.postgres.tenant import TenantResetMiddleware
 
     app = FastAPI(title="Mesiri API (agent)")
@@ -67,5 +89,5 @@ def build_api_app(database: Any) -> FastAPI:
     app.add_middleware(ActivityRecorder, source="whatsapp", fastapi_app=app)
     for module in API_ROUTERS:
         app.include_router(importlib.import_module(module).router)
-    app.state.container = SimpleNamespace(material_db=database)
+    app.state.container = _Container(database, object_storage)
     return app
