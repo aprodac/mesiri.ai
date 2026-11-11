@@ -76,3 +76,29 @@ async def test_a_line_in_their_own_word_is_left_alone() -> None:
 ])
 def test_line_on(line: str, wrong: str, right: str, out: str) -> None:
     assert line_on(line, wrong, right) == out
+
+
+# --- WA-277 round 5: a thing made by name is prepared once a turn ----------------------------------------------------
+
+def test_same_named_finds_the_twin_and_only_the_twin() -> None:
+    from agent_api.agent import ONE_PER_NAME, PendingWrite, same_named
+
+    def held(tool: str, name: str) -> PendingWrite:
+        return PendingWrite(tool=tool, method="POST", path="/projects", params={}, body={"name": name},
+                            summary=f"New project {name}", idempotency_key=name)
+
+    hospital = held("create_project", "Hospital")
+    assert same_named([hospital], "create_project", {"name": " hospital "}) is hospital
+    assert same_named([hospital], "create_project", {"name": "Hospital Block B"}) is None
+    assert same_named([hospital], "add_material", {"name": "Hospital"}) is None
+    assert same_named([hospital], "create_project", {}) is None
+    assert {"create_project", "add_material", "add_site"} <= ONE_PER_NAME
+    assert "record_receipt" not in ONE_PER_NAME  # two deliveries of one material in a message are two lines
+
+
+async def test_a_project_prepared_twice_in_one_turn_is_on_the_card_once() -> None:
+    project = ("create_project", {"name": "Hospital", CONFIRM_ARG: "New project Hospital"})
+    api = rk.RecordedApi()
+    turn = await ApiAgent(FakeToolCallingProvider([[project, project], "ok"]), rk._real_tools()).run(api, "add project Hospital")  # type: ignore[arg-type]
+    assert [e.tool for e in turn.pending] == ["create_project"]
+    assert "already prepared in this turn" in str(turn.calls[1]["result"])

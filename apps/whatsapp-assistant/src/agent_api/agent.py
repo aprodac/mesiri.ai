@@ -1431,6 +1431,13 @@ class ApiAgent:
                     # [264] (5 Nov, Adarsh: "Send todays report" -> "OK." and a card line "Today's DPR report"): the
                     # line of a report send is drawn by the code and names the project it goes out for.
                     said_line = send_line(path, places, language) or said_line
+                if name in ONE_PER_NAME and (twin := same_named(new, name, body)) is not None:
+                    # WA-277 round 5 (real model, "add the project Hospital, 100 bags cement unloaded there"): the
+                    # project was prepared twice in one turn, two "New project Hospital" lines on the card. A thing
+                    # made by name is prepared once a turn; the second call is answered, not added.
+                    return ToolOutcome(content={"status": "already prepared in this turn, NOT saved", "note": (
+                        f"{twin.summary!r} is already on the card from this turn: one is enough, do not prepare it "
+                        "again. Go on with the rest of my message.")})
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
                     summary=said_line + filled_unit + unit_note + site_note,
@@ -1770,6 +1777,20 @@ class ApiAgent:
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed, language_set=next(iter(language_set), ""),
                        size_unknown=bool(size_unknown), opened=sorted(opened))
+
+
+#: Things made by their name: the same name is prepared once in a turn (a project, a material, a site).
+ONE_PER_NAME = frozenset({"create_project", "add_material", "add_site"})
+
+
+def same_named(prepared: list[PendingWrite], tool: str, body: dict[str, Any]) -> PendingWrite | None:
+    """The entry already prepared in this turn by ``tool`` for the same path and the same name (letter case and
+    spaces aside), else None."""
+    name = " ".join(str(body.get("name") or "").split()).casefold()
+    if not name:
+        return None
+    return next((e for e in prepared if e.tool == tool
+                 and " ".join(str(e.body.get("name") or "").split()).casefold() == name), None)
 
 
 def line_on(line: str, wrong: str, right: str) -> str:
