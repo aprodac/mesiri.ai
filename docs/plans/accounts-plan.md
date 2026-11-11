@@ -4,6 +4,8 @@
 > Status: **approved by Ilan, 9 Nov 2026, with every recommended default; Phases A and B built** (ACC-01..09, 22, 23; see
 > [accounts-posting.md](../architecture/accounts-posting.md) for what was built and how it differs from §5).
 > ACC-12 (manual vouchers) built 11 Nov: `source_kind = 'manual'`, reversal by `reverses_id` (migration 0546).
+> ACC-19 built 11 Nov: the Tally export reads the posted journals when Accounts is on (D-ACC3); the NXT-12 records
+> path stays for companies without Accounts.
 > Was: plan, waiting for approval (Phase 2 of the protocol). Accounts is security-sensitive (who can post,
 > close and reopen the books) and touches shared components (roles, module map, every money record as a source),
 > so it does not start in autonomous mode. Decisions D-ACC1..D-ACC12 below each carry a recommended default.
