@@ -368,6 +368,48 @@ Backend, dashboard, database, API routes: **no change planned.** No migration.
 - The 15,000-token target: an estimate from section 3.4's table, not a measurement.
 - That the CI key accepts a run today (it was refused on most days from 3 Nov).
 
+### 9.11 Steps A to D, done on 11 Nov (no model call, nothing spent)
+
+| Step | What was built | Where |
+|---|---|---|
+| A | **46 saved conversations** (18 before, 28 new from production turns of 5 to 11 Nov), all free on every push in scripted mode. 12 are marked `hard` (the paid rounds 2 to 4); the everyday set stays at 5. `check()` takes two more kinds of expectation: `must_call_any` and `pending_has`. | `tests/agent_api/replays/`, `replaykit.py`, `pyproject.toml` (marker `hard`), `sop-eval.yml` (`set: hard`) |
+| B | **Every route on `ALLOWED` is called once** (131 tools) through the worker's API app on Postgres, with values made from each tool's own schema. A 5xx or a route that raises fails the build; a refusal (404, 409, 422) is an answer. A second test puts the 11 Nov fault back and sees it caught. | `tests/integration/test_api_routes_answer_postgres.py`, last step of the `integration` job in `ci-python.yml` |
+| C | **One answer per refusal** (below). | `agent_api/agent.py`, `whatsapp.py`, `tests/agent_api/test_api_refusals_277c.py` |
+| D | **The card is not repeated.** An answer given while the same list waits ends with one line ("⏳ 3 still waiting to save (the list above). Tap *Save* to record.", five languages) over the same Save / Edit / Cancel; no list, no picture. | `whatsapp.py` (`_reply(listed=)`, `_with_preview`), `wording.py` (`api.still_waiting`), `tests/agent_api/test_api_card_not_repeated_277d.py` |
+
+**Step C, what the 64 refused turns showed and what changed:**
+
+- *A refusal whose instruction the next check refused.* `change_ready_entry` given the new summary line as a change
+  was refused ("cannot change confirm_line", 5 Nov, seven calls and the list dropped): the line is now taken as the
+  line. "Pass material_said" for a change now says where it goes in that tool. A change of the line alone is still
+  refused (the card must show what is saved) and says which field to send.
+- *A list tool called with nothing in the list* answered "no tool named change_ready_entry" (7 Nov, "alla, 6 mason
+  aanu": the person was asked for the whole line again). It now says nothing is waiting and to prepare the corrected
+  figure as a new line. "There is no waiting entry 3" now says which numbers are waiting.
+- *The same refusal round after round* ("material_said is not in English" three times, 5 Nov; each round is a whole
+  model call of about 38,000 tokens). A line refused twice for the same reason, or three times for any, is now told
+  to stop and ask the person one plain question (`REFUSALS_PER_LINE`). Three different lines refused once each are
+  not stopped.
+- *"Which site?" asked again* (Aprodac, 7 Nov: saved at Main block in the afternoon, asked again at 01:56 for "6
+  masons came today"). The remembered site followed the calendar day while entries follow the working day. Both
+  follow the working day now. The next working day still asks ([215] is unchanged).
+
+**Not done in step C (said plainly):** the checks in `agent.py` are still one long function in their old order;
+they were not rebuilt as one table. What changed is the contradictions found in production, the list tools, and the
+stop after a repeat. A new pair of checks can still disagree: the test file holds one test per refusal that was
+fed back, not a proof for every pair.
+
+**What the route check found:** 130 of 131 routes answered; `my_requests` answers 503 when the request log is not
+connected (a test database has none): a worded answer, listed as such in the test. No new crash.
+
+**Not verified:** nothing here ran on the real model or on a phone. 13 of the 28 new conversations replay
+differently from production because traces before 10 Nov do not keep the site state and the catalogue reads: their
+scripted test pins what today's code does with the same calls (said in each file), and two are skipped in scripted
+mode; their live tests are the guard. Two chosen turns (`5c2bd4db` "metal", `8d61c9e6` "my requests") could not be
+read back whole from the trace and have no saved conversation yet.
+
+**Next:** E (needs Ilan's yes on tools on demand; trimming parameter schemas does not), F, then the paid rounds.
+
 ### 9.10 The rounds as they happen
 
 | Round | Date | Ran | Right / wrong | Rupees (workflow) | Spent so far | Changed after it |
