@@ -458,6 +458,18 @@
         "cor_1530ea4e324b4fe7af43117ca5525cd8"
       ],
       "message": "Ippo 30 TMT bar vannu ennu paranjal Mesiri '1 load-il ethra bar?' ennu sheriyaayi chodikkum, ariyillenkil nos aayi save cheyyam. Try: '30 TMT bar vannu'. Thanks, ningal paranjathukondu ellavarkkum ithu sheriyaayi."
+    },
+    {
+      "id": "live-test-fixes-276",
+      "date": "2026-11-11",
+      "for": [
+        "cor_cb0b046373a14387be5d2ca37e322f83",
+        "cor_bc692481eedf49bd856b868d717528bf",
+        "cor_509f35d948264ed7b0fe450a12bff028",
+        "cor_e5be2ef9886a437dad2aba50161ed569",
+        "cor_96fc6cd286bc4961a115ae146227e231"
+      ],
+      "message": "Midhlaj, innu ningal test cheythappol vanna 3 prashnangalum sheriyaakki: weekly report ippo kittum ('technical issue' ini illa), card-il 'Steel' maattittu 'TMT steel' aakkan paranjal athu puthiya material aayi maarum, pinne record-il illatha kanakkukal (42 man-days pole) Mesiri ini parayilla. Onnu koode try cheyyoo: '20 ton Tata steel, 30 ton TMT steel vannu' ennu ayachu, card-il TMT steel aakkan parayoo, ennittu 'last week report' chodikkoo. Thanks!"
     }
   ]
 }
