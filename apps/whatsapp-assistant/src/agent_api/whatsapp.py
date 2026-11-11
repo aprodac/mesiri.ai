@@ -420,6 +420,30 @@ class ApiWhatsApp:
             _lap("v3_memory_write")
         return True
 
+    async def _tools_on_demand(self, ctx: Any) -> bool:
+        """WA-277 step E: the company's ``tools_on_demand`` setting (off / on), cached 10 minutes; off when unread."""
+        from mesiri.domains.organizations.settings import TOOLS_ON_DEMAND, TOOLS_ON_DEMAND_DEFAULT
+
+        org = str(getattr(ctx, "organization_id", "") or "")
+        cache = self.__dict__.setdefault("_tools_on_demand_cache", {})
+        hit = cache.get(org)
+        if hit and time.time() - hit[1] < 600:
+            return hit[0] == "on"
+        value = TOOLS_ON_DEMAND_DEFAULT
+        try:
+            if self._database is not None:
+                from mesiri.infrastructure.postgres.repositories.organization_settings import (
+                    PostgresOrganizationSettingsRepository,
+                )
+
+                async with self._database.transaction() as conn:
+                    value = str(await PostgresOrganizationSettingsRepository(conn).get(
+                        uuid.UUID(org), TOOLS_ON_DEMAND) or TOOLS_ON_DEMAND_DEFAULT)
+        except Exception:  # noqa: BLE001
+            pass
+        cache[org] = (value, time.time())
+        return value == "on"
+
     async def _card_review_mode(self, ctx: Any) -> str:
         """WA-264: the company's ``card_review`` setting (off / shadow / ask), cached 10 minutes; the default when
         unread."""
@@ -660,6 +684,8 @@ class ApiWhatsApp:
                 channel=_channel(message),
                 # WA-154: the person's creates of the last day, and the ones they were just asked about.
                 recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
+                # WA-277 step E: tools on demand for this company; the areas this chat opened today stay open.
+                on_demand=await self._tools_on_demand(ctx), open_areas=_open_areas(state, time.time()),
                 places=places,  # [213]: the code decides the site of a report
                 open_question=state.get("asked"),  # [219]: a message that doesn't answer it drops it
                 sizes=sizes, may_set_sizes=_may_set_sizes(ctx),  # WA-166: who may set a size for the company
@@ -708,6 +734,8 @@ class ApiWhatsApp:
                 state["photo"] = {"key": photo_key, "at": time.time()}  # case 1: the answer makes the expense
         calls = [{**c, "args": c.get("arguments")} for c in turn.calls]
         unchanged = not turn.saved and [e.summary for e in turn.pending] == [e.summary for e in ready]
+        if turn.opened:
+            state["areas"] = {"names": turn.opened, "at": time.time()}  # WA-277 step E
         awaiting = state.pop("awaiting_why", None)
         got_why = bool(awaiting and time.time() - float(awaiting.get("at") or 0) < AWAIT_WHY_SECONDS
                        and not calls and unchanged and not turn.question)
@@ -2186,6 +2214,19 @@ def sent_line(result: WriteResult, language: str | None) -> str:
 
 #: WA-208: an Edit answered within this long changes the line; later it is an ordinary message.
 EDIT_SECONDS = 15 * 60
+
+
+#: WA-277 step E: how long an opened tool area stays open in a chat (a conversation about payments goes on for a
+#: while; the next morning starts from the core again).
+AREAS_OPEN_SECONDS = 12 * 3600
+
+
+def _open_areas(state: dict, now: float) -> list[str]:
+    """The tool areas this chat opened and still holds open."""
+    kept = state.get("areas") or {}
+    if not isinstance(kept, dict) or now - float(kept.get("at") or 0) > AREAS_OPEN_SECONDS:
+        return []
+    return [str(a) for a in kept.get("names") or []]
 
 
 def _editing(state: dict, ready: list[PendingWrite]) -> dict | None:

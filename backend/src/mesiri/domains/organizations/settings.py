@@ -62,6 +62,11 @@ WORKING_DAY_STARTS_DEFAULT = "04:00"
 CARD_REVIEW = "card_review"
 CARD_REVIEW_MODES: frozenset[str] = frozenset({"off", "shadow", "ask"})
 CARD_REVIEW_DEFAULT = "shadow"
+#: WA-277 step E (Ilan, 11 Nov 2026): the WhatsApp assistant sends the model its everyday tools and opens the rest
+#: by area when a message needs them (``agent_api/tool_areas.py``). Off until it is turned on for a company.
+TOOLS_ON_DEMAND = "tools_on_demand"
+TOOLS_ON_DEMAND_MODES: frozenset[str] = frozenset({"off", "on"})
+TOOLS_ON_DEMAND_DEFAULT = "off"
 CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
@@ -241,6 +246,14 @@ _SPECS: dict[str, SettingSpec] = {
         description=(
             "The AI check of a draft card against what the person said (off; shadow: it runs after the reply "
             "and is only logged for the team; ask: it runs before the card and asks one question when a line looks wrong)."
+        ),
+    ),
+    TOOLS_ON_DEMAND: SettingSpec(
+        key=TOOLS_ON_DEMAND,
+        default=TOOLS_ON_DEMAND_DEFAULT,
+        description=(
+            "The WhatsApp assistant's tool list (off: every tool on every message; on: the everyday tools, the "
+            "rest opened by area when a message needs them, which makes each reply cheaper)."
         ),
     ),
     CAPTURE_MODE: SettingSpec(
@@ -473,6 +486,11 @@ def validate(key: str, value: object) -> object:
         mode = str(value).strip().lower() if isinstance(value, str) else ""
         if mode not in CARD_REVIEW_MODES:
             raise ValueError(f"card_review must be one of {sorted(CARD_REVIEW_MODES)}")
+        return mode
+    if key == TOOLS_ON_DEMAND:
+        mode = str(value).strip().lower() if isinstance(value, str) else ""
+        if mode not in TOOLS_ON_DEMAND_MODES:
+            raise ValueError(f"tools_on_demand must be one of {sorted(TOOLS_ON_DEMAND_MODES)}")
         return mode
     if key == CAPTURE_MODE:
         mode = str(value).strip().lower() if isinstance(value, str) else ""

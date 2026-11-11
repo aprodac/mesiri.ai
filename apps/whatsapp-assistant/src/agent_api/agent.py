@@ -32,6 +32,7 @@ from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 from runtime.agent.reply_text import asks_to_tap_save
 from runtime.ai_outage import is_budget_error
 
+from . import tool_areas
 from .client import ApiClient, new_idempotency_key
 from .expense_account import BUTTONS, EXPENSE_TOOL, account_question, paying_accounts
 from .fill import (
@@ -260,6 +261,8 @@ class ApiTurn:
     language_set: str = ""
     #: WA-268: they said, in their own words, that they do not know the open size (``size_not_known``).
     size_unknown: bool = False
+    #: WA-277 step E: the tool areas open after this turn (tools on demand); the chat keeps them for the day.
+    opened: list[str] = field(default_factory=list)
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -687,11 +690,13 @@ class ApiAgent:
         self._capability = capability
 
     def system_prompt(self, *, sender_name: str, today: dt.date, ready: list[PendingWrite] | None = None,
-                      facts: str = "") -> str:
+                      facts: str = "", open_areas: set[str] | None = None) -> str:
         who = f"You are talking to {sender_name}. " if sender_name else ""
         # WA-272: the "What Mesiri does" block (about 2,400 tokens) was here on every message; it now comes back
         # from explain_mesiri, the call SOP rule 11 asks for first on that one question.
-        prompt = f"{self._sop}\n\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
+        # WA-277 step E: with tools on demand (``open_areas`` given) the rules of the closed areas wait with their tools.
+        sop = self._sop if open_areas is None else tool_areas.sop_for(self._sop, open_areas)
+        prompt = f"{sop}\n\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
         if facts:
             prompt += f"\n\n{facts}"
         if ready:
@@ -709,7 +714,8 @@ class ApiAgent:
                   repeat_ok: list[str] | None = None, places: Places | None = None,
                   open_question: dict[str, Any] | None = None, sizes: dict[str, Any] | None = None,
                   may_set_sizes: bool = True, language_chosen: bool = False,
-                  size_open: list[dict[str, Any]] | None = None, day_starts_at: str | None = None) -> ApiTurn:
+                  size_open: list[dict[str, Any]] | None = None, day_starts_at: str | None = None,
+                  on_demand: bool | None = None, open_areas: list[str] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -718,8 +724,16 @@ class ApiAgent:
         ``places``: the person's projects and sites; with it, the code decides the site of every report ([213]).
         ``open_question``: the question Mesiri asked last ({question, options}); a message that does not answer it
         drops it ([219]). ``sizes``: the sizes this person told before (WA-166); ``may_set_sizes``: whether they may
-        set a size for the whole company (an admin or a project manager); if not, their size converts their own lines."""
+        set a size for the whole company (an admin or a project manager); if not, their size converts their own lines.
+        ``on_demand`` (WA-277 step E): the call carries the core tools and ``open_tools``; ``open_areas`` are the
+        areas this chat opened earlier today. None: the environment decides (``tool_areas.default_on``)."""
         channel = channel if channel in CHANNELS else TEXT_CHANNEL
+        on_demand = tool_areas.default_on() if on_demand is None else on_demand
+        # An entry waiting for Save keeps its area open: a correction of it needs that tool's fields.
+        opened: set[str] = {a for a in [*(open_areas or []), *(tool_areas.area_of(e.tool) for e in ready or [])]
+                            if a in tool_areas.AREAS} if on_demand else set()
+        just_opened: list[str] = []  # areas opened by the model in the run that just ended
+        opened_calls: list[dict[str, Any]] = []  # the open_tools calls of this turn, for the trace
         from mesiri.domains.organizations.settings import WORKING_DAY_STARTS_DEFAULT, working_day
 
         # Fix 2: the working day, not the calendar day ("innu 4 mason" at 00:05 is about the day that just ended).
@@ -954,6 +968,17 @@ class ApiAgent:
                 if "url" in built:
                     links.append(built["url"])
                 return ToolOutcome(content=built)
+            if name == tool_areas.OPEN:
+                area = str(arguments.get("area") or "").strip()
+                if area not in tool_areas.AREAS:
+                    return ToolOutcome(content={"error": "no such area; the areas are: "
+                                                + ", ".join(tool_areas.closed_areas(self._tools, opened))})
+                if area in opened:
+                    return ToolOutcome(content={"status": "already open: its tools are in your tool list, use them"})
+                opened.add(area)
+                just_opened.append(area)
+                # The run stops here and goes on at once with the area's tools in the list (``ask_model``).
+                return ToolOutcome(content={"status": "opened"}, stop=True)
             if name == SIZE_NOT_KNOWN:
                 size_unknown.append(True)
                 return ToolOutcome(content={"status": "the code answers them now: write nothing more"})
@@ -1435,14 +1460,26 @@ class ApiAgent:
                 content = content[:READ_LIMIT] + " ...(cut)"
             return ToolOutcome(content={"status": response.status, "result": content})
 
-        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, _EXPLAIN_TOOL, *feedback_specs(), web_link_spec()] + (
+        fixed_specs = [_ASK_TOOL, _EXPLAIN_TOOL, *feedback_specs(), web_link_spec()] + (
             list(_READY_TOOLS) if waiting else [])
+
+        def api_specs() -> list[ToolSpec]:
+            """The API tools this call carries: all of them, or (tools on demand) the core, the opened areas'
+            tools and ``open_tools`` for the areas still closed."""
+            if not on_demand:
+                return [t.spec for t in self._tools.values()]
+            door = tool_areas.open_spec(self._tools, opened)
+            return [self._tools[n].spec for n in tool_areas.offered(self._tools, opened)] + ([door] if door else [])
+
+        carried = [api_specs()]  # the API tools now in ``specs`` (replaced when an area opens)
+        specs = carried[0] + fixed_specs
         if open_sizes and taken_need is None:
             specs.append(_SIZE_NOT_KNOWN_TOOL)  # WA-268: only while a size question is open and unanswered
         specs += [spec for spec, _ in (actions or {}).values()]
         if saved_list:
             specs.append(_CORRECT_SAVED_SPEC)
-        system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
+        system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts,
+                                    open_areas=set(opened) if on_demand else None)
         if saved_list:
             listed = "\n".join(f"{i}. {without_ids(r.get('summary') or '')}" for i, r in enumerate(saved_list, 1))
             system += ("\n\nSaved earlier in this chat (already saved; a correction of one is correct_saved_entry with its "
@@ -1496,9 +1533,35 @@ class ApiAgent:
                 "ready.")})
 
         async def ask_model(msgs: list[ChatMessage]) -> Any:
-            return await self._provider.run_tools(
+            result = await self._provider.run_tools(
                 system, msgs, specs, checked, max_steps=self._max_steps, timeout_seconds=self._timeout,
                 correlation_id=correlation_id, **extra)
+            opens = 0
+            while just_opened and opens < tool_areas.OPENS_PER_TURN:
+                # WA-277 step E: the model opened an area. The run stopped on that call; it goes on now with the
+                # area's tools in the list. What it prepared before the stop is held and named, so it is not
+                # prepared twice.
+                opens += 1
+                area = just_opened[-1]
+                just_opened.clear()
+                rest = specs[len(carried[0]):]
+                carried[0] = api_specs()
+                specs[:] = carried[0] + rest
+                note = tool_areas.opened_note(area, self._tools, [e.summary for e in new], self._sop)
+                more = await self._provider.run_tools(
+                    system + note, msgs, specs, checked, max_steps=self._max_steps, timeout_seconds=self._timeout,
+                    correlation_id=correlation_id, **extra)
+                result = more.model_copy(update={"calls": [*result.calls, *more.calls],
+                                                 "steps": result.steps + more.steps})
+            just_opened.clear()
+            # Opening an area reads and records nothing: the checks below ("no tool was called", "nothing was looked
+            # at") must not count it. It is kept for the trace.
+            doors = [c for c in result.calls if c.name == tool_areas.OPEN]
+            if doors:
+                opened_calls.extend({"tool": c.name, "arguments": c.arguments,
+                                     "result": c.outcome.content if c.outcome else None} for c in doors)
+                result = result.model_copy(update={"calls": [c for c in result.calls if c.name != tool_areas.OPEN]})
+            return result
 
         if taken_need is not None:
             count = size_answer(text, taken_need)
@@ -1561,6 +1624,8 @@ class ApiAgent:
             # out four times on 3 Nov, WA-196). One more try: the tools first; if none does it, the team builds it.
             again = await ask_model([*without_earlier_replies(messages), ChatMessage(role="model", text=result.text or ""), check_note(text="(You said it can't be done, but you looked at no tool. Check your tools first: if one "
                                   "does what I asked, do it now" + hint_reads(read_tools_for(f"{text} {result.text}", self._tools))
+                                  + (" (open_tools holds more tools, by area: open the one my message is about)"
+                                     if on_demand and tool_areas.closed_areas(self._tools, opened) else "")
                                   + ". If none does, call tell_the_team (missing_feature) and "
                                   "tell me the way for now, or what you can do instead. Never just say no.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
@@ -1644,6 +1709,7 @@ class ApiAgent:
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls] + code_told
+        calls = opened_calls + calls  # WA-277 step E: the areas opened, first in the trace
         still = [e for e in waiting if e is not None]
         # [217]: a question asked with no options still gets the buttons the code built (the near-match ones).
         options = asked.get("options", []) or unit_ask or site_ask
@@ -1694,7 +1760,7 @@ class ApiAgent:
                        options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed, language_set=next(iter(language_set), ""),
-                       size_unknown=bool(size_unknown))
+                       size_unknown=bool(size_unknown), opened=sorted(opened))
 
 
 #: WA-277 step C: a line refused this many times in one turn (for any reasons) is not tried again in that turn.
