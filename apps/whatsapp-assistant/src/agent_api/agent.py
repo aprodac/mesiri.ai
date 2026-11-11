@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 from agent_api.feedback import TELL_THE_TEAM, feedback_instruction
 from agent_api.feedback import specs as feedback_specs
-from agent_api.links import WEB_LINK, build_link
+from agent_api.links import WEB_LINK, build_link, in_chat_note
 from agent_api.links import spec as web_link_spec
 from mesiri.domains.materials.names import alias_key
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
@@ -967,6 +967,8 @@ class ApiAgent:
                 built = build_link(arguments, today=today.isoformat())
                 if "url" in built:
                     links.append(built["url"])
+                    if note := in_chat_note(str(arguments.get("page") or ""), self._tools):
+                        built = {**built, "note": note}
                 return ToolOutcome(content=built)
             if name == tool_areas.OPEN:
                 area = str(arguments.get("area") or "").strip()
