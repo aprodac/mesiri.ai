@@ -185,6 +185,7 @@ call) when production had called 38 of them in ten days. With the company settin
 - Measured from the definitions (4 characters a token): tools 22,100 -> 7,800 tokens, SOP 10,400 -> 7,600; about
   17,000 tokens less on a call that opens nothing. **Not yet measured on the real model.**
 - Switch: `PUT /admin/organizations/{org_id}/settings` `tools_on_demand` = `on` | `off` (read every 10 minutes).
+  **On for Mesiri Test Builders since 11 Nov** (migration 0547, asked by Ilan); off for every other company.
   The saved conversations on the real model read `MESIRI_TOOLS_ON_DEMAND` (the `SOP eval` workflow's
   `tools_on_demand` input, default on).
 
