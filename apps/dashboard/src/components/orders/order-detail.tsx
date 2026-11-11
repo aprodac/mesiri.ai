@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, CalendarDays, Camera, Check, ClipboardList, Clock, FileText, MessageCircle, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
+import { Ban, CalendarDays, Star, Camera, Check, ClipboardList, Clock, FileText, MessageCircle, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import { billFile } from '@/lib/bill-upload'
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { cn } from '@/lib/utils'
 import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
-import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, orderMessage, whatsappUrl, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
+import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, orderMessage, whatsappUrl, rateSupplier, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import { NewOrderDialog } from './new-order-dialog'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 import { LinkedStrip } from '@/components/page/page-kit'
@@ -243,6 +243,8 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
         </div>
       )}
 
+      {order.may_rate && <RateSupplier order={order} onDone={done('Thanks, noted on the supplier')} onSkip={done('Skipped')} onError={fail} />}
+
       {order.may_reopen && (
         <div className="flex flex-col gap-1.5 border-t px-5 py-4">
           <Button variant="outline" className="h-10 gap-2" disabled={reopen.isPending} onClick={() => reopen.mutate()}><RotateCcw className="size-4" /> Open it again</Button>
@@ -460,5 +462,34 @@ function ReasonDialog({ open, title, hint, placeholder, onClose, onSave }: { ope
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** PRC-50: asked once on a finished order. Shown on the supplier page beside the computed score, never in it. */
+function RateSupplier({ order, onDone, onSkip, onError }: { order: PurchaseOrder; onDone: () => void; onSkip: () => void; onError: (e: unknown) => void }) {
+  const [stars, setStars] = React.useState(0)
+  const [note, setNote] = React.useState('')
+  const save = useMutation({
+    mutationFn: (skip: boolean) => rateSupplier(order.id, skip ? { stars: null } : { stars, note: note.trim() || null }),
+    onSuccess: (_, skip) => (skip ? onSkip() : onDone()),
+    onError,
+  })
+  return (
+    <section className="flex flex-col gap-2 border-t bg-amber-50/40 px-5 py-4 dark:bg-amber-950/10" aria-label="Rate the supplier">
+      <span className="text-sm font-semibold">How was {order.vendor_name}?</span>
+      <div className="flex items-center gap-1" role="radiogroup" aria-label="Stars">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} type="button" role="radio" aria-checked={stars === n} aria-label={`${n} star${n === 1 ? '' : 's'}`} onClick={() => setStars(n)} className="rounded p-0.5 hover:bg-muted">
+            <Star className={cn('size-6', n <= stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground')} />
+          </button>
+        ))}
+      </div>
+      {stars > 0 && <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="A note (optional): good bags, came early…" />}
+      <div className="flex gap-2">
+        <Button className="h-9" disabled={!stars || save.isPending} onClick={() => save.mutate(false)}>Save</Button>
+        <Button variant="ghost" className="h-9" disabled={save.isPending} onClick={() => save.mutate(true)}>Skip</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Asked once. Shown on the supplier page next to its score, not mixed into it.</p>
+    </section>
   )
 }

@@ -78,6 +78,9 @@ export interface PurchaseOrder {
   may_receive: boolean
   /** PRC-31: a closed or cancelled order can be opened again (the office). */
   may_reopen: boolean
+  /** PRC-50 (one order only): "How was this supplier?" -- asked once when the order is finished; a skip has no stars. */
+  rating?: { stars: number | null; note: string | null; at: string } | null
+  may_rate?: boolean
 }
 
 export async function fetchOrders(params: { project_id?: string | null; site_id?: string | null }): Promise<{ items: PurchaseOrder[] }> {
@@ -128,6 +131,11 @@ export async function reopenOrder(id: string): Promise<PurchaseOrder> {
 
 export async function cancelOrder(id: string, reason: string): Promise<PurchaseOrder> {
   const { data } = await api.post(`/procurement/orders/${id}/cancel`, { reason })
+  return data
+}
+
+export async function rateSupplier(id: string, body: { stars: number | null; note?: string | null }): Promise<PurchaseOrder> {
+  const { data } = await api.post(`/procurement/orders/${id}/rating`, body)
   return data
 }
 

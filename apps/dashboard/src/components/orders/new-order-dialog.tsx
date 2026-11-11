@@ -19,6 +19,8 @@ import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from '@/components/requests/parts'
 import { SupplierHint } from '@/components/vendors/vendor-parts'
+import { ScoreChip } from '@/components/vendors/supplier-score'
+import { useSupplierScores } from '@/lib/supplier-performance'
 import { GstField } from '@/components/procurement/gst-field'
 import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
 
@@ -103,6 +105,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
   const vendorNames = React.useMemo(() => vendors.filter((v) => v.status === 'active').map((v) => v.name), [vendors])
   // PRC-51: the supplier typed is a vendor record -> its live quotes are offered next to each rate box.
   const vendorId = React.useMemo(() => vendors.find((v) => v.name.trim().toLowerCase() === supplier.trim().toLowerCase())?.id ?? '', [vendors, supplier])
+  const scores = useSupplierScores(open)  // PRC-50: the chosen supplier's score beside its name
   const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchMaterials({ is_active: true, limit: 200 }), enabled: open, staleTime: 60_000 })
   const { data: categories } = useQuery({ queryKey: ['materials', 'categories'], queryFn: fetchMaterialCategories, enabled: open, staleTime: 60_000 })
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
@@ -187,6 +190,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
             <div className="flex items-center gap-2 rounded-md border px-3 focus-within:ring-2 focus-within:ring-ring">
               <Store className="size-4 text-muted-foreground" />
               <input id="po-supplier" list="po-vendors" autoFocus className="h-10 flex-1 bg-transparent text-sm outline-none" placeholder="Malabar Hardware" value={supplier} onChange={(e) => { setSupplier(e.target.value); setDuplicate(null) }} />
+              {vendorId && <ScoreChip p={scores.get(vendorId)} className="text-xs" />}
             </div>
             <datalist id="po-vendors">{vendorNames.map((n) => <option key={n} value={n} />)}</datalist>
             <SupplierHint name={supplier} />

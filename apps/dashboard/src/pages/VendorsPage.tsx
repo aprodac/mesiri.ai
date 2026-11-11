@@ -26,6 +26,8 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { ScoreChip } from '@/components/vendors/supplier-score'
+import { useSupplierScores } from '@/lib/supplier-performance'
 
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
@@ -33,12 +35,13 @@ import { ModuleTitle } from '@/components/page/page-kit'
 // Everyone with Finance still sees the directory: a supplier is picked when an expense is recorded.
 
 type Tile = '' | 'owe' | 'overdue' | 'unbilled' | 'ahead'
-type Sort = 'owed' | 'overdue' | 'oldest' | 'name'
+type Sort = 'owed' | 'overdue' | 'oldest' | 'score' | 'name'
 
 const SORTS: { value: Sort; label: string }[] = [
   { value: 'owed', label: 'Most owed' },
   { value: 'overdue', label: 'Most overdue' },
   { value: 'oldest', label: 'Waiting longest' },
+  { value: 'score', label: 'Best score' },  // PRC-50
   { value: 'name', label: 'A to Z' },
 ]
 
@@ -62,6 +65,7 @@ export default function VendorsPage() {
   const [kind, setKind] = useUrlState<string>('kind', 'all')
   const [tile, setTile] = useUrlState<Tile>('show', '')
   const [sort, setSort] = useUrlState<Sort>('sort', seesMoney ? 'owed' : 'name')
+  const scores = useSupplierScores(seesMoney)
   const [view, setView] = useUrlState<'suppliers' | 'unbilled'>('view', 'suppliers')
   const [editing, setEditing] = React.useState<Vendor | null | undefined>(undefined)
   const [paying, setPaying] = React.useState<Row | null>(null)
@@ -101,10 +105,13 @@ export default function VendorsPage() {
   const inTile = (v: Row, t: Tile) =>
     t === 'owe' ? num(v.balance) > 0 : t === 'overdue' ? num(v.overdue) > 0 : t === 'unbilled' ? (v.unbilled_count ?? 0) > 0 : t === 'ahead' ? num(v.balance) < 0 : true
   const oldest = (v: Row) => v.oldest_unbilled ?? '9999'
+  // PRC-50: no score (too few orders) sorts after every scored supplier.
+  const scoreOf = (v: Row) => Number(scores.get(v.id)?.score ?? -1)
   const shown = base.filter((v) => inTile(v, tile)).sort((a, b) => {
     if (sort === 'owed') return num(b.balance) - num(a.balance) || a.name.localeCompare(b.name)
     if (sort === 'overdue') return num(b.overdue) - num(a.overdue) || num(b.balance) - num(a.balance)
     if (sort === 'oldest') return oldest(a).localeCompare(oldest(b)) || num(b.balance) - num(a.balance)
+    if (sort === 'score') return scoreOf(b) - scoreOf(a) || a.name.localeCompare(b.name)
     return a.name.localeCompare(b.name)
   })
   const t = payables.data?.totals
@@ -247,6 +254,7 @@ export default function VendorsPage() {
                     {[v.code, v.contact_person, v.phone, v.gstin ? `GSTIN ${v.gstin}` : null, v.credit_days != null ? `${v.credit_days} days credit` : null].filter(Boolean).join(' · ') || 'No phone or GSTIN yet'}
                   </span>
                 </button>
+                {seesMoney && <ScoreChip p={scores.get(v.id)} className="relative z-10 text-xs" />}
                 {seesMoney && (
                   <span className="flex shrink-0 flex-col items-end">
                     <span className={cn('font-semibold tabular-nums', late > 0 ? 'text-destructive' : bal < 0 ? 'text-emerald-700 dark:text-emerald-400' : bal === 0 && 'text-muted-foreground')}>

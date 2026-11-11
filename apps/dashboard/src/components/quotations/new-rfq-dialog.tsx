@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Combobox } from '@/components/ui/combobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast-notification'
+import { ScoreChip } from '@/components/vendors/supplier-score'
+import { useSupplierScores } from '@/lib/supplier-performance'
 import { fetchVendorsApi } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import { categoryPaths, fetchMaterialCategories, fetchMaterials } from '@/lib/materials'
@@ -94,6 +96,8 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
   const materials = React.useMemo(() => catalog?.items ?? [], [catalog])
   const options = React.useMemo(() => materials.map((m) => ({ value: m.id, label: m.name })), [materials])
+  const scores = useSupplierScores(open)  // PRC-50: each supplier's score where they are chosen
+  const idOf = (name: string) => vendors.find((v) => v.name.toLowerCase() === name.toLowerCase())?.id ?? ''
   const suggested = React.useMemo(() => vendors.filter((v) => v.status === 'active' && !suppliers.some((s) => s.toLowerCase() === v.name.toLowerCase())).slice(0, 8), [vendors, suppliers])
 
   const ready = lines.filter((l) => l.materialId && Number(l.quantity) > 0)
@@ -182,6 +186,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
               {suppliers.map((s) => (
                 <span key={s} className="inline-flex h-8 items-center gap-1 rounded-full bg-foreground pl-3 pr-1 text-sm font-semibold text-background">
                   {s}
+                  <ScoreChip p={scores.get(idOf(s))} />
                   <button type="button" aria-label={`Remove ${s}`} className="inline-flex size-6 items-center justify-center rounded-full hover:bg-background/20" onClick={() => setSuppliers((all) => all.filter((x) => x !== s))}><X className="size-3.5" /></button>
                 </span>
               ))}
@@ -195,7 +200,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
             {suggested.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {suggested.map((v) => (
-                  <button key={v.id} type="button" onClick={() => addSupplier(v.name)} className="inline-flex h-7 items-center gap-1 rounded-full border bg-background px-2.5 text-xs hover:border-foreground/40"><Plus className="size-3" />{v.name}</button>
+                  <button key={v.id} type="button" onClick={() => addSupplier(v.name)} className="inline-flex h-7 items-center gap-1 rounded-full border bg-background px-2.5 text-xs hover:border-foreground/40"><Plus className="size-3" />{v.name}<ScoreChip p={scores.get(v.id)} /></button>
                 ))}
               </div>
             )}

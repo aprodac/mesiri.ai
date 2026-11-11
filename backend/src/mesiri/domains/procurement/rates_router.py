@@ -6,6 +6,9 @@ trend line. ``vendor_id`` narrows the items to what that supplier delivered (the
 with every supplier. ``GET /procurement/rates/{material_id}`` -- one item's purchases, newest first.
 ``GET /procurement/rates/suppliers/{vendor_id}`` -- PRC-51: the supplier's price list (last quoted and last paid per
 material, ``price_list.py``); the supplier page and the new-order dialog read it.
+``GET /procurement/rates/suppliers/performance`` / ``.../suppliers/{vendor_id}/performance`` -- PRC-50: each
+supplier's 0-5 score and its measures (``vendors/performance.py``); the list, picker and comparison sheet read the
+first, the supplier page the second.
 
 Rates are for the roles that see the company's spending (SEC-01, ``may_view_expenses``); others get 403. Rows
 follow the caller's project and site scope, like stock.
@@ -107,6 +110,47 @@ async def list_rates(
             "above_best": store._money(sum((Decimal(i["above_best"]) for i in items), Decimal(0))),
         },
     }
+
+
+async def _performance(conn: AsyncConnection, auth: AuthorizationContext, vendor_id: uuid.UUID | None) -> list[dict]:
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.vendors import performance
+
+    org = auth.organization_id
+    sql = "SELECT id FROM vendors WHERE organization_id = :org"
+    params: dict = {"org": org}
+    if vendor_id is not None:
+        sql += " AND id = :id"
+        params["id"] = vendor_id
+    ids = [str(r[0]) for r in (await conn.execute(text(sql), params)).all()]
+    if vendor_id is not None and not ids:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    project_ids, denied = _resolve_project_ids(auth, None)
+    if denied or not ids:
+        return []
+    today = await project_day.company_today(conn, org)
+    return await performance.performance(conn, org, today=today, project_ids=project_ids, vendor_id=vendor_id,
+                                         vendor_ids=ids, with_problems=vendor_id is not None)
+
+
+@router.get("/suppliers/performance")
+async def suppliers_performance(auth_context: AuthorizationContext = Depends(get_auth_context),
+                                conn: AsyncConnection = Depends(get_db_conn)):
+    """PRC-50: every supplier's score and measures (no trend or problems): the supplier list, pickers, comparison."""
+    _allowed(auth_context)
+    from mesiri.domains.vendors.performance import WEIGHTS
+
+    return {"weights": WEIGHTS, "items": await _performance(conn, auth_context, None)}
+
+
+@router.get("/suppliers/{vendor_id}/performance")
+async def supplier_performance(vendor_id: uuid.UUID, auth_context: AuthorizationContext = Depends(get_auth_context),
+                               conn: AsyncConnection = Depends(get_db_conn)):
+    """PRC-50: one supplier's score, measures, monthly trend, last problems and manual rating."""
+    _allowed(auth_context)
+    from mesiri.domains.vendors.performance import WEIGHTS
+
+    return {"weights": WEIGHTS, **(await _performance(conn, auth_context, vendor_id))[0]}
 
 
 @router.get("/suppliers/{vendor_id}")

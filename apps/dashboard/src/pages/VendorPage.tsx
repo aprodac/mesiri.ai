@@ -16,6 +16,7 @@ import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
 import { VendorRates } from '@/components/rates/vendor-rates'
 import { VendorPriceList } from '@/components/rates/vendor-price-list'
+import { SupplierPerformanceCard } from '@/components/vendors/supplier-score'
 import { VendorReturns } from '@/components/returns/vendor-returns'
 import { BillDeliveriesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
@@ -259,6 +260,8 @@ export default function VendorPage() {
           ) : <Skeleton key={i} className="h-[74px] rounded-xl" />)}
         </div>
       )}
+
+      {seesMoney && v && v.kind !== 'subcontractor' && <div className="print:hidden"><SupplierPerformanceCard vendorId={v.id} /></div>}  {/* PRC-50 */}
 
       {seesMoney && (
         <div role="tablist" aria-label="Sections" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1 print:hidden">

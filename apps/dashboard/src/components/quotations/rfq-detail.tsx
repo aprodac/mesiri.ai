@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { ScoreChip } from '@/components/vendors/supplier-score'
+import { useSupplierScores } from '@/lib/supplier-performance'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, Check, CheckCircle2, Clock, Crown, FileText, MessageCircle, MoreHorizontal, PackagePlus, Pencil, Plus, Scale, Send, ShoppingCart, Store, TrendingDown, TrendingUp, X } from 'lucide-react'
@@ -34,6 +36,7 @@ export function RfqDetail({ rfq: listed, inSheet }: { rfq: Rfq; inSheet?: boolea
   const company = me?.org_name || me?.organization_name
   const { data } = useQuery({ queryKey: ['procurement', 'rfq', listed.id], queryFn: () => fetchRfq(listed.id), initialData: listed, staleTime: 5_000 })
   const r = data ?? listed
+  const scores = useSupplierScores()  // PRC-50: each supplier's score beside its name
   const queryClient = useQueryClient()
   const toast = useToast()
   const [quoting, setQuoting] = React.useState<RfqSupplier | null>(null)
@@ -82,7 +85,7 @@ export function RfqDetail({ rfq: listed, inSheet }: { rfq: Rfq; inSheet?: boolea
               <div className="flex items-center gap-2.5">
                 <VendorTile id={s.vendor_id} name={s.name} />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold">{s.name}</span>{s.best_total && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap text-white" title="Cheapest of the suppliers who quoted every item"><Crown className="size-3" /><span className="hidden sm:inline">Best total</span></span>}</span>
+                  <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold">{s.name}</span><ScoreChip p={scores.get(s.vendor_id)} />{s.best_total && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap text-white" title="Cheapest of the suppliers who quoted every item"><Crown className="size-3" /><span className="hidden sm:inline">Best total</span></span>}</span>
                   <span className="truncate text-xs text-muted-foreground">
                     {s.status === 'quoted' ? [s.total ? `${rupees(s.total)} for ${s.lines_quoted} of ${r.lines.length}` : `${s.lines_quoted} of ${r.lines.length} items`, s.delivery_days != null ? `${s.delivery_days}d delivery` : null, s.payment_days != null ? `${s.payment_days}d credit` : null, s.valid_until ? `valid to ${day(s.valid_until)}` : null].filter(Boolean).join(' · ')
                       : s.status === 'declined' ? s.decline_reason || 'Will not quote'
@@ -223,6 +226,7 @@ function Delta({ pct }: { pct: string | null | undefined }) {
 function CompareSheet({ rfq, picks, onPick }: { rfq: Rfq; picks: Record<string, string>; onPick?: (line: string, rv: string) => void }) {
   const isMobile = useIsMobile()
   const suppliers = rfq.suppliers.filter((s) => s.status === 'quoted')
+  const scores = useSupplierScores()  // PRC-50
   const cell = (line: RfqLine, s: RfqSupplier) => line.quotes.find((q) => q.rfq_vendor_id === s.rfq_vendor_id)
   const awarded = (line: RfqLine, q: QuoteCell | undefined) => !!q && line.awarded_quote_line_id === q.quote_line_id
 
@@ -312,6 +316,7 @@ function CompareSheet({ rfq, picks, onPick }: { rfq: Rfq; picks: Record<string, 
           <Foot label="Credit" suppliers={suppliers} value={(s) => (s.payment_days != null ? `${s.payment_days} days` : '—')} />
           <Foot label="Valid until" suppliers={suppliers} value={(s) => (s.valid_until ? day(s.valid_until) : '—')} />
           <Foot label="Cheapest on" suppliers={suppliers} value={(s) => `${s.lines_lowest} of ${rfq.lines.length}`} />
+          <Foot label="Supplier score" suppliers={suppliers} value={(s) => <ScoreChip p={scores.get(s.vendor_id)} className="text-xs" />} />
         </tfoot>
       </table>
     </div>

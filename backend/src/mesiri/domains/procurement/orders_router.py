@@ -106,6 +106,13 @@ class StatusChange(BaseModel):
     reason: str | None = Field(default=None, max_length=300)
 
 
+class Rating(BaseModel):
+    """PRC-50: "How was this supplier?" -- 1-5 stars, or none to skip (then it is not asked again)."""
+
+    stars: int | None = Field(default=None, ge=1, le=5)
+    note: str | None = Field(default=None, max_length=500)
+
+
 class ReceiveLine(BaseModel):
     line_id: uuid.UUID
     #: Accepted: into stock. Zero when everything that came on this line was turned away.
@@ -237,6 +244,13 @@ async def _one(conn: AsyncConnection, auth: AuthorizationContext, order_id: uuid
         conn, auth.organization_id, site_id=rows[0]["site_id"],
         material_ids=[line["material_id"] for line in rows[0]["lines"]],
         since=rows[0]["created_at"].date()) if item["status"] in ("open", "part") else []
+    # PRC-50: the manual rating, asked once when the order is finished (closed short or all came); a skip is kept.
+    rated = (await conn.execute(text("SELECT stars, note, created_at FROM vendor_ratings WHERE purchase_order_id = :id"),
+                                {"id": order_id})).mappings().first()
+    item["rating"] = None if rated is None else {"stars": rated["stars"], "note": rated["note"],
+                                                 "at": rated["created_at"].isoformat()}
+    item["may_rate"] = (may_act_on_material_requests(auth.role) and rated is None
+                        and item["status"] in ("closed", "received"))
     return item
 
 
@@ -416,6 +430,26 @@ async def close_order(order_id: uuid.UUID, body: StatusChange,
     await store.set_status(conn, order_id, "closed", auth_context.user_id, reason)
     await store.log(conn, auth_context.organization_id, order_id, "closed", f"Closed short: {reason}", auth_context.user_id)
     await requests_follow(conn, auth_context, _request_ids(item), note=f"{item['ref']} closed short: {reason}")
+    return await _one(conn, auth_context, order_id)
+
+
+@router.post("/{order_id}/rating", status_code=201)
+async def rate_supplier(order_id: uuid.UUID, body: Rating, auth_context: AuthorizationContext = Depends(get_auth_context),
+                        conn: AsyncConnection = Depends(get_db_conn)):
+    """PRC-50: rate the supplier of a finished order once (who may close orders); no stars = skipped, not asked again.
+    Shown on the supplier page beside the computed score, never in it."""
+    _office(auth_context)
+    item = await _one(conn, auth_context, order_id, lock=True)
+    if item["status"] not in ("closed", "received"):
+        raise HTTPException(status_code=409, detail=f"{item['ref']} is {item['status']}; a supplier is rated when the "
+                            "order is finished.")
+    if item["rating"] is not None:
+        raise HTTPException(status_code=409, detail=f"{item['ref']}'s supplier was already rated.")
+    await conn.execute(text(
+        "INSERT INTO vendor_ratings (organization_id, vendor_id, purchase_order_id, stars, note, rated_by) "
+        "VALUES (:org, :vendor, :order, :stars, :note, :by)"),
+        {"org": auth_context.organization_id, "vendor": uuid.UUID(item["vendor_id"]), "order": order_id,
+         "stars": body.stars, "note": (body.note or "").strip() or None, "by": auth_context.user_id})
     return await _one(conn, auth_context, order_id)
 
 
