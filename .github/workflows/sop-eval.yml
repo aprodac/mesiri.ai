@@ -28,13 +28,17 @@ on:
         required: false
         default: ""
       set:
-        description: "everyday (5 conversations), hard (the 12 hardest, WA-277 rounds 2 to 4) or all"
+        description: "everyday (5 conversations), areas (5 cases: is the right tool area opened, WA-277 round 1), hard (the 12 hardest, rounds 2 to 4) or all"
         required: false
         default: "everyday"
       cap_inr:
         description: "Budget for this run in rupees (empty: vars.SOP_EVAL_NIGHTLY_CAP_INR, else 40). A full set on a dearer model needs about 100."
         required: false
         default: ""
+      tools_on_demand:
+        description: "on: the call carries the core tools and opens the rest by area (WA-277 step E). off: every tool, as a company with the setting off."
+        required: false
+        default: "on"
 
 # One live-model run at a time: the key has a per-minute token cap.
 concurrency:
@@ -54,6 +58,8 @@ jobs:
       MESIRI_ENVIRONMENT: test
       MESIRI_OBJECT_STORAGE__PROVIDER: fake
       GEMINI_MODEL: ${{ inputs.model || vars.SOP_EVAL_MODEL || 'gemini-3.5-flash-lite' }}
+      # WA-277 step E: the saved conversations read no company setting; this decides (agent_api/tool_areas.default_on).
+      MESIRI_TOOLS_ON_DEMAND: ${{ inputs.tools_on_demand == 'off' && '0' || '1' }}
       BUDGET: apps/whatsapp-assistant/tests/agent_api/evalbudget.py
       LEDGER: /tmp/sop-eval-ledger/ledger.json
     steps:
@@ -68,6 +74,7 @@ jobs:
           if [ "$n" = "0" ]; then run=false; echo "No saved conversations."; fi
           if [ "${{ inputs.set }}" = "all" ]; then marks="live"; fi
           if [ "${{ inputs.set }}" = "hard" ]; then marks="live and hard"; fi
+          if [ "${{ inputs.set }}" = "areas" ]; then marks="live and areas"; fi
           if [ "${{ github.event_name }}" = "schedule" ]; then
             changed=$(git log --since='26 hours ago' --format=%h -- apps/whatsapp-assistant/src/agent_api \
               apps/whatsapp-assistant/tests/agent_api/replays apps/whatsapp-assistant/tests/agent_api/replaykit.py | head -1)

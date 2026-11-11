@@ -137,6 +137,7 @@ markers = [
     "live: runs the real model (conversation eval set, request [68]). Not in CI; use -m live.",
     "nightly: WA-265, a saved conversation the real-model eval runs nightly only, not on every push.",
     "hard: WA-277, one of the hardest saved conversations (the paid eval rounds run these first).",
+    "areas: WA-277 step E, does the real model open the right tool area (tools on demand); the eval's `areas` set.",
     "default_language: WA-207, a v3 test of the Manglish default (others run as a person who chose 'auto').",
 ]
 filterwarnings = ["ignore::DeprecationWarning"]

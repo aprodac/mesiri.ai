@@ -165,6 +165,29 @@ Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
 While a size question is open the model also has `size_not_known` (WA-268): it reads "I don't know" in any
 words, and the code answers as it does for the 🤷 button.
 
+### Tools on demand (WA-277 step E, per company, off by default)
+
+Approved by Ilan, 11 Nov 2026. Every call carried all 131 tool definitions (about 22,000 tokens, more than half the
+call) when production had called 38 of them in ten days. With the company setting `tools_on_demand` = `on`:
+
+- A call carries the **core** tools (40: everything the daily site talk uses; every tool production called up to
+  11 Nov is core) and one small tool, `open_tools`, that lists the other **areas** in one line each: orders, quotes,
+  stock_control, wages, machines, take_back, payments, plan_and_cost, subcontractors, setup, reports_out
+  (`agent_api/tool_areas.py`, `AREAS`). A tool is core unless it is named in an area, so a new route on `ALLOWED`
+  is offered at once.
+- The model calls `open_tools(area)`; the run stops there and goes on at once with that area's tools in the list
+  (one extra model call on that message). What it had already prepared is held and named, so nothing is prepared twice.
+- The **SOP rules that are only about one area** (13, 15, 16, 18, 19, 20, 21, 22, 24, 25, 26; `AREA_RULES`) leave the
+  prompt with their tools, one line in their place, and come back word for word when the area opens.
+- An opened area stays open in that chat for 12 hours; an entry waiting for Save keeps its area open.
+- Opening an area is not "looking something up": the reply checks do not count it; it is first in the turn's trace.
+- "Can't" with an area still closed: the code's one more try says where the other tools are.
+- Measured from the definitions (4 characters a token): tools 22,100 -> 7,800 tokens, SOP 10,400 -> 7,600; about
+  17,000 tokens less on a call that opens nothing. **Not yet measured on the real model.**
+- Switch: `PUT /admin/organizations/{org_id}/settings` `tools_on_demand` = `on` | `off` (read every 10 minutes).
+  The saved conversations on the real model read `MESIRI_TOOLS_ON_DEMAND` (the `SOP eval` workflow's
+  `tools_on_demand` input, default on).
+
 ## Saving
 
 1. A write tool prepares an entry (`PendingWrite`: route, body, confirm line, idempotency key) and
@@ -334,6 +357,7 @@ back on `v2`. Code rollback: revert.
 |---|---|
 | `agent_api/SOP.md` | The whole prompt |
 | `agent_api/tools.py` | `ALLOWED` routes -> tools from OpenAPI |
+| `agent_api/tool_areas.py` | Tools on demand: the areas, `open_tools`, the SOP rules that travel with an area |
 | `agent_api/app.py` | The API inside the worker: the routers the live app mounts, on the worker's pool |
 | `agent_api/client.py` | Calls the API as the sender (token, in-process, own task) |
 | `agent_api/agent.py` | One model run: tools, waiting list, ask, feedback, retries |

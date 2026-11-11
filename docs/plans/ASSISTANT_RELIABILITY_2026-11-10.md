@@ -432,6 +432,28 @@ Tests: `tests/agent_api/test_api_code_says_state_277f.py` (10).
 **Not verified:** not on the real model, not on a phone. `ask` mode adds a second model call to every reply with a
 card where it is on (time and cost): measure both on the test company before any customer gets it.
 
+### 9.13 Step E built, 11 Nov (no model call, nothing spent)
+
+Ilan approved tools on demand in session on 11 Nov ("Okay approved"), after asking what it is.
+
+- **Built:** `agent_api/tool_areas.py` (11 areas, 91 tools; 40 stay core), `open_tools`, the run going on in the
+  same turn with the area's tools, the area's own SOP rules travelling with it, the chat keeping an opened area for
+  12 hours, the company setting `tools_on_demand` (off by default), and the `SOP eval` workflow's
+  `tools_on_demand` input (default on). Details: assistant-v3.md, "Tools on demand".
+- **Measured from the definitions, not on the model** (4 characters a token): tool list 22,100 -> 7,800 tokens;
+  SOP 10,400 -> 7,600. A call that opens nothing should fall from about 37,700 to about 20,500 tokens.
+  **The 15,000 target of 9.3 is not reached:** what is left is the SOP's shared rules (2, 6 and 14 alone are
+  3,500 tokens), the facts and the replayed history (WA-270). The limits of 9.4 already allow for this (rule 3).
+- **What a message in an area costs:** one more model call (the small one that opens the area), then a call with
+  that area's tools: 900 to 1,900 tokens more than the core.
+- **Not done:** no company has it on. It goes on for the test company after round 1 shows the real model opens
+  areas; thinking level as a workflow input (it needs a change in `platform/ai`, a shared component: to be asked
+  before round 4).
+- **Not verified:** that the real model calls `open_tools` when it should, and does not say "can't" instead. That
+  is exactly what round 1 is for; the hard set needs at least two conversations in a closed area before round 2.
+
+Tests: `tests/agent_api/test_api_tools_on_demand_277e.py` (21).
+
 ### 9.10 The rounds as they happen
 
 | Round | Date | Ran | Right / wrong | Rupees (workflow) | Spent so far | Changed after it |
