@@ -21,7 +21,14 @@ and Mesiri's supplier balances agree:
 - **Money received from a client** is a *Receipt*: debit the account it came into, credit the client (against a bill
   or on account) or "Mobilisation advance received" (an advance).
 
-Not included: deliveries not billed (no bill yet, nothing to book), opening balances (Tally holds its own). Each voucher carries Mesiri's id (``REMOTEID``) and its
+**ACC-19 (11 Nov 2026): a company with Accounts on (D-ACC10) is exported from its books instead** (``from_books``):
+every journal entry posted in the period (by the sweep from the records above, or by hand: ACC-12 vouchers and
+reversals) is one Tally voucher of its own type, number and narration, so the CA's Tally and Mesiri's reports hold the
+same numbers. Ledger masters are the chart's ledgers under Tally's reserved primary groups (by the seeded group's
+code, whatever the company renamed it to); a group the company added is created as a group under its parent. The
+reads below stay for companies without Accounts (NXT-12, unchanged).
+
+Not included (records path): deliveries not billed (no bill yet, nothing to book), opening balances (Tally holds its own). Each voucher carries Mesiri's id (``REMOTEID``) and its
 number, so the CA can tell what was imported. Tally's sign convention: a debit is ``ISDEEMEDPOSITIVE Yes`` with a
 negative amount.
 """
@@ -203,3 +210,80 @@ async def fetch(conn: AsyncConnection, org: uuid.UUID, date_from: datetime.date,
         "AND p.paid_date BETWEEN :f AND :t ORDER BY p.paid_date, p.created_at"),
         {"org": org, "f": date_from, "t": date_to})).mappings().all()
     return [dict(r) for r in expenses], [dict(r) for r in payments]
+
+
+# --- ACC-19: from the books ----------------------------------------------------------------------------------------
+
+#: Mesiri voucher type -> Tally voucher type.
+TALLY_TYPES = {"journal": "Journal", "payment": "Payment", "receipt": "Receipt", "contra": "Contra", "sales": "Sales",
+               "purchase": "Purchase"}
+_PARTY_LINKS = ("vendor", "client", "staff")
+
+
+def _group_master(name: str, parent: str) -> str:
+    return (f'<TALLYMESSAGE xmlns:UDF="TallyUDF"><GROUP NAME="{escape(name)}" ACTION="Create">'
+            f"<NAME.LIST><NAME>{escape(name)}</NAME></NAME.LIST><PARENT>{escape(parent)}</PARENT>"
+            "</GROUP></TALLYMESSAGE>")
+
+
+def from_books(company: str, groups: list[dict[str, Any]], ledgers: list[dict[str, Any]],
+               entries: list[dict[str, Any]]) -> tuple[str, dict]:
+    """The Tally XML of posted journal entries (``accounts.reports.entries``), with the masters they need.
+
+    ``groups``/``ledgers``: the chart (``accounts.chart.groups`` / ``ledgers``). Each entry's lines are netted per
+    ledger (a ledger on two lines of different projects is one Tally line)."""
+    from mesiri.domains.accounts.chart import GROUPS
+
+    reserved = {code: name for code, name, _, _ in GROUPS}
+    by_group = {g["id"]: g for g in groups}
+    group_of = {str(led["id"]): led["group_id"] for led in ledgers}
+
+    def tally_group(gid: Any) -> str:
+        g = by_group[gid]
+        return reserved.get(g["code"]) or g["name"]
+
+    custom: dict[str, str] = {}
+
+    def need_group(gid: Any) -> str:
+        """The group's Tally name, creating every group the company added on the way up to a reserved one."""
+        g = by_group[gid]
+        if g["code"] in reserved:
+            return reserved[g["code"]]
+        name = g["name"]
+        if name not in custom:
+            custom[name] = need_group(g["parent_id"]) if g["parent_id"] else "Suspense A/c"
+        return name
+
+    masters: dict[str, str] = {}
+    vouchers: list[str] = []
+    counts = {t: 0 for t in TALLY_TYPES}
+    manual = late = 0
+    for e in entries:
+        net: dict[str, Decimal] = {}
+        for ln in e["lines"]:
+            net[ln["ledger"]] = net.get(ln["ledger"], Decimal(0)) + Decimal(ln["debit"]) - Decimal(ln["credit"])
+            if ln["ledger"] not in masters:
+                masters[ln["ledger"]] = need_group(group_of[ln["ledger_id"]])
+        rows = [(name, v) for name, v in net.items() if v]
+        if not rows:
+            continue
+        party = next((ln["ledger"] for ln in e["lines"] if ln.get("link_kind") in _PARTY_LINKS), rows[0][0])
+        narration = (e.get("narration") or "") + (" · changed after its month was closed" if e.get("after_close") else "")
+        vouchers.append(_voucher(TALLY_TYPES[e["voucher_type"]], f"mesiri-journal-{e['id']}", e["date"], e["ref"],
+                                 party, narration or "Voucher",
+                                 [_entry(n, v, True) for n, v in rows if v > 0] +
+                                 [_entry(n, -v, False) for n, v in rows if v < 0]))
+        counts[e["voucher_type"]] += 1
+        manual += bool(e.get("manual"))
+        late += bool(e.get("after_close"))
+    group_xml = [_group_master(n, p) for n, p in sorted(custom.items())]
+    ledger_xml = [_ledger(n, p) for n, p in sorted(masters.items())]
+    xml = ("<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA>"
+           "<REQUESTDESC><REPORTNAME>All Masters</REPORTNAME>"
+           f"<STATICVARIABLES><SVCURRENTCOMPANY>{escape(company)}</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC>"
+           "<REQUESTDATA>" + "".join(group_xml) + "".join(ledger_xml) + "".join(vouchers) +
+           "</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>")
+    return xml, {"source": "books", "ledgers": len(ledger_xml), "groups": len(group_xml), "vouchers": len(vouchers),
+                 "journals": counts["journal"], "payments": counts["payment"], "receipts": counts["receipt"],
+                 "contra": counts["contra"], "sales": counts["sales"], "purchases": counts["purchase"],
+                 "manual": manual, "after_close": late, "gst_split": 0, "gst_not_split": 0}

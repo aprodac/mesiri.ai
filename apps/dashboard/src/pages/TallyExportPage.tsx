@@ -62,7 +62,8 @@ export default function TallyExportPage() {
     }
   }
   const s = q.data
-  const empty = s && s.journals + s.payments + s.sales + s.receipts === 0
+  const books = s?.source === 'books'
+  const empty = s && (books ? s.vouchers === 0 : s.journals + s.payments + s.sales + s.receipts === 0)
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
@@ -106,7 +107,14 @@ export default function TallyExportPage() {
       ) : (
         <>
           <StatStrip
-            stats={[
+            stats={books ? [
+              // ACC-19: from the books, every voucher of its own type, so Tally holds what the trial balance holds.
+              { label: 'Vouchers', value: String(s.vouchers ?? 0), hint: `${s.purchases ?? 0} purchase · ${s.payments} payment · ${s.receipts} receipt` },
+              { label: 'Sales / Contra', value: `${s.sales} / ${s.contra ?? 0}` },
+              { label: 'Journals', value: String(s.journals), hint: s.manual ? `${s.manual} entered by hand` : undefined },
+              { label: 'Ledgers', value: String(s.ledgers), hint: 'from the chart, created if missing' },
+              { label: 'Changed after close', value: String(s.after_close ?? 0), hint: 'carried on the first open day' },
+            ] : [
               { label: 'Expenses', value: String(s.journals), hint: 'Journal vouchers' },
               { label: 'Payments', value: String(s.payments), hint: 'Payment vouchers' },
               { label: 'RA bills / received', value: `${s.sales} / ${s.receipts}`, hint: 'Sales / Receipt vouchers' },
@@ -118,7 +126,14 @@ export default function TallyExportPage() {
         </>
       )}
 
-      <DprSection icon={BookOpenCheck} title="What goes into Tally">
+      {books && (
+        <Callout tone="muted" icon={Info}>
+          Your books are kept in Mesiri (Accounts), so this file is the posted vouchers themselves: purchases, payments, receipts, contra, sales and the
+          journals you entered by hand, with their numbers and narrations. Ledgers come from your chart of accounts under Tally's own groups. What
+          Tally imports matches Mesiri's trial balance.
+        </Callout>
+      )}
+      <DprSection icon={BookOpenCheck} title={books ? 'Where the vouchers come from' : 'What goes into Tally'}>
         <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted-foreground">
           <li>
             <span className="font-medium text-foreground">Each expense</span> is a Journal: its category is debited, and the supplier (or the person who

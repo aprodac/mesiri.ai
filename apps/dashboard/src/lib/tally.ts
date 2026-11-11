@@ -12,6 +12,13 @@ export interface TallySummary {
   receipts: number
   gst_split: number
   gst_not_split: number
+  /** ACC-19: 'books' when the company keeps its books in Mesiri (Accounts on): every posted voucher, of its own type. */
+  source?: 'books' | 'records'
+  vouchers?: number
+  contra?: number
+  purchases?: number
+  manual?: number
+  after_close?: number
 }
 
 export async function fetchTallySummary(period: { date_from: string; date_to: string }): Promise<TallySummary> {
