@@ -183,3 +183,18 @@ Nothing in Labour, Attendance, Workforce or Payroll changes. Labour sheets and t
 5. **DOC-06** expiry reminders.
 6. Later: **DOC-07** handover pack (end-of-project plan), **DOC-08** search inside documents, DRW-03+ (AI reads the
    drawings).
+
+## 12. Reuse by procurement (PRC-52, 11 Nov 2026)
+
+- **Delivery test certificates** (mill test, cement test, RMC batch / cube) are kept in this register: folder
+  `test_report`, `vendor_id` set, and a new nullable `goods_receipt_id` (migration 0545, additive, indexed). They are
+  added from the GRN (`POST /procurement/grns/{id}/certificates`), which calls `_keep` with `guess=False`: nothing is
+  read from the file or its name, so a certificate never takes another document's number and becomes its revision. The
+  listing names the GRN (`goods_receipt_number`). D-DOC1 unchanged: test reports are seen by everyone on the project.
+- **A supplier's own papers** (GST, PAN, cheque, agreement, ISO / BIS) are *not* in this register. They belong to the
+  company, while every rule here is per project (`project_id` NOT NULL, the project access check, the per-project
+  current-number index, the `documents/{org}/{project}/...` key). Making `project_id` nullable would have changed those
+  rules (an approval item), so they live in `vendor_documents`, which reuses this module's `_read` (kinds, 25 MB, PDF
+  check), `object_key` (`documents/{org}/vendors/{vendor}/...`) and the shared short-lived link. Nothing in this
+  module's rules changed; `_save_file` now builds its key with `object_key` (same key as before).
+

@@ -5,7 +5,9 @@
 > (Stock value), 10 Nov: as built in the tracker rows. PRC-51 (Price list, with PRC-15), 11 Nov: the supplier page's
 > *Rates* tab became *Price list*; read only, `GET /procurement/rates/suppliers/{id}`; web only, WhatsApp deferred.
 > PRC-50 (Supplier performance), 11 Nov: score in `vendors/performance.py`, routes on the Rates router, migration 0544
-> `vendor_ratings` (the manual rating only); web only, WhatsApp deferred. Next: PRC-52 (Documents). Tracker items `PRC-40`..`PRC-52` in
+> `vendor_ratings` (the manual rating only); web only, WhatsApp deferred. PRC-52 (Documents), 11 Nov: certificates in the
+> project documents register (`goods_receipt_id`), supplier papers in `vendor_documents` (migration 0545); see §5.9 as built.
+> Phase 2 is complete apart from the WhatsApp side of PRC-50..52. Tracker items `PRC-40`..`PRC-52` in
 > [V1_TRACKER.md](V1_TRACKER.md) (PRC section).
 > **Follows:** [procurement-plan.md](procurement-plan.md) (PRC-00..37, built 5–9 Nov) and the gaps listed in
 > [capability-framework-gap-analysis.md](capability-framework-gap-analysis.md) modules 07, 08, 09.
@@ -219,6 +221,12 @@ Supplier page › *Documents*: GST certificate, PAN, cancelled cheque, agreement
 reminder 15 days before. On a GRN: attach **mill test / cube / batch certificates** (steel, cement, RMC) so quality
 proof sits with the delivery. Data: `vendor_documents` (vendor, kind, file key, expires_on) and
 `goods_receipt_documents`; storage as the challan photo. Additive.
+
+**As built (11 Nov):** no `goods_receipt_documents` -- a certificate is a project document (test-reports folder, the
+supplier, a new nullable `project_documents.goods_receipt_id`), added from the GRN through the register's own upload,
+so the project's Documents page lists it. `vendor_documents` was built (a supplier's papers belong to the company, and
+the register is per project), reusing the register's upload checks, storage key and link. Reminder: 15 days, on Today
+and the supplier list (no new reminder system). See [project-documents-plan.md](project-documents-plan.md) §12.
 
 ---
 
