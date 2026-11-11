@@ -28,7 +28,7 @@ on:
         required: false
         default: ""
       set:
-        description: "everyday (5 conversations) or all"
+        description: "everyday (5 conversations), hard (the 12 hardest, WA-277 rounds 2 to 4) or all"
         required: false
         default: "everyday"
       cap_inr:
@@ -67,6 +67,7 @@ jobs:
           run=true; marks="live and not nightly"
           if [ "$n" = "0" ]; then run=false; echo "No saved conversations."; fi
           if [ "${{ inputs.set }}" = "all" ]; then marks="live"; fi
+          if [ "${{ inputs.set }}" = "hard" ]; then marks="live and hard"; fi
           if [ "${{ github.event_name }}" = "schedule" ]; then
             changed=$(git log --since='26 hours ago' --format=%h -- apps/whatsapp-assistant/src/agent_api \
               apps/whatsapp-assistant/tests/agent_api/replays apps/whatsapp-assistant/tests/agent_api/replaykit.py | head -1)

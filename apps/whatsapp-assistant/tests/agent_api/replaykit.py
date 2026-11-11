@@ -10,6 +10,7 @@ the expectations to what SHOULD happen, so the test fails before the fix and pas
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 from dataclasses import dataclass, field
@@ -42,11 +43,18 @@ class RecordedApi:
         return None
 
 
-def _real_tools() -> dict[str, Any]:
+@functools.lru_cache(maxsize=1)
+def _built_tools() -> dict[str, Any]:
     from agent_api.app import build_api_app
     from agent_api.tools import build_tools
 
     return build_tools(build_api_app(None).openapi())
+
+
+def _real_tools() -> dict[str, Any]:
+    """Every tool on ALLOWED. Built once per run (WA-277 step A: with about 47 saved conversations, building the API
+    app for each one took most of their time); each caller gets its own dict of the same (frozen) tools."""
+    return dict(_built_tools())
 
 
 def recorded_api(recorded: dict[str, Any], tools: dict[str, Any]) -> RecordedApi:
@@ -104,10 +112,20 @@ def load(text: str) -> dict[str, Any]:
 
 def check(turn: ApiTurn, expect: dict[str, Any]) -> list[str]:
     """WA-148: what a turn got wrong against ``EXPECT`` (empty = right): tools it must / must not call,
-    and the entries that must be waiting for Save (their summary contains each given text)."""
+    and the entries that must be waiting for Save (their summary contains each given text).
+
+    WA-277 step A: ``must_call_any`` (one of several tools that answer the same question is enough: the stock of one
+    material or of all), and ``pending_has`` (texts some waiting entry must mention, however many entries there are:
+    a new material's own line may or may not be among them). An expectation is about what was held or looked up,
+    never the model's sentence (WA-271)."""
     called = [c["tool"] for c in turn.calls]
     wrong = [f"did not call {t}" for t in expect.get("must_call") or [] if t not in called]
     wrong += [f"called {t}" for t in expect.get("must_not_call") or [] if t in called]
+    if (any_of := expect.get("must_call_any")) and not set(any_of) & set(called):
+        wrong.append(f"called none of {', '.join(any_of)}")
+    if expect.get("pending_has"):
+        held = " | ".join(e.summary.lower() for e in turn.pending)
+        wrong += [f"no waiting entry mentions {w!r}" for w in expect["pending_has"] if w.lower() not in held]
     if expect.get("pending") is not None:
         summaries = " | ".join(e.summary.lower() for e in turn.pending)
         want = expect["pending"]
