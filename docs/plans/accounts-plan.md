@@ -3,6 +3,7 @@
 > Asked by Ilan, 9 Nov 2026: "create a plan and let's create full accounting and finance module with rich UX".
 > Status: **approved by Ilan, 9 Nov 2026, with every recommended default; Phases A and B built** (ACC-01..09, 22, 23; see
 > [accounts-posting.md](../architecture/accounts-posting.md) for what was built and how it differs from §5).
+> ACC-12 (manual vouchers) built 11 Nov: `source_kind = 'manual'`, reversal by `reverses_id` (migration 0546).
 > Was: plan, waiting for approval (Phase 2 of the protocol). Accounts is security-sensitive (who can post,
 > close and reopen the books) and touches shared components (roles, module map, every money record as a source),
 > so it does not start in autonomous mode. Decisions D-ACC1..D-ACC12 below each carry a recommended default.
@@ -273,7 +274,9 @@ Each item is its own commits, tested, pushed, with its tracker row; the first de
 
 Additive migrations only, each with a downgrade that refuses while it holds data (as 0528 / 0529). The module is off
 by default (D-ACC10): switching it off hides it and stops the sweep; journals are derived, so they can be deleted and
-re-posted from the source records at any time. Each ACC item is its own commits; revert per item.
+re-posted from the source records at any time, **except manual vouchers** (ACC-12, `source_kind = 'manual'`): those
+are the accountant's own entries, never derived; the sweep never reads, re-posts or deletes them (tested). Each ACC item
+is its own commits; revert per item.
 
 ## 15. Labour isolation
 
