@@ -458,4 +458,4 @@ Tests: `tests/agent_api/test_api_tools_on_demand_277e.py` (21).
 
 | Round | Date | Ran | Right / wrong | Rupees (workflow) | Spent so far | Changed after it |
 |---|---|---|---|---|---|---|
-| — | | nothing spent yet | | 0 | 0 of 200 | |
+| 1 (first part) | 11 Nov 18:16 UTC | `SOP eval` run 149, set `areas`, `gemini-3.5-flash-lite`, tools on demand on, `cap_inr` 8. 3 of the 5 cases ran (10 model calls, about 19,800 input tokens a call); the 2 guards (a delivery and an attendance question open nothing) were skipped when the cap was reached | **3 right, 0 wrong**: payments, machines and wages each opened by the real model, and a tool of that area used | 13.07 by the workflow (it counts every token at 0.75 USD per 1M); about 5.3 at Flash-Lite's list price (0.30) | 13.07 of 200 by the workflow's figure | Nothing yet. Found: (1) the cap is checked before a conversation, not during, so a run can pass it by one conversation (8 asked, 13.07 used); (2) the workflow's figure is 2.5 times Flash-Lite's list price, so 200 "workflow rupees" are about 80 at list price: Ilan to say which figure the 200 is counted in; (3) an area message took 3.3 calls, not 2.4 |
