@@ -142,3 +142,17 @@ jobs:
           PYTHONPATH: shared/contracts/src:platform/ai/src:backend/src:apps/whatsapp-assistant/src
           MESIRI_GOLDEN_USE_FAKES: "false"
         run: uv run python -m mesiri.scripts.run_m1_golden_scenario
+      - name: Assistant routes answer (every tool on ALLOWED, no model)
+        # WA-277 step B: each route the WhatsApp assistant may call is called once through the API app its worker
+        # builds; a route that crashes (5xx) fails the build here instead of answering "could not check it" to a
+        # customer ([285], 11 Nov 2026: the weekly report had never worked). Last, so the rows it leaves disturb nothing.
+        env:
+          PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
+        run: |
+          cd /tmp
+          "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
+            "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/integration/test_api_routes_answer_postgres.py" \
+            -m integration \
+            --rootdir=/tmp \
+            --import-mode=importlib \
+            -o asyncio_mode=auto
