@@ -205,3 +205,148 @@ is unknown (no eval run since); requests [276], [273] (rest) and [278] were not 
 
 Actions > SOP eval > Run workflow. `set` = `everyday` (5 conversations) or `all` (15). Budget:
 `SOP_EVAL_NIGHTLY_CAP_INR` (default 40 rupees, counted at high prices). Model: `SOP_EVAL_MODEL`.
+
+## 9. 11 Nov: the upgrade inside 200 rupees (WA-277)
+
+Ilan, in session, 11 Nov: after the New India conversation (12:56 to 12:59, WA-276) he asked for one big upgrade
+"so it acts as a smart assistant", then set the limit: **200 rupees in all for real-model calls; other models may
+be tried inside it.** This section is the plan for that. It does not replace sections 1 to 8: it orders what is
+left of them around the money.
+
+### 9.1 What 11 Nov added to the findings (production, read-only)
+
+- **The size of a call doubled again.** `gemini-3.5-flash-lite`, last 36 hours: 37,700 input tokens a call,
+  0.48 rupees a call with the cached rate (17,600 and 0.27 over the ten days before). A turn is 2.2 calls.
+- **The code's own refusals trap the model.** In 10 days, 64 of 587 turns had a tool call refused by a check in
+  `agent.py`. In the New India chat one check refused `material_said` and the next turn another demanded it
+  (fixed in `4c6ccec`); the class is still there: two checks can ask for opposite things.
+- **The card check has a record now** (section 3.9 had none): 13 verdicts, 7 ok, 6 wrong. Three of the wrong ones
+  are the New India card, and all three were right: line 3 said Steel after the person said TMT steel.
+- **A route that fails in the worker is not seen by any test.** `period_report` had never worked in production
+  (no object storage in the worker's API app, about a dozen routes; fixed in `a10d147`).
+- **The waiting card is written above every answer.** Four replies in a row began with the same three lines,
+  the last one above a stock answer. Open.
+- **Thinking is at its lowest** on every call (`_least_thinking`: minimal). It has never been compared.
+- **The production read of message text works in this session** (section 5 had it blocked), so the saved
+  conversations for the failed chats can be written.
+
+### 9.2 Objective, scope, value
+
+- **Objective:** the assistant gets a real person's message right the first time far more often, and a fault
+  once fixed stays fixed, proven on saved conversations before it reaches anyone.
+- **Scope:** `apps/whatsapp-assistant/src/agent_api/` and its tests, `sop-eval.yml`. No new engine, no new
+  workflow, router or word list (assistant-v3.md stays the architecture).
+- **Out of scope:** new modules on WhatsApp ([222], [275], [169]), deleting classic (WA-138), dashboard work.
+- **Business value:** the testers are the only users today and 0 to 29% of fixes were right first time. No
+  company can be moved onto it until that changes. A smaller prompt also lowers the cost of every message.
+
+### 9.3 The work, in the order that keeps the money for last
+
+| Step | What | Money |
+|---|---|---|
+| A | **Saved conversations: about 40**, from the failed chats of 29 Oct to 11 Nov, with `scripts/replay_to_test.py`. Each open complaint in the request log gets one where its turn is in the traces. Expectations compare what was held and asked, never the model's sentence (WA-271). This is the measure for everything after. | 0 |
+| B | **Route check with no model:** every route on `ALLOWED` is called once through the worker's own API app on Postgres (`tests/integration/`), so a route that answers 500 fails the build. | 0 |
+| C | **One answer per refusal:** the checks a write passes through (`agent.py`, `materials.py`, `fill.py`, `units.py`) run in one fixed order and return one instruction that the same checks accept. A test feeds each refusal's own instruction back and it must pass. | 0 |
+| D | **The card is not repeated:** an answer to a question while a card waits ends with one short line ("3 lines still waiting: Save?") and the buttons, never the list again. | 0 |
+| E | **Cut the call (WA-272):** parameter schemas trimmed; then **tools on demand** (section 6.1: about 25 core tools always sent, the rest opened by area); SOP rules that belong to one area move into that area's tool notes. Target: about 15,000 tokens a call. Scripted tests and the 19 saved conversations in scripted mode guard it. | 0 |
+| F | **Finish WA-267:** the turn ends in a structured result; the code writes every state sentence; card check from shadow to asking its one question before a card it calls wrong goes out. | 0 |
+| G | **The paid rounds** (9.4): five small ones, each read and fixed for free before the next. | 200 |
+
+A to D need nothing from anyone. E needs Ilan's yes on tools on demand (asked 10 Nov). F changes what people
+see (a question before some cards), so its switch stays per company and is turned on for the test companies first.
+
+### 9.4 How the 200 rupees are spent: in rounds, never in one go
+
+Ilan, 11 Nov: "spending all 200 in one go is stupid, you won't get it all right the first time." So the money is
+five small rounds with a reserve. Each round answers one question; its result is read and the faults it shows are
+fixed with free work before the next round is paid for.
+
+Prices per 1M tokens (prices.py, 10 Nov): Flash-Lite 0.30 in / 2.50 out; 3.6 and 3.8 Flash 0.75 / 3.75. Counted
+with no cached discount and 90 rupees a dollar, as `evalbudget.py` does. A saved conversation is about 2.4 calls.
+
+| Round | Limit | What runs | The question it answers | Free work after it |
+|---|---|---|---|---|
+| 1. Probe | 15 | 5 conversations, Flash-Lite, after step E | Does the key work? Does the cut still behave? **What does one conversation really cost?** | Every later limit is worked out again from the measured figure |
+| 2. First look | 35 | The 12 hardest conversations, Flash-Lite, thinking minimal (production today) | Where does it fail now? | Read each failure; fix code, tool notes or SOP; scripted tests |
+| 3. Did the fixes work | 35 | The same 12, same setting | Did round 2's fixes hold, and did they break another? | Fix what is left; if nothing moved, stop and rethink before spending more |
+| 4. Settings and model | 45 | The same 12 on Flash-Lite thinking low, and on `gemini-3.6-flash` thinking minimal | Does more thinking or a dearer model get more right, and at what price a message? | Choose the setting; write the price per message beside the score |
+| 5. The final score | 40 | As many of the 40 as the limit buys, on the chosen setting (all 40 on Flash-Lite at 15,000 tokens; fewer on a dearer model) | The number that goes in the report | — |
+| Reserve | 30 | Not planned | A repeat after a 503, or one more "did the fix work" round | — |
+| **Total** | **200** | | | |
+
+The rules of spending:
+
+1. **One round, then stop and read.** No round starts until the one before is written up in section 9.10
+   (what ran, right / wrong, the workflow's figure in rupees, what was changed after it).
+2. **Each round's limit is passed to the workflow as `cap_inr`,** so a run cannot go past it; conversations the
+   limit no longer covers are skipped, not failed.
+3. **The limits hold even if step E's cut fails:** 12 conversations on Flash-Lite at today's 40,000 tokens a call
+   are about 31 rupees, inside rounds 2 and 3. Only round 4's dearer model and round 5 shrink (fewer conversations).
+4. **Money not used in a round goes to the reserve;** a round never borrows from a later one.
+5. **Stop early when the question is answered.** If round 3 shows 11 or 12 of 12, round 4 still runs (it answers
+   a different question), but a second fix round is not bought.
+6. **If round 3 shows no gain over round 2,** nothing more is spent until Ilan has seen why.
+7. The estimate is ours; the true bill is only in the Google console. A key whose own limit is 200 rupees is the
+   real guard. The workflow uses the repository's CI key; this session has no key and needs none.
+
+Why the 12 hardest and not all 40 each time: a fix is judged on the conversations that fail, and 12 cost a third
+of 40. The other 28 still run free in scripted mode on every push (they catch a fix that breaks old behaviour in
+the code), and all 40 meet the real model once, in round 5.
+
+Other providers (`platform/ai` has OpenAI and DeepSeek adapters): not in this budget. The assistant's tool-calling
+path has only run on Gemini; proving another adapter would eat the money before any comparison.
+
+**If nothing beats production's setting,** production stays as it is and the gain is steps A to F. That is a
+result, not a failure.
+
+### 9.5 Files expected to change
+
+`agent_api/agent.py`, `whatsapp.py`, `tools.py`, `SOP.md`, `card_review.py`, `reply_guard.py`, `materials.py`,
+`fill.py`, `units.py`; `tests/agent_api/` (new replays and tests), `tests/integration/` (route check);
+`.github/workflows/sop-eval.yml` (thinking level as an input); `platform/ai` Gemini adapter only if the thinking
+level must be passed through it: that is a shared component, so it stops for approval first.
+
+Backend, dashboard, database, API routes: **no change planned.** No migration.
+
+### 9.6 Risks
+
+- **Tools on demand:** the model does not open an area and says "can't". Guards in section 6.1; every tool
+  called in the last 10 days stays in the core set; switch per company.
+- **Forty conversations is still a small set.** A two-conversation difference between models is noise; a model
+  is changed only for a clear gap, and price per message is put beside it.
+- **Saved conversations come from testers,** not customers: they lean to hard and odd messages.
+- **The card check asking before the card** adds a question when it is wrong about being wrong. Its record so
+  far is 13 verdicts; too few. It goes on for the test companies first.
+- **Other sessions and the team bot edit the same files** (ten items in progress on 11 Nov). Small commits, pull
+  before each.
+
+### 9.7 Testing, rollback, Labour
+
+- **Testing:** the assistant suite and ruff before every push (CLAUDE.md); every step lands with tests that fail
+  before it; the saved conversations in scripted mode on every push (free), on the real model only in step G.
+- **Rollback:** each step is its own commit, reverted alone. Tools on demand and the blocking card check are
+  company settings: off is instant. A model change is one row in the control panel.
+- **Labour, Attendance, Payroll, Workforce:** no change. Attendance is touched only as saved conversations.
+
+### 9.8 Success criteria
+
+1. About 40 saved conversations exist and run free on every push.
+2. Round 5 scores at least 85% of what it runs (34 of 40), round 3 beats round 2 on the same 12, and every open "still broken" request ([235] [239] [269] [272] [280]) has a
+   conversation that passes or a written reason why not.
+3. A production call is at most 20,000 input tokens (37,700 today).
+4. No turn in the saved set is refused by a check twice for opposite reasons.
+5. Real-model spend for the whole plan is at most 200 rupees by the workflow's ledger, with each round's figure
+   written in section 9.10.
+6. The team group's "first time right" is above 60% over the 7 days after step F (25% and 0% this week).
+
+### 9.9 Not verified at the time of writing
+
+- Whether WA-276's three fixes are deployed and work on a phone.
+- The 15,000-token target: an estimate from section 3.4's table, not a measurement.
+- That the CI key accepts a run today (it was refused on most days from 3 Nov).
+
+### 9.10 The rounds as they happen
+
+| Round | Date | Ran | Right / wrong | Rupees (workflow) | Spent so far | Changed after it |
+|---|---|---|---|---|---|---|
+| — | | nothing spent yet | | 0 | 0 of 200 | |
