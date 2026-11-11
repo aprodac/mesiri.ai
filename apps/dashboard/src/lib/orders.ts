@@ -164,7 +164,27 @@ export interface GoodsReceipt {
   has_photo?: boolean
   /** A short-lived link (the single order read and the GRN page only). */
   photo_url?: string | null
-  lines: { line_id: string; material: string; unit: string; accepted: string; rejected: string; rejected_reason: string | null }[]
+  lines: { line_id: string; material: string; unit: string; accepted: string; rejected: string; rejected_reason: string | null; needs_certificate?: boolean }[]
+  /** PRC-52: its test certificates (project documents in the test-reports folder), and whether its items usually
+   * come with one (steel, cement, RMC): a hint only. */
+  certificates?: GrnCertificate[]
+  needs_certificate?: boolean
+}
+
+export interface GrnCertificate { id: string; title: string; notes: string | null; file_name: string; content_type: string; created_at: string; uploaded_by_name: string | null }
+
+export const CERTIFICATE_KINDS = [
+  { value: 'mill_test', label: 'Mill test certificate' },
+  { value: 'cement_test', label: 'Cement test certificate' },
+  { value: 'rmc', label: 'RMC batch / cube report' },
+  { value: 'other', label: 'Other test certificate' },
+] as const
+
+export async function addGrnCertificate(grnId: string, file: File, fields: { kind: string; number?: string; batch?: string }): Promise<GoodsReceipt> {
+  const form = new FormData()
+  form.append('file', file)
+  for (const [k, v] of Object.entries(fields)) if (v) form.append(k, v)
+  return (await api.post<GoodsReceipt>(`/procurement/grns/${grnId}/certificates`, form)).data
 }
 
 export async function fetchGrns(params: { project_id?: string | null; site_id?: string | null }): Promise<{ items: GoodsReceipt[] }> {

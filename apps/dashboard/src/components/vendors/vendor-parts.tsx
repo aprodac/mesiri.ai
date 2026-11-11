@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
-import { HandCoins } from 'lucide-react'
+import { FileWarning, HandCoins } from 'lucide-react'
 import { rupees } from '@/lib/expenses'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/AuthContext'
+import { usePapersAttention } from '@/lib/vendor-documents'
 import { BUCKETS, num, usePayables, vendorUrl, type Buckets } from '@/lib/vendors'
 
 // CC-09: small pieces of the supplier pages, and the link every other page uses to open a supplier's account.
@@ -81,6 +83,31 @@ export function SuppliersWaiting() {
       <span className="font-medium">Suppliers</span>
       {overdue > 0 && <span className="text-draft">{rupees(overdue)} overdue to {late} {late === 1 ? 'supplier' : 'suppliers'}</span>}
       {unbilled > 0 && <span className="text-muted-foreground">{rupees(unbilled)} delivered with no bill</span>}
+      <span className="ml-auto text-xs font-semibold">Open</span>
+    </Link>
+  )
+}
+
+/** PRC-52, Today: supplier papers expired, missing or expiring within 15 days, for the owner, admin and finance. */
+export function SupplierPapersWaiting() {
+  const { me } = useAuth()
+  const allowed = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'].includes((me?.role || '').toUpperCase())
+  const { data = [] } = usePapersAttention(allowed)
+  if (!allowed || data.length === 0) return null
+  // Papers, not suppliers: one supplier can have a GST certificate expiring and its PAN missing.
+  const all = data.flatMap((x) => x.papers)
+  const expired = all.filter((p) => p.status === 'expired').length
+  const soon = all.filter((p) => p.status === 'expiring').length
+  const missing = all.filter((p) => p.status === 'missing').length
+  const first = data[0]
+  return (
+    <Link to={data.length === 1 ? vendorUrl(first.vendor_id, 'documents') : '/finance/vendors'} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-card px-3 py-2.5 text-sm hover:bg-muted/30">
+      <FileWarning className="size-4 text-muted-foreground" />
+      <span className="font-medium">Supplier papers</span>
+      {expired > 0 && <span className="text-draft">{expired} expired</span>}
+      {soon > 0 && <span className="text-amber-700 dark:text-amber-400">{soon} expiring within 15 days</span>}
+      {missing > 0 && <span className="text-muted-foreground">{missing} missing (GST or PAN)</span>}
+      <span className="min-w-0 truncate text-xs text-muted-foreground">{data.slice(0, 3).map((x) => x.name).join(', ')}{data.length > 3 ? '…' : ''}</span>
       <span className="ml-auto text-xs font-semibold">Open</span>
     </Link>
   )

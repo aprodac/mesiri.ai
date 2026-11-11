@@ -40,6 +40,10 @@ export interface ProjectDocument {
   has_facts: boolean
   uploaded_by_name: string | null
   created_at: string
+  /** PRC-52: a delivery's test certificate names its GRN. */
+  goods_receipt_id?: string | null
+  goods_receipt_number?: number | null
+  notes?: string | null
 }
 
 export interface DocumentsList {

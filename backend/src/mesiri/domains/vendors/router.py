@@ -4,6 +4,10 @@ The list and details are for everyone with Finance (a vendor is picked when reco
 owes them (balances, ledger, payables) is for the roles that see spending (SEC-01 ``may_view_expenses``), within their
 projects; paying, opening balances, billing deliveries, deleting and merging are for the roles that manage money
 (SEC-03 ``may_manage_money``). Ledger rules: ``ledger.py``.
+
+PRC-52, a supplier's own papers (``documents.py``): ``GET /finance/vendors/papers`` (who needs attention: expired,
+missing, expiring), ``GET|POST /finance/vendors/{id}/documents``, ``GET|DELETE /finance/vendors/{id}/documents/{doc}``
+(a short-lived link; archive). PAN, cheque and agreement for the roles that see spending, who also add and archive.
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ import datetime
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -21,6 +25,7 @@ from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_manage_money, may_view_expenses
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
+from mesiri.domains.vendors import documents as papers
 from mesiri.domains.vendors import ledger
 from mesiri.domains.vendors.details import (
     VendorDetailError,
@@ -28,8 +33,10 @@ from mesiri.domains.vendors.details import (
     clean_gstin,
     clean_phone,
 )
+from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.vendors import PostgresVendorRepository
+from mesiri_contracts.common.storage import ObjectStoragePort
 
 router = APIRouter(
     prefix="/finance/vendors",
@@ -413,6 +420,102 @@ async def link_name(
         "UPDATE material_receipts SET vendor_id = :v WHERE organization_id = :org AND vendor_id IS NULL "
         "AND lower(trim(supplier)) = lower(trim(:n))"), {"v": v["id"], "org": org, "n": body.name})
     return {"vendor": ledger.vendor_out(v), "deliveries": res.rowcount}
+
+
+@router.get("/papers")
+async def papers_attention(auth_context: AuthorizationContext = Depends(get_auth_context),
+                           conn: AsyncConnection = Depends(get_db_conn)):
+    """PRC-52: suppliers whose papers are expired, missing or expiring within 15 days (the list's warning, Today)."""
+    org = auth_context.organization_id
+    return {"items": await papers.attention_by_vendor(conn, org, await _today(conn, org),
+                                                      see_restricted=may_view_expenses(auth_context.role))}
+
+
+async def _papers(conn: AsyncConnection, auth: AuthorizationContext, vendor_id: uuid.UUID) -> dict:
+    v = await _vendor(conn, auth.organization_id, vendor_id)
+    see = may_view_expenses(auth.role)
+    out = papers.describe(await papers.fetch(conn, auth.organization_id, vendor_id), gstin=v.get("gstin"),
+                          today=await _today(conn, auth.organization_id), see_restricted=see)
+    return {**out, "vendor_id": str(vendor_id), "may_add": see}
+
+
+@router.get("/{vendor_id}/documents")
+async def vendor_documents(vendor_id: uuid.UUID, auth_context: AuthorizationContext = Depends(get_auth_context),
+                           conn: AsyncConnection = Depends(get_db_conn)):
+    """PRC-52: per kind the current paper, its status and history, and what the supplier record already holds."""
+    return await _papers(conn, auth_context, vendor_id)
+
+
+@router.post("/{vendor_id}/documents", status_code=201)
+async def add_vendor_document(
+    vendor_id: uuid.UUID,
+    file: UploadFile = File(...),
+    kind: str = Form(...),
+    number: str | None = Form(default=None, max_length=60),
+    valid_until: str | None = Form(default=None),
+    notes: str | None = Form(default=None, max_length=500),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+    object_storage: ObjectStoragePort = Depends(get_object_storage),
+):
+    """Keep a paper (photo or PDF, the documents register's checks). A paper of a kind already on file replaces it
+    (the old one is kept as history); "other" papers sit side by side."""
+    import hashlib
+
+    from mesiri.domains.documents.router import _date, _read, object_key
+
+    if not may_view_expenses(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin, finance or a project manager can add a "
+                            "supplier's papers.")
+    if kind not in papers.KINDS:
+        raise HTTPException(status_code=422, detail=f"kind is one of {', '.join(papers.KINDS)}")
+    org = auth_context.organization_id
+    await _vendor(conn, org, vendor_id)
+    data, name, content_type = await _read(file)
+    current = [d for d in await papers.fetch(conn, org, vendor_id) if d["kind"] == kind and d["status"] == "current"]
+    doc_id = uuid.uuid4()
+    key = object_key(org, f"vendors/{vendor_id}", doc_id, name)
+    await object_storage.put_object(key, data, content_type=content_type)
+    await papers.insert(conn, org, {
+        "id": doc_id, "vendor_id": vendor_id, "kind": kind, "number": (number or "").strip() or None,
+        "valid_until": _date(valid_until, "valid_until"), "status": "current",
+        "supersedes_id": current[0]["id"] if current and kind != "other" else None, "object_key": key,
+        "file_name": name, "content_type": content_type, "size_bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(), "notes": (notes or "").strip() or None,
+        "uploaded_by": auth_context.user_id})
+    return await _papers(conn, auth_context, vendor_id)
+
+
+async def _paper(conn: AsyncConnection, auth: AuthorizationContext, vendor_id: uuid.UUID, doc_id: uuid.UUID) -> dict:
+    doc = await papers.one(conn, auth.organization_id, vendor_id, doc_id)
+    if doc is None or (doc["kind"] in papers.RESTRICTED_KINDS and not may_view_expenses(auth.role)):
+        raise HTTPException(status_code=404, detail="Document not found")  # never say a hidden one exists
+    return doc
+
+
+@router.get("/{vendor_id}/documents/{doc_id}")
+async def vendor_document(vendor_id: uuid.UUID, doc_id: uuid.UUID,
+                          auth_context: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn),
+                          object_storage: ObjectStoragePort = Depends(get_object_storage)):
+    """One paper with a short-lived link to its file."""
+    from mesiri.domains.shared.media import signed_media_url
+
+    doc = await _paper(conn, auth_context, vendor_id, doc_id)
+    return {**papers._out(doc), "url": await signed_media_url(object_storage, doc["object_key"])}
+
+
+@router.delete("/{vendor_id}/documents/{doc_id}")
+async def archive_vendor_document(vendor_id: uuid.UUID, doc_id: uuid.UUID,
+                                  auth_context: AuthorizationContext = Depends(get_auth_context),
+                                  conn: AsyncConnection = Depends(get_db_conn)):
+    """Archive (kept, file and all; hidden); the paper it replaced is current again. Never a hard delete."""
+    if not may_view_expenses(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only the owner, an admin, finance or a project manager can "
+                            "archive a supplier's papers.")
+    doc = await _paper(conn, auth_context, vendor_id, doc_id)
+    await papers.archive(conn, auth_context.organization_id, doc)
+    return await _papers(conn, auth_context, vendor_id)
 
 
 @router.get("/{vendor_id}")
@@ -842,6 +945,8 @@ VENDOR_LINKS = (
     ("tasks", "assignee_vendor_id", "tasks"),  # TSK-01: tasks given to a subcontractor
     ("rfq_vendors", "vendor_id", "quotes"),  # PRC-40 (0540 added it; missed here until PRC-46's run)
     ("material_returns", "vendor_id", "returns"),  # PRC-46: material sent back and its debit note
+    ("vendor_ratings", "vendor_id", "ratings"),  # PRC-50 (0544 added it; missed here until PRC-52's run)
+    ("vendor_documents", "vendor_id", "papers"),  # PRC-52: GST, PAN, cheque, agreement, ISO / BIS
 )
 #: How a table's rows are this company's (default: its own organization_id).
 _OWNED = {"labour_attendance_lines": "report_id IN (SELECT id FROM labour_attendance_reports WHERE organization_id = :org)"}

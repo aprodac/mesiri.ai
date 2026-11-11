@@ -119,6 +119,12 @@ function DocRow({ doc, onOpen }: { doc: ProjectDocument; onOpen: () => void }) {
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">{fileSize(doc.size_bytes)}</span>
       </button>
+      {doc.goods_receipt_number != null && (
+        // PRC-52: a delivery's test certificate, back to the GRN it came with.
+        <Link to={`/procurement/grn?q=GRN-${String(doc.goods_receipt_number).padStart(4, '0')}`} className="ml-10 inline-block pb-2 text-xs font-medium text-muted-foreground underline-offset-2 hover:underline">
+          With GRN-{String(doc.goods_receipt_number).padStart(4, '0')}{doc.notes ? ` · ${doc.notes}` : ''}
+        </Link>
+      )}
     </li>
   )
 }

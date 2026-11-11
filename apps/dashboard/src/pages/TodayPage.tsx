@@ -24,7 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Callout, DprAside, DprSection, PageHeader, StatStrip } from '@/components/dpr-page'
 import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
-import { SuppliersWaiting } from '@/components/vendors/vendor-parts'
+import { SupplierPapersWaiting, SuppliersWaiting } from '@/components/vendors/vendor-parts'
 import { RoleHome } from '@/components/home/role-home'
 import { EmptyState } from '@/components/page/page-kit'
 import { useAuth } from '@/lib/AuthContext'
@@ -358,6 +358,7 @@ export default function TodayPage() {
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
       {isToday && <SuppliersWaiting />}
+      {isToday && <SupplierPapersWaiting />}
       {isToday && <BillsWaitingLine />}
 
       {daysQuery.isError ? (

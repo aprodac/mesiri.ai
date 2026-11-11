@@ -163,10 +163,15 @@ def _date(value: str | None, what: str) -> datetime.date | None:
         raise HTTPException(status_code=422, detail=f"{what} is not a date (YYYY-MM-DD)") from exc
 
 
+def object_key(org: uuid.UUID, owner: str, doc_id: uuid.UUID, name: str) -> str:
+    """Where a kept file is stored: ``owner`` is the project id, or ``vendors/<id>`` for a supplier's papers (PRC-52)."""
+    safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", name)[:120] or "document"
+    return f"documents/{org}/{owner}/{doc_id}/{safe}"
+
+
 async def _save_file(object_storage: ObjectStoragePort, org: uuid.UUID, project_id: uuid.UUID, doc_id: uuid.UUID,
                      name: str, data: bytes, kind: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", name)[:120] or "document"
-    key = f"documents/{org}/{project_id}/{doc_id}/{safe}"
+    key = object_key(org, str(project_id), doc_id, name)
     await object_storage.put_object(key, data, content_type=kind)
     return key
 
@@ -210,7 +215,9 @@ async def upload_document(project_id: uuid.UUID, file: UploadFile = File(...),
 
 async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storage: ObjectStoragePort,
                 project_id: uuid.UUID, file: UploadFile, *, supersede: dict[str, Any] | None,
-                given: dict[str, Any]) -> dict[str, Any]:
+                given: dict[str, Any], guess: bool = True) -> dict[str, Any]:
+    """``guess`` False (PRC-52 delivery certificates): what is not given stays empty -- nothing read from the file or
+    its name, so a certificate never takes another document's number and becomes its revision."""
     org = auth.organization_id
     data, name, kind = await _read(file)
     sha = hashlib.sha256(data).hexdigest()
@@ -219,9 +226,9 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
         raise HTTPException(status_code=409, detail={"message": f"This file is already kept: {dup['title']}"
                                                                 f"{' rev ' + dup['revision'] if dup['revision'] else ''}",
                                                      "document_id": str(dup["id"])})
-    read = await _read_drawing(data) if kind == "application/pdf" else None
+    read = await _read_drawing(data) if kind == "application/pdf" and guess else None
     first = next((s for s in (read or {}).get("sheets") or [] if s.get("has_text")), None)
-    guess = naming.guess(name, first)
+    hints = naming.guess(name, first) if guess else {}
     values: dict[str, Any] = {}
     guessed: list[str] = []
     for key in ("folder", "number", "title", "revision", "discipline"):
@@ -229,7 +236,7 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
         if value is None and supersede is not None and key in ("folder", "number", "title", "discipline"):
             value = supersede.get(key)
         if value is None:
-            value = guess.get(key)
+            value = hints.get(key)
             if value is not None:
                 guessed.append(key)
         values[key] = value
@@ -281,6 +288,9 @@ async def _keep(conn: AsyncConnection, auth: AuthorizationContext, object_storag
         "object_key": key, "file_name": name, "content_type": kind, "size_bytes": len(data), "sha256": sha,
         "pages": (read or {}).get("pages"), "facts": facts, "source": "web",
         "work_package_id": given.get("work_package_id"), "uploaded_by": auth.user_id,
+        # PRC-52: a delivery certificate's supplier and GRN.
+        "vendor_id": given.get("vendor_id"), "goods_receipt_id": given.get("goods_receipt_id"),
+        "notes": _clean(given.get("notes")),
     })
     doc = await store.one(conn, org, doc_id)
     out = _row(doc or {})

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { URGENCY_LOOK, qty, swatch } from '@/lib/requests'
 import { ORDER_LOOK, asMoreThanOrdered, cancelOrder, closeOrder, dueWords, fetchOrder, orderMessage, whatsappUrl, rateSupplier, receiveOrder, reopenOrder, rupees, setDeliveryOrder, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import { NewOrderDialog } from './new-order-dialog'
+import { GrnCertificates } from './grn-certificates'
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 import { LinkedStrip } from '@/components/page/page-kit'
 import { orderLinks } from '@/lib/links'
@@ -163,6 +164,7 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
                     {qty(l.accepted, l.unit)} {l.material} accepted{Number(l.rejected) > 0 && <span className="text-destructive"> · {qty(l.rejected, l.unit)} rejected ({l.rejected_reason})</span>}
                   </span>
                 ))}
+                <GrnCertificates grn={g} />
               </span>
               {g.photo_url && <a href={g.photo_url} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-medium underline-offset-2 hover:underline">Challan photo</a>}
             </div>

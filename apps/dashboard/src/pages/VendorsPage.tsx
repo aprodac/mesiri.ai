@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClock, Download, HandCoins, MoreHorizontal, PackageOpen, Plus, Search, Store, TriangleAlert, Wallet } from 'lucide-react'
+import { AlarmClock, Download, FileWarning, HandCoins, MoreHorizontal, PackageOpen, Plus, Search, Store, TriangleAlert, Wallet } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +28,7 @@ import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendo
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
+import { paperStatusWords, usePapersAttention } from '@/lib/vendor-documents'
 
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
@@ -66,6 +67,8 @@ export default function VendorsPage() {
   const [tile, setTile] = useUrlState<Tile>('show', '')
   const [sort, setSort] = useUrlState<Sort>('sort', seesMoney ? 'owed' : 'name')
   const scores = useSupplierScores(seesMoney)
+  // PRC-52: a supplier whose papers are expired, missing (GST / PAN of a registered one) or expiring soon.
+  const papers = new Map((usePapersAttention().data ?? []).map((x) => [x.vendor_id, x]))
   const [view, setView] = useUrlState<'suppliers' | 'unbilled'>('view', 'suppliers')
   const [editing, setEditing] = React.useState<Vendor | null | undefined>(undefined)
   const [paying, setPaying] = React.useState<Row | null>(null)
@@ -249,6 +252,13 @@ export default function VendorsPage() {
                     <span className="truncate font-semibold">{v.name}</span>
                     {v.kind && v.kind !== 'supplier' && <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', KINDS[v.kind].chip)}>{KINDS[v.kind].label}</span>}
                     {v.status !== 'active' && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Switched off</span>}
+                    {papers.get(v.id) && (
+                      <span data-testid="papers-warning" role="img" className="relative z-10 inline-flex"
+                        title={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}
+                        aria-label={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}>
+                        <FileWarning className={cn('size-4 shrink-0', papers.get(v.id)!.attention === 'expiring' ? 'text-amber-600' : 'text-red-600')} />
+                      </span>
+                    )}
                   </span>
                   <span className="line-clamp-1 text-xs text-muted-foreground">
                     {[v.code, v.contact_person, v.phone, v.gstin ? `GSTIN ${v.gstin}` : null, v.credit_days != null ? `${v.credit_days} days credit` : null].filter(Boolean).join(' · ') || 'No phone or GSTIN yet'}

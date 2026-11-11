@@ -17,6 +17,7 @@ import { VendorTile } from '@/components/orders/order-detail'
 import { VendorRates } from '@/components/rates/vendor-rates'
 import { VendorPriceList } from '@/components/rates/vendor-price-list'
 import { SupplierPerformanceCard } from '@/components/vendors/supplier-score'
+import { VendorDocuments } from '@/components/vendors/vendor-documents'
 import { VendorReturns } from '@/components/returns/vendor-returns'
 import { BillDeliveriesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
@@ -43,7 +44,7 @@ import {
 // rest forward, print and export), the open bills with due dates (tick and pay), deliveries with no bill yet (record
 // their bill, or put them on one typed earlier), payments (use an advance, undo), what it charged, and its details.
 
-type Tab = 'account' | 'bills' | 'unbilled' | 'payments' | 'work' | 'rates' | 'returns' | 'details'
+type Tab = 'account' | 'bills' | 'unbilled' | 'payments' | 'work' | 'rates' | 'returns' | 'documents' | 'details'
 type Period = 'all' | 'month' | 'last' | '90d'
 
 const PERIODS: { value: Period; label: string }[] = [
@@ -150,9 +151,10 @@ export default function VendorPage() {
     ...(v?.kind === 'subcontractor' ? [{ value: 'work' as Tab, label: 'Work orders' }] : []),
     { value: 'rates', label: 'Price list', money: true },  // PRC-51
     { value: 'returns', label: 'Returns', money: true },  // PRC-46
+    { value: 'documents', label: 'Documents' },  // PRC-52: GST, ISO and other papers for anyone who sees the supplier
     { value: 'details', label: 'Details' },
   ]
-  const shownTab = !seesMoney ? 'details' : tab
+  const shownTab = !seesMoney && tab !== 'documents' ? 'details' : tab
 
   const exportStatement = () => L && v && exportCsv(`${v.name.replace(/[^\w]+/g, '-')}-statement.csv`,
     ['Date', 'Kind', 'What', 'Detail', 'Ref', 'Project', 'Site', 'Owed', 'Paid', 'Balance'],
@@ -263,8 +265,8 @@ export default function VendorPage() {
 
       {seesMoney && v && v.kind !== 'subcontractor' && <div className="print:hidden"><SupplierPerformanceCard vendorId={v.id} /></div>}  {/* PRC-50 */}
 
-      {seesMoney && (
-        <div role="tablist" aria-label="Sections" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1 print:hidden">
+      {/* Without money: Documents and Details (PRC-52). */}
+      <div role="tablist" aria-label="Sections" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1 print:hidden">
           {tabs.filter((t) => seesMoney || !t.money).map((t) => (
             <button key={t.value} role="tab" type="button" aria-selected={shownTab === t.value} onClick={() => setTab(t.value)}
               className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm whitespace-nowrap', shownTab === t.value ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>
@@ -272,8 +274,7 @@ export default function VendorPage() {
               {!!t.count && <span className="rounded-full bg-foreground/10 px-1.5 text-xs tabular-nums">{t.count}</span>}
             </button>
           ))}
-        </div>
-      )}
+      </div>
 
       {/* --- Account: the statement ------------------------------------------------------------------------------ */}
       {shownTab === 'account' && (
@@ -512,6 +513,7 @@ export default function VendorPage() {
       )}
 
       {shownTab === 'rates' && v && <div className="rounded-xl border bg-card"><VendorPriceList vendorId={v.id} /><VendorRates vendorId={v.id} /></div>}
+      {shownTab === 'documents' && v && <VendorDocuments vendorId={v.id} />}
       {shownTab === 'returns' && v && <VendorReturns vendorId={v.id} readOnly={readOnly} />}
       {shownTab === 'work' && v && <VendorWorkOrders vendorId={v.id} vendorName={v.name} canManage={!readOnly && (canManage || mayGiveWork(role))} />}
 

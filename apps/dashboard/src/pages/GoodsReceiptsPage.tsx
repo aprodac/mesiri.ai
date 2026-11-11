@@ -13,6 +13,7 @@ import { ProjectDot } from '@/components/requests/parts'
 import { VendorTile } from '@/components/orders/order-detail'
 import { cn } from '@/lib/utils'
 import { VendorLink } from '@/components/vendors/vendor-parts'
+import { GrnCertificates } from '@/components/orders/grn-certificates'
 import { ModuleTitle } from '@/components/page/page-kit'
 import { NewReturnDialog } from '@/components/returns/new-return-dialog'
 import { useAuth } from '@/lib/AuthContext'
@@ -109,6 +110,7 @@ export default function GoodsReceiptsPage() {
                         </span>
                       ))}
                     </div>
+                    <GrnCertificates grn={g} />
                   </div>
                 </div>
                 {rejected && mayReturn(me?.role) && (

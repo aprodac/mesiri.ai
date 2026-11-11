@@ -15,10 +15,12 @@ from mesiri.domains.documents.naming import RESTRICTED_FOLDERS
 
 _COLS = ("id", "project_id", "site_id", "folder", "discipline", "number", "title", "revision", "revision_date",
          "status", "supersedes_id", "valid_until", "restricted", "object_key", "file_name", "content_type",
-         "size_bytes", "pages", "source", "work_package_id", "work_order_id", "vendor_id", "notes", "uploaded_by",
-         "created_at", "updated_at")
-#: Every column of a document as read with the uploader's name (``d`` the document, ``u`` the user).
-COLUMNS = ", ".join(f"d.{c}" for c in _COLS) + ", (d.facts IS NOT NULL) AS has_facts"
+         "size_bytes", "pages", "source", "work_package_id", "work_order_id", "vendor_id", "goods_receipt_id", "notes",
+         "uploaded_by", "created_at", "updated_at")
+#: Every column of a document as read with the uploader's name (``d`` the document, ``u`` the user). PRC-52: a
+#: delivery certificate names its GRN.
+COLUMNS = (", ".join(f"d.{c}" for c in _COLS) + ", (d.facts IS NOT NULL) AS has_facts"
+           ", (SELECT g.number FROM goods_receipts g WHERE g.id = d.goods_receipt_id) AS goods_receipt_number")
 
 
 def _visible(see_restricted: bool) -> str:
