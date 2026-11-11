@@ -810,12 +810,26 @@ class ApiAgent:
             except (TypeError, ValueError):
                 n = 0
             if not 1 <= n <= len(waiting) or waiting[n - 1] is None:
-                return {"error": f"there is no waiting entry {arguments.get('number')}"}
+                # WA-277 step C (New India, 11 Nov: "there is no waiting entry 3" after the model itself had dropped
+                # it, then the same call again): the refusal says what IS waiting and what to do, never a dead end.
+                left = [str(i) for i, e in enumerate(waiting, 1) if e is not None]
+                done = (f"Entry {n} was already changed or removed in this turn; do not change it again. "
+                        if 1 <= n <= len(waiting) else "")
+                return {"error": (
+                    f"there is no waiting entry {arguments.get('number')}. {done}"
+                    + (f"Waiting now: {', '.join(left)}." if left else "Nothing from the list is waiting now.")
+                    + " A line prepared in this turn is already on the card: leave it as it is.")}
             entry = waiting[n - 1]
             tool = self._tools.get(entry.tool)
             raw = arguments.get("changes") or []
             pairs = raw.items() if isinstance(raw, dict) else ((c.get("field"), c.get("value")) for c in raw if isinstance(c, dict))
             changes = {str(k): _typed(entry.body.get(str(k)), v) for k, v in pairs if k}
+            # WA-277 step C (5 Nov, "10 bag baby metal aanu vannathu": the new line sent as a change was refused,
+            # "cannot change confirm_line", three calls lost): the line is the entry's summary, never a field of the
+            # record; given as a change it is taken as the line.
+            line_change = str(changes.pop(CONFIRM_ARG, "") or "").strip()
+            if line_change and not str(arguments.get(CONFIRM_ARG) or "").strip():
+                arguments = {**arguments, CONFIRM_ARG: line_change}
             # [285] (live, 11 Nov, New India): the material check asked for material_said and this refused it, so
             # "Steel ennallathu maattittu TMT steel aakku" went round three times and nothing changed. Their word for
             # the material is what the check reads, never a field of the record.
@@ -823,7 +837,11 @@ class ApiAgent:
             has_material = tool is not None and "material_id" in tool.body_fields
             unknown = [k for k in changes if tool is None or k not in tool.body_fields]
             if unknown or not (changes or (said and has_material)):
-                return {"error": f"cannot change {', '.join(unknown) or 'nothing'}; fields: {', '.join(tool.body_fields) if tool else '-'}"}
+                return {"error": (
+                    f"cannot change {', '.join(unknown) or 'nothing'}; fields: {', '.join(tool.body_fields) if tool else '-'}"
+                    + (" (the line alone changes nothing that is saved: give the field that changes too"
+                       + (f"; for another material that is {MATERIAL_SAID}, their own word for it" if has_material else "")
+                       + ")" if line_change and not unknown else ""))}
             body = {**entry.body, **changes}
             if has_material and ("material_id" in changes or said):  # [210]: a corrected material is checked like a new line
                 before_id = str(entry.body.get("material_id") or "")
@@ -853,6 +871,11 @@ class ApiAgent:
                         return {"error": content["error"]}
                 if problem:
                     unit_ask[:] = buttons
+                    if not said:
+                        # Step C: here their word goes in as a change (the same call the refusal of 11 Nov asked for
+                        # and the next check refused): said where the model reads it.
+                        problem += (f" In this tool that is one more item in `changes`: field {MATERIAL_SAID}, value "
+                                    "their own word for the material.")
                     return {"error": problem}
             if "unit_id" in body and ("unit_id" in changes or "unit" in changes):
                 problem = await settle_unit(client, body)
@@ -972,6 +995,16 @@ class ApiAgent:
                 return ToolOutcome(content={"error": (
                     "Nothing is waiting: that record is already saved. Use correct_saved_entry with its number from "
                     "'Saved earlier in this chat' and only what changes.")})
+            if name in (SAVE_READY, DROP_READY, CHANGE_READY, CORRECT_SAVED):
+                # WA-277 step C (7 Nov, "alla, 6 mason aanu": "no tool named change_ready_entry", and the person was
+                # asked to send the whole line again): a list tool called with nothing in the list is answered with
+                # what is true and what to do next, never as a tool that does not exist.
+                return ToolOutcome(content={"error": (
+                    "Nothing is waiting in the ready list" + ("" if name != CORRECT_SAVED else
+                                                               " and no saved record of this chat can be corrected here")
+                    + ", so there is nothing to save, cancel or change. Do not call this again. If my message gives "
+                    "an update or a corrected figure, prepare it now as a new line with its own tool; otherwise tell "
+                    "me in one short line that nothing is waiting.")})
             if actions and name in actions:
                 acted.append(name)
                 return ToolOutcome(content=await actions[name][1](arguments))
@@ -1438,9 +1471,33 @@ class ApiAgent:
             return (not new and not saved and not asked and not acted and not changed and not exists
                     and len(waiting) == len(ready or []))
 
+        refused: dict[str, list[str]] = {}  # step C: per line, the kinds of refusal it got in this turn
+
+        async def checked(name: str, arguments: dict) -> ToolOutcome:
+            """WA-277 step C: what the model gets back from a call. A line is refused for one reason at a time, and
+            the instruction that comes with it is one the same checks accept; when the same line is refused again
+            for the same reason, or a third time for any, the code stops the round trip (each one is a whole model
+            call, and in production they ended with nothing held and a reply that said so in system words): it is
+            told to stop and to ask the person the one thing that is missing."""
+            outcome = await handler(name, arguments)
+            content = outcome.content if isinstance(outcome.content, dict) else {}
+            error = str(content.get("error") or "")
+            if not error:
+                return outcome
+            seen = refused.setdefault(refusal_line(name, arguments), [])
+            seen.append(refusal_kind(error))
+            if seen.count(seen[-1]) < 2 and len(seen) < REFUSALS_PER_LINE:
+                return outcome
+            return ToolOutcome(content={"error": (
+                f"{_short(error, 500)} -- This line has now been refused {len(seen)} times in this turn. STOP: do not "
+                f"call {name} for it again in this turn. Keep everything already prepared. In your reply ask the "
+                "person ONE short question for what is missing (in their language, in plain words, nothing about "
+                "tools, fields or the system), or say plainly that this one line is not prepared. Never say it is "
+                "ready.")})
+
         async def ask_model(msgs: list[ChatMessage]) -> Any:
             return await self._provider.run_tools(
-                system, msgs, specs, handler, max_steps=self._max_steps, timeout_seconds=self._timeout,
+                system, msgs, specs, checked, max_steps=self._max_steps, timeout_seconds=self._timeout,
                 correlation_id=correlation_id, **extra)
 
         if taken_need is not None:
@@ -1638,6 +1695,26 @@ class ApiAgent:
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed, language_set=next(iter(language_set), ""),
                        size_unknown=bool(size_unknown))
+
+
+#: WA-277 step C: a line refused this many times in one turn (for any reasons) is not tried again in that turn.
+REFUSALS_PER_LINE = 3
+
+
+def refusal_line(name: str, arguments: dict[str, Any]) -> str:
+    """Which line of the message a refused call was for: the tool and what it names (their word for the material,
+    the entry's number, a name, else its summary line), so three different lines refused once each are three lines."""
+    for key in (MATERIAL_SAID, "number", "name", "request_id", "issue_id", CONFIRM_ARG):
+        if arguments.get(key) not in (None, ""):
+            return f"{name}:{key}:{' '.join(str(arguments[key]).casefold().split())}"
+    return name
+
+
+def refusal_kind(error: str) -> str:
+    """The reason of a refusal without what it names (quoted words, numbers, ids), so the same reason for the same
+    line is seen as the same whatever was in it."""
+    plain = re.sub(r"'[^']*'|\"[^\"]*\"|[0-9a-f]{8}-[0-9a-f-]{27}|\d+", "", error)
+    return " ".join(plain.split())[:60]
 
 
 _NUMBER = re.compile(r"(?<![\d.])\d+(?:\.\d+)?(?![\d.])")

@@ -224,6 +224,8 @@ READY_HEADING = "*Ready to save:*"
 #: [264]: a card that holds only a report send says Send, not Save.
 READY_SEND_HEADING = "*Ready to send:*"
 PRESS_SEND = "Tap *Send* and it goes out in about a minute."
+#: WA-277 step D: the one line under an answer given while a list waits (the list itself is on the card above).
+STILL_WAITING = "⏳ {count} still waiting to save (the list above). Tap *Save* to record."
 LATE_ANSWER = "⏱️ Your {kind} from {time}:"
 REPORT_SENT = "📤 Report sent: {line}. It reaches the people who get the daily report in about a minute."
 SEND_TITLE = "Send"
@@ -602,7 +604,10 @@ class ApiWhatsApp:
             photo_key = photo_key or bill_photo.carried(state, time.time())
             if photo_now and (unbilled := bill_photo.unbilled_fact(state, time.time())):
                 facts = f"{facts}\n\n{unbilled}"
-            places = _places(ctx, state.get("working_site"))
+            # WA-277 step C: the site they reported to holds for the WORKING day (Aprodac, 7 Nov: saved at Main block
+            # in the afternoon, asked "which site?" again at 01:56 for "6 masons came today").
+            day_starts = await self._day_starts(ctx)
+            places = _places(ctx, state.get("working_site"), day_starts)
             # WA-208: after Edit, this message is the right figure for one line: the model is told which, and the
             # code makes sure that line is the one changed (below).
             editing = _editing(state, ready)
@@ -706,7 +711,7 @@ class ApiWhatsApp:
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
         remember_unsaved(state, turn.saved, turn.pending, time.time())  # WA-260
         bill_photo.remember_unbilled(state, turn.saved, time.time())  # WEB-65 case 3
-        state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
+        state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx, day_starts))
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx), admin=_may_set_sizes(ctx)) if turn.saved else ""
@@ -745,7 +750,11 @@ class ApiWhatsApp:
             # WA-274: the card the code draws says what is held and that Save keeps it; the model's line above it only
             # repeated that, or said more than is true ("issue aayi report cheythu" for an issue only held, 10 Nov).
             words = ""
-        reply = self._reply(words, turn.pending, state, turn.options, state.get("language"))
+        # WA-277 step D (New India, 11 Nov: four replies in a row began with the same three card lines, the last one
+        # above a stock answer): the list did not change and the reply is about something else, so the list is
+        # not drawn again; one short line says it is still waiting, with its buttons.
+        again = unchanged and not turn.options and not turn.question and not turn.not_held and not turn.nothing_held
+        reply = self._reply(words, turn.pending, state, turn.options, state.get("language"), listed=not again)
         await self._save_state(ctx, state)
         return reply
 
@@ -1188,7 +1197,8 @@ class ApiWhatsApp:
                 ListRow(id=f"{WHY_PREFIX}{code}", title=titles[code]) for code in CANCEL_REASONS))
         client = ApiClient(_actor(ctx), app=self._app)
         try:
-            results = await confirm(client, entries, _place_names(_places(ctx, state.get("working_site"))))
+            day_starts = await self._day_starts(ctx)
+            results = await confirm(client, entries, _place_names(_places(ctx, state.get("working_site"), day_starts)))
         finally:
             await client.close()
         self._just_saved[correlation_id] = results
@@ -1198,7 +1208,7 @@ class ApiWhatsApp:
                 [r for r in results if r.ok and not held(r)], today=_today(ctx)), "at": time.time()}
         state["recent_saves"] = remember_saves(state.get("recent_saves"), results, time.time())  # WA-154
         bill_photo.remember_unbilled(state, results, time.time())  # WEB-65 case 3
-        state["working_site"] = last_reported(results, state.get("working_site"), _today(ctx))  # [213]
+        state["working_site"] = last_reported(results, state.get("working_site"), _today(ctx, day_starts))  # [213]
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
         # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
@@ -1344,8 +1354,8 @@ class ApiWhatsApp:
         try:
             state = await self._state(ctx)
             batch = state.get("batch")
-            if not batch or not state.get("pending"):
-                return reply
+            if not batch or not state.get("pending") or state.get("quiet") == batch:
+                return reply  # WA-277 step D: an answer over an unchanged list carries no second card
             entries = [PendingWrite.from_json(e) for e in state["pending"]]
             client = ApiClient(_actor(ctx), app=self._app)
 
@@ -1395,10 +1405,13 @@ class ApiWhatsApp:
     # -- helpers -----------------------------------------------------------------------------
 
     def _reply(self, words: str, pending: list[PendingWrite], state: dict, options: list[str],
-               language: str | None = None) -> ReplySpec:
+               language: str | None = None, *, listed: bool = True) -> ReplySpec:
         """The model's words, the ready list under them, and the buttons: the question's options
-        when it asked one (one tap answers it), else Save / Cancel for the list."""
+        when it asked one (one tap answers it), else Save / Cancel for the list. ``listed`` False (WA-277 step D):
+        the same list is still waiting and these words answer something else, so the list is not written out
+        again: one line says how many wait, over the same buttons. With no words of its own it is listed as usual."""
         had = bool(state.get("pending"))
+        state.pop("quiet", None)
         pending = _distinct(pending)
         state["pending"] = [e.to_json() for e in pending]
         if pending and not (had and state.get("pending_at")):
@@ -1420,8 +1433,12 @@ class ApiWhatsApp:
             text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending]))
             # [264]: a bare "OK." says nothing above a held list: the list and the Save / Send line speak instead.
             text = "" if text.strip(" .").casefold() in ("", "ok") else text
-            listed = "\n".join(f"{i}. {without_ids(e.summary)}" for i, e in enumerate(pending, 1))
-            text = f"{text}\n\n{READY_SEND_HEADING if sending else READY_HEADING}\n{listed}".strip()
+            if not listed and text and not options and not sending:
+                state["quiet"] = state["batch"]  # no card picture either (_with_preview)
+                still = _in_with(language, "api.still_waiting", STILL_WAITING, count=str(len(pending)))
+                return _save_buttons(f"{text}\n\n{still}", state["batch"])
+            lines = "\n".join(f"{i}. {without_ids(e.summary)}" for i, e in enumerate(pending, 1))
+            text = f"{text}\n\n{READY_SEND_HEADING if sending else READY_HEADING}\n{lines}".strip()
             if not options:
                 text = f"{text}\n\n{press_line(pending, language)}"
         if options:
@@ -1467,7 +1484,7 @@ class ApiWhatsApp:
     async def _save_state(self, ctx: Any, state: dict) -> None:
         remember_card(state)  # WA-263
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "kept", "photo", "unbilled", "unsaved", "cards",
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "quiet", "kept", "photo", "unbilled", "unsaved", "cards",
                                                                "saved_batch", "asked_id")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
@@ -1710,17 +1727,25 @@ def _turn_language(text: str, state: dict) -> str | None:
     return _chosen(state) or _language(text, state.get("language"))
 
 
-def _today(ctx: Any) -> str:
-    return dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date().isoformat()
+def _today(ctx: Any, day_starts_at: str | None = None) -> str:
+    """The company's date now; with ``day_starts_at`` its working day (before the day's start it is still the day
+    before), the same day the agent dates entries by."""
+    now = dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata"))
+    if day_starts_at is None:
+        return now.date().isoformat()
+    from mesiri.domains.organizations.settings import working_day
+
+    return working_day(now, day_starts_at).isoformat()
 
 
-def _places(ctx: Any, working: dict[str, Any] | None) -> Places:
+def _places(ctx: Any, working: dict[str, Any] | None, day_starts_at: str | None = None) -> Places:
     """[213]: the sender's projects and sites, and the site they last reported to TODAY ([215]; kept in the
-    conversation state). Yesterday's site is not a default: with several sites, the next update asks."""
+    conversation state). Yesterday's site is not a default: with several sites, the next update asks. "Today" is the
+    working day when ``day_starts_at`` is given (WA-277 step C)."""
     places = Places(
         projects=tuple((str(p.id), str(p.name)) for p in getattr(ctx, "projects", None) or []),
         sites=tuple((str(s.id), str(s.name), str(s.project_id)) for s in getattr(ctx, "sites", None) or []))
-    today = bool(working) and working.get("date") == _today(ctx)  # type: ignore[union-attr]
+    today = bool(working) and working.get("date") == _today(ctx, day_starts_at)  # type: ignore[union-attr]
     found = places.place(working.get("site_id"), working.get("project_id")) if working and today else None
     return Places(places.projects, places.sites, found, tuple((working or {}).get("recent") or ()))
 

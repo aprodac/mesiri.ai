@@ -554,6 +554,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "इन्हें दर्ज करने के लिए *Save* दबाइए।",
         "hinglish": "Inhe record karne ke liye *Save* dabaiye.",
     },
+    "api.still_waiting": {
+        "english": "⏳ {count} still waiting to save (the list above). Tap *Save* to record.",
+        "manglish": "⏳ {count} ennam save cheyyaan baakki und (mukalile list). Record cheyyaan *Save* amarthuka.",
+        "malayalam": "⏳ {count} എണ്ണം സേവ് ചെയ്യാൻ ബാക്കിയുണ്ട് (മുകളിലെ ലിസ്റ്റ്). രേഖപ്പെടുത്താൻ *Save* അമർത്തുക.",
+        "hindi": "⏳ {count} सेव होना बाकी है (ऊपर की सूची)। दर्ज करने के लिए *Save* दबाइए।",
+        "hinglish": "⏳ {count} save hona baaki hai (upar ki list). Record karne ke liye *Save* dabaiye.",
+    },
     "api.extra_ask": {
         "english": "If it is extra, tap *Save* and it is recorded anyway; if not, tap *Cancel*.",
         "manglish": "Ithu extra aanenkil *Save* amarthuka, record aakum; allenkil *Cancel* amarthuka.",
