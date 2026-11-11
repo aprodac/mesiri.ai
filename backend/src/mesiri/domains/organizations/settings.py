@@ -56,9 +56,11 @@ JOIN_REQUESTS = "join_requests"
 WORKING_DAY_STARTS_AT = "working_day_starts_at"
 WORKING_DAY_STARTS_DEFAULT = "04:00"
 #: WA-264: the AI check of a draft card against what the person said. "shadow": runs after the reply, only logged
-#: (no time added, no reply changed); "off": not run.
+#: (no time added, no reply changed); "off": not run. "ask" (WA-277 step F): it runs before the card goes out, and
+#: when it finds a line that does not record what was said, its one question goes above the card (a few seconds more
+#: on replies with a card; for the test companies first).
 CARD_REVIEW = "card_review"
-CARD_REVIEW_MODES: frozenset[str] = frozenset({"off", "shadow"})
+CARD_REVIEW_MODES: frozenset[str] = frozenset({"off", "shadow", "ask"})
 CARD_REVIEW_DEFAULT = "shadow"
 CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
@@ -237,8 +239,8 @@ _SPECS: dict[str, SettingSpec] = {
         key=CARD_REVIEW,
         default=CARD_REVIEW_DEFAULT,
         description=(
-            "The AI check of a draft card against what the person said (off, or shadow: it runs after the reply "
-            "and is only logged for the team)."
+            "The AI check of a draft card against what the person said (off; shadow: it runs after the reply "
+            "and is only logged for the team; ask: it runs before the card and asks one question when a line looks wrong)."
         ),
     ),
     CAPTURE_MODE: SettingSpec(

@@ -149,6 +149,8 @@ RECEIPT_SECONDS = 4.0
 #: WA-210: the TO SAVE preview card is drawn within this many seconds, or the list goes out as text (it sits on the
 #: reply path, so it gets less time than the SAVED card, which went after the reply).
 PREVIEW_SECONDS = 3.0
+#: WA-277 step F: how long a reply waits for the card check where it asks before the card (mode "ask").
+CARD_ASK_SECONDS = 6.0
 #: Today's recorded entries given to the model up front (WA-127).
 TODAY_ENTRIES = 40
 #: The materials and units of a company, read once per this many seconds.
@@ -374,6 +376,11 @@ class ApiWhatsApp:
         reply = await self._with_preview(reply, ctx, message.correlation_id)
         reply = with_save_button(reply, await self._state(ctx))  # WA-263: "tap Save" always has its button
         _lap("v3_preview")
+        if said and reply.header_image is not None and message.correlation_id in self._shown_lines:
+            if await self._card_review_mode(ctx) == "ask":
+                # WA-277 step F: where the company's switch says so, the check runs BEFORE the card goes out.
+                reply = await self._ask_before_card(reply, message, ctx, said)
+                _lap("v3_card_review")
         heard_shown = self._heard_shown.pop(message.correlation_id, False)
         if message.modality is InputModality.VOICE and said and heard_shown:
             # WA-209 (4 Nov: "5 chaak" heard as 30, unseen until Save): what was heard comes first, so a misheard
@@ -414,7 +421,8 @@ class ApiWhatsApp:
         return True
 
     async def _card_review_mode(self, ctx: Any) -> str:
-        """WA-264: the company's ``card_review`` setting (off / shadow), cached 10 minutes; the default when unread."""
+        """WA-264: the company's ``card_review`` setting (off / shadow / ask), cached 10 minutes; the default when
+        unread."""
         from mesiri.domains.organizations.settings import CARD_REVIEW, CARD_REVIEW_DEFAULT
 
         org = str(getattr(ctx, "organization_id", "") or "")
@@ -437,16 +445,44 @@ class ApiWhatsApp:
         cache[org] = (value, time.time())
         return value
 
-    async def _review_card(self, message: Any, ctx: Any, said: str, lines: list[str], history: list[Any]) -> None:
+    async def _review_card(self, message: Any, ctx: Any, said: str, lines: list[str], history: list[Any],
+                           mode: str = "shadow") -> Any:
         """WA-264: run the card check and write its verdict to the trace (stage ``card_review``)."""
         verdict = await review_card(self._agent._provider, said=said, lines=lines, history=history,
                                     organization_id=str(ctx.organization_id), correlation_id=message.correlation_id)
         if verdict is None or self._trace is None:
-            return
+            return verdict
         await self._trace.log_stage(
             correlation_id=message.correlation_id, stage="card_review",
-            stage_payload={"said": said[:500], "card": lines, **verdict.to_json()},
+            stage_payload={"said": said[:500], "card": lines, "mode": mode, **verdict.to_json()},
             duration_ms=verdict.ms, succeeded=not verdict.error, event_source=EVENT_SOURCE)
+        return verdict
+
+    async def _ask_before_card(self, reply: ReplySpec, message: Any, ctx: Any, said: str) -> ReplySpec:
+        """WA-277 step F (plan section 9.3; Ilan, 8 Nov: "does the ai actually check and see what we are telling to
+        save?"): mode ``ask``. The check reads the card the person is about to get; when it finds a line that does
+        not record what they said (a finding the code itself checked: a line on the card, their own words quoted),
+        its ONE question goes out above the card, and stays open so their answer is read as the answer. The card and
+        its Save stay: the check can be wrong, and a card held back for a false alarm would be a new dead end.
+        Slower than CARD_ASK_SECONDS, unsure, or failing: the card goes out exactly as it was. Never raises."""
+        lines = self._shown_lines.pop(message.correlation_id, None) or []  # the after-reply shadow run is not needed
+        try:
+            history = await _safe_load(self._memory, ctx)
+            verdict = await asyncio.wait_for(
+                self._review_card(message, ctx, said, lines, history, mode="ask"), timeout=CARD_ASK_SECONDS)
+            if verdict is None or verdict.verdict != "wrong" or not verdict.question.strip():
+                return reply
+            question = f"❓ {verdict.question.strip()}"
+            state = await self._state(ctx)
+            state["asked"] = {"question": verdict.question.strip(), "options": []}  # [219]: the next message answers it
+            await self._save_state(ctx, state)
+            if len(question) + 2 + len(reply.text or "") > BODY_LIMIT:
+                await _safe(self._send(ReplySpec(text=question), message.sender.wa_id))  # too long for one body
+                return reply
+            return dataclasses.replace(reply, text=f"{question}\n\n{reply.text}")
+        except Exception:  # noqa: BLE001 -- a check that fails or is slow is never felt
+            _log.warning("agent_api.card_ask_not_done user=%s", getattr(ctx, "user_id", None), exc_info=True)
+            return reply
 
     @staticmethod
     def _answered_key(message: Any) -> str | None:
@@ -716,13 +752,15 @@ class ApiWhatsApp:
             self._just_saved[message.correlation_id] = list(turn.saved)
         saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx), admin=_may_set_sizes(ctx)) if turn.saved else ""
         words = without_heard_echo(turn.reply or turn.question or saved_words)  # [258]: the code draws "🎤 ..." once
-        if any(not r.ok and not held(r) for r in turn.saved):
+        if turn.saved:
             # WA-260 (Ilan, 8 Nov: two entries in one voice note, one saved, the other refused, and the reply spoke as if
-            # both were): when anything was refused, the code's ✅ / ❌ lines always go first; the model's words follow
-            # without any "saved" in them.
+            # both were): the code's ✅ / ❌ lines go first; the model's words follow without any "saved" in them.
+            # WA-277 step F: for EVERY save made by words ("save cheythoo"), not only when one was refused: what was
+            # saved is said by the code, in the same lines the Save button gives, whatever the model wrote.
             rest = without_saved_claims(without_heard_echo(turn.reply or turn.question or ""))
-            words = "\n\n".join(p for p in (saved_words, rest,
-                                             _in(state.get("language"), "api.refused_dropped", REFUSED_DROPPED)) if p)
+            refused = any(not r.ok and not held(r) for r in turn.saved)
+            words = "\n\n".join(p for p in (
+                saved_words, rest, _in(state.get("language"), "api.refused_dropped", REFUSED_DROPPED) if refused else "") if p)
         if got_why:
             words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
         passed_on = any(c.get("tool") == TELL_THE_TEAM for c in calls)
