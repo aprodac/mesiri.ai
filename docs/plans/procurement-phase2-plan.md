@@ -2,7 +2,8 @@
 
 > **Status:** plan written 9 Nov 2026. Built: PRC-34 (step 0, GST on deliveries and orders), PRC-45 (Pending deliveries), PRC-40..44 (Quotations; as built: the quote's terms sit on `rfq_vendors`, no separate `quotations` table; no RFQ PDF, the WhatsApp text is the RFQ; quote photos read on WhatsApp only; no quotes-due reminder yet), PRC-47
 > (Minimum stock and reorder, 10 Nov; as built: see §5.4), PRC-46 (Returns, 10 Nov), PRC-48 (Stock count) and PRC-49
-> (Stock value), 10 Nov: as built in the tracker rows. Tracker items `PRC-40`..`PRC-52` in
+> (Stock value), 10 Nov: as built in the tracker rows. PRC-51 (Price list, with PRC-15), 11 Nov: the supplier page's
+> *Rates* tab became *Price list*; read only, `GET /procurement/rates/suppliers/{id}`; web only, WhatsApp deferred. Tracker items `PRC-40`..`PRC-52` in
 > [V1_TRACKER.md](V1_TRACKER.md) (PRC section).
 > **Follows:** [procurement-plan.md](procurement-plan.md) (PRC-00..37, built 5–9 Nov) and the gaps listed in
 > [capability-framework-gap-analysis.md](capability-framework-gap-analysis.md) modules 07, 08, 09.
