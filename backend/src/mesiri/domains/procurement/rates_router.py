@@ -4,6 +4,8 @@
 average, each supplier's average, the cheapest supplier and what was paid above its rate, and the points for a
 trend line. ``vendor_id`` narrows the items to what that supplier delivered (the supplier page), still compared
 with every supplier. ``GET /procurement/rates/{material_id}`` -- one item's purchases, newest first.
+``GET /procurement/rates/suppliers/{vendor_id}`` -- PRC-51: the supplier's price list (last quoted and last paid per
+material, ``price_list.py``); the supplier page and the new-order dialog read it.
 
 Rates are for the roles that see the company's spending (SEC-01, ``may_view_expenses``); others get 403. Rows
 follow the caller's project and site scope, like stock.
@@ -16,11 +18,13 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
 from mesiri.domains.materials.router import _resolve_project_ids, _site_filter_denied
+from mesiri.domains.procurement import price_list
 from mesiri.domains.procurement import rates as store
 from mesiri.domains.procurement.router import _visible
 from mesiri.domains.projects.router import get_auth_context
@@ -103,6 +107,35 @@ async def list_rates(
             "above_best": store._money(sum((Decimal(i["above_best"]) for i in items), Decimal(0))),
         },
     }
+
+
+@router.get("/suppliers/{vendor_id}")
+async def supplier_price_list(
+    vendor_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """PRC-51: per material, the supplier's newest quote (live or expired) and its last delivery's rate, within the
+    caller's project and site scope."""
+    _allowed(auth_context)
+    org = auth_context.organization_id
+    found = (await conn.execute(text("SELECT 1 FROM vendors WHERE id = :id AND organization_id = :org"),
+                                {"id": vendor_id, "org": org})).first()
+    if found is None:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    from mesiri.application.dpr import project_day
+
+    today = await project_day.company_today(conn, org)
+    project_ids, denied = _resolve_project_ids(auth_context, None)
+    if denied:
+        return {"vendor_id": str(vendor_id), "today": today.isoformat(), "items": []}
+    purchases = await store.fetch_purchases(conn, org, project_ids=project_ids, date_from=None, date_to=today,
+                                            vendor_id=vendor_id)
+    quotes = [q for q in await price_list.fetch_quotes(conn, org, vendor_id)
+              if (project_ids is None or q["project_id"] in project_ids)
+              and _visible(auth_context, q["project_id"], q["site_id"])]
+    items = price_list.build(quotes, _in_scope(auth_context, purchases, None), today)
+    return {"vendor_id": str(vendor_id), "today": today.isoformat(), "items": items}
 
 
 @router.get("/{material_id}")

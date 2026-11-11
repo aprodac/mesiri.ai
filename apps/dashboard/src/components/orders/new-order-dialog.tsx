@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchVendorsApi } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
+import { fetchPriceList, gstWords, shortDate } from '@/lib/rates'
 import { categoryPaths, fetchLastPurchase, fetchMaterialCategories, fetchMaterials } from '@/lib/materials'
 import { asDuplicateConflict, fetchRequests, qty } from '@/lib/requests'
 import { createOrder, rupees, updateOrder, type PurchaseOrder } from '@/lib/orders'
@@ -100,6 +101,8 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
   }, [open, projectId, siteId, sites])
   const { data: vendors = [] } = useQuery({ queryKey: ['finance', 'vendors', 'names'], queryFn: fetchVendorsApi, enabled: open, retry: false, staleTime: 60_000 })
   const vendorNames = React.useMemo(() => vendors.filter((v) => v.status === 'active').map((v) => v.name), [vendors])
+  // PRC-51: the supplier typed is a vendor record -> its live quotes are offered next to each rate box.
+  const vendorId = React.useMemo(() => vendors.find((v) => v.name.trim().toLowerCase() === supplier.trim().toLowerCase())?.id ?? '', [vendors, supplier])
   const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchMaterials({ is_active: true, limit: 200 }), enabled: open, staleTime: 60_000 })
   const { data: categories } = useQuery({ queryKey: ['materials', 'categories'], queryFn: fetchMaterialCategories, enabled: open, staleTime: 60_000 })
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
@@ -234,7 +237,11 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
                       <Button type="button" variant="ghost" size="icon" aria-label="Remove item" onClick={() => setLines((all) => all.filter((l) => l.key !== line.key))}><X className="size-4" /></Button>
                     )}
                   </div>
-                  {material && seesMoney && <LastRate materialId={material.id} unit={unit} onUse={(r) => !line.rate && update(line.key, { rate: r })} />}
+                  {material && seesMoney && (
+                    <QuotedRate vendorId={vendorId} supplier={supplier.trim()} materialId={material.id} unit={unit}
+                      onUse={(r, g) => { update(line.key, { rate: r }); if (g && gst.percent === null) setGst(g) }}
+                      fallback={<LastRate materialId={material.id} unit={unit} onUse={(r) => !line.rate && update(line.key, { rate: r })} />} />
+                  )}
                   {line.requestLineId && <span className="w-fit rounded-md bg-muted px-2 py-0.5 text-xs font-semibold">From {line.requestRef}</span>}
                 </div>
               )
@@ -314,6 +321,23 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** PRC-51 (PRC-15): "Malabar quoted ₹395 / bag, valid till 20 Nov · Use this rate" when the chosen supplier has a live
+ * quote for the item (its price list); else `fallback`, the last rate paid to anyone. */
+function QuotedRate({ vendorId, supplier, materialId, unit, onUse, fallback }: { vendorId: string; supplier: string; materialId: string; unit: string; onUse: (rate: string, gst: GstValue | null) => void; fallback: React.ReactNode }) {
+  const { data, isLoading } = useQuery({ queryKey: ['procurement', 'price-list', vendorId], queryFn: () => fetchPriceList(vendorId), enabled: !!vendorId, staleTime: 60_000, retry: false })
+  if (vendorId && isLoading) return null
+  const q = data?.items.find((i) => i.material_id === materialId)?.quoted
+  if (!vendorId || !q || !q.live) return <>{fallback}</>
+  const entered = String(Number(q.rate_entered))
+  const gst = q.gst_percent === null ? null : { percent: String(Number(q.gst_percent)), includes: q.rate_includes_gst }
+  return (
+    <span className="flex w-fit flex-wrap items-center gap-1.5 rounded-md bg-green-50 px-2 py-0.5 text-xs text-green-900 dark:bg-green-950/40 dark:text-green-200" data-testid="quoted-rate">
+      {supplier} quoted ₹{Number(q.rate_entered).toLocaleString('en-IN')} / {unit}{gstWords(q)}{q.valid_until ? `, valid till ${shortDate(q.valid_until)}` : ''} ({q.rfq_ref})
+      <button type="button" onClick={() => onUse(entered, gst)} className="font-semibold underline">Use this rate</button>
+    </span>
   )
 }
 

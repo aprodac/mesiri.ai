@@ -15,6 +15,7 @@ import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
 import { VendorRates } from '@/components/rates/vendor-rates'
+import { VendorPriceList } from '@/components/rates/vendor-price-list'
 import { VendorReturns } from '@/components/returns/vendor-returns'
 import { BillDeliveriesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
 import { AgeBar } from '@/components/vendors/vendor-parts'
@@ -146,7 +147,7 @@ export default function VendorPage() {
     { value: 'unbilled', label: 'Not billed', count: unbilled.length, money: true },
     { value: 'payments', label: 'Payments', count: payments.length, money: true },
     ...(v?.kind === 'subcontractor' ? [{ value: 'work' as Tab, label: 'Work orders' }] : []),
-    { value: 'rates', label: 'Rates', money: true },
+    { value: 'rates', label: 'Price list', money: true },  // PRC-51
     { value: 'returns', label: 'Returns', money: true },  // PRC-46
     { value: 'details', label: 'Details' },
   ]
@@ -507,7 +508,7 @@ export default function VendorPage() {
         </section>
       )}
 
-      {shownTab === 'rates' && v && <div className="rounded-xl border bg-card"><VendorRates vendorId={v.id} /></div>}
+      {shownTab === 'rates' && v && <div className="rounded-xl border bg-card"><VendorPriceList vendorId={v.id} /><VendorRates vendorId={v.id} /></div>}
       {shownTab === 'returns' && v && <VendorReturns vendorId={v.id} readOnly={readOnly} />}
       {shownTab === 'work' && v && <VendorWorkOrders vendorId={v.id} vendorName={v.name} canManage={!readOnly && (canManage || mayGiveWork(role))} />}
 

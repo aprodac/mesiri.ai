@@ -138,3 +138,53 @@ export function ratePeriodRange(period: RatePeriod, from: string, to: string): {
 
 /** A supplier keeps one colour everywhere (chart dot, bar, filter). */
 export const vendorColour = (key: string) => swatch(key)
+
+// PRC-51: a supplier's price list -- per material its newest quote (live or expired) and its last delivery's rate.
+// `rate` is what a unit costs the company (D-CC8); `rate_entered` + GST are what the supplier said, for the order box.
+
+export interface PriceQuote {
+  rate: string
+  rate_entered: string
+  rate_with_gst: string
+  gst_percent: string | null
+  rate_includes_gst: boolean | null
+  gst_known: boolean
+  brand: string | null
+  valid_until: string | null
+  quoted_on: string | null
+  live: boolean
+  rfq_id: string
+  rfq_ref: string
+  quote_line_id: string
+}
+
+export interface PricePaid {
+  rate: string
+  rate_entered: string
+  gst_percent: string | null
+  rate_includes_gst: boolean | null
+  date: string
+  order_id: string | null
+  order_ref: string | null
+}
+
+export interface PriceListItem {
+  material_id: string
+  material_name: string
+  unit: string
+  quoted: PriceQuote | null
+  paid: PricePaid | null
+}
+
+export async function fetchPriceList(vendorId: string): Promise<{ today: string; items: PriceListItem[] }> {
+  const res = await api.get<{ today: string; items: PriceListItem[] }>(`/procurement/rates/suppliers/${vendorId}`)
+  return res.data
+}
+
+/** " incl. 28% GST" / " + 18% GST" / ", no GST": how the supplier said its rate; '' when GST was not said. */
+export function gstWords(q: { gst_percent: string | null; rate_includes_gst: boolean | null }): string {
+  if (q.gst_percent === null) return ''
+  const pct = Number(q.gst_percent)
+  if (pct === 0) return ', no GST'
+  return q.rate_includes_gst ? ` incl. ${pct}% GST` : ` + ${pct}% GST`
+}

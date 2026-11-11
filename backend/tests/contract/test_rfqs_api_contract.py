@@ -267,3 +267,52 @@ async def test_site_roles_see_who_quoted_not_rates_and_cannot_write_and_other_co
     stranger = await _user(test_engine, other, "admin", "Stranger")
     assert (await client.get(f"/procurement/rfqs/{rfq['id']}", headers=stranger["h"])).status_code == 404
     assert (await client.get("/procurement/rfqs", headers=stranger["h"])).json()["items"] == []
+
+
+# PRC-51: the supplier's price list -- newest quote per material (live or expired) and its last paid rate (Rates rule).
+
+async def _vendor_id(client, w, name: str) -> str:
+    items = (await client.get("/finance/vendors", headers=w["admin"]["h"])).json()
+    items = items["items"] if isinstance(items, dict) else items
+    return next(v["id"] for v in items if v["name"] == name)
+
+
+async def test_price_list_shows_live_and_expired_quotes_and_the_last_paid_rate(client, world, test_engine):
+    w = world
+    await _quoted(client, w)
+    malabar, kk = await _vendor_id(client, w, "Malabar Hardware"), await _vendor_id(client, w, "KK Traders")
+    resp = await client.post("/materials/inflows", headers=w["admin"]["h"], json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]), "material_id": w["cement"],
+        "unit_id": w["units"]["bags"], "quantity": "50", "movement_reason": "RECEIVED", "occurred_date": str(company_today()),
+        "unit_cost": "400", "vendor_id": malabar})
+    assert resp.status_code == 201, resp.text
+    # KK's quote had no "valid until": live 30 days after it was recorded; once it is older, expired.
+    await _exec(test_engine, "UPDATE rfq_vendors SET quoted_at = now() - interval '40 days' WHERE vendor_id = :v", v=uuid.UUID(kk))
+    await _exec(test_engine, "UPDATE rfq_vendors SET valid_until = :d WHERE vendor_id = :v", v=uuid.UUID(malabar),
+                d=company_today())
+
+    mine = await client.get(f"/procurement/rates/suppliers/{malabar}", headers=w["admin"]["h"])
+    assert mine.status_code == 200, mine.text
+    rows = {r["material_name"]: r for r in mine.json()["items"]}
+    cement = rows["Cement OPC 53"]
+    assert (cement["quoted"]["rate_entered"], cement["quoted"]["rate"], cement["quoted"]["live"], cement["quoted"]["rfq_ref"]) == (
+        "472.00", "368.75", True, "RFQ-0001")  # valid until today (still live); costs 368.75 before GST, claimed back
+    assert cement["quoted"]["valid_until"] == str(company_today()) and cement["quoted"]["gst_percent"] == "28"
+    assert (cement["paid"]["rate"], cement["paid"]["date"]) == ("400.00", str(company_today()))
+    assert rows["TMT bar 12 mm"]["paid"] is None and rows["TMT bar 12 mm"]["quoted"]["gst_percent"] == "18"
+
+    theirs = {r["material_name"]: r for r in (await client.get(f"/procurement/rates/suppliers/{kk}", headers=w["admin"]["h"])).json()["items"]}
+    assert theirs["Cement OPC 53"]["quoted"]["live"] is False and theirs["Cement OPC 53"]["paid"] is None
+
+
+async def test_price_list_without_quotes_rates_hidden_and_other_companies_not_found(client, world, test_engine):
+    w = world
+    steels = await _vendor_id(client, w, "Kerala Steels")
+    empty = await client.get(f"/procurement/rates/suppliers/{steels}", headers=w["admin"]["h"])
+    assert empty.status_code == 200 and empty.json()["items"] == []
+    assert (await client.get(f"/procurement/rates/suppliers/{steels}", headers=w["arun"]["h"])).status_code == 403
+    other = uuid.uuid4()
+    await _exec(test_engine, "INSERT INTO organizations (id, name, deployment_type, db_route, status, created_at, "
+                "updated_at) VALUES (:id, 'Other', 'local', 'default', 'active', now(), now())", id=other)
+    stranger = await _user(test_engine, other, "admin", "Stranger")
+    assert (await client.get(f"/procurement/rates/suppliers/{steels}", headers=stranger["h"])).status_code == 404

@@ -113,8 +113,10 @@ async def fetch_purchases(
     date_to: datetime.date,
     material_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
+    vendor_id: uuid.UUID | None = None,
 ) -> list[dict]:
-    """Deliveries with a rate, oldest first. ``date_from`` None: everything up to ``date_to``."""
+    """Deliveries with a rate, oldest first. ``date_from`` None: everything up to ``date_to``. ``vendor_id``: only
+    that supplier's deliveries (PRC-51 price list, PRC-50 performance)."""
     sql = _PURCHASES + " AND r.occurred_date <= :date_to"
     params: dict = {"org": org, "date_to": date_to}
     if date_from is not None:
@@ -129,6 +131,9 @@ async def fetch_purchases(
     if category_id is not None:
         sql += " AND (cat.id = :category OR cat.parent_id = :category)"
         params["category"] = category_id
+    if vendor_id is not None:
+        sql += " AND r.vendor_id = :vendor"
+        params["vendor"] = vendor_id
     sql += " ORDER BY r.occurred_date, r.created_at"
     rows = (await conn.execute(text(sql), params)).mappings().all()
     return [dict(r) for r in rows]
