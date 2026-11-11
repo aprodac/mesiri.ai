@@ -230,6 +230,29 @@ left of them around the money.
 - **The production read of message text works in this session** (section 5 had it blocked), so the saved
   conversations for the failed chats can be written.
 
+### 9.1b The other days, read in production (22 Oct to 11 Nov)
+
+Read on 11 Nov, after Ilan asked whether the plan rests on one day. Read: every message and reply of the five
+companies that are not the test company (161 messages, 5 to 11 Nov), and the day counts of all companies.
+**Not read:** the test company's 1,225 messages (80% of all traffic; known through the request log and section
+3.1), and traces before 2 Nov (none are kept).
+
+- **Use is small and fell away.** About 1,530 messages in three weeks, 65 to 200 a day until 8 Nov, then 2, 24
+  and 7. Outside the test company: about four people. The saved conversations are the evidence there is; live
+  traffic will not prove a fix this month.
+- **What repeats across days and companies** (each must have saved conversations among the 12 hardest):
+
+| Pattern | Seen | Covered by |
+|---|---|---|
+| A correction is not taken the first time ("change six masons to five" said twice; "6 rods" became "5 kg", then "I had said 6"; TMT steel) | Aprodac 8 Nov, New India 11 Nov | C, F; [281] [284] |
+| Save answers "nothing waiting to save", or the card has another flow's buttons | Aprodac 7 and 8 Nov, cd 6 Nov | WA-263, WA-266 (unchecked live); a saved conversation each |
+| "Ready aanu" read as "done" or as nothing ("what is this 'it's ready'?", "Saved?") | Aprodac 7 and 8 Nov | F: the code's line says "not saved yet: tap Save" |
+| The site asked again minutes after it was given | Aprodac 6, 7, 8 Nov | C: the site check uses the last site reported to |
+| A size question that traps (rods to kg, a load of sand) | Aprodac 8 Nov, cd 6 Nov, New India 5 Nov | WA-268 (unchecked live) |
+| English system lines to a Malayalam speaker; Malayalam spelt out letter by letter in Latin | Aprodac 8 Nov, cd 5 Nov | F: state lines are the code's, in five languages |
+| Asked for and not there: orders still to come (twice), report as PDF, a week's report | New India 7 and 11 Nov | [275] [279]; out of scope here, listed in the report |
+| The AI paused for hours, then "couldn't process" for every kept message | 1 Nov (30 messages), 8 Nov (31) | WA-269: the key, an alert, a fallback |
+
 ### 9.2 Objective, scope, value
 
 - **Objective:** the assistant gets a real person's message right the first time far more often, and a fault
