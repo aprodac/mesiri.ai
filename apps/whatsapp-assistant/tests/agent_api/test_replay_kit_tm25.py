@@ -109,3 +109,33 @@ def test_the_trace_keeps_the_last_few_messages_cut_short_271() -> None:
     kept = before_in_trace(history)
     assert len(kept) == BEFORE_IN_TRACE and kept[-1]["text"].startswith("19 ") and len(kept[0]["text"]) == BEFORE_CHARS
     assert before_in_trace(None) == []
+
+
+def test_a_live_replay_gives_the_code_the_material_list_of_the_facts() -> None:
+    """WA-277 round 2: "30 hollow bricks used" was held as Solid Blocks on the real model, and nothing objected:
+    the replay answered the code's own read of the material list with {}, which switches the material check off.
+    A live replay now answers it from the facts of the turn, as production does."""
+    import asyncio
+
+    from tests.agent_api.replaykit import RecordedApi, facts_catalogue
+
+    facts = ("Units (unit_id): bags (03e5cbfa-43d6-4af5-b18a-61aa7f884af7), nos (ebc540c6-e1fd-452f-8a89-fa304d89fb40)\n"
+             "Materials (material_id, default unit):\n"
+             "- Cement (3f194e81-47cb-43ec-b0e9-d2aa0a3311c8, bags)\n"
+             "- Steel (501752c0-7422-4144-81a8-473982ab534a, ?) also called: kambi, TMT\n"
+             "- Solid Blocks (64594c8e-a829-45fa-b600-63e0c95ad162, nos)")
+    rows = facts_catalogue(facts)
+    assert [r["name"] for r in rows] == ["Cement", "Steel", "Solid Blocks"]
+    assert rows[1]["aliases"] == ["kambi", "TMT"]
+    assert rows[0]["default_unit_id"] == "03e5cbfa-43d6-4af5-b18a-61aa7f884af7" and rows[1]["default_unit_id"] is None
+
+    api = RecordedApi(catalogue=rows)
+    everything = asyncio.run(api.call("GET", "/materials", params={"limit": 200}))
+    assert len(everything.body["items"]) == 3
+    found = asyncio.run(api.call("GET", "/materials", params={"search": "kambi"}))
+    assert [r["name"] for r in found.body["items"]] == ["Steel"]
+    # a recorded answer still comes first, and a scripted replay (no catalogue) answers {} as before
+    recorded = RecordedApi(answers={"GET /materials": [{"items": []}]}, catalogue=rows)
+    assert asyncio.run(recorded.call("GET", "/materials")).body == {"items": []}
+    assert asyncio.run(RecordedApi().call("GET", "/materials")).body == {}
+    assert facts_catalogue("no materials here") == []

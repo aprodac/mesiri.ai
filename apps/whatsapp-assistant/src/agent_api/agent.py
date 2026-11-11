@@ -1196,8 +1196,17 @@ class ApiAgent:
                 taught = [(e.path.split("/")[2], str(e.body.get("alias") or "")) for e in [*waiting, *new]
                           if e is not None and e.tool == ALIAS_TOOL]
                 found: dict[str, Any] = {}
+                picked = str(body.get("material_id") or "")
                 problem, buttons = await settle_material(
                     client, body, str(arguments.get(MATERIAL_SAID) or ""), their_words, taught, english, found)
+                # WA-277 round 2 ("30 hollow bricks used" picked as Solid Blocks): when the code puts the line on
+                # another material than the model picked (a listed one, or a new one), the card line the model wrote
+                # for its own pick is corrected too. A line never names one material and saves on another.
+                moved_to = (str(found.get("new_name") or "") if problem else
+                            await material_name(client, str(body.get("material_id") or ""))
+                            if str(body.get("material_id") or "") != picked else "")
+                if moved_to and (wrong := await material_name(client, picked)):
+                    arguments = {**arguments, CONFIRM_ARG: line_on(str(arguments.get(CONFIRM_ARG) or ""), wrong, moved_to)}
                 if problem and found.get("new_name"):
                     # [268] (6 Nov, Ilan: "20 TMT Steel bars vannu", twice, and nothing came of it): a material not in the
                     # list was the model's job in three calls (the line, add_material, the line again), and add_material
@@ -1761,6 +1770,14 @@ class ApiAgent:
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed, language_set=next(iter(language_set), ""),
                        size_unknown=bool(size_unknown), opened=sorted(opened))
+
+
+def line_on(line: str, wrong: str, right: str) -> str:
+    """``line`` with the material name ``wrong`` replaced by ``right`` (whole name, any letter case, a plural "s"
+    kept out); unchanged when ``wrong`` is not in it (the model wrote their own word, which is fine)."""
+    if not line or not wrong or not right or wrong.lower() == right.lower():
+        return line
+    return re.sub(rf"(?<![^\W_]){re.escape(wrong)}(?![^\W_])", right, line, flags=re.IGNORECASE)
 
 
 #: WA-277 step C: a line refused this many times in one turn (for any reasons) is not tried again in that turn.

@@ -13,6 +13,7 @@ from __future__ import annotations
 import functools
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,11 +32,22 @@ class RecordedApi:
 
     answers: dict[str, list[Any]] = field(default_factory=dict)
     seen: list[tuple[str, str]] = field(default_factory=list)
+    #: The material list read from the turn's facts (live replays): what ``GET /materials`` answers when the
+    #: recording kept no answer for it.
+    catalogue: list[dict[str, Any]] = field(default_factory=list)
 
     async def call(self, method: str, path: str, *, params: dict[str, Any] | None = None,
                    json: dict[str, Any] | None = None, idempotency_key: str | None = None) -> ApiResponse:
         self.seen.append((method, path))
         queue = self.answers.get(f"{method} {path}") or []
+        if not queue and self.catalogue and (method, path) == ("GET", "/materials"):
+            # WA-277 round 2: the company's material list, as the facts of that turn give it. Without it the code's
+            # own material check is off in a replay (it reads an empty list and lets the model's pick stand), and
+            # the real model is judged without the check production runs on every line.
+            word = str((params or {}).get("search") or "").strip().lower()
+            rows = [r for r in self.catalogue
+                    if not word or any(word in n.lower() for n in (r["name"], *r["aliases"]))]
+            return ApiResponse(status=200, body={"items": rows, "total": len(rows)})
         body = queue.pop(0) if queue else {}
         return ApiResponse(status=200, body=body)
 
@@ -55,6 +67,25 @@ def _real_tools() -> dict[str, Any]:
     """Every tool on ALLOWED. Built once per run (WA-277 step A: with about 47 saved conversations, building the API
     app for each one took most of their time); each caller gets its own dict of the same (frozen) tools."""
     return dict(_built_tools())
+
+
+_MATERIAL_LINE = re.compile(r"^- (?P<name>.+?) \((?P<id>[0-9a-f-]{36}), (?P<unit>[^)]*)\)(?: also called: (?P<aliases>.+))?$")
+_UNIT = re.compile(r"(?P<code>[^,(]+?) \((?P<id>[0-9a-f-]{36})\)")
+
+
+def facts_catalogue(facts: str) -> list[dict[str, Any]]:
+    """The materials a turn's facts list ("- Steel (<id>, kg) also called: kambi, TMT"), as ``GET /materials`` rows."""
+    units = {}
+    for line in facts.splitlines():
+        if line.startswith("Units (unit_id):"):
+            units = {m["code"].strip(): m["id"] for m in _UNIT.finditer(line.split(":", 1)[1])}
+    rows = []
+    for line in facts.splitlines():
+        if (m := _MATERIAL_LINE.match(line.strip())) is not None:
+            rows.append({"id": m["id"], "name": m["name"], "is_active": True, "default_unit": m["unit"],
+                         "default_unit_id": units.get(m["unit"]),
+                         "aliases": [a.strip() for a in (m["aliases"] or "").split(",") if a.strip()]})
+    return rows
 
 
 def recorded_api(recorded: dict[str, Any], tools: dict[str, Any]) -> RecordedApi:
@@ -97,6 +128,8 @@ async def replay(recorded: dict[str, Any], *, facts: str = "", reply: str | None
     api = recorded_api(recorded, tools)
     model = live_provider() if live else FakeToolCallingProvider(script)
     facts = facts or str(recorded.get("facts") or "")
+    if live:
+        api.catalogue = facts_catalogue(facts)
     # WA-271: the messages before this one, when the trace kept them (turns traced from 10 Nov 2026).
     history = [ChatMessage(role=str(m.get("role") or "user"), text=str(m.get("text") or ""))
                for m in recorded.get("before") or [] if isinstance(m, dict)]
