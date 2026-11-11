@@ -129,6 +129,18 @@ async def material_name(client: ApiClient, material_id: str) -> str:
     return next((str(r.get("name") or "") for r in await catalogue(client) if str(r["id"]) == material_id), "")
 
 
+async def narrower_than(client: ApiClient, said: str, material_id: str) -> str:
+    """[285]: the listed name of ``material_id`` when ``said`` names it more narrowly than the list does ("TMT steel"
+    for the listed "Steel": every word of the name and more), else "". A person who corrects a line on Steel to "TMT
+    steel" means a separate material; "steel" or "Steels" is the same one, and "metal" for an aggregate is not
+    narrower (its words are not the name's)."""
+    row = next((r for r in await catalogue(client) if str(r["id"]) == material_id), None)
+    if row is None or not said.strip() or any(_same(said, n) for n in _names(row)):
+        return ""
+    words = _words(said)
+    return str(row["name"]) if any(_words(n) and _words(n) < words for n in _names(row)) else ""
+
+
 async def already_listed(client: ApiClient, name: str) -> str:
     """[243]: the company's material that ``name`` already is (its name or a taught alias, singular or plural), or "".
     A new material is never a second "Cement"."""

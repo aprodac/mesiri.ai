@@ -50,9 +50,11 @@ from .materials import (
     catalogue,
     known_vendor,
     material_name,
+    narrower_than,
     pending_ref,
     settle_category,
     settle_material,
+    title,
     without_category_note,
 )
 from .reply_guard import (
@@ -638,6 +640,10 @@ _CHANGE = {
         "confirm_line": {"type": "string", "description": "The entry's new one-line summary in their words."},
     },
 }
+_CHANGE["properties"]["changes"]["description"] = (  # [285]
+    "Only the fields that change (field names as in the entry). A different material: field material_said, their "
+    "own word for it (\"TMT steel\"), plus material_id when it is another listed material; the code checks it and "
+    "prepares a new material when it is not in the list.")
 _CORRECT_SAVED = {
     "type": "object", "required": ["number"],
     "properties": {
@@ -749,6 +755,7 @@ class ApiAgent:
         tz = ZoneInfo(timezone or "Asia/Kolkata")
         their_words = " ".join([*(m.text or "" for m in history or [] if m.role == "user"), text])
         tries: dict[str, int] = {}  # [243]: a body Mesiri could not translate is sent back to the model once per tool
+        separate: set[str] = set()  # [285]: names the person told apart from a listed material ("TMT steel", not Steel)
 
         async def english(word: str) -> str:
             """[248]: Mesiri's own English for a word the person said ("സിമൻ്റ്" -> "Cement"), or ""."""
@@ -809,12 +816,41 @@ class ApiAgent:
             raw = arguments.get("changes") or []
             pairs = raw.items() if isinstance(raw, dict) else ((c.get("field"), c.get("value")) for c in raw if isinstance(c, dict))
             changes = {str(k): _typed(entry.body.get(str(k)), v) for k, v in pairs if k}
+            # [285] (live, 11 Nov, New India): the material check asked for material_said and this refused it, so
+            # "Steel ennallathu maattittu TMT steel aakku" went round three times and nothing changed. Their word for
+            # the material is what the check reads, never a field of the record.
+            said = " ".join(str(changes.pop(MATERIAL_SAID, "") or "").split())
+            has_material = tool is not None and "material_id" in tool.body_fields
             unknown = [k for k in changes if tool is None or k not in tool.body_fields]
-            if unknown or not changes:
+            if unknown or not (changes or (said and has_material)):
                 return {"error": f"cannot change {', '.join(unknown) or 'nothing'}; fields: {', '.join(tool.body_fields) if tool else '-'}"}
             body = {**entry.body, **changes}
-            if "material_id" in changes:  # [210]: a corrected material is checked like a new line
-                problem, buttons = await settle_material(client, body, "", text, [])
+            if has_material and ("material_id" in changes or said):  # [210]: a corrected material is checked like a new line
+                before_id = str(entry.body.get("material_id") or "")
+                found: dict[str, Any] = {}
+                taught = [(e.path.split("/")[2], str(e.body.get("alias") or "")) for e in [*waiting, *new]
+                          if e is not None and e.tool == ALIAS_TOOL]
+                problem, buttons = await settle_material(client, body, said, text, taught, english, found)
+                if (not problem and said and is_uuid(before_id) and str(body.get("material_id") or "") == before_id
+                        and (listed := await narrower_than(client, said, before_id))):
+                    # [285]: the line is on Steel and they say make it "TMT steel": the list's Steel is what they are
+                    # correcting away from, so it is a separate material (the trade-name match [254] stands for a
+                    # first line, never for this correction).
+                    found = {"new_name": title(said), "near": [listed]}
+                    separate.add(alias_key(title(said)))  # its add is not refused as the listed one's trade name
+                if found.get("new_name") and not str(body.get("material_id") or "").startswith(NEW):
+                    confirm_line = str(arguments.get("confirm_line") or "").strip() or entry.summary
+                    redo = {k: v for k, v in body.items() if k != "material_id"}
+                    outcome = await new_material_with_line(entry.tool, {**redo, CONFIRM_ARG: confirm_line,
+                                                                        MATERIAL_SAID: said}, found)
+                    content = outcome.content if outcome is not None and isinstance(outcome.content, dict) else {}
+                    if outcome is not None and not content.get("error"):
+                        waiting[n - 1] = None  # the line is on the new material now, never two copies of it
+                        changed.append(n)
+                        return {**content, "status": "changed: the line is now on the new material, NOT saved",
+                                "entry": n, "now": confirm_line}
+                    if content.get("error"):  # never "changed" with the line still on the old material
+                        return {"error": content["error"]}
                 if problem:
                     unit_ask[:] = buttons
                     return {"error": problem}
@@ -1198,7 +1234,9 @@ class ApiAgent:
                     return ToolOutcome(content={"status": (
                         f"{body.get('name')} is already on the card to be added; nothing more to prepare for it. Its "
                         f"lines name it material_id \"{NEW}{body.get('name')}\".")})
-                if (listed := await already_listed(client, str(body.get("name") or ""))) and " or " in listed:
+                listed = ("" if alias_key(str(body.get("name") or "")) in separate  # [285]: they told it apart
+                          else await already_listed(client, str(body.get("name") or "")))
+                if listed and " or " in listed:
                     # [254]: "Metal" is the listed aggregate of either size: one question, never a new material.
                     unit_ask[:] = [n.split(" (material_id")[0] for n in listed.split(" or ")][:3]
                     return ToolOutcome(content={"error": (
@@ -1475,10 +1513,16 @@ class ApiAgent:
                 code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
                     "kind": "missing_feature", "about": f"Mesiri said it cannot do this; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-199)"}})
-        if not result.calls and not again_asked and nothing_done() and (
-                unbacked := unbacked_figures(result.text, text, f"{facts} {' '.join(e.summary for e in ready or [])}")):
+        looked = lambda calls: any(getattr(self._tools.get(c.name), "is_write", True) is False for c in calls)  # noqa: E731
+        if not looked(result.calls) and not again_asked and (unbacked := unbacked_figures(result.text, text, " ".join([
+                facts, *(e.summary for e in [*(ready or []), *waiting, *new] if e is not None),
+                *(json.dumps([c.arguments, c.outcome.content if c.outcome else None], default=str)
+                  for c in result.calls)]))):
             # [260] (basic 2/3, honest answers): figures about what is recorded with nothing looked up. The conversation
             # holds lines that were cancelled or never saved, so a figure must come from a tool or today's records.
+            # [285] (live, 11 Nov, New India): a turn that only changed a card line ("make it TMT steel") also wrote
+            # "last week: 42 man-days, concrete and masonry", read from nowhere. Any turn with nothing READ is checked;
+            # a figure on the card or in a tool's own result is backed.
             again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=f"(You gave figures ({', '.join(unbacked[:3])}) without looking anything up. What is "
                                   "recorded comes only from a tool or today's records above; the conversation can hold "
                                   "lines that were cancelled or never saved. Look it up now"
@@ -1488,7 +1532,6 @@ class ApiAgent:
                                   "stay: then give the same answer.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
             again_asked = True
-        looked = lambda calls: any(getattr(self._tools.get(c.name), "is_write", True) is False for c in calls)  # noqa: E731
         if told(result.calls) and not looked(result.calls) and not again_asked:
             # [247] (Ilan, 5 Nov): "how far is the project / what can Mesiri do" went to the team as a missing feature
             # while work_progress, list_issues and day_summary were there. The topic is the model's own (what it told
