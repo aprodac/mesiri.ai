@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, BookOpenCheck, CalendarRange, FileSpreadsheet, History, Lock } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowUpRight, BookOpenCheck, CalendarRange, FileSpreadsheet, History, Lock, PenLine, Undo2 } from 'lucide-react'
 import { Segmented } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,8 @@ import {
   fetchEntry,
   formatDay,
   mayReadBooks,
+  mayReopen,
+  reverseVoucher,
   presetPeriod,
   rupees,
   sourceLink,
@@ -27,6 +29,7 @@ import { downloadBlob } from '@/lib/export'
 import { useModuleEnabled } from '@/lib/modules'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
+import { NewVoucherDialog } from './new-voucher-dialog'
 
 // ACC-05: what every Accounts page shares: the period (kept in the address, so a view can be sent to the CA), the
 // row of Accounts pages, a voucher opened in a side sheet from any figure, and the Excel button.
@@ -156,9 +159,27 @@ export function BooksClosed() {
 }
 
 /** A voucher in a side sheet: its lines, where it came from, and each ledger's statement one tap away. */
-export function VoucherSheet({ entryId, onClose }: { entryId: string | null; onClose: () => void }) {
+export function VoucherSheet({ entryId, onClose, onOpen }: { entryId: string | null; onClose: () => void; onOpen?: (id: string) => void }) {
   const q = useQuery({ queryKey: ['accounts', 'entry', entryId], queryFn: () => fetchEntry(entryId!), enabled: !!entryId })
   const e = q.data
+  const { me } = useAuth()
+  const toast = useToast()
+  const queryClient = useQueryClient()
+  // ACC-12: a manual voucher is never edited: reversed (with a reason), or corrected (reverse + new, owner / admin).
+  const [reversing, setReversing] = React.useState(false)
+  const [reason, setReason] = React.useState('')
+  const [correcting, setCorrecting] = React.useState(false)
+  const reverse = useMutation({
+    mutationFn: () => reverseVoucher(e!.id, reason.trim()),
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      setReversing(false)
+      setReason('')
+      toast.success(`Reversed by ${r.ref}`, r.after_close ? `Its month is closed, so the reversal is on ${formatDay(r.date)}.` : undefined)
+    },
+    onError: (err) => toast.error('Not reversed', apiErrorMessage(err)),
+  })
+  const mayChange = !!e?.manual && !e.reverses_id && !e.reversed_by_id && mayReadBooks(me?.role)
   const from = e ? sourceLink(e.source) : null
   const where = e ? [...new Set(e.lines.flatMap((l) => [l.project, l.site].filter(Boolean)))] : []
   return (
@@ -221,8 +242,37 @@ export function VoucherSheet({ entryId, onClose }: { entryId: string | null; onC
               <dt className="text-muted-foreground">Year</dt>
               <dd>{e.financial_year}</dd>
               <dt className="text-muted-foreground">Posted</dt>
-              <dd>Automatically from the record, {formatDay(e.posted_at)}</dd>
+              <dd>{e.manual ? `By hand${e.created_by_name ? `, ${e.created_by_name}` : ''}, ${formatDay(e.posted_at)}` : `Automatically from the record, ${formatDay(e.posted_at)}`}</dd>
+              {e.reverses_id && (
+                <>
+                  <dt className="text-muted-foreground">Reverses</dt>
+                  <dd><button type="button" className="underline-offset-2 hover:underline" onClick={() => onOpen?.(e.reverses_id!)}>the voucher it undoes</button>{e.reversal_reason ? ` · ${e.reversal_reason}` : ''}</dd>
+                </>
+              )}
+              {e.reversed_by_id && (
+                <>
+                  <dt className="text-muted-foreground">Reversed</dt>
+                  <dd><button type="button" className="underline-offset-2 hover:underline" onClick={() => onOpen?.(e.reversed_by_id!)}>open the reversal</button></dd>
+                </>
+              )}
             </dl>
+            {mayChange && !reversing && (
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setReversing(true)}><Undo2 className="size-3.5" /> Reverse</Button>
+                {mayReopen(me?.role) && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCorrecting(true)}><PenLine className="size-3.5" /> Correct</Button>}
+              </div>
+            )}
+            {reversing && (
+              <form className="flex flex-col gap-2 rounded-lg border p-3" onSubmit={(ev) => { ev.preventDefault(); if (reason.trim().length >= 3) reverse.mutate() }}>
+                <label htmlFor="rev-reason" className="text-sm font-medium">Why is it reversed?</label>
+                <Input id="rev-reason" autoFocus value={reason} maxLength={300} placeholder="Entered twice" onChange={(ev) => setReason(ev.target.value)} />
+                <p className="text-xs text-muted-foreground">The mirror is posted and linked; this voucher stays as it is. A closed month's voucher is reversed on the first open day.</p>
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm" disabled={reason.trim().length < 3 || reverse.isPending}>Reverse</Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setReversing(false)}>Cancel</Button>
+                </div>
+              </form>
+            )}
             {e.after_close && (
               <p className="flex gap-2 rounded-lg border bg-draft-soft/40 px-3 py-2 text-xs text-muted-foreground">
                 <Lock className="mt-0.5 size-3.5 shrink-0" />
@@ -239,6 +289,7 @@ export function VoucherSheet({ entryId, onClose }: { entryId: string | null; onC
           </div>
         )}
       </SheetContent>
+      <NewVoucherDialog open={correcting} correcting={e} onClose={() => setCorrecting(false)} onSaved={(n) => onOpen?.(n.id)} />
     </Sheet>
   )
 }

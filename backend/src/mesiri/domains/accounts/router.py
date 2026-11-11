@@ -14,6 +14,10 @@
   POST  /accounts/periods/{month}/close         month as YYYY-MM
   POST  /accounts/periods/{month}/reopen        {reason}: the owner or an admin
   POST  /accounts/post                          post now (every read posts first anyway); what it did
+  GET   /accounts/vouchers/ledgers              ACC-12: ledgers for the voucher grid (and which a Contra may use)
+  POST  /accounts/vouchers                      ACC-12: a manual Journal or Contra (``vouchers.py``)
+  POST  /accounts/entries/{id}/reverse          ACC-12: {reason}: the mirror of a manual voucher, linked
+  POST  /accounts/entries/{id}/correct          ACC-12: {reason, voucher}: reverse and post the new one (owner, admin)
 
 Who (D-ACC6): the books are the owner's, an admin's and finance's (``may_manage_money``): read, add ledgers, close a
 month. Reopening a closed month is the owner's or an admin's, with a reason. A project manager's project P&L is ACC-08.
@@ -36,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_manage_money
-from mesiri.domains.accounts import chart, export, periods, reports, sweep
+from mesiri.domains.accounts import chart, export, periods, reports, sweep, vouchers
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -411,6 +415,92 @@ async def post_now(auth: AuthorizationContext = Depends(get_auth_context), conn:
     total = (await conn.execute(text("SELECT COUNT(*) FROM journal_entries WHERE organization_id = :org"),
                                 {"org": auth.organization_id})).scalar()
     return _out({**stats, "entries": total})
+
+
+# --- ACC-12: manual vouchers ---------------------------------------------------------------------------------------
+
+class VoucherLineIn(BaseModel):
+    ledger_id: uuid.UUID
+    debit: Decimal = Field(default=Decimal(0))
+    credit: Decimal = Field(default=Decimal(0))
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+    cost_centre: str | None = None
+
+
+class VoucherIn(BaseModel):
+    date: datetime.date
+    voucher_type: str = "journal"
+    narration: str = Field(min_length=1, max_length=500)
+    lines: list[VoucherLineIn] = Field(min_length=2, max_length=vouchers.MAX_LINES)
+
+
+class ReverseIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=300)
+
+
+class CorrectIn(ReverseIn):
+    voucher: VoucherIn
+
+
+async def _voucher_out(conn: AsyncConnection, org: uuid.UUID, entry_id: uuid.UUID) -> dict[str, Any]:
+    book = await reports.entries(conn, org, date_from=datetime.date.min, date_to=datetime.date.max, entry_id=entry_id,
+                                 limit=1)
+    return _out(book["entries"][0])
+
+
+async def _post(conn: AsyncConnection, auth: AuthorizationContext, body: VoucherIn) -> uuid.UUID:
+    try:
+        return await vouchers.post(conn, auth.organization_id, auth.user_id, day=body.date,
+                                   voucher_type=body.voucher_type, narration=body.narration,
+                                   lines=[ln.model_dump() for ln in body.lines])
+    except vouchers.VoucherError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+
+@router.get("/vouchers/ledgers")
+async def voucher_ledgers(auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    await _ready(conn, auth)  # linked ledgers (suppliers, accounts) exist before they are picked
+    return {"ledgers": await vouchers.ledger_choices(conn, auth.organization_id),
+            "cost_centres": list(vouchers.COST_CENTRES), "types": list(vouchers.TYPES)}
+
+
+@router.post("/vouchers", status_code=201)
+async def post_voucher(body: VoucherIn, auth: AuthorizationContext = Depends(get_auth_context),
+                       conn: AsyncConnection = Depends(get_db_conn)):
+    """A manual Journal or Contra (D-ACC6: owner, admin, finance). Never in a closed month (D-ACC2)."""
+    _require(auth)
+    return await _voucher_out(conn, auth.organization_id, await _post(conn, auth, body))
+
+
+@router.post("/entries/{entry_id}/reverse", status_code=201)
+async def reverse_voucher(entry_id: uuid.UUID, body: ReverseIn, auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    """The mirror of a manual voucher, linked to it, with the reason. From a closed month it lands on the first open
+    day, flagged. Returns the reversal."""
+    _require(auth)
+    try:
+        rev = await vouchers.reverse(conn, auth.organization_id, auth.user_id, entry_id, body.reason.strip())
+    except vouchers.VoucherError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return await _voucher_out(conn, auth.organization_id, rev)
+
+
+@router.post("/entries/{entry_id}/correct", status_code=201)
+async def correct_voucher(entry_id: uuid.UUID, body: CorrectIn, auth: AuthorizationContext = Depends(get_auth_context),
+                          conn: AsyncConnection = Depends(get_db_conn)):
+    """Reverse a manual voucher and post the corrected one, in one step (owner, admin). Returns the new voucher, with
+    the reversal's id."""
+    _require(auth)
+    if str(auth.role or "").upper() not in REOPEN_ROLES:
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can correct a voucher in one step. "
+                                                    "Reverse it, then post the new one.")
+    try:
+        rev = await vouchers.reverse(conn, auth.organization_id, auth.user_id, entry_id, body.reason.strip())
+    except vouchers.VoucherError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    new = await _post(conn, auth, body.voucher)
+    return {**(await _voucher_out(conn, auth.organization_id, new)), "reversal_id": str(rev)}
 
 
 # --- Phase B: statements (ACC-06..09, ACC-22, ACC-23) --------------------------------------------------------------

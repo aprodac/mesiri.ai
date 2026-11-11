@@ -1,9 +1,10 @@
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { ArrowDownLeft, ArrowUpRight, BookOpenText, CalendarDays, History, Search } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, BookOpenText, CalendarDays, History, Plus, Search } from 'lucide-react'
 import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, VoucherSheet, usePeriod } from '@/components/accounts/books'
 import { VoucherBadge } from '@/components/accounts/visuals'
+import { NewVoucherDialog } from '@/components/accounts/new-voucher-dialog'
 import { DprHeader, DprSection, PageError, Segmented, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,6 +75,7 @@ export default function DayBookPage() {
   const [limit, setLimit] = React.useState(PAGE)
   const [openId, setOpenId] = React.useState<string | null>(null)
   const [cursor, setCursor] = React.useState(-1)
+  const [writing, setWriting] = React.useState(false)  // ACC-12
   const sp = scopeParams(scope)
   const allowed = mayReadBooks(me?.role)
   const filter = { ...period, ...sp, voucher_type: type, q: search, after_close: late, limit }
@@ -134,7 +136,12 @@ export default function DayBookPage() {
         crumb="Accounts"
         title="Day book"
         date={d?.scope}
-        action={<ExcelButton path="/accounts/day-book/export" params={{ ...period, ...sp, voucher_type: type, q: search }} name={`day-book-${period.date_from}-to-${period.date_to}`} />}
+        action={
+          <div className="flex items-center gap-2">
+            <ExcelButton path="/accounts/day-book/export" params={{ ...period, ...sp, voucher_type: type, q: search }} name={`day-book-${period.date_from}-to-${period.date_to}`} />
+            <Button size="sm" className="gap-1.5" onClick={() => setWriting(true)}><Plus className="size-3.5" /> New voucher</Button>
+          </div>
+        }
       />
       <BooksTabs current="/accounts/day-book" />
       <PeriodBar state={periodState} />
@@ -228,7 +235,8 @@ export default function DayBookPage() {
           </DprSection>
         </>
       )}
-      <VoucherSheet entryId={openId} onClose={() => setOpenId(null)} />
+      <VoucherSheet entryId={openId} onClose={() => setOpenId(null)} onOpen={setOpenId} />
+      <NewVoucherDialog open={writing} onClose={() => setWriting(false)} onSaved={(e) => setOpenId(e.id)} />
     </div>
   )
 }

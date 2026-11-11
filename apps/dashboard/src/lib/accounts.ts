@@ -111,6 +111,12 @@ export interface Entry {
   amount: string
   lines: EntryLine[]
   posted_at: string
+  /** ACC-12: entered by hand (not posted from a record), who entered it, and its reversal link either way. */
+  manual?: boolean
+  created_by_name?: string | null
+  reverses_id?: string | null
+  reversed_by_id?: string | null
+  reversal_reason?: string | null
 }
 
 export interface DayBook extends Period {
@@ -254,6 +260,32 @@ export async function fetchEntry(id: string): Promise<Entry> {
 
 export async function fetchStatement(ledgerId: string, period: Partial<Period>, scope: Scope): Promise<Statement> {
   return (await api.get(`/accounts/ledgers/${ledgerId}/statement`, { params: clean({ ...period, ...scope }) })).data
+}
+
+// --- ACC-12: manual vouchers -------------------------------------------------------------------------------------------
+
+export type ManualType = 'journal' | 'contra'
+
+export interface VoucherLedger { id: string; name: string; group: string; nature: string; code: string | null; contra: boolean }
+
+export interface VoucherLineIn { ledger_id: string; debit: string; credit: string; project_id?: string | null; site_id?: string | null; cost_centre?: string | null }
+
+export interface VoucherIn { date: string; voucher_type: ManualType; narration: string; lines: VoucherLineIn[] }
+
+export async function fetchVoucherLedgers(): Promise<{ ledgers: VoucherLedger[]; cost_centres: string[] }> {
+  return (await api.get('/accounts/vouchers/ledgers')).data
+}
+
+export async function postVoucher(body: VoucherIn): Promise<Entry> {
+  return (await api.post('/accounts/vouchers', body)).data
+}
+
+export async function reverseVoucher(id: string, reason: string): Promise<Entry> {
+  return (await api.post(`/accounts/entries/${id}/reverse`, { reason })).data
+}
+
+export async function correctVoucher(id: string, reason: string, voucher: VoucherIn): Promise<Entry & { reversal_id: string }> {
+  return (await api.post(`/accounts/entries/${id}/correct`, { reason, voucher })).data
 }
 
 export async function fetchChecks(): Promise<Checks> {

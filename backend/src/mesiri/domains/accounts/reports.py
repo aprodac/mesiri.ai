@@ -150,10 +150,13 @@ async def entries(conn: AsyncConnection, org: uuid.UUID, *, date_from: datetime.
     head = [dict(r) for r in (await conn.execute(text(
         "SELECT j.id, j.entry_date, j.voucher_type, j.financial_year, j.number, j.narration, j.source_kind, j.source_id, "
         "j.after_close, j.project_id, pr.name AS project, j.created_at, j.updated_at, "
+        "j.reverses_id, j.reversal_reason, cu.full_name AS created_by_name, "
+        "(SELECT r.id FROM journal_entries r WHERE r.reverses_id = j.id) AS reversed_by_id, "
         "m.source_type AS money_source_type, m.source_id AS money_source_id, "
         "COALESCE(ep.expense_id, CASE WHEN m.source_type = 'expense' THEN m.source_id END) AS expense_id, "
         "CASE WHEN ep.expense_id IS NULL THEN ep.vendor_id END AS vendor_id "
         "FROM journal_entries j LEFT JOIN projects pr ON pr.id = j.project_id "
+        "LEFT JOIN users cu ON cu.id = j.created_by "
         "LEFT JOIN money_transactions m ON j.source_kind = 'money' AND m.id = j.source_id "
         "LEFT JOIN expense_payments ep ON m.source_type = 'expense_payment' AND ep.id = m.source_id "
         f"WHERE {cond} ORDER BY j.entry_date, j.voucher_type, j.number LIMIT :lim OFFSET :off"),  # noqa: S608
@@ -182,7 +185,12 @@ async def entries(conn: AsyncConnection, org: uuid.UUID, *, date_from: datetime.
             "narration": h["narration"], "after_close": h["after_close"], "project": h["project"],
             "project_id": str(h["project_id"]) if h["project_id"] else None, "source": _source(h),
             "amount": sum((ln["debit"] for ln in lines[h["id"]]), _ZERO), "lines": lines[h["id"]],
-            "posted_at": h["updated_at"]} for h in head],
+            "posted_at": h["updated_at"],
+            # ACC-12: a manual voucher, who entered it, and its reversal link either way.
+            "manual": h["source_kind"] == "manual", "created_by_name": h["created_by_name"],
+            "reverses_id": str(h["reverses_id"]) if h["reverses_id"] else None,
+            "reversed_by_id": str(h["reversed_by_id"]) if h["reversed_by_id"] else None,
+            "reversal_reason": h["reversal_reason"]} for h in head],
         "count": count, "total": Decimal(total), "limit": limit, "offset": offset,
     }
 
