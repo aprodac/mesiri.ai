@@ -410,6 +410,28 @@ read back whole from the trace and have no saved conversation yet.
 
 **Next:** E (needs Ilan's yes on tools on demand; trimming parameter schemas does not), F, then the paid rounds.
 
+### 9.12 Steps E and F, 11 Nov (no model call, nothing spent)
+
+**E, measured before cutting (all 131 tools, characters):** tool definitions 84,800 in all: tool descriptions
+28,700, parameter descriptions 13,900, and about 42,000 of names, types and structure; `enum`, `format`, `minimum`
+and `maximum` together are under 2,000. The SOP is 41,700. So trimming the schemas without taking a field or a
+description away from the model saves about 2% of a call: not worth a change. Filtering by the company's modules
+saves little too (the default has nearly every module on). **The cut that matters is still tools on demand, and it
+still waits for Ilan's yes (asked 10 Nov).** E is blocked on that; nothing was changed for E.
+
+**F, two parts done, one left:**
+
+| Part | What | Where |
+|---|---|---|
+| The code says what was saved | A save made by words ("save cheythoo") gets the code's ✅ / ❌ lines, the same ones the Save button gives, every time (before: only when a line was refused, WA-260). The model's words follow only when they say something else, with any "saved" taken out. | `whatsapp.py` `_on_words` |
+| The card check can ask before the card | `card_review` takes a third value, `ask`. The check then runs before the card goes out (at most 6 seconds); a finding the code itself checked puts its one question above the card, and that question is the open one for the next message. The card and Save still go out: the check was wrong on 3 of its 6 "wrong" verdicts so far, and a card held back for a false alarm would be a new dead end. Default stays `shadow`: **no company has it until someone sets `card_review` to `ask` in the control panel** (test companies first). | `whatsapp.py` `_ask_before_card`, `organizations/settings.py` |
+| Not done | "The turn ends in a structured result" and removing the corrective re-asks and most of `reply_guard.py`. They guard real faults today and cannot be judged without the real model: to be done after round 2 shows where the model still fails. | — |
+
+Tests: `tests/agent_api/test_api_code_says_state_277f.py` (10).
+
+**Not verified:** not on the real model, not on a phone. `ask` mode adds a second model call to every reply with a
+card where it is on (time and cost): measure both on the test company before any customer gets it.
+
 ### 9.10 The rounds as they happen
 
 | Round | Date | Ran | Right / wrong | Rupees (workflow) | Spent so far | Changed after it |
