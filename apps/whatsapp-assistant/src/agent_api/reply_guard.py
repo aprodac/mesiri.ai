@@ -204,8 +204,12 @@ def read_tools_for(topic: str, tools: dict[str, object]) -> list[str]:
 _FIGURE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?(?![\w.]*\d)")
 
 
+_ANY_UUID = re.compile(_UUID, re.IGNORECASE)
+
+
 def _figures(text: str) -> set[str]:
-    clean = _URL.sub(" ", text or "")
+    # [285]: an id is not a figure: "915" inside a site's id backed "915 bags" (the facts list every id).
+    clean = _ANY_UUID.sub(" ", _URL.sub(" ", text or ""))
     return {f.replace(",", ".").lstrip("0") or "0" for f in _FIGURE.findall(clean)}
 
 
