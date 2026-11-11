@@ -35,6 +35,10 @@ on:
         description: "Budget for this run in rupees (empty: vars.SOP_EVAL_NIGHTLY_CAP_INR, else 40). A full set on a dearer model needs about 100."
         required: false
         default: ""
+      only:
+        description: "Only the conversations whose test name matches this (pytest -k), e.g. 'new_project_277 or two_work_updates'. Empty: the whole set."
+        required: false
+        default: ""
       tools_on_demand:
         description: "on: the call carries the core tools and opens the rest by area (WA-277 step E). off: every tool, as a company with the setting off."
         required: false
@@ -148,12 +152,13 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
           MESIRI_EVAL_BUDGET_USD: ${{ steps.budget.outputs.usd }}
           MARKS: ${{ steps.plan.outputs.marks }}
+          ONLY: ${{ inputs.only }}
         run: |
           set -o pipefail
           cd /tmp
           "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
             "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/agent_api/replays" \
-            --rootdir=/tmp -ra -m "$MARKS" --import-mode=importlib -o asyncio_mode=auto 2>&1 | tee /tmp/sop-eval.txt
+            --rootdir=/tmp -ra -m "$MARKS" ${ONLY:+-k "$ONLY"} --import-mode=importlib -o asyncio_mode=auto 2>&1 | tee /tmp/sop-eval.txt
       - name: Tell the team group when a saved conversation now goes wrong
         if: failure() && steps.run.outcome == 'failure'
         env:

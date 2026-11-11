@@ -86,8 +86,9 @@ AREAS: dict[str, Area] = {
         ("update_material", "material_categories", "add_standard_categories", "size_requests", "add_site",
          "update_site", "add_material_alias", "add_person", "set_site_conditions")),
     "reports_out": Area(
-        "reports beyond one project's week or month: all projects together (the owner's brief), send a report to "
-        "other people, set a report to go by itself, what is waiting for this person's approval",
+        "ONLY these four: all projects together in one brief (the owner's portfolio), send a weekly or monthly "
+        "report to OTHER named people, set a report to go by itself on a schedule, what is waiting for this "
+        "person's approval. NOT the daily report and NOT one project's week or month: those are already in your tools",
         ("portfolio_report", "send_report_to", "schedule_report", "waiting")),
 }
 
@@ -165,7 +166,9 @@ def open_spec(tools: dict[str, Any], opened: Iterable[str]) -> ToolSpec | None:
         "You have MORE tools than the ones listed: they are kept in areas and opened when a message needs them. "
         "When my message is about one of these, call this FIRST with that area, before answering and before saying "
         "something cannot be done; its tools are then yours and you do what I asked with them. It writes nothing "
-        "and I never see it. Areas:\n" + listed),
+        "and I never see it. Never open an area for what the tools you already have do: what came, was used or is "
+        "in stock, attendance, work done, issues, an expense, a material request or order, a new project, today's "
+        "or a day's report (the daily report, DPR), one project's weekly or monthly report. Areas:\n" + listed),
         parameters={"type": "object", "required": ["area"],
                     "properties": {"area": {"type": "string", "enum": closed,
                                             "description": "The one area my message needs."}}})

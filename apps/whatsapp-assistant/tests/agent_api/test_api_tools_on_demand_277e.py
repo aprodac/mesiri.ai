@@ -283,3 +283,15 @@ def test_default_follows_the_environment(monkeypatch) -> None:  # noqa: ANN001
     assert tool_areas.default_on() is False
     monkeypatch.setenv("MESIRI_TOOLS_ON_DEMAND", "1")
     assert tool_areas.default_on() is True
+
+
+def test_the_door_says_what_is_already_in_the_tools() -> None:
+    """Round 4 (11 Nov, real model): "Give daily reports" opened reports_out and answered with a link instead of
+    the daily report. The door now says what never needs an area, and reports_out says what it is not."""
+    spec = tool_areas.open_spec(TOOLS, [])
+    assert spec is not None
+    assert "Never open an area for what the tools you already have do" in spec.description
+    assert "daily report" in spec.description
+    assert "NOT the daily report" in tool_areas.AREAS["reports_out"].line
+    for core in ("send_dpr", "day_summary", "period_report", "site_day"):
+        assert tool_areas.area_of(core) is None
