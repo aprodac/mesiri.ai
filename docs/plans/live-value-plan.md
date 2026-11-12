@@ -4,7 +4,8 @@
 > labour entry by itself does not show the value; the value is what happens with that data. Live must
 > show that, for every kind of entry, in a way any salesperson can explain.
 >
-> Status: **plan, nothing built.** Tracker: WEB-81 .. WEB-86.
+> Status: **WEB-81 and WEB-82 done (12 Nov):** the ripple plays on Live for material came, material used and
+> attendance. The owner's board, the demo deck, the demo data and the other ripples are WEB-83 .. WEB-86.
 
 ## 1. Where Live stops today
 
@@ -230,6 +231,23 @@ counts only differences the code found.
 - **The feed carries record ids** (WEB-59 noted it does not yet), so Live can ask for an entry's effects.
 - **Roles**: money cards only for roles that see spending, as the feed already does for a bill.
 - **No new tables. No migration.**
+
+### What is built (WEB-82, 12 Nov)
+
+- `GET /dpr/effects/{kind}/{id}` (`domains/dpr/effects.py`): the cards for `material_receipt`, `material_usage`
+  and `labour_report`. Building is pure (one function per kind in `RULES`); reading calls the stock summary, the
+  order's received total, the Rates purchases, the supplier ledger, the Full cost read, the wage sheet's
+  arithmetic and the advance balances. Nothing is written.
+- A save's trace now keeps its record's id (`agent_api/whatsapp.py`, one helper for both traces), and the feed
+  names the records a message saved (`records`). A message saved before this has no id, so it plays as before
+  with no ripple.
+- Live plays each saved record's ripple after its message: one card at a time, then "One message. N things you
+  now know." Space holds, ← → move, S skips to the end, Esc closes; a card opens its page; the module it
+  belongs to rings.
+- A "before" is shown only when the entry is the newest movement of that material at the site (stock), is not
+  yet on a bill (supplier), or is the report that counts for the day (the week's wages). Otherwise only "now".
+- Not built here: the estimate-line cards (budget per line, used against the estimate) and greyed cards for
+  switched-off modules, which come with WEB-86.
 
 ### Phases (tracker)
 
