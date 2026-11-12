@@ -1596,10 +1596,14 @@ BEFORE_CHARS = 400
 
 def _traced_save(r: Any) -> dict[str, Any]:
     """One save as its turn's trace keeps it, for both "saved in the turn" and "saved by the tap": the summary, the
-    tool and status, why it was refused, and the saved record's id (WEB-82: Live asks what that record changed)."""
-    saved_id = r.body.get("id") if r.ok and isinstance(r.body, dict) else None
+    tool and status, why it was refused, and the saved record's id (WEB-82: Live asks what that record changed). A
+    save of several records (WEB-86: the day of two machines) answers ``items``; their ids are kept as ``ids``."""
+    body = r.body if r.ok and isinstance(r.body, dict) else {}
+    saved_id = body.get("id")
+    items = body.get("items") if not saved_id and isinstance(body.get("items"), list) else []
+    ids = [str(i["id"]) for i in items if isinstance(i, dict) and i.get("id")][:6]
     return {"summary": r.pending.summary, "tool": r.pending.tool, "status": r.status,
-            **({"id": str(saved_id)} if saved_id else {}),
+            **({"id": str(saved_id)} if saved_id else {}), **({"ids": ids} if ids else {}),
             **({} if r.ok else {"reason": _detail(r.body)[:300]})}
 
 

@@ -24,6 +24,7 @@ WRITE_KINDS: dict[str, str] = {
     "record_transfer": "transfer",
     "record_expense": "expense",
     "report_issue": "issue",
+    "log_machines": "machine",
     "resolve_issue": "issue_closed",
     "wont_fix_issue": "issue_closed",
     "acknowledge_issue": "issue_closed",
@@ -56,6 +57,11 @@ RECORD_KINDS: dict[str, str] = {
     "record_receipt": "material_receipt",
     "record_usage": "material_usage",
     "record_attendance": "labour_report",
+    # WEB-86: work done, an issue, a bill or expense, a machine's day (one record per machine on the message).
+    "record_work": "activity",
+    "report_issue": "site_issue",
+    "record_expense": "expense",
+    "log_machines": "machine_log",
 }
 
 #: A turn that only read: what it was about. Expenses are a question too, and
@@ -89,6 +95,7 @@ KIND_LABELS: dict[str, str] = {
     "expense": "Expense",
     "issue": "Issue",
     "issue_closed": "Issue closed",
+    "machine": "Machine log",
     "undo": "Taken back",
     "setup": "Setup",
     "catalogue": "Catalogue",
@@ -137,6 +144,8 @@ TOOL_WORDS: dict[str, str] = {
     "record_transfer": "Prepared the transfer",
     "record_expense": "Prepared the expense",
     "report_issue": "Prepared the issue",
+    "log_machines": "Prepared the machine's day",
+    "machines": "Looked up the machines",
     "resolve_issue": "Prepared closing the issue",
     "send_dpr": "Prepared the report",
 }
@@ -244,9 +253,11 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
         (str(w["args"]["reply_language"]) for w in writes if w.get("tool") == "set_reply_language" and w["args"].get("reply_language")),
         None,
     )
+    # A save's trace keeps its record's id; a save of several records (machines' days) keeps them as ``ids``.
     records = [
-        {"kind": RECORD_KINDS[str(r.get("tool"))], "id": str(r["id"])}
-        for r in (saved or tapped) if r.get("id") and str(r.get("tool")) in RECORD_KINDS
+        {"kind": RECORD_KINDS[str(r.get("tool"))], "id": str(record_id)}
+        for r in (saved or tapped) if str(r.get("tool")) in RECORD_KINDS
+        for record_id in ([r["id"]] if r.get("id") else [i for i in (r.get("ids") or []) if i])
     ]
     return {
         "kind": kind,

@@ -389,18 +389,25 @@ async def get_effects(
     company's spending (SEC-01). An entry taken back has no cards."""
     if kind not in effects.RULES:
         raise HTTPException(status_code=404, detail="that kind of entry has no effects to show")
-    repo = PostgresFactReviewRepository(conn)
-    try:
-        located = await repo.locate(auth_context.organization_id, kind, record_id)
-    except FactReviewError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    sees_money = may_view_expenses(auth_context.role)
+    if kind in effects.MONEY_KINDS and not sees_money:
+        # WEB-86: a bill is the company's spending (SEC-01): to anyone else it is not there at all.
+        raise HTTPException(status_code=404, detail="that item was not found")
+    if kind in effects.RECORD_TABLES:
+        located = await effects.locate(conn, auth_context.organization_id, kind, record_id)
+        if located is None:
+            raise HTTPException(status_code=404, detail="that item was not found")
+    else:
+        try:
+            located = await PostgresFactReviewRepository(conn).locate(auth_context.organization_id, kind, record_id)
+        except FactReviewError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
     if located["project_id"] is None or _site_denied(auth_context, located["project_id"], located["site_id"]):
         raise HTTPException(status_code=404, detail="that item was not found")
     from mesiri.application.dpr import project_day
 
-    sees_money = may_view_expenses(auth_context.role)
     today = await project_day.company_today(conn, auth_context.organization_id)
-    facts = await effects.READS[kind](conn, auth_context.organization_id, record_id, today, sees_money)
+    facts = await effects.READS[kind](conn, auth_context.organization_id, record_id, today, sees_money, auth=auth_context)
     return effects.cards(kind, facts, sees_money)
 
 

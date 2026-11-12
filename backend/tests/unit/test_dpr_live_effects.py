@@ -238,7 +238,8 @@ def test_guard_no_record_for_a_refused_save_an_old_trace_or_a_kind_without_a_rip
     rid = str(uuid.uuid4())
     refused = {"tools": ["record_usage"], "saved": [{"tool": "record_usage", "status": 422, "id": rid}]}
     old = {"tools": ["record_usage"], "saved": [{"summary": "Cement 30 bags used", "status": 201}]}
-    other = {"tools": ["record_work"], "saved": [{"tool": "record_work", "status": 201, "id": rid}]}
+    # A transfer has no ripple (WEB-86 gave work done, issues, bills and machine logs theirs).
+    other = {"tools": ["record_transfer"], "saved": [{"tool": "record_transfer", "status": 201, "id": rid}]}
     draft = {"tools": ["record_receipt"], "pending": ["Cement 50 bags in"]}
     for turn in (refused, old, other, draft):
         assert live_feed.classify(_row([turn]))["records"] == []
@@ -269,7 +270,7 @@ def _ctx(role, projects):
 def _route(monkeypatch):
     seen: dict = {}
 
-    async def read(conn, org, record_id, today, sees_money):
+    async def read(conn, org, record_id, today, sees_money, **_):
         seen.update(org=org, sees_money=sees_money)
         return _receipt(amount=Decimal(19500), supplier={"name": "ABC", "balance": Decimal(19500), "unbilled_here": True})
 
@@ -310,5 +311,5 @@ async def test_guard_the_route_refuses_another_project_an_unknown_record_and_an_
         await dpr_router.get_effects("material_receipt", rid, auth_context=other_site, conn=None)
     assert site.value.status_code == 404 and "org" not in _route
     with pytest.raises(HTTPException) as unknown:
-        await dpr_router.get_effects("activity", rid, auth_context=_ctx("ADMIN", [P1]), conn=None)
+        await dpr_router.get_effects("material_transfer", rid, auth_context=_ctx("ADMIN", [P1]), conn=None)
     assert unknown.value.status_code == 404

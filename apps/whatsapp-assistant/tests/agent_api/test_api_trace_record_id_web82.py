@@ -34,3 +34,18 @@ def test_guard_a_refused_save_keeps_its_reason_and_has_no_id() -> None:
 def test_guard_an_answer_without_an_id_is_traced_as_before() -> None:
     assert _traced_save(WriteResult(_write(), 204, None)) == {"summary": "Cement 50 bags in", "tool": "record_receipt", "status": 204}
     assert "id" not in _traced_save(WriteResult(_write(), 201, ["not", "a", "dict"]))
+
+
+# --- WEB-86: a save of several records (the day of two machines) keeps their ids ---------------------------------
+
+def test_a_machine_log_of_two_machines_is_traced_with_both_ids() -> None:
+    body = {"date": "2026-11-12", "items": [{"id": "log-1", "machine": "JCB"}, {"id": "log-2", "machine": "Mixer"}]}
+    traced = _traced_save(WriteResult(_write("log_machines"), 201, body))
+    assert traced == {"summary": "Cement 50 bags in", "tool": "log_machines", "status": 201, "ids": ["log-1", "log-2"]}
+
+
+def test_guard_one_record_keeps_its_id_and_a_refused_machine_log_has_no_ids() -> None:
+    assert "ids" not in _traced_save(WriteResult(_write(), 201, {"id": "abc", "items": [{"id": "not-the-record"}]}))
+    refused = _traced_save(WriteResult(_write("log_machines"), 409, {"detail": "Which JCB?", "items": [{"id": "x"}]}))
+    assert "ids" not in refused and "id" not in refused and "Which JCB?" in refused["reason"]
+    assert "ids" not in _traced_save(WriteResult(_write("log_machines"), 201, {"items": ["not a dict", {"no": "id"}]}))

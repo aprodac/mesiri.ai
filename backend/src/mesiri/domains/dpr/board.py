@@ -360,6 +360,7 @@ KIND_QUESTIONS: dict[str, tuple[str, ...]] = {
     "expense": ("money", "owed"),
     "issue": ("stops", "proof"),
     "issue_closed": ("stops", "proof"),
+    "machine": ("work", "owed"),
     "report": ("proof",),
 }
 

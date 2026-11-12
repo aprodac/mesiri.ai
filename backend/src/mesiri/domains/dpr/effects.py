@@ -54,6 +54,21 @@ SAY: dict[str, str] = {
     "week_wages": "No Saturday counting from the register: the week's wages are already added up.",
     "advances": "Advances are remembered and come off the wages by themselves.",
     "report": "And it is already in tonight's report. Nobody wrote it.",
+    # WEB-86: work done, an issue, a bill, a machine's day.
+    "work_today": "The site said it once, in their own words. That is the day's progress.",
+    "place": "Floor by floor, you see what is done and what is left, without a site visit.",
+    "schedule": "Every work update moves the schedule, so you know today if the project is late.",
+    "line": "Work that is counted on its estimate line is work you can bill the client for.",
+    "line_offer": "Mesiri suggests the line. One tap by a person counts it, so nothing is billed by mistake.",
+    "photos": "The photo sits with the line it proves, for the client and for any dispute.",
+    "issue_open": "A problem said on site is in front of the office the same minute.",
+    "issue_task": "It is somebody's job now, with a date, not a message lost in a group.",
+    "bill_read": "Nobody typed this bill. Mesiri read it from the photo.",
+    "expense_read": "Money spent is on the books the moment it is said, with who it went to.",
+    "bill_match": "The bill is checked against what actually arrived, line by line.",
+    "machine_day": "Hours, idle time, breakdown and diesel, from one message.",
+    "machine_down": "Breakdown hours are on record, so you do not pay hire for them.",
+    "machine_hire": "When the hire bill comes, you already know what the hours come to.",
 }
 
 Card = dict[str, Any]
@@ -259,12 +274,176 @@ def attendance_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:
     return [c for c in cards if c]
 
 
-#: Kind of entry -> (the line over its ripple, its cards). A kind not here has no ripple yet (WEB-86 adds work
-#: done, issues, bills and machine logs).
+def _n(count: Any, one_word: str, many: str | None = None) -> str:
+    c = Decimal(str(count))
+    return f"{qty(c)} {one_word if c == 1 else (many or one_word + 's')}"
+
+
+def _photo_card(f: dict[str, Any]) -> Card | None:
+    photos = int(f.get("photos") or 0)
+    if not photos:
+        return None
+    return _card("photos", "Photos", "proof", PROOF,
+                 f"{_n(photos, 'photo')} {'is' if photos == 1 else 'are'} kept with this line of the report.",
+                 after=photos, unit="photo" if photos == 1 else "photos", opens="/reports")
+
+
+def work_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:
+    """Work done: the day's work -> the floor -> the schedule -> the estimate line (money) -> the photo -> the report.
+
+    The estimate line is the honest one (plan decision 5): work reaches the budget and the client's bill only after a
+    person puts it on a line. Counted: what it earned. Not counted: the line Mesiri suggests and what it would earn,
+    for the person to tap; never said as earned."""
+    cards: list[Card | None] = []
+    today = f.get("today")
+    if today:
+        n = int(today["updates"])
+        cards.append(_card("work_today", "Work today", "proof", WORK_MOVING,
+                           f"{_n(n, 'work update')} from {f['site_name']} today.",
+                           before=n - 1 if today.get("latest") and n > 0 else None, after=n,
+                           unit="update" if n == 1 else "updates", opens="/site-log"))
+    place = f.get("place")
+    if place:
+        done, left = len(place["done"]), len(place["left"])
+        tail = f" Left: {', '.join(place['left'][:3])}{' and more' if left > 3 else ''}." if left else " Nothing left there."
+        cards.append(_card("place", place["label"], "proof", WORK_MOVING,
+                           f"{place['label']}: {_n(done, 'kind')} of work done, {left} left.{tail}",
+                           after=done, unit="done", opens="/planning/places"))
+    schedule = f.get("schedule")
+    if schedule and schedule.get("progress") is not None:
+        slip = int(schedule.get("slip_days") or 0)
+        state = f"{_days(slip)} behind the schedule" if slip > 0 else "on schedule"
+        cards.append(_card("schedule", "Schedule", "caught" if slip > 0 else "time", WORK_MOVING,
+                           f"{f['project_name']} is {schedule['progress']}% done and {state}.",
+                           after=schedule["progress"], unit="% done", opens="/planning/schedule"))
+    if sees_money:
+        for q in f.get("quantities") or []:
+            line, offer = q.get("line"), q.get("suggested")
+            amount = f"{qty(q['quantity'])} {q['unit']}"
+            if line:
+                rate = line.get("rate")
+                if rate is not None and Decimal(str(rate)) > 0:
+                    earned = Decimal(str(q["quantity"])) * Decimal(str(rate))
+                    cards.append(_card("line", "Counted on the estimate", "money", OWE,
+                                       f"{amount} is counted on “{line['name']}”: {rupees(earned)} earned at "
+                                       f"{rupees(rate)} per {one(q['unit'])}, to bill the client.",
+                                       after=earned, money=True, opens=f["boq_page"]))
+                else:
+                    cards.append(_card("line", "Counted on the estimate", "time", WORK_MOVING,
+                                       f"{amount} is counted on “{line['name']}”.", opens=f["boq_page"]))
+            elif offer:
+                rate = offer.get("rate")
+                would = (f" Once counted: {rupees(Decimal(str(q['quantity'])) * Decimal(str(rate)))} to bill the client."
+                         if rate is not None and Decimal(str(rate)) > 0 else "")
+                cards.append(_card("line_offer", "Estimate line", "time", OWE,
+                                   f"{amount} is not on an estimate line yet. Suggested: “{offer['name']}”.{would}",
+                                   opens=f["boq_page"]))
+            break  # one line card: the first quantity's
+    cards.extend([_photo_card(f), _report_card(f)])
+    return [c for c in cards if c]
+
+
+def issue_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:  # noqa: ARG001 -- an issue has no money card
+    """An issue: open issues at the site -> the task raised for it -> its photo -> the report."""
+    cards: list[Card | None] = []
+    n = f.get("open")
+    if n is not None:
+        oldest = f.get("oldest_days")
+        waited = f" The oldest has waited {_days(int(oldest))}." if oldest and int(oldest) > 0 else ""
+        cards.append(_card("issue_open", "Open issues", "caught", STOPS_WORK,
+                           f"{_n(n, 'issue')} open at {f['site_name']}.{waited}",
+                           before=int(n) - 1 if f.get("is_open") and f.get("latest") and int(n) > 0 else None,
+                           after=n, unit="open", opens="/issues"))
+    task = f.get("task")
+    if task:
+        who = f" for {task['assignee']}" if task.get("assignee") else ""
+        due = f", due {task['due']:%-d %b}" if task.get("due") else ""
+        cards.append(_card("issue_task", "Task", "time", STOPS_WORK,
+                           f"A task is raised{who}{due}: “{task['title']}”.", opens="/tasks"))
+    cards.extend([_photo_card(f), _report_card(f)])
+    return [c for c in cards if c]
+
+
+def expense_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:
+    """A bill or an expense: what was read -> the deliveries it is for and what differs -> the supplier -> the week.
+    All of it is the company's spending: nothing for a role that does not see it."""
+    if not sees_money:
+        return []
+    amount = Decimal(str(f["amount"]))
+    said = f"{rupees(amount)}" + (f" to {f['vendor']}" if f.get("vendor") else "")
+    tax = Decimal(str(f.get("tax") or 0))
+    category = f.get("category") if (f.get("category") or "").strip().lower() != "uncategorized" else None
+    parts = [p for p in (f"GST {rupees(tax)}" if tax > 0 else None, category) if p]
+    how = "Read from the photo" if f.get("from_photo") else "Recorded"
+    cards: list[Card | None] = [_card(
+        "bill_read" if f.get("from_photo") else "expense_read", "The bill" if f.get("from_photo") else "Expense", "time",
+        MONEY_GOING,
+        f"{how}: {said}" + (f" ({', '.join(parts)})." if parts else "."), after=amount, money=True,
+        opens="/finance/expenses")]
+    deliveries = f.get("deliveries")
+    if deliveries:
+        differs = [f"{d['material']}: {flag}" for d in deliveries for flag in d.get("flags") or []]
+        n = len(deliveries)
+        if differs:
+            cards.append(_card("bill_match", "Bill check", "caught", LEAKING,
+                               f"Checked against {_n(n, 'delivery', 'deliveries')}. {'; '.join(differs[:2])}.",
+                               after=len(differs), unit="to check", opens="/finance/vendors"))
+        else:
+            cards.append(_card("bill_match", "Bill check", "proof", LEAKING,
+                               f"It matches the {_n(n, 'delivery', 'deliveries')} it bills: same quantity, same rate.",
+                               after=n, unit="matched", opens="/finance/vendors"))
+    supplier = f.get("supplier")
+    if supplier and Decimal(str(supplier["balance"])) > 0:
+        cards.append(_card("supplier", supplier["name"], "money", OWE,
+                           f"You now owe {supplier['name']} {rupees(supplier['balance'])}.",
+                           after=supplier["balance"], money=True, opens="/finance/vendors"))
+    week = f.get("week")
+    if week and Decimal(str(week["total"])) > 0:
+        cards.append(_card("week_cost", "This week's cost", "money", MONEY_GOING,
+                           f"{f['where']} has cost {rupees(week['total'])} in the last 7 days.",
+                           after=week["total"], money=True, opens="/cost"))
+    return [c for c in cards if c]
+
+
+def machine_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:
+    """A machine's day: its hours -> breakdown -> what the hire comes to this month (money, hired machines)."""
+    worked = Decimal(str(f.get("worked") or 0))
+    bits = [f"{qty(worked)} h worked"]
+    if Decimal(str(f.get("idle") or 0)) > 0:
+        bits.append(f"{qty(f['idle'])} h idle")
+    if f.get("fuel") is not None and Decimal(str(f["fuel"])) > 0:
+        bits.append(f"{qty(f['fuel'])} L diesel")
+    cards: list[Card | None] = [_card("machine_day", f["machine"], "proof", WORK_MOVING,
+                                      f"{f['machine']} at {f['site_name']}: {', '.join(bits)}.",
+                                      after=worked, unit="h worked", opens="/equipment")]
+    broke = Decimal(str(f.get("breakdown") or 0))
+    if broke > 0:
+        why = f": {f['breakdown_reason']}" if f.get("breakdown_reason") else ""
+        cards.append(_card("machine_down", "Breakdown", "caught", STOPS_WORK,
+                           f"{qty(broke)} h lost to breakdown{why}.", after=broke, unit="h lost", opens="/equipment"))
+    hire = f.get("hire") if sees_money else None
+    if hire and Decimal(str(hire["expected"])) > 0:
+        cards.append(_card("machine_hire", "Hire this month", "money", OWE,
+                           f"{f['machine']}'s hire comes to {rupees(hire['expected'])} so far this month, over "
+                           f"{_days(int(hire['days']))} on site" + (f" ({hire['vendor']})." if hire.get("vendor") else "."),
+                           after=hire["expected"], money=True, opens="/equipment/hire"))
+    return [c for c in cards if c]
+
+
+#: WEB-86: records Live asks about that are not report facts (``fact_review.FACT_TYPES``).
+EXPENSE, MACHINE_LOG = "expense", "machine_log"
+#: A kind whose every card is the company's spending: the route answers 404 to a role that does not see it.
+MONEY_KINDS: frozenset[str] = frozenset({EXPENSE})
+
+#: Kind of entry -> (the line over its ripple, its cards). A kind not here has no ripple.
 RULES: dict[str, tuple[str, Callable[[dict[str, Any], bool], list[Card]]]] = {
     fact_review.MATERIAL_RECEIPT: ("Material came", receipt_cards),
     fact_review.MATERIAL_USAGE: ("Material used", usage_cards),
     fact_review.LABOUR_REPORT: ("Attendance", attendance_cards),
+    fact_review.ACTIVITY: ("Work done", work_cards),
+    fact_review.SITE_ISSUE: ("Issue", issue_cards),
+    EXPENSE: ("Expense", expense_cards),
+    MACHINE_LOG: ("Machine log", machine_cards),
 }
 
 
@@ -339,7 +518,7 @@ def _standing(row: Any, reason: str) -> bool:
 
 
 async def read_receipt(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
-                       sees_money: bool) -> dict[str, Any] | None:
+                       sees_money: bool, **_: Any) -> dict[str, Any] | None:
     row = (await conn.execute(text(_MOVEMENT.format(
         table="material_receipts",
         extra="r.unit_cost, r.total_cost, r.vendor_id, r.purchase_order_line_id,")),
@@ -385,26 +564,39 @@ async def read_receipt(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UU
             f["amount"] = (Decimal(mine["total_cost"]) if mine.get("total_cost") is not None
                            else g.entered * Decimal(mine["quantity"]))
     if row.vendor_id is not None:
-        from mesiri.domains.vendors import ledger
-
-        entries, state = await ledger.fetch_entries(conn, org, vendor_id=row.vendor_id, projects=None)
-        vendor = state["vendors"].get(row.vendor_id)
-        if vendor is not None:
-            s = ledger.summarise(vendor, entries, state, today)
-            f["supplier"] = {"name": vendor["name"], "balance": s["balance"],
-                             "unbilled_here": any(e["id"] == f"delivery:{row.id}" for e in entries)}
+        f["supplier"] = await _supplier(conn, org, row.vendor_id, today, entry=f"delivery:{row.id}")
     if row.site_id is not None:
-        from mesiri.domains.finance.costs import project_costs
-
-        cost = await project_costs(conn, org, project_ids={row.project_id}, site_id=row.site_id,
-                                   date_from=today - datetime.timedelta(days=6), date_to=today,
-                                   visible=lambda _p, _s: True)  # the caller's site was checked before reading
-        f["week"] = {"total": cost["total"], "materials": cost["materials"]["amount"], "labour": cost["labour"]["amount"]}
+        f["week"] = await _week(conn, org, row.project_id, row.site_id, today)
     return f
 
 
+async def _supplier(conn: AsyncConnection, org: uuid.UUID, vendor_id: uuid.UUID, today: datetime.date, *,
+                    entry: str | None = None) -> dict[str, Any] | None:
+    """What a supplier is owed now, by the supplier ledger's own summary; ``unbilled_here``: ``entry`` is in it."""
+    from mesiri.domains.vendors import ledger
+
+    entries, state = await ledger.fetch_entries(conn, org, vendor_id=vendor_id, projects=None)
+    vendor = state["vendors"].get(vendor_id)
+    if vendor is None:
+        return None
+    s = ledger.summarise(vendor, entries, state, today)
+    return {"name": vendor["name"], "balance": s["balance"],
+            "unbilled_here": entry is not None and any(e["id"] == entry for e in entries)}
+
+
+async def _week(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, site_id: uuid.UUID | None,
+                today: datetime.date) -> dict[str, Any]:
+    """The last 7 days' full cost of a site (or a project), by the Full cost read."""
+    from mesiri.domains.finance.costs import project_costs
+
+    cost = await project_costs(conn, org, project_ids={project_id}, site_id=site_id,
+                               date_from=today - datetime.timedelta(days=6), date_to=today,
+                               visible=lambda _p, _s: True)  # the caller's site was checked before reading
+    return {"total": cost["total"], "materials": cost["materials"]["amount"], "labour": cost["labour"]["amount"]}
+
+
 async def read_usage(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
-                     sees_money: bool) -> dict[str, Any] | None:
+                     sees_money: bool, **_: Any) -> dict[str, Any] | None:
     row = (await conn.execute(text(_MOVEMENT.format(table="material_usage", extra="")),
                               {"id": record_id, "org": org})).first()
     if not _standing(row, "CONSUMED"):
@@ -419,7 +611,7 @@ async def read_usage(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID
 
 
 async def read_attendance(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
-                          sees_money: bool) -> dict[str, Any] | None:
+                          sees_money: bool, **_: Any) -> dict[str, Any] | None:
     """One attendance report: its people, and (money roles) its wages by the wage sheet's own arithmetic
     (``pay.build_rows``), the pay week so far and the advances still out. Labour and Wages are only read."""
     from mesiri.domains.workforce import pay, pay_store
@@ -467,8 +659,208 @@ async def read_attendance(conn: AsyncConnection, org: uuid.UUID, record_id: uuid
     return f
 
 
+async def _photos(conn: AsyncConnection, org: uuid.UUID, kind: str, record_id: uuid.UUID) -> int:
+    """How many photos sit with a report line: the sources panel's own read."""
+    from mesiri.infrastructure.postgres.repositories.fact_reviews import (
+        PostgresFactReviewRepository,
+    )
+
+    found = await PostgresFactReviewRepository(conn).sources(organization_id=org, fact_type=kind, fact_id=record_id)
+    return len(found.get("photos") or [])
+
+
+async def _site_day(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, site_id: uuid.UUID,
+                    day: datetime.date) -> dict[str, Any] | None:
+    """The site's day as the Today page counts it (work items, open issues)."""
+    from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
+
+    rows = await PostgresDprRepository(conn).list_site_days(organization_id=org, project_ids={project_id}, report_date=day)
+    return next((r for r in rows if str(r["site_id"]) == str(site_id)), None)
+
+
+async def read_activity(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
+                        sees_money: bool, **_: Any) -> dict[str, Any] | None:
+    """One work entry: the site's work today, its floor on the progress grid, the project's schedule, and (money
+    roles) the estimate line it is counted on or the one suggested. Every figure from its module's own read."""
+    row = (await conn.execute(text(
+        "SELECT a.id, a.project_id, a.site_id, a.location_id, a.work_type, a.narrative, a.activity_date, a.created_at, "
+        "a.work_package_id, s.name AS site_name, p.name AS project_name, "
+        "EXISTS (SELECT 1 FROM activities x WHERE x.organization_id = a.organization_id AND x.site_id = a.site_id "
+        "  AND x.activity_date = a.activity_date AND x.deleted_at IS NULL AND x.created_at > a.created_at) AS newer "
+        "FROM activities a LEFT JOIN sites s ON s.id = a.site_id JOIN projects p ON p.id = a.project_id "
+        "WHERE a.id = :id AND a.organization_id = :org AND a.deleted_at IS NULL"), {"id": record_id, "org": org})).first()
+    if row is None or row.site_id is None:
+        return None
+    work = (row.work_type or row.narrative or "Work").strip()
+    f: dict[str, Any] = {
+        "what": work[:60], "site_name": row.site_name or "the site", "project_name": row.project_name,
+        "boq_page": f"/projects/{row.project_id}/boq", "report_time": await _report_time(conn, org, row.project_id),
+        "photos": await _photos(conn, org, fact_review.ACTIVITY, record_id),
+    }
+    day = await _site_day(conn, org, row.project_id, row.site_id, row.activity_date)
+    if day is not None:
+        f["today"] = {"updates": int(day["work_items"] or 0) + int(day["progress_updates"] or 0), "latest": not row.newer}
+    if row.location_id is not None:
+        from mesiri.domains.places import progress
+        from mesiri.domains.places import store as places
+
+        rows = await places.places(conn, org, row.project_id)
+        here = next((r for r in rows if r["id"] == row.location_id), None)
+        if here is not None:
+            cell = progress.roll_up(rows, await places.works(conn, org, row.project_id))["places"].get(row.location_id)
+            if cell is not None:
+                f["place"] = {"label": here["name"], "done": cell["done"], "left": cell["left"]}
+    from mesiri.domains.schedule import store as schedule
+
+    summary = (await schedule.load(conn, org, row.project_id, today))["summary"]
+    if summary.get("scheduled"):
+        f["schedule"] = {"progress": summary.get("progress"), "slip_days": summary.get("slip_days")}
+    if sees_money:
+        from mesiri.domains.progress.boq import suggest_line
+        from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+        mine = {r.id for r in (await conn.execute(text(
+            "SELECT id FROM activity_quantities WHERE activity_id = :a"), {"a": record_id}))}
+        if mine:
+            repo = PostgresBoqRepository(conn)
+            lines = await repo.list_lines(org, row.project_id)
+            by_id = {ln["id"]: ln for ln in lines}
+            current = await repo.current_revision_of(org, row.project_id)
+
+            def named(line_id: Any) -> dict[str, Any] | None:
+                ln = by_id.get(line_id)
+                return {"name": ln["work_type"], "rate": ln.get("client_rate")} if ln else None
+
+            f["quantities"] = [
+                {"quantity": w["quantity"], "unit": w["unit"],
+                 "line": named(current.get(w["line_id"], w["line_id"])) if w["line_id"] else None,
+                 "suggested": None if w["line_id"] else named(
+                     suggest_line(w["work"] or w["narrative"], w["unit_id"], w["section_id"], lines))}
+                for w in await repo.work_updates(org, row.project_id, unlinked_only=False, limit=500) if w["id"] in mine
+            ]
+    return f
+
+
+async def read_issue(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
+                     sees_money: bool, **_: Any) -> dict[str, Any] | None:  # noqa: ARG001
+    """One issue: how many are open at its site (the Today page's count), how long the oldest has waited, and the
+    task raised for it, if one was."""
+    from mesiri.application.dpr.open_issues import is_open, open_issue_sql
+
+    row = (await conn.execute(text(
+        "SELECT i.id, i.project_id, i.site_id, i.status, i.issue_type, i.narrative, i.occurred_at, i.created_at, "
+        "s.name AS site_name, "
+        "EXISTS (SELECT 1 FROM site_issues x WHERE x.organization_id = i.organization_id AND x.site_id = i.site_id "
+        "  AND x.created_at > i.created_at) AS newer, "
+        f"(SELECT min(x.occurred_at) FROM site_issues x WHERE x.organization_id = i.organization_id "
+        f"  AND x.site_id = i.site_id AND {open_issue_sql('x')}) AS oldest "
+        "FROM site_issues i LEFT JOIN sites s ON s.id = i.site_id WHERE i.id = :id AND i.organization_id = :org"),
+        {"id": record_id, "org": org})).first()
+    if row is None or row.site_id is None or str(row.status).upper() == "CANCELLED":
+        return None
+    words = str(row.issue_type or "issue").replace("_", " ").lower()
+    f: dict[str, Any] = {
+        "what": (row.narrative or words)[:60], "site_name": row.site_name or "the site",
+        "is_open": is_open(row.status), "latest": not row.newer,
+        "oldest_days": (today - row.oldest.date()).days if row.oldest is not None else None,
+        "report_time": await _report_time(conn, org, row.project_id),
+        "photos": await _photos(conn, org, fact_review.SITE_ISSUE, record_id),
+    }
+    day = await _site_day(conn, org, row.project_id, row.site_id, today)
+    if day is not None:
+        f["open"] = int(day["open_issues"] or 0)
+    task = (await conn.execute(text(
+        "SELECT t.title, t.due_date, COALESCE(u.full_name, v.name, t.assignee_team) AS assignee FROM tasks t "
+        "LEFT JOIN users u ON u.id = t.assignee_user_id LEFT JOIN vendors v ON v.id = t.assignee_vendor_id "
+        "WHERE t.site_issue_id = :id AND t.organization_id = :org ORDER BY t.created_at LIMIT 1"),
+        {"id": record_id, "org": org})).first()
+    if task is not None:
+        f["task"] = {"title": task.title, "due": task.due_date, "assignee": task.assignee}
+    return f
+
+
+async def read_expense(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
+                       sees_money: bool, *, auth: Any = None, **_: Any) -> dict[str, Any] | None:
+    """One expense or bill: what was read, the deliveries the bill is for with what differs (the supplier page's own
+    list), what the supplier is owed, the week's cost. Money roles only; nothing is linked or written here."""
+    if not sees_money:
+        return None
+    row = (await conn.execute(text(
+        "SELECT e.id, e.project_id, e.site_id, e.amount, e.tax_amount, e.vendor_id, e.workflow_status, "
+        "v.name AS vendor, c.name AS category, s.name AS site_name, p.name AS project_name, "
+        "EXISTS (SELECT 1 FROM expense_attachments x WHERE x.expense_id = e.id) AS from_photo "
+        "FROM expenses e LEFT JOIN vendors v ON v.id = e.vendor_id LEFT JOIN expense_categories c ON c.id = e.category_id "
+        "LEFT JOIN sites s ON s.id = e.site_id LEFT JOIN projects p ON p.id = e.project_id "
+        "WHERE e.id = :id AND e.organization_id = :org"), {"id": record_id, "org": org})).first()
+    if row is None or row.project_id is None or row.workflow_status != "confirmed":
+        return None
+    f: dict[str, Any] = {
+        "what": f"{rupees(row.amount)}" + (f" · {row.vendor}" if row.vendor else ""), "amount": row.amount,
+        "tax": row.tax_amount, "vendor": row.vendor, "category": row.category, "from_photo": bool(row.from_photo),
+        "where": row.site_name or row.project_name or "The project",
+        "week": await _week(conn, org, row.project_id, row.site_id, today),
+    }
+    if row.vendor_id is not None:
+        f["supplier"] = await _supplier(conn, org, row.vendor_id, today)
+        if auth is not None:
+            from fastapi import HTTPException
+
+            from mesiri.domains.vendors.router import bill_delivery_list
+
+            try:  # the supplier page's own list of the bill's deliveries, with its own role and scope rule
+                f["deliveries"] = await bill_delivery_list(vendor_id=row.vendor_id, expense_id=record_id,
+                                                           auth_context=auth, conn=conn)
+            except HTTPException:
+                pass  # not a bill with deliveries, or not this person's to see: no card
+    return f
+
+
+async def read_machine_log(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
+                           sees_money: bool, **_: Any) -> dict[str, Any] | None:
+    """One machine's day: its hours by the equipment module's own rule, and (money roles, a hired machine) what
+    the month's hire comes to so far by ``rules.hire_lines``, as the hire check counts it."""
+    from mesiri.domains.equipment import rules, store
+
+    found = await store.fetch_events(conn, org, ids=[record_id])
+    x = found[0] if found else None
+    if x is None or x.get("voided_at") is not None or x.get("event_type") != "day_log":
+        return None
+    name = x.get("machine_name") or x.get("equipment_name") or "The machine"
+    f: dict[str, Any] = {
+        "what": name, "machine": name, "site_name": x.get("site_name") or "the site",
+        "worked": rules.worked(x), "idle": rules.d(x.get("idle_hours")), "breakdown": rules.d(x.get("breakdown_hours")),
+        "breakdown_reason": x.get("breakdown_reason"), "fuel": x.get("fuel_quantity"),
+    }
+    if sees_money and x.get("equipment_id") is not None:
+        machines = await store.fetch_machines(conn, org, ids=[x["equipment_id"]])
+        if machines and machines[0].get("ownership") == "hired":
+            m = machines[0]
+            logs = await store.fetch_events(conn, org, equipment_ids=[m["id"]], date_to=today)
+            lines = rules.hire_lines(m, logs, today.replace(day=1), today, today)
+            f["hire"] = {"expected": sum((ln["amount"] for ln in lines), Decimal(0)), "days": len(lines),
+                         "vendor": m.get("vendor_name")}
+    return f
+
+
+#: Where a record that is not a report fact lives: (table, extra condition). The route reads its project and site
+#: from here for the scope rule; a fact goes through ``PostgresFactReviewRepository.locate``.
+RECORD_TABLES: dict[str, str] = {EXPENSE: "expenses", MACHINE_LOG: "equipment_events"}
+
+
+async def locate(conn: AsyncConnection, org: uuid.UUID, kind: str, record_id: uuid.UUID) -> dict[str, Any] | None:
+    """project_id / site_id of an expense or a machine log; None when it is not this company's."""
+    row = (await conn.execute(text(
+        f"SELECT project_id, site_id FROM {RECORD_TABLES[kind]} WHERE id = :id AND organization_id = :org"),
+        {"id": record_id, "org": org})).mappings().first()
+    return dict(row) if row else None
+
+
 READS = {
     fact_review.MATERIAL_RECEIPT: read_receipt,
     fact_review.MATERIAL_USAGE: read_usage,
     fact_review.LABOUR_REPORT: read_attendance,
+    fact_review.ACTIVITY: read_activity,
+    fact_review.SITE_ISSUE: read_issue,
+    EXPENSE: read_expense,
+    MACHINE_LOG: read_machine_log,
 }

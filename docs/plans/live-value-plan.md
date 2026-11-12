@@ -5,8 +5,9 @@
 > show that, for every kind of entry, in a way any salesperson can explain.
 >
 > Status: **WEB-81 and WEB-82 done (12 Nov):** the ripple plays on Live for material came, material used and
-> attendance. **WEB-83 done (12 Nov):** the owner's board is on Live in place of "Where it goes". The demo deck,
-> the demo data and the other ripples are WEB-84 .. WEB-86.
+> attendance. **WEB-83 done (12 Nov):** the owner's board is on Live in place of "Where it goes". **WEB-86 done
+> (12 Nov):** work done, an issue, a bill or expense and a machine's day have their ripples, and the day has its
+> closing count. A question has none yet (below). The demo deck and the demo data are WEB-84 and WEB-85.
 
 ## 1. Where Live stops today
 
@@ -278,6 +279,35 @@ counts only differences the code found.
   company-wide; the board says what clients owe), "wages due Saturday" (the board says wages approved and unpaid,
   drafts waiting, advances out), and the report's send time on the board.
 - The board is as of now, whatever day Live shows.
+
+### What is built: the remaining ripples (WEB-86, 12 Nov)
+
+Four more entries in the one table (`effects.RULES` and `effects.READS`), built the same way as WEB-82's.
+
+| Entry | Cards, in order | Read from |
+|---|---|---|
+| Work done | the site's work today → its floor (done, left) → the schedule (percent done, days behind) → the estimate line → photos → the report | the Today page's site day; the floor grid's roll-up; the schedule's summary; the estimate's own work list and line suggestion; the sources panel |
+| Issue | open issues at the site, how long the oldest has waited → the task raised for it → photos → the report | the Today page's open count; `tasks.site_issue_id`; the sources panel |
+| Bill or expense | what was read (amount, GST, supplier) → the bill against its deliveries, what differs → the supplier owed → the week's cost | the expense; the supplier page's own list of a bill's deliveries (called as the person asking); the supplier ledger; Full cost |
+| Machine log | hours, idle, diesel → breakdown hours and why → the month's hire so far | the equipment module's `rules.worked` and `rules.hire_lines`, as the hire check counts it |
+
+- **The estimate line keeps the person's tap (decision 5).** Work counted on a line says what it earned. Work not on
+  a line says the line Mesiri suggests and what it *would* come to, and opens the estimate page; it is never said
+  as earned.
+- **A bill is the company's spending.** For a role that does not see it, the route answers 404 and nothing is read.
+  The estimate line and the hire amount are left out of the chain for those roles; the rest of the chain stays.
+- **A bill and a machine log are not report facts**, so the route finds their project and site in their own
+  tables (`effects.RECORD_TABLES`) for the same site rule.
+- **The feed** knows a machine log now (`log_machines` → "Machine log") and carries the saved record of each new
+  kind. A message that logs two machines carries both (`ids` in the save's trace, trace only).
+- **The day's closing count**: the bar at the bottom of Live adds "N things you now know", the cards of every
+  ripple shown since the page opened (a replay counts once).
+- **Not built: the question's ripple** ("the answer, and the messages it was built from"). A lookup does not
+  record which entries it read, so the messages behind an answer cannot be named truthfully today. It needs the
+  lookup's trace to keep the record ids it returned; left as WEB-87.
+- **Not in:** the subcontractor's amount and the client view for work done; whether an issue raises a task by
+  itself (the card shows a task only when one exists); a cost-centre card and a GST card for a bill; service due
+  for a machine.
 
 ### Phases (tracker)
 

@@ -2075,6 +2075,7 @@ export async function fetchSiteQuestionsApi(siteId: string, since: Date, until: 
 /** What a message to Mesiri was (WEB-53); the backend's `live_feed.KIND_LABELS` says each one's name. */
 export type LiveKind =
   | 'attendance' | 'work' | 'correction' | 'delivery' | 'usage' | 'transfer' | 'expense' | 'issue' | 'issue_closed'
+  | 'machine'
   | 'undo' | 'setup' | 'catalogue' | 'language' | 'report' | 'question' | 'intro' | 'saved' | 'cancelled' | 'photo' | 'chat'
 
 /** One message on the company Live, and what Mesiri did with it. */
@@ -2118,7 +2119,7 @@ export interface LiveFeedItem {
 
 /** A saved record Live can ask "what did this change?" about. */
 export interface LiveRecord {
-  kind: 'material_receipt' | 'material_usage' | 'labour_report'
+  kind: 'material_receipt' | 'material_usage' | 'labour_report' | 'activity' | 'site_issue' | 'expense' | 'machine_log'
   id: string
 }
 

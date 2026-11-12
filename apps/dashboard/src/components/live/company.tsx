@@ -9,6 +9,7 @@ import {
   Camera,
   CheckCheck,
   CheckCircle2,
+  Tractor,
   FileText,
   Flag,
   Hammer,
@@ -130,6 +131,7 @@ const KINDS: Record<LiveKind, KindLook> = {
   expense: { icon: IndianRupee, goes: 'Expenses', tone: 'money' },
   issue: { icon: AlertTriangle, goes: 'Issues', tone: 'issues' },
   issue_closed: { icon: CheckCircle2, goes: 'Issues', tone: 'issues' },
+  machine: { icon: Tractor, goes: 'Machines', tone: 'work' },
   undo: { icon: Undo2, goes: null, tone: 'plain' },
   setup: { icon: Flag, goes: 'Projects', tone: 'info' },
   language: { icon: Languages, goes: null, tone: 'info' },
@@ -196,6 +198,8 @@ const LOOKUP_DEST: [RegExp, DestKey][] = [
 const PATH_DEST: [RegExp, DestKey][] = [
   [/^\/(materials|procurement)/, 'materials'],
   [/^\/labour/, 'labour'],
+  [/^\/(site-log|planning|projects)/, 'work'],
+  [/^\/(issues|tasks)/, 'issues'],
   [/^\/reports/, 'reports'],
   [/^\/(finance|cost)/, 'expenses'],
 ]
@@ -532,6 +536,8 @@ export function CompanyLive({
   /** WEB-82: the ripple on the stage: what the entry just saved changed, one card at a time. */
   const [ripple, setRipple] = React.useState<{ item: LiveFeedItem; effects: EntryEffects; at: number; held: boolean } | null>(null)
   /** The presenter's hand on it: hold it on a card, or move it (Space, ← →, S, Esc, a click). */
+  /** WEB-86: how many things each ripple shown today told (record id -> its cards), for the closing count. */
+  const [known, setKnown] = React.useState<Map<string, number>>(new Map())
   const rippleCtl = React.useRef<{ held: boolean; move: ((to: RippleMove | 'hold') => void) | null }>({ held: false, move: null })
   const queue = React.useRef<LiveFeedItem[]>([])
   const playing = React.useRef(false)
@@ -594,6 +600,8 @@ export function CompanyLive({
       }
       const n = effects.cards.length
       if (!n) return
+      // WEB-86: the day's closing count: what the ripples shown so far told the owner (a replay counts once).
+      setKnown((k) => (k.get(record.id) === n ? k : new Map(k).set(record.id, n)))
       rippleCtl.current.held = false
       let at = 0
       for (;;) {
@@ -940,6 +948,7 @@ export function CompanyLive({
     saved: items.filter((m) => m.state === 'saved').length,
     issues: sites.reduce((n, s) => n + (s.open_issues || 0), 0),
     reported: sites.filter((s) => s.last_update_at).length,
+    known: [...known.values()].reduce((n, c) => n + c, 0),
   }
   const company = branding.data?.company_name
   // WEB-65: messages Mesiri is still working on (just in, no reply yet): shown as being worked on, played once done.
@@ -1460,6 +1469,7 @@ export function CompanyLive({
           <Total n={totals.workers} what={totals.workers === 1 ? 'worker on site' : 'workers on site'} big={presenting} />
           <Total n={totals.messages} what={totals.messages === 1 ? 'message' : 'messages'} big={presenting} />
           <Total n={totals.saved} what={totals.saved === 1 ? 'entry saved' : 'entries saved'} big={presenting} />
+          {totals.known > 0 && <Total n={totals.known} what={totals.known === 1 ? 'thing you now know' : 'things you now know'} big={presenting} />}
           <Total n={totals.issues} what={totals.issues === 1 ? 'open issue' : 'open issues'} big={presenting} />
           <Total n={totals.reported} what={`of ${sites.length} sites heard from`} big={presenting} />
         </div>
