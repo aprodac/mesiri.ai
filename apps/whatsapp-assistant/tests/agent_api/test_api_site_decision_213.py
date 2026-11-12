@@ -85,7 +85,9 @@ async def test_several_sites_and_nothing_to_go_by_asks_with_buttons() -> None:
     turn = await _run("20 bag cement vannu", _receipt(PROJECT, "20 bags cement", TOWER), two)
     assert turn.pending == []
     assert turn.options == ["Green Villa main", "Tower A"]
-    assert "Which site" in turn.calls[0]["result"]["error"]
+    # WA-278: the line is not refused and thrown away any more: the code keeps it and asks the site itself.
+    assert "error" not in turn.calls[0]["result"] and "held" in turn.calls[0]["result"]["status"]
+    assert [h["tool"] for h in turn.site_held] == ["record_receipt"]
 
 
 def test_sibling_the_decision_and_what_counts_as_reported() -> None:

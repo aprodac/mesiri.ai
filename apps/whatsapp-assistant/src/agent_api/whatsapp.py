@@ -634,6 +634,13 @@ class ApiWhatsApp:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending") or []])
             needs = list(state.get("size_needed") or [])
+            if state.get("site_held") and not ready and not needs and is_bare_cancel(text):
+                # WA-278: "cancel" while lines wait for their site lets them go, said plainly; no model turn.
+                state.pop("site_held", None)
+                state["asked"], state["asked_id"] = None, None
+                await self._save_state(ctx, state)
+                await self._trace_turn(message, {"text": text, "calls": [], "site_held_cancelled": True}, started)
+                return ReplySpec(text=_in(state.get("language"), "api.cancelled", CANCELLED))
             if not ready and not needs and not state.get("asked") and is_bare_cancel(text):
                 # WA-274 (live run, 10 Nov: a bare "cancel" with nothing waiting got today's cement stock and the
                 # project count; [285], 7 Nov: the updates after it were swallowed): the code can tell from the
@@ -686,6 +693,8 @@ class ApiWhatsApp:
                 recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
                 # WA-277 step E: tools on demand for this company; the areas this chat opened today stay open.
                 on_demand=await self._tools_on_demand(ctx), open_areas=_open_areas(state, time.time()),
+                # WA-278: lines waiting for their site; the code prepares them when this message names it.
+                site_held=_site_held(state, time.time()),
                 places=places,  # [213]: the code decides the site of a report
                 open_question=state.get("asked"),  # [219]: a message that doesn't answer it drops it
                 sizes=sizes, may_set_sizes=_may_set_sizes(ctx),  # WA-166: who may set a size for the company
@@ -736,6 +745,13 @@ class ApiWhatsApp:
         unchanged = not turn.saved and [e.summary for e in turn.pending] == [e.summary for e in ready]
         if turn.opened:
             state["areas"] = {"names": turn.opened, "at": time.time()}  # WA-277 step E
+        if turn.site_held:
+            # WA-278: kept from when they were first held, so they do not wait for ever.
+            since = float((state.get("site_held") or {}).get("at") or 0)
+            state["site_held"] = {"lines": turn.site_held,
+                                  "at": since if _site_held(state, time.time()) else time.time()}
+        else:
+            state.pop("site_held", None)
         awaiting = state.pop("awaiting_why", None)
         got_why = bool(awaiting and time.time() - float(awaiting.get("at") or 0) < AWAIT_WHY_SECONDS
                        and not calls and unchanged and not turn.question)
@@ -1551,7 +1567,7 @@ class ApiWhatsApp:
         remember_card(state)  # WA-263
         try:
             await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "quiet", "kept", "photo", "unbilled", "unsaved", "cards",
-                                                               "saved_batch", "asked_id")
+                                                               "saved_batch", "asked_id", "areas", "site_held")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -2219,6 +2235,18 @@ EDIT_SECONDS = 15 * 60
 #: WA-277 step E: how long an opened tool area stays open in a chat (a conversation about payments goes on for a
 #: while; the next morning starts from the core again).
 AREAS_OPEN_SECONDS = 12 * 3600
+
+
+#: WA-278: how long lines wait for their site before they are let go (the person has moved on).
+SITE_HELD_SECONDS = 30 * 60
+
+
+def _site_held(state: dict, now: float) -> list[dict]:
+    """The lines of this chat still waiting for their site."""
+    kept = state.get("site_held") or {}
+    if not isinstance(kept, dict) or now - float(kept.get("at") or 0) > SITE_HELD_SECONDS:
+        return []
+    return [h for h in kept.get("lines") or [] if isinstance(h, dict) and h.get("tool")]
 
 
 def _open_areas(state: dict, now: float) -> list[str]:

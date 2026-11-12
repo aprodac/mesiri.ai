@@ -28,7 +28,7 @@ from agent_api.feedback import specs as feedback_specs
 from agent_api.links import IN_CHAT, WEB_LINK, build_link, in_chat_note
 from agent_api.links import spec as web_link_spec
 from mesiri.domains.materials.names import alias_key
-from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
+from mesiri_ai.models import ChatMessage, ToolCallRecord, ToolOutcome, ToolRunResult, ToolSpec
 from runtime.agent.reply_text import asks_to_tap_save
 from runtime.ai_outage import is_budget_error
 
@@ -263,6 +263,9 @@ class ApiTurn:
     size_unknown: bool = False
     #: WA-277 step E: the tool areas open after this turn (tools on demand); the chat keeps them for the day.
     opened: list[str] = field(default_factory=list)
+    #: WA-278: lines understood but waiting for their site ({tool, arguments}): the code keeps them, asks the site
+    #: once with buttons, and prepares them itself when the site is answered. Never thrown away, never redone.
+    site_held: list[dict[str, Any]] = field(default_factory=list)
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -715,7 +718,8 @@ class ApiAgent:
                   open_question: dict[str, Any] | None = None, sizes: dict[str, Any] | None = None,
                   may_set_sizes: bool = True, language_chosen: bool = False,
                   size_open: list[dict[str, Any]] | None = None, day_starts_at: str | None = None,
-                  on_demand: bool | None = None, open_areas: list[str] | None = None) -> ApiTurn:
+                  on_demand: bool | None = None, open_areas: list[str] | None = None,
+                  site_held: list[dict[str, Any]] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -733,6 +737,10 @@ class ApiAgent:
         opened: set[str] = {a for a in [*(open_areas or []), *(tool_areas.area_of(e.tool) for e in ready or [])]
                             if a in tool_areas.AREAS} if on_demand else set()
         just_opened: list[str] = []  # areas opened by the model in the run that just ended
+        # WA-278: lines waiting for their site. ``held_for_site``: after this turn (carried or new);
+        # ``code_prepared``: the ones the code prepared in this turn from the site just answered.
+        held_for_site: list[dict[str, Any]] = []
+        code_prepared: list[PendingWrite] = []
         opened_calls: list[dict[str, Any]] = []  # the open_tools calls of this turn, for the trace
         from mesiri.domains.organizations.settings import WORKING_DAY_STARTS_DEFAULT, working_day
 
@@ -1092,11 +1100,20 @@ class ApiAgent:
                     place = Place(f"{SITE_OF}{place.project_id}", place.project_id, place.name)
                     site_note = " (new site)"
                 if isinstance(place, list) or (place.site_id is None and "site_id" in tool.required):
+                    # WA-278 (Aprodac, 12 Nov 02:12: cement and 30 masons were refused here for their site, only
+                    # "send the report" was left, and after the site tap the model prepared the report alone, then
+                    # the cement as usage): the line is not thrown away for the model to do again. The code keeps
+                    # the call, asks the site itself (buttons), and prepares the line when the site is answered.
                     names = place if isinstance(place, list) else [place.name]
                     site_ask[:] = site_options(names)
-                    return ToolOutcome(content={"error": (
-                        "Which site is this for? Nothing was prepared. Ask the person with `ask`, these as the options: "
-                        + ", ".join(site_ask))})
+                    hold = {"tool": name, "arguments": dict(arguments)}
+                    if hold not in held_for_site:
+                        held_for_site.append(hold)
+                    return ToolOutcome(content={"status": HELD_FOR_SITE, "note": (
+                        "The code keeps this line and asks the person which site, with buttons. It is NOT prepared "
+                        "and nothing is saved. Do not call this again for it, do not call `ask` for the site, and "
+                        "never say it is ready, updated or saved. Do the other parts of my message; your reply says "
+                        "nothing about this line (the code asks).")})
                 arguments = {k: v for k, v in arguments.items() if k != "site_id"}
                 if place.site_id:
                     arguments["site_id"] = place.site_id
@@ -1438,10 +1455,23 @@ class ApiAgent:
                     # [257]: a project line the model wrote named a contract value and payment terms the body never
                     # carried; the card line is drawn from the fields that will be saved.
                     said_line = project_line(name, body, places, path) or said_line
+                if name in SEND_LINE_TOOLS and (unsaved := updates_not_saved(
+                        held_for_site, [e for e in [*waiting, *new] if e is not None], self._tools)):
+                    # WA-278 (the same chat, 02:13: the report was offered beside updates not yet saved, Send was
+                    # tapped, and the day's report went to everyone with nothing in it): a report never goes while
+                    # updates wait. They are saved first; the report is asked for after.
+                    return ToolOutcome(content={"status": "not prepared: updates first", "note": (
+                        f"{unsaved} update(s) from this chat are not saved yet, so the report would go out without "
+                        "them. The report is NOT prepared. In your reply say in one short line, in their language, "
+                        "that the report goes after these are saved: Save first, then ask for the report.")})
                 if name in SEND_LINE_TOOLS:
                     # [264] (5 Nov, Adarsh: "Send todays report" -> "OK." and a card line "Today's DPR report"): the
                     # line of a report send is drawn by the code and names the project it goes out for.
                     said_line = send_line(path, places, language) or said_line
+                if any(e.tool == name and e.path == path and e.body == body for e in code_prepared):
+                    # WA-278: the code prepared this very line from the site just answered; the model's copy is not added.
+                    return ToolOutcome(content={"status": "already prepared by the code in this turn, NOT saved",
+                                                "note": "It is on the card. Do not prepare it again."})
                 if name in ONE_PER_NAME and (twin := same_named(new, name, body)) is not None:
                     # WA-277 round 5 (real model, "add the project Hospital, 100 bags cement unloaded there"): the
                     # project was prepared twice in one turn, two "New project Hospital" lines on the card. A thing
@@ -1607,8 +1637,34 @@ class ApiAgent:
                            "it. Do not prepare `set_unit_conversion`, do not ask the size again, do not repeat the line. "
                            "Do what the rest of the message asks (if it says to save, call save_ready_entries).")
         again_asked = False  # WA-198: one corrective retry per turn at most (reply time)
+        # WA-278: the lines held for their site, when this message names it (a tap is the site's name): the code
+        # prepares them now, each with the call the model made when the person said it. The model is not asked again.
+        code_records: list[ToolCallRecord] = []
+        held_before = list(site_held or [])
+        if held_before and places is not None and names_a_place(text, places):
+            for hold in held_before:
+                before = len(new)
+                outcome = await handler(str(hold.get("tool") or ""), dict(hold.get("arguments") or {}))
+                code_records.append(ToolCallRecord(name=str(hold.get("tool") or ""),
+                                                   arguments=dict(hold.get("arguments") or {}), outcome=outcome))
+                code_prepared.extend(new[before:])
+        elif held_before:
+            # Not the site's answer (another request, or "Other"): nothing is dropped. The lines stay held and the
+            # site is asked again with this reply.
+            held_for_site.extend(h for h in held_before if h not in held_for_site)
+            site_ask[:] = site_options(place_names_to_ask(places)) if places is not None else []
+        if code_prepared:
+            lines = "; ".join(e.summary for e in code_prepared)
+            system += (f"\n\nThe CODE already prepared these from my earlier message, at the site I just named: {lines}. "
+                       "They are on the card, not saved. Do not prepare them again and do not ask the site. If this "
+                       "message says nothing else, reply with one short line. This note is for you only.")
+        only_the_site = bool(code_prepared) and not held_for_site and is_only_a_place(text, places)
         try:
-            result = await ask_model(messages)
+            # A bare site answer (the tap) needs no model: the code did all of it, and the card speaks.
+            result = (ToolRunResult(text="", calls=[], steps=0, stop_reason="done_by_tools", model="code")
+                      if only_the_site else await ask_model(messages))
+            if code_records:
+                result = result.model_copy(update={"calls": [*code_records, *result.calls]})
         except Exception as exc:
             # A model error before anything was prepared or saved: one more try (compare run of
             # 1 Nov: one expense message failed on the first call). After an effect, never again;
@@ -1739,8 +1795,16 @@ class ApiAgent:
         calls = opened_calls + calls  # WA-277 step E: the areas opened, first in the trace
         still = [e for e in waiting if e is not None]
         # [217]: a question asked with no options still gets the buttons the code built (the near-match ones).
+        if held_for_site and site_ask:
+            # WA-278: the site question is the code's, in their language, with the code's buttons.
+            asked["question"] = which_site_line(language)
+            asked["options"] = list(site_ask)
         options = asked.get("options", []) or unit_ask or site_ask
         reply = without_apology((result.text or "").strip())  # [265]: never "My bad!" for a slip they never saw
+        if held_for_site and site_ask:
+            # The model's words stay only when they answer something it looked up; the question follows them.
+            reply = (f"{reply}\n\n{asked['question']}" if reply and looked(result.calls) and asked["question"] not in reply
+                     else asked["question"])
         # [232]: a size still unknown for a held line: the code draws the ONE question (bigger unit first) and its tap;
         # the model's own wording of it (maybe backwards) is replaced, and the line stays on the card meanwhile.
         live = {e.idempotency_key for e in [*waiting, *new] if e is not None and SIZE_UNKNOWN.search(e.summary)}
@@ -1787,7 +1851,54 @@ class ApiAgent:
                        options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed, language_set=next(iter(language_set), ""),
-                       size_unknown=bool(size_unknown), opened=sorted(opened))
+                       size_unknown=bool(size_unknown), opened=sorted(opened), site_held=list(held_for_site))
+
+
+#: WA-278: what a line waiting for its site is told to the model as.
+HELD_FOR_SITE = "held: the code asks which site"
+WHICH_SITE = "Which site is this for?"
+
+
+def which_site_line(language: str | None) -> str:
+    """The site question in the person's language (the code's line, never the model's)."""
+    if not language or language == "english":
+        return WHICH_SITE
+    from runtime.agent.wording import say
+
+    return say("api.which_site", language)
+
+
+def _place_names(places: Places) -> list[str]:
+    return [name for _, name, _ in places.sites] + [name for _, name in places.projects]
+
+
+def names_a_place(text: str, places: Places) -> bool:
+    """Whether the message names one of the person's sites or projects (a tap on a site button is its name)."""
+    said = " ".join(text.casefold().split())
+    return any(_named(name, said) for name in _place_names(places))
+
+
+def is_only_a_place(text: str, places: Places | None) -> bool:
+    """Whether the message is nothing but a site's or project's name: the tap, or the name typed."""
+    if places is None:
+        return False
+    said = " ".join(text.casefold().split())
+    return any(said in {" ".join(n.casefold().split()), " ".join(n.casefold().split()).split(",")[0].strip()}
+               for n in _place_names(places))
+
+
+def place_names_to_ask(places: Places) -> list[str]:
+    """The names for the site buttons when held lines are asked about again: sites, then projects with no site."""
+    with_site = {pid for _, _, pid in places.sites}
+    return [name for _, name, _ in places.sites] + [name for pid, name in places.projects if pid not in with_site]
+
+
+def updates_not_saved(held: list[dict[str, Any]], entries: list[PendingWrite], tools: dict[str, ApiTool]) -> int:
+    """How many updates of this chat are not saved yet: lines held for their site, and lines on the card that go to a
+    site (a delivery, attendance, work, an issue...). A report sent now would not have them."""
+    on_card = sum(1 for e in entries if e.tool not in SEND_LINE_TOOLS
+                  and (tool := tools.get(e.tool)) is not None and site_scoped(tool))
+    return len(held) + on_card
 
 
 #: Things made by their name: the same name is prepared once in a turn (a project, a material, a site).

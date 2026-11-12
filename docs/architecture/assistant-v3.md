@@ -179,7 +179,8 @@ call) when production had called 38 of them in ten days. With the company settin
   (one extra model call on that message). What it had already prepared is held and named, so nothing is prepared twice.
 - The **SOP rules that are only about one area** (13, 15, 16, 18, 19, 20, 21, 22, 24, 25, 26; `AREA_RULES`) leave the
   prompt with their tools, one line in their place, and come back word for word when the area opens.
-- An opened area stays open in that chat for 12 hours; an entry waiting for Save keeps its area open.
+- An opened area stays open in that chat for 12 hours; an entry waiting for Save keeps its area open. (Until
+  12 Nov the chat did not keep it: `areas` was missing from the state keys that are saved; fixed with WA-278.)
 - Opening an area is not "looking something up": the reply checks do not count it; it is first in the turn's trace.
 - "Can't" with an area still closed: the code's one more try says where the other tools are.
 - Measured from the definitions (4 characters a token): tools 22,100 -> 7,800 tokens, SOP 10,400 -> 7,600; about
@@ -188,6 +189,33 @@ call) when production had called 38 of them in ten days. With the company settin
   **On for Mesiri Test Builders since 11 Nov** (migration 0547, asked by Ilan); off for every other company.
   The saved conversations on the real model read `MESIRI_TOOLS_ON_DEMAND` (the `SOP eval` workflow's
   `tools_on_demand` input, default on).
+
+## The state the code owns (WA-278, from 12 Nov 2026)
+
+v3 was written with "almost no code around the model". What that left out is a place in code that owns the
+conversation's state; it grew instead as separate guards (about 5,000 lines by 11 Nov), and the faults that kept
+coming back were the gaps between them: a line thrown away while a question is open, a tap that does not know what
+it answers, the model asked to do the same thing again. Agreed with Ilan, 12 Nov, after his live test on Aprodac:
+no new engine; the missing layer is added in three parts, and a fix goes into one of them or it is a model-reading
+case.
+
+| Part | What the code owns | Status |
+|---|---|---|
+| 1. The draft across turns | A line once understood is never thrown away and never redone by the model. A question fills one gap in a held line. | **Site: done (WA-278).** Units, sizes and materials still use their older, separate holds. |
+| 2. Every statement of fact | "Saved", "sent", "updated", "not saved" are the code's lines, from what happened. | In part (WA-193, WA-274, WA-277 F); the rest is WA-267. |
+| 3. Memory as state | The model sees what is saved, what waits and the last few messages, not the day's chat replayed. | Not started (WA-270). |
+
+**Part 1, the site (`agent.py`, `whatsapp.py`):**
+
+- A write refused only because the site is not known is **held**, with the call the model made (`ApiTurn.site_held`
+  -> the chat's state `site_held`, 30 minutes). The model is told it is held and not to prepare it again.
+- The site question is the code's line (`api.which_site`, five languages) with the code's buttons.
+- The answer, a tap (the site's name) or the name in words, makes **the code** run the held calls: same tool, same
+  figures. A bare answer runs no model at all; with more words the model runs, told what the code prepared, and a
+  copy of a line the code just prepared is not added.
+- A message that is not the answer drops nothing: the lines stay held and the site is asked again with that reply.
+  A plain "cancel" lets them go.
+- A report (`send_dpr`) is not prepared while updates wait, held for a site or on the card: they are saved first.
 
 ## Saving
 

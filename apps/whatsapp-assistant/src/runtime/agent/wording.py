@@ -582,6 +582,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "वह सवाल अब बंद हो चुका है, इसलिए मैंने वह जवाब नहीं लिया।",
         "hinglish": "Woh sawaal ab band ho chuka hai, isliye maine woh jawaab nahi liya.",
     },
+    "api.cancelled": {
+        "english": "Cancelled. Nothing was saved.",
+        "manglish": "Cancel cheythu. Onnum save aayilla.",
+        "malayalam": "ക്യാൻസൽ ചെയ്തു. ഒന്നും സേവ് ആയില്ല.",
+        "hindi": "कैंसल कर दिया। कुछ भी सेव नहीं हुआ।",
+        "hinglish": "Cancel kar diya. Kuch bhi save nahi hua.",
+    },
+    "api.which_site": {
+        "english": "Which site is this for?",
+        "manglish": "Ithu ethu site-il aanu?",
+        "malayalam": "ഇത് ഏത് സൈറ്റിലാണ്?",
+        "hindi": "यह किस साइट के लिए है?",
+        "hinglish": "Yeh kis site ke liye hai?",
+    },
     "api.nothing_to_cancel": {
         "english": "There is nothing waiting to cancel.",
         "manglish": "Cancel cheyyaan onnum baakki illa.",
