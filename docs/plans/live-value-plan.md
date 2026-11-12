@@ -57,7 +57,7 @@ no such logic was found in the sweep.
 |---|---|---|---|
 | More used than was in stock | material used | review flag `beyond_stock` (Live shows it already) | Caught |
 | The same thing entered twice | any entry | review flag `possible_duplicate` (Live shows it already) | Caught |
-| Paid more than last time, or than the agreed rate | delivery with a rate, a bill | `GET /materials/last-purchase`, Rates page; the comparison itself is **to build** | Caught, Money |
+| Paid more than last time, or than the agreed rate | delivery with a rate, a bill | `GET /procurement/rates/{material_id}`: each purchase with the rate before it and whether it differs from its order's | Caught, Money |
 | Billed for what did not arrive | bill photo | `POST /materials/invoices/match`, bill ↔ deliveries links | Caught, Money |
 | Short supply against the order | delivery | purchase order `receive`, Pending deliveries | Caught |
 | Used more than the estimate allows | material used + work done | BOQ norms, Cost → Materials, green/red variance | Money |
@@ -142,6 +142,50 @@ appears only when it is true for this entry (no order linked: no order card).
 | Machine log | hours and diesel → hire bill check → machine cost per site → service due |
 | Question | the answer, and the messages it was built from |
 
+### What one entry can show today (WEB-81, read in the code on 12 Nov)
+
+Read from the code, not run against a database. "Yes" means the records hold what the card needs for
+this one entry; the before is the after less the entry's own quantity or amount.
+
+| Entry | Card | Today | From |
+|---|---|---|---|
+| Material came | stock before → after | yes | the stock ledger keeps a running balance per site and material |
+| | days it lasts | yes | `days_left` in the stock summary (stock ÷ daily use) |
+| | the order: delivered, still to come | yes, when the delivery is on an order | `material_receipts.purchase_order_line_id`, `line_received` |
+| | rate against last time and against the order | yes, when a rate was given | `unit_cost` on the delivery; the Rates read compares |
+| | supplier now owed | yes, when a rate and a supplier are known | the vendor ledger's summary |
+| | cost and budget | project cost: yes. Per estimate line: only where the material has a norm | Full cost read; Cost → Materials |
+| Material used | stock before → after, days left | yes | as above |
+| | below minimum: order this much | yes, when a minimum is set | stock levels `below` |
+| | used against the estimate | only where the material has a norm on an estimate line | Cost → Materials |
+| Attendance | who is on site | yes | the attendance report |
+| | today's wages | yes, for lines with a wage | each attendance line carries `daily_wage` |
+| | the week's wage bill, advances | yes | the open wage sheet for the week; advance balances |
+| | labour cost on the project | yes | Full cost read |
+| | labour against the estimate line's budget | **only after a person puts the day on a line** | Cost → Labour suggests a line and never saves it by itself |
+| Work done | on the report, with its photo | yes | Live shows it already |
+| | counted on an estimate line → budget earned, billable to the client, schedule progress | **only after a person puts the quantity on a line** | `PUT /boq/work/{quantity_id}`: "a person puts the work on a line"; a client bill takes measured work not billed yet |
+| | floor grid, subcontractor's amount, client view | not checked | |
+| Issue | on the report; days open | yes | issues |
+| | task raised | a task can point at an issue; whether one is raised by itself was not checked | tasks `site_issue_id` |
+| Bill photo | read; matched to deliveries; what differs | yes | vendor matching keeps `billed_quantity` and `billed_rate` beside the delivery's |
+| Machine log | hours against the hire bill | yes, per machine and month | hire check |
+
+**What this changes in the build:**
+
+1. **Five kinds of entry are "facts"** with an id Live can ask about: work done, issue, attendance,
+   material came, material used. A bill and a machine log are not. The effects read therefore takes a
+   record kind and id (`/dpr/effects/{kind}/{id}`), with the five fact kinds first.
+2. **Work done and labour reach the budget only through a person's tap** (putting it on an estimate
+   line). The honest card is "Suggested line: Plastering, 2nd floor. Once counted: ₹48,000 billable",
+   with the tap done from the card in a demo. Making it automatic is a product decision (decision 5).
+3. **Material came, material used and attendance are ready**: every card in their chains can be
+   computed for one entry. They stay the first three (WEB-82).
+4. **Live is open to everyone on a site, and money answers are kept off it today** (the feed leaves
+   finance questions out). Money cards need the role rule (decision 4) before they show.
+5. Cost control and Labour are behind their module switches, so a switched-off module gives a greyed
+   card with no extra work.
+
 ## 6. The presentation
 
 **The screen.** Left: the messages. Middle: Mesiri handling one, then the ripple cards. Right: the
@@ -177,7 +221,7 @@ counts only differences the code found.
 
 ## 7. How it is built
 
-- **One read-only API**, `GET /dpr/facts/{fact_type}/{fact_id}/effects`, beside the existing
+- **One read-only API**, `GET /dpr/effects/{kind}/{id}` (see the WEB-81 findings), beside the existing
   `/sources`. It returns the ordered cards for one saved entry: `kind`, `tag`, `before`, `after`,
   `sentence`, `say` (the presenter's line), `opens` (the page), and the board question it answers.
 - **One table of effect rules** per entry kind. A new effect is one entry in the table. Each rule calls
@@ -233,10 +277,15 @@ counts only differences the code found.
 3. **Greyed cards** for modules a visitor's plan would not include: show them in demos or not?
 4. **Roles:** the effects API shows money by role. It is a permissions matter, so WEB-82 waits for a yes
    on the rule "the same roles that see Expenses".
+5. **Work done and the estimate line:** keep the person's tap (the card offers it), or let Mesiri count
+   work on the suggested line by itself when it is sure? The second changes how progress and billing are
+   fed, so it needs a yes.
 
 ## 9. Not verified
 
-- Whether each "How" can give before and after for a single entry (WEB-81).
-- Rate comparison on a delivery and output per worker-day: no existing logic found.
+- WEB-81 was read in the code only; nothing was run against a database or the demo company.
+- Not checked: whether a delivery sent on WhatsApp is put on its order by itself; the floor grid, the
+  subcontractor's amount and the client view for work done; whether an issue raises a task by itself.
+- Output per worker-day: no existing logic found.
 - The demo company has no orders, bills, BOQ budget, wage sheets or client bills: read from the routes
   `demo.py` calls, not from a reset company.
