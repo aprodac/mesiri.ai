@@ -35,11 +35,13 @@ import {
 import {
   fetchBranding,
   fetchJoining,
+  fetchLiveBoardApi,
   fetchLiveFeedApi,
   fetchLiveStampApi,
   fetchSiteDayApi,
   fetchSetupProgress,
   fetchSiteDaysApi,
+  type LiveBoardKey,
   type LiveFeedItem,
   type LiveKind,
   type ProjectDayItem,
@@ -54,6 +56,7 @@ import { Label } from '@/components/onboarding/conversation'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { CountTo } from './ink'
 import { LIVE_MODULES, useCinematicGo } from './modules'
+import { OwnerBoard, questionsOf } from './board'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
 import { Finale } from './finale'
@@ -91,6 +94,8 @@ const STAMP_POLL_MS = 1_000
 /** A backstop read of the feed, in case a change slipped past the stamp. */
 const FEED_POLL_MS = 15_000
 const SITES_POLL_MS = 10_000
+/** WEB-83: the owner's board is read again when a message lands, and this often besides (the web changes it too). */
+const BOARD_POLL_MS = 60_000
 /** WEB-71: who is joining; a few seconds, so an Approve tap shows while the room watches. */
 const JOINING_POLL_MS = 3_000
 /** How long each step of the Spark's handling shows. */
@@ -458,6 +463,16 @@ export function CompanyLive({
     refetchInterval: isToday ? JOINING_POLL_MS : false,
     retry: false,
   })
+  // WEB-83: the owner's board: six answers from the modules' own reads, as of now (whatever day is shown).
+  const board = useQuery({
+    queryKey: ['live-board'],
+    queryFn: fetchLiveBoardApi,
+    refetchInterval: isToday ? BOARD_POLL_MS : false,
+    retry: false,
+  })
+  const boardData = React.useRef(board.data)
+  boardData.current = board.data
+  const boardRefs = React.useRef(new Map<LiveBoardKey, HTMLElement>())
   const cinematic = useCinematicGo()
 
   const items = React.useMemo(() => feed.data ?? [], [feed.data])
@@ -598,11 +613,14 @@ export function CompanyLive({
       }
       // Its work flies on to the module that keeps it (a transfer: three, one after another, as the stock moves).
       const dest = destOf(item)
-      if (dest) {
-        const to = destRefs.current.get(dest.key)?.getBoundingClientRect()
-        for (const delay of item.transfer ? [0, 160, 320] : [0]) fly(from, to, delay)
-        ring(dest.key, alarm ? 'alarm' : 'land', 850)
-      }
+      // WEB-83: a saved entry lands on the owner's questions it answers (the first is where it flies), and the
+      // answers are read again; anything else still goes to the module that keeps it.
+      const asks = item.state === 'saved' ? questionsOf(item, boardData.current) : []
+      const to = (asks.length ? boardRefs.current.get(asks[0]) : dest ? destRefs.current.get(dest.key) : undefined)?.getBoundingClientRect()
+      if (asks.length || dest) for (const delay of item.transfer ? [0, 160, 320] : [0]) fly(from, to, delay)
+      if (dest) ring(dest.key, alarm ? 'alarm' : 'land', 850)
+      asks.forEach((key, i) => ring(`q:${key}`, alarm && i === 0 ? 'alarm' : 'land', 850 + i * 260))
+      if (asks.length && live) window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['live-board'] }), 900)
       // The sites' numbers (and a site just added) catch up as it lands.
       if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
       await wait(alarm ? STEP_MS + 3_400 : item.kind === 'cancelled' || item.kind === 'undo' ? STEP_MS + 3_800 : isBill(item) || item.kind === 'language' || item.state === 'asked' || item.kind === 'chat' || cardAs(item) ? STEP_MS + 2_600 : STEP_MS + 1_200)
@@ -1231,65 +1249,66 @@ export function CompanyLive({
               )}
             </section>
 
-            {/* Where it goes: the modules that keep Mesiri's work, each opening its page. */}
-            <section aria-label="Where it goes" className="order-3 min-w-0 lg:col-span-2 xl:col-span-1">
-              <Label>Where it goes</Label>
-              <ul className="m-0 mt-4 grid list-none grid-cols-1 gap-px bg-foreground/15 p-0 sm:grid-cols-2 xl:grid-cols-1">
-                {DESTS.filter(destOn).map((d) => {
-                  const Icon = d.icon
-                  const got = destCounts.get(d.key)
-                  const how = ringing.get(d.key)
-                  const fresh = d.key === 'projects' && newSiteNames.length > 0
-                  return (
-                    <li key={d.key} className="bg-background">
-                      <button
-                        type="button"
-                        ref={(el) => {
-                          if (el) destRefs.current.set(d.key, el)
-                          else destRefs.current.delete(d.key)
-                        }}
-                        onClick={(e) => openDest(d, e.currentTarget)}
-                        className={cn(
-                          'group relative grid w-full gap-1 border px-3.5 py-3 text-left transition-colors duration-300 hover:bg-foreground hover:text-background',
-                          how === 'alarm' ? 'z-40 border-[var(--destructive)] bg-background' : fresh ? 'border-primary' : 'border-transparent',
-                        )}
-                        style={
-                          prefersReducedMotion()
-                            ? undefined
-                            : how === 'alarm'
-                              ? { animation: 'live-shake 600ms ease-out 2' }
+            {/* WEB-83: the owner's board: what the day's entries mean, each answer opening its page. */}
+            <section aria-label="The owner’s board" className="order-3 min-w-0 lg:col-span-2 xl:col-span-1">
+              <OwnerBoard
+                board={board.data}
+                failed={board.isError}
+                items={items.filter((m) => shown.has(m.id) || before.current.has(m.id))}
+                ringing={ringing}
+                presenting={presenting}
+                nodeRef={(key, el) => {
+                  if (el) boardRefs.current.set(key, el)
+                  else boardRefs.current.delete(key)
+                }}
+                onOpen={(q, path, el, line) =>
+                  cinematic.go({ from: el.getBoundingClientRect(), to: path, title: q.question, kicker: `All sites · ${longDate(date)}`, line })
+                }
+              />
+              {/* Where it is kept: the modules that hold Mesiri's work, each opening its page. */}
+              <nav aria-label="Where it is kept" className="mt-5">
+                <Label>Where it is kept</Label>
+                <ul className="m-0 mt-2 flex list-none flex-wrap gap-1.5 p-0">
+                  {DESTS.filter(destOn).map((d) => {
+                    const Icon = d.icon
+                    const got = destCounts.get(d.key)
+                    const how = ringing.get(d.key)
+                    const fresh = d.key === 'projects' && newSiteNames.length > 0
+                    return (
+                      <li key={d.key}>
+                        <button
+                          type="button"
+                          ref={(el) => {
+                            if (el) destRefs.current.set(d.key, el)
+                            else destRefs.current.delete(d.key)
+                          }}
+                          title={fresh ? `New: ${newSiteNames.join(', ')}` : got?.last ? short(got.last, 80) : d.keeps}
+                          onClick={(e) => openDest(d, e.currentTarget)}
+                          className={cn(
+                            'flex items-center gap-1.5 border px-2 py-1 text-[12.5px] font-medium transition-colors duration-300 hover:bg-foreground hover:text-background',
+                            how === 'alarm' ? 'border-[var(--destructive)]' : fresh ? 'border-primary' : 'border-foreground/20',
+                          )}
+                          style={
+                            prefersReducedMotion()
+                              ? undefined
                               : how
                                 ? { animation: 'live-land 1.4s ease-out' }
                                 : fresh
                                   ? { animation: 'live-pop 900ms cubic-bezier(.3,1.5,.5,1) both' }
                                   : undefined
-                        }
-                      >
-                        {fresh && (
-                          <span className="absolute -top-2.5 right-3 bg-primary px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-primary-foreground">
-                            New site
-                          </span>
-                        )}
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2 text-[14px] font-semibold">
-                            <span className="grid size-7 place-items-center rounded-full border border-current">
-                              <Icon className="size-3.5" />
-                            </span>
-                            {d.name}
-                          </span>
-                          <span className="flex items-center gap-1.5 font-mono text-[13px] tabular-nums">
+                          }
+                        >
+                          <Icon className="size-3.5" aria-hidden="true" />
+                          {fresh ? `New site: ${newSiteNames.join(', ')}` : d.name}
+                          <span className="font-mono text-[11.5px] tabular-nums opacity-70">
                             <CountTo value={got?.n ?? 0} />
-                            <ArrowRight className="size-3.5 opacity-40 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100" />
                           </span>
-                        </span>
-                        <span className="truncate pl-9 text-[12px] text-muted-foreground group-hover:text-background/70">
-                          {fresh ? `New: ${newSiteNames.join(', ')}` : got?.last ? short(got.last, 60) : d.keeps}
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </nav>
               <label className="mt-5 grid gap-1.5">
                 <Label>A site’s day</Label>
                 <select

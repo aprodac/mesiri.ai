@@ -28,7 +28,7 @@ import uuid
 from collections import OrderedDict
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -43,6 +43,7 @@ from mesiri.application.dpr.site_day import (
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
 from mesiri.bootstrap.settings import Settings, get_settings
+from mesiri.domains.dpr import board as live_board
 from mesiri.domains.dpr import live_feed
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
@@ -497,6 +498,25 @@ async def list_live_feed(
             "site_id": str(site_id) if site_id else None,
         })
     return {"items": items}
+
+
+@router.get("/live/board")
+async def live_owner_board(
+    request: Request,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WEB-83: the owner's board on Live: six questions, each answered in a sentence with the number in it, from
+    the modules' own reads (``board.py``). Read-only. Each read keeps its module's scope and role rule, so a
+    person sees only the answers their pages would show them; a switched-off module is named, not read."""
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.organizations import settings as org_settings
+    from mesiri.domains.shared.modules import read_enabled_modules
+
+    stored = await read_enabled_modules(request, auth_context.organization_id)
+    today = await project_day.company_today(conn, auth_context.organization_id)
+    return await live_board.build(conn, auth_context, request, today,
+                                  lambda module: org_settings.module_enabled(module, stored))
 
 
 @router.get("/live/stamp")

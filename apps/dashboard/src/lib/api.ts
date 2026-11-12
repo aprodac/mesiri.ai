@@ -2129,6 +2129,37 @@ export async function fetchLiveFeedApi(since: Date, until: Date): Promise<LiveFe
   return res.data.items
 }
 
+/** WEB-83: one line of an answer on the owner's board: the sentence, the page that shows its number, the read it came from. */
+export interface LiveBoardLine {
+  text: string
+  opens: string
+  read: string
+}
+export type LiveBoardKey = 'money' | 'leaks' | 'work' | 'owed' | 'stops' | 'proof'
+export interface LiveBoardQuestion {
+  key: LiveBoardKey
+  question: string
+  lines: LiveBoardLine[]
+  /** Said when everything was read and there is nothing to say; null when a part was not seen. */
+  quiet: string | null
+  /** Modules switched off that would add to this answer. */
+  off: string[]
+  /** A part of the answer this person's role does not see (money). */
+  hidden: boolean
+  opens: string
+}
+export interface LiveBoard {
+  date: string
+  questions: LiveBoardQuestion[]
+  /** Which questions a kind of message answers: where it lands, and the messages an answer opens into. */
+  kinds: Partial<Record<LiveKind, LiveBoardKey[]>>
+}
+
+export async function fetchLiveBoardApi(): Promise<LiveBoard> {
+  const res = await api.get<LiveBoard>('/dpr/live/board')
+  return res.data
+}
+
 /** Confirm one draft (BE-09). */
 export async function confirmFactApi(factType: FactType, factId: string): Promise<void> {
   await api.post(`/dpr/facts/${factType}/${factId}/confirm`)
