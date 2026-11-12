@@ -8,6 +8,7 @@ import {
   Boxes,
   Camera,
   CheckCheck,
+  BookOpen,
   CheckCircle2,
   Tractor,
   FileText,
@@ -38,6 +39,7 @@ import {
   fetchEffectsApi,
   fetchJoining,
   fetchLiveBoardApi,
+  fetchLiveDeckApi,
   fetchLiveFeedApi,
   fetchLiveStampApi,
   fetchSiteDayApi,
@@ -62,6 +64,7 @@ import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { CountTo } from './ink'
 import { LIVE_MODULES, useCinematicGo } from './modules'
 import { OwnerBoard, questionsOf } from './board'
+import { DemoDeck } from './deck'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { MEET_SAMPLES, MeetMesiri, type SceneKey } from './meet'
 import { Finale } from './finale'
@@ -489,6 +492,9 @@ export function CompanyLive({
     refetchInterval: isToday ? BOARD_POLL_MS : false,
     retry: false,
   })
+  // WEB-84: the demo deck: stories of ready messages, given only to a company marked as a demo.
+  const deck = useQuery({ queryKey: ['live-deck'], queryFn: fetchLiveDeckApi, retry: false, staleTime: 10 * 60_000 })
+  const [decking, setDecking] = React.useState(false)
   const boardData = React.useRef(board.data)
   boardData.current = board.data
   const boardRefs = React.useRef(new Map<LiveBoardKey, HTMLElement>())
@@ -1078,6 +1084,19 @@ export function CompanyLive({
                 <Mic className="size-4" /> Tell Mesiri
               </button>
             )}
+            {isToday && deck.data?.demo && (
+              <button
+                type="button"
+                onClick={() => setDecking((d) => !d)}
+                aria-pressed={decking}
+                className={cn(
+                  'flex items-center gap-2 border border-foreground px-4 py-2 text-sm font-medium hover:bg-foreground hover:text-background',
+                  decking && 'bg-foreground text-background',
+                )}
+              >
+                <BookOpen className="size-4" /> Stories
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void meet()}
@@ -1131,6 +1150,9 @@ export function CompanyLive({
           onSite={(s) => openSite(s.site_id, s.project_id)}
         />
 
+        {decking && isToday && deck.data?.demo && (
+          <DemoDeck stories={deck.data.stories} board={board.data} onClose={() => setDecking(false)} className="mt-6" />
+        )}
         {telling && !presenting && (
           <div className="mt-6 border border-foreground px-4 py-4 animate-in fade-in slide-in-from-top-2 duration-300 motion-reduce:animate-none">
             <Label className="block pb-3">Tell Mesiri · speak or type, and watch the Spark take it</Label>

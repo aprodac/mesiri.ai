@@ -554,6 +554,34 @@ async def live_owner_board(
                                   lambda module: org_settings.module_enabled(module, stored))
 
 
+@router.get("/live/deck")
+async def live_demo_deck(
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WEB-84: the stories a presenter runs on Live (``deck.py``): ready messages and the line to say before each.
+    Only for a company marked as a demo (``demo_company``): a ready message is a real entry once sent, so any
+    other company gets none. The messages name the sites this person can see."""
+    from sqlalchemy import text
+
+    from mesiri.domains.dpr import deck
+    from mesiri.domains.organizations import settings as org_settings
+    from mesiri.infrastructure.postgres.repositories.organization_settings import (
+        PostgresOrganizationSettingsRepository,
+    )
+
+    stored = await PostgresOrganizationSettingsRepository(conn).get(
+        auth_context.organization_id, org_settings.DEMO_COMPANY)
+    if stored is not True:
+        return {"demo": False, "stories": []}
+    rows = (await conn.execute(text(
+        "SELECT s.id, s.project_id, s.name FROM sites s JOIN projects p ON p.id = s.project_id "
+        "WHERE s.organization_id = :org AND s.status = 'active' AND p.status != 'archived' "
+        "ORDER BY p.created_at, s.created_at"), {"org": auth_context.organization_id})).all()
+    names = [r.name for r in rows if not _site_denied(auth_context, r.project_id, r.id)]
+    return {"demo": True, "stories": deck.stories(names)}
+
+
 @router.get("/live/stamp")
 async def live_feed_stamp(
     since: datetime.datetime,

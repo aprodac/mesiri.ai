@@ -7,7 +7,8 @@
 > Status: **WEB-81 and WEB-82 done (12 Nov):** the ripple plays on Live for material came, material used and
 > attendance. **WEB-83 done (12 Nov):** the owner's board is on Live in place of "Where it goes". **WEB-86 done
 > (12 Nov):** work done, an issue, a bill or expense and a machine's day have their ripples, and the day has its
-> closing count. A question has none yet (below). The demo deck and the demo data are WEB-84 and WEB-85.
+> closing count. A question has none yet (below). **WEB-84 done (12 Nov):** the demo deck ("Stories") is on Live
+> for demo companies. The demo data is WEB-85.
 
 ## 1. Where Live stops today
 
@@ -308,6 +309,21 @@ Four more entries in the one table (`effects.RULES` and `effects.READS`), built 
 - **Not in:** the subcontractor's amount and the client view for work done; whether an issue raises a task by
   itself (the card shows a task only when one exists); a cost-centre card and a GST card for a bill; service due
   for a machine.
+
+### What is built: the demo deck (WEB-84, 12 Nov)
+
+- **`GET /dpr/live/deck`** (`backend/src/mesiri/domains/dpr/deck.py`): one table, `STORIES`, the five stories of
+  section 6. A step is the line to say and either a message to send or something done by hand (a bill photo from
+  a phone, Replay the day). The messages name the demo's own sites.
+- **Demo companies only.** A ready message is a real entry once sent. The route gives stories only to a company
+  with `demo_company` set (the same mark the one-tap reset needs); any other company gets none, so its Live has no
+  Stories button. To use it on another company, the Mesiri team marks it as a demo in the control panel.
+- **On Live** (`components/live/deck.tsx`): "Stories" in the header opens the deck. A step's Send goes through Tell
+  Mesiri's own call (`POST /assistant/messages`), as the signed-in person; Mesiri's reply and its buttons (Save,
+  Cancel) show under the step and can be tapped there. Live then plays the message like any other.
+- The short show is the first and the last story. The hold / next / back / skip keys came with WEB-82.
+- **Depends on WEB-85** for the full effect: the bill over the rate, the order still to come, the budget and the
+  client bill show only once the demo company has those records.
 
 ### Phases (tracker)
 

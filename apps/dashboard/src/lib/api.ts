@@ -2202,6 +2202,33 @@ export async function fetchLiveBoardApi(): Promise<LiveBoard> {
   return res.data
 }
 
+/** WEB-84: one step of a demo story: the line to say, and a message to send or something to do by hand. */
+export interface LiveDeckStep {
+  say: string
+  send: string | null
+  do: string | null
+}
+export interface LiveDeckStory {
+  key: string
+  title: string
+  minutes: number
+  /** The owner's question the story lands on. */
+  ends_on: LiveBoardKey
+  /** Part of the three-minute show. */
+  short: boolean
+  steps: LiveDeckStep[]
+}
+/** The demo deck: stories only for a company marked as a demo. */
+export interface LiveDeck {
+  demo: boolean
+  stories: LiveDeckStory[]
+}
+
+export async function fetchLiveDeckApi(): Promise<LiveDeck> {
+  const res = await api.get<LiveDeck>('/dpr/live/deck')
+  return res.data
+}
+
 /** Confirm one draft (BE-09). */
 export async function confirmFactApi(factType: FactType, factId: string): Promise<void> {
   await api.post(`/dpr/facts/${factType}/${factId}/confirm`)
