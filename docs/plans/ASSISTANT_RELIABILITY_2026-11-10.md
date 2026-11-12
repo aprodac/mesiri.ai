@@ -468,3 +468,61 @@ Tests: `tests/agent_api/test_api_tools_on_demand_277e.py` (21).
 | after 5b (free) | 11 Nov, late | No run. `give_daily_reports`: the reports link's own result now says which tool gives the report in the chat (`links.IN_CHAT`: `reports` -> `day_summary` / `send_dpr`, `period_reports` -> `period_report`), the place the model reads mid-turn, as WA-275 did for a new project | Not run on the real model | 0 | 259.20 by the workflow; about 114 of 200 at list price | Next paid step: the one case (`only: give_daily_reports`, small `cap_inr`). The corrected number ("50, now 100") is left to the card check in `ask` mode: the code cannot tell a correction from two deliveries. |
 | 6 | 11 Nov 20:11 UTC | Run 158: `give_daily_reports` alone, `gemini-3.5-flash-lite`, `cap_inr` 8 (2 calls) | **0 of 1**: the note beside the link was passed over, the reply was the link again | 2.73 by the workflow; about 1 at list price | 261.93 by the workflow; about 115 of 200 at list price | The link is now held back once: `web_link` for a page a tool gives in the chat returns no address until that tool was called in the turn, or the link is asked a second time (`agent.py`, `link_held`). |
 | 6b | 11 Nov 20:15 UTC | Run 159: the same one case after the link is held back once | **1 of 1**: the report tool was called | Not read from the log (about 4 by the workflow, as run 158 with one more call) | About 266 by the workflow; about 117 of 200 at list price | With this, 49 of the 50 judged cases have passed on `gemini-3.5-flash-lite` at their last run (each of the last three re-run alone, not the whole set again). Open: `new_project_277` not re-run since `same_named`. |
+
+## 10. The state layer: what is left (handover, 12 Nov 2026)
+
+Written at the end of the session of 12 Nov so the next session can carry on with no conversation. Read section 9
+for the money and the rounds, and [assistant-v3.md](../architecture/assistant-v3.md) "The state the code owns".
+
+### 10.1 The diagnosis Ilan agreed to (12 Nov, in session)
+
+- The faults that keep coming back are one architecture gap, not sixty bugs and not mainly the model: v3 has no
+  place in code that owns the conversation's state. About 5,000 lines of one-case guards grew in its place.
+- No new engine. The missing layer is added in three parts. **A fix goes into one of these parts, or it is a pure
+  model-reading case. A new SOP sentence or one-case guard is the last resort** (of the two SOP sentences tried on
+  11 Nov, one held and one did not).
+- Evidence: Ilan's live tests on Aprodac, 12 Nov 02:12-02:20 IST (8 failures; 5 were the code throwing work away
+  and asking the model to redo it) and 08:55 IST (after WA-278: the site flow held on the phone).
+
+### 10.2 Where each part stands
+
+| Part | Done | Left |
+|---|---|---|
+| 1. The code owns the draft across turns | The site question (WA-278, `ae0192d`): a line is held with its call, the code asks, the code prepares it on the answer, a bare answer runs no model. Checked on a phone 12 Nov 08:55. | The same hold for **units, sizes, an unknown material, and corrections** (`settle_unit`, `settle_stock_unit`, `size_needed`, `settle_material`, `change_ready_entry`): each has its own older hold. One mechanism: a held line = {tool, arguments, what is missing}; the answer fills the gap in code. |
+| 2. The code writes every statement of fact | Save confirmations (WA-277 F), the card speaking alone (WA-274), "today's report has gone" (`872cf36`). | "Updated", "it is in the DPR", "sent" said by the model with nothing done (12 Nov 02:14 and 02:19). The turn ends in a structured result; the code writes the state lines; then the corrective re-asks in `agent.py` and most of `reply_guard.py` are removed (WA-267). |
+| 3. Memory is state, not replay | Nothing. | The model gets: what is saved today, what waits, held lines, the open question, and the last few messages; not 120 replayed messages (WA-270). Cause of the stale answer on 12 Nov 02:17 ("Huh" answered the Gemini question of six messages before). Also shrinks every call. |
+
+### 10.3 What belongs to the same upgrade
+
+1. **Remove guards as each part lands.** So far the layer was added and almost nothing removed: the code is
+   larger. A part is not finished until the guards it replaces are gone.
+2. **Whole conversations as tests.** The saved set is mostly single messages and `replaykit.replay` passes no
+   `places`, so the paid eval cannot see the site flow or any fault that needs two turns. First cases: the two
+   Aprodac conversations of 12 Nov (correlation ids in the traces of 20:42-20:50 and 03:25-03:27 UTC).
+3. **Classic** stays until the three parts are in (Ilan, 10 Nov), then WA-138.
+
+Outside the architecture, not fixed by any of this: voice transcription quality (the 02:12 note arrived garbled),
+and pure model readings ("about 50, now 100"). The second group is what a dearer model is tried on, after part 3.
+
+### 10.4 Order, and what each step is proven by
+
+| Step | Tracker | Proven by |
+|---|---|---|
+| A. Part 1 for units, sizes, materials, corrections | WA-280 | Scripted tests per kind, and a phone test: a size asked, answered by tap and by words, the line comes back unchanged |
+| B. Part 3, memory as state | WA-270 | The 02:17 "Huh" conversation as a saved case; call size measured before and after |
+| C. Part 2, the rest; guards removed | WA-267 | The 02:14 and 02:19 false claims as saved cases; line count of `agent.py` + `reply_guard.py` goes down |
+| D. Multi-turn saved conversations, `places` in the replay | WA-281 | Runs free on every push; then one paid round (about 70 rupees left of the 200, section 9.10) |
+| E. A day's report sent again after new updates | WA-279 | Backend, separate from the assistant; needs its own plan and CI's Postgres tests |
+
+### 10.5 State at handover
+
+- `main` at `872cf36` (WA-278 and the report check). 5,216 assistant tests pass, lint clean. The deploy of
+  `872cf36` was not confirmed by this session. Backend suite not re-run after `ae0192d` (no backend change since).
+- Tools on demand is on for Mesiri Test Builders and Aprodac (migrations 0547, 0548), off elsewhere.
+- Spent on the real model: about 117 of 200 rupees at list price (section 9.10). The eval key's quota was raised
+  by Ilan on 11 Nov.
+- **Not verified:** `872cf36` on a phone; anything of WA-278 on the real-model eval (it does not run that path).
+- **Known wrong, not fixed:** the stale answer (part 3); "all updates are in the DPR" after a typed "Sent"
+  (part 2); a number corrected inside one sentence held twice (model reading); CI's `integration` job red on
+  `main` since 10 Nov for a reason unrelated to this work (test rows left behind).
+- Four trial companies end their trial about 12 Nov (New India, cd, We are rolla builders, Superman's corp): ops, Ilan.
