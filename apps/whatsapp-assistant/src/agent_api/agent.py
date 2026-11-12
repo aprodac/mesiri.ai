@@ -741,6 +741,7 @@ class ApiAgent:
         # ``code_prepared``: the ones the code prepared in this turn from the site just answered.
         held_for_site: list[dict[str, Any]] = []
         code_prepared: list[PendingWrite] = []
+        report_gone: list[str] = []  # WA-278: today's report had already gone when it was asked for (its link)
         opened_calls: list[dict[str, Any]] = []  # the open_tools calls of this turn, for the trace
         from mesiri.domains.organizations.settings import WORKING_DAY_STARTS_DEFAULT, working_day
 
@@ -1397,10 +1398,21 @@ class ApiAgent:
                 return ToolOutcome(content={"status": (
                     f"{twins[0]} already exists; nothing was prepared. The code tells the person; say nothing about "
                     "it and do not offer to create another one with the same name.")})
+            if name in SEND_LINE_TOOLS and (gone := await report_gone_today(client, path, tz)):
+                # WA-278 part 2 (Aprodac, 12 Nov 02:17 and 08:56: "send the DPR" after it had gone got "send it
+                # again?", a Send button, and then the API's refusal in English): today the API sends a day's report
+                # once (BE-13: what is saved after it is a late entry, listed in the next report). Ilan, 12 Nov:
+                # "no need such rule of dpr only once": sending it again is WA-279; until the API does it, the
+                # code asks the API first, never offers what it will refuse, and says what is true itself.
+                report_gone.append(gone)
+                return ToolOutcome(content={"status": "already sent today: not prepared", "note": (
+                    "Today's report has already gone out and cannot be sent again yet. The CODE tells the person so, "
+                    "with the link. Say nothing about the report in your reply, and never offer to send it again.")})
             if tool.is_write:
                 fp = create_fingerprint(name, tool.method, path, body)
                 same = next((r for r in reversed(recent_saves or []) if fp and r.get("fp") == fp), None)
-                if same and fp not in (repeat_ok or []) and fp not in repeat_asked:
+                # A report send is not asked "again?" from the chat's memory: the API says whether today's has gone.
+                if same and fp not in (repeat_ok or []) and fp not in repeat_asked and name not in SEND_LINE_TOOLS:
                     repeat_asked.append(fp)
                     when = dt.datetime.fromtimestamp(float(same.get("at") or 0), tz).strftime("%H:%M")
                     return ToolOutcome(content={"error": (
@@ -1801,6 +1813,10 @@ class ApiAgent:
             asked["options"] = list(site_ask)
         options = asked.get("options", []) or unit_ask or site_ask
         reply = without_apology((result.text or "").strip())  # [265]: never "My bad!" for a slip they never saw
+        if report_gone:
+            # WA-278 part 2: the code's own line and link; the model's words stay only when it looked something up.
+            gone_line = f"{report_gone_line(language)}\n🔗 {report_gone[-1]}"
+            reply = f"{reply}\n\n{gone_line}" if reply and looked(result.calls) else gone_line
         if held_for_site and site_ask:
             # The model's words stay only when they answer something it looked up; the question follows them.
             reply = (f"{reply}\n\n{asked['question']}" if reply and looked(result.calls) and asked["question"] not in reply
@@ -1852,6 +1868,38 @@ class ApiAgent:
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed, language_set=next(iter(language_set), ""),
                        size_unknown=bool(size_unknown), opened=sorted(opened), site_held=list(held_for_site))
+
+
+REPORT_GONE = ("Today's report has already gone out. What you saved after it is recorded and will be listed in the "
+               "next report.")
+_SEND_PATH = re.compile(r"^/dpr/projects/([^/]+)/send$")
+
+
+def report_gone_line(language: str | None) -> str:
+    if not language or language == "english":
+        return REPORT_GONE
+    from runtime.agent.wording import say
+
+    return say("api.report_gone", language)
+
+
+async def report_gone_today(client: ApiClient, path: str, tz: Any) -> str:
+    """The link to today's report of the project in ``path`` when it has already been sent (the API's own answer,
+    for the project's calendar day, the day ``POST .../send`` goes by); "" when it has not, or cannot be read (the
+    send is then prepared and the API decides)."""
+    found = _SEND_PATH.match(path or "")
+    if found is None:
+        return ""
+    day = dt.datetime.now(tz).date().isoformat()
+    try:
+        response = await client.call("GET", f"/dpr/projects/{found.group(1)}/day", params={"date": day})
+    except Exception:  # noqa: BLE001 -- unreadable: the API's own check decides at Save
+        return ""
+    body = response.body if response.ok and isinstance(response.body, dict) else {}
+    if body.get("report_source") != "sent" and body.get("sent") is not True:
+        return ""
+    built = build_link({"page": "project_day", "project_id": found.group(1), "date": day}, today=day)
+    return str(built.get("url") or build_link({"page": "reports"}, today=day).get("url") or "")
 
 
 #: WA-278: what a line waiting for its site is told to the model as.

@@ -589,6 +589,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "कैंसल कर दिया। कुछ भी सेव नहीं हुआ।",
         "hinglish": "Cancel kar diya. Kuch bhi save nahi hua.",
     },
+    "api.report_gone": {
+        "english": "Today's report has already gone out. What you saved after it is recorded and will be listed in the next report.",
+        "manglish": "Innathe report already ayachu kazhinju. Athinu shesham save cheythathu record aayittundu, adutha report-il varum.",
+        "malayalam": "ഇന്നത്തെ റിപ്പോർട്ട് നേരത്തെ അയച്ചു കഴിഞ്ഞു. അതിനു ശേഷം സേവ് ചെയ്തത് രേഖപ്പെടുത്തിയിട്ടുണ്ട്, അടുത്ത റിപ്പോർട്ടിൽ വരും.",
+        "hindi": "आज की रिपोर्ट पहले ही भेजी जा चुकी है। उसके बाद जो सेव हुआ वह दर्ज है और अगली रिपोर्ट में आएगा।",
+        "hinglish": "Aaj ki report pehle hi bheji ja chuki hai. Uske baad jo save hua woh record hai aur agli report mein aayega.",
+    },
     "api.which_site": {
         "english": "Which site is this for?",
         "manglish": "Ithu ethu site-il aanu?",

@@ -198,3 +198,33 @@ def test_the_chat_keeps_held_lines_for_half_an_hour() -> None:
     assert wa._site_held({}, now) == []
     assert wa._site_held({"site_held": {"lines": [{"arguments": {}}], "at": now}}, now) == []  # no tool: not a line
 
+
+# --- part 2, first piece: a report that has gone is never offered again ------------------------------------------------
+
+async def test_a_report_already_sent_today_is_not_offered_again_and_the_code_says_so() -> None:
+    """12 Nov 02:17 and 08:56 (Aprodac): "send the DPR" after it had gone got "send again?", a Send button, then
+    the API's refusal in English. The code asks the API first and says what is true, with the link."""
+    from agent_api.agent import report_gone_line
+
+    model = Counting([[SEND], "DPR veendum ayakkano?"])
+    api = rk.RecordedApi(answers={f"GET /dpr/projects/{PROJECT}/day": [{"report_source": "sent"}]})
+    turn = await ApiAgent(model, rk._real_tools()).run(  # type: ignore[arg-type]
+        api, "DPR ayakku", facts=FACTS, places=PLACES, language="manglish")
+    assert turn.pending == [] and turn.options == []
+    assert "already sent today" in str(turn.calls[0]["result"])
+    assert turn.reply.startswith(report_gone_line("manglish")) and "ayakkano" not in turn.reply
+    assert f"/projects/{PROJECT}" in turn.reply  # the link to the day's report
+
+
+async def test_a_report_not_sent_yet_is_prepared_even_if_the_chat_sent_one_within_a_day() -> None:
+    """The chat's memory of yesterday evening's send must not ask "again?" today: the API is what knows."""
+    from agent_api.agent import create_fingerprint
+
+    tools = rk._real_tools()
+    path = f"/dpr/projects/{PROJECT}/send"
+    fp = create_fingerprint("send_dpr", "POST", path, {})
+    api = rk.RecordedApi(answers={f"GET /dpr/projects/{PROJECT}/day": [{"report_source": "preview"}]})
+    turn = await ApiAgent(Counting([[SEND], "Sheri."]), tools).run(  # type: ignore[arg-type]
+        api, "DPR ayakku", facts=FACTS, places=PLACES, language="manglish",
+        recent_saves=[{"fp": fp, "at": time.time() - 3600, "summary": "report"}] if fp else [])
+    assert [e.tool for e in turn.pending] == ["send_dpr"]
