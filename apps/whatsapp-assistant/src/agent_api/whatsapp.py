@@ -329,8 +329,7 @@ class ApiWhatsApp:
                 # the team bot sees the same line refused twice and looks at once (TM-45).
                 results = self._just_saved.get(message.correlation_id) or []
                 await self._trace_turn(message, {"text": said, "calls": [], "save_results": [
-                    {"summary": r.pending.summary, "tool": r.pending.tool, "status": r.status,
-                     **({} if r.ok else {"reason": _detail(r.body)[:300]})} for r in results]}, started)
+                    _traced_save(r) for r in results]}, started)
             if tap.startswith(CANCEL_PREFIX) and reply.buttons:
                 # WA-147: every Cancel is counted (the weekly digest, the production watch), reason or not.
                 cancelled = (await self._state(ctx)).get("cancelled") or []
@@ -771,8 +770,7 @@ class ApiWhatsApp:
             # or "so it is no use to me?" has what the question was about (two saved conversations could not be judged).
             "before": before_in_trace(history), "ready": [e.summary for e in ready][:10],
             "stop_reason": turn.stop_reason,
-            "saved": [{"summary": r.pending.summary, "status": r.status,
-                       **({} if r.ok else {"reason": _detail(r.body)[:300]})} for r in turn.saved],
+            "saved": [_traced_save(r) for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
             **({"dropped_question": turn.dropped_question} if turn.dropped_question else {}),
             **({"reply_fixed": turn.reply_fixed} if turn.reply_fixed else {}),
@@ -1594,6 +1592,15 @@ PENDING_MAX_AGE_S = 4 * 3600  # a ready list nobody saved in four hours is dropp
 #: WA-271: how much of the conversation before a turn its trace keeps (messages, characters each).
 BEFORE_IN_TRACE = 6
 BEFORE_CHARS = 400
+
+
+def _traced_save(r: Any) -> dict[str, Any]:
+    """One save as its turn's trace keeps it, for both "saved in the turn" and "saved by the tap": the summary, the
+    tool and status, why it was refused, and the saved record's id (WEB-82: Live asks what that record changed)."""
+    saved_id = r.body.get("id") if r.ok and isinstance(r.body, dict) else None
+    return {"summary": r.pending.summary, "tool": r.pending.tool, "status": r.status,
+            **({"id": str(saved_id)} if saved_id else {}),
+            **({} if r.ok else {"reason": _detail(r.body)[:300]})}
 
 
 def before_in_trace(history: list[Any] | None) -> list[dict[str, str]]:
