@@ -43,7 +43,7 @@ from mesiri.application.dpr.site_day import (
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
 from mesiri.bootstrap.settings import Settings, get_settings
-from mesiri.domains.dpr import live_feed
+from mesiri.domains.dpr import effects, live_feed
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import signed_media_url
@@ -373,6 +373,34 @@ async def get_fact_sources(
     for photo in sources["photos"]:
         photo["url"] = await signed_media_url(object_storage, photo.pop("media_object_key"))
     return sources
+
+
+@router.get("/effects/{kind}/{record_id}")
+async def get_effects(
+    kind: str,
+    record_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WEB-82: what one saved entry changed (Live's ripple): the stock, the order still to come, the rate against
+    last time, what the supplier is owed, the wages due, tonight's report. Cards in the order Live plays them.
+    Read-only. The viewer must see the entry's site (the sources rule); money cards only for the roles that see the
+    company's spending (SEC-01). An entry taken back has no cards."""
+    if kind not in effects.RULES:
+        raise HTTPException(status_code=404, detail="that kind of entry has no effects to show")
+    repo = PostgresFactReviewRepository(conn)
+    try:
+        located = await repo.locate(auth_context.organization_id, kind, record_id)
+    except FactReviewError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if located["project_id"] is None or _site_denied(auth_context, located["project_id"], located["site_id"]):
+        raise HTTPException(status_code=404, detail="that item was not found")
+    from mesiri.application.dpr import project_day
+
+    sees_money = may_view_expenses(auth_context.role)
+    today = await project_day.company_today(conn, auth_context.organization_id)
+    facts = await effects.READS[kind](conn, auth_context.organization_id, record_id, today, sees_money)
+    return effects.cards(kind, facts, sees_money)
 
 
 #: The questions the Live report shows (WEB-37): workflow -> what was asked
