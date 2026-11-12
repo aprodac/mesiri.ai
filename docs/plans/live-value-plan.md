@@ -270,16 +270,14 @@ counts only differences the code found.
   person who has not seen the product can present the short show from the lines on screen; every number
   on a card equals the number on the page it opens.
 
-## 8. Decisions for Ilan
+## 8. Decisions (Ilan, 12 Nov, in session: "do the recommended")
 
-1. **The six questions.** Are these what owners ask? Which comes first?
-2. **Who is usually in the room:** the owner (lead with Money and Caught) or the engineer (lead with Time)?
-3. **Greyed cards** for modules a visitor's plan would not include: show them in demos or not?
-4. **Roles:** the effects API shows money by role. It is a permissions matter, so WEB-82 waits for a yes
-   on the rule "the same roles that see Expenses".
-5. **Work done and the estimate line:** keep the person's tap (the card offers it), or let Mesiri count
-   work on the suggested line by itself when it is sure? The second changes how progress and billing are
-   fed, so it needs a yes.
+1. **The six questions** stay as in section 3, in that order.
+2. **Who is in the room:** usually the owner, sometimes a GM or a site engineer. Chains lead with Money
+   and Caught; the Time cards stay in every chain for the GM and the engineer.
+3. **Greyed cards** for a module that is switched off: shown.
+4. **Roles:** money cards show to the roles that see Expenses; everyone else gets the chain without them.
+5. **Work done and the estimate line:** the person's tap stays; the card offers it.
 
 ## 9. Not verified
 
