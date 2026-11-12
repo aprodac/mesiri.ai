@@ -4,7 +4,9 @@
 > labour entry by itself does not show the value; the value is what happens with that data. Live must
 > show that, for every kind of entry, in a way any salesperson can explain.
 >
-> Status: **plan, nothing built.** Tracker: WEB-81 .. WEB-86.
+> Status: **WEB-81 and WEB-82 done (12 Nov):** the ripple plays on Live for material came, material used and
+> attendance. **WEB-83 done (12 Nov):** the owner's board is on Live in place of "Where it goes". The demo deck,
+> the demo data and the other ripples are WEB-84 .. WEB-86.
 
 ## 1. Where Live stops today
 
@@ -230,6 +232,52 @@ counts only differences the code found.
 - **The feed carries record ids** (WEB-59 noted it does not yet), so Live can ask for an entry's effects.
 - **Roles**: money cards only for roles that see spending, as the feed already does for a bill.
 - **No new tables. No migration.**
+
+### What is built (WEB-82, 12 Nov)
+
+- `GET /dpr/effects/{kind}/{id}` (`domains/dpr/effects.py`): the cards for `material_receipt`, `material_usage`
+  and `labour_report`. Building is pure (one function per kind in `RULES`); reading calls the stock summary, the
+  order's received total, the Rates purchases, the supplier ledger, the Full cost read, the wage sheet's
+  arithmetic and the advance balances. Nothing is written.
+- A save's trace now keeps its record's id (`agent_api/whatsapp.py`, one helper for both traces), and the feed
+  names the records a message saved (`records`). A message saved before this has no id, so it plays as before
+  with no ripple.
+- Live plays each saved record's ripple after its message: one card at a time, then "One message. N things you
+  now know." Space holds, ← → move, S skips to the end, Esc closes; a card opens its page; the module it
+  belongs to rings.
+- A "before" is shown only when the entry is the newest movement of that material at the site (stock), is not
+  yet on a bill (supplier), or is the report that counts for the day (the week's wages). Otherwise only "now".
+- Not built here: the estimate-line cards (budget per line, used against the estimate) and greyed cards for
+  switched-off modules, which come with WEB-86.
+
+### What is built: the owner's board (WEB-83, 12 Nov)
+
+- **`GET /dpr/live/board`** (`backend/src/mesiri/domains/dpr/board.py`): one table, `QUESTIONS`. A question is a
+  list of parts; a part is one module's own route function (`READS`) and the sentence said from what it returned.
+  The same pattern as `approvals/inbox.py`. A new answer is one part in the table.
+- **What each question reads today:**
+
+  | Question | Reads (module) |
+  |---|---|
+  | Where is my money going? | Full cost, last 7 days (finance); budget against actual, all projects (cost) |
+  | Is anything leaking? | Stock summary: closing below zero (materials); Rates: paid above the best rate, items rising (materials) |
+  | Is the work moving? | Schedule lifecycle: percent done, days behind (dpr); today's site days: work updates, workers (dpr) |
+  | What do I owe, and who owes me? | Wages owed summary (labour); supplier payables (finance); client receivables (dpr) |
+  | What will stop work tomorrow? | Below minimum (materials); days of stock left (materials); open issues (dpr); waiting for my yes (dpr) |
+  | Can I prove it? | Today's site days: lines, photos, sites heard from, reports sent (dpr) |
+
+- **Who sees what:** each read is the route function itself, so its own role and scope rule runs. A read that
+  answers 403 or 404 is left out and the answer says "Shown to the owner, finance and project managers", never
+  "nothing". A switched-off module is not read and is named on a greyed line (decision 3).
+- **On Live** (`components/live/board.tsx`): the board is the right column. A saved message lands on the questions
+  it answers and the board is read again; a ripple card lands on its question (the card's number 1 to 6 is the
+  board's order); an answer opens into the day's messages behind it ("from 3 messages by 1 person today") and
+  into its page with the cinematic cut. The modules stay as a row of chips, "Where it is kept".
+- **Not in yet:** the plan's examples "Cement is 62% of its budget" (needs a budget per material; the board says
+  the project's percent), "₹3.2 lakh can be billed to the client now" (measured work not billed: no read gives it
+  company-wide; the board says what clients owe), "wages due Saturday" (the board says wages approved and unpaid,
+  drafts waiting, advances out), and the report's send time on the board.
+- The board is as of now, whatever day Live shows.
 
 ### Phases (tracker)
 

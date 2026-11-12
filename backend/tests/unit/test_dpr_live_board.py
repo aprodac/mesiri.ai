@@ -249,3 +249,12 @@ async def test_each_read_calls_its_modules_route_with_every_argument(name, monke
 
 def test_every_read_has_its_route():
     assert set(ROUTES) == set(board.READS)
+
+
+def test_the_ripples_question_numbers_are_the_boards_order():
+    """A ripple card names its question by number (effects.py); Live lands it on the board's question at that place."""
+    from mesiri.domains.dpr import effects
+
+    numbers = (effects.MONEY_GOING, effects.LEAKING, effects.WORK_MOVING, effects.OWE, effects.STOPS_WORK, effects.PROOF)
+    assert numbers == (1, 2, 3, 4, 5, 6)
+    assert [q.key for q in board.QUESTIONS] == ["money", "leaks", "work", "owed", "stops", "proof"]

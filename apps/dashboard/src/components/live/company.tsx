@@ -34,6 +34,7 @@ import {
 } from 'lucide-react'
 import {
   fetchBranding,
+  fetchEffectsApi,
   fetchJoining,
   fetchLiveBoardApi,
   fetchLiveFeedApi,
@@ -42,8 +43,11 @@ import {
   fetchSetupProgress,
   fetchSiteDaysApi,
   type LiveBoardKey,
+  type EffectCard,
+  type EntryEffects,
   type LiveFeedItem,
   type LiveKind,
+  type LiveRecord,
   type ProjectDayItem,
 } from '@/lib/api'
 import { noticeOf } from '@/lib/live-reading'
@@ -65,6 +69,7 @@ import { ProjectSheet, ReportStrip, SHEET_MS } from './report'
 import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, EntryCard, LanguageMoment, answers as answersOf, cleanReply, languageLine, outcomes } from './moments'
 import { useVoice } from '@/lib/voice'
 import { Spark, type SparkMood } from './spark'
+import { RIPPLE_CARD_MS, RIPPLE_END_MS, Ripple } from './ripple'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
 // screen, as it happens, with Mesiri as a character (the Spark) seen
@@ -187,6 +192,16 @@ const LOOKUP_DEST: [RegExp, DestKey][] = [
   [/report|day’s updates|who reported/i, 'reports'],
   [/project|site/i, 'projects'],
 ]
+/** WEB-82: the module a ripple card's page belongs to (it rings as the card plays). */
+const PATH_DEST: [RegExp, DestKey][] = [
+  [/^\/(materials|procurement)/, 'materials'],
+  [/^\/labour/, 'labour'],
+  [/^\/reports/, 'reports'],
+  [/^\/(finance|cost)/, 'expenses'],
+]
+/** A move in a ripple: on to the next card, back one, to the closing count, to a card, or out. */
+type RippleMove = 'next' | 'back' | 'end' | 'close' | number
+
 /** The module a message's work went to, if any. */
 function destOf(m: LiveFeedItem): Dest | null {
   const key =
@@ -514,6 +529,10 @@ export function CompanyLive({
       }
     })
   }, [])
+  /** WEB-82: the ripple on the stage: what the entry just saved changed, one card at a time. */
+  const [ripple, setRipple] = React.useState<{ item: LiveFeedItem; effects: EntryEffects; at: number; held: boolean } | null>(null)
+  /** The presenter's hand on it: hold it on a card, or move it (Space, ← →, S, Esc, a click). */
+  const rippleCtl = React.useRef<{ held: boolean; move: ((to: RippleMove | 'hold') => void) | null }>({ held: false, move: null })
   const queue = React.useRef<LiveFeedItem[]>([])
   const playing = React.useRef(false)
   const seeded = React.useRef(false)
@@ -559,6 +578,59 @@ export function CompanyLive({
       after + (how === 'alarm' ? 3_200 : 1_600),
     )
   }, [])
+
+  /** WEB-82: play what one saved record changed: each card in turn, then the closing count. */
+  const playRipple = React.useCallback(
+    async (item: LiveFeedItem, record: LiveRecord, pace: number) => {
+      let effects: EntryEffects
+      try {
+        effects = await queryClient.fetchQuery({
+          queryKey: ['live-effects', record.kind, record.id],
+          queryFn: () => fetchEffectsApi(record.kind, record.id),
+          staleTime: 0,
+        })
+      } catch {
+        return // no ripple to show (taken back, or not this viewer's site): the message has played
+      }
+      const n = effects.cards.length
+      if (!n) return
+      rippleCtl.current.held = false
+      let at = 0
+      for (;;) {
+        setRipple({ item, effects, at, held: rippleCtl.current.held })
+        const card = effects.cards[at]
+        const dest = card?.opens ? PATH_DEST.find(([re]) => re.test(card.opens!))?.[1] : undefined
+        if (dest) ring(dest, card.tag === 'caught' ? 'alarm' : 'land', 300)
+        // WEB-83: the card lands on the owner's question it answers (the board's questions are in the plan's order, 1 to 6).
+        const asks = card ? boardData.current?.questions[card.question - 1]?.key : undefined
+        if (asks) ring(`q:${asks}`, card.tag === 'caught' ? 'alarm' : 'land', 300)
+        const here = at
+        const move = await new Promise<RippleMove>((resolve) => {
+          let timer: number | undefined
+          const arm = () => {
+            if (!rippleCtl.current.held) timer = window.setTimeout(() => resolve('next'), (here >= n ? RIPPLE_END_MS : RIPPLE_CARD_MS) * pace)
+          }
+          rippleCtl.current.move = (to) => {
+            window.clearTimeout(timer)
+            if (to === 'hold') {
+              rippleCtl.current.held = !rippleCtl.current.held
+              setRipple((r) => (r ? { ...r, held: rippleCtl.current.held } : r))
+              arm()
+              return
+            }
+            resolve(to)
+          }
+          arm()
+        })
+        if (move === 'close' || (at >= n && move === 'next')) break
+        at = move === 'next' ? at + 1 : move === 'back' ? Math.max(0, at - 1) : move === 'end' ? n : Math.min(n, Math.max(0, move))
+        if (at === n && speed.current === 1) say(`One message. ${n} ${n === 1 ? 'thing' : 'things'} you now know.`)
+      }
+      rippleCtl.current = { held: false, move: null }
+      setRipple(null)
+    },
+    [queryClient, ring, say],
+  )
 
   const play = React.useCallback(async () => {
     if (playing.current) return
@@ -624,12 +696,14 @@ export function CompanyLive({
       // The sites' numbers (and a site just added) catch up as it lands.
       if (live) void queryClient.invalidateQueries({ queryKey: ['live-site-days', date, null] })
       await wait(alarm ? STEP_MS + 3_400 : item.kind === 'cancelled' || item.kind === 'undo' ? STEP_MS + 3_800 : isBill(item) || item.kind === 'language' || item.state === 'asked' || item.kind === 'chat' || cardAs(item) ? STEP_MS + 2_600 : STEP_MS + 1_200)
+      // WEB-82: saved is not the value; what it changed is. Each record it saved plays its ripple.
+      for (const record of (item.source === 'sample' ? [] : item.records ?? []).slice(0, 3)) await playRipple(item, record, speed.current)
     }
     setCurrent(null)
     playing.current = false
     speed.current = 1
     setReplaying(false)
-  }, [readFlags, ring, queryClient, date, showMeet, say])
+  }, [readFlags, ring, queryClient, date, showMeet, say, playRipple])
 
   // The first read just shows the day; later reads play what is new.
   React.useEffect(() => {
@@ -773,6 +847,23 @@ export function CompanyLive({
     }
   }, [voice])
 
+  // WEB-82: the presenter's keys while a ripple plays.
+  const rippling = !!ripple
+  React.useEffect(() => {
+    if (!rippling) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.metaKey || e.ctrlKey || e.altKey || (t && /input|textarea|select/i.test(t.tagName))) return
+      const to: RippleMove | 'hold' | null =
+        e.key === ' ' ? 'hold' : e.key === 'ArrowRight' ? 'next' : e.key === 'ArrowLeft' ? 'back' : e.key.toLowerCase() === 's' ? 'end' : e.key === 'Escape' ? 'close' : null
+      if (to === null) return
+      e.preventDefault()
+      rippleCtl.current.move?.(to)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [rippling])
+
   const number = setup.data?.whatsapp_number ?? null
   // WEB-71: in a meeting the QR code is how people join this company: it sends the join code, and the admin lets
   // them in on WhatsApp. Without the code (not an admin) it stays "Hi Mesiri".
@@ -890,6 +981,20 @@ export function CompanyLive({
       title: d.name,
       kicker: [m?.site_name ?? 'All sites', longDate(date)].filter(Boolean).join(' · '),
       line: m ? m.summaries[0] ?? m.text ?? undefined : undefined,
+    })
+  }
+  /** WEB-82: the page a ripple card's number lives on, for the entry's project and site. */
+  const openCard = (card: EffectCard, el: HTMLElement, m: LiveFeedItem) => {
+    if (!card.opens) return
+    const scope = new URLSearchParams()
+    if (m.project_id) scope.set('project', m.project_id)
+    if (m.site_id) scope.set('site', m.site_id)
+    cinematic.go({
+      from: el.getBoundingClientRect(),
+      to: `${card.opens}${scope.size ? `?${scope}` : ''}`,
+      title: card.title,
+      kicker: [m.site_name ?? 'All sites', longDate(date)].filter(Boolean).join(' · '),
+      line: card.sentence,
     })
   }
   const destOn = (d: Dest) => !d.module || moduleEnabled(d.module)
@@ -1126,11 +1231,20 @@ export function CompanyLive({
                   <Spark
                     mood={current ? sparkMood(current.item, current.step, current.alarm) : working.length ? (isVoice(working[0]) ? 'listen' : isPhoto(working[0]) ? 'look' : 'think') : 'idle'}
                     beat={beat}
-                    size={moment ? (presenting ? 140 : 110) : presenting ? 220 : 170}
+                    size={ripple ? (presenting ? 96 : 72) : moment ? (presenting ? 140 : 110) : presenting ? 220 : 170}
                   />
                 </div>
-                <div className={cn('min-h-[5.5rem] sm:min-h-[7.5rem]', moment === 'bill' ? 'w-full max-w-[44rem]' : 'max-w-[34rem]')} aria-live="polite">
-                  {current ? (
+                <div className={cn('min-h-[5.5rem] sm:min-h-[7.5rem]', ripple ? 'grid w-full justify-items-center' : moment === 'bill' ? 'w-full max-w-[44rem]' : 'max-w-[34rem]')} aria-live="polite">
+                  {ripple ? (
+                    <Ripple
+                      effects={ripple.effects}
+                      at={ripple.at}
+                      held={ripple.held}
+                      presenting={presenting}
+                      onPick={(i) => rippleCtl.current.move?.(i)}
+                      onOpen={(card, el) => openCard(card, el, ripple.item)}
+                    />
+                  ) : current ? (
                     <>
                       <Label className={cn('block', current.alarm && current.step === 'done' && 'text-[var(--destructive)]')}>
                         {current.alarm && current.step === 'done' ? 'Mesiri noticed' : STEP_LABEL[current.step]}
@@ -1222,9 +1336,9 @@ export function CompanyLive({
                     )
                   )}
                 </div>
-                <Steps step={current?.step ?? null} />
-                <Did current={current} />
-                {current?.step === 'done' && destOf(current.item) && current.item.source !== 'sample' && (
+                {!ripple && <Steps step={current?.step ?? null} />}
+                {!ripple && <Did current={current} />}
+                {!ripple && current?.step === 'done' && destOf(current.item) && current.item.source !== 'sample' && (
                   <button
                     type="button"
                     onClick={(e) => openDest(destOf(current.item)!, e.currentTarget, current.item)}

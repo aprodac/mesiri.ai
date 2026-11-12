@@ -2112,6 +2112,47 @@ export interface LiveFeedItem {
   expense: { amount: string | null; vendor: string | null; category: string | null; date: string | null; tax: string | null; what: string | null } | null
   /** The reply language chosen ("malayalam", "manglish", …). */
   language: string | null
+  /** WEB-82: the records it saved that have a ripple (what each changed: `fetchEffectsApi`). */
+  records?: LiveRecord[]
+}
+
+/** A saved record Live can ask "what did this change?" about. */
+export interface LiveRecord {
+  kind: 'material_receipt' | 'material_usage' | 'labour_report'
+  id: string
+}
+
+/** One thing an entry changed (WEB-82): a number that moved, a sentence, and what kind of value it is. */
+export interface EffectCard {
+  key: string
+  title: string
+  tag: 'money' | 'time' | 'caught' | 'proof'
+  /** The owner's question it answers, 1-6 (docs/plans/live-value-plan.md, section 3). */
+  question: number
+  /** Numbers as exact strings; `before` only when it is known. */
+  before: string | null
+  after: string | null
+  unit: string | null
+  rupees: boolean
+  sentence: string
+  /** The presenter's line. */
+  say: string
+  /** The page that holds it. */
+  opens: string | null
+}
+
+export interface EntryEffects {
+  kind: string
+  title: string
+  what: string | null
+  cards: EffectCard[]
+  count: number
+}
+
+/** WEB-82: what one saved entry changed, in the order Live plays it. Money cards only for roles that see spending. */
+export async function fetchEffectsApi(kind: LiveRecord['kind'], id: string): Promise<EntryEffects> {
+  const res = await api.get<EntryEffects>(`/dpr/effects/${kind}/${id}`)
+  return res.data
 }
 
 /** WEB-69: changes the moment the company's messages do; Live asks every second, then reads the feed. */

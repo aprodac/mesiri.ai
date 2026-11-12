@@ -50,6 +50,14 @@ WRITE_KINDS: dict[str, str] = {
     "request_dpr": "report",
 }
 
+#: WEB-82: the saves whose record Live can ask "what did this change?" about (``effects.RULES``): tool -> the
+#: record's kind. A save's trace carries its record's id; a save traced before 12 Nov 2026 has none, so no ripple.
+RECORD_KINDS: dict[str, str] = {
+    "record_receipt": "material_receipt",
+    "record_usage": "material_usage",
+    "record_attendance": "labour_report",
+}
+
 #: A turn that only read: what it was about. Expenses are a question too, and
 #: hidden from roles that may not see spending (the router's SEC-01 rule).
 EXPENSE_TOOLS: frozenset[str] = frozenset({"list_expenses", "money_accounts", "list_vendors", "query_expenses"})
@@ -153,7 +161,8 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
     words (``TOOL_WORDS``). ``transfer``: a transfer's two site ids, for the
     arc between them. ``expense``: the amount, vendor, category, date, tax
     and words Mesiri read (a bill photo's fields). ``language``: the reply
-    language chosen. ``money``: about spending (SEC-01).
+    language chosen. ``money``: about spending (SEC-01). ``records``: the records
+    it saved that have a ripple (``RECORD_KINDS``), as ``{kind, id}``.
     """
     turns = [t for t in (row.get("turns") or []) if isinstance(t, dict)]
     tools = _tools(turns)
@@ -235,8 +244,13 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
         (str(w["args"]["reply_language"]) for w in writes if w.get("tool") == "set_reply_language" and w["args"].get("reply_language")),
         None,
     )
+    records = [
+        {"kind": RECORD_KINDS[str(r.get("tool"))], "id": str(r["id"])}
+        for r in (saved or tapped) if r.get("id") and str(r.get("tool")) in RECORD_KINDS
+    ]
     return {
         "kind": kind,
+        "records": records[:6],
         "did": did[:5],
         "transfer": transfer,
         "expense": expense,
