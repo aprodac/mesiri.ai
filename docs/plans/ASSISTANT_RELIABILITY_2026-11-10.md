@@ -627,6 +627,26 @@ exchanges ago is no longer taken as said for a new line (safer, and to watch in 
 counted per site from `day_totals` with the timeline list not given twice, setting off = replay exactly as before,
 setting unread = off. **Not proven:** anything on the real model or a phone (step 6).
 
+**Order changed (asked in session, 13 Nov): step 6 before step 5.** `memory_as_state` is on for Mesiri Test Builders
+only; every other company still gets the replay and still needs the guards made for it, and with a 6-message window
+most of them can still fire. So the guards are removed outright only once no company uses the replay: live round,
+then the setting on for more companies, then step 5.
+
+**Live round 1, 14 Nov 04:36-04:41 IST (Test Builders, the team bot's `assistant-test` chat, after deploy 1772; every
+card cancelled, nothing saved):**
+
+| Case | Sent | Result |
+|---|---|---|
+| WA-293 | "Main Block il innu 20 bag cement vannu", then "athu 25 aakku" | **Right:** `change_ready_entry`, Cement 20 -> 25 bags, nothing dropped |
+| WA-294 | a card cancelled (tap), "2 mason um 10 bag sand" cancelled (typed), then "Main Block mein aaj 3 carpenter aaye" | **Right:** a card with only the 3 carpenters |
+| WA-294, sent again | the same carpenter message once more (`cor_aa201799…`) | **Wrong:** the model called `record_receipt` (10 bags sand) and `record_attendance` (2 masons) again; the cancelled lines came back. The sand message was still inside the 6-message window |
+| WA-283 | "How many workers at Main Block today?" | **Right:** none recorded yet on the new working day (14 Nov), as the records say |
+
+What it shows: the state block names what was cancelled, but the model can still read a cancelled message inside the
+window and prepare it again. Telling the model is not enough here; the code must refuse it (WA-294's own fix: a new
+line that repeats a cancelled line and is not said in this message is not prepared). Also found: the turn's trace
+logs the facts before the block is added, so a live check cannot see what the block said; the trace should carry it.
+
 ### 11.4 The plan's required parts
 
 - **Objective:** each turn the model sees what is true now and a few recent messages, never the day replayed.
