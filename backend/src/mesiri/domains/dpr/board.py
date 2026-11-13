@@ -108,6 +108,12 @@ async def _clients(c: Ctx) -> Any:
     return await receivables(project_id=None, auth=c.auth, conn=c.conn)
 
 
+async def _to_bill(c: Ctx) -> Any:
+    from mesiri.domains.billing.router import work_to_bill
+
+    return await work_to_bill(project_id=None, auth=c.auth, conn=c.conn)
+
+
 async def _waiting(c: Ctx) -> Any:
     from mesiri.domains.approvals.router import waiting
 
@@ -117,7 +123,8 @@ async def _waiting(c: Ctx) -> Any:
 #: Read name -> the read. One name is read once for the whole board, however many parts use it.
 READS: dict[str, Callable[[Ctx], Awaitable[Any]]] = {
     "costs": _costs, "budget": _budget, "rates": _rates, "stock": _stock, "below": _below, "days": _days,
-    "schedule": _schedule, "wages": _wages, "suppliers": _suppliers, "clients": _clients, "waiting": _waiting,
+    "schedule": _schedule, "wages": _wages, "suppliers": _suppliers, "clients": _clients, "to_bill": _to_bill,
+    "waiting": _waiting,
 }
 
 
@@ -245,6 +252,16 @@ def say_clients(data: dict) -> str | None:
     return f"Clients owe you {inr(owed)}." if owed > 0 else None
 
 
+def say_to_bill(data: dict) -> str | None:
+    """WEB-91: measured work on no client bill yet, at the client rate (before retention and GST)."""
+    amount = _d(data.get("amount"))
+    if amount <= 0:
+        return None
+    projects = data.get("projects") or []
+    where = f" on {projects[0]['project']}" if len(projects) == 1 else f" across {_n(len(projects), 'project')}"
+    return f"{inr(amount)} of measured work{where} can be billed to the client now."
+
+
 def say_below(data: dict) -> str | None:
     rows = data.get("items") or []
     if not rows:
@@ -256,15 +273,19 @@ def say_below(data: dict) -> str | None:
             f"({what}).")
 
 
-def say_days_left(data: list) -> str | None:
+def say_days_left(data: list, days: dict | None = None) -> str | None:
+    """``days`` (WEB-89): today's site days, only for the site's name; without them the site is not named."""
     short = [r for r in data if _get(r, "days_left") is not None and _d(_get(r, "closing")) > 0]
     if not short:
         return None
     first = min(short, key=lambda r: int(_get(r, "days_left")))
-    days = int(_get(first, "days_left"))
-    if days > 7:
+    left = int(_get(first, "days_left"))
+    if left > 7:
         return None
-    return f"{_get(first, 'material_name')} lasts {_n(days, 'more day')} at this week's use."
+    names = {str(s.get("site_id")): s.get("site_name") for s in (days or {}).get("items") or []}
+    site = names.get(str(_get(first, "site_id")))
+    where = f" at {site}" if site else ""
+    return f"{_get(first, 'material_name')}{where} lasts {_n(left, 'more day')} at this week's use."
 
 
 def say_issues(data: dict) -> str | None:
@@ -294,6 +315,11 @@ def say_reports(data: dict) -> str | None:
     said = f"Today's reports: {_n(lines, 'line')}, {_n(photos, 'photo')}, from {len(heard)} of {_n(len(items), 'site')}."
     if sent:
         said += f" {_n(sent, 'report')} sent."
+    # WEB-89: when the next one goes out by itself (a project that sends its report, not sent yet today).
+    due = sorted(p["dpr_send_deadline"] for p in projects
+                 if p.get("auto_generate_dpr") and not p.get("sent") and p.get("dpr_send_deadline") is not None)
+    if due:
+        said += f" The next goes out at {due[0]:%-I:%M %p}.".replace("AM", "am").replace("PM", "pm")
     return said
 
 
@@ -305,9 +331,12 @@ class Part:
     read: str
     #: The module that must be switched on (organizations/settings.py MODULES); its router's own gate.
     module: str
-    say: Callable[[Any], str | None]
+    say: Callable[..., str | None]
     #: The page that shows this number.
     opens: str
+    #: A second read the sentence may use for a name (never for a number); passed as the second argument, or
+    #: None when this person may not see it.
+    also: str | None = None
 
 
 @dataclass(frozen=True)
@@ -335,11 +364,12 @@ QUESTIONS: tuple[Question, ...] = (
     Question("owed", "What do I owe, and who owes me?", "Nothing owed either way.", (
         Part("wages", "labour", say_wages, "/labour/wages"),
         Part("suppliers", "finance", say_suppliers, "/finance/vendors"),
+        Part("to_bill", "dpr", say_to_bill, "/billing/ra-bills"),
         Part("clients", "dpr", say_clients, "/accounts/receivables"),
     )),
     Question("stops", "What will stop work tomorrow?", "Nothing in the way.", (
         Part("below", "materials", say_below, "/materials"),
-        Part("stock", "materials", say_days_left, "/materials"),
+        Part("stock", "materials", say_days_left, "/materials", also="days"),
         Part("days", "dpr", say_issues, "/issues"),
         Part("waiting", "dpr", say_waiting, "/today"),
     )),
@@ -404,7 +434,11 @@ async def build(conn: AsyncConnection, auth: AuthorizationContext, request: Requ
                 failed = True
                 continue
             try:
-                text = part.say(data)
+                if part.also is not None:
+                    also_state, also_data = await read(part.also)
+                    text = part.say(data, also_data if also_state == "ok" else None)
+                else:
+                    text = part.say(data)
             except Exception:  # noqa: BLE001 -- as above
                 logger.exception("live board: the %s sentence failed", part.read)
                 failed = True

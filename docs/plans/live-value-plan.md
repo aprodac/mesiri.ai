@@ -264,7 +264,7 @@ counts only differences the code found.
   | Where is my money going? | Full cost, last 7 days (finance); budget against actual, all projects (cost) |
   | Is anything leaking? | Stock summary: closing below zero (materials); Rates: paid above the best rate, items rising (materials) |
   | Is the work moving? | Schedule lifecycle: percent done, days behind (dpr); today's site days: work updates, workers (dpr) |
-  | What do I owe, and who owes me? | Wages owed summary (labour); supplier payables (finance); client receivables (dpr) |
+  | What do I owe, and who owes me? | Wages owed summary (labour); supplier payables (finance); work that can be billed now (dpr, WEB-91); client receivables (dpr) |
   | What will stop work tomorrow? | Below minimum (materials); days of stock left (materials); open issues (dpr); waiting for my yes (dpr) |
   | Can I prove it? | Today's site days: lines, photos, sites heard from, reports sent (dpr) |
 
@@ -324,6 +324,19 @@ Four more entries in the one table (`effects.RULES` and `effects.READS`), built 
 - The short show is the first and the last story. The hold / next / back / skip keys came with WEB-82.
 - **Depends on WEB-85** for the full effect: the bill over the rate, the order still to come, the budget and the
   client bill show only once the demo company has those records.
+
+### What is built: upgrades for the demo (WEB-88, 89, 91, 92; 13 Nov)
+
+- **The tap on the work card (WEB-88).** "Estimate line" offers "Count it on this line". The tap is the estimate's
+  own route; the entry is read again and the card becomes "₹48,000 earned … to bill the client", held on screen.
+- **The board's missing words (WEB-89).** The site on "lasts N more days"; when the next report goes out by itself.
+- **The day's closing line (WEB-89).** Over the bottom bar: "N messages today. M things you now know. Nobody
+  opened an app."
+- **"Can be billed to the client now" (WEB-91).** `GET /billing/to-bill`: measured work on no client bill yet, at
+  the client rate. Billing's own working (`bills.unbilled_lines`), the one a new RA bill draft is made from.
+- **The presenter's sheet (WEB-92).** Printed from Stories, from the deck's own table.
+- **Blocked: a running "₹ caught" total (WEB-90).** Which differences count, and over what period, is a product
+  decision; no single read gives it today.
 
 ### Phases (tracker)
 

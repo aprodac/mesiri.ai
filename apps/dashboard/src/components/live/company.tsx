@@ -1520,11 +1520,17 @@ export function CompanyLive({
           hello && 'sm:translate-y-full',
         )}
       >
+        {/* WEB-89: the day's closing line (plan, story 5), once a ripple has shown what the messages told. */}
+        {totals.known > 0 && totals.messages > 0 && (
+          <p className={cn('m-0 mx-auto max-w-[1600px] px-4 pt-2.5 font-semibold sm:px-8 lg:px-12', presenting ? 'text-[22px]' : 'text-[15px]')}>
+            {totals.messages} {totals.messages === 1 ? 'message' : 'messages'} today. {totals.known}{' '}
+            {totals.known === 1 ? 'thing' : 'things'} you now know. Nobody opened an app.
+          </p>
+        )}
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-baseline justify-between gap-x-8 gap-y-1 px-4 py-3 sm:px-8 lg:px-12">
           <Total n={totals.workers} what={totals.workers === 1 ? 'worker on site' : 'workers on site'} big={presenting} />
           <Total n={totals.messages} what={totals.messages === 1 ? 'message' : 'messages'} big={presenting} />
           <Total n={totals.saved} what={totals.saved === 1 ? 'entry saved' : 'entries saved'} big={presenting} />
-          {totals.known > 0 && <Total n={totals.known} what={totals.known === 1 ? 'thing you now know' : 'things you now know'} big={presenting} />}
           <Total n={totals.issues} what={totals.issues === 1 ? 'open issue' : 'open issues'} big={presenting} />
           <Total n={totals.reported} what={`of ${sites.length} sites heard from`} big={presenting} />
         </div>

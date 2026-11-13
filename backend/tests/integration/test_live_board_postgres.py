@@ -22,7 +22,7 @@ from .test_live_questions_postgres import NOW, conn  # noqa: F401 -- the shared 
 pytestmark = pytest.mark.integration
 
 REQUEST = types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace()))
-MONEY_READS = {"costs", "budget", "rates", "wages", "suppliers", "clients"}
+MONEY_READS = {"costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill"}
 
 
 def _auth(org: uuid.UUID, user: uuid.UUID, role: str) -> AuthorizationContext:
