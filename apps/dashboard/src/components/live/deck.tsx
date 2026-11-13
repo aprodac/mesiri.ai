@@ -110,7 +110,8 @@ export function DemoDeck({
             ))}
           </ol>
           <p className="m-0 mt-3 text-[12.5px] text-muted-foreground">
-            Each message is sent as you and saved like any other. Use “Reset demo” in the control panel to start clean.{' '}
+            Each message is sent as you and saved like any other; Mesiri takes about 15 seconds to answer, then tap Save. Use “Reset demo”
+            in the control panel to start clean.{' '}
             <button
               type="button"
               onClick={() => {

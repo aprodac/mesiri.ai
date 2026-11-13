@@ -105,3 +105,15 @@ async def test_guard_the_messages_name_only_the_sites_this_person_sees(route):
     out = await dpr_router.live_demo_deck(auth_context=_ctx(sites=[S2]), conn=_Conn())
     text = " ".join(step["send"] or "" for s in out["stories"] for step in s["steps"])
     assert "Annex" in text and "Main block" not in text
+
+
+def test_the_wrong_entry_story_says_what_the_assistant_really_does():
+    """Run on the real assistant (13 Nov): an entry beyond the stock is saved and marked, not refused; and one
+    message takes it back. The story must not promise that Mesiri stops it."""
+    wrong = next(s for s in deck.stories(["Main block", "Annex"]) if s["key"] == "wrong")
+    said = " ".join(step["say"] for step in wrong["steps"]).lower()
+    assert "mesiri stops" not in said and "marks it" in said
+    sends = [step["send"] for step in wrong["steps"] if step["send"]]
+    assert sends == ["5000 bags cement used at Annex today",
+                     "That 5000 bags cement used at Annex was a mistake, take it back",
+                     "30 bags cement used at Main block today"]

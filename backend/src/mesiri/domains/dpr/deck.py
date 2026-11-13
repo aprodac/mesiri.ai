@@ -44,9 +44,14 @@ STORIES: tuple[dict[str, Any], ...] = (
     {
         "key": "wrong", "title": "Something is wrong", "minutes": 2, "ends_on": "stops",
         "steps": (
-            {"say": "Somebody reports more used than the site ever had.", "send": "5000 bags cement used at {other} today"},
-            {"say": "Mesiri stops and asks. A mistake does not go into the books quietly.",
-             "do": "Let Mesiri's question show, then tap Cancel on it."},
+            {"say": "Somebody types one zero too many.", "send": "5000 bags cement used at {other} today"},
+            # Run on the real assistant, 13 Nov: it saves what the site said (it does not refuse it), and the
+            # entry is marked as more than the site had. The story says that, not "Mesiri stops it".
+            {"say": "Mesiri records what the site said and marks it at once: more used than the site ever had. A "
+                    "mistake does not hide in the books.",
+             "do": "Tap Save on the card, and let Live's warning show."},
+            {"say": "And one message takes it back. No office visit, no register corrected by hand.",
+             "send": "That 5000 bags cement used at {other} was a mistake, take it back"},
             {"say": "A real one now: the day's use.", "send": "30 bags cement used at {site} today"},
             {"say": "The stock went down, and you hear it is running out before the site stops.",
              "do": "Point at “What will stop work tomorrow?”."},
