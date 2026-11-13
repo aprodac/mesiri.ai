@@ -1765,10 +1765,17 @@ class ApiAgent:
                     "kind": "missing_feature", "about": f"Mesiri said it cannot do this; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-199)"}})
         looked = lambda calls: any(getattr(self._tools.get(c.name), "is_write", True) is False for c in calls)  # noqa: E731
-        if not looked(result.calls) and not again_asked and (unbacked := unbacked_figures(result.text, text, " ".join([
-                facts, *(e.summary for e in [*(ready or []), *waiting, *new] if e is not None),
-                *(json.dumps([c.arguments, c.outcome.content if c.outcome else None], default=str)
-                  for c in result.calls)]))):
+        # WA-283 (live, 13 Nov, Test Builders): "How many workers at Main Block today, and how much cement came?" was
+        # answered "10 workers, 45 bags" with nothing looked up; the records said 12 and 95. Both figures were in the
+        # chat's own lists (this afternoon's saves), so they passed as backed. A turn that only answers (nothing
+        # prepared, changed or saved) is about the records: its figures are backed only by a lookup or by what the
+        # person said (SOP line 14: a question gets answered from the tools).
+        answers_only = nothing_done() and not result.calls
+        backing = "" if answers_only else " ".join([
+            facts, *(e.summary for e in [*(ready or []), *waiting, *new] if e is not None),
+            *(json.dumps([c.arguments, c.outcome.content if c.outcome else None], default=str)
+              for c in result.calls)])
+        if not looked(result.calls) and not again_asked and (unbacked := unbacked_figures(result.text, text, backing)):
             # [260] (basic 2/3, honest answers): figures about what is recorded with nothing looked up. The conversation
             # holds lines that were cancelled or never saved, so a figure must come from a tool or today's records.
             # [285] (live, 11 Nov, New India): a turn that only changed a card line ("make it TMT steel") also wrote

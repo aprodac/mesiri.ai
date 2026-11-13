@@ -43,10 +43,21 @@ async def test_guard_a_figure_they_said_stands() -> None:
     assert model.calls == 1 and turn.reply == "Sheri, 25 bags."
 
 
-async def test_guard_a_figure_in_todays_records_stands() -> None:
+async def test_wa283_a_figure_only_in_todays_records_is_looked_up_on_an_answer() -> None:
+    """WA-283 (live, 13 Nov) changed this guard: "today's records" in the facts are a partial list (the newest lines),
+    and "how much cement came today?" was answered 45 from them when 95 had come. A turn that only answers takes its
+    figures from a lookup; the facts no longer back them. (Before WA-283 this figure stood.)"""
     facts = "Today's records:\n- 12:27 30 bags Cement received, Green Villa"
-    turn, model = await _run(["Site-il 30 chaakku cement und.", "never reached"], "cement ethra und?", facts=facts)
-    assert model.calls == 1 and turn.reply == "Site-il 30 chaakku cement und."
+    turn, model = await _run(["Site-il 30 chaakku cement und.", "Site-il 45 chaakku cement und."], "cement ethra und?",
+                             facts=facts)
+    assert model.calls == 2 and "(30)" in model.prompts[1]
+
+
+async def test_guard_a_figure_in_todays_records_stands_on_a_turn_that_prepares_something() -> None:
+    """The rule for a turn that does something is unchanged: a figure in today's records or on the card stands."""
+    from agent_api.agent import SAVE_READY  # noqa: F401 -- the list tools exist; this turn prepares nothing new
+    facts = "Today's records:\n- 12:27 30 bags Cement received, Green Villa"
+    assert unbacked_figures("Sheri, 30 bags already came today.", "50 bag cement vannu", facts) == []
 
 
 def test_the_check_itself() -> None:

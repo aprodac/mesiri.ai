@@ -127,11 +127,13 @@ async def test_try_again_answers_the_kept_message_first_and_the_model_is_told() 
     redis, sent = FakeRedis(), []
     await _given_up(redis, sent)
     sent.clear()
-    model = FakeToolCallingProvider(["Stock: 30 bags cement.", "Cheythu, mukalil kaanaam."])
+    # WA-283: a figure answered with no lookup is looked up again; this test is about the kept message, so the
+    # scripted answer's figure is one the check leaves alone (a single digit).
+    model = FakeToolCallingProvider(["Stock: 8 bags cement.", "Cheythu, mukalil kaanaam."])
     up = _service(model, redis, sent)
     await up.handle(_message("try again", at=dt.datetime(2026, 11, 5, 7, 30, tzinfo=dt.UTC)), CTX)
     assert len(sent) == 2
-    assert sent[0].text.startswith("⏱️ 12:15-nu ayacha message:") and "30 bags cement" in sent[0].text
+    assert sent[0].text.startswith("⏱️ 12:15-nu ayacha message:") and "8 bags cement" in sent[0].text
     assert not sent[1].text.startswith("⏱️")
     last_user = next(m.text for m in reversed(model.last_messages) if m.role == "user")
     assert "were just answered above" in last_user and last_user.endswith("try again")
