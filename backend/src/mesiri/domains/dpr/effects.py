@@ -458,13 +458,31 @@ def cards(kind: str, facts: dict[str, Any] | None, sees_money: bool) -> dict[str
 # Reading: each figure from the read its own module uses.
 # ----------------------------------------------------------------------------------------------------------------
 
+def clock(value: Any) -> str | None:
+    """A report time as people say it: "21:00" or 21:00:00 -> "9:00 pm". The project keeps it as text ("HH:MM" or
+    "HH:MM:SS"); a time object is read the same way. None when it is not a time."""
+    if value is None:
+        return None
+    if isinstance(value, datetime.time):
+        hour, minute = value.hour, value.minute
+    else:
+        parts = str(value).strip().split(":")
+        if len(parts) < 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            return None
+        hour, minute = int(parts[0]), int(parts[1])
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        return None
+    return f"{hour % 12 or 12}:{minute:02d} {'am' if hour < 12 else 'pm'}"
+
+
 async def _report_time(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> str | None:
+    """When today's report goes out by itself; None when the project does not send it automatically."""
     row = (await conn.execute(text(
         "SELECT dpr_send_deadline, auto_generate_dpr FROM projects WHERE id = :p AND organization_id = :org"),
         {"p": project_id, "org": org})).first()
-    if row is None or not row.auto_generate_dpr or row.dpr_send_deadline is None:
+    if row is None or not row.auto_generate_dpr:
         return None
-    return f"{row.dpr_send_deadline:%-I:%M %p}".lower()
+    return clock(row.dpr_send_deadline)
 
 
 async def _stock(conn: AsyncConnection, org: uuid.UUID, row: Any, today: datetime.date, sees_money: bool) -> dict | None:

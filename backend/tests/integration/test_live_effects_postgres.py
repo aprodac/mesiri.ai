@@ -118,6 +118,25 @@ async def test_a_delivery_a_use_and_an_attendance_agree_with_their_records(demo)
         assert [c["key"] for c in effects.cards("labour_report", await effects.read_attendance(conn, org, a.id, TODAY, False), False)["cards"]] == ["on_site", "report"]
 
 
+        # --- every project: one entry of each kind on each site reads without failing ------------------------
+        # (The first cut read only the newest records, all on the second project; the first project sends its
+        # report by itself and keeps the time as text, which broke every ripple there.)
+        sites = (await conn.execute(text(
+            "SELECT s.id, s.name, p.auto_generate_dpr FROM sites s JOIN projects p ON p.id = s.project_id "
+            "WHERE p.organization_id = :o"), {"o": org})).all()
+        assert {bool(x.auto_generate_dpr) for x in sites} == {True, False}, "the demo has both kinds of project"
+        for site in sites:
+            for kind, table, read in (("material_receipt", "material_receipts", effects.read_receipt),
+                                      ("material_usage", "material_usage", effects.read_usage),
+                                      ("labour_report", "labour_attendance_reports", effects.read_attendance)):
+                rid = (await conn.execute(text(
+                    f"SELECT id FROM {table} WHERE organization_id = :o AND site_id = :s ORDER BY created_at DESC LIMIT 1"),
+                    {"o": org, "s": site.id})).scalar()
+                got = effects.cards(kind, await read(conn, org, rid, TODAY, True), True)
+                assert got["cards"] and got["cards"][-1]["key"] == "report", (site.name, kind)
+                if site.auto_generate_dpr:
+                    assert "which goes out at" in got["cards"][-1]["sentence"], (site.name, kind)
+
         # --- guard: half of a transfer, and a record that is not there, have no ripple -----------------------
         # (One test: a second demo reset in the same run meets the app's connection pool on a closed event loop.)
         t = (await conn.execute(text(

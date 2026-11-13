@@ -215,6 +215,16 @@ def test_per_one_of_a_unit(unit, single):
     assert effects.one(unit) == single
 
 
+@pytest.mark.parametrize(("stored", "said"), [
+    ("21:00", "9:00 pm"), ("21:00:00", "9:00 pm"), ("09:05", "9:05 am"), ("00:30", "12:30 am"), ("12:00", "12:00 pm"),
+    (datetime.time(18, 30), "6:30 pm"), (None, None), ("", None), ("soon", None), ("25:00", None),
+])
+def test_the_report_time_is_read_as_the_project_keeps_it(stored, said):
+    # The project keeps the time as text ("21:00"): formatting it as a time object broke every ripple on a project
+    # whose report goes out by itself (found 12 Nov on the demo's first project).
+    assert effects.clock(stored) == said
+
+
 def test_every_card_has_a_line_to_say_and_every_kind_a_read():
     assert set(effects.READS) == set(effects.RULES)
     assert set(live_feed.RECORD_KINDS.values()) == set(effects.RULES)
