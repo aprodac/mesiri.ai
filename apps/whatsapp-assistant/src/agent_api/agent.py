@@ -298,6 +298,42 @@ def create_fingerprint(tool: str, method: str, path: str, body: dict[str, Any]) 
     return json.dumps([tool, path, norm(body)], sort_keys=True, default=str, ensure_ascii=False)
 
 
+def line_key(tool: str, body: dict[str, Any]) -> str | None:
+    """WA-294: what an update line records, loosely: the tool, its place, the material and quantity, or the labour
+    report's trades and counts. The same key is the same update said again, whatever fields the code filled in later.
+    None for anything that is not a material line or a labour report."""
+    lines = sorted(
+        [" ".join(str(line.get("trade") or "").casefold().split()), _number(line.get("headcount")),
+         str(line.get("worker_id") or "")]
+        for line in body.get("lines") or [] if isinstance(line, dict))
+    if not body.get("material_id") and not lines:
+        return None
+    return json.dumps([tool, str(body.get("site_id") or body.get("project_id") or ""), str(body.get("material_id") or ""),
+                       _number(body.get("quantity")), lines], default=str)
+
+
+def _number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def cancelled_again(text: str, tool: str, body: dict[str, Any],
+                    cancelled: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """WA-294 (live, 13 Nov and again 14 Nov with memory as state): a message brought back the lines of messages the
+    person had cancelled. A line the same as one cancelled today is not prepared again unless THIS message says its
+    numbers ("10 bag sand vannu" after the cancel is theirs again). Returns the cancelled entry it repeats, or None."""
+    key = line_key(tool, body)
+    hit = next((c for c in reversed(cancelled or []) if key and c.get("key") == key), None)
+    if hit is None:
+        return None
+    numbers = [n for n in [_number(body.get("quantity")),
+                           *(_number(line.get("headcount")) for line in body.get("lines") or [] if isinstance(line, dict))]
+               if n is not None]
+    return None if numbers and all(said_number(text, n) for n in numbers) else hit
+
+
 #: Saved records a person can correct by talking (correct_saved_entry): one write that REPLACES the saved one.
 #: Labour: a new report naming the one it corrects (corrects_report_id; BE-10 counts the latest).
 CORRECTABLE = frozenset({"record_attendance"})
@@ -724,7 +760,8 @@ class ApiAgent:
                   may_set_sizes: bool = True, language_chosen: bool = False,
                   size_open: list[dict[str, Any]] | None = None, day_starts_at: str | None = None,
                   on_demand: bool | None = None, open_areas: list[str] | None = None,
-                  holds: list[dict[str, Any]] | None = None) -> ApiTurn:
+                  holds: list[dict[str, Any]] | None = None,
+                  cancelled: list[dict[str, Any]] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -735,7 +772,9 @@ class ApiAgent:
         drops it ([219]). ``sizes``: the sizes this person told before (WA-166); ``may_set_sizes``: whether they may
         set a size for the whole company (an admin or a project manager); if not, their size converts their own lines.
         ``on_demand`` (WA-277 step E): the call carries the core tools and ``open_tools``; ``open_areas`` are the
-        areas this chat opened earlier today. None: the environment decides (``tool_areas.default_on``)."""
+        areas this chat opened earlier today. None: the environment decides (``tool_areas.default_on``).
+        ``cancelled``: the lines cancelled in this chat today ({summary, key, at}); one prepared again without this
+        message saying it is not prepared (WA-294)."""
         channel = channel if channel in CHANNELS else TEXT_CHANNEL
         on_demand = tool_areas.default_on() if on_demand is None else on_demand
         # An entry waiting for Save keeps its area open: a correction of it needs that tool's fields.
@@ -1456,6 +1495,13 @@ class ApiAgent:
                     return ToolOutcome(content={"error": (
                         f"Already saved at {when}: {same.get('summary') or 'the same thing'}. Ask the person whether they "
                         "want another one; nothing was prepared. If they say yes, prepare it again (it then goes through).")})
+                if (gone_line := cancelled_again(text, name, body, cancelled)) is not None:
+                    # WA-294: decided by the code, the model only told (the state block names it; live, 14 Nov, the
+                    # model prepared it again from the messages it still saw).
+                    return ToolOutcome(content={"status": "not prepared: cancelled earlier", "note": (
+                        f"The person cancelled this earlier today ({gone_line.get('summary') or 'the same line'}) and this "
+                        "message does not say it again. Nothing was prepared. Do not prepare it again and do not mention "
+                        "it; do only what this message says.")})
                 # [233]: what the code can derive is filled before the line is held (a work update with no narrative
                 # takes the entry's own words), and a body the API would refuse for a missing field is not held.
                 body = fill_body(name, body, str(arguments.get(CONFIRM_ARG) or ""), _place_names(places))

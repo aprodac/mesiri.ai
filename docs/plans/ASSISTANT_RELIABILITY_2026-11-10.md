@@ -647,6 +647,8 @@ window and prepare it again. Telling the model is not enough here; the code must
 line that repeats a cancelled line and is not said in this message is not prepared). Also found: the turn's trace
 logs the facts before the block is added, so a live check cannot see what the block said; the trace should carry it.
 
+**Fixed after round 1 (14 Nov):** WA-294 is now the code's decision (`agent.cancelled_again`, every company, with or without memory as state): a line the same as one cancelled today is not prepared unless this message says its numbers. The turn's trace carries the block (`state_block`, memory as state only).
+
 ### 11.4 The plan's required parts
 
 - **Objective:** each turn the model sees what is true now and a few recent messages, never the day replayed.

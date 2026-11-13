@@ -79,6 +79,7 @@ from .agent import (
     confirm,
     held,
     last_reported,
+    line_key,
     question_left_open,
     remember_saves,
     size_question,
@@ -94,6 +95,7 @@ from .state_block import (
     HELD_SECONDS,  # noqa: F401 -- WA-270: the held lines have one owner, state_block
     WINDOW,
     SiteDay,
+    cancelled_lines,
     earlier_days,
     remember_cancelled,
     state_block,
@@ -163,6 +165,8 @@ PREVIEW_SECONDS = 3.0
 CARD_ASK_SECONDS = 6.0
 #: Today's recorded entries given to the model up front (WA-127).
 TODAY_ENTRIES = 40
+#: WA-270: the state block as the model got it, in the turn's trace (it is small; a long day is cut).
+STATE_BLOCK_IN_TRACE = 6000
 #: The materials and units of a company, read once per this many seconds.
 CATALOG_SECONDS = 300
 #: WA-118: a call is a live conversation, so fewer rounds and a shorter wait than a message.
@@ -705,14 +709,16 @@ class ApiWhatsApp:
             editing = _editing(state, ready)
             state.pop("editing", None)
             answered = self._kept_answered.pop(message.correlation_id, [])
+            # WA-270: what is true now, for the model (memory as state); also in the turn's trace, so a live check sees it.
+            block = state_block({**state, "pending": [e.to_json() for e in ready]}, message=text,
+                                today=records[0], earlier=records[1]) if as_state else ""
             run = dict(
                 text=(_edit_note(editing) if editing else "") + kept_note(answered) + text,
                 history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 day_starts_at=await self._day_starts(ctx),
                 facts=facts + _working_fact(places) + unsaved_fact(state, time.time()) + (
-                    "\n\n" + state_block({**state, "pending": [e.to_json() for e in ready]}, message=text,
-                                           today=records[0], earlier=records[1]) if as_state else ""),
+                    f"\n\n{block}" if block else ""),
                 photo_key=photo_key,
                 language=_turn_language(text, state),
                 language_chosen=bool(_chosen(state)),
@@ -723,6 +729,7 @@ class ApiWhatsApp:
                 on_demand=await self._tools_on_demand(ctx), open_areas=_open_areas(state, time.time()),
                 # WA-278 / WA-280: lines waiting for one answer; the code prepares them when this message gives it.
                 holds=_held(state, time.time()),
+                cancelled=cancelled_lines(state),  # WA-294: a cancelled line comes back only when said again
                 places=places,  # [213]: the code decides the site of a report
                 open_question=state.get("asked"),  # [219]: a message that doesn't answer it drops it
                 sizes=sizes, may_set_sizes=_may_set_sizes(ctx),  # WA-166: who may set a size for the company
@@ -795,6 +802,7 @@ class ApiWhatsApp:
             "text": text, "calls": calls,
             # WA-148: what the model started from, so a replay on the real model sees the same sites and materials.
             "facts": facts[:FACTS_IN_TRACE],
+            **({"state_block": block[:STATE_BLOCK_IN_TRACE]} if block else {}),
             # WA-271: the few messages before this one and the list that was waiting, so a replay of "can't I see it?"
             # or "so it is no use to me?" has what the question was about (two saved conversations could not be judged).
             "before": before_in_trace(history), "ready": [e.summary for e in ready][:10],
@@ -947,7 +955,8 @@ class ApiWhatsApp:
         """The reply to a Cancel, tapped or typed (WA-146: what was cancelled is kept so the reason tapped next names
         it): "Cancelled. Nothing was saved. What was wrong?" with the reasons as one tap."""
         state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
-        remember_cancelled(state, [without_ids(e.summary) for e in entries])  # WA-270: the day's cancels, for the state
+        remember_cancelled(state, [{"summary": without_ids(e.summary), "key": line_key(e.tool, e.body)}
+                                   for e in entries])  # WA-270 / WA-294: the day's cancels, for the state and the check
         titles = _REASON_TITLES.get(state.get("language") or "english", _REASON_TITLES["english"])
         return ReplySpec(text=_in(state.get("language"), "api.cancelled_why", CANCELLED_WHY), buttons=tuple(
             ListRow(id=f"{WHY_PREFIX}{code}", title=titles[code]) for code in CANCEL_REASONS))

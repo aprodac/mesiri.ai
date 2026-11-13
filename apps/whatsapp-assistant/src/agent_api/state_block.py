@@ -136,19 +136,29 @@ def _held_line(hold: dict) -> str:
     return without_ids(words) + (f" (waiting for: {gap})" if gap else "")
 
 
-def remember_cancelled(state: dict, summaries: Iterable[str], now: float | None = None) -> None:
-    """Keep what a Cancel let go, for the rest of the day (``state["cancel_log"]``). The WA-146 key ``cancelled`` is
-    the last Cancel only, taken by the reason tapped next; this one is what the model is told."""
+def remember_cancelled(state: dict, lines: Iterable[dict[str, Any] | str], now: float | None = None) -> None:
+    """Keep what a Cancel let go, for the rest of the working day (``state["cancel_log"]``): each line's words and
+    its ``key`` (``agent.line_key``), which the code checks a new line against (WA-294). The WA-146 key ``cancelled``
+    is the last Cancel only, taken by the reason tap next; this one is the day's."""
     now = time.time() if now is None else now
     kept = [c for c in state.get("cancel_log") or []
             if isinstance(c, dict) and now - float(c.get("at") or 0) < CANCELLED_SECONDS]
-    kept += [{"summary": s, "at": now} for s in summaries if str(s or "").strip()]
+    for line in lines:
+        entry = {"summary": line} if isinstance(line, str) else dict(line)
+        if str(entry.get("summary") or "").strip():
+            kept.append({**entry, "at": now})
     state["cancel_log"] = kept[-CANCELLED_KEPT:] or None
 
 
-def _cancelled(state: dict, now: float) -> list[str]:
-    return [str(c["summary"]) for c in state.get("cancel_log") or []
+def cancelled_lines(state: dict, now: float | None = None) -> list[dict[str, Any]]:
+    """The lines cancelled in this chat in the working day, oldest first."""
+    now = time.time() if now is None else now
+    return [c for c in state.get("cancel_log") or []
             if isinstance(c, dict) and c.get("summary") and now - float(c.get("at") or 0) < CANCELLED_SECONDS]
+
+
+def _cancelled(state: dict, now: float) -> list[str]:
+    return [str(c["summary"]) for c in cancelled_lines(state, now)]
 
 
 def _summaries(rows: Any) -> list[str]:
