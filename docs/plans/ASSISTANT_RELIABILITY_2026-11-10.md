@@ -651,6 +651,8 @@ logs the facts before the block is added, so a live check cannot see what the bl
 
 **Live round 2, 14 Nov 05:06-05:08 IST:** the WA-294 sequence again: on the repeat the model prepared the sand and the masons again and the code refused both; only the carpenters waited. The logged block showed three faults, fixed: a cancel listed several times, and a line said again still listed as cancelled while on the card (once each now, and not when on the card); "Saved in this chat" held the previous day's saves (now from the working day's start, `since`); the earlier-day line listed labour reports (`LabourAttendanceRecorded`: the filter now ignores case).
 
+**Check after the fixes, 14 Nov 05:19 IST:** the logged block: the carpenters (on the card) no longer listed as cancelled, no previous-day saves, the earlier-day line without labour reports. Left: two lines listed twice, because round 1's cancels were logged with words only and round 2's with a key; fixed (one line per words or key). Also seen: one message at 05:17 got the "AI paused" reply (the provider answered as if the spending budget was used up, before any model call; `cor_57ac17c2…`); the next message at 05:19 went through. Not from this work; to watch.
+
 ### 11.4 The plan's required parts
 
 - **Objective:** each turn the model sees what is true now and a few recent messages, never the day replayed.

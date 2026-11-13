@@ -226,3 +226,13 @@ def test_live_labour_rows_of_the_timeline_are_left_out_whatever_their_case() -> 
              "summary": "45 bags of Cement received"}]
     days = sb.today_by_site([_total(MAIN, 12, {"mason": 12})], rows, SITES, DAY)
     assert days == [sb.SiteDay("Main Block", 12, (("mason", 12),), ("MaterialReceived: 45 bags of Cement received",))]
+
+
+def test_live_a_line_logged_before_keys_and_again_after_is_listed_once() -> None:
+    """14 Nov 05:19: round 1's cancels were logged with words only, round 2's with a key: "2 mason" showed twice."""
+    state: dict = {}
+    sb.remember_cancelled(state, ["2 mason, Main Block"], now=NOW - 3000)
+    sb.remember_cancelled(state, [{"summary": "2 mason, Main Block", "key": "k-mason"}], now=NOW - 60)
+    sb.remember_cancelled(state, [{"summary": "2 masons at Main Block", "key": "k-mason"}], now=NOW - 30)
+    cancelled = _block(state).split(sb.CANCELLED)[1].split("\n\n")[0]
+    assert cancelled.count("mason") == 1 and "2 masons at Main Block" in cancelled  # the newest words kept

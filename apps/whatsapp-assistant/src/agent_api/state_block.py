@@ -220,9 +220,10 @@ def state_block(state: dict, *, message: str, now: float | None = None,
     cancelled, seen = [], set()
     for c in reversed(cancelled_lines(state, now)):
         words = without_ids(str(c["summary"]))
-        if c.get("key") in on_card or words in on_card_words or (c.get("key") or words) in seen:
+        repeat = words in seen or bool(c.get("key") and c["key"] in seen)
+        seen.update(x for x in (words, c.get("key")) if x)  # live, 14 Nov 05:19: logged before keys and after: one line
+        if repeat or c.get("key") in on_card or words in on_card_words:
             continue
-        seen.add(c.get("key") or words)
         cancelled.insert(0, words)
     if cancelled:
         parts.append(f"{CANCELLED}:\n" + "\n".join(f"- {c}" for c in cancelled))
