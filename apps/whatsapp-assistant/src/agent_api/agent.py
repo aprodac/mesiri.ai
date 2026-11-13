@@ -784,6 +784,8 @@ class ApiAgent:
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
         tz = ZoneInfo(timezone or "Asia/Kolkata")
         their_words = " ".join([*(m.text or "" for m in history or [] if m.role == "user"), text])
+        # WA-284: the person's message before this one (a line said there is prepared on this answer).
+        last_said = next((m.text or "" for m in reversed(history or []) if m.role == "user"), "")
         tries: dict[str, int] = {}  # [243]: a body Mesiri could not translate is sent back to the model once per tool
         separate: set[str] = set()  # [285]: names the person told apart from a listed material ("TMT steel", not Steel)
 
@@ -1228,7 +1230,7 @@ class ApiAgent:
             if tool.is_write and (clash := number_clash(text, body, [e.body for e in new])):
                 # [229]: "20 bag cement, aaru mason" became 20 masons: a number said once cannot count two things.
                 return ToolOutcome(content={"error": clash})
-            if tool.is_write and quantity_not_said(their_words, body, arguments):
+            if tool.is_write and quantity_not_said(their_words, body, arguments, now=f"{last_said} {text}"):
                 # WA-284 (live, 13 Nov: "steel um vannu" became "Steel · 1 nos", then a size question about "1 Numbers"):
                 # a material said with no number. The model's own line has none; the code keeps the line and asks how
                 # much, never a number made up. The answer is put in by the code, which prepares the line itself.
@@ -2267,12 +2269,17 @@ def made_up(text: str, body: dict[str, Any]) -> str:
             "question: answer it and prepare nothing; else ask for the quantity in your one question.")
 
 
-def quantity_not_said(text: str, body: dict[str, Any], arguments: dict[str, Any]) -> bool:
+#: WA-284: a 1 said as a word, in this message or the one before it ("oru load", "one bag", "ek truck"). Not the runtime's ``_ONE``: its
+#: "per" and "each" are for sizes ("per rod 12 kg"), and an old "rate 400 per bag" in the chat counted as "one".
+_ONE_SAID = re.compile(r"(?<!\w)(?:oru|ore|one|ek|ഒരു|एक)(?!\w)", re.IGNORECASE)
+
+
+def quantity_not_said(text: str, body: dict[str, Any], arguments: dict[str, Any], *, now: str | None = None) -> bool:
     """WA-284: a material line whose quantity nobody said (``text``: their words, this message and the recent ones, so a
     line said earlier and prepared on an answer is theirs). Live, the model made up 1 twice: once with a line of its own
     with no number ("steel, Site B"), once with the 1 written in the line too ("1 nos steel, Site B"). So the person's
     words decide: a quantity in their digits is said; a 1 is said when they said "one" in any of their languages
-    (the runtime's own ``_ONE``: oru, ore, one, ek, ഒരു, एक); any other number not in their digits is held only when the
+    in this message (``_ONE_SAID``: oru, ore, one, ek, ഒരു, एक); any other number not in their digits is held only when the
     model's line carries no number either (a number said as a word, "rendu load", is then in the line)."""
     if "quantity" not in body or not (body.get("material_id") or arguments.get(MATERIAL_SAID)):
         return False
@@ -2284,9 +2291,7 @@ def quantity_not_said(text: str, body: dict[str, Any], arguments: dict[str, Any]
     if quantity in {float(n) for n in _NUMBER.findall(text or "")}:
         return False
     if quantity == 1:
-        from runtime.agent.draft_answer import _ONE
-
-        return not re.search(rf"(?<!\w){_ONE}(?!\w)", text or "", re.IGNORECASE)
+        return not _ONE_SAID.search(now if now is not None else text or "")
     return bool(line) and not _NUMBER.search(line)
 
 

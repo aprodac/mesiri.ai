@@ -94,3 +94,13 @@ async def test_the_second_live_form_with_the_one_written_in_the_line_is_held_too
     turn, _ = await _run([[TEN_BAGS, one_in_line], "Sheri."], SAID)
     assert [e.body["quantity"] for e in turn.pending] == [10]
     assert [h["gap"] for h in turn.held] == [GAP_QUANTITY] and "ethra" in turn.question
+
+
+def test_guard_an_old_per_in_the_chat_is_not_a_one_said_now() -> None:
+    """Live, 13 Nov: "rate 400 per bag", sent earlier in the day, made "steel um vannu" pass as a 1 that was said."""
+    body = {"material_id": CEMENT, "quantity": 1}
+    earlier_and_now = "50 bags cement came, rate 400 per bag Site B il 10 bag cement vannu, steel um vannu"
+    assert quantity_not_said(earlier_and_now, body, {CONFIRM_ARG: "1 nos steel"}, now="Site B il 10 bag cement vannu, steel um vannu")
+    assert not quantity_not_said(earlier_and_now, body, {CONFIRM_ARG: "1 load sand"}, now="oru load sand vannu")
+    # A 1 in their digits earlier (a line said before, prepared on an answer) is theirs.
+    assert not quantity_not_said("1 load TMT vannu ➕ Add TMT", body, {CONFIRM_ARG: "1 load TMT"}, now="➕ Add TMT")
