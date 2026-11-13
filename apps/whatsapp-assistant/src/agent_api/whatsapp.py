@@ -711,7 +711,7 @@ class ApiWhatsApp:
             answered = self._kept_answered.pop(message.correlation_id, [])
             # WA-270: what is true now, for the model (memory as state); also in the turn's trace, so a live check sees it.
             block = state_block({**state, "pending": [e.to_json() for e in ready]}, message=text,
-                                today=records[0], earlier=records[1]) if as_state else ""
+                                today=records[0], earlier=records[1], since=records[2]) if as_state else ""
             run = dict(
                 text=(_edit_note(editing) if editing else "") + kept_note(answered) + text,
                 history=history, ready=ready, sender_name=ctx.full_name or "",
@@ -1285,17 +1285,21 @@ class ApiWhatsApp:
         return (f"{clock}\nRecorded today ({day}) so far, oldest first, in that time (answer 'did anyone report X' "
                 "from this; if a new entry repeats one of these, say so before preparing it):\n" + "\n".join(lines))
 
-    async def _day_records(self, ctx: Any, client: ApiClient) -> tuple[list[SiteDay] | None, list[tuple[dt.date, str]]]:
+    async def _day_records(self, ctx: Any, client: ApiClient) -> tuple[
+            list[SiteDay] | None, list[tuple[dt.date, str]], float | None]:
         """WA-270 step 4: the working day per site and one line per earlier day, for the state block. Three reads
         through the API as the person, side by side and beside the other reads: the day's timeline, the earlier
         days' timeline, the attendance day totals (WA-287: the count that holds). (None, []) when the day cannot be
-        read: the block says so and the model can look it up."""
+        read: the block says so and the model can look it up. Third: when the working day began (epoch seconds)."""
         from mesiri.domains.organizations.settings import working_day
 
         from .memory import EARLIER_DAYS
 
         zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
-        work_day = working_day(dt.datetime.now(zone), await self._day_starts(ctx))
+        starts_at = await self._day_starts(ctx)
+        work_day = working_day(dt.datetime.now(zone), starts_at)
+        hour, _, minute = starts_at.partition(":")
+        began = dt.datetime.combine(work_day, dt.time(int(hour or 0), int(minute or 0)), zone).timestamp()
         first, before = work_day - dt.timedelta(days=EARLIER_DAYS), work_day - dt.timedelta(days=1)
         names = {str(s.id): s.name for s in getattr(ctx, "sites", None) or []}
         names.update({str(p.id): p.name for p in getattr(ctx, "projects", None) or []})
@@ -1309,7 +1313,7 @@ class ApiWhatsApp:
                     "date_from": first.isoformat(), "date_to": work_day.isoformat(), "limit": 1}))
         except Exception:  # noqa: BLE001 -- the block says the day was not read
             _log.warning("agent_api.day_records_unread user=%s", ctx.user_id, exc_info=True)
-            return None, []
+            return None, [], began
 
         def items(got: Any, key: str) -> list[dict] | None:
             body = got.body if got.ok and isinstance(got.body, dict) else None
@@ -1318,10 +1322,10 @@ class ApiWhatsApp:
 
         rows, totals = items(today, "items"), items(attendance, "day_totals")
         if rows is None:
-            return None, []
+            return None, [], began
         days = [first + dt.timedelta(days=n) for n in range(EARLIER_DAYS)]
         return (today_by_site(totals, rows, names, work_day),
-                earlier_days(totals, items(earlier, "items") or [], names, days))
+                earlier_days(totals, items(earlier, "items") or [], names, days), began)
 
     async def _memory_as_state(self, ctx: Any) -> bool:
         """WA-270 step 4: the company's ``memory_as_state`` setting (off / on); off when unread (the replay)."""
@@ -2466,8 +2470,8 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
 _BACKGROUND: set[asyncio.Task[None]] = set()
 
 
-async def _nothing() -> tuple[None, list]:
-    return None, []
+async def _nothing() -> tuple[None, list, None]:
+    return None, [], None
 
 
 async def _safe_load(memory: Any, ctx: Any) -> list[Any]:

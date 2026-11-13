@@ -649,6 +649,8 @@ logs the facts before the block is added, so a live check cannot see what the bl
 
 **Fixed after round 1 (14 Nov):** WA-294 is now the code's decision (`agent.cancelled_again`, every company, with or without memory as state): a line the same as one cancelled today is not prepared unless this message says its numbers. The turn's trace carries the block (`state_block`, memory as state only).
 
+**Live round 2, 14 Nov 05:06-05:08 IST:** the WA-294 sequence again: on the repeat the model prepared the sand and the masons again and the code refused both; only the carpenters waited. The logged block showed three faults, fixed: a cancel listed several times, and a line said again still listed as cancelled while on the card (once each now, and not when on the card); "Saved in this chat" held the previous day's saves (now from the working day's start, `since`); the earlier-day line listed labour reports (`LabourAttendanceRecorded`: the filter now ignores case).
+
 ### 11.4 The plan's required parts
 
 - **Objective:** each turn the model sees what is true now and a few recent messages, never the day replayed.

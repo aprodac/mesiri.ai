@@ -20,7 +20,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from .agent import REPEAT_WINDOW_S
+from .agent import REPEAT_WINDOW_S, line_key
 from .reply_guard import without_ids
 
 #: The headings the model reads (and the conversation tests look for). One meaning each; never reworded per turn.
@@ -83,7 +83,7 @@ def today_by_site(day_totals: Iterable[dict[str, Any]] | None, records: Iterable
     for row in sorted(records or [], key=lambda r: str(r.get("occurred_at") or "")):
         place = _place(row, names)
         kind = str(row.get("event_type") or "")
-        if place not in names or kind.startswith("labour"):
+        if place not in names or kind.casefold().startswith("labour"):  # LabourAttendanceRecorded / Voided
             continue
         summary = without_ids(str(row.get("summary") or "")).strip()
         if summary:
@@ -157,10 +157,6 @@ def cancelled_lines(state: dict, now: float | None = None) -> list[dict[str, Any
             if isinstance(c, dict) and c.get("summary") and now - float(c.get("at") or 0) < CANCELLED_SECONDS]
 
 
-def _cancelled(state: dict, now: float) -> list[str]:
-    return [str(c["summary"]) for c in cancelled_lines(state, now)]
-
-
 def _summaries(rows: Any) -> list[str]:
     return [str(r.get("summary") or r.get("tool") or "") for r in rows or [] if isinstance(r, dict)]
 
@@ -182,10 +178,11 @@ def _site_line(day: SiteDay) -> list[str]:
 
 def state_block(state: dict, *, message: str, now: float | None = None,
                 today: Sequence[SiteDay] | None = None,
-                earlier: Sequence[tuple[dt.date, str]] = ()) -> str:
+                earlier: Sequence[tuple[dt.date, str]] = (), since: float | None = None) -> str:
     """The block the model reads before the last few messages. ``state``: the chat state as stored (``pending``,
     ``held``, ``asked``, ``cancel_log``, ``recent_saves``); ``today``: the day per site (``today_by_site``), None when
     it could not be read (said so, never "nothing"); ``earlier``: one line per earlier day, oldest first.
+    ``since``: when the working day began (epoch seconds); a save before it is an earlier day's, not "in this chat".
     ``message`` is what this turn answers, marked last. A heading with nothing under it is left out, except the
     card, which always says whether one is waiting."""
     now = time.time() if now is None else now
@@ -215,12 +212,24 @@ def state_block(state: dict, *, message: str, now: float | None = None,
                      + (f" (options: {options})" if options else "")
                      + ". Only a message that answers it is its answer.")
 
-    cancelled = _cancelled(state, now)
+    # Live, 14 Nov: the same cancel listed three times, and a line said again (now on the card) still listed as
+    # cancelled. Once each, newest kept; a line on the card now is not "cancelled".
+    on_card = {line_key(str(e.get("tool") or ""), e.get("body") or {}) for e in state.get("pending") or []
+               if isinstance(e, dict)} - {None}
+    on_card_words = {without_ids(s) for s in _summaries(state.get("pending"))}
+    cancelled, seen = [], set()
+    for c in reversed(cancelled_lines(state, now)):
+        words = without_ids(str(c["summary"]))
+        if c.get("key") in on_card or words in on_card_words or (c.get("key") or words) in seen:
+            continue
+        seen.add(c.get("key") or words)
+        cancelled.insert(0, words)
     if cancelled:
-        parts.append(f"{CANCELLED}:\n" + "\n".join(f"- {without_ids(c)}" for c in cancelled))
+        parts.append(f"{CANCELLED}:\n" + "\n".join(f"- {c}" for c in cancelled))
 
     saved = [r for r in state.get("recent_saves") or []
-             if isinstance(r, dict) and now - float(r.get("at") or 0) < REPEAT_WINDOW_S][-SAVED_SHOWN:]
+             if isinstance(r, dict) and now - float(r.get("at") or 0) < REPEAT_WINDOW_S
+             and float(r.get("at") or 0) >= (since or 0)][-SAVED_SHOWN:]
     if saved:
         parts.append(f"{SAVED}:\n" + "\n".join(
             f"- {without_ids(str(r.get('summary') or ''))}" + (f" ({r['tool']}, id {r['id']})" if r.get("id") else "")

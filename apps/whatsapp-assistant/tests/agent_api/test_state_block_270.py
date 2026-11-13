@@ -192,3 +192,37 @@ def test_earlier_days_are_one_short_line_each_oldest_first() -> None:
     assert sb.earlier_days([], [], SITES, [before]) == []
     long = [{"occurred_at": f"{before}T05:00:00Z", "site_id": MAIN, "event_type": "x", "summary": "w" * 500}]
     assert len(sb.earlier_days([], long, SITES, [before])[0][1]) == sb.EARLIER_CHARS
+
+
+# --- from live round 2 (14 Nov 05:08 IST): the block as production logged it --------------------------------------
+
+def test_live_a_cancel_is_listed_once_and_a_line_back_on_the_card_is_not_listed_as_cancelled() -> None:
+    from agent_api.agent import line_key
+
+    sand = {"project_id": "p", "site_id": MAIN, "material_id": "m-sand", "quantity": 10}
+    carpenters = {"project_id": "p", "site_id": MAIN, "lines": [{"trade": "Carpenter", "headcount": 3}]}
+    state: dict = {"pending": [{**_entry("3 carpenter, Main Block", "record_attendance"), "body": carpenters}]}
+    for at in (NOW - 900, NOW - 600, NOW - 60):  # cancelled three times, the carpenters once
+        sb.remember_cancelled(state, [{"summary": "10 bags sand, Main Block", "key": line_key("record_receipt", sand)}],
+                              now=at)
+    sb.remember_cancelled(state, [{"summary": "3 carpenter, Main Block",
+                                   "key": line_key("record_attendance", carpenters)}], now=NOW - 300)
+    cancelled = _block(state).split(sb.CANCELLED)[1].split("\n\n")[0]
+    assert cancelled.count("10 bags sand") == 1
+    assert "3 carpenter" not in cancelled  # said again: it is on the card, not cancelled
+
+
+def test_live_saved_in_this_chat_is_the_working_days_only() -> None:
+    state = {"recent_saves": [{"fp": "a", "summary": "50 bags cement", "at": NOW - 7200, "tool": "x", "id": "1"},
+                              {"fp": "b", "summary": "3 masons", "at": NOW - 60, "tool": "y", "id": "2"}]}
+    block = sb.state_block(state, message="x", now=NOW, today=[], since=NOW - 3600)
+    assert "3 masons" in block and "50 bags cement" not in block
+
+
+def test_live_labour_rows_of_the_timeline_are_left_out_whatever_their_case() -> None:
+    rows = [{"occurred_at": "2026-11-13T05:00:00Z", "site_id": MAIN, "event_type": "LabourAttendanceRecorded",
+             "summary": "10 workers recorded"},
+            {"occurred_at": "2026-11-13T06:00:00Z", "site_id": MAIN, "event_type": "MaterialReceived",
+             "summary": "45 bags of Cement received"}]
+    days = sb.today_by_site([_total(MAIN, 12, {"mason": 12})], rows, SITES, DAY)
+    assert days == [sb.SiteDay("Main Block", 12, (("mason", 12),), ("MaterialReceived: 45 bags of Cement received",))]
