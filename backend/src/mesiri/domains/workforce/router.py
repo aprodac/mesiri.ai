@@ -259,9 +259,27 @@ class LabourAttendanceGalleryItem(BaseModel):
     total_cost: Money
 
 
+class LabourAttendanceTradeCount(BaseModel):
+    trade: str
+    workers: int
+
+
+class LabourAttendanceDayTotal(BaseModel):
+    """WA-287: the workers that count for one site and day, the Today page's own count (a later report replaces
+    only the same trades and named people)."""
+
+    project_id: uuid.UUID
+    site_id: uuid.UUID | None = None
+    occurred_date: datetime.date
+    workers: int
+    trades: list[LabourAttendanceTradeCount]
+
+
 class LabourAttendanceReportsListResponse(BaseModel):
     items: list[LabourAttendanceReportSummaryResponse]
     total: int
+    #: WA-287: per site and day, what counts. Answer "how many workers" from this, never by adding the reports up.
+    day_totals: list[LabourAttendanceDayTotal] = []
 
 
 class LabourAttendanceReportResponse(LabourAttendanceReportSummaryResponse):
@@ -802,7 +820,19 @@ async def list_attendance(
         limit=limit,
         offset=offset,
     )
-    return {"items": items, "total": total}
+    # WA-287: a day with two reports (a correction, a second message) is added up by the Today page's own rule.
+    counted = await repo.day_headcounts(organization_id=auth_context.organization_id, project_ids=project_ids,
+                                        site_id=site_id, date_from=date_from, date_to=date_to)
+    days: dict[tuple, dict] = {}
+    for row in counted:
+        if _site_filter_denied(auth_context, row["project_id"], row["site_id"]):
+            continue
+        day = days.setdefault((row["site_id"], row["occurred_date"]), {
+            "project_id": row["project_id"], "site_id": row["site_id"], "occurred_date": row["occurred_date"],
+            "workers": 0, "trades": []})
+        day["workers"] += int(row["workers"])
+        day["trades"].append({"trade": row["trade"], "workers": int(row["workers"])})
+    return {"items": items, "total": total, "day_totals": list(days.values())}
 
 
 @router.get("/attendance/attachments", response_model=list[LabourAttendanceGalleryItem])

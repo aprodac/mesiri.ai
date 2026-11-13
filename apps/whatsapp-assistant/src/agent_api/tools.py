@@ -246,7 +246,10 @@ ALLOWED: tuple[Allowed, ...] = (
             "per item material_id + counted in the unit they said (unit_id when not the stock unit); reason when they "
             "said why it differs (wastage, theft, wrong_entry, unrecorded_use, found, other)." + _WRITE),
     # Labour
-    Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
+    Allowed("labour_attendance", "GET", "/labour/attendance",
+            "Labour attendance reported: per site and date, which trades, how many, who reported. For how many workers "
+            "a site or day had, use day_totals (the count that holds: a later report replaces only the same trades); "
+            "items are the reports as sent and are never added up (WA-287)."),
     Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),
     Allowed(
         "record_attendance", "POST", "/labour/attendance",

@@ -647,6 +647,43 @@ class PostgresWorkforceReadRepository:
         ).mappings().all()
         return [dict(row) for row in rows]
 
+    async def day_headcounts(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_ids: set[uuid.UUID] | None,
+        site_id: uuid.UUID | None,
+        date_from: datetime.date | None,
+        date_to: datetime.date | None,
+    ) -> list[dict[str, Any]]:
+        """WA-287: the workers that count per site, day and trade: the Today page's own count (`list_site_days`,
+        the same two rules, `live_report_sql` and `counted_line_sql`, and the same headcount), so a later report
+        replaces only the same trades and named people. The report list gives each report as sent; a day with two
+        reports (a correction, a second message) is added up here, never by the reader."""
+        where = ["lar.organization_id = :org", live_report_sql("lar"), counted_line_sql("lal", "lar")]
+        params: dict[str, Any] = {"org": organization_id}
+        if project_ids is not None:
+            where.append("lar.project_id = ANY(:projects)")
+            params["projects"] = list(project_ids)
+        if site_id is not None:
+            where.append("lar.site_id = :site")
+            params["site"] = site_id
+        if date_from is not None:
+            where.append("lar.occurred_date >= :date_from")
+            params["date_from"] = date_from
+        if date_to is not None:
+            where.append("lar.occurred_date <= :date_to")
+            params["date_to"] = date_to
+        rows = (await self._conn.execute(sa.text(
+            "SELECT lar.project_id, lar.site_id, lar.occurred_date, "
+            "COALESCE(NULLIF(lower(btrim(lal.trade)), ''), 'worker') AS trade, "
+            "sum(COALESCE(NULLIF(lal.headcount, 0), 1)) AS workers "
+            "FROM labour_attendance_lines lal JOIN labour_attendance_reports lar ON lar.id = lal.report_id "
+            f"WHERE {' AND '.join(where)} "
+            "GROUP BY lar.project_id, lar.site_id, lar.occurred_date, 4 "
+            "ORDER BY lar.occurred_date DESC, lar.site_id, 4"), params)).mappings().all()
+        return [dict(row) for row in rows]
+
     async def worker_statistics(
         self,
         *,
