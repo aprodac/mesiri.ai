@@ -70,11 +70,12 @@ async def test_a_made_up_unit_id_is_replaced_never_sent() -> None:
     assert turn.pending[0].body["unit_id"] == NOS
 
 
-async def test_an_unknown_unit_goes_back_to_the_model_to_ask_not_into_the_list() -> None:
+async def test_an_unknown_unit_is_held_and_the_code_asks_it_not_into_the_list() -> None:
+    # WA-280: before, the line went back to the model to ask, and was lost with the answer; now the code keeps it.
     turn = await _run(receipt_call(CEMENT, "furlongs", "50 furlongs cement"))
     assert turn.pending == []
-    assert "not one of the company's units" in turn.calls[0]["result"]["error"]
-    assert "bag" in turn.calls[0]["result"]["error"]
+    assert turn.calls[0]["result"]["status"] == "held: the code asks the unit"
+    assert [h["gap"] for h in turn.held] == ["unit"] and turn.question == "In which unit?" and turn.options
 
 
 async def test_an_entry_held_with_the_word_is_fixed_when_saved() -> None:

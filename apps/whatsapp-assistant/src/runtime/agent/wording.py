@@ -603,6 +603,35 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "यह किस साइट के लिए है?",
         "hinglish": "Yeh kis site ke liye hai?",
     },
+    # WA-280: the code's own question for a line it holds (the buttons under it are the choices).
+    "api.which_material": {
+        "english": "Which {word} is it?",
+        "manglish": "Ethu {word} aanu?",
+        "malayalam": "ഏത് {word} ആണ്?",
+        "hindi": "कौन सा {word} है?",
+        "hinglish": "Kaun sa {word} hai?",
+    },
+    "api.which_one": {
+        "english": "Which one is it?",
+        "manglish": "Ethu aanu?",
+        "malayalam": "ഏതാണ്?",
+        "hindi": "कौन सा है?",
+        "hinglish": "Kaun sa hai?",
+    },
+    "api.which_unit": {
+        "english": "In which unit?",
+        "manglish": "Ethu unit-il aanu?",
+        "malayalam": "ഏത് യൂണിറ്റിലാണ്?",
+        "hindi": "किस यूनिट में?",
+        "hinglish": "Kis unit mein?",
+    },
+    "api.which_person": {
+        "english": "Which person is it?",
+        "manglish": "Ethu aalaanu?",
+        "malayalam": "ഏത് ആളാണ്?",
+        "hindi": "कौन सा व्यक्ति है?",
+        "hinglish": "Kaun sa person hai?",
+    },
     "api.nothing_to_cancel": {
         "english": "There is nothing waiting to cancel.",
         "manglish": "Cancel cheyyaan onnum baakki illa.",

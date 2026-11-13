@@ -263,9 +263,10 @@ class ApiTurn:
     size_unknown: bool = False
     #: WA-277 step E: the tool areas open after this turn (tools on demand); the chat keeps them for the day.
     opened: list[str] = field(default_factory=list)
-    #: WA-278: lines understood but waiting for their site ({tool, arguments}): the code keeps them, asks the site
-    #: once with buttons, and prepares them itself when the site is answered. Never thrown away, never redone.
-    site_held: list[dict[str, Any]] = field(default_factory=list)
+    #: WA-278 / WA-280: lines understood but waiting for one thing the person must say ({tool, arguments, gap, field,
+    #: options, word}): the site, which of two listed materials, the unit, the person. The code keeps them, asks the
+    #: one question with buttons, and prepares them itself when it is answered. Never thrown away, never redone.
+    held: list[dict[str, Any]] = field(default_factory=list)
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -719,7 +720,7 @@ class ApiAgent:
                   may_set_sizes: bool = True, language_chosen: bool = False,
                   size_open: list[dict[str, Any]] | None = None, day_starts_at: str | None = None,
                   on_demand: bool | None = None, open_areas: list[str] | None = None,
-                  site_held: list[dict[str, Any]] | None = None) -> ApiTurn:
+                  holds: list[dict[str, Any]] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -737,9 +738,9 @@ class ApiAgent:
         opened: set[str] = {a for a in [*(open_areas or []), *(tool_areas.area_of(e.tool) for e in ready or [])]
                             if a in tool_areas.AREAS} if on_demand else set()
         just_opened: list[str] = []  # areas opened by the model in the run that just ended
-        # WA-278: lines waiting for their site. ``held_for_site``: after this turn (carried or new);
-        # ``code_prepared``: the ones the code prepared in this turn from the site just answered.
-        held_for_site: list[dict[str, Any]] = []
+        # WA-278 / WA-280: lines waiting for one answer. ``held_lines``: after this turn (carried or new);
+        # ``code_prepared``: the ones the code prepared in this turn from the answer just given.
+        held_lines: list[dict[str, Any]] = []
         code_prepared: list[PendingWrite] = []
         report_gone: list[str] = []  # WA-278: today's report had already gone when it was asked for (its link)
         opened_calls: list[dict[str, Any]] = []  # the open_tools calls of this turn, for the trace
@@ -787,6 +788,19 @@ class ApiAgent:
             return (await to_english(self._provider, [word], correlation_id, latin=True)).get(word, "")
         reply_in = LANGUAGE_LINES.get(language or "", "their language")
         language_set: list[str] = []
+
+        def hold_line(name: str, arguments: dict[str, Any], gap: str, field_: str, options: list[str],
+                      word: str = "", entry_key: str = "") -> ToolOutcome:
+            """WA-280: one way to keep a line the code cannot finish without the person (the site, which listed
+            material, the unit, the person): the call is kept as the model made it, the code asks ONE question with
+            buttons, and when it is answered the code puts the answer in ``field_`` and prepares the line itself."""
+            hold: dict[str, Any] = {"tool": name, "arguments": dict(arguments), "gap": gap, "field": field_,
+                                    "options": [o for o in options if o], "word": word}
+            if entry_key:
+                hold["entry_key"] = entry_key  # a correction: the waiting line it changes, found again by its key
+            held_lines[:] = [h for h in held_lines if not (h["tool"] == name and h["arguments"] == hold["arguments"])]
+            held_lines.append(hold)
+            return ToolOutcome(content={"status": HELD_STATUS[gap], "note": held_note(gap)})
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
@@ -894,6 +908,10 @@ class ApiAgent:
                                 "entry": n, "now": confirm_line}
                     if content.get("error"):  # never "changed" with the line still on the old material
                         return {"error": content["error"]}
+                if problem and len(buttons) > 1:
+                    # WA-280: a correction to "metal" (either listed aggregate): kept, the code asks which one.
+                    return held_content(hold_line(CHANGE_READY, arguments, GAP_MATERIAL, MATERIAL_SAID, buttons,
+                                                  word=said, entry_key=entry.idempotency_key))
                 if problem:
                     unit_ask[:] = buttons
                     if not said:
@@ -905,8 +923,8 @@ class ApiAgent:
             if "unit_id" in body and ("unit_id" in changes or "unit" in changes):
                 problem = await settle_unit(client, body)
                 if problem:
-                    unit_ask[:] = await unit_buttons(client)
-                    return {"error": problem}
+                    return held_content(hold_line(CHANGE_READY, arguments, GAP_UNIT, "unit_id",
+                                                  await unit_buttons(client), entry_key=entry.idempotency_key))
             unit_note = ""
             size_note = ""
             category_note = ""
@@ -1107,14 +1125,7 @@ class ApiAgent:
                     # the call, asks the site itself (buttons), and prepares the line when the site is answered.
                     names = place if isinstance(place, list) else [place.name]
                     site_ask[:] = site_options(names)
-                    hold = {"tool": name, "arguments": dict(arguments)}
-                    if hold not in held_for_site:
-                        held_for_site.append(hold)
-                    return ToolOutcome(content={"status": HELD_FOR_SITE, "note": (
-                        "The code keeps this line and asks the person which site, with buttons. It is NOT prepared "
-                        "and nothing is saved. Do not call this again for it, do not call `ask` for the site, and "
-                        "never say it is ready, updated or saved. Do the other parts of my message; your reply says "
-                        "nothing about this line (the code asks).")})
+                    return hold_line(name, arguments, GAP_SITE, "site_id", [])  # its buttons: site_ask
                 arguments = {k: v for k, v in arguments.items() if k != "site_id"}
                 if place.site_id:
                     arguments["site_id"] = place.site_id
@@ -1243,14 +1254,21 @@ class ApiAgent:
                     # call: the new material (its category found from its name, never asked) and the line on it.
                     if (outcome := await new_material_with_line(name, arguments, found)) is not None:
                         return outcome
+                if problem and len(buttons) > 1:
+                    # WA-280 ("metal": 20mm or 40mm, both listed): the line is kept and the code asks which one.
+                    return hold_line(name, arguments, GAP_MATERIAL, MATERIAL_SAID, buttons,
+                                     word=str(arguments.get(MATERIAL_SAID) or ""))
                 if problem:
                     unit_ask[:] = buttons
                     return ToolOutcome(content={"error": problem})
             if tool.is_write and "unit_id" in tool.body_fields:
                 problem = await settle_unit(client, body)
+                if problem and (said_unit := await unit_in_line(client, str(arguments.get(CONFIRM_ARG) or ""))):
+                    body["unit_id"] = said_unit  # the line names its unit ("50 bags cement"): the id was only miswritten
+                    problem = ""
                 if problem:
-                    unit_ask[:] = await unit_buttons(client)
-                    return ToolOutcome(content={"error": problem})
+                    # WA-280: a unit nobody can tell from the words: the line is kept and the code asks the unit.
+                    return hold_line(name, arguments, GAP_UNIT, "unit_id", await unit_buttons(client))
                 unit_ask.clear()
                 if body.get("material_id") and not new_ref:  # WA-165: a unit the material cannot be saved in
                     sized = {}
@@ -1272,8 +1290,7 @@ class ApiAgent:
             if tool.is_write and "from_unit_id" in tool.body_fields:
                 problem = await settle_unit(client, body, "from_unit_id")
                 if problem:
-                    unit_ask[:] = await unit_buttons(client)
-                    return ToolOutcome(content={"error": problem})
+                    return hold_line(name, arguments, GAP_UNIT, "from_unit_id", await unit_buttons(client))
             if name == STANDARD_CATEGORIES_TOOL and not may_set_sizes:
                 # PRC-02c: the company's category list is set up by an admin or a project manager (as on the dashboard).
                 return ToolOutcome(content={"error": (
@@ -1374,6 +1391,9 @@ class ApiAgent:
                 body["role"] = normalize_role(body.get("role"))
             if name == MEMBER_TOOL:
                 problem, buttons = await settle_member(client, path, body)
+                if problem and len(buttons) > 1:
+                    # WA-280: two people could be meant: kept, and the code asks which one.
+                    return hold_line(name, arguments, GAP_PERSON, "userId", buttons, word=str(arguments.get("userId") or ""))
                 if problem:
                     unit_ask[:] = buttons
                     return ToolOutcome(content={"error": problem})
@@ -1468,7 +1488,7 @@ class ApiAgent:
                     # carried; the card line is drawn from the fields that will be saved.
                     said_line = project_line(name, body, places, path) or said_line
                 if name in SEND_LINE_TOOLS and (unsaved := updates_not_saved(
-                        held_for_site, [e for e in [*waiting, *new] if e is not None], self._tools)):
+                        held_lines, [e for e in [*waiting, *new] if e is not None], self._tools)):
                     # WA-278 (the same chat, 02:13: the report was offered beside updates not yet saved, Send was
                     # tapped, and the day's report went to everyone with nothing in it): a report never goes while
                     # updates wait. They are saved first; the report is asked for after.
@@ -1649,32 +1669,44 @@ class ApiAgent:
                            "it. Do not prepare `set_unit_conversion`, do not ask the size again, do not repeat the line. "
                            "Do what the rest of the message asks (if it says to save, call save_ready_entries).")
         again_asked = False  # WA-198: one corrective retry per turn at most (reply time)
-        # WA-278: the lines held for their site, when this message names it (a tap is the site's name): the code
-        # prepares them now, each with the call the model made when the person said it. The model is not asked again.
+        # WA-278 / WA-280: the lines held for one answer, when this message gives it (a tap is the option's own words):
+        # the code puts the answer in and prepares them now, each with the call the model made when the person said
+        # it. The model is not asked again. Only the question that was asked (the first hold's) is answered here.
         code_records: list[ToolCallRecord] = []
-        held_before = list(site_held or [])
-        if held_before and places is not None and names_a_place(text, places):
-            for hold in held_before:
-                before = len(new)
-                outcome = await handler(str(hold.get("tool") or ""), dict(hold.get("arguments") or {}))
-                code_records.append(ToolCallRecord(name=str(hold.get("tool") or ""),
-                                                   arguments=dict(hold.get("arguments") or {}), outcome=outcome))
-                code_prepared.extend(new[before:])
-        elif held_before:
-            # Not the site's answer (another request, or "Other"): nothing is dropped. The lines stay held and the
-            # site is asked again with this reply.
-            held_for_site.extend(h for h in held_before if h not in held_for_site)
-            site_ask[:] = site_options(place_names_to_ask(places)) if places is not None else []
+        held_before = [h for h in (holds or []) if isinstance(h, dict) and h.get("tool")]
+        asked_hold = held_before[0] if held_before else None
+        answer = answer_to_hold(text, asked_hold, places) if asked_hold is not None else None
+        replay_failed = False
+        for hold in held_before:
+            if answer is None or not same_question(hold, asked_hold):
+                # Not the answer (another request, or "Other"): nothing is dropped; it is asked again with this reply.
+                if hold not in held_lines:
+                    held_lines.append(hold)
+                continue
+            call = filled_call(hold, answer, waiting)
+            if call is None:  # a correction whose waiting line is gone (saved or cancelled): nothing left to change
+                continue
+            tool_name, arguments_ = call
+            before = len(new)
+            outcome = await handler(tool_name, arguments_)
+            code_records.append(ToolCallRecord(name=tool_name, arguments=arguments_, outcome=outcome))
+            code_prepared.extend(new[before:])
+            content = outcome.content if isinstance(outcome.content, dict) else {}
+            replay_failed = replay_failed or bool(content.get("error"))
         if code_prepared:
             lines = "; ".join(e.summary for e in code_prepared)
-            system += (f"\n\nThe CODE already prepared these from my earlier message, at the site I just named: {lines}. "
-                       "They are on the card, not saved. Do not prepare them again and do not ask the site. If this "
-                       "message says nothing else, reply with one short line. This note is for you only.")
-        only_the_site = bool(code_prepared) and not held_for_site and is_only_a_place(text, places)
+            system += (f"\n\nThe CODE already prepared these from my earlier message, with the answer I just gave: "
+                       f"{lines}. They are on the card, not saved. Do not prepare them again and do not ask about them. "
+                       "If this message says nothing else, reply with one short line. This note is for you only.")
+        if any(c.name == CHANGE_READY for c in code_records) and not replay_failed:
+            system += ("\n\nThe CODE already made the change I asked for earlier with this answer; it is on the card. "
+                       "Do not change it again. This note is for you only.")
+        only_the_answer = (bool(code_records) and not replay_failed
+                           and is_only_the_answer(text, asked_hold, answer, places))
         try:
-            # A bare site answer (the tap) needs no model: the code did all of it, and the card speaks.
+            # A bare answer (the tap) needs no model: the code did all of it, and the card speaks.
             result = (ToolRunResult(text="", calls=[], steps=0, stop_reason="done_by_tools", model="code")
-                      if only_the_site else await ask_model(messages))
+                      if only_the_answer else await ask_model(messages))
             if code_records:
                 result = result.model_copy(update={"calls": [*code_records, *result.calls]})
         except Exception as exc:
@@ -1778,7 +1810,7 @@ class ApiAgent:
                                    "part now, or ask about it in one question. Keep everything already prepared. If "
                                    "it is not an update (a phone number, a time), just answer.)"))])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
-        lines_lost = not_held(result.calls, new) if not asked and not site_ask else []
+        lines_lost = not_held(result.calls, new) if not asked and not site_ask and not held_lines else []
         if lines_lost and not lost and not again_asked:
             # [248] (5 Nov, New India: three new materials on the card, their 20 + 20 + 30 + 1 load dropped, and the
             # reply said all were ready): a line refused for its material and never held after. One more try.
@@ -1797,7 +1829,7 @@ class ApiAgent:
         ready_only = claims_ready(result.text) and not ready and not false_saved and not tap_save  # WA-256
         claimed_ready = nothing_done() and (false_saved or tap_save or ready_only)  # [229]
         if (not (result.text or "").strip() and not new and not asked and not saved and not acted and not exists
-                and not false_saved):
+                and not false_saved and not code_records):  # WA-280: a held correction made by the code is done
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
                                      check_note(text="(answer my message now, in words)")])
@@ -1807,17 +1839,18 @@ class ApiAgent:
         calls = opened_calls + calls  # WA-277 step E: the areas opened, first in the trace
         still = [e for e in waiting if e is not None]
         # [217]: a question asked with no options still gets the buttons the code built (the near-match ones).
-        if held_for_site and site_ask:
-            # WA-278: the site question is the code's, in their language, with the code's buttons.
-            asked["question"] = which_site_line(language)
-            asked["options"] = list(site_ask)
+        if held_lines:
+            # WA-278 / WA-280: the question about a held line is the code's, in their language, with the code's
+            # buttons; one at a time (the first held line's), the others are asked when it is answered.
+            asked["question"] = held_question(held_lines[0], language)
+            asked["options"] = held_options(held_lines[0], places, site_ask)
         options = asked.get("options", []) or unit_ask or site_ask
         reply = without_apology((result.text or "").strip())  # [265]: never "My bad!" for a slip they never saw
         if report_gone:
             # WA-278 part 2: the code's own line and link; the model's words stay only when it looked something up.
             gone_line = f"{report_gone_line(language)}\n🔗 {report_gone[-1]}"
             reply = f"{reply}\n\n{gone_line}" if reply and looked(result.calls) else gone_line
-        if held_for_site and site_ask:
+        if held_lines:
             # The model's words stay only when they answer something it looked up; the question follows them.
             reply = (f"{reply}\n\n{asked['question']}" if reply and looked(result.calls) and asked["question"] not in reply
                      else asked["question"])
@@ -1867,7 +1900,7 @@ class ApiAgent:
                        options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed, language_set=next(iter(language_set), ""),
-                       size_unknown=bool(size_unknown), opened=sorted(opened), site_held=list(held_for_site))
+                       size_unknown=bool(size_unknown), opened=sorted(opened), held=list(held_lines))
 
 
 REPORT_GONE = ("Today's report has already gone out. What you saved after it is recorded and will be listed in the "
@@ -1905,6 +1938,125 @@ async def report_gone_today(client: ApiClient, path: str, tz: Any) -> str:
 #: WA-278: what a line waiting for its site is told to the model as.
 HELD_FOR_SITE = "held: the code asks which site"
 WHICH_SITE = "Which site is this for?"
+
+#: WA-280: what a held line waits for. One hold for all of them (WA-278 began it with the site).
+GAP_SITE, GAP_MATERIAL, GAP_UNIT, GAP_PERSON = "site", "material", "unit", "person"
+HELD_STATUS = {GAP_SITE: HELD_FOR_SITE, GAP_MATERIAL: "held: the code asks which material",
+               GAP_UNIT: "held: the code asks the unit", GAP_PERSON: "held: the code asks which person"}
+_WHAT = {GAP_SITE: "which site", GAP_MATERIAL: "which material", GAP_UNIT: "the unit", GAP_PERSON: "which person"}
+#: Words that never answer a held question, whatever it asks (the unit's free answer is otherwise taken as said).
+_NOT_AN_ANSWER = frozenset({"ok", "okay", "yes", "no", "cancel", "stop", "what", "huh", "hi", "hello", "save"})
+
+
+def held_note(gap: str) -> str:
+    """What the model is told about a line the code holds: never "ready", never asked again by the model."""
+    what = _WHAT.get(gap, "which site")
+    return (f"The code keeps this line and asks the person {what}, with buttons. It is NOT prepared "
+            f"and nothing is saved. Do not call this again for it, do not call `ask` for {what.removeprefix('which ')}, "
+            "and never say it is ready, updated or saved. Do the other parts of my message; your reply says "
+            "nothing about this line (the code asks).")
+
+
+def held_content(outcome: ToolOutcome) -> dict[str, Any]:
+    """A hold's outcome as the content of a list tool (``change_ready_entry`` answers a dict)."""
+    return dict(outcome.content) if isinstance(outcome.content, dict) else {"status": str(outcome.content)}
+
+
+def _gap(hold: dict[str, Any]) -> str:
+    return str(hold.get("gap") or GAP_SITE)  # a hold kept before WA-280 is a site's
+
+
+def _plain(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text.casefold()).split())
+
+
+def answer_to_hold(text: str, hold: dict[str, Any], places: Places | None) -> str | None:
+    """WA-280: the answer this message gives to the held line's question, or None when it is not one.
+
+    The site: a site or project named. A material or a person: one of the buttons, tapped (its words), typed short
+    ("20mm" for "Aggregate 20mm") or said inside a longer message. A unit: a button, else a short answer as said (the
+    code's unit check decides; one it cannot place is asked again)."""
+    gap = _gap(hold)
+    if gap == GAP_SITE:
+        return text if places is not None and names_a_place(text, places) else None
+    said = _plain(text)
+    if not said or said in _NOT_AN_ANSWER:
+        return None
+    options = [str(o) for o in hold.get("options") or [] if str(o).strip()]
+    exact = [o for o in options if _plain(o) == said]
+    if exact:
+        return exact[0]
+    words = set(said.split())
+    short = [o for o in options if words <= set(_plain(o).split()) or said.replace(" ", "") in _plain(o).replace(" ", "")]
+    if len(short) == 1:
+        return short[0]
+    inside = [o for o in options if f" {_plain(o)} " in f" {said} "]
+    if len(inside) == 1:
+        return inside[0]
+    if gap == GAP_UNIT and len(said.split()) <= 3 and "?" not in text:
+        return text.strip()
+    return None
+
+
+def same_question(hold: dict[str, Any], asked: dict[str, Any] | None) -> bool:
+    """Whether ``hold`` waits for the same answer as the question asked (two "metal" lines: one tap for both)."""
+    if asked is None or _gap(hold) != _gap(asked):
+        return False
+    return _gap(hold) == GAP_SITE or (hold.get("options") == asked.get("options") and hold.get("word") == asked.get("word"))
+
+
+def filled_call(hold: dict[str, Any], answer: str, waiting: list[PendingWrite | None]) -> tuple[str, dict[str, Any]] | None:
+    """The held call with the answer put in, as the model would have made it had it known. A correction is matched to
+    its waiting line by key (the numbers may have moved); None when that line is gone."""
+    name = str(hold.get("tool") or "")
+    arguments = dict(hold.get("arguments") or {})
+    gap, field_ = _gap(hold), str(hold.get("field") or "")
+    if gap == GAP_SITE:
+        return name, arguments  # the site is read from the message, as for any line
+    if gap == GAP_MATERIAL and (line := str(arguments.get(CONFIRM_ARG) or "")):
+        # The card line names what was chosen ("10 cum metal" -> "10 cum Aggregate 40mm"), never the word that was not.
+        arguments[CONFIRM_ARG] = line_on(line, str(hold.get("word") or ""), answer)
+    if name == CHANGE_READY:
+        number = next((i for i, e in enumerate(waiting, 1)
+                       if e is not None and e.idempotency_key == hold.get("entry_key")), 0)
+        if not number:
+            return None
+        raw = arguments.get("changes") or {}
+        changes = (dict(raw) if isinstance(raw, dict) else
+                   {str(c.get("field")): c.get("value") for c in raw if isinstance(c, dict) and c.get("field")})
+        changes[field_] = answer
+        return name, {**arguments, "number": number, "changes": changes}
+    return name, {**arguments, field_: answer}
+
+
+def is_only_the_answer(text: str, hold: dict[str, Any] | None, answer: str | None, places: Places | None) -> bool:
+    """Whether the message is nothing but the answer (the tap, or it typed): then no model runs."""
+    if hold is None or answer is None:
+        return False
+    if _gap(hold) == GAP_SITE:
+        return is_only_a_place(text, places)
+    said = _plain(text)
+    return said == _plain(answer) or (len(said.split()) <= 3 and set(said.split()) <= set(_plain(answer).split()))
+
+
+def held_question(hold: dict[str, Any], language: str | None) -> str:
+    """The code's question for a held line, in the person's language (never the model's wording)."""
+    gap = _gap(hold)
+    if gap == GAP_SITE:
+        return which_site_line(language)
+    from runtime.agent.wording import say
+
+    word = title(str(hold.get("word") or "").strip()) if gap == GAP_MATERIAL else ""
+    key = {GAP_MATERIAL: "api.which_material" if word else "api.which_one", GAP_UNIT: "api.which_unit",
+           GAP_PERSON: "api.which_person"}[gap]
+    return say(key, language or "english", word=word)
+
+
+def held_options(hold: dict[str, Any], places: Places | None, site_ask: list[str]) -> list[str]:
+    """The buttons under a held line's question (WhatsApp shows three)."""
+    if _gap(hold) == GAP_SITE:
+        return list(site_ask) or (site_options(place_names_to_ask(places)) if places is not None else [])
+    return [str(o) for o in hold.get("options") or []][:3]
 
 
 def which_site_line(language: str | None) -> str:
@@ -2812,6 +2964,17 @@ def told(calls: list[Any]) -> bool:
 def hint_reads(names: list[str]) -> str:
     """[247] ", a read tool exists: a, b" for the corrective retries; nothing when no tool matched."""
     return f". A read tool exists for this: {', '.join(names[:6])}" if names else ""
+
+
+async def unit_in_line(client: ApiClient, line: str) -> str:
+    """WA-280: the id of the ONE unit a card line names in its words ("50 bags cement" -> bags), or "" (none, or two)."""
+    try:
+        response = await client.call("GET", "/materials/units-of-measure")
+    except Exception:  # noqa: BLE001
+        return ""
+    units = unit_rows(response.body) if response.ok else []
+    found = {str(u["id"]) for word in re.findall(r"[^\W\d_]+", line) if (u := resolve_unit(units, word)) is not None}
+    return next(iter(found)) if len(found) == 1 else ""
 
 
 async def unit_from_summary(client: ApiClient, entry: PendingWrite) -> str:

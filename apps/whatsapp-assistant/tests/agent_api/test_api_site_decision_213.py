@@ -87,7 +87,7 @@ async def test_several_sites_and_nothing_to_go_by_asks_with_buttons() -> None:
     assert turn.options == ["Green Villa main", "Tower A"]
     # WA-278: the line is not refused and thrown away any more: the code keeps it and asks the site itself.
     assert "error" not in turn.calls[0]["result"] and "held" in turn.calls[0]["result"]["status"]
-    assert [h["tool"] for h in turn.site_held] == ["record_receipt"]
+    assert [h["tool"] for h in turn.held] == ["record_receipt"]
 
 
 def test_sibling_the_decision_and_what_counts_as_reported() -> None:

@@ -88,8 +88,8 @@ async def _run(script: list, text: str, places: Places = PLACES, **kwargs):  # n
 async def test_lines_refused_for_the_site_are_kept_with_their_calls() -> None:
     turn, _ = await _run([[CEMENT_CAME, MASONS], "Sheri."], "50 chaakku cement vannu, 30 mason vannu")
     assert turn.pending == []
-    assert [h["tool"] for h in turn.site_held] == ["record_receipt", "record_attendance"]
-    assert turn.site_held[0]["arguments"]["quantity"] == 50
+    assert [h["tool"] for h in turn.held] == ["record_receipt", "record_attendance"]
+    assert turn.held[0]["arguments"]["quantity"] == 50
     assert HELD_FOR_SITE in str(turn.calls[0]["result"]) and "error" not in turn.calls[0]["result"]
 
 
@@ -103,34 +103,34 @@ async def test_the_site_question_is_the_codes_line_and_buttons() -> None:
 
 async def test_the_same_line_called_twice_is_held_once() -> None:
     turn, _ = await _run([[CEMENT_CAME, CEMENT_CAME], "Sheri."], "50 chaakku cement vannu")
-    assert len(turn.site_held) == 1
+    assert len(turn.held) == 1
 
 
 # --- the answer: the code prepares the kept lines, the model is not asked ---------------------------------------------
 
 async def test_a_bare_site_answer_prepares_the_held_lines_with_no_model() -> None:
     first, _ = await _run([[CEMENT_CAME, MASONS], "Sheri."], "50 chaakku cement vannu, 30 mason vannu")
-    turn, model = await _run(["this must never be read"], "Annex", site_held=first.site_held)
+    turn, model = await _run(["this must never be read"], "Annex", holds=first.held)
     assert model.calls == 0  # no model run for a tap
     assert [e.tool for e in turn.pending] == ["record_receipt", "record_attendance"]  # a delivery stays a delivery
     assert turn.pending[0].body["site_id"] == ANNEX and turn.pending[0].body["quantity"] == 50
     assert turn.pending[1].body["site_id"] == ANNEX
-    assert turn.site_held == [] and turn.question == "" and turn.reply == ""
+    assert turn.held == [] and turn.question == "" and turn.reply == ""
     assert [c["tool"] for c in turn.calls] == ["record_receipt", "record_attendance"]  # in the trace, as the code's
 
 
 async def test_the_site_said_with_more_words_runs_the_model_told_what_the_code_did() -> None:
     first, _ = await _run([[CEMENT_CAME], "Sheri."], "50 chaakku cement vannu")
     turn, model = await _run([[CEMENT_CAME], "Sheri."], "Annex-il aanu bro, pinne innu mazha undayirunnu",
-                             site_held=first.site_held)
+                             holds=first.held)
     assert model.calls >= 1 and "The CODE already prepared these" in model.prompts[0]
     assert [e.tool for e in turn.pending] == ["record_receipt"]  # the model's own copy of the line is not added
 
 
 async def test_a_message_that_is_not_the_answer_keeps_the_lines_and_asks_again() -> None:
     first, _ = await _run([[CEMENT_CAME], "Sheri."], "50 chaakku cement vannu")
-    turn, _ = await _run(["Njan Mesiri aanu."], "nee ethu model aanu?", site_held=first.site_held)
-    assert turn.site_held == first.site_held
+    turn, _ = await _run(["Njan Mesiri aanu."], "nee ethu model aanu?", holds=first.held)
+    assert turn.held == first.held
     assert turn.options == ["Annex", "Main block"] and turn.question == "Ithu ethu site-il aanu?"
     assert turn.pending == []
 
@@ -141,7 +141,7 @@ async def test_a_report_is_not_prepared_beside_lines_held_for_their_site() -> No
     turn, _ = await _run([[CEMENT_CAME, MASONS, SEND], "Sheri."], "cement vannu, 30 mason vannu, DPR ayakku")
     assert turn.pending == []  # 12 Nov 02:13: the report was the only thing on the card, and it was sent
     assert "updates first" in str(turn.calls[2]["result"])
-    assert len(turn.site_held) == 2
+    assert len(turn.held) == 2
 
 
 async def test_a_report_is_not_prepared_while_updates_wait_on_the_card() -> None:
@@ -173,12 +173,12 @@ def test_updates_not_saved_counts_held_and_site_lines_only() -> None:
 
 async def test_one_site_holds_and_asks_nothing() -> None:
     turn, _ = await _run([[CEMENT_CAME], "Sheri."], "50 chaakku cement vannu", places=ONE_SITE)
-    assert [e.tool for e in turn.pending] == ["record_receipt"] and turn.site_held == [] and turn.options == []
+    assert [e.tool for e in turn.pending] == ["record_receipt"] and turn.held == [] and turn.options == []
 
 
 async def test_a_site_named_in_the_message_is_used_at_once() -> None:
     turn, _ = await _run([[CEMENT_CAME], "Sheri."], "Main block-il 50 chaakku cement vannu")
-    assert turn.pending[0].body["site_id"] == MAIN and turn.site_held == []
+    assert turn.pending[0].body["site_id"] == MAIN and turn.held == []
 
 
 def test_what_counts_as_the_site_answer() -> None:
@@ -193,10 +193,10 @@ def test_what_counts_as_the_site_answer() -> None:
 def test_the_chat_keeps_held_lines_for_half_an_hour() -> None:
     now = time.time()
     lines = [{"tool": "record_receipt", "arguments": {"quantity": 50}}]
-    assert wa._site_held({"site_held": {"lines": lines, "at": now - 60}}, now) == lines
-    assert wa._site_held({"site_held": {"lines": lines, "at": now - wa.SITE_HELD_SECONDS - 1}}, now) == []
-    assert wa._site_held({}, now) == []
-    assert wa._site_held({"site_held": {"lines": [{"arguments": {}}], "at": now}}, now) == []  # no tool: not a line
+    assert wa._held({"held": {"lines": lines, "at": now - 60}}, now) == lines
+    assert wa._held({"held": {"lines": lines, "at": now - wa.HELD_SECONDS - 1}}, now) == []
+    assert wa._held({}, now) == []
+    assert wa._held({"held": {"lines": [{"arguments": {}}], "at": now}}, now) == []  # no tool: not a line
 
 
 # --- part 2, first piece: a report that has gone is never offered again ------------------------------------------------

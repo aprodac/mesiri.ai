@@ -201,21 +201,31 @@ case.
 
 | Part | What the code owns | Status |
 |---|---|---|
-| 1. The draft across turns | A line once understood is never thrown away and never redone by the model. A question fills one gap in a held line. | **Site: done (WA-278).** Units, sizes and materials still use their older, separate holds. |
+| 1. The draft across turns | A line once understood is never thrown away and never redone by the model. A question fills one gap in a held line. | **Site (WA-278), material choice, unit, person, and corrections of those (WA-280): one hold.** Sizes keep their own hold (the line already stays on the card with its size asked, WA-197). |
 | 2. Every statement of fact | "Saved", "sent", "updated", "not saved" are the code's lines, from what happened. | In part (WA-193, WA-274, WA-277 F); the rest is WA-267. |
 | 3. Memory as state | The model sees what is saved, what waits and the last few messages, not the day's chat replayed. | Not started (WA-270). |
 
-**Part 1, the site (`agent.py`, `whatsapp.py`):**
+**Part 1, one hold (`agent.py` `hold_line`, `whatsapp.py`):**
 
-- A write refused only because the site is not known is **held**, with the call the model made (`ApiTurn.site_held`
-  -> the chat's state `site_held`, 30 minutes). The model is told it is held and not to prepare it again.
-- The site question is the code's line (`api.which_site`, five languages) with the code's buttons.
-- The answer, a tap (the site's name) or the name in words, makes **the code** run the held calls: same tool, same
-  figures. A bare answer runs no model at all; with more words the model runs, told what the code prepared, and a
-  copy of a line the code just prepared is not added.
-- A message that is not the answer drops nothing: the lines stay held and the site is asked again with that reply.
-  A plain "cancel" lets them go.
-- A report (`send_dpr`) is not prepared while updates wait, held for a site or on the card: they are saved first.
+- A write the code cannot finish without one answer from the person is **held**, with the call the model made
+  (`ApiTurn.held` -> the chat's state `held`, 30 minutes; WA-278's older key `site_held` is still read). A hold is
+  `{tool, arguments, gap, field, options, word}`; the gaps (WA-280):
+  - `site`: the site is not known (WA-278);
+  - `material`: their word is either of two listed materials ("metal": Aggregate 20mm or 40mm, [254]);
+  - `unit`: no unit of the company's fits (a miswritten id whose card line names its unit is fixed, never asked);
+  - `person`: two people could be meant ([207]).
+  A correction (`change_ready_entry`) with the same gap is held the same way, with the key of the waiting line it
+  changes (`entry_key`), so a number that moved never changes the wrong line.
+- The model is told it is held and not to prepare it again or ask about it.
+- The question is the code's line (`api.which_site`, `api.which_material`, `api.which_one`, `api.which_unit`,
+  `api.which_person`; five languages) with the code's buttons; one question at a time (the first hold's).
+- The answer, a tap (the option's words), the option typed short ("20mm") or said inside a longer message (a unit
+  also as said: the code's unit check decides), is put in the held call's `field` by **the code**, which runs it:
+  same tool, same figures; the card line names what was chosen. A bare answer runs no model at all; with more words
+  the model runs, told what the code prepared, and a copy of a line the code just prepared is not added.
+- A message that is not the answer ("ok", a word both buttons share, another request) drops nothing: the lines stay
+  held and the question is asked again with that reply. A plain "cancel" lets them go.
+- A report (`send_dpr`) is not prepared while updates wait, held or on the card: they are saved first.
 
 ## Saving
 
