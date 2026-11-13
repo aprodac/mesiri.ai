@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Check, ChevronLeft, Loader2, Send, X } from 'lucide-react'
+import { Check, ChevronLeft, Loader2, Printer, Send, X } from 'lucide-react'
 import { sendToMesiri, type AssistantReplyOption, type LiveBoard, type LiveDeckStory } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,31 @@ import { Label } from '@/components/onboarding/conversation'
 // has the line to say; a step with a message sends it through Tell Mesiri (the same handler as WhatsApp), and Live
 // plays it like any other message. The stories come from GET /dpr/live/deck, which gives them only to a company
 // marked as a demo: a ready message is a real entry once sent.
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+
+/** WEB-92: the presenter's sheet: the stories and the lines to say on one page, from the same table as the deck. */
+export function sheetHtml(stories: LiveDeckStory[], question: (key: string) => string | undefined): string {
+  const body = stories
+    .map(
+      (s, i) => `<section><h2>${i + 1}. ${esc(s.title)} <small>${s.minutes} min${s.short ? ' · in the short show' : ''}</small></h2><ol>${s.steps
+        .map(
+          (step) =>
+            `<li><p class="say">${esc(step.say)}</p>${step.send ? `<p class="send">Send: <b>${esc(step.send)}</b></p>` : ''}${step.do ? `<p class="do">${esc(step.do)}</p>` : ''}</li>`,
+        )
+        .join('')}</ol>${question(s.ends_on) ? `<p class="ends">Ends on: ${esc(question(s.ends_on)!)}</p>` : ''}</section>`,
+    )
+    .join('')
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Mesiri Live: the presenter's sheet</title><style>
+body{font:13px/1.4 system-ui,sans-serif;margin:24px;color:#111}h1{font-size:18px;margin:0 0 4px}
+h2{font-size:14px;margin:14px 0 4px}small{font-weight:400;color:#555}ol{margin:0;padding-left:18px}li{margin:0 0 6px}
+p{margin:0}.say{font-weight:600}.send b{background:#eee;padding:1px 4px}.do,.ends,.note{color:#555}
+section{break-inside:avoid}</style></head><body><h1>Mesiri Live: the presenter's sheet</h1>
+<p class="note">Say the bold line, then send the message from “Stories” on Live. Space holds a card, → moves on, S skips to the end. The short show is stories ${stories
+    .map((s, i) => (s.short ? i + 1 : null))
+    .filter(Boolean)
+    .join(' and ')}.</p>${body}</body></html>`
+}
 
 type Sent =
   | { state: 'sending' }
@@ -85,7 +110,20 @@ export function DemoDeck({
             ))}
           </ol>
           <p className="m-0 mt-3 text-[12.5px] text-muted-foreground">
-            Each message is sent as you and saved like any other. Use “Reset demo” in the control panel to start clean.
+            Each message is sent as you and saved like any other. Use “Reset demo” in the control panel to start clean.{' '}
+            <button
+              type="button"
+              onClick={() => {
+                const sheet = window.open('', '_blank')
+                if (!sheet) return
+                sheet.document.write(sheetHtml(stories, question))
+                sheet.document.close()
+                sheet.print()
+              }}
+              className="inline-flex items-center gap-1 border-b border-foreground font-medium text-foreground"
+            >
+              <Printer className="size-3.5" /> Print the presenter’s sheet
+            </button>
           </p>
         </>
       ) : (

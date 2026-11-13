@@ -113,13 +113,14 @@ class _Auth:
 
 
 #: The reads that carry the company's money: each module's route refuses them to roles that do not see spending.
-MONEY_READS = ("costs", "budget", "rates", "wages", "suppliers", "clients")
+MONEY_READS = ("costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill")
 DATA = {"costs": COSTS, "budget": {"projects": [{"name": "Skyline", "percent_spent": "62.0"}]},
         "rates": {"summary": {"above_best": "500.00", "rising": 0}}, "stock": STOCK, "below": BELOW, "days": DAYS,
         "schedule": [{"name": "Tower A", "scheduled": 12, "slip_days": 3, "progress": 68}],
         "wages": {"due": "62400.00", "due_rows": 14, "drafts": 0, "advances_outstanding": "0"},
         "suppliers": {"totals": {"payable": "320000", "overdue": "0", "unbilled": "0"}},
-        "clients": {"outstanding": "320000"}, "waiting": {"total": 2, "items": []}}
+        "clients": {"outstanding": "320000"}, "waiting": {"total": 2, "items": []},
+        "to_bill": {"amount": "48000.00", "projects": [{"project": "Green Villa", "lines": 1, "amount": "48000.00"}]}}
 
 
 @pytest.fixture
@@ -221,6 +222,7 @@ ROUTES = {
     "wages": "mesiri.domains.workforce.pay_router.pay_summary",
     "suppliers": "mesiri.domains.vendors.router.payables",
     "clients": "mesiri.domains.billing.router.receivables",
+    "to_bill": "mesiri.domains.billing.router.work_to_bill",
     "waiting": "mesiri.domains.approvals.router.waiting",
 }
 
@@ -258,3 +260,38 @@ def test_the_ripples_question_numbers_are_the_boards_order():
     numbers = (effects.MONEY_GOING, effects.LEAKING, effects.WORK_MOVING, effects.OWE, effects.STOPS_WORK, effects.PROOF)
     assert numbers == (1, 2, 3, 4, 5, 6)
     assert [q.key for q in board.QUESTIONS] == ["money", "leaks", "work", "owed", "stops", "proof"]
+
+
+# --- WEB-89: the board's missing words ---------------------------------------------------------------------------------
+
+def test_days_left_names_the_site_when_the_site_days_are_seen():
+    rows = [{"material_name": "Sand", "unit": "cft", "closing": "40", "days_left": 2, "site_id": "s2"}]
+    assert board.say_days_left(rows, DAYS) == "Sand at Main block lasts 2 more days at this week's use."
+    # Not seen, or a site that is not in them: the sentence stays true without the name.
+    assert board.say_days_left(rows, None) == "Sand lasts 2 more days at this week's use."
+    assert board.say_days_left(rows, {"items": []}) == "Sand lasts 2 more days at this week's use."
+
+
+def test_the_report_says_when_the_next_one_goes_out_by_itself():
+    nine, six = datetime.time(21, 0), datetime.time(18, 30)
+    projects = [{"sent": False, "auto_generate_dpr": True, "dpr_send_deadline": nine},
+                {"sent": False, "auto_generate_dpr": True, "dpr_send_deadline": six},
+                {"sent": True, "auto_generate_dpr": True, "dpr_send_deadline": datetime.time(17, 0)},   # gone already
+                {"sent": False, "auto_generate_dpr": False, "dpr_send_deadline": datetime.time(16, 0)}]  # sent by hand
+    said = board.say_reports({"items": DAYS["items"], "projects": projects})
+    assert said == "Today's reports: 8 lines, 9 photos, from 1 of 2 sites. 1 report sent. The next goes out at 6:30 pm."
+    assert "goes out" not in board.say_reports({"items": DAYS["items"], "projects": projects[2:]})
+
+
+async def test_the_board_gives_the_site_name_to_the_stock_sentence(reads, monkeypatch):
+    monkeypatch.setitem(DATA, "stock", [{"material_name": "Sand", "unit": "cft", "closing": "40", "days_left": 2, "site_id": "s1"}])
+    by = await _board("OWNER")
+    assert "Sand at Tower A lasts 2 more days at this week's use." in [line["text"] for line in by["stops"]["lines"]]
+
+
+def test_what_can_be_billed_to_the_client_now():
+    one = {"amount": "48000.00", "projects": [{"project": "Green Villa", "lines": 1, "amount": "48000.00"}]}
+    assert board.say_to_bill(one) == "₹48,000 of measured work on Green Villa can be billed to the client now."
+    two = {"amount": "320000", "projects": [{"project": "A"}, {"project": "B"}]}
+    assert board.say_to_bill(two) == "₹3.2 L of measured work across 2 projects can be billed to the client now."
+    assert board.say_to_bill({"amount": "0.00", "projects": []}) is None

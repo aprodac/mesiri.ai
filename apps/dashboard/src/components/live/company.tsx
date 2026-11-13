@@ -45,6 +45,7 @@ import {
   fetchSiteDayApi,
   fetchSetupProgress,
   fetchSiteDaysApi,
+  putWorkOnLineApi,
   type LiveBoardKey,
   type EffectCard,
   type EntryEffects,
@@ -54,6 +55,7 @@ import {
   type ProjectDayItem,
 } from '@/lib/api'
 import { noticeOf } from '@/lib/live-reading'
+import { apiErrorMessage } from '@/lib/logo-upload'
 import { longDate } from '@/lib/site-day'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { cn } from '@/lib/utils'
@@ -544,7 +546,11 @@ export function CompanyLive({
   /** The presenter's hand on it: hold it on a card, or move it (Space, ← →, S, Esc, a click). */
   /** WEB-86: how many things each ripple shown today told (record id -> its cards), for the closing count. */
   const [known, setKnown] = React.useState<Map<string, number>>(new Map())
-  const rippleCtl = React.useRef<{ held: boolean; move: ((to: RippleMove | 'hold') => void) | null }>({ held: false, move: null })
+  const rippleCtl = React.useRef<{ held: boolean; move: ((to: RippleMove | 'hold') => void) | null; reread: (() => Promise<void>) | null }>({
+    held: false,
+    move: null,
+    reread: null,
+  })
   const queue = React.useRef<LiveFeedItem[]>([])
   const playing = React.useRef(false)
   const seeded = React.useRef(false)
@@ -595,6 +601,12 @@ export function CompanyLive({
   const playRipple = React.useCallback(
     async (item: LiveFeedItem, record: LiveRecord, pace: number) => {
       let effects: EntryEffects
+      const read = () =>
+        queryClient.fetchQuery({
+          queryKey: ['live-effects', record.kind, record.id],
+          queryFn: () => fetchEffectsApi(record.kind, record.id),
+          staleTime: 0,
+        })
       try {
         effects = await queryClient.fetchQuery({
           queryKey: ['live-effects', record.kind, record.id],
@@ -604,12 +616,22 @@ export function CompanyLive({
       } catch {
         return // no ripple to show (taken back, or not this viewer's site): the message has played
       }
-      const n = effects.cards.length
+      let n = effects.cards.length
       if (!n) return
       // WEB-86: the day's closing count: what the ripples shown so far told the owner (a replay counts once).
       setKnown((k) => (k.get(record.id) === n ? k : new Map(k).set(record.id, n)))
       rippleCtl.current.held = false
       let at = 0
+      // WEB-88: after the person's tap on a card, the entry is read again and the chain goes on from the same place
+      // (held, so the changed card is seen): "not on a line yet" becomes what it earned.
+      rippleCtl.current.reread = async () => {
+        const key = effects.cards[at]?.key
+        effects = await read()
+        n = effects.cards.length
+        const same = effects.cards.findIndex((c) => c.key === key)
+        rippleCtl.current.held = true
+        rippleCtl.current.move?.(same >= 0 ? same : Math.min(at, n))
+      }
       for (;;) {
         setRipple({ item, effects, at, held: rippleCtl.current.held })
         const card = effects.cards[at]
@@ -640,7 +662,7 @@ export function CompanyLive({
         at = move === 'next' ? at + 1 : move === 'back' ? Math.max(0, at - 1) : move === 'end' ? n : Math.min(n, Math.max(0, move))
         if (at === n && speed.current === 1) say(`One message. ${n} ${n === 1 ? 'thing' : 'things'} you now know.`)
       }
-      rippleCtl.current = { held: false, move: null }
+      rippleCtl.current = { held: false, move: null, reread: null }
       setRipple(null)
     },
     [queryClient, ring, say],
@@ -1274,6 +1296,17 @@ export function CompanyLive({
                       presenting={presenting}
                       onPick={(i) => rippleCtl.current.move?.(i)}
                       onOpen={(card, el) => openCard(card, el, ripple.item)}
+                      onAct={async (card) => {
+                        // WEB-88: the person's tap: the estimate's own route counts the work, then the entry is read again.
+                        if (card.action?.kind !== 'count_work') return
+                        try {
+                          await putWorkOnLineApi(card.action.project_id, card.action.quantity_id, card.action.line_id)
+                        } catch (err) {
+                          throw new Error(apiErrorMessage(err))
+                        }
+                        await rippleCtl.current.reread?.()
+                        void queryClient.invalidateQueries({ queryKey: ['live-board'] })
+                      }}
                     />
                   ) : current ? (
                     <>
@@ -1487,11 +1520,17 @@ export function CompanyLive({
           hello && 'sm:translate-y-full',
         )}
       >
+        {/* WEB-89: the day's closing line (plan, story 5), once a ripple has shown what the messages told. */}
+        {totals.known > 0 && totals.messages > 0 && (
+          <p className={cn('m-0 mx-auto max-w-[1600px] px-4 pt-2.5 font-semibold sm:px-8 lg:px-12', presenting ? 'text-[22px]' : 'text-[15px]')}>
+            {totals.messages} {totals.messages === 1 ? 'message' : 'messages'} today. {totals.known}{' '}
+            {totals.known === 1 ? 'thing' : 'things'} you now know. Nobody opened an app.
+          </p>
+        )}
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-baseline justify-between gap-x-8 gap-y-1 px-4 py-3 sm:px-8 lg:px-12">
           <Total n={totals.workers} what={totals.workers === 1 ? 'worker on site' : 'workers on site'} big={presenting} />
           <Total n={totals.messages} what={totals.messages === 1 ? 'message' : 'messages'} big={presenting} />
           <Total n={totals.saved} what={totals.saved === 1 ? 'entry saved' : 'entries saved'} big={presenting} />
-          {totals.known > 0 && <Total n={totals.known} what={totals.known === 1 ? 'thing you now know' : 'things you now know'} big={presenting} />}
           <Total n={totals.issues} what={totals.issues === 1 ? 'open issue' : 'open issues'} big={presenting} />
           <Total n={totals.reported} what={`of ${sites.length} sites heard from`} big={presenting} />
         </div>

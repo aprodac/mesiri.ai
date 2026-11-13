@@ -69,7 +69,28 @@ function Tag({ tag }: { tag: EffectCard['tag'] }) {
   return <span className={cn('px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em]', TAGS[tag].tone)}>{TAGS[tag].name}</span>
 }
 
-function BigCard({ card, presenting, onOpen }: { card: EffectCard; presenting: boolean; onOpen?: (card: EffectCard, el: HTMLElement) => void }) {
+function BigCard({
+  card,
+  presenting,
+  onOpen,
+  onAct,
+}: {
+  card: EffectCard
+  presenting: boolean
+  onOpen?: (card: EffectCard, el: HTMLElement) => void
+  /** WEB-88: the person's tap on the card's action; resolves when it is done, rejects with why not. */
+  onAct?: (card: EffectCard) => Promise<void>
+}) {
+  const [acting, setActing] = React.useState<'idle' | 'busy' | string>('idle')
+  const act = async () => {
+    if (!onAct || acting === 'busy') return
+    setActing('busy')
+    try {
+      await onAct(card)
+    } catch (err) {
+      setActing(err instanceof Error && err.message ? err.message : 'It could not be counted. Open the estimate and try there.')
+    }
+  }
   const after = card.after === null ? null : Number(card.after)
   const before = card.before === null ? null : Number(card.before)
   const moved = before !== null && after !== null && before !== after
@@ -97,6 +118,22 @@ function BigCard({ card, presenting, onOpen }: { card: EffectCard; presenting: b
         </p>
       )}
       <p className={cn('m-0 leading-snug', presenting ? 'text-[22px]' : 'text-[17px]')}>{card.sentence}</p>
+      {card.action && onAct && (
+        <div className="grid justify-items-start gap-1.5">
+          <button
+            type="button"
+            onClick={() => void act()}
+            disabled={acting === 'busy'}
+            className={cn(
+              'border border-foreground bg-primary px-4 py-2 font-semibold text-primary-foreground hover:bg-foreground hover:text-background disabled:opacity-50',
+              presenting ? 'text-[18px]' : 'text-[14.5px]',
+            )}
+          >
+            {acting === 'busy' ? 'Counting…' : card.action.label}
+          </button>
+          {acting !== 'idle' && acting !== 'busy' && <span className="text-[13px] text-[var(--destructive)]">{acting}</span>}
+        </div>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-t border-foreground/15 pt-3">
         <p className="m-0 max-w-[30rem] text-[13px] text-muted-foreground">
           <span className="mr-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em]">Say</span>“{card.say}”
@@ -126,6 +163,7 @@ export function Ripple({
   presenting,
   onPick,
   onOpen,
+  onAct,
 }: {
   effects: EntryEffects
   at: number
@@ -134,6 +172,7 @@ export function Ripple({
   /** Show a card again (from the dots, or the closing list). */
   onPick: (index: number) => void
   onOpen?: (card: EffectCard, el: HTMLElement) => void
+  onAct?: (card: EffectCard) => Promise<void>
 }) {
   const cards = effects.cards
   const done = at >= cards.length
@@ -168,7 +207,7 @@ export function Ripple({
       </ol>
       {card ? (
         <>
-          <BigCard key={card.key} card={card} presenting={presenting} onOpen={onOpen} />
+          <BigCard key={card.key} card={card} presenting={presenting} onOpen={onOpen} onAct={onAct} />
           <p className="m-0 text-[12.5px] text-muted-foreground">Answers: {QUESTIONS[card.question]}</p>
         </>
       ) : (

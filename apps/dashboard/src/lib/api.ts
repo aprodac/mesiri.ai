@@ -2140,6 +2140,13 @@ export interface EffectCard {
   say: string
   /** The page that holds it. */
   opens: string | null
+  /** WEB-88: something a person can do from the card. `count_work`: put this work on the suggested estimate line. */
+  action: { kind: 'count_work'; label: string; project_id: string; quantity_id: string; line_id: string } | null
+}
+
+/** WEB-88: count a recorded work quantity on an estimate line (the estimate's own route; a person's tap). */
+export async function putWorkOnLineApi(projectId: string, quantityId: string, lineId: string): Promise<void> {
+  await api.put(`/projects/${projectId}/boq/work/${quantityId}`, { line_id: lineId })
 }
 
 export interface EntryEffects {
