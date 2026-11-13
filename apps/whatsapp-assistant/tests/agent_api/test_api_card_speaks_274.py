@@ -86,13 +86,15 @@ async def test_sibling_venda_and_malayalam_are_the_same() -> None:
         assert h.sent[-1].text == wa.NOTHING_TO_CANCEL and model.calls == 0
 
 
-async def test_guard_a_cancel_with_a_list_waiting_still_goes_to_the_model() -> None:
+async def test_guard_a_cancel_with_a_list_waiting_is_never_nothing_to_cancel() -> None:
+    """WA-282 changed who does it: the code drops the list (the card's own Cancel), no model turn. What this guard
+    holds is unchanged: with a list waiting, "cancel" is never answered "nothing to cancel"."""
     h = Harness(two_receipts_model())
     await h.service.handle(_message(), CTX)
     model = FakeToolCallingProvider([[(wa.DROP_READY, {})], "Cancel cheythu."])
     h.service._agent._provider = model
     await h.service.handle(_message("cancel"), CTX)
-    assert model.calls >= 1 and h.sent[-1].text != wa.NOTHING_TO_CANCEL
+    assert h.sent[-1].text != wa.NOTHING_TO_CANCEL and model.calls == 0
 
 
 async def test_guard_a_message_that_only_starts_with_cancel_goes_to_the_model() -> None:

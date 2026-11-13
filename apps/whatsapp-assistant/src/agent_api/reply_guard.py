@@ -43,6 +43,34 @@ def _claims(sentence: str) -> bool:
     return bool(_SAVED.search(sentence)) and not _NOT_A_CLAIM.search(sentence)
 
 
+#: WA-282 (live, 13 Nov: "Cancel cheythu. Ella entriesum drop cheythu, onnum save aayilla." with no tool called and all
+#: three lines still waiting): the words that say entries were cancelled, dropped or removed in this turn.
+_CANCELLED = re.compile(
+    r"\b(?:cancell?ed|dropped|removed|discarded|deleted|cleared)\b"
+    r"|\b(?:cancel|drop|remove|delete|clear)\s*(?:cheythu|cheythittund\w*|chethu|aakki\w*|aayi)\b"
+    r"|\bhata\s*(?:diya|diye|di)\b|\b(?:cancel|radd)\s*(?:kar\s*)?(?:diya|kiya|ho\s*gaya)\b"
+    r"|ക്യാൻസൽ\s*(?:ചെയ്തു|ആയി)|ഒഴിവാക്കി|रद्द\s*(?:कर\s*)?(?:दिया|किया|हो\s*गया)|हटा\s*दिया",
+    re.IGNORECASE,
+)
+
+
+def _cancel_clause(clause: str) -> bool:
+    return bool(_CANCELLED.search(clause)) and not _NOT_A_CLAIM.search(clause)
+
+
+def claims_cancelled(text: str | None) -> bool:
+    """WA-282: the reply says, as a fact of this turn, that entries were cancelled or dropped. Read per clause, so
+    "Ellaam cancel cheythu, onnum waiting illa" is a claim although its second clause says "illa"."""
+    return any(_cancel_clause(c) for part in sentences(text or "") if part for c in _CLAUSE.findall(part) if c)
+
+
+def without_cancel_claims(text: str) -> str:
+    """``text`` without the clauses that claim a cancel ("Cancel cheythu. Steel ethra kg?" keeps the question)."""
+    kept = ["".join(c for c in _CLAUSE.findall(part) if c and not _cancel_clause(c))
+            for part in sentences(text or "") if part]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
 #: WA-199 (basic 10, never a dead end): the reply says Mesiri cannot do it. First person or Mesiri ("I can't",
 #: "Mesiri cannot", "I'm unable to"), the Manglish / Malayalam "it can't be done" ("pattilla", "kazhiyilla",
 #: "sadhikkilla"), and the Hindi "nahi kar sakta". Not a question ("can't find it?").

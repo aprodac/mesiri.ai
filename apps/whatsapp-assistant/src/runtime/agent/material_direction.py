@@ -50,7 +50,13 @@ QUANTITY_GUESSES = ("10", "25", "50", "Other")
 DIRECTION_OPTIONS = ("Received", "Used")
 #: Request 143: the direction question can be cancelled; the code answers the tap.
 DIRECTION_CANCEL = "Cancel"
-_CANCEL_WORDS = re.compile(r"^\W*(?:cancel|venda+|vendaa|skip|nothing|onnum venda|വേണ്ട|रद्द)\W*$", re.IGNORECASE)
+# WA-282 (live, 13 Nov: "cancel all" with three lines waiting went to the model, which said "all dropped" and dropped
+# nothing): the whole message is a cancel, alone or with what it covers ("cancel all", "cancel everything", "ellam venda").
+_CANCEL_WORDS = re.compile(
+    r"^\W*(?:(?:cancel|venda+|vendaa|skip|nothing|onnum venda|വേണ്ട|रद्द)"
+    r"(?:\s+(?:all|everything|it|that|this|them|ellam|ellaam|sab|sabh|എല്ലാം))?"
+    r"|(?:ellam|ellaam|sab|എല്ലാം)\s+(?:cancel|venda+|വേണ്ട))\W*$",
+    re.IGNORECASE)
 
 
 #: Words that say material ran out or work stopped (then it is a problem on site, not an order).

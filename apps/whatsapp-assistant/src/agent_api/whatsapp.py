@@ -633,6 +633,11 @@ class ApiWhatsApp:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending") or []])
             needs = list(state.get("size_needed") or [])
+            if (ready or needs) and is_bare_cancel(text):
+                # WA-282 (live, 13 Nov: "cancel all", then "Cancel", with a size question open on a 3-line card: the
+                # model said "everything cancelled" twice and dropped nothing): a cancel typed while lines wait does
+                # what the card's Cancel does, for the whole list and its open question; no model turn.
+                return await self._cancel_typed(message, ctx, state, ready, started)
             if _held(state, time.time()) and not ready and not needs and is_bare_cancel(text):
                 # WA-278 / WA-280: "cancel" while lines wait for an answer lets them go, said plainly; no model turn.
                 state.pop("held", None)
@@ -899,6 +904,29 @@ class ApiWhatsApp:
         reply = self._reply(words, pending, state, [], language)
         await self._save_state(ctx, state)
         return reply
+
+    async def _cancel_typed(self, message: Any, ctx: Any, state: dict, ready: list[PendingWrite],
+                            started: float) -> ReplySpec:
+        """WA-282: a typed cancel with lines waiting: everything waiting goes (the ready list, a size question on it,
+        lines held for an answer), and the reply is the card's own Cancel reply, with the one-tap reason."""
+        entries = _without_stale_sends(ready)
+        state["pending"], state["batch"] = [], None
+        for key in ("size_needed", "size_choices", "held", "site_held"):
+            state.pop(key, None)
+        state["asked"], state["asked_id"] = None, None
+        cancelled = self._cancelled_reply(state, entries)
+        await self._save_state(ctx, state)
+        await self._trace_turn(message, {"text": message.text or "", "calls": [], "typed_cancel": True,
+                                         "cancelled": state["cancelled"]}, started)
+        return cancelled
+
+    def _cancelled_reply(self, state: dict, entries: list[PendingWrite]) -> ReplySpec:
+        """The reply to a Cancel, tapped or typed (WA-146: what was cancelled is kept so the reason tapped next names
+        it): "Cancelled. Nothing was saved. What was wrong?" with the reasons as one tap."""
+        state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
+        titles = _REASON_TITLES.get(state.get("language") or "english", _REASON_TITLES["english"])
+        return ReplySpec(text=_in(state.get("language"), "api.cancelled_why", CANCELLED_WHY), buttons=tuple(
+            ListRow(id=f"{WHY_PREFIX}{code}", title=titles[code]) for code in CANCEL_REASONS))
 
     async def _hold_for_size(self, ctx: Any, client: ApiClient, state: dict, ready: list[PendingWrite]) -> ReplySpec:
         """WA-168: nobody on site knows the size: each line that needs one is held for the company's admin (asked once
@@ -1270,12 +1298,9 @@ class ApiWhatsApp:
         if tap.startswith(CANCEL_PREFIX):
             state["pending"] = [e.to_json() for e in others]
             state["batch"] = batch if others else None
-            # WA-146: what was cancelled, so a reason tapped next tells the team which entries and tools.
-            state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
+            reply = self._cancelled_reply(state, entries)
             await self._save_state(ctx, state)
-            titles = _REASON_TITLES.get(state.get("language") or "english", _REASON_TITLES["english"])
-            return ReplySpec(text=_in(state.get("language"), "api.cancelled_why", CANCELLED_WHY), buttons=tuple(
-                ListRow(id=f"{WHY_PREFIX}{code}", title=titles[code]) for code in CANCEL_REASONS))
+            return reply
         client = ApiClient(_actor(ctx), app=self._app)
         try:
             day_starts = await self._day_starts(ctx)

@@ -59,12 +59,14 @@ from .materials import (
     without_category_note,
 )
 from .reply_guard import (
+    claims_cancelled,
     claims_cannot,
     claims_ready,
     claims_saved,
     read_tools_for,
     unbacked_figures,
     without_apology,
+    without_cancel_claims,
     without_ids,
     without_internals,
     without_ready_claims,
@@ -1820,6 +1822,22 @@ class ApiAgent:
                                    "already prepared.)"))])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
             lines_lost = not_held(result.calls, new)
+        def nothing_dropped() -> bool:
+            # WA-282: entries were waiting when the turn began and every one of them is still waiting.
+            return bool(ready) and all(w is not None for w in waiting[:len(ready)])
+
+        if claims_cancelled(result.text) and nothing_dropped():
+            # WA-282 (live, 13 Nov): "Cancel cheythu, ella entriesum drop cheythu" with no tool called and all three
+            # lines still waiting. One more try; what is still claimed after it is taken out of the words.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=(
+                "(You said entries were cancelled or dropped, but you called no drop_ready_entries, so every entry is "
+                "still waiting. If my message asks to cancel them, call drop_ready_entries now with their numbers; "
+                "otherwise answer without saying anything was cancelled.)"))])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            again_asked = True
+        if claims_cancelled(result.text) and nothing_dropped():
+            result = result.model_copy(update={"text": without_cancel_claims(result.text or "")})
+            fixed.append("cancelled")
         false_saved = (claims_saved(result.text) and not any(r.ok for r in saved) and not told(result.calls)
                        and bool(new or changed or saved or not result.calls))
         if false_saved:  # WA-193: code decides; what is held stays held and the ready list says so
