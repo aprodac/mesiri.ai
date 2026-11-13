@@ -67,10 +67,17 @@ def test_guard_a_said_number_is_never_held() -> None:
     assert not quantity_not_said("oru bag cement vannu", {**body, "quantity": 1}, {CONFIRM_ARG: "1 bag cement"})
     # A line the model wrote without a number, with a number they did say, is theirs: not held.
     assert not quantity_not_said("50 cement vannu", body, {CONFIRM_ARG: "cement"})
-    # The reported case.
+    # The reported cases: the 1 made up with no number in the line, and with the 1 written in the line too (live, 13 Nov,
+    # after the first cut of this fix: "1 nos steel, Site B").
     assert quantity_not_said("steel um vannu", {**body, "quantity": 1}, {CONFIRM_ARG: "steel, Site B"})
-    # No card line to read, or not a material line: nothing to tell from.
-    assert not quantity_not_said("x", {**body, "quantity": 1}, {})
+    assert quantity_not_said("Site B il 10 bag cement vannu, steel um vannu, 2 mason undu", {**body, "quantity": 1},
+                             {CONFIRM_ARG: "1 nos steel, Site B", MATERIAL_SAID: "steel"})
+    # "one" said in any of their languages is a 1 they said.
+    for one in ("oru load sand vannu", "one load sand came", "ek truck sand aaya", "ഒരു ലോഡ് മണൽ വന്നു"):
+        assert not quantity_not_said(one, {**body, "quantity": 1}, {CONFIRM_ARG: "1 load sand"}), one
+    # "rendu load" (2, said as a word): the model's line carries the 2, so it is not held.
+    assert not quantity_not_said("rendu load sand vannu", {**body, "quantity": 2}, {CONFIRM_ARG: "2 load sand"})
+    # Not a material line: nothing to tell from.
     assert not quantity_not_said("x", {"headcount": 2}, {CONFIRM_ARG: "mason"})
 
 
@@ -78,3 +85,12 @@ def test_the_question_exists_in_every_language() -> None:
     for language in LANGUAGES:
         assert "{word}" not in say("api.how_much", language, word="Steel")
         assert "Steel" in say("api.how_much", language, word="Steel")
+
+
+async def test_the_second_live_form_with_the_one_written_in_the_line_is_held_too() -> None:
+    """Live, 13 Nov, after the first cut of this fix: the model wrote "1 nos steel" in its own line; the size question
+    followed, and "2 ton" was read as a size. The person never said 1: the line is held before any size question."""
+    one_in_line = receipt(CEMENT, "cement", "1 nos cement, Annex", quantity=1, unit=BAGS)
+    turn, _ = await _run([[TEN_BAGS, one_in_line], "Sheri."], SAID)
+    assert [e.body["quantity"] for e in turn.pending] == [10]
+    assert [h["gap"] for h in turn.held] == [GAP_QUANTITY] and "ethra" in turn.question

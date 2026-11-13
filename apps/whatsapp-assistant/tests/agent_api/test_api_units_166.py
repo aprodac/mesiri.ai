@@ -29,6 +29,7 @@ from agent_api.agent import ApiAgent, confirm, size_key
 from agent_api.client import ApiClient
 from agent_api.tools import ALLOWED, CONFIRM_ARG
 from mesiri_ai.fakes import FakeToolCallingProvider
+from mesiri_ai.models import ChatMessage
 
 TOOLS = ("record_receipt", "set_unit_conversion", "add_material")
 LINE = _receipt(MSAND, "എംസാൻഡ്", LOAD, 1, "1 ലോഡ് എംസാൻഡ് Tower A")
@@ -40,15 +41,17 @@ def _size(material: str, unit: str, size: float) -> tuple[str, dict]:
 
 
 async def _turn(store: Store, script: list, text: str, *, ready: list | None = None, sizes: dict | None = None,
-                may_set_sizes: bool = True, name: str = "Midlaj"):  # noqa: ANN202
+                may_set_sizes: bool = True, name: str = "Midlaj", said_before: str = ""):  # noqa: ANN202
     from agent_api.tools import build_tools
 
     app = store.api()
     tools = build_tools(app.openapi(), tuple(a for a in ALLOWED if a.name in TOOLS))
     client = ApiClient(ACTOR, app=app)
     try:
+        # WA-284: a line prepared on an answer was said in an earlier message ("said_before"): the quantity is theirs.
+        history = [ChatMessage(role="user", text=said_before)] if said_before else None
         return await ApiAgent(FakeToolCallingProvider(script), tools).run(
-            client, text, ready=ready, sizes=sizes, may_set_sizes=may_set_sizes, sender_name=name)
+            client, text, ready=ready, sizes=sizes, may_set_sizes=may_set_sizes, sender_name=name, history=history)
     finally:
         await client.close()
 
@@ -95,7 +98,8 @@ async def test_the_next_load_from_the_same_engineer_is_never_asked_again() -> No
 
 async def test_an_admins_size_is_drawn_by_the_code_and_the_line_shows_what_it_is_in_stock() -> None:
     store = Store()
-    turn = await _turn(store, [[_size(MSAND, LOAD, 60), LINE], "Ready."], "60 bags")
+    turn = await _turn(store, [[_size(MSAND, LOAD, 60), LINE], "Ready."], "60 bags",
+                       said_before="ഒരു ലോഡ് എംസാൻഡ് വന്നു Tower A")
     size, line = turn.pending
     assert size.summary == "📏 1 Loads എംസാന്റ് = 60 Bags"
     assert line.summary.endswith("(= 60 Bags)") and line.body["unit_id"] == LOAD  # the API converts it at Save
@@ -117,7 +121,8 @@ async def test_a_size_the_wrong_way_round_is_refused_before_it_is_held() -> None
 async def test_new_tmt_said_in_loads_is_counted_in_kg_and_the_load_size_is_asked() -> None:
     store = Store()
     turn = await _turn(store, [[("add_material", {"name": "TMT 10mm", "default_unit_id": "load", CONFIRM_ARG: "➕ TMT 10mm"}),
-                                _receipt("new:TMT 10mm", "tmt", LOAD, 1, "1 load TMT")], "?"], "➕ Add TMT")
+                                _receipt("new:TMT 10mm", "tmt", LOAD, 1, "1 load TMT")], "?"], "➕ Add TMT",
+                       said_before="1 load TMT vannu")
     assert [e.tool for e in turn.pending] == ["add_material", "record_receipt"]  # held together ([217])
     assert turn.pending[0].body["default_unit_id"] == KG and turn.pending[0].summary.endswith("· counted in Kilograms")
     assert "1 Loads TMT 10mm = how many Kilograms" in turn.calls[1]["result"]["note"]

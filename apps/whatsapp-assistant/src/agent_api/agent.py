@@ -1227,7 +1227,7 @@ class ApiAgent:
             if tool.is_write and (clash := number_clash(text, body, [e.body for e in new])):
                 # [229]: "20 bag cement, aaru mason" became 20 masons: a number said once cannot count two things.
                 return ToolOutcome(content={"error": clash})
-            if tool.is_write and quantity_not_said(text, body, arguments):
+            if tool.is_write and quantity_not_said(their_words, body, arguments):
                 # WA-284 (live, 13 Nov: "steel um vannu" became "Steel · 1 nos", then a size question about "1 Numbers"):
                 # a material said with no number. The model's own line has none; the code keeps the line and asks how
                 # much, never a number made up. The answer is put in by the code, which prepares the line itself.
@@ -2262,19 +2262,26 @@ def made_up(text: str, body: dict[str, Any]) -> str:
 
 
 def quantity_not_said(text: str, body: dict[str, Any], arguments: dict[str, Any]) -> bool:
-    """WA-284: a material line whose quantity nobody said: the model's own card line carries no number at all
-    ("steel, Site B") and the quantity is not a number in their words. A number said as a word ("oru bag") is in the
-    model's line ("1 bag cement"), so it passes; so does a line with no card line to read (nothing to tell from)."""
+    """WA-284: a material line whose quantity nobody said (``text``: their words, this message and the recent ones, so a
+    line said earlier and prepared on an answer is theirs). Live, the model made up 1 twice: once with a line of its own
+    with no number ("steel, Site B"), once with the 1 written in the line too ("1 nos steel, Site B"). So the person's
+    words decide: a quantity in their digits is said; a 1 is said when they said "one" in any of their languages
+    (the runtime's own ``_ONE``: oru, ore, one, ek, ഒരു, एक); any other number not in their digits is held only when the
+    model's line carries no number either (a number said as a word, "rendu load", is then in the line)."""
+    if "quantity" not in body or not (body.get("material_id") or arguments.get(MATERIAL_SAID)):
+        return False
     line = str(arguments.get(CONFIRM_ARG) or "")
-    if "quantity" not in body or not line or not body.get("material_id") and not arguments.get(MATERIAL_SAID):
-        return False
-    if _NUMBER.search(line):
-        return False
     try:
         quantity = float(body.get("quantity"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        return True  # no quantity at all
-    return quantity not in {float(n) for n in _NUMBER.findall(text or "")}
+        return bool(line)  # no quantity at all
+    if quantity in {float(n) for n in _NUMBER.findall(text or "")}:
+        return False
+    if quantity == 1:
+        from runtime.agent.draft_answer import _ONE
+
+        return not re.search(rf"(?<!\w){_ONE}(?!\w)", text or "", re.IGNORECASE)
+    return bool(line) and not _NUMBER.search(line)
 
 
 def number_clash(text: str, body: dict[str, Any], others: list[dict[str, Any]]) -> str:
