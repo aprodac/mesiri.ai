@@ -286,6 +286,12 @@ KIND_EMOJI = {"receipt": "📥", "usage": "🏗️", "transfer": "🔁", "reques
               "work": "🛠️", "issue": "⚠️", "issue_close": "✔️", "expense": "💸", "payment": "💰", "undo": "↩️",
               "send": "📤", "list": "⚙️", "material": "📦"}
 
+#: WA-286: a line of the card as the code writes it ("1. 📥 Delivery: *Cement* · 10 bags"): its number, a kind's mark,
+#: the kind and a colon. Only the code draws these; one written by the model is a copy of an earlier card.
+CARD_LINE = re.compile(
+    r"^[ \t]*\d+\.[ \t]*(?:" + "|".join(re.escape(m) for m in sorted(set(KIND_EMOJI.values()), key=len, reverse=True))
+    + r")[ \t\ufe0f]*[^:\n]{1,30}:[^\n]*$", re.MULTILINE)
+
 
 async def saved_card(builder: Any, results: list[WriteResult], ctx: Any, client: ApiClient,
                      correlation_id: str | None) -> bytes | None:

@@ -71,6 +71,14 @@ def without_cancel_claims(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
+def writes_card(text: str | None) -> bool:
+    """WA-286: the reply holds a line of the card as the code draws it ("1. 📥 Delivery: *Cement* · 10 bags"). Only the
+    code draws the card, from what is really prepared; such a line from the model is a copy of an earlier card."""
+    from .receipts import CARD_LINE
+
+    return bool(CARD_LINE.search(text or ""))
+
+
 #: WA-199 (basic 10, never a dead end): the reply says Mesiri cannot do it. First person or Mesiri ("I can't",
 #: "Mesiri cannot", "I'm unable to"), the Manglish / Malayalam "it can't be done" ("pattilla", "kazhiyilla",
 #: "sadhikkilla"), and the Hindi "nahi kar sakta". Not a question ("can't find it?").

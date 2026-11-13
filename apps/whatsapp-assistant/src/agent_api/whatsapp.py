@@ -87,7 +87,7 @@ from .app import build_api_app
 from .card_review import review_card
 from .client import Actor, ApiClient, new_idempotency_key
 from .memory import DayMemory, tools_version
-from .receipts import caption_lines, preview_slip
+from .receipts import CARD_LINE, caption_lines, preview_slip
 from .record_links import record_link, with_links
 from .reply_guard import without_ids, without_ready_claims, without_saved_claims
 from .tools import build_tools
@@ -1675,7 +1675,13 @@ def for_memory(sent: str, listed: list[str] | tuple[str, ...] = ()) -> str:
     sent = without_heard_echo(sent)  # [258]: the model never sees the "🎤 heard" line, so it never writes one
     words = without_ready_block(sent)
     items: list[str] = []
-    if words != sent.strip():
+    # WA-286 (live, 13 Nov): today's card lines ("1. 📥 Delivery: *Cement* · 10 bags", WA-262) have no "Ready to save"
+    # header, so they stayed whole in the conversation and the model copied a card, with no tool called, for the same
+    # message sent again. They become the same short note.
+    drawn = [_card_item(m.group(0)) for m in CARD_LINE.finditer(sent)]
+    if drawn:
+        items = drawn
+    elif words != sent.strip():
         parts = re.split(r"[\s*_]*Ready to (?:save|send)[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
         if len(parts) < 2:
             return words
@@ -1768,7 +1774,17 @@ def without_ready_block(text: str) -> str:
     the memory's own note about that list ([205], 2 Nov: Ilan was shown "(under this reply, waiting for the Save
     button: ...)", copied by the model from the conversation)."""
     words = re.split(r"[\s*_]*Ready to (?:save|send)[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    words = CARD_LINE.sub("", words)  # WA-286: a card line is the code's; one in the model's words is a copy
+    words = re.sub(r"\n{3,}", "\n\n", words)
     return re.sub(r"\s*\(under this reply, waiting for the Save button[^)]*\)?", "", words).strip()
+
+
+def _card_item(line: str) -> str:
+    """WA-286: a card line as the memory's note keeps it: "1. 📥 Delivery: *Cement* · 10 bags" -> "Delivery: Cement ·
+    10 bags" (no number, mark or bold: nothing left to copy as a card)."""
+    item = re.sub(r"^\s*\d+\.\s*", "", line)
+    item = item.split(" ", 1)[1] if " " in item else item
+    return item.replace("*", "").strip()
 
 
 _SENTENCE_END = re.compile(r"[.!?।\n]")

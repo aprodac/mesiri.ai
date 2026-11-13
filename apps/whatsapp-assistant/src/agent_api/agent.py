@@ -71,6 +71,7 @@ from .reply_guard import (
     without_internals,
     without_ready_claims,
     without_saved_claims,
+    writes_card,
 )
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool, what_mesiri_does
 from .units import (
@@ -1740,6 +1741,15 @@ class ApiAgent:
                     "kind": "missing_feature", "about": f"Mesiri told them the team was told; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-155)"}})
         fixed: list[str] = []  # WA-193
+        if not result.calls and nothing_done() and writes_card(result.text):
+            # WA-286 (live, 13 Nov): the same message sent again got the earlier card's lines, written by the model with
+            # no tool called: a card with nothing behind it and no Save button. One more try, with the tools.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=(
+                "(You wrote card lines yourself and called no tool, so nothing is prepared and no card was sent. Only "
+                "the code draws the card. Prepare each update in my message now with the tools, even when the same "
+                "update was sent before (the code tells me when it was already saved); answer a question in words.)"))])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            again_asked = True
         if not result.calls and nothing_done() and claims_saved(result.text):
             # "Saved" with no tool called: nothing happened. One more try. Answering about an earlier record takes a
             # look-up here, which is how the check below tells that apart from a false "saved".
