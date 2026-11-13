@@ -625,6 +625,14 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "किस यूनिट में?",
         "hinglish": "Kis unit mein?",
     },
+    # WA-284: a material said with no quantity ("steel um vannu"): the code asks, never a number made up.
+    "api.how_much": {
+        "english": "How much {word}? (with the unit, like 2 ton or 50 bags)",
+        "manglish": "{word} ethra? (unit koode parayu, eg 2 ton, 50 bags)",
+        "malayalam": "{word} എത്ര? (യൂണിറ്റ് കൂടി പറയൂ, ഉദാ: 2 ടൺ, 50 ബാഗ്)",
+        "hindi": "{word} कितना? (यूनिट के साथ बताएं, जैसे 2 टन, 50 बैग)",
+        "hinglish": "{word} kitna? (unit ke saath batayein, jaise 2 ton, 50 bags)",
+    },
     "api.which_person": {
         "english": "Which person is it?",
         "manglish": "Ethu aalaanu?",

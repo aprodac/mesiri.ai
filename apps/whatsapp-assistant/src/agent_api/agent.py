@@ -1227,6 +1227,12 @@ class ApiAgent:
             if tool.is_write and (clash := number_clash(text, body, [e.body for e in new])):
                 # [229]: "20 bag cement, aaru mason" became 20 masons: a number said once cannot count two things.
                 return ToolOutcome(content={"error": clash})
+            if tool.is_write and quantity_not_said(text, body, arguments):
+                # WA-284 (live, 13 Nov: "steel um vannu" became "Steel · 1 nos", then a size question about "1 Numbers"):
+                # a material said with no number. The model's own line has none; the code keeps the line and asks how
+                # much, never a number made up. The answer is put in by the code, which prepares the line itself.
+                return hold_line(name, arguments, GAP_QUANTITY, "quantity", [],
+                                 word=str(arguments.get(MATERIAL_SAID) or ""))
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
             if name == BILL_TOOL and not photo_key:
@@ -1975,10 +1981,12 @@ HELD_FOR_SITE = "held: the code asks which site"
 WHICH_SITE = "Which site is this for?"
 
 #: WA-280: what a held line waits for. One hold for all of them (WA-278 began it with the site).
-GAP_SITE, GAP_MATERIAL, GAP_UNIT, GAP_PERSON = "site", "material", "unit", "person"
+GAP_SITE, GAP_MATERIAL, GAP_UNIT, GAP_PERSON, GAP_QUANTITY = "site", "material", "unit", "person", "quantity"
 HELD_STATUS = {GAP_SITE: HELD_FOR_SITE, GAP_MATERIAL: "held: the code asks which material",
-               GAP_UNIT: "held: the code asks the unit", GAP_PERSON: "held: the code asks which person"}
-_WHAT = {GAP_SITE: "which site", GAP_MATERIAL: "which material", GAP_UNIT: "the unit", GAP_PERSON: "which person"}
+               GAP_UNIT: "held: the code asks the unit", GAP_PERSON: "held: the code asks which person",
+               GAP_QUANTITY: "held: the code asks how much"}
+_WHAT = {GAP_SITE: "which site", GAP_MATERIAL: "which material", GAP_UNIT: "the unit", GAP_PERSON: "which person",
+         GAP_QUANTITY: "how much"}
 #: Words that never answer a held question, whatever it asks (the unit's free answer is otherwise taken as said).
 _NOT_AN_ANSWER = frozenset({"ok", "okay", "yes", "no", "cancel", "stop", "what", "huh", "hi", "hello", "save"})
 
@@ -2030,6 +2038,8 @@ def answer_to_hold(text: str, hold: dict[str, Any], places: Places | None) -> st
         return inside[0]
     if gap == GAP_UNIT and len(said.split()) <= 3 and "?" not in text:
         return text.strip()
+    if gap == GAP_QUANTITY and _NUMBER.search(said) and len(said.split()) <= 5 and "?" not in text:
+        return text.strip()  # WA-284: "2 ton", "50", "500 kg"
     return None
 
 
@@ -2048,6 +2058,17 @@ def filled_call(hold: dict[str, Any], answer: str, waiting: list[PendingWrite | 
     gap, field_ = _gap(hold), str(hold.get("field") or "")
     if gap == GAP_SITE:
         return name, arguments  # the site is read from the message, as for any line
+    if gap == GAP_QUANTITY:
+        # WA-284: the number they gave; with a unit said beside it ("2 ton"), the line names it and the unit is read
+        # from the line again by the code's own unit check (the model's guess, "nos" for steel, is not kept).
+        number = _NUMBER.search(answer)
+        if number is None:
+            return None
+        arguments["quantity"] = float(number.group(0)) if "." in number.group(0) else int(number.group(0))
+        if re.search(r"[^\W\d_]", answer):
+            arguments.pop("unit_id", None)
+        arguments[CONFIRM_ARG] = f"{answer.strip()} {str(arguments.get(CONFIRM_ARG) or '').strip()}".strip()
+        return name, arguments
     if gap == GAP_MATERIAL and (line := str(arguments.get(CONFIRM_ARG) or "")):
         # The card line names what was chosen ("10 cum metal" -> "10 cum Aggregate 40mm"), never the word that was not.
         arguments[CONFIRM_ARG] = line_on(line, str(hold.get("word") or ""), answer)
@@ -2081,7 +2102,9 @@ def held_question(hold: dict[str, Any], language: str | None) -> str:
         return which_site_line(language)
     from runtime.agent.wording import say
 
-    word = title(str(hold.get("word") or "").strip()) if gap == GAP_MATERIAL else ""
+    word = title(str(hold.get("word") or "").strip()) if gap in (GAP_MATERIAL, GAP_QUANTITY) else ""
+    if gap == GAP_QUANTITY:
+        return say("api.how_much", language or "english", word=word or "It").strip()
     key = {GAP_MATERIAL: "api.which_material" if word else "api.which_one", GAP_UNIT: "api.which_unit",
            GAP_PERSON: "api.which_person"}[gap]
     return say(key, language or "english", word=word)
@@ -2236,6 +2259,22 @@ def made_up(text: str, body: dict[str, Any]) -> str:
             "If they said the quantity as a word (oru/ഒരു = 1, aaru/ആറ് = 6), prepare it again unchanged. If not, "
             "never make it up: a message that gives rates and asks something (which is better, is this rate ok) is a "
             "question: answer it and prepare nothing; else ask for the quantity in your one question.")
+
+
+def quantity_not_said(text: str, body: dict[str, Any], arguments: dict[str, Any]) -> bool:
+    """WA-284: a material line whose quantity nobody said: the model's own card line carries no number at all
+    ("steel, Site B") and the quantity is not a number in their words. A number said as a word ("oru bag") is in the
+    model's line ("1 bag cement"), so it passes; so does a line with no card line to read (nothing to tell from)."""
+    line = str(arguments.get(CONFIRM_ARG) or "")
+    if "quantity" not in body or not line or not body.get("material_id") and not arguments.get(MATERIAL_SAID):
+        return False
+    if _NUMBER.search(line):
+        return False
+    try:
+        quantity = float(body.get("quantity"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return True  # no quantity at all
+    return quantity not in {float(n) for n in _NUMBER.findall(text or "")}
 
 
 def number_clash(text: str, body: dict[str, Any], others: list[dict[str, Any]]) -> str:
