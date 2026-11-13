@@ -407,6 +407,35 @@ def _scope_ids(auth: AuthorizationContext, project_id: uuid.UUID | None) -> set 
     return None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
 
 
+@router.get("/billing/to-bill")
+async def work_to_bill(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
+                       conn: AsyncConnection = Depends(get_db_conn)):
+    """WEB-91: measured work that is on no client bill yet, at the client rate, per project (most first) and in
+    total: what a new RA bill would start from (``bills.unbilled_lines``, the same working). Before retention,
+    advance recovery and GST. Read-only; the same people as the bills themselves."""
+    from sqlalchemy import text
+
+    from mesiri.domains.billing import bills, ra
+
+    _require(auth, project_id)
+    scope = _scope_ids(auth, project_id)
+    rows = (await conn.execute(text(
+        "SELECT p.id, p.name FROM projects p WHERE p.organization_id = :org AND COALESCE(p.status, '') <> 'archived' "
+        "AND EXISTS (SELECT 1 FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
+        "WHERE w.project_id = p.id AND i.superseded_by_id IS NULL AND i.client_rate IS NOT NULL) ORDER BY p.name"),
+        {"org": auth.organization_id})).all()
+    projects = []
+    for p in rows:
+        if scope is not None and p.id not in scope:
+            continue
+        lines = await bills.unbilled_lines(conn, auth.organization_id, p.id)
+        amount = sum((ra.line_amount(ln["quantity"], ln["line"]["client_rate"]) for ln in lines), Decimal(0))
+        if amount > 0:
+            projects.append({"project_id": p.id, "project": p.name, "lines": len(lines), "amount": amount})
+    projects.sort(key=lambda x: -x["amount"])
+    return _out({"amount": ra.money(sum((x["amount"] for x in projects), Decimal(0))), "projects": projects})
+
+
 @router.get("/billing/receivables")
 async def receivables(project_id: uuid.UUID | None = None, auth: AuthorizationContext = Depends(get_auth_context),
                       conn: AsyncConnection = Depends(get_db_conn)):

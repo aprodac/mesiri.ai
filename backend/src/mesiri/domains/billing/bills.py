@@ -64,9 +64,10 @@ async def advance_left(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.U
     return Decimal(advance) - Decimal(recovered)
 
 
-async def create_draft(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, bill_date: datetime.date,
-                       period_to: datetime.date | None, user_id: uuid.UUID) -> tuple[Any, int]:
-    """A new draft with a line per BOQ line that has measured work not billed yet. Returns (id, lines added)."""
+async def unbilled_lines(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict[str, Any]]:
+    """Each BOQ line with a client rate and measured work that is on no bill yet (a cancelled bill gives its
+    quantities back): the line, its place in the BOQ, what is measured to date, what earlier bills took, and what
+    is left to bill. The one place this is worked out: a new draft is made from it, and "can be billed now" reads it."""
     from mesiri.domains.progress.boq_router import done_by_line
     from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
@@ -74,6 +75,23 @@ async def create_draft(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.U
     lines = await repo.list_lines(org, project_id)
     done = await done_by_line(repo, org, project_id, lines)
     previous = await previous_by_line(conn, org, project_id)
+    out = []
+    for i, ln in enumerate(lines):
+        if ln["client_rate"] is None:
+            continue
+        measured = done[ln["id"]]["done"]
+        before = previous.get(ln["id"], Decimal(0))
+        qty = ra.suggested(measured, before)
+        if qty <= 0:
+            continue
+        out.append({"line": ln, "sort_order": i, "measured": measured, "previous": before, "quantity": qty})
+    return out
+
+
+async def create_draft(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, bill_date: datetime.date,
+                       period_to: datetime.date | None, user_id: uuid.UUID) -> tuple[Any, int]:
+    """A new draft with a line per BOQ line that has measured work not billed yet. Returns (id, lines added)."""
+    to_bill = await unbilled_lines(conn, org, project_id)
     contract = (await conn.execute(text(
         "SELECT client_id, retention_pct, advance_recovery_pct, gst_pct, tds_pct FROM project_contracts "
         "WHERE organization_id = :org AND project_id = :p"), {"org": org, "p": project_id})).mappings().first() or {}
@@ -87,23 +105,16 @@ async def create_draft(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.U
         {"org": org, "p": project_id, "n": number, "d": bill_date, "to": period_to, "client": contract.get("client_id"),
          "ret": contract.get("retention_pct") or 0, "rec": contract.get("advance_recovery_pct") or 0,
          "gst": contract.get("gst_pct") or 0, "tds": contract.get("tds_pct") or 0, "by": user_id})).scalar_one()
-    added = 0
-    for i, ln in enumerate(lines):
-        if ln["client_rate"] is None:
-            continue
-        measured = done[ln["id"]]["done"]
-        before = previous.get(ln["id"], Decimal(0))
-        qty = ra.suggested(measured, before)
-        if qty <= 0:
-            continue
+    for row in to_bill:
+        ln = row["line"]
         await conn.execute(text(
             "INSERT INTO ra_bill_lines (organization_id, ra_bill_id, planned_item_id, boq_code, work, unit, client_rate, "
             "measured_to_date, previous_quantity, suggested_quantity, quantity, sort_order) VALUES (:org, :b, :item, "
             ":code, :work, :unit, :rate, :m, :prev, :q, :q, :i)"),
             {"org": org, "b": bill_id, "item": ln["id"], "code": ln["boq_code"], "work": ln["work_type"],
-             "unit": ln["unit"], "rate": ln["client_rate"], "m": measured, "prev": before, "q": qty, "i": i})
-        added += 1
-    return bill_id, added
+             "unit": ln["unit"], "rate": ln["client_rate"], "m": row["measured"], "prev": row["previous"],
+             "q": row["quantity"], "i": row["sort_order"]})
+    return bill_id, len(to_bill)
 
 
 async def get(conn: AsyncConnection, org: uuid.UUID, bill_id: uuid.UUID) -> dict[str, Any] | None:
