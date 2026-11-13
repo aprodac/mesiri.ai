@@ -526,3 +526,87 @@ and pure model readings ("about 50, now 100"). The second group is what a dearer
   (part 2); a number corrected inside one sentence held twice (model reading); CI's `integration` job red on
   `main` since 10 Nov for a reason unrelated to this work (test rows left behind).
 - Four trial companies end their trial about 12 Nov (New India, cd, We are rolla builders, Superman's corp): ops, Ilan.
+
+## 11. Part 3, memory as state: the plan and the baseline (13 Nov 2026)
+
+Agreed in session on 13 Nov ("okay go"), after a day of live tests on Mesiri Test Builders through the team bot's
+`assistant-test` chat. Tracker: WA-270 (the build), WA-281 (the tests). This section is the plan of record.
+
+### 11.1 Why now: what the live tests showed
+
+Single messages are right (five updates in one message, edits before Save, a correction after Save). The failures
+came on the second and third message, and are one cause, the day's chat replayed to the model:
+
+| Seen live, 13 Nov | Tracker |
+|---|---|
+| A number answered from the chat's own lists, not the records | WA-283 (guarded) |
+| The same message sent again got an earlier reply, or a card, copied back | WA-286 (guarded) |
+| "athu 25 aakku" dropped the line, then answered an old question | WA-293 |
+| A new message brought back the lines of cancelled messages | WA-294 |
+
+### 11.2 The baseline (step 2), measured before any change
+
+**What one model call holds** (production, Mesiri Test Builders, 13 Nov, `provider_executions`):
+
+| Part | Size | Share of a call at the start of a day |
+|---|---|---|
+| SOP.md, whole, every call | 42,174 characters, about 10,500 tokens | about half |
+| The tool list (40 core tools of 131, tools on demand) | about 8,000 tokens | about a third |
+| Facts (sites, catalogue, today's records) | up to 5,800 characters, about 1,450 tokens | under a tenth |
+| The day's chat, replayed | 0 at the first message, about 5,500 tokens after a day of 35 messages | grows through the day |
+
+- A call was **21,520 input tokens at the day's first message** and about **27,000 by the 35th**.
+- **A message costs 3 to 5 model calls**: 44,512 tokens for a one-line delivery, 135,000 for "how many workers
+  today" (five calls). Each of the code's corrective retries is one more full call.
+
+**What this changes in the plan.** The first draft said "a model call at least half its size". That was wrong: the
+replayed chat is about a fifth of a call late in the day, so part 3 alone saves about 20%, not 50%. The size is the
+SOP and the tool list. The reason for part 3 is correctness. The cost follows from two other things: fewer retries
+(each guard that part 3 makes unnecessary is a call saved), and the SOP given in parts as the tools already are
+(step 7 below, new).
+
+### 11.3 Steps
+
+| Step | What | Proven by | State |
+|---|---|---|---|
+| 1 | Conversations as tests (WA-281): `tests/agent_api/test_conversation_state_270.py` drives whole conversations through the real WhatsApp service and holds what the model is GIVEN; the replay kit passes the person's sites on real-model runs (`replaykit.facts_places`) | Three target tests fail on today's code (`xfail`, strict) | **done, 13 Nov** |
+| 2 | Measure | 11.2 | **done, 13 Nov** |
+| 3 | The state block: one function builds it from the chat's state and the day's records | Unit tests of the block | todo |
+| 4 | The short window, behind a company setting: the block and the last 6 messages in place of the replay | Step 1's tests pass with their `xfail` removed | todo |
+| 5 | Remove the guards it replaces, one per commit | `agent.py` + `reply_guard.py` shorter than 3,542 lines | todo |
+| 6 | Live round on Mesiri Test Builders, then Aprodac | The 13 Nov conversations repeated; traces and screenshots | todo |
+| 7 | The SOP in parts (new, from the baseline): a short core, and sections given with the tool area they belong to | Call size at the day's first message; the paid eval does not drop | not planned in detail; needs its own yes |
+
+**The state block (step 3).** Built by code each turn: today per site from records (counted totals, the Today
+page's reads, as WA-287's `day_totals`); the card, numbered; held lines and the one open question; what was
+cancelled in this chat (never prepared again); what was saved in this chat (corrected by number, exists today);
+earlier days in one line each; the message to act on, marked.
+
+### 11.4 The plan's required parts
+
+- **Objective:** each turn the model sees what is true now and a few recent messages, never the day replayed.
+- **Scope:** the v3 assistant (`apps/whatsapp-assistant/src/agent_api`). Not classic, not the dashboard.
+- **Business value:** a site engineer's third message behaves like the first: nothing cancelled comes back, a
+  correction changes the right line, an old question is not answered again.
+- **Files expected to change:** `memory.py`, `whatsapp.py`, `agent.py`, `reply_guard.py`, a new `state_block.py`,
+  `tests/agent_api/`, `organizations/settings.py` (the setting), `assistant-v3.md`, this file.
+- **Backend / API:** possibly one additive read of a site's day totals. **Database:** none for the feature; a
+  company is switched on by one settings row (an additive migration per company, as tools on demand).
+  **Frontend:** none.
+- **Risks:** (1) something the replay carried by accident is lost (a fact said in passing): the window, a "told in
+  passing" list, the conversation tests; (2) a reference further back than the window: saved records are in the
+  block by number, else the code asks; (3) a regression for customers: off by default, one company at a time;
+  (4) a guard removed that still matters: one per commit with its tests; (5) reply time: the day-totals read
+  replaces the timeline read.
+- **Testing:** unit tests of the block; the conversation tests on every push; the assistant suite; one paid
+  real-model round at the end (Ilan's budget); the live round.
+- **Rollback:** the company's setting back to off; then the commits.
+- **Labour isolation:** Labour and Attendance read only, through their own reads. Payroll and Workforce not touched.
+- **Success criteria:** the 13 Nov failing conversations pass as tests and live; the guards' line count goes down;
+  model calls per message go down on the repeated live round; no drop on the saved conversations in the paid eval.
+
+### 11.5 Decisions
+
+- Approach: agreed in session, 13 Nov. The window: 6 messages (three exchanges), agreed as recommended.
+- Open, Ilan: the budget for the one paid round (a full run is about 100 rupees; 13 Nov's run used 40 and covered
+  12 of 53); whether Aprodac follows Test Builders at once; step 7.

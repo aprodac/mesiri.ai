@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_api.agent import ApiAgent, ApiTurn
+from agent_api.agent import ApiAgent, ApiTurn, Places
 from agent_api.client import ApiResponse
 from mesiri_ai.fakes import FakeToolCallingProvider
 from mesiri_ai.models import ChatMessage
@@ -88,6 +88,23 @@ def facts_catalogue(facts: str) -> list[dict[str, Any]]:
     return rows
 
 
+_PROJECT = re.compile(r"^- project (?P<name>.+?) \(project_id (?P<id>[0-9a-f-]{36})\)\s*$")
+_SITE = re.compile(r"^\s+- site (?P<name>.+?) \(site_id (?P<id>[0-9a-f-]{36})\)")
+
+
+def facts_places(facts: str) -> Places | None:
+    """WA-281: the person's projects and sites as the turn's facts list them, so a replay runs the code's site flow
+    (which site an update goes to, the site question) as production does. None when the facts name no project."""
+    projects: list[tuple[str, str]] = []
+    sites: list[tuple[str, str, str]] = []
+    for line in (facts or "").splitlines():
+        if (m := _PROJECT.match(line)):
+            projects.append((m["id"], m["name"]))
+        elif (m := _SITE.match(line)) and projects:
+            sites.append((m["id"], m["name"], projects[-1][0]))
+    return Places(projects=tuple(projects), sites=tuple(sites)) if projects else None
+
+
 def recorded_api(recorded: dict[str, Any], tools: dict[str, Any]) -> RecordedApi:
     api = RecordedApi()
     for call in recorded.get("calls") or []:
@@ -118,9 +135,12 @@ def live_provider() -> Any:
 
 
 async def replay(recorded: dict[str, Any], *, facts: str = "", reply: str | None = None,
-                 live: bool = False) -> tuple[ApiTurn, RecordedApi]:
+                 live: bool = False, places: bool | None = None) -> tuple[ApiTurn, RecordedApi]:
     """Run the recorded turn again: same words and API answers; the same tool calls (scripted) or the
     real model reading today's SOP.md (``live``, WA-148). GETs the recording has no answer for get {}."""
+    # WA-281: the real model runs with the person's sites, as in production. A scripted replay asserts what
+    # HAPPENED in its recording, made before the code decided the site, so it keeps its own setting unless asked.
+    places = live if places is None else places
     tools = _real_tools()
     calls = [(c["tool"], c.get("arguments") or c.get("args") or {}) for c in recorded.get("calls") or []
              if c.get("tool") in tools or c.get("tool") in _OWN]
@@ -135,7 +155,7 @@ async def replay(recorded: dict[str, Any], *, facts: str = "", reply: str | None
                for m in recorded.get("before") or [] if isinstance(m, dict)]
     turn = await ApiAgent(model, tools).run(
         api, recorded.get("text", ""), facts=facts, history=history,  # type: ignore[arg-type]
-        correlation_id=recorded.get("correlation_id"))
+        correlation_id=recorded.get("correlation_id"), places=facts_places(facts) if places else None)
     return turn, api
 
 
