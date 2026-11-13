@@ -54,3 +54,51 @@ async def test_the_reported_copy_gets_one_more_try_with_the_tools() -> None:
 async def test_guard_an_answer_with_no_card_lines_is_not_retried() -> None:
     turn, model = await _run(["Sheri 👍", "never reached"], "ok thanks")
     assert model.calls == 1 and turn.reply == "Sheri 👍"
+
+
+# --- the class, second live form: an earlier reply repeated with nothing done --------------------------------------
+
+async def test_a_repeated_earlier_reply_with_no_tool_gets_one_more_try() -> None:
+    """Live, 13 Nov: the same message, sent again, got only the earlier size question back ("1 Numbers Steel-il ethra
+    Kilograms undu?") with no tool called: nothing prepared."""
+    from mesiri_ai.models import ChatMessage
+
+    earlier = "1 Numbers Steel-il ethra Kilograms undu?"
+    history = [ChatMessage(role="user", text="Site B il 10 bag cement vannu, steel um vannu"),
+               ChatMessage(role="model", text=earlier)]
+    turn, model = await _run_with_history([earlier, "Steel ethra vannu?"], "Site B il 10 bag cement vannu, steel um vannu",
+                                          history)
+    assert model.calls == 2 and "You repeated an earlier reply" in model.prompts[1]
+
+
+async def test_guard_a_short_reply_said_again_is_left_alone() -> None:
+    from mesiri_ai.models import ChatMessage
+
+    history = [ChatMessage(role="user", text="ok"), ChatMessage(role="model", text="Sheri 👍")]
+    turn, model = await _run_with_history(["Sheri 👍", "never reached"], "ok thanks", history)
+    assert model.calls == 1
+
+
+def test_the_repeat_check() -> None:
+    from agent_api.reply_guard import repeats_earlier_reply
+
+    assert repeats_earlier_reply("1 Numbers Steel-il ethra  Kilograms undu?", ["1 numbers steel-il ethra kilograms undu?"])
+    assert not repeats_earlier_reply("Sheri 👍", ["Sheri 👍"])
+    assert not repeats_earlier_reply("Main Block-il innu 12 workers undu.", ["Main Block-il innu 10 workers undu."])
+
+
+async def _run_with_history(script: list, text: str, history: list):  # noqa: ANN202
+    from tests.agent_api.standin import ACTOR, stand_in_api
+    from tests.agent_api.test_api_lose_nothing_198 import Runs
+
+    from agent_api.agent import ApiAgent
+    from agent_api.client import ApiClient
+    from agent_api.tools import build_tools
+
+    app = stand_in_api([])
+    client = ApiClient(ACTOR, app=app)
+    model = Runs(*[[step] for step in script])
+    try:
+        return await ApiAgent(model, build_tools(app.openapi(), ())).run(client, text, history=history), model
+    finally:
+        await client.close()

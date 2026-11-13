@@ -71,6 +71,16 @@ def without_cancel_claims(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
+def repeats_earlier_reply(text: str | None, earlier: list[str]) -> bool:
+    """WA-286 (live, 13 Nov, twice): the same message sent again got Mesiri's earlier reply, word for word, with no tool
+    called (a card's lines, then a size question about a line that was never prepared). A reply of some length that is
+    one of the earlier replies of this chat. Short ones ("Sheri 👍") repeat honestly and are left alone."""
+    said = " ".join((text or "").split()).casefold()
+    if len(said) < 20:
+        return False
+    return any(said == " ".join((e or "").split()).casefold() for e in earlier)
+
+
 def writes_card(text: str | None) -> bool:
     """WA-286: the reply holds a line of the card as the code draws it ("1. 📥 Delivery: *Cement* · 10 bags"). Only the
     code draws the card, from what is really prepared; such a line from the model is a copy of an earlier card."""

@@ -64,6 +64,7 @@ from .reply_guard import (
     claims_ready,
     claims_saved,
     read_tools_for,
+    repeats_earlier_reply,
     unbacked_figures,
     without_apology,
     without_cancel_claims,
@@ -1726,12 +1727,26 @@ class ApiAgent:
                 raise
             result = await ask_model(messages)
         # WA-256 (Ilan, 8 Nov, six times in one chat): "... ready aanu" with no tool called and no list waiting.
+        # WA-286 (live, 13 Nov, twice): the same class: a message sent again got an earlier reply copied (a card's lines,
+        # then a size question) with nothing done. One check, one clean retry (fix 1: it cannot see the earlier replies).
+        earlier_replies = [m.text or "" for m in history or [] if m.role == "model"]
+        card_copy = writes_card(result.text)
+        repeated = repeats_earlier_reply(result.text, earlier_replies)
         if not result.calls and nothing_done() and (
-                SAVE_WORD in (result.text or "").casefold() or (claims_ready(result.text) and not ready)):
+                SAVE_WORD in (result.text or "").casefold() or (claims_ready(result.text) and not ready)
+                or card_copy or repeated):
             # 2 Nov (Ilan, 23:10, three times): "ready, tap Save" with no tool called, so nothing was prepared.
             # The code checks: one more try, told plainly that nothing is in the list.
-            again = await ask_model([*without_earlier_replies(messages), ChatMessage(role="model", text=result.text or ""), check_note(text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
-                                  "message asks now with the tools, or say plainly what you need.)")])
+            note = ("(You wrote card lines yourself and called no tool, so nothing is prepared and no card was sent. "
+                    "Only the code draws the card. Prepare each update in my message now with the tools, even when "
+                    "the same update was sent before (the code tells me when it was already saved).)" if card_copy else
+                    "(You repeated an earlier reply of this chat and called no tool, so nothing was done for this "
+                    "message. Do what it asks now with the tools, even when the same was sent before; answer a "
+                    "question from a lookup.)" if repeated else
+                    "(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
+                    "message asks now with the tools, or say plainly what you need.)")
+            again = await ask_model([*without_earlier_replies(messages), ChatMessage(role="model", text=result.text or ""),
+                                     check_note(text=note)])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
             again_asked = True
         if claims_team(result.text) and not told(result.calls):
@@ -1747,15 +1762,6 @@ class ApiAgent:
                     "kind": "missing_feature", "about": f"Mesiri told them the team was told; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-155)"}})
         fixed: list[str] = []  # WA-193
-        if not result.calls and nothing_done() and writes_card(result.text):
-            # WA-286 (live, 13 Nov): the same message sent again got the earlier card's lines, written by the model with
-            # no tool called: a card with nothing behind it and no Save button. One more try, with the tools.
-            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=(
-                "(You wrote card lines yourself and called no tool, so nothing is prepared and no card was sent. Only "
-                "the code draws the card. Prepare each update in my message now with the tools, even when the same "
-                "update was sent before (the code tells me when it was already saved); answer a question in words.)"))])
-            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
-            again_asked = True
         if not result.calls and nothing_done() and claims_saved(result.text):
             # "Saved" with no tool called: nothing happened. One more try. Answering about an earlier record takes a
             # look-up here, which is how the check below tells that apart from a false "saved".
