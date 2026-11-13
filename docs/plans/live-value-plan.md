@@ -379,5 +379,5 @@ Four more entries in the one table (`effects.RULES` and `effects.READS`), built 
 - Not checked: whether a delivery sent on WhatsApp is put on its order by itself; the floor grid, the
   subcontractor's amount and the client view for work done; whether an issue raises a task by itself.
 - Output per worker-day: no existing logic found.
-- The demo company has no orders, bills, BOQ budget, wage sheets or client bills: read from the routes
-  `demo.py` calls, not from a reset company.
+- The demo company now has orders, a supplier's bill, an estimate with budget, wage sheets, advances and a
+  client bill (WEB-85, 12 Nov); checked by a reset on a real Postgres, not on production.
