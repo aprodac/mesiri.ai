@@ -572,7 +572,7 @@ SOP and the tool list. The reason for part 3 is correctness. The cost follows fr
 | 1 | Conversations as tests (WA-281): `tests/agent_api/test_conversation_state_270.py` drives whole conversations through the real WhatsApp service and holds what the model is GIVEN; the replay kit passes the person's sites on real-model runs (`replaykit.facts_places`) | Three target tests fail on today's code (`xfail`, strict) | **done, 13 Nov** |
 | 2 | Measure | 11.2 | **done, 13 Nov** |
 | 3 | The state block: one function builds it from the chat's state and the day's records (`agent_api/state_block.py`) | Unit tests of the block (`tests/agent_api/test_state_block_270.py`, 15) | **done, 13 Nov** (not wired: step 4) |
-| 4 | The short window, behind a company setting: the block and the last 6 messages in place of the replay | Step 1's tests pass with their `xfail` removed | **done, 13 Nov** (setting `memory_as_state`, off for every company) |
+| 4 | The short window, behind a company setting: the block and the last 6 messages in place of the replay | Step 1's tests pass with their `xfail` removed | **done, 13 Nov** (setting `memory_as_state`; on for Mesiri Test Builders only, migration 0549) |
 | 5 | Remove the guards it replaces, one per commit | `agent.py` + `reply_guard.py` shorter than 3,542 lines | todo |
 | 6 | Live round on Mesiri Test Builders, then Aprodac | The 13 Nov conversations repeated; traces and screenshots | todo |
 | 7 | The SOP in parts (new, from the baseline): a short core, and sections given with the tool area they belong to | Call size at the day's first message; the paid eval does not drop | not planned in detail; needs its own yes |
