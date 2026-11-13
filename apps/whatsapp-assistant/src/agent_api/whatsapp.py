@@ -90,7 +90,15 @@ from .memory import DayMemory, tools_version
 from .receipts import CARD_LINE, caption_lines, preview_slip
 from .record_links import record_link, with_links
 from .reply_guard import without_ids, without_ready_claims, without_saved_claims
-from .state_block import HELD_SECONDS  # noqa: F401 -- WA-270: the held lines have one owner, state_block
+from .state_block import (
+    HELD_SECONDS,  # noqa: F401 -- WA-270: the held lines have one owner, state_block
+    WINDOW,
+    SiteDay,
+    earlier_days,
+    remember_cancelled,
+    state_block,
+    today_by_site,
+)
 from .state_block import held_lines as _held
 from .tools import build_tools
 from .units import is_stock_unit_refusal, plain_refusal, unit_rows
@@ -425,12 +433,17 @@ class ApiWhatsApp:
         """WA-277 step E: the company's ``tools_on_demand`` setting (off / on), cached 10 minutes; off when unread."""
         from mesiri.domains.organizations.settings import TOOLS_ON_DEMAND, TOOLS_ON_DEMAND_DEFAULT
 
+        return await self._switch(ctx, TOOLS_ON_DEMAND, TOOLS_ON_DEMAND_DEFAULT) == "on"
+
+    async def _switch(self, ctx: Any, key: str, default: str) -> str:
+        """A company's off / on setting (``organization_settings``), cached 10 minutes per company; the default when
+        it cannot be read."""
         org = str(getattr(ctx, "organization_id", "") or "")
-        cache = self.__dict__.setdefault("_tools_on_demand_cache", {})
-        hit = cache.get(org)
+        cache = self.__dict__.setdefault("_switch_cache", {})
+        hit = cache.get((key, org))
         if hit and time.time() - hit[1] < 600:
-            return hit[0] == "on"
-        value = TOOLS_ON_DEMAND_DEFAULT
+            return hit[0]
+        value = default
         try:
             if self._database is not None:
                 from mesiri.infrastructure.postgres.repositories.organization_settings import (
@@ -438,12 +451,11 @@ class ApiWhatsApp:
                 )
 
                 async with self._database.transaction() as conn:
-                    value = str(await PostgresOrganizationSettingsRepository(conn).get(
-                        uuid.UUID(org), TOOLS_ON_DEMAND) or TOOLS_ON_DEMAND_DEFAULT)
-        except Exception:  # noqa: BLE001
+                    value = str(await PostgresOrganizationSettingsRepository(conn).get(uuid.UUID(org), key) or default)
+        except Exception:  # noqa: BLE001 -- the default, as before
             pass
-        cache[org] = (value, time.time())
-        return value == "on"
+        cache[(key, org)] = (value, time.time())
+        return value
 
     async def _card_review_mode(self, ctx: Any) -> str:
         """WA-264: the company's ``card_review`` setting (off / shadow / ask), cached 10 minutes; the default when
@@ -620,9 +632,15 @@ class ApiWhatsApp:
         client = ApiClient(_actor(ctx), app=self._app)
         state: dict = {}
         try:
-            state, history, facts, sizes, open_requests, chosen = await asyncio.gather(
-                self._state(ctx), self._memory.load(ctx), self._facts(ctx, client), self._sizes(ctx),
-                self._open_requests(message), self._preferences(client))
+            # WA-270 step 4: with memory as state (a company setting), the model gets the code's state block and
+            # today's last few messages; without it, the day's chat replayed, as before.
+            as_state = await self._memory_as_state(ctx)
+            (state, history, facts, sizes, open_requests, chosen), records = await asyncio.gather(asyncio.gather(
+                self._state(ctx),
+                self._memory.load_recent(ctx, WINDOW) if as_state else self._memory.load(ctx),
+                self._facts(ctx, client, listed=not as_state), self._sizes(ctx),
+                self._open_requests(message), self._preferences(client)),
+                self._day_records(ctx, client) if as_state else _nothing())
             if message.modality is InputModality.VOICE:
                 self._heard_shown[message.correlation_id] = (chosen is not _UNREAD
                                                              and chosen.get("voice_transcript") is True)
@@ -692,7 +710,10 @@ class ApiWhatsApp:
                 history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 day_starts_at=await self._day_starts(ctx),
-                facts=facts + _working_fact(places) + unsaved_fact(state, time.time()), photo_key=photo_key,
+                facts=facts + _working_fact(places) + unsaved_fact(state, time.time()) + (
+                    "\n\n" + state_block({**state, "pending": [e.to_json() for e in ready]}, message=text,
+                                           today=records[0], earlier=records[1]) if as_state else ""),
+                photo_key=photo_key,
                 language=_turn_language(text, state),
                 language_chosen=bool(_chosen(state)),
                 channel=_channel(message),
@@ -926,6 +947,7 @@ class ApiWhatsApp:
         """The reply to a Cancel, tapped or typed (WA-146: what was cancelled is kept so the reason tapped next names
         it): "Cancelled. Nothing was saved. What was wrong?" with the reasons as one tap."""
         state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
+        remember_cancelled(state, [without_ids(e.summary) for e in entries])  # WA-270: the day's cancels, for the state
         titles = _REASON_TITLES.get(state.get("language") or "english", _REASON_TITLES["english"])
         return ReplySpec(text=_in(state.get("language"), "api.cancelled_why", CANCELLED_WHY), buttons=tuple(
             ListRow(id=f"{WHY_PREFIX}{code}", title=titles[code]) for code in CANCEL_REASONS))
@@ -1175,7 +1197,7 @@ class ApiWhatsApp:
             return ""
         return request_progress.context_block(rows)
 
-    async def _facts(self, ctx: Any, client: ApiClient) -> str:
+    async def _facts(self, ctx: Any, client: ApiClient, *, listed: bool = True) -> str:
         """What the model starts from: the sender's projects and sites, the company's materials
         and units (read through the API as the sender, cached a few minutes per company)."""
         projects = list(getattr(ctx, "projects", None) or [])
@@ -1190,7 +1212,7 @@ class ApiWhatsApp:
         lines += [f"  ({p.name} has no site yet: a report for it goes on {p.name}; Save adds its site.)" for p in bare]
         if len(sites) == 1 and not bare:  # [265]: a project with no site is a place too (the code asks which)
             lines.append(f"Only one site: {sites[0].name}. Use it; never ask which site.")
-        catalog, today = await asyncio.gather(self._catalog_for(ctx, client), self._today(ctx, client, sites))
+        catalog, today = await asyncio.gather(self._catalog_for(ctx, client), self._today(ctx, client, sites, listed))
         return "\n".join(lines) + "\n\n" + catalog + "\n\n" + today
 
     async def _day_starts(self, ctx: Any) -> str:
@@ -1220,9 +1242,10 @@ class ApiWhatsApp:
         cache[org] = (value, time.time())
         return value
 
-    async def _today(self, ctx: Any, client: ApiClient, sites: list[Any]) -> str:
+    async def _today(self, ctx: Any, client: ApiClient, sites: list[Any], listed: bool = True) -> str:
         """WA-127: what is already recorded today (the timeline, newest last), so "did anyone report
-        X?" needs no lookup and a second entry of the same delivery can be pointed out. Never cached."""
+        X?" needs no lookup and a second entry of the same delivery can be pointed out. Never cached. Not
+        ``listed`` (WA-270 step 4): the clock only; the day is in the state block, per site."""
         from mesiri.domains.organizations.settings import working_day
 
         zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
@@ -1233,6 +1256,8 @@ class ApiWhatsApp:
         # WA-209 (4 Nov: 12:27 pm read as "yesterday morning"): the model is told the company's time, and every time
         # it reads in a tool result is UTC, to be said in this time.
         clock = now_line(now, zone, work_day, starts_at)
+        if not listed:
+            return clock
         try:
             got = await client.call("GET", "/timeline", params={"date_from": day, "date_to": day, "limit": TODAY_ENTRIES})
         except Exception:  # noqa: BLE001 -- the model can still look it up
@@ -1250,6 +1275,50 @@ class ApiWhatsApp:
             lines.append(f"- {at} {where + ' · ' if where else ''}{row.get('event_type')}: {row.get('summary')}")
         return (f"{clock}\nRecorded today ({day}) so far, oldest first, in that time (answer 'did anyone report X' "
                 "from this; if a new entry repeats one of these, say so before preparing it):\n" + "\n".join(lines))
+
+    async def _day_records(self, ctx: Any, client: ApiClient) -> tuple[list[SiteDay] | None, list[tuple[dt.date, str]]]:
+        """WA-270 step 4: the working day per site and one line per earlier day, for the state block. Three reads
+        through the API as the person, side by side and beside the other reads: the day's timeline, the earlier
+        days' timeline, the attendance day totals (WA-287: the count that holds). (None, []) when the day cannot be
+        read: the block says so and the model can look it up."""
+        from mesiri.domains.organizations.settings import working_day
+
+        from .memory import EARLIER_DAYS
+
+        zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
+        work_day = working_day(dt.datetime.now(zone), await self._day_starts(ctx))
+        first, before = work_day - dt.timedelta(days=EARLIER_DAYS), work_day - dt.timedelta(days=1)
+        names = {str(s.id): s.name for s in getattr(ctx, "sites", None) or []}
+        names.update({str(p.id): p.name for p in getattr(ctx, "projects", None) or []})
+        try:
+            today, earlier, attendance = await asyncio.gather(
+                client.call("GET", "/timeline", params={
+                    "date_from": work_day.isoformat(), "date_to": work_day.isoformat(), "limit": TODAY_ENTRIES}),
+                client.call("GET", "/timeline", params={
+                    "date_from": first.isoformat(), "date_to": before.isoformat(), "limit": 100}),
+                client.call("GET", "/labour/attendance", params={
+                    "date_from": first.isoformat(), "date_to": work_day.isoformat(), "limit": 1}))
+        except Exception:  # noqa: BLE001 -- the block says the day was not read
+            _log.warning("agent_api.day_records_unread user=%s", ctx.user_id, exc_info=True)
+            return None, []
+
+        def items(got: Any, key: str) -> list[dict] | None:
+            body = got.body if got.ok and isinstance(got.body, dict) else None
+            rows = body.get(key) if body is not None else None
+            return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else None
+
+        rows, totals = items(today, "items"), items(attendance, "day_totals")
+        if rows is None:
+            return None, []
+        days = [first + dt.timedelta(days=n) for n in range(EARLIER_DAYS)]
+        return (today_by_site(totals, rows, names, work_day),
+                earlier_days(totals, items(earlier, "items") or [], names, days))
+
+    async def _memory_as_state(self, ctx: Any) -> bool:
+        """WA-270 step 4: the company's ``memory_as_state`` setting (off / on); off when unread (the replay)."""
+        from mesiri.domains.organizations.settings import MEMORY_AS_STATE, MEMORY_AS_STATE_DEFAULT
+
+        return await self._switch(ctx, MEMORY_AS_STATE, MEMORY_AS_STATE_DEFAULT) == "on"
 
     async def _catalog_for(self, ctx: Any, client: ApiClient) -> str:
         org = str(ctx.organization_id)
@@ -1593,7 +1662,7 @@ class ApiWhatsApp:
         remember_card(state)  # WA-263
         try:
             await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "size_choices", "retried", "editing", "previewed", "quiet", "kept", "photo", "unbilled", "unsaved", "cards",
-                                                               "saved_batch", "asked_id", "areas", "held")
+                                                               "saved_batch", "asked_id", "areas", "held", "cancel_log")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -2386,6 +2455,10 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
 
 #: Writes nothing waits for (WEB-58), held until they finish so none is dropped half-way.
 _BACKGROUND: set[asyncio.Task[None]] = set()
+
+
+async def _nothing() -> tuple[None, list]:
+    return None, []
 
 
 async def _safe_load(memory: Any, ctx: Any) -> list[Any]:

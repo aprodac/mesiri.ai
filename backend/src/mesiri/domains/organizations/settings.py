@@ -67,6 +67,12 @@ CARD_REVIEW_DEFAULT = "shadow"
 TOOLS_ON_DEMAND = "tools_on_demand"
 TOOLS_ON_DEMAND_MODES: frozenset[str] = frozenset({"off", "on"})
 TOOLS_ON_DEMAND_DEFAULT = "off"
+#: WA-270 step 4 (plan agreed in session, 13 Nov 2026): the WhatsApp assistant gives the model the code's state block
+#: (today per site, the card, what waits, what was cancelled and saved) and today's last few messages, in place of the
+#: day's chat replayed (``agent_api/state_block.py``). Off until it is turned on for a company.
+MEMORY_AS_STATE = "memory_as_state"
+MEMORY_AS_STATE_MODES: frozenset[str] = frozenset({"off", "on"})
+MEMORY_AS_STATE_DEFAULT = "off"
 CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
@@ -254,6 +260,14 @@ _SPECS: dict[str, SettingSpec] = {
         description=(
             "The WhatsApp assistant's tool list (off: every tool on every message; on: the everyday tools, the "
             "rest opened by area when a message needs them, which makes each reply cheaper)."
+        ),
+    ),
+    MEMORY_AS_STATE: SettingSpec(
+        key=MEMORY_AS_STATE,
+        default=MEMORY_AS_STATE_DEFAULT,
+        description=(
+            "What the WhatsApp assistant remembers of the day (off: the day's chat replayed to the model; on: what is "
+            "true now, written by Mesiri, and the last few messages)."
         ),
     ),
     CAPTURE_MODE: SettingSpec(
@@ -491,6 +505,11 @@ def validate(key: str, value: object) -> object:
         mode = str(value).strip().lower() if isinstance(value, str) else ""
         if mode not in TOOLS_ON_DEMAND_MODES:
             raise ValueError(f"tools_on_demand must be one of {sorted(TOOLS_ON_DEMAND_MODES)}")
+        return mode
+    if key == MEMORY_AS_STATE:
+        mode = str(value).strip().lower() if isinstance(value, str) else ""
+        if mode not in MEMORY_AS_STATE_MODES:
+            raise ValueError(f"memory_as_state must be one of {sorted(MEMORY_AS_STATE_MODES)}")
         return mode
     if key == CAPTURE_MODE:
         mode = str(value).strip().lower() if isinstance(value, str) else ""

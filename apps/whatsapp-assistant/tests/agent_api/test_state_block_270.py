@@ -168,3 +168,27 @@ def test_a_quiet_chat_gives_a_small_block() -> None:
     """The block replaces a replay of up to 120 messages; with nothing going on it is a few lines."""
     block = _block({}, message="20 bag cement vannu")
     assert block.count("\n") <= 5 and len(block) < 400
+
+
+def test_a_record_with_no_site_is_kept_under_its_project_and_another_sites_never() -> None:
+    """A project with no site yet takes reports ("Save adds its site"); its records are its project's."""
+    rows = [{"occurred_at": "2026-11-13T06:00:00Z", "site_id": None, "project_id": "p-omega",
+             "event_type": "material_receipt", "summary": "20 bags cement"},
+            {"occurred_at": "2026-11-13T06:00:00Z", "site_id": OTHER, "project_id": "p-omega",
+             "event_type": "issue", "summary": "not theirs"}]
+    days = sb.today_by_site([], rows, {**SITES, "p-omega": "Omega Towers"}, DAY)
+    assert days == [sb.SiteDay("Omega Towers", None, (), ("material_receipt: 20 bags cement",))]
+
+
+def test_earlier_days_are_one_short_line_each_oldest_first() -> None:
+    before, older = DAY - dt.timedelta(days=1), DAY - dt.timedelta(days=2)
+    totals = [_total(MAIN, 9, {"mason": 9}, before)]
+    rows = [{"occurred_at": f"{before}T0{i}:00:00Z", "site_id": MAIN, "event_type": "material_receipt",
+             "summary": f"delivery {i}"} for i in range(5)]
+    rows.append({"occurred_at": f"{older}T05:00:00Z", "site_id": ANNEX, "event_type": "issue", "summary": "leak"})
+    lines = sb.earlier_days(totals, rows, SITES, [before, older])
+    assert lines == [(older, "Annex: 1 records: leak"),
+                     (before, "Main Block: 9 workers; 5 records: delivery 0; delivery 1; delivery 2, ...")]
+    assert sb.earlier_days([], [], SITES, [before]) == []
+    long = [{"occurred_at": f"{before}T05:00:00Z", "site_id": MAIN, "event_type": "x", "summary": "w" * 500}]
+    assert len(sb.earlier_days([], long, SITES, [before])[0][1]) == sb.EARLIER_CHARS

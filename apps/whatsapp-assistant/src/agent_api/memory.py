@@ -105,8 +105,13 @@ class DayMemory:
             messages.extend(said)
         return messages
 
-    async def _day(self, ctx: Any, day: dt.date, today: bool) -> list[ChatMessage]:
-        limit = TODAY_MESSAGES if today else EARLIER_MESSAGES
+    async def load_recent(self, ctx: Any, last: int) -> list[ChatMessage]:
+        """WA-270 step 4: today's last ``last`` messages only (one read). With memory as state the rest of the day,
+        and the days before, reach the model as the code's state block, not as the conversation."""
+        return await self._day(ctx, _days(getattr(ctx, "timezone", None))[-1], True, limit=last) if last > 0 else []
+
+    async def _day(self, ctx: Any, day: dt.date, today: bool, limit: int | None = None) -> list[ChatMessage]:
+        limit = limit or (TODAY_MESSAGES if today else EARLIER_MESSAGES)
         try:
             if self._sessions is not None:
                 from google.adk.sessions.base_session_service import GetSessionConfig

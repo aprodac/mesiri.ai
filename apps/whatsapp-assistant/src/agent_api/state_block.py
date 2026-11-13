@@ -41,6 +41,11 @@ CANCELLED_KEPT = 20
 #: Lines per heading at most: the block stays small on a long day.
 SAVED_SHOWN = 12
 RECORDED_SHOWN = 12
+#: An earlier day: at most this many records named, and this long.
+EARLIER_RECORDS = 3
+EARLIER_CHARS = 300
+#: WA-270 step 4 (plan decision 2): the messages the model keeps beside the block, three exchanges.
+WINDOW = 6
 
 
 @dataclass(frozen=True)
@@ -54,35 +59,66 @@ class SiteDay:
     recorded: tuple[str, ...] = field(default_factory=tuple)
 
 
+def _place(row: dict[str, Any], names: dict[str, str]) -> str:
+    """The site of a record, or its project when it has no site (a project with no site yet takes reports too)."""
+    site = str(row.get("site_id") or "")
+    return site if site in names else str(row.get("project_id") or "") if not site else ""
+
+
 def today_by_site(day_totals: Iterable[dict[str, Any]] | None, records: Iterable[dict[str, Any]] | None,
-                  site_names: dict[str, str], day: dt.date) -> list[SiteDay]:
+                  names: dict[str, str], day: dt.date) -> list[SiteDay]:
     """The day per site from two reads the API already has: ``GET /labour/attendance`` ``day_totals`` (WA-287, the
-    count that holds) and ``GET /timeline`` items. A timeline row for labour is left out (the total stands for it, so
-    a corrected report is never counted twice); a site the person cannot see is left out."""
+    count that holds) and ``GET /timeline`` items (the day's). ``names``: the person's sites, and their projects for
+    records that have no site. A timeline row for labour is left out (the total stands for it, so a corrected report
+    is never counted twice); a place the person cannot see is left out."""
     workers: dict[str, tuple[int, tuple[tuple[str, int], ...]]] = {}
     for total in day_totals or []:
-        site = str(total.get("site_id") or "")
-        if site not in site_names or str(total.get("occurred_date") or "") != day.isoformat():
+        place = _place(total, names)
+        if place not in names or str(total.get("occurred_date") or "") != day.isoformat():
             continue
         trades = tuple((str(t.get("trade") or ""), int(t.get("workers") or 0))
                        for t in total.get("trades") or [] if int(t.get("workers") or 0) > 0)
-        workers[site] = (int(total.get("workers") or 0), trades)
+        workers[place] = (int(total.get("workers") or 0), trades)
     recorded: dict[str, list[str]] = {}
     for row in sorted(records or [], key=lambda r: str(r.get("occurred_at") or "")):
-        site = str(row.get("site_id") or "")
+        place = _place(row, names)
         kind = str(row.get("event_type") or "")
-        if site not in site_names or kind.startswith("labour"):
+        if place not in names or kind.startswith("labour"):
             continue
         summary = without_ids(str(row.get("summary") or "")).strip()
         if summary:
-            recorded.setdefault(site, []).append(f"{kind}: {summary}" if kind else summary)
+            recorded.setdefault(place, []).append(f"{kind}: {summary}" if kind else summary)
     days = []
-    for site, name in site_names.items():
-        if site not in workers and site not in recorded:
+    for place, name in names.items():
+        if place not in workers and place not in recorded:
             continue
-        count, trades = workers.get(site, (None, ()))
-        days.append(SiteDay(site=name, workers=count, trades=trades, recorded=tuple(recorded.get(site, ()))))
+        count, trades = workers.get(place, (None, ()))
+        days.append(SiteDay(site=name, workers=count, trades=trades, recorded=tuple(recorded.get(place, ()))))
     return days
+
+
+def earlier_days(day_totals: Iterable[dict[str, Any]] | None, records: Iterable[dict[str, Any]] | None,
+                 names: dict[str, str], days: Sequence[dt.date]) -> list[tuple[dt.date, str]]:
+    """One line per earlier day that has records, oldest first: per site the workers counted and the first few
+    records ("Main Block: 12 workers; 2 records: 95 bags cement; Water tank leak"). A record's day is the date of its
+    ``occurred_at``, as ``GET /timeline`` filters by it."""
+    totals, rows = list(day_totals or []), list(records or [])
+    lines = []
+    for day in sorted(days):
+        sites = today_by_site(totals, [r for r in rows if str(r.get("occurred_at") or "")[:10] == day.isoformat()],
+                              names, day)
+        parts = []
+        for site in sites:
+            bits = [f"{site.workers} workers"] if site.workers is not None else []
+            if site.recorded:
+                said = "; ".join(r.split(": ", 1)[-1] for r in site.recorded[:EARLIER_RECORDS])
+                more = ", ..." if len(site.recorded) > EARLIER_RECORDS else ""
+                bits.append(f"{len(site.recorded)} records: {said}{more}")
+            parts.append(f"{site.site}: " + "; ".join(bits))
+        if parts:
+            line = " | ".join(parts)
+            lines.append((day, line if len(line) <= EARLIER_CHARS else line[:EARLIER_CHARS - 3] + "..."))
+    return lines
 
 
 def held_lines(state: dict, now: float) -> list[dict]:

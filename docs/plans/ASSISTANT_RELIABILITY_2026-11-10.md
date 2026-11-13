@@ -572,7 +572,7 @@ SOP and the tool list. The reason for part 3 is correctness. The cost follows fr
 | 1 | Conversations as tests (WA-281): `tests/agent_api/test_conversation_state_270.py` drives whole conversations through the real WhatsApp service and holds what the model is GIVEN; the replay kit passes the person's sites on real-model runs (`replaykit.facts_places`) | Three target tests fail on today's code (`xfail`, strict) | **done, 13 Nov** |
 | 2 | Measure | 11.2 | **done, 13 Nov** |
 | 3 | The state block: one function builds it from the chat's state and the day's records (`agent_api/state_block.py`) | Unit tests of the block (`tests/agent_api/test_state_block_270.py`, 15) | **done, 13 Nov** (not wired: step 4) |
-| 4 | The short window, behind a company setting: the block and the last 6 messages in place of the replay | Step 1's tests pass with their `xfail` removed | todo |
+| 4 | The short window, behind a company setting: the block and the last 6 messages in place of the replay | Step 1's tests pass with their `xfail` removed | **done, 13 Nov** (setting `memory_as_state`, off for every company) |
 | 5 | Remove the guards it replaces, one per commit | `agent.py` + `reply_guard.py` shorter than 3,542 lines | todo |
 | 6 | Live round on Mesiri Test Builders, then Aprodac | The 13 Nov conversations repeated; traces and screenshots | todo |
 | 7 | The SOP in parts (new, from the baseline): a short core, and sections given with the tool area they belong to | Call size at the day's first message; the paid eval does not drop | not planned in detail; needs its own yes |
@@ -602,10 +602,30 @@ order, a heading with nothing under it left out:
 7. *Earlier days*: one line each, given by the caller.
 8. *The message to act on*, last, marked as the only request.
 
-**Left for step 4:** call `remember_cancelled` from `_cancelled_reply` (every Cancel, tapped or typed, goes through
-it) and add `cancel_log` to the keys `_save_state` keeps; read `day_totals` beside (or in place of) the timeline in
-`_facts`; build the earlier-day lines; the company setting; the block and the last 6 messages in place of the replay;
-the numbering of `correct_saved_entry` (`correctable_saves`) stays where it is until step 5.
+**Step 4 as built (13 Nov).** Company setting `memory_as_state` (`off` / `on`, default `off`;
+`organizations/settings.py`, set in the control panel like `tools_on_demand`). With it on, `whatsapp._on_words`:
+
+- reads today's last 6 messages only (`DayMemory.load_recent`, one query in place of three); the earlier days'
+  conversations are not given;
+- reads the day beside the other reads, in parallel (`_day_records`: today's timeline, the two earlier days'
+  timeline, `GET /labour/attendance` `day_totals` over the three days), so nothing is added to the reply's wait
+  beyond the slowest of those reads;
+- leaves out the facts' "Recorded today" list (the block has the day per site), keeping the clock line;
+- adds the block to the facts, with the card as the code holds it after stale lines are let go.
+
+Every Cancel, tapped or typed, now also goes into `cancel_log` (`_cancelled_reply`, the one path), whatever the
+setting, so the day's cancels are there when a company is turned on. The company setting reader is now one helper
+(`_switch`), used by `tools_on_demand` too.
+
+**Not changed (on purpose):** the card check (WA-264) and the kept-messages path ([221]) still read the replay; the
+"Ready, waiting" list in the prompt still carries each line's fields beside the block's numbered card (a correction
+needs them); `correct_saved_entry`'s numbered list stays (step 5). The code's checks that read the person's earlier
+words (`made_up`, `quantity_not_said`, `said_number`) now see the window, not the day: a number said more than three
+exchanges ago is no longer taken as said for a new line (safer, and to watch in step 6).
+
+**Proven:** the three targets of step 1 pass with the mark removed; new: every cancel of the day named, the day
+counted per site from `day_totals` with the timeline list not given twice, setting off = replay exactly as before,
+setting unread = off. **Not proven:** anything on the real model or a phone (step 6).
 
 ### 11.4 The plan's required parts
 
