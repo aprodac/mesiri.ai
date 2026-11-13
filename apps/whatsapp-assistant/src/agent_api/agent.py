@@ -1141,6 +1141,12 @@ class ApiAgent:
                     site_note = f" · 📍 *{place.name}*{site_note}"
                 elif working is not None and place != working:
                     site_note = f" · 📍 *{place.name}* (not {working.name})"
+            if not tool.is_write and places is not None and (fixed_project := site_project(arguments, places)):
+                # WA-291 (live, 13 Nov): a look-up of Main Block's day sent another project's id with Main Block's site;
+                # the API answers a site and project that do not belong together with nothing, and the reply said
+                # "nothing recorded at Main Block today" when 12 workers and 95 bags were. A site is in one project:
+                # the code puts that project on the look-up.
+                arguments = {**arguments, "project_id": fixed_project}
             new_ref = None
             if tool.is_write and name != ADD_TOOL and "material_id" in (*tool.body_fields, *tool.path_params):
                 # [217]: a line for a material waiting in the list to be added names it new:<name>; Save fills the id.
@@ -2293,6 +2299,15 @@ def quantity_not_said(text: str, body: dict[str, Any], arguments: dict[str, Any]
     if quantity == 1:
         return not _ONE_SAID.search(now if now is not None else text or "")
     return bool(line) and not _NUMBER.search(line)
+
+
+def site_project(arguments: dict[str, Any], places: Places) -> str | None:
+    """WA-291: the project of the site a look-up names, when the look-up names another project with it (else None)."""
+    site, project = str(arguments.get("site_id") or ""), str(arguments.get("project_id") or "")
+    if not site or not project:
+        return None
+    own = next((p for s, _name, p in places.sites if s == site), None)
+    return own if own and own != project else None
 
 
 def number_clash(text: str, body: dict[str, Any], others: list[dict[str, Any]]) -> str:
