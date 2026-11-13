@@ -108,6 +108,12 @@ async def _clients(c: Ctx) -> Any:
     return await receivables(project_id=None, auth=c.auth, conn=c.conn)
 
 
+async def _bill_differences(c: Ctx) -> Any:
+    from mesiri.domains.vendors.router import bill_differences
+
+    return await bill_differences(project_id=None, auth_context=c.auth, conn=c.conn)
+
+
 async def _to_bill(c: Ctx) -> Any:
     from mesiri.domains.billing.router import work_to_bill
 
@@ -124,6 +130,7 @@ async def _waiting(c: Ctx) -> Any:
 READS: dict[str, Callable[[Ctx], Awaitable[Any]]] = {
     "costs": _costs, "budget": _budget, "rates": _rates, "stock": _stock, "below": _below, "days": _days,
     "schedule": _schedule, "wages": _wages, "suppliers": _suppliers, "clients": _clients, "to_bill": _to_bill,
+    "bill_differences": _bill_differences,
     "waiting": _waiting,
 }
 
@@ -183,14 +190,33 @@ def say_beyond_stock(data: list) -> str | None:
 def say_rates(data: dict) -> str | None:
     summary = data.get("summary") or {}
     above, rising = _d(summary.get("above_best")), int(summary.get("rising") or 0)
-    if above <= 0 and not rising:
+    over, over_amount = int(summary.get("over_order") or 0), _d(summary.get("over_order_amount"))
+    if above <= 0 and not rising and not over:
         return None
     said = []
+    if over:
+        # WEB-93: the sharpest one first: a delivery that came at more than its own order said.
+        said.append(f"{_n(over, 'delivery', 'deliveries')} came above {'its' if over == 1 else 'their'} order's rate: "
+                    f"{inr(over_amount)} more")
     if above > 0:
         said.append(f"{inr(above)} paid above the best rate in the last 90 days")
     if rising:
         said.append(f"{_n(rising, 'item')} cost{'s' if rising == 1 else ''} more than last time")
     return "; ".join(said) + "."
+
+
+def say_bill_differences(data: dict) -> str | None:
+    """WEB-93: supplier bills that do not agree with what was delivered (the supplier module's own read)."""
+    bills = data.get("bills") or []
+    if not bills:
+        return None
+    first, over = bills[0], _d(data.get("over"))
+    more = f" and {_n(len(bills) - 1, 'more bill')}" if len(bills) > 1 else ""
+    if _d(first.get("over")) > 0:
+        return (f"{first['vendor']} billed {inr(first['over'])} more than was delivered{more}"
+                + (f": {inr(over)} in all." if len(bills) > 1 and over > _d(first["over"]) else "."))
+    flag = (first.get("flags") or ["differs from the site's record"])[0]
+    return f"{first['vendor']}'s bill does not match its delivery ({flag}){more}."
 
 
 def say_schedule(data: list) -> str | None:
@@ -316,10 +342,13 @@ def say_reports(data: dict) -> str | None:
     if sent:
         said += f" {_n(sent, 'report')} sent."
     # WEB-89: when the next one goes out by itself (a project that sends its report, not sent yet today).
-    due = sorted(p["dpr_send_deadline"] for p in projects
-                 if p.get("auto_generate_dpr") and not p.get("sent") and p.get("dpr_send_deadline") is not None)
+    # The project keeps the time as text ("21:00"); ``effects.clock`` reads text and time objects alike.
+    from mesiri.domains.dpr.effects import clock
+
+    due = sorted(str(p["dpr_send_deadline"]) for p in projects
+                 if p.get("auto_generate_dpr") and not p.get("sent") and clock(p.get("dpr_send_deadline")))
     if due:
-        said += f" The next goes out at {due[0]:%-I:%M %p}.".replace("AM", "am").replace("PM", "pm")
+        said += f" The next goes out at {clock(due[0])}."
     return said
 
 
@@ -354,6 +383,7 @@ QUESTIONS: tuple[Question, ...] = (
         Part("budget", "cost", say_budget, "/cost/budget"),
     )),
     Question("leaks", "Is anything leaking?", "Nothing to check right now.", (
+        Part("bill_differences", "finance", say_bill_differences, "/finance/vendors"),
         Part("stock", "materials", say_beyond_stock, "/materials"),
         Part("rates", "materials", say_rates, "/procurement/rates"),
     )),

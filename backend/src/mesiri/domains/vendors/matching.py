@@ -139,6 +139,46 @@ async def link(conn: AsyncConnection, org: uuid.UUID, invoice_id: uuid.UUID, del
              "v": vendor_id, "id": d["id"], "org": org})
 
 
+async def bill_differences(conn: AsyncConnection, org: uuid.UUID, *, projects: set[uuid.UUID] | None,
+                           since: datetime.date) -> list[dict]:
+    """WEB-93: bills (confirmed, on or after ``since``) that do not agree with the deliveries they are for, biggest
+    first. Two ways, both already kept on the records: the bill is for more than its deliveries come to at the
+    site's rates (``value``; only when every delivery has a rate, and by more than a rupee), or a delivery's billed
+    quantity or rate differs from the site's (``flags``). Reads only."""
+    sql = (
+        "SELECT e.id AS expense_id, e.amount, e.occurred_date, e.project_id, v.id AS vendor_id, v.name AS vendor, "
+        "r.quantity, r.unit_cost, r.total_cost, r.billed_quantity, r.billed_rate, mc.name AS material, "
+        "COALESCE(u.code, r.unit) AS unit FROM expenses e JOIN vendors v ON v.id = e.vendor_id "
+        "JOIN material_invoices i ON i.expense_id = e.id JOIN material_receipts r ON r.invoice_id = i.id "
+        "JOIN materials_catalog mc ON mc.id = r.material_id LEFT JOIN units_of_measure u ON u.id = mc.default_unit_id "
+        "WHERE e.organization_id = :org AND e.workflow_status = 'confirmed' AND e.occurred_date >= :since")
+    params: dict = {"org": org, "since": since}
+    if projects is not None:
+        sql += " AND e.project_id = ANY(:projects)"
+        params["projects"] = list(projects)
+    bills: dict = {}
+    for r in (await conn.execute(text(sql), params)).mappings():
+        b = bills.setdefault(r["expense_id"], {"expense_id": r["expense_id"], "vendor_id": r["vendor_id"],
+                                               "vendor": r["vendor"], "date": r["occurred_date"],
+                                               "amount": Decimal(r["amount"]), "rows": []})
+        b["rows"].append(r)
+    out = []
+    for b in bills.values():
+        values = [value(dict(r)) for r in b["rows"]]
+        total = sum((x for x in values if x is not None), Decimal(0)) if all(x is not None for x in values) else None
+        over = b["amount"] - total if total is not None and b["amount"] - total > _ONE_RUPEE else Decimal(0)
+        said = [f"{r['material']}: {f}" for r in b["rows"] for f in flags(
+            Decimal(r["quantity"]), Decimal(r["billed_quantity"]) if r["billed_quantity"] is not None else None,
+            Decimal(r["unit_cost"]) if r["unit_cost"] is not None else None,
+            Decimal(r["billed_rate"]) if r["billed_rate"] is not None else None, r["unit"])]
+        if over > 0 or said:
+            out.append({"expense_id": b["expense_id"], "vendor_id": b["vendor_id"], "vendor": b["vendor"],
+                        "date": b["date"], "amount": b["amount"], "deliveries": len(b["rows"]),
+                        "deliveries_total": total, "over": over, "flags": said})
+    out.sort(key=lambda x: (-x["over"], -len(x["flags"]), x["vendor"]))
+    return out
+
+
 def delivery_out(d: dict) -> dict:
     v = value(d)
     return {"receipt_id": str(d["id"]), "date": d["occurred_date"].isoformat(), "material": d["material"],

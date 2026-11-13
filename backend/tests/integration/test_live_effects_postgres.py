@@ -145,3 +145,57 @@ async def test_a_delivery_a_use_and_an_attendance_agree_with_their_records(demo)
         assert await effects.read_usage(conn, org, t.id, TODAY, True) is None
         assert await effects.read_receipt(conn, org, uuid.uuid4(), TODAY, True) is None
         assert await effects.read_attendance(conn, org, uuid.uuid4(), TODAY, True) is None
+
+        # --- WEB-83, 86, 93: the owner's board and the new ripples on the whole demo --------------------------
+        # (Here for the reason above: one demo reset per run.) Every read of the board runs on the full demo with
+        # nothing failing, and the two things the demo plants are said: a bill for more than its delivery, and a
+        # delivery above its order's rate.
+        import logging
+        import types
+
+        from mesiri.authorization.context import (
+            AuthorizationContext,
+            ProjectAccessScope,
+            SiteAccessScope,
+        )
+        from mesiri.domains.dpr import board
+
+        owner_id = (await conn.execute(text(
+            "SELECT id FROM users WHERE organization_id = :o ORDER BY created_at LIMIT 1"), {"o": org})).scalar()
+        auth = AuthorizationContext(user_id=owner_id, organization_id=org, role="ADMIN", status="active",
+                                    access_policy={},  # type: ignore[arg-type]
+                                    project_scope=ProjectAccessScope(mode="all_projects", project_ids=set()),
+                                    site_scopes={pid: SiteAccessScope(mode="all_sites", site_ids=set()) for pid in (
+                                        await conn.execute(text("SELECT id FROM projects WHERE organization_id = :o"),
+                                                           {"o": org})).scalars()})
+        request = types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace()))
+        failures: list[str] = []
+        handler = logging.Handler()
+        handler.emit = lambda record: failures.append(record.getMessage())  # type: ignore[method-assign]
+        logging.getLogger(board.__name__).addHandler(handler)
+        try:
+            got = await board.build(conn, auth, request, TODAY, lambda module: True)
+        finally:
+            logging.getLogger(board.__name__).removeHandler(handler)
+        assert failures == [], failures
+        by = {q["key"]: [line["text"] for line in q["lines"]] for q in got["questions"]}
+        assert all(by[q.key] for q in board.QUESTIONS), by  # the demo gives every question something to say
+        assert "Thrissur Blocks billed ₹2,400 more than was delivered." in by["leaks"], by["leaks"]
+        assert any("came above its order's rate" in line for line in by["leaks"]), by["leaks"]
+        assert any("goes out at" in line for line in by["proof"]), by["proof"]  # the report time kept as text
+
+        bill = (await conn.execute(text(
+            "SELECT e.id FROM expenses e JOIN material_invoices i ON i.expense_id = e.id WHERE e.organization_id = :o LIMIT 1"),
+            {"o": org})).scalar()
+        cards = effects.cards("expense", await effects.read_expense(conn, org, bill, TODAY, True, auth=auth), True)["cards"]
+        match = _one(cards, "bill_match")
+        assert match["tag"] == "caught" and "₹2,400 more than the 1 delivery" in match["sentence"], match
+        # One entry of each new kind on every site reads without failing (the class of the report-time fix).
+        for site in sites:
+            for kind, table, read in (("activity", "activities", effects.read_activity),
+                                      ("site_issue", "site_issues", effects.read_issue)):
+                rid = (await conn.execute(text(
+                    f"SELECT id FROM {table} WHERE organization_id = :o AND site_id = :s ORDER BY created_at DESC LIMIT 1"),
+                    {"o": org, "s": site.id})).scalar()
+                if rid is not None:
+                    assert effects.cards(kind, await read(conn, org, rid, TODAY, True), True)["cards"], (site.name, kind)

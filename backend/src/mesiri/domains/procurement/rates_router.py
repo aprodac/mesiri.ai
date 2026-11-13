@@ -83,7 +83,8 @@ async def list_rates(
     _allowed(auth_context)
     date_from, date_to = await _period(conn, auth_context, date_from, date_to)
     empty = {"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "items": [],
-             "summary": {"items": 0, "purchases": 0, "spend": "0.00", "rising": 0, "falling": 0, "above_best": "0.00"}}
+             "summary": {"items": 0, "purchases": 0, "spend": "0.00", "rising": 0, "falling": 0, "above_best": "0.00",
+                         "over_order": 0, "over_order_amount": "0.00"}}
     project_ids, denied = _resolve_project_ids(auth_context, project_id)
     if denied or _site_filter_denied(auth_context, project_id, site_id):
         return empty
@@ -94,6 +95,11 @@ async def list_rates(
                                       material_ids=list({r["material_id"] for r in rows}))
     before = {m: r for m, r in before.items() if _in_scope(auth_context, [r], site_id)}
     items = store.summarise(rows, before)
+    # WEB-93: deliveries that came at more than their order's rate (the item page's own "differs from its order"),
+    # and what that came to on the quantity delivered.
+    over = [(store.gst_of(r).entered - Decimal(r["ordered_rate"])) * Decimal(r["quantity"]) for r in rows
+            if r.get("ordered_rate") is not None and (vendor_id is None or r.get("vendor_id") == vendor_id)
+            and store.gst_of(r).entered > Decimal(r["ordered_rate"])]
     if vendor_id is not None:
         items = [i for i in items if any(v["vendor_id"] == str(vendor_id) for v in i["vendors"])]
     items.sort(key=lambda i: -Decimal(i["spend"]))
@@ -108,6 +114,7 @@ async def list_rates(
             "rising": sum(1 for i in items if i["trend"] == "up"),
             "falling": sum(1 for i in items if i["trend"] == "down"),
             "above_best": store._money(sum((Decimal(i["above_best"]) for i in items), Decimal(0))),
+            "over_order": len(over), "over_order_amount": store._money(sum(over, Decimal(0))),
         },
     }
 

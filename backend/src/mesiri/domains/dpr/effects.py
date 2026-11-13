@@ -393,7 +393,16 @@ def expense_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:
     if deliveries:
         differs = [f"{d['material']}: {flag}" for d in deliveries for flag in d.get("flags") or []]
         n = len(deliveries)
-        if differs:
+        # The bill against what its deliveries come to at the site's rates (only when every one has a rate).
+        values = [d.get("amount") for d in deliveries]
+        delivered = sum((Decimal(str(v)) for v in values), Decimal(0)) if all(v is not None for v in values) else None
+        over = amount - delivered if delivered is not None else Decimal(0)
+        if over > 1:
+            cards.append(_card("bill_match", "Bill check", "caught", LEAKING,
+                               f"The bill is {rupees(over)} more than the {_n(n, 'delivery', 'deliveries')} it is for "
+                               f"({rupees(delivered)} delivered)." + (f" {'; '.join(differs[:2])}." if differs else ""),
+                               before=delivered, after=amount, money=True, opens="/finance/vendors"))
+        elif differs:
             cards.append(_card("bill_match", "Bill check", "caught", LEAKING,
                                f"Checked against {_n(n, 'delivery', 'deliveries')}. {'; '.join(differs[:2])}.",
                                after=len(differs), unit="to check", opens="/finance/vendors"))

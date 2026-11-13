@@ -310,3 +310,18 @@ def test_guard_only_an_offer_has_a_tap_and_never_for_a_site_role():
     offered = {**counted, "line": None, "suggested": {"id": lid, "name": "Plastering", "rate": Decimal(400)}}
     plain = effects.work_cards(_work(project_id=P1, quantities=[offered]), sees_money=False)
     assert all(c["action"] is None for c in plain) and "line_offer" not in _keys(plain)
+
+
+# --- WEB-93: a bill for more than its deliveries come to is not said to match --------------------------------------
+
+def test_guard_a_bill_over_the_value_of_its_deliveries_is_caught_even_with_no_line_difference():
+    deliveries = [{"material": "Solid Blocks", "flags": [], "amount": "63000.00"}]
+    match = _one(effects.expense_cards(_bill(amount=Decimal(65400), deliveries=deliveries), True), "bill_match")
+    assert match["tag"] == "caught" and match["sentence"] == (
+        "The bill is ₹2,400 more than the 1 delivery it is for (₹63,000 delivered).")
+    assert (match["before"], match["after"]) == ("63000", "65400")
+    # The same bill for exactly what was delivered still matches; a delivery with no rate cannot be compared.
+    same = _one(effects.expense_cards(_bill(amount=Decimal(63000), deliveries=deliveries), True), "bill_match")
+    assert same["tag"] == "proof"
+    unpriced = _one(effects.expense_cards(_bill(amount=Decimal(65400), deliveries=[{"material": "Sand", "flags": [], "amount": None}]), True), "bill_match")
+    assert unpriced["tag"] == "proof" and "more than" not in unpriced["sentence"]

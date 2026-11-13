@@ -311,6 +311,33 @@ async def payables(
             "vendors": rows}
 
 
+#: WEB-93: how far back "bills that differ" looks: the Rates page's own default period.
+BILL_DIFFERENCE_DAYS = 90
+
+
+@router.get("/bill-differences")
+async def bill_differences(
+    project_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WEB-93: supplier bills of the last 90 days that do not agree with the deliveries they are for: billed for more
+    than the deliveries come to at the site's rates, or a quantity or rate on the bill that differs from the site's
+    (``matching.bill_differences``). Biggest first, with the total billed over. The roles that see supplier balances."""
+    from mesiri.domains.vendors import matching
+
+    projects = _narrow(_view_scope(auth_context), project_id)
+    today = await _today(conn, auth_context.organization_id)
+    since = today - datetime.timedelta(days=BILL_DIFFERENCE_DAYS - 1)
+    found = await matching.bill_differences(conn, auth_context.organization_id, projects=projects, since=since)
+    return {"date_from": since.isoformat(), "date_to": today.isoformat(),
+            "over": ledger.money(sum((b["over"] for b in found), Decimal(0))),
+            "bills": [{"expense_id": str(b["expense_id"]), "vendor_id": str(b["vendor_id"]), "vendor": b["vendor"],
+                       "date": b["date"].isoformat(), "amount": ledger.money(b["amount"]), "deliveries": b["deliveries"],
+                       "deliveries_total": ledger.money(b["deliveries_total"]) if b["deliveries_total"] is not None else None,
+                       "over": ledger.money(b["over"]), "flags": b["flags"]} for b in found]}
+
+
 @router.get("/unbilled")
 async def unbilled_deliveries(
     project_id: uuid.UUID | None = None,

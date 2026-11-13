@@ -262,7 +262,7 @@ counts only differences the code found.
   | Question | Reads (module) |
   |---|---|
   | Where is my money going? | Full cost, last 7 days (finance); budget against actual, all projects (cost) |
-  | Is anything leaking? | Stock summary: closing below zero (materials); Rates: paid above the best rate, items rising (materials) |
+  | Is anything leaking? | Supplier bills that differ from their deliveries (finance, WEB-93); stock summary: closing below zero (materials); Rates: deliveries above their order's rate, paid above the best rate, items rising (materials) |
   | Is the work moving? | Schedule lifecycle: percent done, days behind (dpr); today's site days: work updates, workers (dpr) |
   | What do I owe, and who owes me? | Wages owed summary (labour); supplier payables (finance); work that can be billed now (dpr, WEB-91); client receivables (dpr) |
   | What will stop work tomorrow? | Below minimum (materials); days of stock left (materials); open issues (dpr); waiting for my yes (dpr) |

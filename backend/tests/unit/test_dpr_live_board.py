@@ -113,13 +113,14 @@ class _Auth:
 
 
 #: The reads that carry the company's money: each module's route refuses them to roles that do not see spending.
-MONEY_READS = ("costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill")
+MONEY_READS = ("costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill", "bill_differences")
 DATA = {"costs": COSTS, "budget": {"projects": [{"name": "Skyline", "percent_spent": "62.0"}]},
         "rates": {"summary": {"above_best": "500.00", "rising": 0}}, "stock": STOCK, "below": BELOW, "days": DAYS,
         "schedule": [{"name": "Tower A", "scheduled": 12, "slip_days": 3, "progress": 68}],
         "wages": {"due": "62400.00", "due_rows": 14, "drafts": 0, "advances_outstanding": "0"},
         "suppliers": {"totals": {"payable": "320000", "overdue": "0", "unbilled": "0"}},
         "clients": {"outstanding": "320000"}, "waiting": {"total": 2, "items": []},
+        "bill_differences": {"over": "2400.00", "bills": [{"vendor": "Thrissur Blocks", "over": "2400.00", "flags": []}]},
         "to_bill": {"amount": "48000.00", "projects": [{"project": "Green Villa", "lines": 1, "amount": "48000.00"}]}}
 
 
@@ -184,6 +185,7 @@ async def test_a_switched_off_module_is_named_and_not_read(reads):
 async def test_quiet_only_when_everything_was_read_and_nothing_is_to_say(reads, monkeypatch):
     monkeypatch.setitem(DATA, "stock", [])
     monkeypatch.setitem(DATA, "rates", {"summary": {"above_best": "0.00", "rising": 0}})
+    monkeypatch.setitem(DATA, "bill_differences", {"over": "0.00", "bills": []})
     assert (await _board("OWNER"))["leaks"]["quiet"] == "Nothing to check right now."
     assert (await _board("SITE_ENGINEER"))["leaks"]["quiet"] is None  # rates were not seen
 
@@ -194,7 +196,7 @@ async def test_a_read_that_breaks_leaves_the_rest_of_the_board(reads, monkeypatc
 
     monkeypatch.setitem(board.READS, "stock", broken)
     by = await _board("OWNER")
-    assert [line["read"] for line in by["leaks"]["lines"]] == ["rates"]
+    assert [line["read"] for line in by["leaks"]["lines"]] == ["bill_differences", "rates"]
     assert by["stops"]["lines"] and by["stops"]["quiet"] is None
     assert by["proof"]["lines"]
 
@@ -223,6 +225,7 @@ ROUTES = {
     "suppliers": "mesiri.domains.vendors.router.payables",
     "clients": "mesiri.domains.billing.router.receivables",
     "to_bill": "mesiri.domains.billing.router.work_to_bill",
+    "bill_differences": "mesiri.domains.vendors.router.bill_differences",
     "waiting": "mesiri.domains.approvals.router.waiting",
 }
 
@@ -295,3 +298,32 @@ def test_what_can_be_billed_to_the_client_now():
     two = {"amount": "320000", "projects": [{"project": "A"}, {"project": "B"}]}
     assert board.say_to_bill(two) == "₹3.2 L of measured work across 2 projects can be billed to the client now."
     assert board.say_to_bill({"amount": "0.00", "projects": []}) is None
+
+
+# --- WEB-93: what the full demo data showed was missing ----------------------------------------------------------------
+
+def test_a_bill_over_its_deliveries_and_a_delivery_over_its_order_are_said_first():
+    one = {"over": "2400.00", "bills": [{"vendor": "Thrissur Blocks", "over": "2400.00", "flags": []}]}
+    assert board.say_bill_differences(one) == "Thrissur Blocks billed ₹2,400 more than was delivered."
+    two = {"over": "3400.00", "bills": [{"vendor": "Thrissur Blocks", "over": "2400.00", "flags": []},
+                                        {"vendor": "ABC", "over": "1000.00", "flags": []}]}
+    assert board.say_bill_differences(two) == "Thrissur Blocks billed ₹2,400 more than was delivered and 1 more bill: ₹3,400 in all."
+    flagged = {"over": "0.00", "bills": [{"vendor": "ABC", "over": "0.00", "flags": ["Cement: rate ₹400 on the bill, ₹390 on site"]}]}
+    assert board.say_bill_differences(flagged) == (
+        "ABC's bill does not match its delivery (Cement: rate ₹400 on the bill, ₹390 on site).")
+    assert board.say_bill_differences({"over": "0.00", "bills": []}) is None
+    over = {"summary": {"above_best": "0.00", "rising": 1, "over_order": 1, "over_order_amount": "8000.00"}}
+    assert board.say_rates(over) == "1 delivery came above its order's rate: ₹8,000 more; 1 item costs more than last time."
+    # Guard: a Rates answer from before this field (or with none over) reads as it did.
+    assert board.say_rates({"summary": {"above_best": "500.00", "rising": 0}}) == "₹500 paid above the best rate in the last 90 days."
+
+
+def test_guard_the_report_time_is_text_on_the_project_and_is_read_as_such():
+    """The class of the WEB-82 fix: the project keeps the time as text. A time object reads the same; junk says nothing."""
+    for kept in ("21:00", "21:00:00", datetime.time(21, 0)):
+        said = board.say_reports({"items": DAYS["items"], "projects": [
+            {"sent": False, "auto_generate_dpr": True, "dpr_send_deadline": kept}]})
+        assert said.endswith("The next goes out at 9:00 pm."), kept
+    junk = board.say_reports({"items": DAYS["items"], "projects": [
+        {"sent": False, "auto_generate_dpr": True, "dpr_send_deadline": "soon"}]})
+    assert "goes out" not in junk
