@@ -201,6 +201,34 @@ DEMO_ISSUES = (
 #: The day it rained: (days back, hours lost).
 DEMO_RAIN = (6, 3.0)
 
+# --- WEB-85: the records Live's stories need (docs/plans/live-value-plan.md, section 6) --------------------------
+#: The least a site should hold: (site index, material, minimum, how much to order). Main block's cement is left to
+#: fall under it (it is not topped up in the last days), so "below the minimum: order 200 bags" shows.
+DEMO_MINIMUMS = ((0, "cement", 100, 200), (1, "cement", 40, 100), (2, "cement", 80, 200), (3, "cement", 60, 200),
+                 (2, "steel", 1500, 4000), (3, "steel", 2000, 4000))
+#: Open purchase orders: (site index, material, quantity ordered, agreed rate). The site's deliveries of the material
+#: come against it, and part is still to come.
+DEMO_ORDERS = ((2, "cement", 800, 410), (3, "steel", 24000, 68))
+#: Deliveries in the last days at another rate: (site index or None for every site, material) -> (rate, from how
+#: many days back). Tower A's cement comes at 420 against an order that says 410; M sand is dearer than last time.
+DEMO_RATE_NOW = {(2, "cement"): (420, 2), (None, "m sand"): (1750, 3)}  # None: at every site
+#: A supplier's bill for more than its deliveries come to: (vendor, how many of its first deliveries, extra billed).
+DEMO_BILL = ("Thrissur Blocks", 1, 2400, "TB/2611")
+#: The estimate (BOQ) of the second project, per work of DEMO_WORK: planned quantity, client rate, labour rate,
+#: material rate. The work recorded on site is counted on these lines, except the newest day's (the office's tap).
+DEMO_BOQ = {
+    "Column casting": (60, 9800, 1900, 5600), "Slab shuttering": (900, 620, 260, 210), "Slab reinforcement": (14000, 92, 12, 70),
+    "Slab concreting": (240, 8900, 900, 6100), "Excavation": (600, 480, 300, 0), "Raft reinforcement": (22000, 90, 11, 70),
+    "Raft concreting": (380, 8700, 850, 6000), "Retaining wall": (520, 640, 270, 220),
+}
+#: Bags of cement a cubic metre of concrete uses (the lines whose work is concreting).
+DEMO_CEMENT_PER_CUM = 8
+#: Advances still out: (worker, amount, days back).
+DEMO_ADVANCES = (("Ravi", 3000, 5), ("Biju", 5000, 3), ("Shaji", 1500, 2))
+#: The second project's client and contract.
+DEMO_CLIENT = {"name": "Lake View Builders", "contact_person": "Mr. Varghese", "address": "Kakkanad, Kochi"}
+DEMO_CONTRACT = {"contract_no": "LVB/2026/014", "contract_value": 42000000, "retention_pct": 5, "gst_pct": 18}
+
 
 async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[dict[str, int], list[str]]:
     """Two weeks of sample records on two projects through the API, as the demo's owner. Never raises.
@@ -239,8 +267,11 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
             await post("member", f"/projects/{project}/members",
                        {"userId": str(other["id"]), "role": other["role"] if other["role"] != "ADMIN" else "SITE_ENGINEER"})
 
+    vendors: dict[str, str] = {}
     for name, address in DEMO_VENDORS:
-        await post("vendor", "/finance/vendors", {"name": name, "address": address})
+        made = await post("vendor", "/finance/vendors", {"name": name, "address": address})
+        if made and made.get("id"):
+            vendors[name] = str(made["id"])
     workers: list[tuple[dict, str, str, int, int]] = []  # (worker, name, trade, wage, site index)
     for name, trade, wage, at in DEMO_WORKERS:
         made = await post("worker", "/labour/workers", {"name": name, "trade": trade, "default_daily_wage": wage})
@@ -258,17 +289,52 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
     days = [d for d in days if d.weekday() != 6 or d == today]
     stock: dict[tuple[int, str], float] = {}
 
+    # WEB-85: the least each site should hold, and the open orders its deliveries come against.
+    for at, name, minimum, reorder in DEMO_MINIMUMS:
+        found = material(name)
+        if found and at < len(sites):
+            await call("minimum stock", "PUT", "/materials/stock-levels", {
+                "site_id": sites[at][1], "material_id": found[0], "min_qty": minimum, "reorder_qty": reorder})
+    order_lines: dict[tuple[int, str], list[Any]] = {}  # (site, material) -> [order line id, still to come]
+    for at, name, quantity, rate in DEMO_ORDERS:
+        found = material(name)
+        if not found or at >= len(sites):
+            continue
+        order = await post("order", "/procurement/orders", {
+            "project_id": sites[at][0], "site_id": sites[at][1], "vendor_id": vendors.get(DEMO_SUPPLY[name][0]),
+            "supplier": DEMO_SUPPLY[name][0], "expected_date": today.isoformat(),
+            "lines": [{"material_id": found[0], "quantity": quantity, "unit_id": found[1], "rate": rate}]})
+        line = ((order or {}).get("lines") or [{}])[0].get("id")
+        if line:
+            order_lines[(at, name)] = [str(line), quantity]
+    delivered: list[dict[str, Any]] = []  # every delivery saved: for the supplier's bill
+
     async def receive(at: int, name: str, day: dt.date, quantity: float | None = None) -> None:
         found = material(name)
         if not found:
             return
         vendor, size, rate = DEMO_SUPPLY[name]
+        now = DEMO_RATE_NOW.get((at, name)) or DEMO_RATE_NOW.get((None, name))
+        if now and (today - day).days <= now[1]:
+            rate = now[0]
         quantity = quantity or size
         project, site = sites[at]
-        if await post("material received", "/materials/inflows", {
-                "project_id": project, "site_id": site, "material_id": found[0], "unit_id": found[1], "quantity": quantity,
-                "occurred_date": day.isoformat(), "supplier": vendor, "unit_cost": rate, "total_cost": round(quantity * rate, 2)}):
+        body = {"project_id": project, "site_id": site, "material_id": found[0], "unit_id": found[1], "quantity": quantity,
+                "occurred_date": day.isoformat(), "supplier": vendor, "unit_cost": rate, "total_cost": round(quantity * rate, 2)}
+        if vendors.get(vendor):
+            body["vendor_id"] = vendors[vendor]
+        on_order = order_lines.get((at, name))
+        if on_order and on_order[1] >= quantity:
+            body["purchase_order_line_id"] = on_order[0]
+        elif on_order:
+            body["no_order"] = True
+        made = await post("material received", "/materials/inflows", body)
+        if made is not None:
             stock[(at, name)] = stock.get((at, name), 0) + quantity
+            if "purchase_order_line_id" in body:
+                on_order[1] -= quantity
+            if made.get("id"):
+                delivered.append({"id": str(made["id"]), "vendor": vendor, "amount": quantity * rate, "day": day})
 
     for index, day in enumerate(days):
         back = (today - day).days
@@ -331,6 +397,9 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
                 stock[(1, "cement")] -= 20
                 stock[(0, "cement")] = stock.get((0, "cement"), 0) + 20
 
+    await _stories(call, post, sites=sites, projects=projects, vendors=vendors, workers=workers, delivered=delivered,
+                   material=material, today=today)
+
     # Issues, some already handled.
     for at, kind, severity, narrative, (then, note) in DEMO_ISSUES:
         if at >= len(sites):
@@ -343,6 +412,76 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
     return seeded, failed
 
 
+async def _stories(call: Any, post: Any, *, sites: list[tuple[str, str]], projects: list[str], vendors: dict[str, str],
+                   workers: list[tuple[dict, str, str, int, int]], delivered: list[dict[str, Any]], material: Any,
+                   today: dt.date) -> None:
+    """WEB-85: what Live's stories need beyond the day's entries, through the same API as everything else: a
+    supplier's bill over its deliveries, the second project's estimate with the site's work counted on it, advances,
+    last week's wage sheets approved, and the client's contract with a first bill sent."""
+    # A supplier's bill for more than came.
+    vendor, first, extra, number = DEMO_BILL
+    mine = [d for d in delivered if d["vendor"] == vendor][:first]
+    if mine and vendors.get(vendor):
+        await post("supplier bill", f"/finance/vendors/{vendors[vendor]}/bills", {
+            "receipt_ids": [d["id"] for d in mine], "amount": round(sum(d["amount"] for d in mine) + extra, 2),
+            "bill_number": number, "bill_date": max(d["day"] for d in mine).isoformat()})
+
+    # Advances still out.
+    by_name = {name: (made, at) for made, name, _trade, _wage, at in workers}
+    for name, amount, back in DEMO_ADVANCES:
+        made, at = by_name.get(name, ({}, None))
+        if made.get("id") and at is not None and at < len(sites):
+            await post("advance", "/labour/advances", {
+                "project_id": sites[at][0], "site_id": sites[at][1], "worker_id": str(made["id"]), "amount": amount,
+                "given_on": (today - dt.timedelta(days=back)).isoformat(), "note": "Advance against wages", "source": "web"})
+
+    # Last week's wages, added up and approved: what is due on pay day.
+    for project in projects:
+        sheet = await call("wage sheet", "GET", "/labour/wage-sheets/open",
+                           params={"project_id": project, "date": (today - dt.timedelta(days=7)).isoformat()})
+        if sheet and sheet.get("id"):
+            await post("wage sheet approved", f"/labour/wage-sheets/{sheet['id']}/approve", {})
+
+    if len(projects) < 2:
+        return
+    # The second project's estimate: a section per site, a line per work, the site's work counted on its line.
+    project = projects[1]
+    lines: dict[tuple[str, str], str] = {}  # (site id, work) -> line id
+    cement = material("cement")
+    for at, (site_project, site) in enumerate(sites):
+        if site_project != project:
+            continue
+        section = await post("estimate section", f"/projects/{project}/boq/sections",
+                             {"name": f"Structure · {(DEMO_SITES + DEMO_SITES_2)[at]}", "site_id": site})
+        if not section or not section.get("id"):
+            continue
+        for work, _narrative, unit, _per_day in DEMO_WORK[at]:
+            planned, client_rate, labour_rate, material_rate = DEMO_BOQ[work]
+            line = await post("estimate line", f"/projects/{project}/boq/sections/{section['id']}/lines", {
+                "work": work, "unit": unit, "planned_quantity": planned, "client_rate": client_rate,
+                "labour_rate": labour_rate, "material_rate": material_rate})
+            if not line or not line.get("id"):
+                continue
+            lines[(site, work)] = str(line["id"])
+            if cement and unit == "cum" and "concreting" in work.lower() or work == "Column casting" and cement:
+                await call("estimate norm", "PUT", f"/projects/{project}/boq/lines/{line['id']}/norms",
+                           {"norms": [{"material_id": cement[0], "quantity_per_unit": DEMO_CEMENT_PER_CUM, "wastage_pct": 3}]})
+    recorded = await call("work to count", "GET", f"/projects/{project}/boq/work", params={"unlinked": True, "limit": 500})
+    for item in (recorded or {}).get("work") or []:
+        line = lines.get((str(item.get("site_id")), str(item.get("work") or "")))
+        # The newest day's work is left for the office to count: the tap Live's work-done card offers.
+        if line and str(item.get("date") or "")[:10] != today.isoformat():
+            await call("work counted", "PUT", f"/projects/{project}/boq/work/{item['id']}", {"line_id": line})
+
+    # The client, the contract, and a first bill sent for the work measured up to a week ago.
+    if await call("contract", "PUT", f"/projects/{project}/contract", {"new_client": DEMO_CLIENT, **DEMO_CONTRACT,
+                                                                       "signed_on": (today - dt.timedelta(days=30)).isoformat()}):
+        week_ago = (today - dt.timedelta(days=7)).isoformat()
+        bill = await post("client bill", f"/projects/{project}/ra-bills", {"bill_date": week_ago, "period_to": week_ago})
+        if bill and bill.get("id"):
+            await post("client bill sent", f"/billing/ra-bills/{bill['id']}/submit", {})
+
+
 async def reset_demo(engine: Any, database: Any, org_id: uuid.UUID, *, actor: Any, today: dt.date | None = None) -> DemoResetResult:
     """Delete and re-create the demo (one transaction), then add the sample records as its owner."""
     async with engine.begin() as conn:
@@ -350,8 +489,14 @@ async def reset_demo(engine: Any, database: Any, org_id: uuid.UUID, *, actor: An
     from agent_api.app import build_api_app
     from agent_api.client import Actor, ApiClient
 
+    app = build_api_app(database)
+    # WEB-85: the estimate (BOQ) is the dashboard's, not one of the assistant's tools; the demo's own client reaches
+    # it to give the second project an estimate. The assistant's app and its tools are unchanged.
+    from mesiri.domains.progress.boq_router import router as boq_router
+
+    app.include_router(boq_router)
     client = ApiClient(Actor(user_id=str(info["owner_id"]), organization_id=str(new_id), role="ADMIN", name=info["owner_name"]),
-                       app=build_api_app(database))
+                       app=app)
     try:
         seeded, failed = await seed(client, info, today=today or dt.datetime.now(dt.UTC).date())
     finally:

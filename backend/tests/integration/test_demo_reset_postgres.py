@@ -78,6 +78,13 @@ async def test_the_demo_comes_back_with_its_people_settings_and_fresh_records(wo
     assert result.seeded.get("site conditions") == 48 and result.seeded.get("worker") == 15 and result.seeded.get("vendor") == 7
     assert result.seeded.get("material received", 0) >= 40 and result.seeded.get("material used", 0) >= 150
     assert result.seeded.get("transfer") == 1 and result.seeded.get("issue") == 6 and result.seeded.get("issue resolved") == 3
+    # WEB-85: what Live's stories need: minimums, orders, a supplier's bill, advances, wage sheets, an estimate with
+    # the site's work counted on it, the client's contract and a first bill sent.
+    assert result.seeded.get("minimum stock") == 6 and result.seeded.get("order") == 2 and result.seeded.get("supplier bill") == 1
+    assert result.seeded.get("advance") == 3 and result.seeded.get("wage sheet approved") == 2
+    assert result.seeded.get("estimate section") == 2 and result.seeded.get("estimate line") == 8
+    assert result.seeded.get("work counted", 0) >= 18 and result.seeded.get("contract") == 1
+    assert result.seeded.get("client bill") == 1 and result.seeded.get("client bill sent") == 1
     # A demo full of records (attendance with workers, expenses ...) resets again: the delete step clears the links
     # Postgres's cascades meet in the wrong order.
     again = await reset_demo(engine, database, result.organization_id, actor=actor, today=dt.date(2026, 11, 3))
@@ -103,6 +110,20 @@ async def test_the_demo_comes_back_with_its_people_settings_and_fresh_records(wo
             "SELECT count(*) FROM (SELECT site_id, material_id, sum(CASE WHEN movement_type = 'RECEIPT' THEN quantity ELSE -quantity END) AS q "
             "FROM material_movements WHERE organization_id = :o GROUP BY 1, 2) s WHERE q < 0"), {"o": result.organization_id})).scalar()
         assert negative == 0
+        # WEB-85, the stories: an order with part still to come; a delivery at more than its order's rate; cement
+        # under its minimum at Main block; the newest day's work left for the office to count.
+        orders = (await conn.execute(text(
+            "SELECT l.quantity, l.rate, COALESCE((SELECT SUM(r.quantity) FROM material_receipts r WHERE r.purchase_order_line_id = l.id), 0) AS came, "
+            "(SELECT MAX(r.unit_cost) FROM material_receipts r WHERE r.purchase_order_line_id = l.id) AS top_rate "
+            "FROM purchase_order_lines l JOIN purchase_orders o ON o.id = l.purchase_order_id WHERE o.organization_id = :o"),
+            {"o": result.organization_id})).all()
+        assert len(orders) == 2 and all(0 < x.came < x.quantity for x in orders), orders
+        assert any(x.top_rate is not None and x.top_rate > x.rate for x in orders), "a delivery came at more than its order's rate"
+        low = (await conn.execute(text(
+            "SELECT count(*) FROM stock_levels l JOIN sites s ON s.id = l.site_id WHERE l.organization_id = :o AND s.name = 'Main block' "
+            "AND l.min_qty > (SELECT COALESCE(SUM(CASE WHEN movement_type = 'RECEIPT' THEN quantity ELSE -quantity END), 0) "
+            "FROM material_movements m WHERE m.site_id = l.site_id AND m.material_id = l.material_id)"), {"o": result.organization_id})).scalar()
+        assert low == 1, "Main block's cement is under its minimum"
         audit = (await conn.execute(text("SELECT count(*) FROM admin_audit_log WHERE organization_id = :o AND action = 'company.demo_reset'"),
                                     {"o": result.organization_id})).scalar()
         assert audit == 1
