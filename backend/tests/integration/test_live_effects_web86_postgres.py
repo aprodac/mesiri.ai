@@ -71,12 +71,17 @@ async def test_work_done_on_a_floor_then_counted_on_its_estimate_line(conn) -> N
     assert _one(before, "line_offer")["sentence"] == (
         "120 sqm is not on an estimate line yet. Suggested: “Plastering”. Once counted: ₹48,000 to bill the client.")
 
-    # A person puts the work on the line (the estimate page's own route): now it is earned.
-    await boq_router.put_work_on_line(project, quantity, boq_router.WorkLine(line_id=uuid.UUID(str(line["id"]))),
-                                      auth=auth, conn=conn)
+    # WEB-88: the card carries the tap: this work, on the line suggested.
+    tap = _one(before, "line_offer")["action"]
+    assert tap == {"kind": "count_work", "label": "Count it on this line", "project_id": str(project),
+                   "quantity_id": str(quantity), "line_id": str(line["id"])}
+
+    # A person taps it (the estimate page's own route, with the card's ids): now it is earned.
+    await boq_router.put_work_on_line(uuid.UUID(tap["project_id"]), uuid.UUID(tap["quantity_id"]),
+                                      boq_router.WorkLine(line_id=uuid.UUID(tap["line_id"])), auth=auth, conn=conn)
     after = effects.cards("activity", await effects.read_activity(conn, org, activity, TODAY, True), True)
     assert "line_offer" not in _keys(after)
-    assert _one(after, "line")["after"] == "48000"
+    assert _one(after, "line")["after"] == "48000" and _one(after, "line")["action"] is None
     assert _one(after, "line")["opens"] == f"/projects/{project}/boq"
 
     # Guard: a role that does not see spending gets the same chain with no rupee and no estimate line.

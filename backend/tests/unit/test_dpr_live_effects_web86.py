@@ -86,6 +86,7 @@ def test_guard_work_not_on_a_line_is_offered_never_said_as_earned():
     assert offer["sentence"] == ("120 sqm is not on an estimate line yet. Suggested: “Plastering, 2nd floor”. "
                                  "Once counted: ₹48,000 to bill the client.")
     assert offer["after"] is None and "earned" not in offer["sentence"]
+    assert offer["action"] is None  # no ids known: nothing to tap
     # No line fits: nothing is suggested, and nothing is said.
     none = effects.work_cards(_work(quantities=[{"quantity": Decimal(5), "unit": "nos", "line": None, "suggested": None}]), True)
     assert "line" not in _keys(none) and "line_offer" not in _keys(none)
@@ -286,3 +287,26 @@ async def test_guard_another_projects_record_and_an_unknown_one_are_not_found(ro
     with pytest.raises(HTTPException) as missing:
         await dpr_router.get_effects(effects.EXPENSE, uuid.uuid4(), auth_context=_ctx("ADMIN", [P1]), conn=None)
     assert missing.value.status_code == 404 and "read" not in route
+
+
+# --- WEB-88: the person's tap is offered on the card --------------------------------------------------------------
+
+def test_the_estimate_line_offered_carries_the_tap_that_counts_it():
+    qid, lid = uuid.uuid4(), uuid.uuid4()
+    q = {"id": qid, "quantity": Decimal(120), "unit": "sqm", "line": None,
+         "suggested": {"id": lid, "name": "Plastering, 2nd floor", "rate": Decimal(400)}}
+    offer = _one(effects.work_cards(_work(project_id=P1, quantities=[q]), True), "line_offer")
+    assert offer["action"] == {"kind": "count_work", "label": "Count it on this line", "project_id": str(P1),
+                               "quantity_id": str(qid), "line_id": str(lid)}
+
+
+def test_guard_only_an_offer_has_a_tap_and_never_for_a_site_role():
+    qid, lid = uuid.uuid4(), uuid.uuid4()
+    counted = {"id": qid, "quantity": Decimal(120), "unit": "sqm", "line": {"id": lid, "name": "Plastering", "rate": Decimal(400)},
+               "suggested": None}
+    cards = effects.work_cards(_work(project_id=P1, quantities=[counted], photos=1,
+                                     place={"label": "F", "done": [], "left": []}), True)
+    assert [c["key"] for c in cards if c["action"]] == []  # work already counted, and every other card: no tap
+    offered = {**counted, "line": None, "suggested": {"id": lid, "name": "Plastering", "rate": Decimal(400)}}
+    plain = effects.work_cards(_work(project_id=P1, quantities=[offered]), sees_money=False)
+    assert all(c["action"] is None for c in plain) and "line_offer" not in _keys(plain)

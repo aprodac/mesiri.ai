@@ -94,12 +94,15 @@ def rupees(value: Any) -> str:
 
 
 def _card(key: str, title: str, tag: str, question: int, sentence: str, *, before: Any = None, after: Any = None,
-          unit: str | None = None, money: bool = False, opens: str | None = None) -> Card:
+          unit: str | None = None, money: bool = False, opens: str | None = None,
+          action: dict[str, Any] | None = None) -> Card:
     return {
         "key": key, "title": title, "tag": tag, "question": question,
         "before": qty(before) if before is not None else None,
         "after": qty(after) if after is not None else None,
         "unit": unit, "rupees": money, "sentence": sentence, "say": SAY[key], "opens": opens,
+        # WEB-88: something a person can do from the card (never done by itself): {kind, label, ...ids}.
+        "action": action,
     }
 
 
@@ -337,7 +340,13 @@ def work_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:
                          if rate is not None and Decimal(str(rate)) > 0 else "")
                 cards.append(_card("line_offer", "Estimate line", "time", OWE,
                                    f"{amount} is not on an estimate line yet. Suggested: “{offer['name']}”.{would}",
-                                   opens=f["boq_page"]))
+                                   opens=f["boq_page"],
+                                   # WEB-88: the person's tap (decision 5), offered on the card: the estimate
+                                   # page's own PUT /projects/{id}/boq/work/{quantity_id}.
+                                   action=({"kind": "count_work", "label": "Count it on this line",
+                                            "project_id": str(f["project_id"]), "quantity_id": str(q["id"]),
+                                            "line_id": str(offer["id"])}
+                                           if q.get("id") and offer.get("id") and f.get("project_id") else None)))
             break  # one line card: the first quantity's
     cards.extend([_photo_card(f), _report_card(f)])
     return [c for c in cards if c]
@@ -694,6 +703,7 @@ async def read_activity(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.U
     work = (row.work_type or row.narrative or "Work").strip()
     f: dict[str, Any] = {
         "what": work[:60], "site_name": row.site_name or "the site", "project_name": row.project_name,
+        "project_id": row.project_id,
         "boq_page": f"/projects/{row.project_id}/boq", "report_time": await _report_time(conn, org, row.project_id),
         "photos": await _photos(conn, org, fact_review.ACTIVITY, record_id),
     }
@@ -729,10 +739,10 @@ async def read_activity(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.U
 
             def named(line_id: Any) -> dict[str, Any] | None:
                 ln = by_id.get(line_id)
-                return {"name": ln["work_type"], "rate": ln.get("client_rate")} if ln else None
+                return {"id": ln["id"], "name": ln["work_type"], "rate": ln.get("client_rate")} if ln else None
 
             f["quantities"] = [
-                {"quantity": w["quantity"], "unit": w["unit"],
+                {"id": w["id"], "quantity": w["quantity"], "unit": w["unit"],
                  "line": named(current.get(w["line_id"], w["line_id"])) if w["line_id"] else None,
                  "suggested": None if w["line_id"] else named(
                      suggest_line(w["work"] or w["narrative"], w["unit_id"], w["section_id"], lines))}
