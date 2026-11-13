@@ -571,7 +571,7 @@ SOP and the tool list. The reason for part 3 is correctness. The cost follows fr
 |---|---|---|---|
 | 1 | Conversations as tests (WA-281): `tests/agent_api/test_conversation_state_270.py` drives whole conversations through the real WhatsApp service and holds what the model is GIVEN; the replay kit passes the person's sites on real-model runs (`replaykit.facts_places`) | Three target tests fail on today's code (`xfail`, strict) | **done, 13 Nov** |
 | 2 | Measure | 11.2 | **done, 13 Nov** |
-| 3 | The state block: one function builds it from the chat's state and the day's records | Unit tests of the block | todo |
+| 3 | The state block: one function builds it from the chat's state and the day's records (`agent_api/state_block.py`) | Unit tests of the block (`tests/agent_api/test_state_block_270.py`, 15) | **done, 13 Nov** (not wired: step 4) |
 | 4 | The short window, behind a company setting: the block and the last 6 messages in place of the replay | Step 1's tests pass with their `xfail` removed | todo |
 | 5 | Remove the guards it replaces, one per commit | `agent.py` + `reply_guard.py` shorter than 3,542 lines | todo |
 | 6 | Live round on Mesiri Test Builders, then Aprodac | The 13 Nov conversations repeated; traces and screenshots | todo |
@@ -581,6 +581,31 @@ SOP and the tool list. The reason for part 3 is correctness. The cost follows fr
 page's reads, as WA-287's `day_totals`); the card, numbered; held lines and the one open question; what was
 cancelled in this chat (never prepared again); what was saved in this chat (corrected by number, exists today);
 earlier days in one line each; the message to act on, marked.
+
+**Step 3 as built (13 Nov).** `state_block.state_block(state, message=, now=, today=, earlier=)` is a pure
+function: it reads only what it is given and calls nothing, so it adds no time to a reply. Fixed headings, in this
+order, a heading with nothing under it left out:
+
+1. *Today, per site (from the records)*: `today_by_site(day_totals, timeline rows, site names, day)`: the workers
+   that count from `GET /labour/attendance` `day_totals` (WA-287, the Today page's count), the other records from
+   `GET /timeline`; a labour row of the timeline is left out (the total stands for it, so a corrected report is not
+   counted twice); a site the person cannot see is left out. A day that could not be read is said so, never as
+   "nothing recorded".
+2. *On the card now*: the waiting lines numbered as on the card, ids taken out; or "nothing is waiting for Save".
+3. *Waiting for one answer*: the held lines (WA-278 / WA-280) with the gap each waits for. `HELD_SECONDS` and
+   `held_lines` moved here from `whatsapp.py` (one owner; `whatsapp.py` imports them; same behaviour).
+4. *The question Mesiri asked last*, with its options.
+5. *Cancelled in this chat*: every Cancel of the working day (18 hours, at most 20 lines), from a new key
+   `cancel_log` written by `remember_cancelled`. The WA-146 key `cancelled` is the last Cancel only and is taken
+   by the reason tap, so it cannot be the day's list.
+6. *Saved in this chat*: `recent_saves` (24 hours, at most 12), with tool and id where kept.
+7. *Earlier days*: one line each, given by the caller.
+8. *The message to act on*, last, marked as the only request.
+
+**Left for step 4:** call `remember_cancelled` from `_cancelled_reply` (every Cancel, tapped or typed, goes through
+it) and add `cancel_log` to the keys `_save_state` keeps; read `day_totals` beside (or in place of) the timeline in
+`_facts`; build the earlier-day lines; the company setting; the block and the last 6 messages in place of the replay;
+the numbering of `correct_saved_entry` (`correctable_saves`) stays where it is until step 5.
 
 ### 11.4 The plan's required parts
 

@@ -90,6 +90,8 @@ from .memory import DayMemory, tools_version
 from .receipts import CARD_LINE, caption_lines, preview_slip
 from .record_links import record_link, with_links
 from .reply_guard import without_ids, without_ready_claims, without_saved_claims
+from .state_block import HELD_SECONDS  # noqa: F401 -- WA-270: the held lines have one owner, state_block
+from .state_block import held_lines as _held
 from .tools import build_tools
 from .units import is_stock_unit_refusal, plain_refusal, unit_rows
 
@@ -2288,19 +2290,6 @@ EDIT_SECONDS = 15 * 60
 #: WA-277 step E: how long an opened tool area stays open in a chat (a conversation about payments goes on for a
 #: while; the next morning starts from the core again).
 AREAS_OPEN_SECONDS = 12 * 3600
-
-
-#: WA-278 / WA-280: how long lines wait for their answer before they are let go (the person has moved on).
-HELD_SECONDS = 30 * 60
-
-
-def _held(state: dict, now: float) -> list[dict]:
-    """The lines of this chat still waiting for one answer (the site, a material, a unit, a person). "site_held" is
-    the key WA-278 kept them under (site lines only); read until it has aged out."""
-    kept = state.get("held") or state.get("site_held") or {}
-    if not isinstance(kept, dict) or now - float(kept.get("at") or 0) > HELD_SECONDS:
-        return []
-    return [h for h in kept.get("lines") or [] if isinstance(h, dict) and h.get("tool")]
 
 
 def _open_areas(state: dict, now: float) -> list[str]:

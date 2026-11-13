@@ -203,7 +203,7 @@ case.
 |---|---|---|
 | 1. The draft across turns | A line once understood is never thrown away and never redone by the model. A question fills one gap in a held line. | **Site (WA-278), material choice, unit, person, and corrections of those (WA-280): one hold.** Sizes keep their own hold (the line already stays on the card with its size asked, WA-197). |
 | 2. Every statement of fact | "Saved", "sent", "updated", "not saved" are the code's lines, from what happened. | In part (WA-193, WA-274, WA-277 F); the rest is WA-267. |
-| 3. Memory as state | The model sees what is saved, what waits and the last few messages, not the day's chat replayed. | Not started (WA-270). |
+| 3. Memory as state | The model sees what is saved, what waits and the last few messages, not the day's chat replayed. | The block is built (`agent_api/state_block.py`, WA-270 step 3, 13 Nov), not yet given to the model (step 4, behind a company setting). Plan: ASSISTANT_RELIABILITY_2026-11-10.md section 11. |
 
 **Part 1, one hold (`agent.py` `hold_line`, `whatsapp.py`):**
 
