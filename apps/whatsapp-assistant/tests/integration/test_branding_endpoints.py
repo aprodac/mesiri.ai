@@ -18,7 +18,6 @@ from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from mesiri.domains.organizations.router import router as company_router
 from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
-from projects import router as projects_module
 from projects.router import router as projects_router
 
 pytestmark = pytest.mark.integration
@@ -93,9 +92,7 @@ def world():
         await engine_.dispose()
 
     app.dependency_overrides[get_db_conn] = db_conn
-    # The projects router keeps a module-level pool; a pool bound to an
-    # earlier test's event loop cannot be reused.
-    projects_module._engine = None
+    # The projects router's engine is per event loop (per_loop_engine): nothing to reset.
 
     def token(uid, role, org_id=org):
         return {

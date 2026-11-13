@@ -25,14 +25,11 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture(autouse=True)
 async def _fresh_projects_engine():
-    """One projects-router engine per test (each test has its own event loop)."""
+    """The projects router's engine is per event loop now (per_loop_engine); closed after each test."""
     import projects.router as projects_router
 
-    projects_router._engine = None
     yield
-    if projects_router._engine is not None:
-        await projects_router._engine.dispose()
-    projects_router._engine = None
+    await projects_router._engine.dispose()
 
 
 @pytest.fixture

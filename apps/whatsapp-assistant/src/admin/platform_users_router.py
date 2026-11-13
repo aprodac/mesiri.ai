@@ -23,6 +23,7 @@ from mesiri.application.audit.record import record_admin_action
 from mesiri.domains.audit import actions as audit
 from mesiri.domains.audit.actions import actor_from_admin
 from mesiri.domains.shared.auth import require_platform_admin
+from per_loop_engine import PerLoopEngine
 
 router = APIRouter(prefix="/admin/platform-users", tags=["admin"])
 
@@ -43,14 +44,12 @@ def _get_engine():
     return create_async_engine(dsn, echo=False, pool_pre_ping=True)
 
 
-_engine = None
+_engine = PerLoopEngine(_get_engine)
 
 
 def get_engine():
-    global _engine
-    if _engine is None:
-        _engine = _get_engine()
-    return _engine
+    """One engine per event loop (per_loop_engine)."""
+    return _engine.get()
 
 
 users_table = sa.Table(

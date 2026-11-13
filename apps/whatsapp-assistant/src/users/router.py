@@ -18,6 +18,7 @@ from mesiri.application.identity.add_by_number import MemberNotAdded, add_member
 from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from mesiri.infrastructure.postgres.tenant import TenantScopedEngine, bind_tenant, unscoped
+from per_loop_engine import PerLoopEngine
 from users.access_service import AccessPolicy, apply_access_policy
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -44,15 +45,12 @@ def _get_engine():
     return create_async_engine(dsn, echo=False, pool_pre_ping=True)
 
 
-_engine = None
+_engine = PerLoopEngine(lambda: TenantScopedEngine(_get_engine()))
 
 
 def get_engine():
-    """Scoped to the caller's company on every transaction (BE-03)."""
-    global _engine
-    if _engine is None:
-        _engine = TenantScopedEngine(_get_engine())
-    return _engine
+    """Scoped to the caller's company on every transaction (BE-03); one engine per event loop (per_loop_engine)."""
+    return _engine.get()
 
 
 # Raw table reference

@@ -33,6 +33,7 @@ from mesiri.domains.organizations.settings import VALID_ROLES
 from mesiri.domains.shared.auth import require_platform_admin
 from mesiri.domains.timeline.responses import TimelineEntriesListResponse
 from mesiri.infrastructure.postgres.repositories.timeline import PostgresTimelineReadRepository
+from per_loop_engine import PerLoopEngine
 from users.access_service import DEFAULT_ACCESS_POLICY, AccessPolicy, apply_access_policy
 
 router = APIRouter(prefix="/admin/organizations", tags=["admin"])
@@ -52,14 +53,12 @@ def _get_engine():
     return create_async_engine(dsn, echo=False, pool_pre_ping=True)
 
 
-_engine = None
+_engine = PerLoopEngine(_get_engine)
 
 
 def get_engine():
-    global _engine
-    if _engine is None:
-        _engine = _get_engine()
-    return _engine
+    """One engine per event loop (per_loop_engine)."""
+    return _engine.get()
 
 
 # ---------------------------------------------------------------------------

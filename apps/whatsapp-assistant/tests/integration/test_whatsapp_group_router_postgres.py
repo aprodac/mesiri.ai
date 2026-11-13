@@ -61,10 +61,8 @@ def _token(org, user, role="ADMIN") -> dict[str, str]:
 
 @pytest.fixture
 async def world(monkeypatch):
-    import projects.router as projects_router
 
-    # The router's engine is made once per process; each test has its own loop.
-    monkeypatch.setattr(projects_router, "_engine", None)
+    # The router's engine is per event loop (per_loop_engine): each test's loop gets its own.
     db = PostgresDatabase(Settings().postgres)
     await db.connect()
     mine, theirs = await _company(db, "Router E2E"), await _company(db, "Other Co")
