@@ -120,6 +120,12 @@ def _days(n: int) -> str:
     return "1 day" if n == 1 else f"{n} days"
 
 
+def lasting(n: int) -> str:
+    """How long stock lasts, said truthfully: ``days_left`` is whole days, so 0 with stock still on hand is less
+    than a day's use, never "0 days" (seen on Live, 14 Nov). The board's sentence uses it too."""
+    return "less than a day" if n <= 0 else _days(n)
+
+
 def _stock_card(f: dict[str, Any], change: Decimal) -> Card | None:
     """Stock before -> after. ``before`` only when this entry is the newest movement of the material at the site:
     otherwise "now" already holds later entries, and a before worked out from it would be wrong."""
@@ -130,7 +136,7 @@ def _stock_card(f: dict[str, Any], change: Decimal) -> Card | None:
     sentence = f"{f['site_name']} now holds {qty(closing)} {unit} of {f['material']}.".replace("  ", " ")
     days = stock.get("days_left")
     if days is not None and closing > 0:
-        sentence += f" At the last week's use that lasts {_days(int(days))}."
+        sentence += f" At the last week's use that lasts {lasting(int(days))}."
     return _card("stock", "Stock", "time", STOPS_WORK, sentence,
                  before=closing - change if stock.get("latest") else None, after=closing, unit=unit, opens="/materials")
 
@@ -152,7 +158,7 @@ def _low_card(f: dict[str, Any]) -> Card | None:
                      after=closing, unit=unit, opens="/materials")
     if stock.get("running_low") and stock.get("days_left") is not None:
         return _card("low", "Running low", "caught", STOPS_WORK,
-                     f"At this rate {f['material']} runs out in {_days(int(stock['days_left']))}.{coming}",
+                     f"At this rate {f['material']} runs out in {lasting(int(stock['days_left']))}.{coming}",
                      after=closing, unit=unit, opens="/materials")
     return None
 

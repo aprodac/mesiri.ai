@@ -389,3 +389,20 @@ async def test_guard_a_switched_off_module_or_a_broken_read_is_said_not_counted_
     out = await board.build(_Conn(), _Auth("OWNER"), request=None, today=TODAY, enabled=lambda m: m != "materials")
     assert out["caught"]["off"] == ["materials"] and out["caught"]["partial"] is True
     assert "rates_today" not in reads
+
+
+def test_stock_with_less_than_a_days_use_left_is_never_said_as_zero_days():
+    """Seen on Live, 14 Nov: "Cement at Main block lasts 0 more days". Whole days left is 0 while stock is on hand:
+    less than a day's use. The board line and the ripple's two stock sentences say it the same way."""
+    from mesiri.domains.dpr import effects
+
+    rows = [{"material_name": "Cement", "unit": "bag", "closing": "2.2", "days_left": 0, "site_id": "s2"}]
+    assert board.say_days_left(rows, DAYS) == "Cement at Main block lasts less than a day at this week's use."
+    assert board.say_days_left([{**rows[0], "days_left": 1}]) == "Cement lasts 1 more day at this week's use."
+    assert effects.lasting(0) == "less than a day" and effects.lasting(1) == "1 day" and effects.lasting(3) == "3 days"
+    f = {"site_name": "Main block", "material": "Cement", "unit": "bag",
+         "stock": {"closing": "2.2", "days_left": 0, "running_low": True, "min_qty": None}}
+    assert "lasts less than a day" in effects._stock_card(f, effects.Decimal(0))["sentence"]
+    assert effects._low_card(f)["sentence"] == "At this rate Cement runs out in less than a day."
+    # The guard: nothing on hand is not "lasts" anything (already left out).
+    assert board.say_days_left([{**rows[0], "closing": "0"}]) is None

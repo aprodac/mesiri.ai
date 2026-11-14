@@ -326,7 +326,10 @@ def say_days_left(data: list, days: dict | None = None) -> str | None:
     names = {str(s.get("site_id")): s.get("site_name") for s in (days or {}).get("items") or []}
     site = names.get(str(_get(first, "site_id")))
     where = f" at {site}" if site else ""
-    return f"{_get(first, 'material_name')}{where} lasts {_n(left, 'more day')} at this week's use."
+    from mesiri.domains.dpr.effects import lasting
+
+    more = _n(left, "more day") if left > 0 else lasting(left)
+    return f"{_get(first, 'material_name')}{where} lasts {more} at this week's use."
 
 
 def say_issues(data: dict) -> str | None:

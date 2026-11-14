@@ -181,7 +181,9 @@ export function Ripple({
     <div className="grid w-full max-w-[40rem] gap-3 text-left" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Label>
-          What it changed{effects.what ? ` · ${effects.what}` : ''}
+          {/* WEB-87: a question changes nothing; its cards are how it was answered. */}
+          {effects.kind === 'answer' ? 'How it was answered' : 'What it changed'}
+          {effects.what ? ` · ${effects.what}` : ''}
         </Label>
         <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
           {held && !done && (
