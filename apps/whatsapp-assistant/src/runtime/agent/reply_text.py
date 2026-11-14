@@ -107,6 +107,11 @@ _TAP_WORD = re.compile(
 )
 
 
+def says_save(text: str | None) -> bool:
+    """The words say "save" (in the languages the sites write in): "save cheythoo", "സേവ് ചെയ്യൂ", "सेव करो"."""
+    return bool(_SAVE_WORD.search(text or ""))
+
+
 def asks_to_tap_save(sentence: str) -> bool:
     return bool(_SAVE_WORD.search(sentence) and _TAP_WORD.search(sentence))
 

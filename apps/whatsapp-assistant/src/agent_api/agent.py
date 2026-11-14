@@ -29,7 +29,7 @@ from agent_api.links import IN_CHAT, WEB_LINK, build_link, in_chat_note
 from agent_api.links import spec as web_link_spec
 from mesiri.domains.materials.names import alias_key
 from mesiri_ai.models import ChatMessage, ToolCallRecord, ToolOutcome, ToolRunResult, ToolSpec
-from runtime.agent.reply_text import asks_to_tap_save
+from runtime.agent.reply_text import asks_to_tap_save, says_save
 from runtime.ai_outage import is_budget_error
 
 from . import tool_areas
@@ -630,6 +630,8 @@ def _path_site(path: str) -> str | None:
 
 
 SAVE_READY = "save_ready_entries"
+#: The tool area that takes back a saved record (``tool_areas.AREAS``).
+TAKE_BACK = "take_back"
 #: The language of the person's message (``runtime.agent.wording.language_of``) as told to the model.
 #: [243]: set at once by the code, never held on the card.
 LANGUAGE_TOOL = "set_reply_language"
@@ -780,6 +782,10 @@ class ApiAgent:
         # An entry waiting for Save keeps its area open: a correction of it needs that tool's fields.
         opened: set[str] = {a for a in [*(open_areas or []), *(tool_areas.area_of(e.tool) for e in ready or [])]
                             if a in tool_areas.AREAS} if on_demand else set()
+        if on_demand and any(r.get("id") for r in recent_saves or []) and TAKE_BACK in tool_areas.AREAS:
+            # Live, Aprodac 14 Nov 01:03 UTC: "randu cement alla, randu plumber" after Save: the saved cement could not
+            # be taken back (undo_receipt was behind a closed area). Something saved in this chat keeps it reachable.
+            opened.add(TAKE_BACK)
         just_opened: list[str] = []  # areas opened by the model in the run that just ended
         # WA-278 / WA-280: lines waiting for one answer. ``held_lines``: after this turn (carried or new);
         # ``code_prepared``: the ones the code prepared in this turn from the answer just given.
@@ -881,8 +887,23 @@ class ApiAgent:
                 if isinstance(built, str):
                     return {"error": f"Nothing is prepared: {built}"}
                 body, line = built
-                new.append(PendingWrite(tool="record_attendance", method="POST", path=str(saved["path"]), params={},
-                                        body=body, summary=line, idempotency_key=new_idempotency_key()))
+                entry = PendingWrite(tool="record_attendance", method="POST", path=str(saved["path"]), params={},
+                                     body=body, summary=line, idempotency_key=new_idempotency_key())
+                # Live, Aprodac 14 Nov 01:04 UTC: the same correction asked again went on the card twice. One correction
+                # per saved report waits: the same one is not added again; a different one takes its place.
+                replaces = str(body.get("corrects_report_id") or "")
+                for i, e in enumerate(waiting):
+                    if e is not None and e.tool == entry.tool and str(e.body.get("corrects_report_id") or "") == replaces:
+                        if e.body == body:
+                            return {"status": "already on the card, NOT saved", "note": (
+                                "This correction is already on the card; nothing was added. Say it in one short line.")}
+                        waiting[i] = replace(entry, idempotency_key=e.idempotency_key)
+                        changed.append(i + 1)
+                        return {"status": "changed on the card, NOT saved", "note": (
+                            "The correction waiting on the card now says this; on Save it replaces the saved report.")}
+                new[:] = [e for e in new if not (e.tool == entry.tool
+                                                 and str(e.body.get("corrects_report_id") or "") == replaces)]
+                new.append(entry)
                 return {"status": "ready, NOT saved", "note": (
                     "On the card now; on Save it replaces the saved report (no second report). Say it in one short line "
                     "in their language; do not repeat the card line.")}
@@ -1073,6 +1094,13 @@ class ApiAgent:
                 asked["question"] = str(arguments.get("question") or "").strip()
                 asked["options"] = [str(o).strip()[:20] for o in (arguments.get("options") or []) if str(o).strip()][:3]
                 return ToolOutcome(content={"status": "the options are shown as buttons under your reply"})
+            if name == SAVE_READY and waiting and (taken_need is not None or code_records) and not says_save(text):
+                # Live, Aprodac 14 Nov 01:02 UTC: "1cum msand = 30 bag" answered the size question and the model saved
+                # the whole card. An answer fills a gap; it confirms the card only when it also says save ([232]:
+                # "oru load-il 200 bar undakum, save cheythoo"). Otherwise Save stays the person's tap.
+                return ToolOutcome(content={"status": "not saved: this message answers Mesiri's question", "note": (
+                    "This message only answers the question Mesiri asked. Nothing was saved: the card goes back with its "
+                    "Save button. Do not say anything was saved.")})
             if name == SAVE_READY and waiting:
                 numbers = chosen(arguments)
                 # [232]: a size prepared in this same message ("oru load-il 200 bar, save cheythoo") saves with the lines it
@@ -1731,7 +1759,7 @@ class ApiAgent:
                 acted.append("size")
                 system += (f"\n\nThe CODE already took the size from this message ({line}) and the waiting line converts with "
                            "it. Do not prepare `set_unit_conversion`, do not ask the size again, do not repeat the line. "
-                           "Do what the rest of the message asks (if it says to save, call save_ready_entries).")
+                           "Do what the rest of the message asks. The card is saved only by their Save tap.")
         again_asked = False  # WA-198: one corrective retry per turn at most (reply time)
         # WA-278 / WA-280: the lines held for one answer, when this message gives it (a tap is the option's own words):
         # the code puts the answer in and prepares them now, each with the call the model made when the person said
