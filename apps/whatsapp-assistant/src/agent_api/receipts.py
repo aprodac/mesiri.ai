@@ -172,6 +172,16 @@ def _line(number: int, entry: PendingWrite, material: dict[str, str], unit: dict
         rows = [ln for ln in body.get("lines") or [] if isinstance(ln, dict)]
         total = sum(int(ln.get("headcount") or 1) for ln in rows)
         trades = [str(ln.get("worker_name") or ln.get("trade") or "worker").strip() for ln in rows]
+        if body.get("corrects_report_id"):
+            # WA-301: a correction of a saved report is drawn as a change, never as new workers ("Mason 10" on an
+            # "add 2 plumbers" card read as ten more masons). The code's own line says what changes and what stays.
+            changes, _, kept = entry.summary.removeprefix("✏️").strip().partition(" · ")
+            if not entry.summary.startswith("✏️"):
+                changes = " · ".join(f"{t.title()} {int(ln.get('headcount') or 1)}"
+                                     for t, ln in zip(trades, rows, strict=True))
+                return SlipLine(number, "labour", "Replace saved workers", _clean(changes, 70), str(total))
+            note = changes + (f" · no change: {kept}" if kept else "")
+            return SlipLine(number, "labour", "Change saved workers", _clean(note, 70), f"now {total}")
         if len(rows) == 1:
             title = trades[0] if rows[0].get("worker_name") else _plural(trades[0].title(), total)
             return SlipLine(number, "labour", title, "at work", str(total))

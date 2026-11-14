@@ -127,3 +127,37 @@ async def test_live_a_take_back_line_names_the_record_it_takes_back() -> None:
     assert "*10 bags Cement · Main block → Annex*" in lines[2]
     assert "₹2,500 · Fuel · 2026-11-14" in lines[3]
     assert "*Take back delivery*" in lines[4]  # not found: the plain title, never a wrong record
+
+
+# --- 5. WA-301: a correction of a saved report is drawn as a change ------------------------------------------------
+
+def _drawn(entry: PendingWrite) -> str:
+    from agent_api.receipts import _line, caption_lines
+    from channel.receipt.draft_slip import Slip
+
+    return caption_lines(Slip("Site", "today", [_line(1, entry, {}, {}, {})]))[0]
+
+
+def test_live_adding_two_plumbers_to_a_saved_report_never_reads_as_new_masons() -> None:
+    """Live, Aprodac, 14 Nov 06:34 IST: "add 2 plumbers" drew "Workers · Mason 10 · Plumber 2 · 12" and the person
+    asked "is this mason new?". The card line now says it changes the saved report, what changes and what stays."""
+    _, entry = _waiting_correction([{"trade": "Plumber", "headcount": 2}])
+    line = _drawn(entry)
+    assert "Change saved workers" in line and "Plumber 0 → 2" in line
+    assert "no change: Mason 8, Helper 5" in line or "no change: Mason 8 · Helper 5" in line
+    assert line.endswith("now 15") and "*Workers*" not in line
+
+
+def test_sibling_a_replacing_report_the_model_names_itself_says_it_replaces() -> None:
+    _, entry = _waiting_correction([{"trade": "Plumber", "headcount": 2}])
+    plain = PendingWrite(tool=entry.tool, method="POST", path=entry.path, params={}, body=entry.body,
+                         summary="8 mason, 5 helper, 2 plumber", idempotency_key="k2")
+    assert "Replace saved workers" in _drawn(plain)
+
+
+def test_guard_a_new_labour_report_is_drawn_as_before() -> None:
+    _, entry = _waiting_correction([{"trade": "Plumber", "headcount": 2}])
+    body = {k: v for k, v in entry.body.items() if k != "corrects_report_id"}
+    new = PendingWrite(tool=entry.tool, method="POST", path=entry.path, params={}, body=body, summary="x",
+                       idempotency_key="k3")
+    assert "*Workers* · Mason 8 · Helper 5 · Plumber 2 · 15" in _drawn(new)
