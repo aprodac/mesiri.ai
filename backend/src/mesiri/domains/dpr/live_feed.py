@@ -64,6 +64,42 @@ RECORD_KINDS: dict[str, str] = {
     "log_machines": "machine_log",
 }
 
+#: WEB-87: a question's ripple. The read tools whose answer is built from the day's saved messages: tool -> (what
+#: it read, in words; the kinds of message that change that number; the owner's question it answers, 1-6 as
+#: ``effects``; the page that shows it). A question that called one of these has a ripple ("answer", keyed by the
+#: message's own id). A read tool not here (projects, units, a document) builds on no message: no ripple.
+_STOCK = ("the stock", ("delivery", "usage", "transfer"), 5, "/materials")
+_DAY = ("the day's updates", ("attendance", "work", "correction", "delivery", "usage", "transfer", "issue",
+                              "issue_closed", "machine"), 6, "/reports")
+ANSWERS: dict[str, tuple[str, tuple[str, ...], int, str]] = {
+    "stock_summary": _STOCK, "stock_levels": _STOCK, "stock_check": _STOCK, "below_minimum": _STOCK,
+    "list_receipts": ("the deliveries", ("delivery",), 5, "/materials"),
+    "list_usage": ("the material used", ("usage",), 5, "/materials"),
+    "labour_attendance": ("today's attendance", ("attendance",), 3, "/labour"),
+    "work_progress": ("the work done", ("work", "correction"), 3, "/site-log"),
+    "place_progress": ("the work done", ("work", "correction"), 3, "/planning/places"),
+    "list_issues": ("the issues", ("issue", "issue_closed"), 5, "/issues"),
+    "list_expenses": ("the expenses", ("expense",), 1, "/finance/expenses"),
+    "machine_logs": ("the machines' days", ("machine",), 3, "/equipment"),
+    "hire_check": ("the hire against the hours", ("machine",), 4, "/equipment/hire"),
+    "day_summary": _DAY, "timeline": _DAY, "site_day": _DAY,
+}
+
+
+def looked(turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """WEB-87: what a turn looked up that an answer is built from: ``{tool, site_id, material_id}`` (ids as the
+    model passed them, None when it named none), first call first, one per tool."""
+    out: list[dict[str, Any]] = []
+    for turn in turns:
+        for r in turn.get("reads") or []:
+            if not isinstance(r, dict) or r.get("tool") not in ANSWERS or any(o["tool"] == r["tool"] for o in out):
+                continue
+            args = r.get("args") if isinstance(r.get("args"), dict) else {}
+            out.append({"tool": r["tool"], "site_id": str(args["site_id"]) if args.get("site_id") else None,
+                        "material_id": str(args["material_id"]) if args.get("material_id") else None})
+    return out[:3]
+
+
 #: A turn that only read: what it was about. Expenses are a question too, and
 #: hidden from roles that may not see spending (the router's SEC-01 rule).
 EXPENSE_TOOLS: frozenset[str] = frozenset({"list_expenses", "money_accounts", "list_vendors", "query_expenses"})
@@ -171,7 +207,9 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
     arc between them. ``expense``: the amount, vendor, category, date, tax
     and words Mesiri read (a bill photo's fields). ``language``: the reply
     language chosen. ``money``: about spending (SEC-01). ``records``: the records
-    it saved that have a ripple (``RECORD_KINDS``), as ``{kind, id}``.
+    it saved that have a ripple (``RECORD_KINDS``), as ``{kind, id}``; a question
+    answered from the day's messages (WEB-87, ``ANSWERS``) is ``{"answer", <its
+    own id>}``. ``looked``: what that question read (``looked``).
     """
     turns = [t for t in (row.get("turns") or []) if isinstance(t, dict)]
     tools = _tools(turns)
@@ -259,9 +297,14 @@ def classify(row: dict[str, Any]) -> dict[str, Any]:
         for r in (saved or tapped) if str(r.get("tool")) in RECORD_KINDS
         for record_id in ([r["id"]] if r.get("id") else [i for i in (r.get("ids") or []) if i])
     ]
+    # WEB-87: a question answered from the day's messages has a ripple too: the message is its own record.
+    reads = looked(turns) if kind == "question" else []
+    if reads and row.get("id"):
+        records = [{"kind": "answer", "id": str(row["id"])}]
     return {
         "kind": kind,
         "records": records[:6],
+        "looked": reads,
         "did": did[:5],
         "transfer": transfer,
         "expense": expense,

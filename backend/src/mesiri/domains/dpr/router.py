@@ -393,7 +393,14 @@ async def get_effects(
     if kind in effects.MONEY_KINDS and not sees_money:
         # WEB-86: a bill is the company's spending (SEC-01): to anyone else it is not there at all.
         raise HTTPException(status_code=404, detail="that item was not found")
-    if kind in effects.RECORD_TABLES:
+    if kind == effects.ANSWER:
+        # WEB-87: a question; its record is the message. As the feed: a message that named no project is the
+        # company's, seen by those who see every project.
+        located = await effects.locate_message(conn, auth_context.organization_id, record_id)
+        if located is None or (located["project_id"] is None
+                               and not auth_context.project_scope.grants_all_org_projects):
+            raise HTTPException(status_code=404, detail="that item was not found")
+    elif kind in effects.RECORD_TABLES:
         located = await effects.locate(conn, auth_context.organization_id, kind, record_id)
         if located is None:
             raise HTTPException(status_code=404, detail="that item was not found")
@@ -402,7 +409,9 @@ async def get_effects(
             located = await PostgresFactReviewRepository(conn).locate(auth_context.organization_id, kind, record_id)
         except FactReviewError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if located["project_id"] is None or _site_denied(auth_context, located["project_id"], located["site_id"]):
+    if located["project_id"] is None and kind == effects.ANSWER:
+        pass  # the company's own question, already checked above
+    elif located["project_id"] is None or _site_denied(auth_context, located["project_id"], located["site_id"]):
         raise HTTPException(status_code=404, detail="that item was not found")
     from mesiri.application.dpr import project_day
 
@@ -560,8 +569,10 @@ async def live_demo_deck(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """WEB-84: the stories a presenter runs on Live (``deck.py``): ready messages and the line to say before each.
-    Only for a company marked as a demo (``demo_company``): a ready message is a real entry once sent, so any
-    other company gets none. The messages name the sites this person can see."""
+    Only for a company marked as a demo (``demo_company``) or switched on for them (``live_ready_messages``, the
+    Mesiri team's test company): a ready message is a real entry once sent, so any other company gets none. The last
+    story is the test list (one message per kind Live shows). ``reset``: the company can be reset in one tap (a demo).
+    The messages name the sites this person can see."""
     from sqlalchemy import text
 
     from mesiri.domains.dpr import deck
@@ -570,16 +581,18 @@ async def live_demo_deck(
         PostgresOrganizationSettingsRepository,
     )
 
-    stored = await PostgresOrganizationSettingsRepository(conn).get(
-        auth_context.organization_id, org_settings.DEMO_COMPANY)
-    if stored is not True:
-        return {"demo": False, "stories": []}
+    repo = PostgresOrganizationSettingsRepository(conn)
+    demo = await repo.get(auth_context.organization_id, org_settings.DEMO_COMPANY) is True
+    # The Mesiri team's own test company: the same ready messages, without being a demo (no one-tap reset).
+    ready = demo or await repo.get(auth_context.organization_id, org_settings.LIVE_READY_MESSAGES) is True
+    if not ready:
+        return {"demo": False, "reset": False, "stories": []}
     rows = (await conn.execute(text(
         "SELECT s.id, s.project_id, s.name FROM sites s JOIN projects p ON p.id = s.project_id "
         "WHERE s.organization_id = :org AND s.status = 'active' AND p.status != 'archived' "
         "ORDER BY p.created_at, s.created_at"), {"org": auth_context.organization_id})).all()
     names = [r.name for r in rows if not _site_denied(auth_context, r.project_id, r.id)]
-    return {"demo": True, "stories": deck.stories(names)}
+    return {"demo": True, "reset": demo, "stories": deck.stories(names, test=True)}
 
 
 @router.get("/live/stamp")

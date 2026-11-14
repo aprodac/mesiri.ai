@@ -76,6 +76,8 @@ export function OwnerBoard({
       ) : !board ? (
         <p className="m-0 mt-4 text-sm text-muted-foreground">Reading the answers…</p>
       ) : (
+        <>
+        {board.caught && <Caught caught={board.caught} leaks={board.questions.find((q) => q.key === 'leaks')} presenting={presenting} onOpen={onOpen} />}
         <ul className="m-0 mt-4 grid list-none grid-cols-1 gap-px bg-foreground/15 p-0 sm:grid-cols-2 xl:grid-cols-1">
           {board.questions.map((q) => {
             const how = ringing.get(`q:${q.key}`)
@@ -171,7 +173,58 @@ export function OwnerBoard({
             )
           })}
         </ul>
+        </>
       )}
     </section>
+  )
+}
+
+/** WEB-90: today's ₹ caught, over the questions. Each part opens the page that holds its figure. */
+function Caught({
+  caught,
+  leaks,
+  presenting,
+  onOpen,
+}: {
+  caught: NonNullable<LiveBoard['caught']>
+  /** The question the catches belong to ("Is anything leaking?"), for the cut to its page. */
+  leaks: LiveBoardQuestion | undefined
+  presenting: boolean
+  onOpen: (q: LiveBoardQuestion, path: string, el: HTMLElement, line?: string) => void
+}) {
+  const offNames = caught.off.map((m) => MODULE_NAMES[m] ?? m).join(' and ')
+  return (
+    <div
+      aria-label="Caught today"
+      className={cn('mt-4 grid gap-1 border px-3.5 py-3', caught.said ? 'border-[var(--destructive)]' : 'border-foreground/15')}
+    >
+      <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Caught today</span>
+      {caught.said ? (
+        <span
+          key={caught.total}
+          className={cn('font-semibold tabular-nums text-[var(--destructive)]', presenting ? 'text-[30px]' : 'text-[22px]')}
+          style={prefersReducedMotion() ? undefined : { animation: 'live-in 400ms ease-out' }}
+        >
+          {caught.said}
+        </span>
+      ) : (
+        <span className="text-[14px] text-muted-foreground">Nothing caught yet today.</span>
+      )}
+      {caught.parts.map((p) => (
+        <button
+          key={p.read}
+          type="button"
+          disabled={!leaks}
+          onClick={(e) => leaks && onOpen(leaks, p.opens, e.currentTarget, p.text)}
+          className="text-left text-[13px] leading-snug text-muted-foreground hover:text-foreground"
+        >
+          {p.text}
+        </button>
+      ))}
+      {caught.partial && <span className="text-[12px] text-muted-foreground">Part of it could not be read just now.</span>}
+      {caught.off.length > 0 && (
+        <span className="text-[12px] text-muted-foreground opacity-70">With {offNames} you would also see more here.</span>
+      )}
+    </div>
   )
 }

@@ -8,7 +8,8 @@ import { Label } from '@/components/onboarding/conversation'
 // The demo deck (WEB-84, docs/plans/live-value-plan.md section 6): the stories a presenter runs on Live. Each step
 // has the line to say; a step with a message sends it through Tell Mesiri (the same handler as WhatsApp), and Live
 // plays it like any other message. The stories come from GET /dpr/live/deck, which gives them only to a company
-// marked as a demo: a ready message is a real entry once sent.
+// marked as a demo (or the Mesiri team's test company): a ready message is a real entry once sent. Its last "story" is
+// the test list: one ready message for every kind of message Live shows, with what to look for.
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
@@ -41,20 +42,25 @@ type Sent =
   | { state: 'failed'; error: string }
 
 export function DemoDeck({
-  stories,
+  stories: all,
+  reset = true,
   board,
   onClose,
   className,
 }: {
   stories: LiveDeckStory[]
+  /** A demo company, which "Reset demo" puts back to the start. */
+  reset?: boolean
   board: LiveBoard | undefined
   onClose: () => void
   className?: string
 }) {
+  const stories = all.filter((s) => !s.test)
+  const tests = all.filter((s) => s.test)
   const [storyKey, setStoryKey] = React.useState<string | null>(null)
   /** What each step's message came back with, by `${story}:${step}`. */
   const [sent, setSent] = React.useState<Record<string, Sent>>({})
-  const story = stories.find((s) => s.key === storyKey) ?? null
+  const story = all.find((s) => s.key === storyKey) ?? null
   const busy = Object.values(sent).some((s) => s.state === 'sending')
   const question = (key: string) => board?.questions.find((q) => q.key === key)?.question
 
@@ -82,7 +88,7 @@ export function DemoDeck({
               <ChevronLeft className="size-3.5" /> Stories
             </button>
           ) : (
-            'Stories · ready messages for a demo'
+            'Stories · ready messages'
           )}
         </Label>
         <button type="button" onClick={onClose} aria-label="Close the stories" className="text-muted-foreground hover:text-foreground">
@@ -109,9 +115,22 @@ export function DemoDeck({
               </li>
             ))}
           </ol>
+          {tests.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setStoryKey(t.key)}
+              className="mt-px flex w-full flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-foreground/15 bg-background px-3 py-3 text-left hover:bg-foreground hover:text-background"
+            >
+              <span className="text-[15px] font-semibold">{t.title}</span>
+              <span className="text-[12.5px] opacity-70">
+                {t.steps.filter((s) => s.send).length} ready messages, one for every kind Live shows, and what to look for
+              </span>
+            </button>
+          ))}
           <p className="m-0 mt-3 text-[12.5px] text-muted-foreground">
-            Each message is sent as you and saved like any other; Mesiri takes about 15 seconds to answer, then tap Save. Use “Reset demo”
-            in the control panel to start clean.{' '}
+            Each message is sent as you and saved like any other; Mesiri takes about 15 seconds to answer, then tap Save.
+            {reset ? ' Use “Reset demo” in the control panel to start clean.' : ' These are real entries in this company.'}{' '}
             <button
               type="button"
               onClick={() => {
@@ -137,7 +156,9 @@ export function DemoDeck({
                 <span className="font-mono text-[12px] tabular-nums text-muted-foreground">{i + 1}</span>
                 <div className="grid gap-1.5">
                   <p className="m-0 text-[14.5px] leading-snug">
-                    <span className="mr-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">Say</span>
+                    <span className="mr-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
+                      {story.test ? 'Look for' : 'Say'}
+                    </span>
                     {step.say}
                   </p>
                   {step.do && <p className="m-0 text-[13px] text-muted-foreground">{step.do}</p>}
@@ -183,7 +204,7 @@ export function DemoDeck({
               </li>
             )
           })}
-          {question(story.ends_on) && (
+          {!story.test && question(story.ends_on) && (
             <li className="border-t border-foreground/15 pt-2 text-[13px] text-muted-foreground">
               This story ends on the owner’s question: <span className="font-medium text-foreground">{question(story.ends_on)}</span>
             </li>

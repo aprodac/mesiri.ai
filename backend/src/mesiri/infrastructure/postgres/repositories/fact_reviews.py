@@ -534,7 +534,13 @@ class PostgresFactReviewRepository:
                     "        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb -> 'calls') = 'array' "
                     "        THEN jt.stage_payload::jsonb -> 'calls' ELSE '[]'::jsonb END) c "
                     "        WHERE c ->> 'tool' IN ('record_transfer', 'record_expense', 'set_reply_language') "
-                    "        AND jsonb_typeof(COALESCE(c -> 'arguments', c -> 'args')) = 'object'))) "
+                    "        AND jsonb_typeof(COALESCE(c -> 'arguments', c -> 'args')) = 'object'), "
+                    # WEB-87: what a question looked up (each call's tool and arguments), for its ripple.
+                    "     'reads', (SELECT jsonb_agg(jsonb_build_object("
+                    "        'tool', c ->> 'tool', 'args', COALESCE(c -> 'arguments', c -> 'args'))) "
+                    "        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb -> 'calls') = 'array' "
+                    "        THEN jt.stage_payload::jsonb -> 'calls' ELSE '[]'::jsonb END) c "
+                    "        WHERE jsonb_typeof(COALESCE(c -> 'arguments', c -> 'args')) = 'object'))) "
                     "   FROM journey_traces jt WHERE jt.correlation_id = im.correlation_id "
                     "   AND jt.stage IN ('agent_api_turn', 'agent_tools')) AS turns, "
                     # What Mesiri heard: a voice note's words are only in its turn's trace, not on the message.

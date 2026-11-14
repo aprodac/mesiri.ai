@@ -69,6 +69,10 @@ SAY: dict[str, str] = {
     "machine_day": "Hours, idle time, breakdown and diesel, from one message.",
     "machine_down": "Breakdown hours are on record, so you do not pay hire for them.",
     "machine_hire": "When the hire bill comes, you already know what the hours come to.",
+    # WEB-87: a question.
+    "answer": "Asked in their own words, answered from the records in seconds. Nobody phoned the site.",
+    "answer_read": "The same records the pages show, so the answer and the page agree.",
+    "answer_from": "Every number has the messages behind it: who said it, and when.",
 }
 
 Card = dict[str, Any]
@@ -448,8 +452,41 @@ def machine_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:
     return [c for c in cards if c]
 
 
+#: How many of the messages behind an answer its card names (the rest are counted).
+ANSWER_NAMES = 3
+
+
+def answer_cards(f: dict[str, Any], sees_money: bool) -> list[Card]:  # noqa: ARG001 -- money is decided per message
+    """WEB-87: a question's ripple: the answer, what Mesiri read for it, and the day's saved messages that number is
+    built from (only those seen by this person, sent before the question)."""
+    q, opens = int(f["question"]), f.get("opens")
+    cards: list[Card] = []
+    if f.get("answer"):
+        words = " ".join(str(f["answer"]).split())
+        cards.append(_card("answer", "The answer", "time", q, words if len(words) <= 240 else words[:237] + "…",
+                           opens=opens))
+    cards.append(_card("answer_read", "What Mesiri read", "proof", q, f["read"] + ".", opens=opens))
+    sources = f.get("from") or []
+    if sources:
+        people = len({m["sender"] for m in sources})
+        named = "; ".join(f"{m['sender']}: {m['summary']}" + (f" ({m['site']})" if m.get("site") else "")
+                          for m in sources[-ANSWER_NAMES:][::-1])
+        more = len(sources) - ANSWER_NAMES
+        cards.append(_card("answer_from", "Built from today's messages", "proof", q,
+                           f"From {_n(len(sources), 'message')} by {_n(people, 'person', 'people')} today. {named}"
+                           + (f"; and {_n(more, 'earlier one')}." if more > 0 else "."),
+                           after=len(sources), unit="message" if len(sources) == 1 else "messages", opens="/reports"))
+    else:
+        cards.append(_card("answer_from", "Built from earlier days", "proof", q,
+                           "Nothing about this was saved today: the answer comes from the records of earlier days.",
+                           opens=opens))
+    return cards
+
+
 #: WEB-86: records Live asks about that are not report facts (``fact_review.FACT_TYPES``).
 EXPENSE, MACHINE_LOG = "expense", "machine_log"
+#: WEB-87: a question answered from the day's messages; its "record" is the message itself (inbound_messages).
+ANSWER = "answer"
 #: A kind whose every card is the company's spending: the route answers 404 to a role that does not see it.
 MONEY_KINDS: frozenset[str] = frozenset({EXPENSE})
 
@@ -462,6 +499,7 @@ RULES: dict[str, tuple[str, Callable[[dict[str, Any], bool], list[Card]]]] = {
     fact_review.SITE_ISSUE: ("Issue", issue_cards),
     EXPENSE: ("Expense", expense_cards),
     MACHINE_LOG: ("Machine log", machine_cards),
+    ANSWER: ("Question", answer_cards),
 }
 
 
@@ -892,6 +930,110 @@ async def locate(conn: AsyncConnection, org: uuid.UUID, kind: str, record_id: uu
     return dict(row) if row else None
 
 
+async def locate_message(conn: AsyncConnection, org: uuid.UUID, message_id: uuid.UUID) -> dict[str, Any] | None:
+    """WEB-87: project_id / site_id of a message (its site's project when it named only a site); None when it is
+    not this company's."""
+    row = (await conn.execute(text(
+        "SELECT COALESCE(im.project_id, s.project_id) AS project_id, im.site_id FROM inbound_messages im "
+        "LEFT JOIN sites s ON s.id = im.site_id WHERE im.id = :id AND im.organization_id = :org"),
+        {"id": message_id, "org": org})).mappings().first()
+    return dict(row) if row else None
+
+
+async def _materials_of(conn: AsyncConnection, org: uuid.UUID, records: list[dict[str, str]]) -> dict[str, str]:
+    """Record id -> its material id, for the material movements among ``records`` (one read)."""
+    ids = {"r": [r["id"] for r in records if r["kind"] == fact_review.MATERIAL_RECEIPT],
+           "u": [r["id"] for r in records if r["kind"] == fact_review.MATERIAL_USAGE]}
+    if not ids["r"] and not ids["u"]:
+        return {}
+    rows = (await conn.execute(text(
+        "SELECT CAST(id AS text) AS id, CAST(material_id AS text) AS material_id FROM material_receipts "
+        "WHERE organization_id = :org AND CAST(id AS text) = ANY(:r) "
+        "UNION ALL SELECT CAST(id AS text), CAST(material_id AS text) FROM material_usage "
+        "WHERE organization_id = :org AND CAST(id AS text) = ANY(:u)"),
+        {"org": org, "r": ids["r"], "u": ids["u"]})).all()
+    return {r.id: r.material_id for r in rows}
+
+
+async def read_answer(conn: AsyncConnection, org: uuid.UUID, record_id: uuid.UUID, today: datetime.date,
+                      sees_money: bool, *, auth: Any = None, **_: Any) -> dict[str, Any] | None:
+    """WEB-87: a question of today and what its answer was built from. The question's turn keeps what it looked up
+    (``live_feed.looked``: the read tool, and the site and material it named); the messages behind it are today's
+    saved messages before it of the kinds that change that number (``live_feed.ANSWERS``), at that site, and of that
+    material when it named one (a message with no material record is then left out, never guessed). Each message by
+    the feed's own rules: the viewer's sites, spending only for the roles that see it. None: not a question of today
+    with a lookup an answer is built from."""
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.dpr import live_feed
+    from mesiri.domains.dpr.router import _site_denied
+    from mesiri.infrastructure.postgres.repositories.fact_reviews import (
+        PostgresFactReviewRepository,
+    )
+
+    since = (await conn.execute(text(
+        f"SELECT CAST(CAST(:d AS date) AS timestamp) AT TIME ZONE {project_day.zone_sql(':org')}"),
+        {"d": today, "org": org})).scalar_one()
+    rows = await PostgresFactReviewRepository(conn).live_feed(
+        organization_id=org, since=since, until=since + datetime.timedelta(days=1))
+    target = next((r for r in rows if str(r["id"]) == str(record_id)), None)
+    if target is None:
+        return None
+    asked = live_feed.classify(target)
+    reads = asked.get("looked") or []
+    if asked["kind"] != "question" or not reads or (asked["money"] and not sees_money):
+        return None  # a question about spending, as on the feed: not there for a role that does not see it
+    first = live_feed.ANSWERS[reads[0]["tool"]]
+    kinds = {k for r in reads for k in live_feed.ANSWERS[r["tool"]][1]}
+    sites = {r["site_id"] for r in reads if r["site_id"]}
+    materials = {r["material_id"] for r in reads if r["material_id"]}
+    org_wide = bool(auth and auth.project_scope.grants_all_org_projects)
+
+    def seen(row: dict[str, Any]) -> bool:
+        if auth is None:
+            return False
+        if row["project_id"] is None:
+            return org_wide
+        return not _site_denied(auth, row["project_id"], row["site_id"])
+
+    found: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for row in rows:
+        if str(row["id"]) == str(record_id):
+            break  # only what was there when the question was asked
+        if not seen(row) or (sites and str(row["site_id"]) not in sites):
+            continue
+        what = live_feed.classify(row)
+        if what["state"] != "saved" or (what["money"] and not sees_money):
+            continue
+        kind = what["saved_kind"] if what["kind"] == "saved" else what["kind"]
+        if kind in kinds:
+            found.append((row, what))
+    if materials:
+        of = await _materials_of(conn, org, [rec for _, what in found for rec in what["records"]])
+        found = [(row, what) for row, what in found
+                 if any(of.get(rec["id"]) in materials for rec in what["records"])]
+    names = {}
+    if sites or materials:
+        got = (await conn.execute(text(
+            "SELECT CAST(id AS text) AS id, name FROM sites WHERE organization_id = :org AND CAST(id AS text) = ANY(:s) "
+            "UNION ALL SELECT CAST(id AS text), name FROM materials_catalog "
+            "WHERE organization_id = :org AND CAST(id AS text) = ANY(:m)"),
+            {"org": org, "s": list(sites), "m": list(materials)})).all()
+        names = {r.id: r.name for r in got}
+    said = first[0]
+    material = next((names[m] for m in materials if m in names), None)
+    site = next((names[x] for x in sites if x in names), None)
+    if material:
+        said += f" of {material}"
+    if site:
+        said += f" at {site}"
+    return {
+        "what": " ".join(str(target.get("text") or "").split())[:120] or None,
+        "answer": target.get("reply"), "read": f"Read {said}", "question": first[2], "opens": first[3],
+        "from": [{"sender": row.get("sender_name") or "Someone", "site": row.get("site_name"),
+                  "summary": (what["summaries"] or [row.get("text") or "a message"])[0]} for row, what in found],
+    }
+
+
 READS = {
     fact_review.MATERIAL_RECEIPT: read_receipt,
     fact_review.MATERIAL_USAGE: read_usage,
@@ -900,4 +1042,5 @@ READS = {
     fact_review.SITE_ISSUE: read_issue,
     EXPENSE: read_expense,
     MACHINE_LOG: read_machine_log,
+    ANSWER: read_answer,
 }

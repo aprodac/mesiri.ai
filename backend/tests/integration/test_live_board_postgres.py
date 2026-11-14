@@ -22,7 +22,8 @@ from .test_live_questions_postgres import NOW, conn  # noqa: F401 -- the shared 
 pytestmark = pytest.mark.integration
 
 REQUEST = types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace()))
-MONEY_READS = {"costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill", "bill_differences"}
+MONEY_READS = {"costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill", "bill_differences",
+               "rates_today", "hire"}
 
 
 def _auth(org: uuid.UUID, user: uuid.UUID, role: str) -> AuthorizationContext:
@@ -43,9 +44,13 @@ async def test_every_read_runs_for_an_owner(conn, name) -> None:  # noqa: F811
     ctx = board.Ctx(conn=conn, auth=_auth(made.organization_id, made.owner_user_id, "OWNER"), request=REQUEST,
                     today=dt.date(2026, 10, 26))
     data = await board.READS[name](ctx)
-    part = next(p for q in board.QUESTIONS for p in q.parts if p.read == name)
-    # A new company has nothing to say yet, and the sentence is made from the route's real answer without failing.
-    assert part.say(data) is None or isinstance(part.say(data), str)
+    # A new company has nothing to say yet, and the sentence (or WEB-90's catch) is made from the route's real
+    # answer without failing.
+    for part in (p for q in board.QUESTIONS for p in q.parts if p.read == name):
+        assert part.say(data) is None or isinstance(part.say(data), str)
+    for catch in (c for c in board.CAUGHT if c.read == name):
+        assert catch.found(data, ctx.today) is None
+    assert any(p.read == name for q in board.QUESTIONS for p in q.parts) or any(c.read == name for c in board.CAUGHT)
 
 
 @pytest.mark.parametrize("name", sorted(MONEY_READS))

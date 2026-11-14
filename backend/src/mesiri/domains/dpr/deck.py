@@ -5,9 +5,14 @@ One table, ``STORIES``. A step is a line to say and either a message to send (``
 Mesiri, the same handler as WhatsApp, as the signed-in person) or something the presenter does by hand (``do``: a
 bill photo from their phone, Replay the day). ``{site}`` and ``{other}`` in a message are the demo's own two sites.
 
-**Demo companies only.** A ready message is a real entry once sent, so the deck is given only to a company the
-Mesiri team marked as a demo (``demo_company``, the same mark the one-tap reset needs). Any other company gets no
+**Demo companies only,** and the companies the Mesiri team switched ``live_ready_messages`` on for (its own test
+company). A ready message is a real entry once sent, so the deck is given only to a company the Mesiri team marked as
+a demo (``demo_company``, the same mark the one-tap reset needs) or set that switch for. Any other company gets no
 stories at all: there is nothing on its Live to tap by mistake.
+
+``TEST`` (asked in session, 14 Nov 2026): one more "story", the test list: one ready message for every kind of
+message Live shows (``live_feed.KIND_LABELS``), each with what to look for on the screen. For testing Live without a
+phone; it is not printed on the presenter's sheet.
 """
 
 from __future__ import annotations
@@ -78,20 +83,59 @@ STORIES: tuple[dict[str, Any], ...] = (
     },
 )
 
+#: The test list: one ready message per kind Live shows, and what to look for. ``kind`` is the kind the message
+#: should come back as (``live_feed.KIND_LABELS``), so a test can hold the list to every kind with a ripple.
+TEST: dict[str, Any] = {
+    "key": "test", "title": "Test every kind", "minutes": 5, "ends_on": "proof",
+    "steps": (
+        {"kind": "attendance", "say": "Attendance: who is on site, the day's wages, lands on “What do I owe”.",
+         "send": "{site} today 5 mason 6 helper 2 carpenter"},
+        {"kind": "correction", "say": "A correction: the number changes on the report (5 → 4), nothing is counted twice.",
+         "send": "Sorry, not 5 mason, 4 mason at {site} today"},
+        {"kind": "work", "say": "Work done: the day's progress, the floor, the schedule, the estimate line.",
+         "send": "Brick work 40 sqm done on the first floor at {site} today"},
+        {"kind": "delivery", "say": "Material came: the stock, the order, the rate against last time, the supplier.",
+         "send": "20 bags cement came at {site} today, rate 410 per bag"},
+        {"kind": "usage", "say": "Material used: the stock goes down, and how many days it lasts.",
+         "send": "10 bags cement used at {site} today"},
+        {"kind": "transfer", "say": "A transfer: the stock moves from one site to the other.",
+         "send": "Sent 5 bags cement from {site} to {other} today"},
+        {"kind": "expense", "say": "An expense, typed: on the books with who it went to (money roles only).",
+         "send": "Paid 1500 for diesel at {site} today"},
+        {"kind": "expense", "say": "A bill photo: Mesiri reads it and checks it against what arrived.",
+         "do": "From a phone: scan the QR and send a photo of a supplier's bill."},
+        {"kind": "issue", "say": "An issue: open on the site, somebody's job, lands on “What will stop work”.",
+         "send": "Water leaking from the roof slab at {site}, need a plumber"},
+        {"kind": "machine", "say": "A machine's day: hours, breakdown, what the hire comes to.",
+         "send": "JCB worked 6 hours at {site} today, 1 hour breakdown"},
+        {"kind": "question", "say": "A question: the answer, what Mesiri read, and today's messages it was built from.",
+         "send": "How much cement is at {site}?"},
+        {"kind": "question", "say": "Another question: the same number as the board.",
+         "send": "How many workers are on site today?"},
+        {"kind": "undo", "say": "A take-back: the line crumbles, the stock goes back up.",
+         "send": "That 10 bags cement used at {site} was a mistake, take it back"},
+        {"kind": "report", "say": "The report: the sheet folds into its PDF and goes out.",
+         "send": "Send today's report for {site}"},
+    ),
+}
+
 #: The short show (three minutes): the first and the last story.
 SHORT_SHOW: tuple[str, ...] = ("delivery", "night")
 
 
-def stories(sites: list[str]) -> list[dict[str, Any]]:
-    """The stories with the demo's own site names in their messages. With one site, both names are that site."""
+def stories(sites: list[str], *, test: bool = False) -> list[dict[str, Any]]:
+    """The stories with the demo's own site names in their messages. With one site, both names are that site.
+    ``test``: the test list (``TEST``) comes last, marked ``test``."""
     site = sites[0] if sites else "the site"
     other = sites[1] if len(sites) > 1 else site
     out = []
-    for story in STORIES:
+    for story in (*STORIES, TEST) if test else STORIES:
         steps = []
         for step in story["steps"]:
             filled = {k: (v.format(site=site, other=other) if k in ("send", "do") else v) for k, v in step.items()}
-            steps.append({"say": filled["say"], "send": filled.get("send"), "do": filled.get("do")})
+            steps.append({"say": filled["say"], "send": filled.get("send"), "do": filled.get("do"),
+                          "kind": filled.get("kind")})
         out.append({"key": story["key"], "title": story["title"], "minutes": story["minutes"],
-                    "ends_on": story["ends_on"], "short": story["key"] in SHORT_SHOW, "steps": steps})
+                    "ends_on": story["ends_on"], "short": story["key"] in SHORT_SHOW, "test": story is TEST,
+                    "steps": steps})
     return out

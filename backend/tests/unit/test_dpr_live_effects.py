@@ -227,7 +227,8 @@ def test_the_report_time_is_read_as_the_project_keeps_it(stored, said):
 
 def test_every_card_has_a_line_to_say_and_every_kind_a_read():
     assert set(effects.READS) == set(effects.RULES)
-    assert set(live_feed.RECORD_KINDS.values()) == set(effects.RULES)
+    # WEB-87: a question's ripple is keyed by the message itself, not by a saved record.
+    assert set(live_feed.RECORD_KINDS.values()) | {effects.ANSWER} == set(effects.RULES)
 
 
 # --- the feed names the records -------------------------------------------------------------------

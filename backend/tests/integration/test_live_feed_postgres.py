@@ -159,3 +159,83 @@ async def test_the_stamp_changes_when_a_message_comes_and_when_mesiri_is_done(co
                             "WHERE correlation_id = :c"), {"c": correlation})
     done = await repo.live_stamp(**window)
     assert len({empty, came, done}) == 3
+
+
+async def test_a_questions_ripple_reads_what_it_looked_up_and_todays_messages_before_it(conn) -> None:  # noqa: F811
+    """WEB-87 on a real Postgres: the read calls' arguments come through the feed, the day starts in the company's
+    zone, and the messages behind the answer are today's saved ones at the site it read, before the question."""
+    import uuid
+
+    from sqlalchemy import text
+
+    from mesiri.authorization.context import (
+        AuthorizationContext,
+        ProjectAccessScope,
+        SiteAccessScope,
+    )
+    from mesiri.domains.dpr import effects
+
+    created = await create_company(
+        conn,
+        NewCompany(name="Answer Builders", owner_name="Ravi Kumar", owner_phone="+" + SENDER,
+                   project_name="Hospital", site_names=("Tower A", "Villa 2"), auto_dpr=False),
+        now=NOW,
+    )
+    org, project = created.organization_id, created.project_id
+    a, b = created.sites[0].site_id, created.sites[1].site_id
+
+    async def turn(correlation, payload):
+        await conn.execute(
+            text("INSERT INTO journey_traces (id, correlation_id, stage, stage_payload, succeeded)"
+                 " VALUES (gen_random_uuid(), :c, 'agent_api_turn', CAST(:p AS jsonb), true)"),
+            {"c": correlation, "p": json.dumps(payload)})
+
+    def saved(summary):
+        return {"calls": [{"tool": "record_receipt", "arguments": {}}],
+                "saved": [{"tool": "record_receipt", "status": 201, "summary": summary, "id": str(uuid.uuid4())}]}
+
+    await turn(await _message(conn, org, text_="50 bags cement came", reply="Saved", tools=[], project=project,
+                              site=a), saved("Cement 50 bags in"))
+    await turn(await _message(conn, org, text_="20 bags at Villa", reply="Saved", tools=[], project=project, site=b,
+                              minutes=1), saved("Cement 20 bags in"))
+    asked = await _message(conn, org, text_="how much cement at Tower A?", reply="Tower A has 50 bags.", tools=[],
+                           project=project, site=a, minutes=2)
+    await turn(asked, {"calls": [{"tool": "stock_summary", "arguments": {"site_id": str(a)}, "result": "{}"}],
+                       "saved": [], "pending": []})
+    await turn(await _message(conn, org, text_="10 more came", reply="Saved", tools=[], project=project, site=a,
+                              minutes=3), saved("Cement 10 bags in"))
+    message_id = (await conn.execute(text("SELECT id FROM inbound_messages WHERE correlation_id = :c"),
+                                     {"c": asked})).scalar_one()
+
+    rows = await PostgresFactReviewRepository(conn).live_feed(
+        organization_id=org, since=NOW - dt.timedelta(hours=1), until=NOW + dt.timedelta(hours=1))
+    question = live_feed.classify(next(r for r in rows if r["id"] == str(message_id)))
+    assert question["records"] == [{"kind": "answer", "id": str(message_id)}]
+    assert question["looked"] == [{"tool": "stock_summary", "site_id": str(a), "material_id": None}]
+
+    auth = AuthorizationContext(user_id=created.owner_user_id, organization_id=org, role="OWNER", status="active",
+                                access_policy={},  # type: ignore[arg-type]
+                                project_scope=ProjectAccessScope(mode="all_projects", project_ids=set()),
+                                site_scopes={project: SiteAccessScope(mode="all_sites", site_ids=set())})
+    today = (NOW + dt.timedelta(hours=5, minutes=30)).date()  # the company's day (India)
+    facts = await effects.read_answer(conn, org, message_id, today, True, auth=auth)
+    assert facts["read"] == "Read the stock at Tower A" and facts["answer"] == "Tower A has 50 bags."
+    assert facts["from"] == [{"sender": "Ravi Kumar", "site": "Tower A", "summary": "Cement 50 bags in"}]
+    # With a material named, a delivery with no record of that material is left out, never guessed.
+    await conn.execute(text(
+        "UPDATE journey_traces SET stage_payload = jsonb_set(stage_payload::jsonb, '{calls,0,arguments,material_id}',"
+        " to_jsonb(CAST(:m AS text))) WHERE correlation_id = :c"), {"m": str(uuid.uuid4()), "c": asked})
+    facts = await effects.read_answer(conn, org, message_id, today, True, auth=auth)
+    assert facts["from"] == []
+    cards = effects.cards(effects.ANSWER, facts, True)["cards"]
+    assert [c["key"] for c in cards] == ["answer", "answer_read", "answer_from"]
+    # The guard: a viewer given only the other site sees none of Tower A's messages behind the answer.
+    only_b = AuthorizationContext(user_id=created.owner_user_id, organization_id=org, role="SITE_ENGINEER",
+                                  status="active", access_policy={},  # type: ignore[arg-type]
+                                  project_scope=ProjectAccessScope(mode="all_projects", project_ids=set()),
+                                  site_scopes={project: SiteAccessScope(mode="custom_sites", site_ids={b})})
+    await conn.execute(text(
+        "UPDATE journey_traces SET stage_payload = stage_payload::jsonb #- '{calls,0,arguments,material_id}'"
+        " WHERE correlation_id = :c"), {"c": asked})
+    assert (await effects.read_answer(conn, org, message_id, today, True, auth=auth))["from"]
+    assert (await effects.read_answer(conn, org, message_id, today, True, auth=only_b))["from"] == []

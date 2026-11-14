@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -113,7 +114,8 @@ class _Auth:
 
 
 #: The reads that carry the company's money: each module's route refuses them to roles that do not see spending.
-MONEY_READS = ("costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill", "bill_differences")
+MONEY_READS = ("costs", "budget", "rates", "wages", "suppliers", "clients", "to_bill", "bill_differences",
+               "rates_today", "hire")
 DATA = {"costs": COSTS, "budget": {"projects": [{"name": "Skyline", "percent_spent": "62.0"}]},
         "rates": {"summary": {"above_best": "500.00", "rising": 0}}, "stock": STOCK, "below": BELOW, "days": DAYS,
         "schedule": [{"name": "Tower A", "scheduled": 12, "slip_days": 3, "progress": 68}],
@@ -121,7 +123,9 @@ DATA = {"costs": COSTS, "budget": {"projects": [{"name": "Skyline", "percent_spe
         "suppliers": {"totals": {"payable": "320000", "overdue": "0", "unbilled": "0"}},
         "clients": {"outstanding": "320000"}, "waiting": {"total": 2, "items": []},
         "bill_differences": {"over": "2400.00", "bills": [{"vendor": "Thrissur Blocks", "over": "2400.00", "flags": []}]},
-        "to_bill": {"amount": "48000.00", "projects": [{"project": "Green Villa", "lines": 1, "amount": "48000.00"}]}}
+        "to_bill": {"amount": "48000.00", "projects": [{"project": "Green Villa", "lines": 1, "amount": "48000.00"}]},
+        "rates_today": {"summary": {"over_order": 0, "over_order_amount": "0.00"}},
+        "hire": {"items": []}}
 
 
 @pytest.fixture
@@ -227,6 +231,8 @@ ROUTES = {
     "to_bill": "mesiri.domains.billing.router.work_to_bill",
     "bill_differences": "mesiri.domains.vendors.router.bill_differences",
     "waiting": "mesiri.domains.approvals.router.waiting",
+    "rates_today": "mesiri.domains.procurement.rates_router.list_rates",
+    "hire": "mesiri.domains.equipment.router.hire_check",
 }
 
 
@@ -327,3 +333,59 @@ def test_guard_the_report_time_is_text_on_the_project_and_is_read_as_such():
     junk = board.say_reports({"items": DAYS["items"], "projects": [
         {"sent": False, "auto_generate_dpr": True, "dpr_send_deadline": "soon"}]})
     assert "goes out" not in junk
+
+
+# --- WEB-90: the ₹ caught today ------------------------------------------------------------------------------------------
+
+def _hire_bill(status, difference, bill_date=None, created_at="2026-11-12T05:00:00+00:00"):
+    return {"check": {"status": status, "difference": difference}, "bill_date": bill_date, "created_at": created_at}
+
+
+def test_caught_counts_the_three_differences_found_today_and_only_today():
+    assert board.caught_rates({"summary": {"over_order": 2, "over_order_amount": "800.00"}}, TODAY) == (
+        Decimal("800.00"), "2 deliveries above their order's rate")
+    assert board.caught_rates({"summary": {"over_order": 0, "over_order_amount": "0.00"}}, TODAY) is None
+    bills = {"bills": [{"date": "2026-11-12", "over": "2400.00"}, {"date": "2026-11-11", "over": "9000.00"},
+                       {"date": "2026-11-12", "over": "0.00", "flags": ["rate differs"]}]}
+    # Yesterday's bill and a bill that only differs (no rupees over) are not counted.
+    assert board.caught_bills(bills, TODAY) == (Decimal("2400.00"), "1 supplier bill over what was delivered")
+    hire = {"items": [{"bills": [_hire_bill("over", "1500.00", bill_date="2026-11-12"),
+                                 _hire_bill("over", "700.00"),  # no bill date: the day it was entered
+                                 _hire_bill("over", "999.00", bill_date="2026-11-01"),
+                                 _hire_bill("check", "400.00"), _hire_bill("ok", "0.00")]}]}
+    assert board.caught_hire(hire, TODAY) == (Decimal("2200.00"), "2 hire bills over the hours the machines ran")
+    assert board.caught_hire({"items": []}, TODAY) is None
+
+
+async def test_the_board_adds_up_todays_catches_each_from_its_module(reads, monkeypatch):
+    monkeypatch.setitem(DATA, "rates_today", {"summary": {"over_order": 1, "over_order_amount": "400.00"}})
+    monkeypatch.setitem(DATA, "bill_differences", {"over": "2400.00", "bills": [
+        {"vendor": "Thrissur Blocks", "date": "2026-11-12", "over": "2400.00", "flags": []}]})
+    monkeypatch.setitem(DATA, "hire", {"items": [{"bills": [_hire_bill("over", "1500.00", bill_date="2026-11-12")]}]})
+    out = await board.build(_Conn(), _Auth("OWNER"), request=None, today=TODAY, enabled=lambda m: True)
+    caught = out["caught"]
+    assert caught["total"] == "4300.00" and caught["said"] == "₹4,300 caught today"
+    assert [p["read"] for p in caught["parts"]] == ["rates_today", "bill_differences", "hire"]
+    assert caught["parts"][0] == {"amount": "400.00", "text": "1 delivery above its order's rate: ₹400",
+                                  "opens": "/procurement/rates", "read": "rates_today"}
+    assert caught["off"] == [] and caught["partial"] is False
+
+
+async def test_nothing_caught_is_zero_and_said_as_nothing(reads):
+    out = await board.build(_Conn(), _Auth("OWNER"), request=None, today=TODAY, enabled=lambda m: True)
+    assert out["caught"]["total"] == "0.00" and out["caught"]["said"] is None and out["caught"]["parts"] == []
+
+
+async def test_guard_caught_is_not_given_to_a_role_that_does_not_see_spending(reads):
+    out = await board.build(_Conn(), _Auth("SITE_ENGINEER"), request=None, today=TODAY, enabled=lambda m: True)
+    assert out["caught"] is None
+
+
+async def test_guard_a_switched_off_module_or_a_broken_read_is_said_not_counted_as_zero(reads, monkeypatch):
+    async def broken(ctx):
+        raise RuntimeError("boom")
+
+    monkeypatch.setitem(board.READS, "hire", broken)
+    out = await board.build(_Conn(), _Auth("OWNER"), request=None, today=TODAY, enabled=lambda m: m != "materials")
+    assert out["caught"]["off"] == ["materials"] and out["caught"]["partial"] is True
+    assert "rates_today" not in reads

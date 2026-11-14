@@ -96,6 +96,9 @@ DEMO_COMPANY = "demo_company"
 # WA-246 (Ilan, 5 Nov 2026: "by default for all turn it off"): the "🎤 _what was heard_" line above a voice
 # note's reply (WA-209). Off unless switched on for the company; a person's own users.voice_transcript wins.
 VOICE_TRANSCRIPT = "voice_transcript"
+#: Live's ready messages (Stories and the test list, ``dpr/deck.py``) for a company that is not a demo: the Mesiri
+#: team's own test company (asked in session, 14 Nov 2026). Each one sent is a real entry, so off unless set.
+LIVE_READY_MESSAGES = "live_ready_messages"
 
 ASSISTANT_MODE = "assistant_mode"
 ASSISTANT_MODE_CLASSIC = "classic"
@@ -163,7 +166,7 @@ DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.
 SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset(
-    {ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2, ASSISTANT_MODE, DEMO_COMPANY}
+    {ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2, ASSISTANT_MODE, DEMO_COMPANY, LIVE_READY_MESSAGES}
 )
 
 DEFAULT_FINANCE_SETTINGS = {
@@ -307,6 +310,14 @@ _SPECS: dict[str, SettingSpec] = {
             "message and writes its own reply; 'v2_materials' is the same mode under its old "
             "name), or 'api' (WA-119: one model with one SOP using the dashboard's own API as its "
             "tools; entries saved only on the person's confirmation). Changed by the Mesiri team only."
+        ),
+    ),
+    LIVE_READY_MESSAGES: SettingSpec(
+        key=LIVE_READY_MESSAGES,
+        default=False,
+        description=(
+            "true: Live shows its ready messages (Stories and the test list) to a company that is not a demo. Each "
+            "message sent is a real entry. Changed by the Mesiri team only."
         ),
     ),
     VOICE_TRANSCRIPT: SettingSpec(
@@ -523,6 +534,10 @@ def validate(key: str, value: object) -> object:
     if key == DEMO_COMPANY:
         if not isinstance(value, bool):
             raise ValueError("demo_company must be true or false")
+        return value
+    if key == LIVE_READY_MESSAGES:
+        if not isinstance(value, bool):
+            raise ValueError("live_ready_messages must be true or false")
         return value
     if key == VOICE_TRANSCRIPT:
         if not isinstance(value, bool):

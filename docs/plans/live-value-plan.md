@@ -303,9 +303,14 @@ Four more entries in the one table (`effects.RULES` and `effects.READS`), built 
   kind. A message that logs two machines carries both (`ids` in the save's trace, trace only).
 - **The day's closing count**: the bar at the bottom of Live adds "N things you now know", the cards of every
   ripple shown since the page opened (a replay counts once).
-- **Not built: the question's ripple** ("the answer, and the messages it was built from"). A lookup does not
-  record which entries it read, so the messages behind an answer cannot be named truthfully today. It needs the
-  lookup's trace to keep the record ids it returned; left as WEB-87.
+- **The question's ripple (WEB-87, built 14 Nov).** A lookup does not record which entries it read, but its turn
+  does keep each call's tool and arguments. So the ripple names what was read ("Read the stock of Cement at Main
+  block") and the messages behind it are found from that, not guessed: today's *saved* messages *before* the
+  question, of the kinds that change that number (`live_feed.ANSWERS`: read tool -> kinds, question, page), at the
+  site it read, and of the material it read (a message with no material record is then left out). Each by the
+  feed's own rules (the viewer's sites; spending only for the roles that see it). Cards: the answer, what Mesiri
+  read, "Built from today's messages" (count, people, the newest three). With none: "Built from earlier days",
+  never a count of zero. `GET /dpr/effects/answer/{message_id}`; no assistant change.
 - **Not in:** the subcontractor's amount and the client view for work done; whether an issue raises a task by
   itself (the card shows a task only when one exists); a cost-centre card and a GST card for a bill; service due
   for a machine.
@@ -335,8 +340,16 @@ Four more entries in the one table (`effects.RULES` and `effects.READS`), built 
 - **"Can be billed to the client now" (WEB-91).** `GET /billing/to-bill`: measured work on no client bill yet, at
   the client rate. Billing's own working (`bills.unbilled_lines`), the one a new RA bill draft is made from.
 - **The presenter's sheet (WEB-92).** Printed from Stories, from the deck's own table.
-- **Blocked: a running "₹ caught" total (WEB-90).** Which differences count, and over what period, is a product
-  decision; no single read gives it today.
+- **"₹ caught today" (WEB-90, decided in session 14 Nov, built the same day).** Over the board's questions. Three
+  differences count, found today only: a delivery above its order's rate (Rates' `over_order_amount`, today's
+  deliveries), a supplier bill dated today over what was delivered (Suppliers' `bill_differences`), a hire bill
+  entered today over what the hours recorded on site come to, breakdown not charged (Machines' hire check
+  `difference` on a bill marked `over`). Each figure is its module's own; the board adds them up (`board.CAUGHT`).
+  Money roles only; a module switched off is named, a read that fails says "part of it could not be read", never 0.
+- **Live's test list (14 Nov).** In Stories, after the five stories: one ready message for every kind Live shows
+  (attendance, correction, work, delivery, usage, transfer, typed expense, issue, machine log, two questions,
+  take-back, report; a bill photo by hand), each with what to look for (`deck.TEST`). Given with the stories to
+  demo companies and to a company with `live_ready_messages` (Mesiri Test Builders, migration 0550; no reset).
 
 ### Phases (tracker)
 

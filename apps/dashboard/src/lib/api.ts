@@ -2117,9 +2117,10 @@ export interface LiveFeedItem {
   records?: LiveRecord[]
 }
 
-/** A saved record Live can ask "what did this change?" about. */
+/** A saved record Live can ask "what did this change?" about; WEB-87: `answer` is a question (its id is the message's),
+ * whose ripple is the answer, what Mesiri read and the day's messages it was built from. */
 export interface LiveRecord {
-  kind: 'material_receipt' | 'material_usage' | 'labour_report' | 'activity' | 'site_issue' | 'expense' | 'machine_log'
+  kind: 'material_receipt' | 'material_usage' | 'labour_report' | 'activity' | 'site_issue' | 'expense' | 'machine_log' | 'answer'
   id: string
 }
 
@@ -2197,9 +2198,22 @@ export interface LiveBoardQuestion {
   hidden: boolean
   opens: string
 }
+/** WEB-90: what Mesiri caught today, in rupees: each difference from its module's own figure, added up. */
+export interface LiveBoardCaught {
+  total: string
+  /** The total in words ("₹4,300 caught today"); null when nothing was caught. */
+  said: string | null
+  parts: { amount: string; text: string; opens: string; read: string }[]
+  /** Modules switched off that would add to it. */
+  off: string[]
+  /** A part could not be read just now: the total may be short. */
+  partial: boolean
+}
 export interface LiveBoard {
   date: string
   questions: LiveBoardQuestion[]
+  /** Null for a person who does not see the company's spending. */
+  caught?: LiveBoardCaught | null
   /** Which questions a kind of message answers: where it lands, and the messages an answer opens into. */
   kinds: Partial<Record<LiveKind, LiveBoardKey[]>>
 }
@@ -2214,6 +2228,8 @@ export interface LiveDeckStep {
   say: string
   send: string | null
   do: string | null
+  /** The test list: the kind of message this step should come back as. */
+  kind?: LiveKind | null
 }
 export interface LiveDeckStory {
   key: string
@@ -2224,10 +2240,14 @@ export interface LiveDeckStory {
   /** Part of the three-minute show. */
   short: boolean
   steps: LiveDeckStep[]
+  /** The test list (one ready message per kind Live shows), not a story to present. */
+  test?: boolean
 }
-/** The demo deck: stories only for a company marked as a demo. */
+/** The demo deck: stories only for a company marked as a demo, or switched on for (the Mesiri team's test company). */
 export interface LiveDeck {
   demo: boolean
+  /** A demo company, which "Reset demo" puts back to the start. */
+  reset?: boolean
   stories: LiveDeckStory[]
 }
 

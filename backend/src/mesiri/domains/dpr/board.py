@@ -120,6 +120,21 @@ async def _to_bill(c: Ctx) -> Any:
     return await work_to_bill(project_id=None, auth=c.auth, conn=c.conn)
 
 
+async def _rates_today(c: Ctx) -> Any:
+    """WEB-90: today's deliveries only (the Rates page with today as its period)."""
+    from mesiri.domains.procurement.rates_router import list_rates
+
+    return await list_rates(date_from=c.today, date_to=c.today, project_id=None, site_id=None, category_id=None,
+                            vendor_id=None, auth_context=c.auth, conn=c.conn)
+
+
+async def _hire(c: Ctx) -> Any:
+    """WEB-90: the hire check (Machines), this month: each hire bill against the hours recorded on site."""
+    from mesiri.domains.equipment.router import hire_check
+
+    return await hire_check(date_from=None, date_to=None, vendor_id=None, auth_context=c.auth, conn=c.conn)
+
+
 async def _waiting(c: Ctx) -> Any:
     from mesiri.domains.approvals.router import waiting
 
@@ -130,7 +145,7 @@ async def _waiting(c: Ctx) -> Any:
 READS: dict[str, Callable[[Ctx], Awaitable[Any]]] = {
     "costs": _costs, "budget": _budget, "rates": _rates, "stock": _stock, "below": _below, "days": _days,
     "schedule": _schedule, "wages": _wages, "suppliers": _suppliers, "clients": _clients, "to_bill": _to_bill,
-    "bill_differences": _bill_differences,
+    "bill_differences": _bill_differences, "rates_today": _rates_today, "hire": _hire,
     "waiting": _waiting,
 }
 
@@ -425,6 +440,61 @@ KIND_QUESTIONS: dict[str, tuple[str, ...]] = {
 }
 
 
+# --- WEB-90: what Mesiri caught today, in rupees -----------------------------------------------------------------------
+#
+# Decided in session, 14 Nov 2026: three differences count, and only those found today (the board's "today"):
+#   - a delivery that came at more than its own order's rate (Rates: ``over_order_amount`` on today's deliveries);
+#   - a supplier's bill dated today for more than its deliveries come to (Suppliers: ``bill_differences``);
+#   - a hire bill entered today for more than the hours recorded on site come to, breakdown hours not charged
+#     (Machines: the hire check's ``difference`` on a bill it marks ``over``).
+# Each amount is the module's own figure; the board only adds the three up. Nothing estimated is counted.
+
+
+def caught_rates(data: dict, today: datetime.date) -> tuple[Decimal, str] | None:  # noqa: ARG001 -- read is today's
+    summary = data.get("summary") or {}
+    n, amount = int(summary.get("over_order") or 0), _d(summary.get("over_order_amount"))
+    if not n or amount <= 0:
+        return None
+    return amount, f"{_n(n, 'delivery', 'deliveries')} above {'its' if n == 1 else 'their'} order's rate"
+
+
+def caught_bills(data: dict, today: datetime.date) -> tuple[Decimal, str] | None:
+    bills = [b for b in data.get("bills") or [] if b.get("date") == today.isoformat() and _d(b.get("over")) > 0]
+    if not bills:
+        return None
+    return sum((_d(b["over"]) for b in bills), Decimal(0)), f"{_n(len(bills), 'supplier bill')} over what was delivered"
+
+
+def _entered_on(bill: dict) -> str | None:
+    """The day a hire bill came in: its own date, else the day it was entered (its creation's date)."""
+    return bill.get("bill_date") or (str(bill.get("created_at") or "")[:10] or None)
+
+
+def caught_hire(data: dict, today: datetime.date) -> tuple[Decimal, str] | None:
+    over = [b for m in data.get("items") or [] for b in m.get("bills") or []
+            if (b.get("check") or {}).get("status") == "over" and _d((b.get("check") or {}).get("difference")) > 0
+            and _entered_on(b) == today.isoformat()]
+    if not over:
+        return None
+    return (sum((_d(b["check"]["difference"]) for b in over), Decimal(0)),
+            f"{_n(len(over), 'hire bill')} over the hours the machine{'' if len(over) == 1 else 's'} ran")
+
+
+@dataclass(frozen=True)
+class Catch:
+    read: str
+    module: str
+    found: Callable[[Any, datetime.date], tuple[Decimal, str] | None]
+    opens: str
+
+
+CAUGHT: tuple[Catch, ...] = (
+    Catch("rates_today", "materials", caught_rates, "/procurement/rates"),
+    Catch("bill_differences", "finance", caught_bills, "/finance/vendors"),
+    Catch("hire", "equipment", caught_hire, "/equipment"),
+)
+
+
 async def build(conn: AsyncConnection, auth: AuthorizationContext, request: Request, today: datetime.date,
                 enabled: Callable[[str], bool]) -> dict[str, Any]:
     """The six answers for this person. Each: ``lines`` (sentence, the page it opens, the read it came from),
@@ -482,4 +552,41 @@ async def build(conn: AsyncConnection, auth: AuthorizationContext, request: Requ
             "off": off, "hidden": hidden,
             "opens": lines[0]["opens"] if lines else q.parts[0].opens,
         })
-    return {"date": today.isoformat(), "questions": questions, "kinds": {k: list(v) for k, v in KIND_QUESTIONS.items()}}
+    caught = await _caught(read, enabled, today)
+    return {"date": today.isoformat(), "questions": questions, "caught": caught,
+            "kinds": {k: list(v) for k, v in KIND_QUESTIONS.items()}}
+
+
+async def _caught(read: Callable[[str], Awaitable[tuple[str, Any]]], enabled: Callable[[str], bool],
+                  today: datetime.date) -> dict[str, Any] | None:
+    """WEB-90: today's ₹ caught: ``total`` (rupees as a string), ``said`` (the total in words), ``parts`` (each
+    difference found, with its page), ``off`` (modules switched off that would add to it), ``partial`` (a part could
+    not be read). None for a person who may see none of it (the reads are money: the roles that see spending)."""
+    parts: list[dict[str, str]] = []
+    off: list[str] = []
+    seen = partial = False
+    for catch in CAUGHT:
+        if not enabled(catch.module):
+            off.append(catch.module)
+            continue
+        state, data = await read(catch.read)
+        if state == "hidden":
+            continue
+        seen = True
+        if state != "ok":
+            partial = True
+            continue
+        try:
+            found = catch.found(data, today)
+        except Exception:  # noqa: BLE001 -- as the sentences: logged, never a number
+            logger.exception("live board: the %s catch failed", catch.read)
+            partial = True
+            continue
+        if found:
+            parts.append({"amount": str(found[0].quantize(Decimal("0.01"))), "text": f"{found[1]}: {inr(found[0])}",
+                          "opens": catch.opens, "read": catch.read})
+    if not seen:
+        return None
+    total = sum((Decimal(p["amount"]) for p in parts), Decimal(0))
+    return {"total": str(total.quantize(Decimal("0.01"))), "said": f"{inr(total)} caught today" if total > 0 else None,
+            "parts": parts, "off": off, "partial": partial}

@@ -193,8 +193,9 @@ def test_guard_an_owned_machine_has_no_hire_and_a_site_role_sees_no_rupee():
 
 def test_every_kind_has_its_rule_its_read_and_a_line_to_say():
     assert set(effects.RULES) == set(effects.READS)
-    assert set(live_feed.RECORD_KINDS.values()) == set(effects.RULES)
-    assert set(effects.RECORD_TABLES) == set(effects.RULES) - fact_review.FACT_TYPES
+    # WEB-87: a question's ripple is keyed by the message itself, not by a saved record.
+    assert set(live_feed.RECORD_KINDS.values()) | {effects.ANSWER} == set(effects.RULES)
+    assert set(effects.RECORD_TABLES) == set(effects.RULES) - fact_review.FACT_TYPES - {effects.ANSWER}
     assert effects.MONEY_KINDS <= set(effects.RULES)
     facts = {fact_review.ACTIVITY: _work(place={"label": "F", "done": [], "left": []}, schedule={"progress": 1, "slip_days": 0},
                                          photos=1, quantities=[{"quantity": 1, "unit": "sqm", "line": {"name": "L", "rate": 1},

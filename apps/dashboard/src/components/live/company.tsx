@@ -1173,7 +1173,7 @@ export function CompanyLive({
         />
 
         {decking && isToday && deck.data?.demo && (
-          <DemoDeck stories={deck.data.stories} board={board.data} onClose={() => setDecking(false)} className="mt-6" />
+          <DemoDeck stories={deck.data.stories} reset={deck.data.reset ?? true} board={board.data} onClose={() => setDecking(false)} className="mt-6" />
         )}
         {telling && !presenting && (
           <div className="mt-6 border border-foreground px-4 py-4 animate-in fade-in slide-in-from-top-2 duration-300 motion-reduce:animate-none">
