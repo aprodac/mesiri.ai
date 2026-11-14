@@ -112,7 +112,7 @@ async def test_guard_the_test_switch_must_be_exactly_true(route, ready):
 
 
 async def test_the_test_company_gets_the_ready_messages_without_being_a_demo(route):
-    """Asked 14 Nov: Mesiri Test Builders (live_ready_messages, migration 0550) gets Stories and the test list,
+    """Asked 14 Nov: Mesiri Test Builders (live_ready_messages, migration 0551) gets Stories and the test list,
     and is not offered the demo's one-tap reset."""
     _Settings.value, _Settings.ready = False, True
     out = await dpr_router.live_demo_deck(auth_context=_ctx(), conn=_Conn())

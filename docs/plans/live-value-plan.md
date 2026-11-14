@@ -349,7 +349,7 @@ Four more entries in the one table (`effects.RULES` and `effects.READS`), built 
 - **Live's test list (14 Nov).** In Stories, after the five stories: one ready message for every kind Live shows
   (attendance, correction, work, delivery, usage, transfer, typed expense, issue, machine log, two questions,
   take-back, report; a bill photo by hand), each with what to look for (`deck.TEST`). Given with the stories to
-  demo companies and to a company with `live_ready_messages` (Mesiri Test Builders, migration 0550; no reset).
+  demo companies and to a company with `live_ready_messages` (Mesiri Test Builders, migration 0551; no reset).
 
 ### Phases (tracker)
 

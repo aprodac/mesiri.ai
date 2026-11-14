@@ -8,8 +8,8 @@ Additive and idempotent: an upsert of one settings row. Downgrade: the row is re
 true, so a later manual change is left alone. Off again without a migration: the control panel's settings,
 `live_ready_messages` = false.
 
-Revision ID: 0550
-Revises: 0549
+Revision ID: 0551
+Revises: 0550
 Create Date: 2026-11-14
 """
 
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0550"
-down_revision = "0549"
+revision = "0551"
+down_revision = "0550"
 branch_labels = None
 depends_on = None
 
