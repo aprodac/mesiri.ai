@@ -80,3 +80,50 @@ async def test_sibling_a_different_correction_takes_the_waiting_ones_place() -> 
     turn = await _run(model, "alla, moonu plumber", ready=[first], recent_saves=recent)
     assert len(turn.pending) == 1 and "Plumber 0 → 3" in turn.pending[0].summary
     assert turn.pending[0].idempotency_key == "k-first"  # the same line on the card, changed
+
+
+# --- 4. a take-back names what it takes back ------------------------------------------------------------------------
+
+async def test_live_a_take_back_line_names_the_record_it_takes_back() -> None:
+    """Live, 13-14 Nov: "↩️ Take back: *Take back usage*" said nothing about which entry. Every take-back kind now
+    names the saved record, as it was saved; a record it cannot find keeps the plain title (guard)."""
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from tests.agent_api.standin import ACTOR
+
+    from agent_api.client import ApiClient
+    from agent_api.receipts import caption_lines, preview_slip
+
+    app = FastAPI()
+    rows = {"/materials/inflows": [{"id": "11111111-1111-4111-8111-111111111111", "material_name": "Cement",
+                                    "quantity": "2", "unit": "bags", "occurred_date": "2026-11-14"}],
+            "/materials/outflows": [{"id": "22222222-2222-4222-8222-222222222222", "material_name": "Cement",
+                                     "quantity": "5000", "unit": "bags", "occurred_date": "2026-11-13"}],
+            "/materials/transfers": [{"id": "33333333-3333-4333-8333-333333333333", "material_name": "Cement",
+                                      "quantity": "10", "unit": "bags", "occurred_date": "2026-11-14",
+                                      "from_site_name": "Main block", "to_site_name": "Annex"}],
+            "/expenses": [{"id": "44444444-4444-4444-8444-444444444444", "amount": "2500",
+                           "category_name": "Fuel", "occurred_date": "2026-11-14"}]}
+    for path, items in rows.items():
+        app.add_api_route(path, lambda items=items: {"items": items, "total": len(items)}, methods=["GET"])
+
+    def undo(tool: str, path: str) -> PendingWrite:
+        return PendingWrite(tool=tool, method="POST", path=path, params={}, body={}, summary="take back",
+                            idempotency_key=tool)
+
+    entries = [undo("undo_receipt", "/materials/inflows/11111111-1111-4111-8111-111111111111/reverse"),
+               undo("undo_usage", "/materials/outflows/22222222-2222-4222-8222-222222222222/reverse"),
+               undo("undo_transfer", "/materials/transfers/33333333-3333-4333-8333-333333333333/reverse"),
+               undo("undo_expense", "/expenses/44444444-4444-4444-8444-444444444444/reverse"),
+               undo("undo_receipt", "/materials/inflows/99999999-9999-4999-8999-999999999999/reverse")]
+    client = ApiClient(ACTOR, app=app)
+    try:
+        lines = caption_lines(await preview_slip(entries, SimpleNamespace(sites=[], projects=[]), client))
+    finally:
+        await client.close()
+    assert "*2 bags Cement · 2026-11-14*" in lines[0]
+    assert "*5,000 bags Cement · 2026-11-13*" in lines[1]
+    assert "*10 bags Cement · Main block → Annex*" in lines[2]
+    assert "₹2,500 · Fuel · 2026-11-14" in lines[3]
+    assert "*Take back delivery*" in lines[4]  # not found: the plain title, never a wrong record

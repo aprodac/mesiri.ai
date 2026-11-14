@@ -77,7 +77,26 @@ _TARGET_LISTS = (("/progress/issues/", "/progress/issues", lambda r: _clean(r.ge
                      r.get("issue_type") or "").replace("_", " ").title()),
                  ("/procurement/requests/", "/procurement/requests", lambda r: str(r.get("ref") or "")),
                  ("/procurement/orders/", "/procurement/orders", lambda r: " · ".join(
-                     p for p in (str(r.get("ref") or ""), str(r.get("vendor_name") or "")) if p)))
+                     p for p in (str(r.get("ref") or ""), str(r.get("vendor_name") or "")) if p)),
+                 # WA-300 (live, 13-14 Nov: "↩️ Take back: *Take back usage*" named nothing): a take-back names the
+                 # record it takes back, as it was saved ("2 bags Cement · 2026-11-14").
+                 ("/materials/inflows/", "/materials/inflows", lambda r: _saved_material(r)),
+                 ("/materials/outflows/", "/materials/outflows", lambda r: _saved_material(r)),
+                 ("/materials/transfers/", "/materials/transfers", lambda r: " · ".join(p for p in (
+                     _saved_material(r, dated=False), " → ".join(
+                         str(r.get(k) or "") for k in ("from_site_name", "to_site_name") if r.get(k))) if p)),
+                 ("/expenses/", "/expenses", lambda r: " · ".join(p for p in (
+                     f"₹{_amount(r.get('amount'))}" if r.get("amount") is not None else "",
+                     _clean(r.get("category_name") or r.get("description"), 30), str(r.get("occurred_date") or ""))
+                     if p)))
+
+
+def _saved_material(row: dict[str, Any], dated: bool = True) -> str:
+    """A saved receipt or usage as the person knows it: "2 bags Cement · 2026-11-14" (a transfer: its route instead
+    of the date, the card's title is short)."""
+    what = " ".join(p for p in (_amount(row.get("quantity")), str(row.get("unit") or ""),
+                                str(row.get("material_name") or "")) if p)
+    return " · ".join(p for p in (what, str(row.get("occurred_date") or "") if dated else "") if p)
 
 
 async def _targets(client: ApiClient, entries: list[PendingWrite]) -> dict[str, str]:
