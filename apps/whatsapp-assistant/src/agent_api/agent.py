@@ -1884,10 +1884,13 @@ class ApiAgent:
                     result = again.model_copy(update={"calls": [c for c in result.calls if c.name != TELL_THE_TEAM] + again.calls})
                 else:  # nothing read: the team stays told once, not twice
                     result = again.model_copy(update={"calls": [*result.calls, *[c for c in again.calls if c.name != TELL_THE_TEAM]]})
-        lost = left_over(own_words(text), " ".join([
-            kept_texts(result.calls, [e for e in waiting if e is not None] + new, asked, result.text),
-            *_place_names(places)])) if (new or changed) and not again_asked else []  # "Tower 2" is a name
-        if lost:
+        def lost_now() -> list[str]:
+            return left_over(own_words(text), " ".join([
+                kept_texts(result.calls, [e for e in waiting if e is not None] + new, asked, result.text),
+                *_place_names(places)])) if (new or changed) else []  # "Tower 2" is a name
+
+        lost = lost_now()
+        if lost and not again_asked:
             # WA-198 (basic 2, lose nothing): a number they said is in nothing this turn prepared, asked or answered
             # ("20 bag cement, 6 mason" with only the cement on the card). One more try, told which; never a loop.
             again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), check_note(text=(f"(My message also said {', '.join(lost)}, and nothing you prepared, asked or "
@@ -1895,6 +1898,10 @@ class ApiAgent:
                                    "part now, or ask about it in one question. Keep everything already prepared. If "
                                    "it is not an update (a phone number, a time), just answer.)"))])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            lost = lost_now()
+        # WA-198 (live, Aprodac, 14 Nov 06:06): a number they said that is still on nothing (after the one more try, or
+        # when another check already used it) is said by the code under the card, never left to look complete.
+        numbers_lost = [said_phrase(own_words(text), n) for n in lost]
         lines_lost = not_held(result.calls, new) if not asked and not site_ask and not held_lines else []
         if lines_lost and not lost and not again_asked:
             # [248] (5 Nov, New India: three new materials on the card, their 20 + 20 + 30 + 1 load dropped, and the
@@ -1996,7 +2003,7 @@ class ApiAgent:
             reply = clean or (plain_refusal("", language) if not still and not new else "")
         return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
                        nothing_held=bool(claimed_ready and not reply and not still and not new),
-                       not_held=lines_lost,
+                       not_held=lines_lost + [n for n in numbers_lost if n not in lines_lost],
                        stop_reason=result.stop_reason, question=without_internals(asked.get("question", "")),
                        options=[without_ids(o) for o in options], reply_fixed=fixed,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
@@ -2391,12 +2398,74 @@ def said_number(text: str, value: Any) -> bool:
     return any(abs(float(n) - wanted) < 1e-9 for n in _NUMBER.findall(text or ""))
 
 
+#: WA-198 (live, Aprodac, 14 Nov 06:06: "Main blockile randu mesonum pathu bag sandum vannittund" got a card with the
+#: sand only; the masons' "randu" (2) was never read as a number, so nothing caught it). Numbers said as words, in the
+#: languages Mesiri replies in. Left out on purpose, as they are everyday words too: 1 (oru / ek / one), Hindi "do"
+#: (also "give"), "naal" (also "day"), "path". A word with "-m" / "-um" ("randum", "pathum") is the same number.
+_NUMBER_WORDS: dict[str, float] = {
+    # Malayalam in Latin letters (Manglish)
+    "randu": 2, "rendu": 2, "moonu": 3, "moonnu": 3, "munnu": 3, "naalu": 4, "nalu": 4, "anchu": 5, "anju": 5,
+    "aaru": 6, "ezhu": 7, "ettu": 8, "ombathu": 9, "onpathu": 9, "pathu": 10, "patthu": 10, "pathinonnu": 11,
+    "panthrandu": 12, "pathimoonnu": 13, "pathinaalu": 14, "pathinanchu": 15, "pathinaaru": 16, "pathinezhu": 17,
+    "pathinettu": 18, "irupathu": 20, "irupath": 20, "irupathanchu": 25, "muppathu": 30, "nalpathu": 40,
+    "naalpathu": 40, "ambathu": 50, "anpathu": 50, "arupathu": 60, "ezhupathu": 70, "enpathu": 80, "nooru": 100,
+    # Hindi in Latin letters (Hinglish)
+    "teen": 3, "char": 4, "chaar": 4, "paanch": 5, "panch": 5, "chhe": 6, "chhah": 6, "saat": 7, "aath": 8,
+    "nau": 9, "das": 10, "gyarah": 11, "barah": 12, "pandrah": 15, "bees": 20, "pachees": 25, "tees": 30,
+    "chalis": 40, "pachas": 50, "sau": 100,
+    # English
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "hundred": 100,
+    # Hindi in Devanagari
+    "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5, "छह": 6, "सात": 7, "आठ": 8, "नौ": 9, "दस": 10, "बीस": 20,
+    "पच्चीस": 25, "तीस": 30, "पचास": 50, "सौ": 100,
+}
+#: Malayalam script: the start of the word (endings are joined on: "രണ്ടു", "രണ്ടും", "പത്തു"); longest first.
+_NUMBER_STEMS: tuple[tuple[str, float], ...] = (
+    ("ഇരുപത്തഞ്ച", 25), ("ഇരുപത", 20), ("മുപ്പത", 30), ("നാൽപത", 40), ("അമ്പത", 50), ("നൂറ", 100), ("പത്ത", 10),
+    ("ഒമ്പത", 9), ("എട്ട", 8), ("ഏഴ", 7), ("ആറ", 6), ("അഞ്ച", 5), ("നാല", 4), ("മൂന്ന", 3), ("രണ്ട", 2),
+)
+#: A number followed by one of these is a time, not an amount ("randu naal munpu", "2 days ago", "3 ghante").
+_A_TIME = re.compile(r"(?:naal|divasam|day|days|din|week|weeks|aazhcha|masam|maasam|month|months|year|years|varsham"
+                     r"|hour|hours|ghanta|ghante|mani|minute|minutes|mins?|നാൾ|ദിവസ|ആഴ്ച|മാസ|വർഷ|മണി|दिन|हफ्त|महीन|साल|घंट)",
+                     re.IGNORECASE)
+_WORD_TOKEN = re.compile(r"[A-Za-z]+|[\u0D00-\u0D7F]+|[\u0900-\u097F]+")
+
+
+def _word_number(token: str) -> float | None:
+    word = token.casefold()
+    for form in (word, word[:-2] if word.endswith("um") else "", word[:-1] if word.endswith("m") else ""):
+        if form and form in _NUMBER_WORDS:
+            return _NUMBER_WORDS[form]
+    if "\u0D00" <= token[:1] <= "\u0D7F":
+        return next((value for stem, value in _NUMBER_STEMS if token.startswith(stem)), None)
+    return None
+
+
+def said_words(text: str) -> list[tuple[str, float]]:
+    """WA-198: the numbers said as words in ``text``, as said, with their value ("randu" -> 2)."""
+    return [(t, value) for t in _WORD_TOKEN.findall(text or "") if (value := _word_number(t)) is not None]
+
+
+def said_phrase(text: str, said: str) -> str:
+    """The number as they said it with the word after it ("randu mesonum", "6 mason"), for the line that tells them
+    it is not on the card; the number alone when nothing follows."""
+    number = re.sub(r" \(\d+(?:\.\d+)?\)$", "", said)
+    match = re.search(rf"(?<![\w.]){re.escape(number)}(?![\w.])\s*([^\s,.;!?]+)?", text or "")
+    return f"{number} {match.group(1)}" if match and match.group(1) else number
+
+
 def left_over(text: str, kept: str) -> list[str]:
-    """WA-198: the numbers written in ``text`` (their message) that appear nowhere in ``kept`` (everything the turn
-    prepared, asked, answered or looked up). Times, dates, ordinals, refs and phone numbers are not amounts."""
-    said = _NUMBER.findall(_NOT_AN_AMOUNT.sub(" ", text or ""))
+    """WA-198: the numbers in ``text`` (their message) that appear nowhere in ``kept`` (everything the turn prepared,
+    asked, answered or looked up): in digits as said ("6"), in words with their value ("randu (2)"). Times, dates,
+    ordinals, refs and phone numbers are not amounts."""
+    plain = _NOT_AN_AMOUNT.sub(" ", text or "")
     have = {float(n) for n in _NUMBER.findall(_IDS.sub(" ", kept or ""))}
-    return list(dict.fromkeys(n for n in said if float(n) not in have))
+    have |= {value for _, value in said_words(kept)}
+    said = [(n, float(n)) for n in _NUMBER.findall(plain)]
+    said += [(f"{word} ({value:g})", value) for word, value in said_words(plain)]
+    return list(dict.fromkeys(shown for shown, value in said if value not in have
+                              and not _A_TIME.match(said_phrase(plain, shown).split(" ", 1)[-1])))
 
 
 def own_words(text: str) -> str:
