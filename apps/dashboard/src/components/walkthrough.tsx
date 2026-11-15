@@ -275,6 +275,20 @@ export function WalkthroughRunner() {
 
   const rect = useRect(shown && !dialogOpen ? step?.target : undefined, run?.index ?? -1)
 
+  // A step that waits for its page's content (a project to pick first): watch for it while the person picks.
+  const [pageShows, setPageShows] = React.useState(true)
+  React.useEffect(() => {
+    const wanted = step?.waitFor
+    if (!shown || !wanted?.length) {
+      setPageShows(true)
+      return
+    }
+    const look = () => setPageShows(wanted.some((id) => !!findTarget(id)))
+    look()
+    const timer = window.setInterval(look, 500)
+    return () => window.clearInterval(timer)
+  }, [shown, step])
+
   React.useEffect(() => {
     if (!run || !shown || dialogOpen) return
     if (tryIt?.kind !== 'here') next.current?.focus()
@@ -332,8 +346,14 @@ export function WalkthroughRunner() {
       nextLabel={nextLabel}
       onSkip={stop}
       skipLabel="Stop"
-      passThrough={tryIt?.kind === 'here'}
+      passThrough={tryIt?.kind === 'here' || !pageShows}
+      nextDisabled={!pageShows}
     >
+      {!pageShows && (
+        <p className="m-0 text-xs font-medium" role="status">
+          Pick a project on this page first. I'll carry on when it opens.
+        </p>
+      )}
       {tryIt?.kind === 'whatsapp' && (
         <div className="flex flex-col gap-1.5">
           <SayThis say={tryIt.say} number={number} />

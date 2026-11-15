@@ -37,6 +37,11 @@ export function findTarget(id: string): HTMLElement | null {
   return null
 }
 
+/** Whether the page shows what its tour is about (its startWhen markers), not a picker or a skeleton. */
+function pageReady(tour: Tour): boolean {
+  return !tour.startWhen || tour.startWhen.some((id) => findTarget(id))
+}
+
 /** The tour's steps that can be shown now: the page's hello first, then each step whose element is on screen. */
 function resolve(tour: Tour, intro?: { title: string; about: string }): TourStep[] {
   const steps = tour.steps.filter((s) => !s.target || findTarget(s.target))
@@ -75,13 +80,18 @@ export function GuidedTour() {
   const [running, setRunning] = React.useState<Running | null>(null)
   const next = React.useRef<HTMLButtonElement>(null)
 
-  const unseen = React.useCallback((tour: Tour) => (guide.seen[tour.key] ?? 0) < tour.version, [guide.seen])
+  // Tours ended in this visit, so one is never started twice while its "seen" is still on its way to the server.
+  const ended = React.useRef(new Set<string>())
+  const unseen = React.useCallback(
+    (tour: Tour) => !ended.current.has(tour.key) && (guide.seen[tour.key] ?? 0) < tour.version,
+    [guide.seen],
+  )
 
   const start = React.useCallback(
     (force: boolean) => {
       if (walkthroughRunning()) return
       const page = tourForPage(pathname, search)
-      const pageRun = page && (force || (guide.rules.tours === 'all' && unseen(page.tour)))
+      const pageRun = page && (force || (guide.rules.tours === 'all' && unseen(page.tour) && pageReady(page.tour)))
         ? { tour: page.tour, steps: resolve(page.tour, page) }
         : undefined
       if (!force && guide.rules.tours !== 'none' && unseen(APP_TOUR)) {
@@ -104,6 +114,18 @@ export function GuidedTour() {
     return () => window.clearTimeout(timer)
   }, [pathname, guide.ready, guide.ask, guide.rules.tours])
 
+  // A page whose tour waits for its content (a project to be picked, the data to load): start it when that shows.
+  // The address can change without a new page (picking a project adds ?project=), so this watches the screen.
+  React.useEffect(() => {
+    if (running || !guide.ready || guide.ask || guide.rules.tours !== 'all') return
+    const page = tourForPage(pathname, search)
+    if (!page?.tour.startWhen || !unseen(page.tour)) return
+    const timer = window.setInterval(() => {
+      if (pageReady(page.tour)) startRef.current(false)
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [running, pathname, search, guide.ready, guide.ask, guide.rules.tours, unseen])
+
   // "Show me around this page" from Help.
   React.useEffect(() => {
     const replay = () => window.setTimeout(() => startRef.current(true), 250)
@@ -116,6 +138,7 @@ export function GuidedTour() {
 
   const finish = React.useCallback(() => {
     if (!running) return
+    ended.current.add(running.tour.key)
     markSeen.mutate({ page: running.tour.key, version: running.tour.version })
     if (running.then && running.then.steps.length > 0) setRunning({ ...running.then, index: 0 })
     else setRunning(null)
@@ -124,6 +147,8 @@ export function GuidedTour() {
   const skip = React.useCallback(() => {
     if (!running) return
     // Skipping the app tour skips this page's tour too, for now; both are remembered as seen.
+    ended.current.add(running.tour.key)
+    if (running.then) ended.current.add(running.then.tour.key)
     markSeen.mutate({ page: running.tour.key, version: running.tour.version })
     if (running.then) markSeen.mutate({ page: running.then.tour.key, version: running.then.tour.version })
     setRunning(null)
@@ -225,7 +250,9 @@ export function TourOverlay({
       {spot ? (
         <div
           aria-hidden
-          className="pointer-events-none fixed rounded-xl ring-2 ring-[#facc15] transition-all duration-300 ease-out motion-reduce:transition-none"
+          // The lit edge is an outline: a ring is a box-shadow, which the dimming shadow below replaces (it never showed,
+          // and on a dark page nothing marked what was lit).
+          className="pointer-events-none fixed rounded-xl outline-2 outline-[#facc15] transition-all duration-300 ease-out motion-reduce:transition-none"
           style={{ ...spot, boxShadow: '0 0 0 9999px rgba(15, 17, 20, 0.58)' }}
         />
       ) : (

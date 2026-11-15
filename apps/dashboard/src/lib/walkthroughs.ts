@@ -50,6 +50,9 @@ export interface WalkStep extends TourStep {
   page?: string
   try?: TryWhatsApp | TryHere
   takeBack?: TakeBack
+  /** Hold here until one of these markers shows (a page that first asks for a project): the page tour's
+   *  `startWhen`. Clicks reach the page meanwhile. */
+  waitFor?: string[]
 }
 
 export interface Walkthrough {
@@ -164,7 +167,10 @@ function pageSteps(page: ModulePage): WalkStep[] {
   const tour = PAGE_TOURS[tourPath(page)]
   if (!tour) return []
   const intro: WalkStep[] = tour.introFromPage ? [{ title: page.title, text: page.about, mood: 'hello' }] : []
-  return [...intro, ...tour.steps].map((s) => ({ ...s, page: page.url }))
+  const steps: WalkStep[] = [...intro, ...tour.steps].map((s) => ({ ...s, page: page.url }))
+  // A page that shows a picker first (a project to choose): the first step waits for its content.
+  if (tour.startWhen?.length && steps[0]) steps[0] = { ...steps[0], waitFor: tour.startWhen }
+  return steps
 }
 
 /** Built pages that have a hand-written tour, one per tour: the views of a page (Stock, Movements, Items) share its

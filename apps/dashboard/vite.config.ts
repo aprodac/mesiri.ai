@@ -27,12 +27,19 @@ function checkTourMarkers(): Plugin {
       // The page tours and the walkthroughs (SS-42, src/lib/walkthroughs.ts) point at markers the same way.
       const files = ['lib/tours.ts', 'lib/walkthroughs.ts']
       const guides = files.map((f) => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n')
-      const wanted = [...guides.matchAll(/target: '([A-Za-z0-9._-]+)'/g)].map((m) => m[1])
+      const wanted = [
+        ...[...guides.matchAll(/target: '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
+        // A tour's startWhen markers (the page's content it waits for) must exist too.
+        ...[...guides.matchAll(/startWhen: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/'([A-Za-z0-9._-]+)'/g)].map((x) => x[1])),
+      ]
       const code = sources(SRC)
         .filter((file) => !files.some((f) => file.endsWith(path.join(...f.split('/')))))
         .map((file) => fs.readFileSync(file, 'utf8'))
         .join('\n')
-      const missing = wanted.filter((id) => !code.includes(`data-guide="${id}"`) && !code.includes(`guide="${id}"`))
+      // A marker as text (data-guide="x", guide="x") or set by a condition (data-guide={next ? 'x' : undefined}).
+      const has = (id: string) =>
+        code.includes(`data-guide="${id}"`) || code.includes(`guide="${id}"`) || new RegExp(`guide=\\{[^}]*'${id.replace(/\./g, '\\.')}'`).test(code)
+      const missing = wanted.filter((id) => !has(id))
       if (missing.length) {
         this.error(`Tour steps point at markers no element has (src/lib/tours.ts, src/lib/walkthroughs.ts): ${[...new Set(missing)].join(', ')}`)
       }

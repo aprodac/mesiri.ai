@@ -65,7 +65,7 @@ function Live({ projectId }: { projectId: string }) {
   const header = (
     <PageHeader title="Live plans" subtitle={<LiveLine />}
       actions={map && (
-        <Button variant={photos ? 'secondary' : 'outline'} size="sm" className="gap-1.5" aria-pressed={photos} onClick={() => setPhotos((p) => !p)}>
+        <Button variant={photos ? 'secondary' : 'outline'} size="sm" className="gap-1.5" aria-pressed={photos} onClick={() => setPhotos((p) => !p)} data-guide="live.photos">
           <Images className="size-3.5" /> Photos on the plan
         </Button>
       )} />
@@ -115,17 +115,17 @@ function Live({ projectId }: { projectId: string }) {
       {data.untracked.length > 0 && <TrackCallout projectId={projectId} data={data} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Segmented label="Drawing" value={map.id} onChange={pick}
+        <Segmented label="Drawing" guide="live.drawings" value={map.id} onChange={pick}
           options={data.maps.map((m) => ({ value: m.id, label: `${m.name} · ${m.summary.done}/${m.summary.count}` }))} />
         {map.kinds.length > 0 && (
-          <Segmented label="Trade" value={map.kinds.some((k) => k.key === trade) ? trade : 'all'} onChange={setTrade}
+          <Segmented label="Trade" guide="live.trades" value={map.kinds.some((k) => k.key === trade) ? trade : 'all'} onChange={setTrade}
             options={[{ value: 'all', label: 'All work' }, ...map.kinds.map((k) => ({ value: k.key, label: k.name }))]} />
         )}
       </div>
-      <StatStrip stats={stats} phoneCols={2} />
+      <StatStrip stats={stats} phoneCols={2} guide="live.stats" />
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2" data-guide="live.plan">
           <PlanCanvas map={map} trade={tradeKey} photos={photos} selected={selected} onSelect={(m) => setSelected(m?.key ?? null)} className="h-[62vh] min-h-[420px] w-full" />
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="flex flex-wrap items-center gap-3">
@@ -181,7 +181,7 @@ function Feed({ items, onOpen, onPhoto }: { items: LiveFeedItem[]; onOpen: (f: L
   const [now, setNow] = React.useState(() => Date.now())
   React.useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t) }, [])
   return (
-    <section className="flex flex-col gap-1">
+    <section className="flex flex-col gap-1" data-guide="live.feed">
       <h2 className="mb-1 flex items-center gap-1.5 text-sm font-semibold"><MessageCircle className="size-3.5 text-muted-foreground" /> From site</h2>
       {items.length === 0 ? <p className="text-sm text-muted-foreground">Site's WhatsApp updates show here as they come.</p> : (
         <ul className="-mx-2 flex flex-col">

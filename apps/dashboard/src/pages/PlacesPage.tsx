@@ -88,7 +88,7 @@ function PlacesView({ projectId }: { projectId: string }) {
         actions={<>
           {hasLive && <Button asChild variant="outline" size="sm" className="gap-1.5"><Link to={`/planning/live?project=${projectId}`}><MapPinned className="size-3.5" /> On the drawings</Link></Button>}
           {list.data.can_edit && places.length > 0 && (
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing((e) => !e)}>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing((e) => !e)} data-guide="places.edit">
               <Pencil className="size-3.5" /> {editing ? 'Done editing' : 'Edit'}
             </Button>
           )}
@@ -101,7 +101,7 @@ function PlacesView({ projectId }: { projectId: string }) {
         <EditPlaces projectId={projectId} list={list.data} />
       ) : (
         <>
-          <StatStrip stats={stats} phoneCols={2} />
+          <StatStrip stats={stats} phoneCols={2} guide="places.stats" />
           {kinds.length === 0 ? (
             <div className="flex flex-col items-start gap-2">
               <Callout tone="info" icon={Layers}>Nothing recorded by room yet</Callout>
@@ -144,7 +144,7 @@ function Grid({ rows, kinds, onOpen }: { rows: PlaceProgressRow[]; kinds: Places
   }
   const toggle = (id: string) => setShut((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   return (
-    <div className="overflow-x-auto rounded-lg border [contain:inline-size]">
+    <div className="overflow-x-auto rounded-lg border [contain:inline-size]" data-guide="places.grid">
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
@@ -252,7 +252,7 @@ function QuickSetup({ projectId, suggested }: { projectId: string; suggested: Pl
     onError: (e) => toast.error('Could not set up the places', apiErrorMessage(e)),
   })
   return (
-    <section className="flex flex-col">
+    <section className="flex flex-col" data-guide="places.setup">
       <h2 className="font-medium">Set up floors and rooms</h2>
       <p className="mb-3 text-sm text-muted-foreground">One per line. Every floor gets the same rooms; rename, add or remove any of them after.</p>
       <div className="grid gap-3 sm:grid-cols-2">

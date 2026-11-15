@@ -173,7 +173,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
   return (
     <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <Heading chip={<StageChip stage={s.project.stage} label={s.project.stage_label} />}>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="schedule.add">
           <Link to={`/planning/setup?project=${projectId}`} className="text-sm text-muted-foreground hover:text-foreground">{s.project.name}</Link>
           {canEdit && <Button variant="outline" className="gap-2" onClick={() => setImporting(true)}><FileSpreadsheet className="size-4" /><span className="hidden sm:inline">BOQ from Excel</span></Button>}
           {canEdit && s.activities.length > 0 && <Button variant="outline" className="gap-2" onClick={() => setQuick(true)}><ListOrdered className="size-4" /><span className="hidden sm:inline">Quick plan</span></Button>}
@@ -201,10 +201,11 @@ function ScheduleView({ projectId }: { projectId: string }) {
             <Callout tone="success" icon={CheckCircle2}>Everything is on time. Site's WhatsApp updates keep this chart current; nobody needs to update it by hand.</Callout>
           )}
 
-          <StatStrip stats={stats} />
+          <StatStrip stats={stats} guide="schedule.stats" />
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Segmented<Filter>
+              guide="schedule.filter"
               label="Show"
               value={filter}
               onChange={setFilter}
@@ -231,7 +232,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
             <MobileList schedule={s} activities={list} onSelect={select} />
           ) : (
             <div className="flex flex-col items-start gap-4 xl:flex-row">
-              <div className="w-full min-w-0 flex-1">
+              <div className="w-full min-w-0 flex-1" data-guide="schedule.chart">
                 <Gantt
                   schedule={s}
                   activities={list}
@@ -322,7 +323,7 @@ function Legend() {
 
 function EmptySchedule({ canEdit, onImport, onAdd }: { canEdit: boolean; onImport: () => void; onAdd: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed px-6 py-14 text-center">
+    <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed px-6 py-14 text-center" data-guide="schedule.empty">
       <span className="inline-flex size-14 items-center justify-center rounded-2xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><CalendarRange className="size-7" /></span>
       <div className="flex max-w-lg flex-col gap-1.5">
         <h2 className="text-lg font-semibold">Your schedule starts from your BOQ</h2>
@@ -342,7 +343,7 @@ function EmptySchedule({ canEdit, onImport, onAdd }: { canEdit: boolean; onImpor
 
 function MobileList({ schedule: s, activities, onSelect }: { schedule: Schedule; activities: Activity[]; onSelect: (id: string) => void }) {
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-2" data-guide="schedule.chart">
       {activities.map((a) => (
         <li key={a.id}>
           <button type="button" onClick={() => onSelect(a.id)} className="flex w-full flex-col gap-1.5 rounded-xl border p-3 text-left active:bg-muted/50">
