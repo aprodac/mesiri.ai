@@ -2,7 +2,7 @@
 
 > **Status: approved 15 Nov 2026 in session; being built.** Order changed 15 Nov in session: the page tours (phase 2)
 > come first, since each tour is useful the day it ships; SS-41 (Learn page) and SS-42 (engine) were also built 15 Nov
-> in a parallel session (section 9). Done: **SS-41, SS-42, SS-43, SS-44 Planning, SS-45 Procurement and Cost control**.
+> in a parallel session (section 9). Done: **SS-41, SS-42, SS-43, SS-44 Planning, SS-45 Procurement and Cost control, SS-46 Accounts**.
 > **Rules for every later change: [LEARN_AND_TOURS.md](../engineering/LEARN_AND_TOURS.md).**
 > Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
 > [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
@@ -116,19 +116,22 @@ Equipment, Settings: each = its pages' tours back to back (sidebar order).
 
 ### 5.4 Page tours: all hand-written (D-L2), in build order (Planning first, D-L4)
 
-Built (28): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
+Built (42): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
 sites, Team; **Planning (SS-44, 15 Nov)**: Project start, Schedule, Material plan, Live plans, Places, Drawing check,
 Documents; **Procurement and Cost control (SS-45, 15 Nov)**: Requests, Purchase orders, Goods received, Pending
 deliveries, Rates, Quotations, Suppliers, Returns; Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost
-centres. A page that shows a project list first marks it `project.pick` (was `planning.pick`); the Cost pages' three
+centres; **Accounts (SS-46, 15 Nov)**: Accounts home, Profit & loss, Balance sheet, Cash & bank, Projects, Ledgers,
+Receivables, Day book, Tally export, GST, TDS, Trial balance, Chart of accounts, Months (their shared tab row, period
+bar and Excel button are marked once in `components/accounts/books.tsx`: `books.tabs`, `books.period`,
+`books.excel`). A page that shows a project list first marks it `project.pick` (was `planning.pick`); the Cost pages' three
 own pickers carry it too (they are three copies of one list: worth merging into `ProjectPickList` some day).
 
-| Order | Module | Pages to write (61; 41 left) | Count |
+| Order | Module | Pages to write (61; 27 left) | Count |
 |---|---|---|---|
 | 1 | Planning | Project start, Schedule, Material plan, Live plans, Places, Drawing check, Documents | 7 (**done**) |
 | 2 | Procurement | Requests, Purchase orders, Goods received (GRN), Pending deliveries, Rates, Quotations, Suppliers, Returns | 8 (**done**) |
 | 3 | Cost control | Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost centres | 5 (**done**) |
-| 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 |
+| 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 (**done**) |
 | 5 | Site | Weekly & monthly, Site log, Analytics | 3 |
 | 6 | Tasks | Tasks (all 4 views share one tour) | 1 |
 | 7 | Materials | Stock count, Stock value | 2 |
