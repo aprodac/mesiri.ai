@@ -73,7 +73,7 @@ export default function LedgersPage() {
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="ledgers.stats"
             stats={[
               { label: 'Bank & cash', value: drCr(sum('money')), tone: sum('money') < 0 ? 'bad' : 'default' },
               { label: 'We owe suppliers', value: rupees(Math.max(-sum('vendor'), 0)), tone: sum('vendor') < 0 ? 'warn' : 'default' },
@@ -82,7 +82,7 @@ export default function LedgersPage() {
           />
           <DprSection icon={BookUser} title="Every ledger, largest balance first" meta={list.length || undefined}>
             <div className="flex flex-wrap items-center gap-2">
-              <Segmented<Kind>
+              <Segmented<Kind> guide="ledgers.kinds"
                 label="Kind of ledger"
                 value={kind}
                 options={KINDS.map((k) => ({ ...k, count: count(k.value) }))}
@@ -95,7 +95,7 @@ export default function LedgersPage() {
               />
               <div className="relative w-full sm:w-64">
                 <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a ledger" className="h-9 pl-8" aria-label="Find a ledger" autoFocus />
+                <Input data-guide="ledgers.search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a ledger" className="h-9 pl-8" aria-label="Find a ledger" autoFocus />
               </div>
               <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <input type="checkbox" checked={used} onChange={(e) => setUsed(e.target.checked)} className="size-4" /> Only with entries
@@ -106,7 +106,7 @@ export default function LedgersPage() {
                 {words ? 'No ledger by that name.' : 'No ledger of this kind has entries yet.'}
               </p>
             ) : (
-              <ul className="divide-y rounded-lg border">
+              <ul data-guide="ledgers.list" className="divide-y rounded-lg border">
                 {list.map((l) => (
                   <li key={l.id}>
                     <Link to={`/accounts/ledgers/${l.id}`} className="flex flex-col gap-0.5 px-4 py-2.5 text-sm hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4">

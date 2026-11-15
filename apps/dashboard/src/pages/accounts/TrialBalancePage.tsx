@@ -229,7 +229,7 @@ export default function TrialBalancePage() {
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="tb.stats"
             phoneCols={2}
             stats={[
               { label: 'Debits in the period', value: rupees(t.debit), icon: Scale },
@@ -263,7 +263,7 @@ export default function TrialBalancePage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="relative w-full sm:w-72">
                     <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                    <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a ledger" className="h-9 pl-8" aria-label="Find a ledger" />
+                    <Input data-guide="tb.search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a ledger" className="h-9 pl-8" aria-label="Find a ledger" />
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => setAll((a) => !a)}>
                     {all ? 'Collapse all' : 'Expand all'}
@@ -277,7 +277,7 @@ export default function TrialBalancePage() {
                   </span>
                 </div>
                 <div className="overflow-x-auto rounded-lg border">
-                  <table className="w-full text-sm">
+                  <table data-guide="tb.list" className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                         <th className="px-3 py-2 text-left font-medium">Group / ledger</th>

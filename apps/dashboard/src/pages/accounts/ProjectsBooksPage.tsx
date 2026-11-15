@@ -100,7 +100,7 @@ export default function ProjectsBooksPage() {
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="proj.stats"
             phoneCols={2}
             stats={[
               { label: 'Billed', value: rupees(d.total.billed) },
@@ -119,7 +119,7 @@ export default function ProjectsBooksPage() {
               <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">No project has income or cost in the books in this period.</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
+                <table data-guide="proj.list" className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                       <th className="px-3 py-2 text-left font-medium">Project</th>
