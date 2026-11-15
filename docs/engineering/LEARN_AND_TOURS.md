@@ -65,6 +65,12 @@ step's words in another place.
 - The role path ("Everything ..., in order") is made from the role's outcomes by itself.
 - Open: Project manager and Finance outcomes, and the owner's billing and month-end outcomes (SS-48).
 
+## Moving people between pages
+
+Any link or navigation inside the app to another page keeps the picked project: `urlWithScope(url, scope)` from
+`lib/scope-url.ts` (the sidebar, the walkthrough engine, Help and Learn links use it). A page that first asks for a
+project marks its list `data-guide="project.pick"`, so a walkthrough can wait for the pick and say so.
+
 ## Before you push a change to any of this
 
 1. `npx tsc -b --noEmit && npx oxlint src/ && npx vite build` in `apps/dashboard` (the build runs every check above).

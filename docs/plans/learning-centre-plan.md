@@ -320,3 +320,18 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
   object; `scripts/screens.mjs` shows the same before this change). The steps there have no marker (the Spark speaks
   in the middle), so they do not depend on the page's layout. W6, W7 and W9 were clicked through; the Learn page was
   checked for owner, project manager and finance.
+
+## 13. Walkthrough engine fixes (SS-52, 15 Nov 2026)
+
+Found while checking the Accounts tours (SS-46), fixed in `components/walkthrough.tsx` (the one engine):
+
+| Problem | Root cause | Fix |
+|---|---|---|
+| Blank pauses of 4-9 s between steps | A step whose element was not on screen waited a fixed 4 s, whatever the page's state | Decide as soon as the page is loaded: its tour's `startWhen` content is on screen, or nothing is fetching (react-query idle), or another step of the page has been on screen 1.5 s. Still loading: up to 4 s |
+| The project asked again on each project page (three times in Cost control) | The engine opened pages by their plain address; the project lives in `?project=` | `lib/scope-url.ts` `urlWithScope`, one helper for the sidebar, the engine, Help and Learn links; the engine also keeps the project through `/projects/<id>/boq` |
+| Walkthrough stalled or ended on BOQ & budget | `/boq` redirects to `/projects/<id>/boq`, not seen as the same page | `onPage` asks the module map (`findPage`, `SAME_AS`) |
+| Trapped on a page that loaded without its content | The hold for a project list also held on pages with none (an error, nothing yet) | Hold only while a project list is on screen or data is still coming; the words say which |
+
+Not changed (shared, needs approval): `lib/ScopeContext.tsx` matches `/projects/:id` exactly, so on a project's BOQ
+page the top bar says "All projects".
+
