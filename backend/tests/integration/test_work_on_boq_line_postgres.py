@@ -171,3 +171,30 @@ async def test_boq03_an_issue_is_placed_on_the_activity_it_holds_up_and_listed_t
     assert by_name["First floor slab"]["issues"][0]["what"] == "Shuttering material not came, slab delayed"
     assert by_name["Finishes"]["open_issues"] == 0
     assert sched["summary"]["open_issues"] == 1 and sched["summary"]["issues_on_no_activity"] == 0
+
+
+async def test_boq04_standard_norms_fill_lines_with_none_and_never_change_one_that_has_them(conn):
+    from mesiri.domains.progress.boq_router import _standard_norms
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    org, project, _site, section = await _project(conn)
+    user = uuid.uuid4()
+    await conn.execute(text("INSERT INTO users (id, organization_id, full_name, role, status, hashed_password) "
+                            "VALUES (:id, :o, 'Asha', 'PROJECT_MANAGER', 'active', 'x')"), {"id": user, "o": org})
+    for name, unit in (("Cement", "bags"), ("M Sand", "cum"), ("Aggregate 20mm", "cum")):
+        await conn.execute(text("INSERT INTO materials_catalog (id, organization_id, name, created_by, default_unit_id) "
+                                "VALUES (:id, :o, :n, :u, :unit)"),
+                           {"id": uuid.uuid4(), "o": org, "n": name, "u": user, "unit": await _unit(conn, unit)})
+    cum = await _unit(conn, "cum")
+    m20 = await _line(conn, org, section, "M20 concrete for slab", cum)
+    await _line(conn, org, section, "Anti termite treatment", cum)
+    repo = PostgresBoqRepository(conn)
+
+    offered = await _standard_norms(conn, repo, org, project)
+
+    assert [o["line_id"] for o in offered] == [m20]
+    assert {n["material"] for n in offered[0]["norms"]} == {"Cement", "M Sand", "Aggregate 20mm"}
+    norms = MaterialNormRepository(conn)
+    first = offered[0]["norms"][0]
+    await norms.replace(org, m20, [{**first, "unit_id": cum, "quantity_per_unit": 9}], user)
+    assert await _standard_norms(conn, repo, org, project) == []  # a line with materials is never offered again

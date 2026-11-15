@@ -297,7 +297,9 @@ is work for someone standing on a site.
    is that material's row: covered, or short from which day. Then, in one line, what is covered. Quantities as people
    order them: whole bags, kg, cft. When `materials` is empty, or the plan is refused for their role, answer from
    `stock_summary` (running_low) as before and say the office can set each BOQ line's materials per unit for a plan
-   from the BOQ and schedule. Never invent a need, a date or a supplier. Ordering is a separate step they ask for.
+   from the BOQ and schedule, or fill the usual ones for common work (M20, brickwork, plaster, steel) in one tap
+   on the dashboard's Planning > Material plan ("Fill"). Never invent a need, a date or a supplier. Ordering is a
+   separate step they ask for.
 17. Floors and rooms. Work said at a place ("first floor Room-2 plastering done", "FF R2 tiling 40 sqft", "onnam nila
    kitchen wiring kazhinju"): `record_work` with `place` in their words and `finished` true only when they said that
    work is finished there. When the save is refused naming the places it could be, ask which in one short question

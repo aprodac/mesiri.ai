@@ -474,6 +474,71 @@ async def put_line_norms(
     return _exact({"line_id": line_id, "materials": [_norm_out(n) for n in await norms.for_line(auth.organization_id, line_id)]})
 
 
+class StandardNormsApply(BaseModel):
+    line_ids: list[uuid.UUID] | None = Field(default=None, max_length=500,
+                                             description="Only these lines; none: every line a standard fits")
+
+
+async def _standard_norms(conn: AsyncConnection, repo: PostgresBoqRepository, organization_id: uuid.UUID,
+                          project_id: uuid.UUID) -> list[dict]:
+    """BOQ-04: per current line with no materials yet, the standard materials that fit its work (``suggest``)."""
+    from mesiri.domains.progress.standard_norms import suggest
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    norms = MaterialNormRepository(conn)
+    catalogue = await norms.catalogue(organization_id)
+    has = await norms.lines_with_norms(organization_id, project_id)
+    out = []
+    for line in await repo.list_lines(organization_id, project_id):
+        if line["id"] in has:
+            continue
+        fit = suggest(line["work_type"], line["unit"], catalogue)
+        if fit and fit["norms"]:
+            out.append({"line_id": line["id"], "work": line["work_type"], "unit": line["unit"], **fit})
+    return out
+
+
+@router.get("/norms/standard")
+@saves_nothing
+async def standard_norms(
+    project_id: uuid.UUID,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """BOQ-04: the usual materials per unit for the lines with none yet (M20, brickwork, plaster, steel, tiles,
+    paint), in the company's own materials and units, each with the assumption it makes. Nothing is saved."""
+    repo = await _scope(project_id, auth, conn)
+    return _exact({"project_id": project_id, "lines": await _standard_norms(conn, repo, auth.organization_id,
+                                                                             project_id)})
+
+
+@router.post("/norms/standard")
+async def apply_standard_norms(
+    project_id: uuid.UUID,
+    body: StandardNormsApply,
+    auth: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """BOQ-04: put the standard materials on the lines with none yet (all that fit, or ``line_ids``). A line that
+    already has materials is never changed; each norm can be edited on the BOQ like one typed in."""
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+
+    repo = await _scope(project_id, auth, conn)
+    wanted = set(body.line_ids) if body.line_ids is not None else None
+    norms = MaterialNormRepository(conn)
+    put = []
+    for line in await _standard_norms(conn, repo, auth.organization_id, project_id):
+        if wanted is not None and line["line_id"] not in wanted:
+            continue
+        rows = await _norm_rows(conn, auth.organization_id, NormsIn(norms=[NormIn(
+            material_id=n["material_id"], quantity_per_unit=n["quantity_per_unit"], wastage_pct=n["wastage_pct"],
+            note=n["note"]) for n in line["norms"]]))
+        await norms.replace(auth.organization_id, line["line_id"], rows, auth.user_id)
+        put.append({"line_id": line["line_id"], "work": line["work"], "standard": line["standard"],
+                    "materials": [n["material"] for n in line["norms"]], "missing": line["missing"]})
+    return _exact({"project_id": project_id, "lines": put})
+
+
 @router.post("/lines/{line_id}/norms/copy")
 async def copy_line_norms(
     project_id: uuid.UUID,
