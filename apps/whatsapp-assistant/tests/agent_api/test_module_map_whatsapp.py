@@ -78,3 +78,23 @@ def test_every_walkthrough_practice_uses_real_writing_tools(say: str, tools: lis
     unknown = [t for t in tools if t not in TOOLS]
     assert not unknown, f"not WhatsApp-assistant tools (agent_api/tools.py ALLOWED): {unknown}"
     assert any(TOOLS[t] != "GET" for t in tools), "a practice saves something, so it must use a tool that writes"
+
+
+# Learn Mesiri (D-L3, review 15 Nov): a practice must never leave a real record the person can't take back. Taking back
+# a delivery, a use or a move is a stock correction, allowed only to backend ADJUSTMENT_ROLES; every take-back with one
+# of those undo tools must name exactly those roles, so the walkthrough turns the practice into card-only for others.
+_STOCK_UNDO = {"undo_receipt", "undo_usage", "undo_transfer"}
+
+
+def test_stock_take_backs_name_the_roles_that_may_correct() -> None:
+    from mesiri.domains.materials.validation import ADJUSTMENT_ROLES
+
+    text = WALKS.read_text(encoding="utf-8")
+    adjusters = re.search(r"const ADJUSTERS = \[([^\]]*)\]", text)
+    assert adjusters, "walkthroughs.ts must define ADJUSTERS (who may take back a stock movement)"
+    assert set(re.findall(r"'([A-Z_]+)'", adjusters.group(1))) == set(ADJUSTMENT_ROLES)
+    backs = re.findall(r"takeBack: \{([^}]*)\}", text)
+    assert backs, "no take-back steps found in walkthroughs.ts: has its format changed?"
+    for back in backs:
+        if _STOCK_UNDO & set(re.findall(r"'([a-z_]+)'", back)) or "Correct" in back:
+            assert "roles: ADJUSTERS" in back, f"a stock take-back must say who may do it: {back}"

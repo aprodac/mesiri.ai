@@ -42,6 +42,11 @@ export interface TryHere {
 
 /** How to take a practice back (D-L3): WhatsApp words, the dashboard way, or both. */
 export interface TakeBack {
+  /** Who may take it back, when not everyone can. For anyone else the practice before it is card-only (WhatsApp:
+   *  look at the card, tap Cancel) or skipped (here), and this step is skipped: a practice must never leave a real
+   *  record that the person can't remove. Taking back a delivery, a use or a move is a stock correction:
+   *  backend `materials/validation.py` ADJUSTMENT_ROLES (a test keeps the two the same). */
+  roles?: readonly string[]
   say?: string
   /** The WhatsApp assistant's tools that take it back, checked by the same test. */
   tools?: string[]
@@ -74,6 +79,12 @@ export interface Walkthrough {
 }
 
 /** Remembered per person in users.guide_seen under this key (lowercase, like every guide key). */
+/** Whether this role may take back the practice at `index`: the next take-back step from there says who may. */
+export function canTakeBack(walk: Walkthrough, index: number, role: string | null | undefined): boolean {
+  const back = walk.steps.slice(index).find((s) => s.takeBack)?.takeBack
+  return !back?.roles || back.roles.includes((role ?? '').toUpperCase())
+}
+
 export function learnKey(id: string): string {
   return `/learn/${id}`
 }
@@ -83,6 +94,8 @@ const minutesFor = (steps: number) => Math.max(1, Math.round(steps * 0.4))
 const RECORDERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER'] as const
 
 const INFLOWS: WalkCheck = { path: '/materials/inflows', params: { limit: 25 } }
+/** Who may correct (take back) a stock movement: backend ADJUSTMENT_ROLES. */
+const ADJUSTERS = ['ADMIN', 'PROJECT_MANAGER'] as const
 
 /** Workflows: one job from start to finish, across pages, with practice (plan section 5.2). */
 export const WORKFLOWS: Walkthrough[] = [
@@ -125,7 +138,7 @@ export const WORKFLOWS: Walkthrough[] = [
         page: '/materials?view=movements',
         title: 'Take it back',
         text: 'It was practice, so take it back the same way. Mesiri shows a card: tap Save.',
-        takeBack: { say: 'Take back the 10 bags cement delivery', tools: ['undo_receipt'] },
+        takeBack: { roles: ADJUSTERS, say: 'Take back the 10 bags cement delivery', tools: ['undo_receipt'] },
       },
       {
         page: '/materials?view=movements',
@@ -139,7 +152,7 @@ export const WORKFLOWS: Walkthrough[] = [
         target: 'materials.list',
         title: 'Take that one back too',
         text: 'Open the row you just saved and press Correct: it is reversed, and both lines stay in the history.',
-        takeBack: { here: 'Open the row, then Correct (an owner, admin or project manager).' },
+        takeBack: { roles: ADJUSTERS, here: 'Open the row, then Correct (an admin or project manager).' },
       },
       {
         page: '/materials?view=movements',

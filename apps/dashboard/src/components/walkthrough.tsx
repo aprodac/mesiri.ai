@@ -11,7 +11,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { useGuideSeen, usePreferences } from '@/lib/start-mode'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
-import { findWalkthrough, learnKey, pageOpenFor, type WalkCheck, type WalkStep, type Walkthrough } from '@/lib/walkthroughs'
+import { findWalkthrough, learnKey, pageOpenFor, type WalkCheck, type WalkStep, type Walkthrough, canTakeBack } from '@/lib/walkthroughs'
 import { waLink } from '@/lib/whatsapp-modal'
 
 // The walkthrough engine (SS-42, learning-centre-plan.md section 4): runs any walkthrough from lib/walkthroughs.ts,
@@ -218,7 +218,13 @@ export function WalkthroughRunner() {
     setDialogOpen(false)
     if (!run || !step) return
     const here = `${run.walk.id}:${run.index}`
-    const skipThis = (step.page && !pageOpenFor(step.page, role)) || (practiceOff && (step.try || step.takeBack))
+    // A practice this person could not take back: the take-back step and a practice here are skipped (a WhatsApp
+    // practice becomes card-only, below), so no real record is left that they can't remove.
+    const cantTakeBack = !canTakeBack(run.walk, run.index, role)
+    const skipThis =
+      (step.page && !pageOpenFor(step.page, role)) ||
+      (practiceOff && (step.try || step.takeBack)) ||
+      (cantTakeBack && (!!step.takeBack || step.try?.kind === 'here'))
     if (skipThis) {
       goRef.current(run.dir)
       return
@@ -250,7 +256,10 @@ export function WalkthroughRunner() {
   }, [pathname, search, run, step, shown, stop])
 
   const tryIt = step?.try
-  const check = useCheck(tryIt?.check, shown, tryIt?.kind === 'whatsapp')
+  // Card-only practice (nothing to save, or nothing this person could take back): no waiting for a saved record.
+  const cardOnly =
+    tryIt?.kind === 'whatsapp' && (tryIt.save === false || (!!run && !canTakeBack(run.walk, run.index, role)))
+  const check = useCheck(cardOnly ? undefined : tryIt?.check, shown, tryIt?.kind === 'whatsapp')
 
   // Try here: the person opens the real dialog; the tour steps aside, and comes back when the dialog closes.
   React.useEffect(() => {
@@ -331,7 +340,6 @@ export function WalkthroughRunner() {
   const last = run.index === run.walk.steps.length - 1
   const counter = `${run.walk.title} · ${run.index + 1} of ${run.walk.steps.length}`
   let nextLabel = last ? 'Done' : 'Next'
-  const cardOnly = tryIt?.kind === 'whatsapp' && tryIt.save === false
   if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
   if (tryIt?.kind === 'here' && !note) nextLabel = 'Skip this'
 
