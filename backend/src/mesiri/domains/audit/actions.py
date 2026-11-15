@@ -62,6 +62,10 @@ DATABASE_ROWS_CHANGED = "database.rows_changed"
 # Announcements (SA-37): a message from the Mesiri team queued for the people of one or more companies.
 ANNOUNCEMENT_SENT = "announcement.sent"
 
+# What works (SA-39 phase 5): the conversation shown as the model example of one journey in the Playbook view.
+WHAT_WORKS_PINNED = "what_works.pinned"
+WHAT_WORKS_UNPINNED = "what_works.unpinned"
+
 ACTIONS = frozenset(
     {
         COMPANY_CREATED,
@@ -88,6 +92,8 @@ ACTIONS = frozenset(
         DATABASE_QUERY_READ,
         DATABASE_ROWS_CHANGED,
         ANNOUNCEMENT_SENT,
+        WHAT_WORKS_PINNED,
+        WHAT_WORKS_UNPINNED,
     }
 )
 
