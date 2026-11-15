@@ -537,20 +537,92 @@ def render_portfolio(brief: dict[str, Any], company: dict[str, Any], note: dict[
     _headline(pdf, brief["headline"])
     _note(pdf, note)
     _kpis(pdf, brief["kpis"][:4])
+    # 15 Nov (Ilan: "upgrade the monthly PDF"): one card per project that had anything (a status edge, four
+    # figures, what happened), worst first; the quiet ones in one line, never a heading each saying nothing.
     money = brief.get("has_bills")
-    head = ["Project", "Done / plan", "Cost", "Finish", "Man-days", "Issues"] + (["Clients owe"] if money else [])
-    widths = [44, 24, 24, 26, 18, 16] + ([28] if money else [])
-    cost_word = {"red": "Over", "amber": "Watch", "green": "On budget", "grey": "No budget"}
-    rows = []
-    for r in brief["projects"]:
-        plan = "No BOQ" if r["progress_to_date"] is None else f"{r['progress_to_date']}%" + \
-            (f" / {round(float(r['expected_to_date']))}%" if r.get("expected_to_date") else "")
-        finish = (_short_day(r["forecast_finish"]) + (f" +{r['slip_days']}d" if r["slip_days"] else "")) \
-            if r.get("forecast_finish") else "No plan"
-        rows.append([("! " if r["status"] == "bad" else "") + r["name"], plan,
-                     cost_word.get(r.get("labour_colour") or "grey", "No budget"), finish, r.get("man_days") or "0",
-                     str(r["open_issues"])] + ([_inr(r.get("owed"))] if money else []))
-    _table(pdf, head, rows, widths, empty="No running projects.", align="LRLLRRR")
-    for r in brief["projects"]:
-        _heading(pdf, r["name"], " ".join([r["lead"], *r["facts"]]))
+    active = [r for r in brief["projects"] if _active(r)]
+    quiet = [r["name"] for r in brief["projects"] if not _active(r)]
+    if active:
+        _label(pdf, "Projects", f"{len(active)} with work or issues, worst first")
+    for r in active:
+        _project_card(pdf, r, bool(money))
+    if quiet:
+        if pdf.get_y() > pdf.h - 30:
+            pdf.add_page()
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 8.5)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(pdf.get_string_width("Nothing recorded: ") + 1, 5, "Nothing recorded: ")
+        pdf.set_font("Helvetica", "", 8.5)
+        pdf.multi_cell(0, 5, t(", ".join(quiet)), new_x="LMARGIN", new_y="NEXT")
+    if not brief["projects"]:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(0, 6, "No running projects.", new_x="LMARGIN", new_y="NEXT")
     return bytes(pdf.output())
+
+
+def _active(r: dict[str, Any]) -> bool:
+    """A project with anything to say: work done, man-days, open issues, a plan, or money owed."""
+    return bool(float(r.get("man_days") or 0) or r.get("open_issues") or r.get("progress_to_date") is not None
+                or r.get("forecast_finish") or float(r.get("owed") or 0) or r.get("status") in ("bad", "warn"))
+
+
+_STATUS_WORD = {"bad": "Needs you", "warn": "Watch", "good": "On track", "none": "No plan"}
+_COST_WORD = {"red": "Over budget", "amber": "Watch cost", "green": "On budget", "grey": "No budget"}
+
+
+def _project_card(pdf, r: dict[str, Any], money: bool) -> None:
+    """One project: a status edge, its name and status pill, four figures, then its headline in a line or two."""
+    text = " ".join([r.get("lead") or "", *(r.get("facts") or [])]).strip()
+    pdf.set_font("Helvetica", "", 8.5)
+    lines = len(pdf.multi_cell(_W - 10, 4.4, t(text), dry_run=True, output="LINES")) if text else 0
+    height = 23 + 4.4 * lines
+    if pdf.get_y() + height > pdf.h - 18:
+        pdf.add_page()
+    x, y = 15, pdf.get_y()
+    tone = TONE.get(r.get("status") or "none", MUTED)
+    pdf.set_draw_color(*LINE)
+    pdf.rect(x, y, _W, height)
+    pdf.set_fill_color(*tone)
+    pdf.rect(x, y, 1.6, height, style="F")
+    pdf.set_xy(x + 5, y + 3)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(*INK)
+    pdf.cell(_W - 45, 6, t(r["name"]))
+    word = t(_STATUS_WORD.get(r.get("status") or "none", "No plan"))
+    pdf.set_font("Helvetica", "B", 7)
+    w = pdf.get_string_width(word) + 5
+    pdf.set_fill_color(*tone)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_xy(x + _W - w - 4, y + 4)
+    pdf.cell(w, 4.2, word, fill=True, align="C")
+    figures = [
+        ("Done / plan", "No BOQ" if r.get("progress_to_date") is None else f"{r['progress_to_date']}%"
+         + (f" / {round(float(r['expected_to_date']))}%" if r.get("expected_to_date") else "")),
+        ("Man-days", str(r.get("man_days") or "0")),
+        ("Open issues", str(r.get("open_issues") or 0)),
+        ("Finish", (_short_day(r["forecast_finish"]) + (f" +{r['slip_days']}d" if r.get("slip_days") else ""))
+         if r.get("forecast_finish") else "No plan"),
+    ]
+    if money:
+        figures.append(("Clients owe", _inr(r.get("owed"))))
+    else:
+        figures.append(("Cost", _COST_WORD.get(r.get("labour_colour") or "grey", "No budget")))
+    col = (_W - 10) / len(figures)
+    for i, (label, value) in enumerate(figures):
+        fx = x + 5 + i * col
+        pdf.set_xy(fx, y + 10.5)
+        pdf.set_font("Helvetica", "", 6.8)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(col, 3.5, t(label.upper()))
+        pdf.set_xy(fx, y + 14)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*(TONE["bad"] if label == "Open issues" and value not in ("0", "") else INK))
+        pdf.cell(col, 5, t(value))
+    if text:
+        pdf.set_xy(x + 5, y + 21)
+        pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_text_color(*INK)
+        pdf.multi_cell(_W - 10, 4.4, t(text))
+    pdf.set_y(y + height + 3)

@@ -267,10 +267,10 @@ def build_document_data(
         materials.append(
             DprMaterialRow(
                 material_name=_pretty(m.get("material_name")),
-                received=str(m.get("received") or "0"),
-                used=str(m.get("used") or "0"),
+                received=_number(m.get("received") or "0"),
+                used=_number(m.get("used") or "0"),
                 unit=m.get("unit") or "—",
-                closing=m.get("closing"),
+                closing=_number(m["closing"]) if m.get("closing") not in (None, "") else None,
                 beyond_stock=bool(m.get("beyond_stock")),
                 group=main if grouped and main != previous else None,
             )

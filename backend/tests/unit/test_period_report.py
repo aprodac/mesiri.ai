@@ -416,3 +416,22 @@ def test_the_last_30_days_is_a_monthly_report_and_the_headline_says_week_or_mont
     assert periods.report_file("Green Villa", month.as_dict()) == "Monthly-report-Green-Villa-17-Oct-15-Nov-2026.pdf"
     assert periods.noun_of(periods.resolve("custom", D(2026, 11, 15), date_from=D(2026, 11, 1),
                                            date_to=D(2026, 11, 10))) == "period"
+
+
+def test_the_all_projects_pdf_lists_quiet_projects_on_one_line():
+    pytest.importorskip("fpdf")
+    from mesiri.domains.reports.period import pdf
+
+    def row(name, md, iss):
+        return {"name": name, "status": "bad" if iss else "none", "man_days": md, "open_issues": iss,
+                "progress_to_date": None, "expected_to_date": None, "forecast_finish": None, "slip_days": 0,
+                "labour_colour": "grey", "owed": None, "lead": "Here is the month.", "facts": []}
+
+    active, quiet = row("Green Villa", 110, 9), row("Rana Mart", 0, 0)
+    assert pdf._active(active) and not pdf._active(quiet)
+    brief = {"generated_at": "2026-11-15T11:18:00+00:00", "running": True,
+             "period": {"kind": "custom", "from": "2026-10-17", "to": "2026-11-15", "days": 30,
+                        "label": "17 Oct – 15 Nov 2026", "range": "17 Oct – 15 Nov 2026"},
+             "headline": {"lead": "2 projects, 1 needs you.", "facts": []}, "kpis": [],
+             "projects": [active, quiet], "has_bills": False}
+    assert pdf.render_portfolio(brief, {"company_name": "X"}).startswith(b"%PDF")

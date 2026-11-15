@@ -23,81 +23,80 @@ _WARN = "#B3261E"
 _DOCUMENT_TEMPLATE_SRC = """
 <!doctype html>
 <html><head><meta charset="utf-8"><style>
-  /* WEB-27: the DPR as a construction report people recognise -- letterhead,
-     a project block, the day in figures, then numbered sections. One accent
-     (the company's brand colour), tints of it for structure; red only for
-     what is wrong. Tables keep their header on every page and never split
-     a row. */
-  /* Continuation pages get their own top and bottom margin; the first page's
-     top is the body's padding. */
+  /* WEB-27, redesigned 15 Nov (Ilan: "upgrade the DPR PDF, better UI"): the same family as the weekly report --
+     a dark band (who, what, which day), the project large, the day in figure cards, sections marked with the
+     brand colour. Tight enough that an ordinary site day is one page. Red only for what is wrong. Tables keep
+     their header on every page and never split a row. */
   @page { size: A4; margin: 12mm 0 12mm; }
   @page :first { margin-top: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    color: {{ ink }}; padding: 30px 36px 0; font-size: 11.5px; line-height: 1.4; background: #fff; }
-  .tint { background: color-mix(in srgb, {{ accent }} 7%, #fff); }
+    color: {{ ink }}; font-size: 11px; line-height: 1.4; background: #fff; }
+  .page { padding: 0 34px; }
+  .tint { background: color-mix(in srgb, {{ accent }} 6%, #fff); }
 
-  /* Letterhead band */
+  /* The band */
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;
-    padding-bottom: 14px; border-bottom: 3px solid {{ accent }}; }
+    background: #181B1F; color: #fff; padding: 22px 34px 18px; border-bottom: 4px solid {{ accent }}; }
   .letterhead { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .lh-logo { max-height: 54px; max-width: 140px; object-fit: contain; }
-  .lh-name { font-size: 18px; font-weight: 700; color: {{ accent }}; letter-spacing: -0.01em; }
-  .lh-line { font-size: 9.5px; color: {{ sub }}; margin-top: 1px; }
+  .lh-logo { max-height: 46px; max-width: 120px; object-fit: contain; background: #fff; border-radius: 4px; padding: 3px; }
+  .lh-name { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+  .lh-line { font-size: 9px; color: #A6ACB4; margin-top: 1px; }
   .doc { text-align: right; flex-shrink: 0; }
-  .doc .kind { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: {{ accent }}; }
-  .doc .title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; margin-top: 1px; }
-  .doc .code { font-size: 10px; color: {{ sub }}; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .doc .kind { font-size: 8.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: color-mix(in srgb, {{ accent }} 55%, #fff); }
+  .doc .title { font-size: 12px; font-weight: 600; color: #D9DCE0; margin-top: 2px; }
+  .doc .day { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; margin-top: 3px; }
+  .doc .code { font-size: 9px; color: #A6ACB4; margin-top: 3px; font-variant-numeric: tabular-nums; }
 
   /* Project block */
-  .info { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 14px;
-    border: 1px solid {{ line }}; border-radius: 6px; overflow: hidden; }
-  .info > div { padding: 7px 10px; border-left: 1px solid {{ line }}; min-width: 0; }
-  .info > div:first-child { border-left: none; }
-  .info .k { font-size: 8.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: {{ sub }}; }
-  .info .v { font-size: 12px; font-weight: 600; margin-top: 1px; overflow-wrap: anywhere; }
-  .client-logo { max-height: 22px; max-width: 90px; object-fit: contain; display: block; margin-top: 2px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-top: 16px; }
+  .head .project { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+  .head .where { font-size: 11.5px; color: {{ sub }}; margin-top: 2px; }
+  .head .client { text-align: right; font-size: 10px; color: {{ sub }}; }
+  .client-logo { max-height: 24px; max-width: 90px; object-fit: contain; display: block; margin: 0 0 2px auto; }
 
-  .summary { margin-top: 12px; padding: 9px 12px; background: color-mix(in srgb, {{ accent }} 7%, #fff); border-left: 3px solid {{ accent }};
-    border-radius: 0 6px 6px 0; font-size: 12px; line-height: 1.5; }
-  .summary .label { font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
+  .summary { margin-top: 12px; padding: 9px 12px; background: color-mix(in srgb, {{ accent }} 7%, #fff);
+    border-left: 3px solid {{ accent }}; font-size: 11.5px; line-height: 1.5; }
+  .summary .label { font-size: 8px; font-weight: 700; letter-spacing: 0.1em;
     text-transform: uppercase; color: {{ accent }}; margin-bottom: 2px; }
 
   /* The day in figures */
   .meta { display: grid; grid-template-columns: repeat({{ 4 if data.is_project else 7 }}, 1fr); gap: 6px; margin-top: 12px; }
-  .meta-item { border-radius: 6px; padding: 8px 10px; }
-  .meta-item .label { font-size: 8.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: {{ sub }}; }
-  .meta-item .value { margin-top: 2px; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .meta-item .value.small { font-size: 12.5px; padding-top: 3px; }
+  .meta-item { padding: 7px 9px 8px; border: 1px solid {{ line }}; border-top: 3px solid {{ accent }}; background: #fff; }
+  .meta-item .label { font-size: 8px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: {{ sub }}; }
+  .meta-item .value { margin-top: 2px; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .meta-item .value.small { font-size: 12px; font-weight: 700; padding-top: 4px; }
   .meta-item .value.none { color: #A1A1A6; font-weight: 500; }
-  .meta-item.alert { background: #FDECEA; }
+  .meta-item.alert { border-top-color: {{ warn }}; background: #FFF6F5; }
   .meta-item.alert .value { color: {{ warn }}; }
 
   /* Sections */
-  .section { margin-top: 18px; }
-  tr.group td { padding-top: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; color: {{ sub }}; }
-  .section-title { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; font-weight: 700;
-    margin-bottom: 6px; break-after: avoid; }
-  .section-title .no { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
-    border-radius: 4px; background: {{ accent }}; color: #fff; font-size: 10px; font-weight: 700; }
-  .section-title .aside { margin-left: auto; font-size: 10.5px; font-weight: 500; color: {{ sub }}; }
-  table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid {{ line }}; border-radius: 6px; overflow: hidden; }
+  .section { margin-top: 15px; }
+  tr.group td { padding-top: 7px; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    color: {{ sub }}; background: #fff !important; }
+  .section-title { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 800;
+    margin-bottom: 6px; break-after: avoid; letter-spacing: -0.005em; }
+  .section-title .no { display: inline-block; width: 4px; height: 14px; background: {{ accent }}; color: transparent;
+    font-size: 0; }
+  .section-title .aside { margin-left: auto; font-size: 10px; font-weight: 500; color: {{ sub }}; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; border-top: 2px solid {{ ink }}; }
   thead { display: table-header-group; }
   tr { break-inside: avoid; }
-  th { text-align: left; font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
-    color: {{ sub }}; padding: 6px 9px; border-bottom: 1px solid {{ line }};
-    background: color-mix(in srgb, {{ accent }} 7%, #fff); }
-  td { padding: 6px 9px; border-bottom: 1px solid {{ line }}; font-size: 11px; vertical-align: top; }
+  th { text-align: left; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: {{ sub }}; padding: 5px 8px; border-bottom: 1px solid {{ line }}; background: #fff; }
+  td { padding: 5px 8px; border-bottom: 1px solid {{ line }}; font-size: 10.5px; vertical-align: top; }
   tbody tr:nth-child(even) td { background: #FAFAFB; }
-  tbody tr:last-child td { border-bottom: none; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.strong { font-weight: 600; }
-  tr.total td { font-weight: 700; background: color-mix(in srgb, {{ accent }} 7%, #fff) !important; border-top: 1px solid {{ line }}; }
+  tr.total td { font-weight: 700; background: color-mix(in srgb, {{ accent }} 7%, #fff) !important; }
   .muted { color: {{ sub }}; }
-  .empty { color: {{ sub }}; font-style: italic; padding: 9px; background: #fff !important; }
+  .empty { color: {{ sub }}; font-style: italic; padding: 8px; background: #fff !important; }
+  td.low { color: {{ warn }}; font-weight: 700; }
 
-  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 9.5px; font-weight: 600; white-space: nowrap; }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 9px; font-weight: 700; white-space: nowrap;
+    letter-spacing: .02em; }
   .st-completed, .st-resolved { background: #E3F4EA; color: #0B6B3A; }
   .st-in-progress, .st-acknowledged { background: #FFF2DB; color: #8A5300; }
   .st-stopped, .st-open { background: #FDECEA; color: #A1251B; }
@@ -105,22 +104,31 @@ _DOCUMENT_TEMPLATE_SRC = """
   .severity-critical, .severity-high { color: {{ warn }}; font-weight: 700; }
   .severity-medium { color: #B45309; font-weight: 600; }
   .severity-low { color: {{ sub }}; font-weight: 600; }
-  .stock-flag { color: {{ warn }}; font-size: 10px; margin: 3px 0 0; }
+  .stock-flag { color: {{ warn }}; font-size: 9.5px; margin: 3px 0 0; }
   .photos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 2px 0 4px; }
-  .photos img { width: 15%; max-width: 110px; height: 80px; object-fit: cover; border-radius: 3px; }
-  .photos .more { font-size: 11px; opacity: 0.7; }
+  .photos img { width: 15%; max-width: 110px; height: 80px; object-fit: cover; border-radius: 2px; }
+  .photos .more { font-size: 10.5px; opacity: 0.7; }
   tr.photo-row td { border-top: none; }
-  .cont { font-size: 10px; margin: 3px 0 0; opacity: 0.7; }
-  .note { margin-top: 6px; padding: 7px 10px; border-radius: 6px; background: #FDECEA; color: #8C1D16; font-size: 10.5px; }
-  .plan { padding: 9px 12px; border: 1px solid {{ line }}; border-radius: 6px; white-space: pre-line; font-size: 11.5px; }
+  .cont { font-size: 9.5px; margin: 2px 0 0; opacity: 0.7; }
+  .note { margin-top: 6px; padding: 6px 10px; background: #FDECEA; color: #8C1D16; font-size: 10px; }
+  .plan { padding: 8px 12px; border-left: 3px solid {{ accent }}; background: #FAFAFB; white-space: pre-line; font-size: 11px; }
 
-  .signatory { margin-top: 30px; display: flex; justify-content: flex-end; break-inside: avoid; }
-  .signatory .box { width: 210px; text-align: center; font-size: 11px; }
-  .signatory .rule { border-top: 1px solid {{ ink }}; margin-bottom: 4px; height: 26px; }
-  .signatory .name { font-weight: 600; }
-  .signatory .role { color: {{ sub }}; font-size: 10px; }
-  .footer { margin-top: 22px; padding-top: 8px; border-top: 1px solid {{ line }};
-    display: flex; justify-content: space-between; font-size: 9px; color: {{ sub }}; }
+  /* Manpower as chips */
+  .trades { display: flex; flex-wrap: wrap; gap: 6px; }
+  .trade { display: flex; align-items: baseline; gap: 6px; border: 1px solid {{ line }}; padding: 5px 10px; }
+  .trade .n { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .trade .t { font-size: 10.5px; color: {{ sub }}; }
+  .trade.total { background: #181B1F; border-color: #181B1F; color: #fff; }
+  .trade.total .t { color: #C9CDD2; }
+
+  .end { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-top: 22px; break-inside: avoid; }
+  .signatory { display: flex; justify-content: flex-end; break-inside: avoid; }
+  .signatory .box { width: 200px; text-align: center; font-size: 10.5px; }
+  .signatory .rule { border-top: 1px solid {{ ink }}; margin-bottom: 4px; height: 24px; }
+  .signatory .name { font-weight: 700; }
+  .signatory .role { color: {{ sub }}; font-size: 9.5px; }
+  .footer { margin-top: 16px; padding: 8px 0 0; border-top: 1px solid {{ line }};
+    display: flex; justify-content: space-between; font-size: 8.5px; color: {{ sub }}; }
 </style></head>
 <body>
   <div class="top">
@@ -140,18 +148,23 @@ _DOCUMENT_TEMPLATE_SRC = """
     <div class="doc">
       <div class="kind">{{ "Project" if data.is_project else "Site" }} report</div>
       <div class="title">Daily Progress Report</div>
+      <div class="day">{{ data.date_label or data.report_date }}</div>
       <div class="code">{{ data.code }}</div>
     </div>
   </div>
+  <div class="page">
 
-  <div class="info">
-    <div><div class="k">Project</div><div class="v">{{ data.project_name }}</div></div>
-    <div><div class="k">Site</div><div class="v">{{ "All sites" if data.is_project else data.site_name }}</div></div>
-    <div><div class="k">Date</div><div class="v">{{ data.date_label or data.report_date }}</div></div>
-    <div><div class="k">Client</div><div class="v">
-      {% if lh and lh.client_logo_data_uri %}<img class="client-logo" src="{{ lh.client_logo_data_uri|e }}" alt=""/>{% endif %}
-      {% if lh and lh.client_name %}Client: {{ lh.client_name|e }}{% elif not (lh and lh.client_logo_data_uri) %}<span class="muted">—</span>{% endif %}
-    </div></div>
+  <div class="head">
+    <div>
+      <div class="project">{{ data.project_name }}</div>
+      <div class="where">{{ "All sites" if data.is_project else data.site_name }}</div>
+    </div>
+    {% if lh and (lh.client_name or lh.client_logo_data_uri) %}
+    <div class="client">
+      {% if lh.client_logo_data_uri %}<img class="client-logo" src="{{ lh.client_logo_data_uri|e }}" alt=""/>{% endif %}
+      {% if lh.client_name %}Client: {{ lh.client_name|e }}{% endif %}
+    </div>
+    {% endif %}
   </div>
 
   {% if data.summary %}
@@ -230,29 +243,36 @@ _DOCUMENT_TEMPLATE_SRC = """
   <div class="section">
     <div class="section-title"><span class="no">{{ n.i }}</span>Manpower
       {% if data.headcount %}<span class="aside">{{ data.headcount }} on site{% if data.labour_cost_label %} · Labour cost {{ data.labour_cost_label }}{% endif %}</span>{% endif %}</div>
-    <table>
-      <thead><tr><th style="width:80%">Trade</th><th class="num" style="width:20%">Headcount</th></tr></thead>
-      <tbody>
-        {% for t in data.trades %}
-        <tr><td>{{ t.trade }}</td><td class="num">{{ t.headcount }}</td></tr>
-        {% else %}
-        <tr><td colspan="2" class="empty">No attendance recorded for this date.</td></tr>
-        {% endfor %}
-        {% if data.trades|length > 1 %}<tr class="total"><td>Total</td><td class="num">{{ data.headcount }}</td></tr>{% endif %}
-      </tbody>
-    </table>
+    {% if data.trades %}
+    <div class="trades">
+      {% for t in data.trades %}<div class="trade"><span class="n">{{ t.headcount }}</span><span class="t">{{ t.trade }}</span></div>{% endfor %}
+      {% if data.trades|length > 1 %}<div class="trade total"><span class="n">{{ data.headcount }}</span><span class="t">Total</span></div>{% endif %}
+    </div>
+    {% elif data.headcount %}
+    {# 15 Nov: a project's day has no trade split; "No attendance recorded" with 21 workers on site was wrong. #}
+    <div class="trades">
+      {% if data.is_project %}{% for st in data.sites if st.headcount %}<div class="trade"><span class="n">{{ st.headcount }}</span><span class="t">{{ st.site_name }}</span></div>{% endfor %}{% endif %}
+      <div class="trade total"><span class="n">{{ data.headcount }}</span><span class="t">Total</span></div>
+    </div>
+    {% else %}
+    <table><tbody><tr><td class="empty">No attendance recorded for this date.</td></tr></tbody></table>
+    {% endif %}
   </div>
 
   {% set n.i = n.i + 1 %}
   <div class="section">
     <div class="section-title"><span class="no">{{ n.i }}</span>Materials</div>
+    {% set stock = data.materials|selectattr("closing")|list %}
     <table>
-      <thead><tr><th style="width:46%">Material</th><th class="num" style="width:18%">Received</th>
-        <th class="num" style="width:18%">Used</th><th style="width:18%">Unit</th></tr></thead>
+      <thead><tr><th style="width:{{ '40%' if stock else '46%' }}">Material</th><th class="num" style="width:15%">Received</th>
+        <th class="num" style="width:15%">Used</th>{% if stock %}<th class="num" style="width:15%">Stock left</th>{% endif %}
+        <th style="width:15%">Unit</th></tr></thead>
       <tbody>
         {% for m in data.materials %}
-        {% if m.group %}<tr class="group"><td colspan="4">{{ m.group }}</td></tr>{% endif %}
-        <tr><td class="strong">{{ m.material_name }}</td><td class="num">{{ m.received }}</td><td class="num">{{ m.used }}</td><td>{{ m.unit }}</td></tr>
+        {% if m.group %}<tr class="group"><td colspan="{{ 5 if stock else 4 }}">{{ m.group }}</td></tr>{% endif %}
+        <tr><td class="strong">{{ m.material_name }}</td><td class="num">{{ m.received }}</td><td class="num">{{ m.used }}</td>
+          {% if stock %}<td class="num{{ ' low' if m.beyond_stock or (m.closing or '').startswith('-') }}">{{ m.closing or "—" }}</td>{% endif %}
+          <td>{{ m.unit }}</td></tr>
         {% else %}
         <tr><td colspan="4" class="empty">No material movements recorded for this date.</td></tr>
         {% endfor %}
@@ -342,6 +362,7 @@ _DOCUMENT_TEMPLATE_SRC = """
   <div class="footer">
     <span>Generated with Mesiri</span>
     <span>{{ data.code }} · {{ data.report_date }}</span>
+  </div>
   </div>
 </body></html>
 """

@@ -436,3 +436,26 @@ def test_dpr07_confirm_all_lists_what_is_being_confirmed():
         "• Labour: 13 workers (5 mason, 8 helper)",
         "• Materials: Cement",
     ]
+
+
+# -- 15 Nov redesign: the band, stock left, workers per site -------------------------------------------------------
+
+def test_redesign_shows_stock_left_and_flags_minus_stock():
+    data = build_document_data(code="DPR-1", payload=_payload(materials=[
+        {"material_name": "Cement", "unit": "bags", "received": "20.00", "used": "5.00", "closing": "15.000"},
+        {"material_name": "Steel", "unit": "kg", "received": "0", "used": "40.00", "closing": "-40.000",
+         "beyond_stock": True}]))
+    html = render_html(data)
+    assert "Stock left" in html and ">15<" in html and "td class=\"num low\">-40<" in html
+    assert ">20<" in html  # "20.00" reads 20
+
+
+def test_redesign_a_project_day_with_no_trade_split_shows_workers_per_site():
+    data = build_document_data(code="DPR-P-1", payload={
+        "level": "PROJECT", "project_name": "Green Villa", "report_date": "2026-11-14",
+        "labour": {"trades": [], "headcount": 21},
+        "sites": [{"site_name": "Annex", "reported": True, "headcount": 7},
+                  {"site_name": "Main block", "reported": True, "headcount": 14}]})
+    html = render_html(data)
+    assert "No attendance recorded" not in html
+    assert '<span class="n">7</span><span class="t">Annex</span>' in html and '<span class="n">21</span>' in html
