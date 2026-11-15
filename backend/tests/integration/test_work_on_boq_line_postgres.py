@@ -53,11 +53,12 @@ async def _line(conn, org, section, work: str, unit: uuid.UUID, planned: int = 1
     return line
 
 
-async def _work(conn, org, project, site, work: str, unit: uuid.UUID) -> tuple[uuid.UUID, uuid.UUID]:
+async def _work(conn, org, project, site, work: str, unit: uuid.UUID,
+                day: dt.date = dt.date(2026, 11, 15)) -> tuple[uuid.UUID, uuid.UUID]:
     activity, quantity = uuid.uuid4(), uuid.uuid4()
     await conn.execute(text("INSERT INTO activities (id, organization_id, project_id, site_id, activity_date, work_type) "
                             "VALUES (:id, :o, :p, :s, :d, :w)"),
-                       {"id": activity, "o": org, "p": project, "s": site, "d": dt.date(2026, 11, 15), "w": work})
+                       {"id": activity, "o": org, "p": project, "s": site, "d": day, "w": work})
     await conn.execute(text("INSERT INTO activity_quantities (id, activity_id, unit_id, quantity, work_type) "
                             "VALUES (:id, :a, :u, 400, :w)"), {"id": quantity, "a": activity, "u": unit, "w": work})
     return activity, quantity
@@ -138,8 +139,8 @@ async def test_boq02_a_days_labour_follows_the_work_linked_that_day(conn):
 
     assert [(r["planned_item_id"], r["man_days"], r.get("auto")) for r in rows] == [(plaster, 4, True)]
     other_day = {**group, "work_date": day - dt.timedelta(days=1)}
-    assert await _allocations(conn, PostgresBoqRepository(conn), org, project, day - dt.timedelta(days=1), day,
-                              [other_day]) == []
+    assert await _allocations(conn, PostgresBoqRepository(conn), org, project, other_day["work_date"],
+                              other_day["work_date"], [other_day]) == []
 
 
 async def test_boq03_an_issue_is_placed_on_the_activity_it_holds_up_and_listed_there(conn):
@@ -224,3 +225,53 @@ async def test_boq01b_a_line_put_by_itself_offers_the_other_lines_to_change_to(c
 
     assert out["auto"] and out["line"]["id"] == str(walls)
     assert [c["id"] for c in out["choices"]] == [str(ceiling)]
+
+
+async def test_boq02b_a_past_weeks_split_is_kept_and_on_no_line_stays_off(conn):
+    from mesiri.domains.costing.router import _allocations
+    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
+        PostgresLabourAllocationRepository,
+    )
+
+    org, project, site, section = await _project(conn)
+    sqft = await _unit(conn, "sqft")
+    day = dt.date(2026, 11, 2)  # a week that is over
+    plaster = await _line(conn, org, section, "Internal plastering", sqft)
+    activity, _ = await _work(conn, org, project, site, "internal plastering", sqft, day)
+    await place_new_work(conn, org, activity)
+    masons = {"site_id": site, "work_date": day, "trade_key": "mason", "man_days": 4, "priced_man_days": 4,
+              "cost": 4400, "activities": []}
+    helpers = {**masons, "trade_key": "helper", "man_days": 2, "priced_man_days": 2, "cost": 1600}
+    repo = PostgresBoqRepository(conn)
+
+    first = await _allocations(conn, repo, org, project, day, day, [masons, helpers])
+    assert {(r["trade_key"], r["planned_item_id"]) for r in first} == {("mason", plaster), ("helper", plaster)}
+
+    # Later, more work that day goes on another line: last week's split does not move.
+    ceiling = await _line(conn, org, section, "Ceiling plastering", sqft)
+    activity2, _ = await _work(conn, org, project, site, "ceiling plastering", sqft, day)
+    await place_new_work(conn, org, activity2)
+    again = await _allocations(conn, repo, org, project, day, day, [masons, helpers])
+    assert {(r["trade_key"], r["planned_item_id"], r["auto"]) for r in again} == {
+        ("mason", plaster, True), ("helper", plaster, True)}
+    assert ceiling not in {r["planned_item_id"] for r in again}
+
+    # A person takes the helpers off every line: they stay off.
+    await PostgresLabourAllocationRepository(conn).replace_group(org, project, site, day, "helper", [], None)
+    off = await _allocations(conn, repo, org, project, day, day, [masons, helpers])
+    assert {r["trade_key"] for r in off} == {"mason"}
+
+
+async def test_boq01c_a_retry_is_told_where_it_is_and_never_links_again(conn):
+    org, project, site, section = await _project(conn)
+    sqft = await _unit(conn, "sqft")
+    plaster = await _line(conn, org, section, "Internal plastering", sqft)
+    activity, quantity = await _work(conn, org, project, site, "internal plastering", sqft)
+    await place_new_work(conn, org, activity)
+
+    (again,) = await place_new_work(conn, org, activity, link=False)
+    assert again["line"]["id"] == str(plaster)  # the same answer as the first save
+
+    await set_work_line_checked(PostgresBoqRepository(conn), org, project, quantity, None)  # a person took it off
+    (retry,) = await place_new_work(conn, org, activity, link=False)
+    assert retry["line"] is None and retry["choices"][0]["id"] == str(plaster) and await _on(conn, quantity) is None

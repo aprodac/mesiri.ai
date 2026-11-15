@@ -68,7 +68,7 @@ def test_the_group_key_is_the_same_however_the_trade_was_typed():
     assert group_key(None, DAY, None) == (None, "2026-11-07", "")
 
 
-# -- BOQ-02: a day nobody split goes on the lines its site's work went to ---------------------------------------------
+# -- BOQ-02 / 02b: a day nobody split goes on the lines its site's work went to, where it plausibly fits ------------
 
 import datetime as _dt  # noqa: E402
 
@@ -77,54 +77,85 @@ from mesiri.domains.costing.labour import auto_split, worked_lines  # noqa: E402
 _DAY = _dt.date(2026, 11, 15)
 
 
-def _g(trade: str, man_days: str, activities=()):
+def _g(trade: str, man_days: str, activities=(), wage: int = 1000):
     return {"site_id": "s1", "work_date": _DAY, "trade_key": trade, "man_days": Decimal(man_days),
-            "priced_man_days": Decimal(man_days), "cost": Decimal(man_days) * 1000, "activities": list(activities)}
+            "priced_man_days": Decimal(man_days), "cost": Decimal(man_days) * wage, "activities": list(activities)}
 
 
 def _worked(**lines):
-    return worked_lines([{"site_id": "s1", "work_date": _DAY, "line_id": k} for k in lines], lines)
+    """name -> (work_type, quantity done that day, labour rate or None)."""
+    work = [{"site_id": "s1", "work_date": _DAY, "line_id": k, "quantity": Decimal(v[1])} for k, v in lines.items()]
+    by_id = {k: {"work_type": v[0], "labour_rate": None if v[2] is None else Decimal(v[2])} for k, v in lines.items()}
+    return worked_lines(work, by_id)
+
+
+def _md(out):
+    return sorted((a["planned_item_id"], a["man_days"]) for a in out)
 
 
 def test_one_line_worked_that_day_takes_the_whole_day():
-    out = auto_split([_g("helper", "4")], [], _worked(plaster="Internal plastering"))
-    assert [(a["planned_item_id"], a["man_days"], a["auto"]) for a in out] == [("plaster", Decimal(4), True)]
+    out = auto_split([_g("helper", "4")], [], _worked(plaster=("Internal plastering", 400, None)))
+    assert _md(out) == [("plaster", Decimal(4))] and out[0]["auto"]
 
 
 def test_a_trade_goes_to_the_lines_it_does_helpers_share_every_line():
-    worked = _worked(plaster="Internal plastering", steel="Reinforcement steel for slab")
-    masons = auto_split([_g("mason", "4")], [], worked)
-    assert [(a["planned_item_id"], a["man_days"]) for a in masons] == [("plaster", Decimal(4))]
-    benders = auto_split([_g("bar_bender", "2")], [], worked)
-    assert [a["planned_item_id"] for a in benders] == ["steel"]
-    helpers = auto_split([_g("helper", "3")], [], worked)
-    assert sorted((a["planned_item_id"], a["man_days"]) for a in helpers) == [
-        ("plaster", Decimal("1.50")), ("steel", Decimal("1.50"))]
+    worked = _worked(plaster=("Internal plastering", 400, None), steel=("Reinforcement steel for slab", 600, None))
+    assert _md(auto_split([_g("mason", "4")], [], worked)) == [("plaster", Decimal(4))]
+    assert _md(auto_split([_g("bar_bender", "2")], [], worked)) == [("steel", Decimal(2))]
+    assert _md(auto_split([_g("helper", "3")], [], worked)) == [("plaster", Decimal("1.50")), ("steel", Decimal("1.50"))]
 
 
 def test_an_even_split_adds_back_to_the_day_exactly():
-    worked = _worked(a="Brickwork", b="Plastering", c="Tiling")
+    worked = _worked(a=("Brickwork", 1, None), b=("Plastering", 1, None), c=("Tiling", 1, None))
     out = auto_split([_g("helper", "1")], [], worked)
     assert sum(a["man_days"] for a in out) == Decimal(1) and len(out) == 3
 
 
 def test_attendances_own_words_pick_the_line_when_the_trade_does_not():
-    worked = _worked(a="Excavation for footing", b="PCC bed")
-    out = auto_split([_g("helper", "2", activities=["excavation"])], [], worked)
-    assert [a["planned_item_id"] for a in out] == ["a"]
+    worked = _worked(a=("Excavation for footing", 30, None), b=("PCC bed", 2, None))
+    assert [a["planned_item_id"] for a in auto_split([_g("helper", "2", activities=["excavation"])], [], worked)] == ["a"]
 
 
-def test_guard_a_split_by_hand_is_never_touched_and_no_work_means_no_guess():
-    worked = _worked(plaster="Internal plastering")
+def test_02b_a_skilled_trade_with_none_of_its_work_that_day_stays_off_every_line():
+    # Masons on a day only steel was reported: their day is NOT put on the steel (it went on unreported work).
+    worked = _worked(steel=("Reinforcement steel for slab", 600, None))
+    assert auto_split([_g("mason", "6")], [], worked) == []
+    assert _md(auto_split([_g("helper", "2")], [], worked)) == [("steel", Decimal(2))]  # helpers still share
+
+
+def test_02b_a_line_takes_at_most_twice_what_its_work_earned_that_day():
+    # 100 sqft plastering at ₹14/sqft labour earned ₹1,400: at most ₹2,800 of masons (2.8 man-days at ₹1,000).
+    worked = _worked(plaster=("Internal plastering", 100, 14))
+    out = auto_split([_g("mason", "6")], [], worked)
+    assert _md(out) == [("plaster", Decimal("2.80"))]  # the other 3.2 man-days stay "not on a BOQ line"
+    from mesiri.domains.costing.labour import labour_by_line
+
+    left = labour_by_line([_g("mason", "6")], out)["not_on_a_line"]
+    assert left["man_days"] == Decimal("3.2")
+
+
+def test_02b_skilled_trades_take_the_room_first_and_no_rate_means_no_cap():
+    worked = _worked(plaster=("Internal plastering", 100, 14))
+    out = auto_split([_g("helper", "2"), _g("mason", "2")], [], worked)
+    assert [(a["trade_key"], a["man_days"]) for a in out] == [("mason", Decimal("2.00")), ("helper", Decimal("0.80"))]
+    unpriced = _worked(plaster=("Internal plastering", 100, None))
+    assert _md(auto_split([_g("mason", "9")], [], unpriced)) == [("plaster", Decimal(9))]
+
+
+def test_guard_a_split_by_hand_a_kept_split_or_on_no_line_is_never_touched_and_no_work_means_no_guess():
+    worked = _worked(plaster=("Internal plastering", 400, None))
     by_hand = [{"site_id": "s1", "work_date": _DAY, "trade_key": "mason", "planned_item_id": "x", "man_days": 1}]
     assert auto_split([_g("mason", "4")], by_hand, worked) == []
-    assert auto_split([_g("mason", "4")], [], {}) == []  # no work on a line that day: stays "not on a BOQ line"
+    from mesiri.domains.costing.labour import group_key
+
+    assert auto_split([_g("mason", "4")], [], worked, [group_key("s1", _DAY, "mason")]) == []
+    assert auto_split([_g("mason", "4")], [], {}) == []
 
 
 def test_auto_rows_cost_through_the_same_share_rule():
     from mesiri.domains.costing.labour import labour_by_line
 
     groups = [_g("mason", "4")]
-    out = labour_by_line(groups, auto_split(groups, [], _worked(plaster="Plastering")))
+    out = labour_by_line(groups, auto_split(groups, [], _worked(plaster=("Plastering", 400, None))))
     assert out["lines"]["plaster"]["cost"] == Decimal("4000.00")
     assert out["not_on_a_line"]["man_days"] == 0

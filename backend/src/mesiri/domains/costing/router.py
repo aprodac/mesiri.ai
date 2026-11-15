@@ -256,20 +256,32 @@ def _line_labour(line: dict, labour: dict | None) -> dict:
 
 async def _allocations(conn: AsyncConnection, repo, org: uuid.UUID, project_id: uuid.UUID,
                        date_from: datetime.date, date_to: datetime.date, groups: list[dict]) -> list[dict]:
-    """The labour put on BOQ lines over the period: what people split (CC-05), and for every other site-day-trade,
-    the split by that day's work (BOQ-02, ``auto_split``, rows marked ``auto``). The one read every labour figure
-    uses (this page, the budget, the variance), so they never disagree."""
+    """The labour put on BOQ lines over the period: what people split (CC-05), the automatic splits already kept,
+    and for every other site-day-trade the split by that day's work (BOQ-02, ``auto_split``). Rows from the
+    automatic split say ``auto``. The one read every labour figure uses (this page, the budget, the variance).
+
+    BOQ-02b: a day whose week is over (before this week's Monday, the company's today) has its automatic split
+    stored the first time it is read, so a work update linked or corrected later no longer changes last week's
+    labour cost per line or a report already sent; a day a person took off every line stays off."""
     from mesiri.domains.costing.labour import auto_split, worked_lines
     from mesiri.domains.progress.boq_router import counted_work
     from mesiri.infrastructure.postgres.repositories.labour_allocations import (
         PostgresLabourAllocationRepository,
     )
 
-    manual = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    store = PostgresLabourAllocationRepository(conn)
+    kept = [{**a, "auto": a.get("source") == "auto"} for a in await store.list(org, project_id, date_from, date_to)]
+    off = [group_key(m["site_id"], m["work_date"], m["trade_key"])
+           for m in await store.on_no_line(org, project_id, date_from, date_to)]
     lines = await repo.list_lines(org, project_id)
     work = [w for w in await counted_work(repo, org, project_id, lines) if date_from <= w["work_date"] <= date_to]
-    worked = worked_lines(work, {ln["id"]: ln["work_type"] for ln in lines})
-    return [*manual, *auto_split(groups, manual, worked)]
+    worked = worked_lines(work, {ln["id"]: ln for ln in lines})
+    auto = auto_split(groups, kept, worked, off)
+    today = await _today(conn, org)
+    week_start = today - datetime.timedelta(days=today.weekday())
+    if closed := [a for a in auto if a["work_date"] < week_start]:
+        await store.keep_auto(org, project_id, closed)
+    return [*kept, *auto]
 
 
 async def _labour(conn: AsyncConnection, repo, org: uuid.UUID, project_id: uuid.UUID,

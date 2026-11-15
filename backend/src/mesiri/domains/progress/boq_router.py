@@ -650,7 +650,8 @@ async def set_work_line_checked(
 AUTO_LIMIT = Decimal("1.10")
 
 
-async def place_new_work(conn: AsyncConnection, organization_id: uuid.UUID, activity_id: uuid.UUID) -> list[dict]:
+async def place_new_work(conn: AsyncConnection, organization_id: uuid.UUID, activity_id: uuid.UUID, *,
+                         link: bool = True) -> list[dict]:
     """BOQ-01: a work entry just saved goes on its BOQ line by itself when the line is clear (``suggest_line``:
     same unit, most words shared, no tie) and the quantity fits it; otherwise the lines to choose from are returned.
 
@@ -659,6 +660,9 @@ async def place_new_work(conn: AsyncConnection, organization_id: uuid.UUID, acti
     when linked by itself), and ``over`` when the clear line was not used because the quantity would take it past
     ``AUTO_LIMIT`` ({line, done, planned, after}). Work already on a line or a work order is left as it is.
     Names only, never rates; who may SEE this is the caller's decision (``record_activity``).
+
+    ``link`` False (BOQ-01c, a retried save): nothing is linked, only told: where it is now, or what to choose from
+    (so a retry after a dropped reply gets the same answer, and work a person took off is never put back).
     """
     repo = PostgresBoqRepository(conn)
     rows = await repo.activity_work(organization_id, activity_id)
@@ -687,6 +691,9 @@ async def place_new_work(conn: AsyncConnection, organization_id: uuid.UUID, acti
             continue
         choices = line_choices(said, w["unit_id"], w["section_id"], lines)
         pick = suggest_line(said, w["unit_id"], w["section_id"], lines)
+        if pick is not None and not link:
+            out.append({**item, "choices": [named(pick)] + [named(c) for c in choices if c != pick][:2]})
+            continue
         if pick is not None:
             planned = Decimal(by_id[pick]["planned_quantity"])
             after = done.get(pick, Decimal(0)) + Decimal(w["quantity"])
