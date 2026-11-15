@@ -1,6 +1,8 @@
 # Guided onboarding — a start that fits the person
 
-> **Status: proposed, 15 Nov 2026. Waiting for Ilan's approval. No code written.**
+> **Status: approved 15 Nov 2026 in session ("I approve everything, let's build it": all of D-GO1..D-GO8 at
+> the recommended defaults) and built the same day. What was built, and where it differs from this plan, is
+> [section 17](#17-as-built-15-nov-2026).**
 > Tracker items: **SS-26 to SS-37** in [V1_TRACKER.md](V1_TRACKER.md).
 > Builds on [onboarding-plan.md](onboarding-plan.md) (agreed 15 Oct) and does not replace it.
 
@@ -352,3 +354,33 @@ start; the rest can follow in any order.
 6. No change for an existing user who never opens Settings.
 7. A page that is added or reshaped later cannot be pushed without its explanation, and its
    users are told once what changed.
+
+## 17. As built (15 Nov 2026)
+
+| Item | What exists now | Where |
+| --- | --- | --- |
+| SS-27 | `users.start_mode`, `users.guide_seen` (migration 0553, additive). `GET /me/preferences` returns `start_mode`, `ask_start_mode`, `guide_seen`; `PUT /me/start-mode`, `POST` / `DELETE /me/guide-seen`. Self only (the token's user in the token's company). One rule, `start_mode_for`: an answer stands; no answer = guided and asked for a person added in the last 14 days, `free` and never asked for anyone older (D-GO5) | `backend/.../identity/preferences_router.py` |
+| SS-28 | The question on `/welcome` (inline, while the first update comes in) and as a dialog on any dashboard page for anyone not asked yet (team members included). Closing it = "Step by step", stored, never asked again. Changed from the ? help sheet, which every role has | `components/onboarding/start-question.tsx`, `components/help-button.tsx` |
+| SS-29 | The ? "What is this page?" button **already existed (UX-08)**; this plan missed it. Built: the first-visit strip, one component in the layout for every page, words from `module-map.ts` only, "Got it" remembers it per person | `components/page-guide.tsx`, `lib/page-guide.ts` |
+| SS-30 | The checklist by mode: why-lines (guided), "Bring your materials and vendors list" + "Bring your BOQ" (bring_data, switching), "Where things are" (switching), no card for `free` unless opened from Finish setup. The step count is one list (`setupSteps`) used by the card, the sidebar and Settings. `has_vendors` / `has_boq` on setup-progress: **vendors, not materials**, because every company starts with seeded materials (BE-24) | `components/getting-started-card.tsx`, `lib/setup.ts`, `setup_router.py` |
+| SS-31 | Step by step: the everyday pages, Bring your data and the role's first section (UX-04), then "Show all (+N)". Per browser. Off while the planned-modules preview is on | `components/app-sidebar.tsx`, `lib/start-mode.ts` |
+| SS-32 | `/bring-data`: sites, team, materials workbook (if the module is on), BOQ for the first project, documents, and "send anything else to Mesiri on WhatsApp". Ticks from setup-progress. In Settings and the module map | `pages/BringDataPage.tsx` |
+| SS-33 | 40 terms, definitions from the field guides (LRN). `WithTerms` finds them in any help text, so every page's strip and help sheet explain their words with no per-page work | `lib/glossary.ts`, `components/term.tsx` |
+| SS-34 | WhatsApp: the question as the **first** daily setup question for a new owner who has not answered on the dashboard (it goes out after a reply to them, as the other setup questions do, so it can be the signup day, not "the morning after"). The answer is saved on their user row and the reply is that mode's first tip. v3 tool `set_start_mode` ("no more tips", "explain step by step"), set at once like the reply language, never a card line | `runtime/setup_questions.py`, `agent_api/tools.py`, `agent_api/agent.py`, `SOP.md` rule 8 |
+| SS-35 | Trials funnel: each trial's start mode, and the funnel steps per answer | `trials_funnel.py`, control panel `Trials.tsx` |
+| SS-37 | `guideVersion` / `guideNew` on a module-map page: the strip comes back once as "Updated", the help sheet shows "What's new". `guideLink()` checks every guidance link against the module map: a dead or planned link is a console error in development, which fails the UX-10 screenshot run. `about` and `example` are required by the type, so a page cannot be added without its explanation | `lib/guide-links.ts`, `lib/module-map.ts` |
+
+**Not built yet**
+
+- **SS-38:** a week of daily WhatsApp tips by mode (6.2's last row). Only the first tip, in the reply to the answer, exists.
+- **SS-36:** watching contractors who have never seen Mesiri. Needs real people.
+- Section 14's later work, unchanged.
+
+**Not verified**
+
+- The Today page's checklist was not seen in a browser: in the screenshot script's stub mode, Today crashes before and
+  after this change (the stub answers `[]` where Today expects objects). The question, strip, sidebar, help sheet,
+  term pop-up, Bring your data and welcome screen were driven in a browser.
+- Migration 0553 and the Postgres reads (setup-progress data-in flags, the funnel's owner query, the WhatsApp
+  start-mode read) were not run against Postgres here; the integration tests need a database.
+- Live WhatsApp after deploy.
