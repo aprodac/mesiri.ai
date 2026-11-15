@@ -165,7 +165,7 @@ def _new_intent(n: int, message: dict[str, Any], conversation: str) -> dict[str,
         "organization_name": message.get("organization_name"),
         "text": " ".join(str(message.get("body_text") or "").split())[:MAX_TEXT_CHARS],
         "sender_name": message.get("sender_name"), "sender_role": message.get("sender_role"),
-        "messages": [], "tools": [], "ready_tools": [], "ready_lines": 0,
+        "messages": [], "correlation_ids": [], "tools": [], "ready_tools": [], "ready_lines": 0,
         "waiting": False, "question": False, "had_question": False, "changed": False, "memory": False,
         "saved": False, "save_failed": None, "cancelled": False, "complained": None, "failed": None,
         "answered": False, "corrected": False, "corrected_later": False, "first_outcome": None, "_first": None,
@@ -178,6 +178,7 @@ def _apply(intent: dict[str, Any], message: dict[str, Any], turn: dict[str, Any]
            filed: dict[str, Any] | None, *, continues: bool) -> None:
     """One message's effect on the intent it belongs to."""
     intent["messages"].append(str(message["id"]))
+    intent["correlation_ids"].append(str(message.get("correlation_id") or ""))
     if message.get("processed_at") and message.get("received_at"):
         took = (message["processed_at"] - message["received_at"]).total_seconds()
         intent["slowest_reply_s"] = max(intent["slowest_reply_s"], took)
@@ -451,6 +452,7 @@ def build_intents(messages: list[dict[str, Any]], turns: dict[str, dict[str, Any
                 "id": intent["id"], "conversation": intent["conversation"], "sender": intent["sender"],
                 "started_at": intent["started_at"], "how": intent["first_type"],
                 "company": intent["organization_name"], "messages": intent["messages"], "text": intent["text"],
+                "correlation_ids": intent["correlation_ids"],
                 "sender_name": intent["sender_name"], "sender_role": intent["sender_role"],
                 "capability": tool, "section": section_of(tool) if not tool.startswith("_") else _no_tool_section(tool),
                 "tools": intent["tools"], "ending": ending, "reason": _reason(intent, ending),

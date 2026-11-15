@@ -97,26 +97,40 @@ def summarise(intents: list[dict[str, Any]], messages_by_id: dict[str, dict[str,
 _PROBLEM = {FAILED: "failed: ", COMPLAINED: "", ABANDONED: "", UNSURE: ""}
 #: "Not sure" reasons that are not a problem: nothing to fix there.
 _NOT_A_PROBLEM = frozenset({UNSURE_REASONS["no_record"], UNSURE_REASONS["greeting"], UNSURE_REASONS["idea"]})
-def fix_first(intents: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The largest problems of the window across every module, largest first: the same ending and reason is one
-    problem wherever it happened, with the capabilities it hit and its intents (newest first) to open."""
+
+def is_problem(intent: dict[str, Any]) -> bool:
+    """An ending worth fixing: failed, a complaint or 'not yet', left without Save, or a reply with nothing done
+    (not a sign-up, a greeting or an idea)."""
+    return intent["ending"] in _PROBLEM and not (intent["ending"] == UNSURE and intent["reason"] in _NOT_A_PROBLEM)
+
+
+def problem_groups(intents: list[dict[str, Any]], *, top_capabilities: int = 3) -> list[dict[str, Any]]:
+    """Every problem of the window, largest first: the same ending and reason is one problem wherever it happened,
+    with the capabilities it hit and its intents (newest first) to open."""
     groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for r in intents:
-        if r["ending"] not in _PROBLEM or (r["ending"] == UNSURE and r["reason"] in _NOT_A_PROBLEM):
-            continue
-        groups.setdefault((r["ending"], r["reason"]), []).append(r)
+        if is_problem(r):
+            groups.setdefault((r["ending"], r["reason"]), []).append(r)
     out = []
-    for (ending, reason), rows in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:FIX_FIRST]:
+    for (ending, reason), rows in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         caps = Counter(r["capability"] for r in rows)
         words = plain_reason(reason)
+        newest = sorted(rows, key=lambda r: r["started_at"], reverse=True)
         out.append({
             "key": f"{ending}|{reason}", "ending": ending, "reason": reason, "count": len(rows),
             "line": f"{len(rows)} {'request' if len(rows) == 1 else 'requests'}"
                     + (f" {_PROBLEM[ending]}{words}" if ending == FAILED else f": {words}"),
-            "capabilities": [{"key": k, "name": capability_name(k), "count": n} for k, n in caps.most_common(3)],
-            "intents": [r["id"] for r in sorted(rows, key=lambda r: r["started_at"], reverse=True)][:MAX_INTENT_EXAMPLES],
+            "capabilities": [{"key": k, "name": capability_name(k), "count": n}
+                             for k, n in caps.most_common(top_capabilities)],
+            "intents": [r["id"] for r in newest][:MAX_INTENT_EXAMPLES],
+            "_rows": newest,
         })
     return out
+
+
+def fix_first(intents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The largest problems of the window across every module (the first ``FIX_FIRST`` of ``problem_groups``)."""
+    return [{k: v for k, v in g.items() if k != "_rows"} for g in problem_groups(intents)[:FIX_FIRST]]
 
 
 def previous_window(since: datetime, until: datetime) -> tuple[datetime, datetime]:

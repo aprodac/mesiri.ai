@@ -38,6 +38,7 @@ from admin.intents import (
     build_intents,
     capability_name,
 )
+from admin.intents_patterns import SPLIT_FLOOR, after_failure, causes, leaks, script_of, splits
 from admin.intents_playbook import best_case, playbook
 from admin.intents_summary import fix_first, plain_reason, summarise
 from admin.message_map_router import router
@@ -422,6 +423,77 @@ def test_the_playbook_leaves_out_talk_failures_and_team_feedback():
     assert playbook(intents_of(*steps)) == []
 
 
+# ── Patterns: connections between failures ──────────────────────────────────
+
+REFUSED = "'TMT' is not in the company's material list. Nothing is prepared."
+
+
+def test_a_cause_is_counted_once_across_capabilities_with_its_trend_and_fix_actions():
+    now = intents_of((msg(1, minutes_ago=400), {"calls": [call("record_receipt", error=REFUSED)]}),
+                     (msg(2, minutes_ago=300), {"calls": [call("record_usage", error=REFUSED)]}),
+                     (msg(3, minutes_ago=200), {"calls": [call("record_receipt", error=REFUSED)]}))
+    before = intents_of((msg(9, minutes_ago=2000), {"calls": [call("record_receipt", error=REFUSED)]}))
+    (cause,), gone = causes(now, before)
+    assert (cause["count"], cause["before"], cause["trend"]) == (3, 1, "steady")
+    assert [c["key"] for c in cause["capabilities"]] == ["record_receipt", "record_usage"]
+    assert cause["correlation_ids"][0] == "cor_3" and cause["replay"] == "python3 scripts/replay_to_test.py cor_3"
+    assert gone == []
+
+
+def test_a_new_cause_and_a_gone_one_are_named():
+    now = intents_of((msg(1, status="failed", reply=None, error_code="AI_UNAVAILABLE", minutes_ago=60), None))
+    before = intents_of((msg(9, minutes_ago=2000), {"calls": [call("record_receipt", error=REFUSED)]}))
+    (cause,), (gone,) = causes(now, before)
+    assert cause["trend"] == "new"
+    assert gone["line"] == "1 request failed: … is not in the company's material list."
+
+
+def test_a_request_passed_to_the_team_carries_the_team_request_reference():
+    """TM-21: the ref is made from the correlation id (release_notes.request_ref), never matched by text."""
+    bad = {"tool": "tell_the_team", "args": {"kind": "wrong_reply"}, "result": {"status": "Passed to the team."}}
+    row = msg(1, "wrong!", minutes_ago=60, correlation_id="cor_a83f12aa00")
+    (cause,), _ = causes(intents_of((row, {"calls": [bad]})), [])
+    assert cause["team_refs"] == ["#a83f12"]
+
+
+def test_where_a_flow_leaks_is_its_widest_drop():
+    steps = (*_receipt(1, 400), (msg(3, minutes_ago=300), {"calls": [call("record_receipt", **READY)]}),
+             (msg(4, minutes_ago=200), {"calls": [call("record_receipt", **READY)]}))
+    (leak,) = leaks(intents_of(*steps))
+    assert [s["count"] for s in leak["steps"]] == [3, 3, 3, 1]
+    assert leak["widest_drop"] == {"at": "Saved, sent or answered", "lost": 2} and leak["lost"] == 2
+
+
+def test_a_split_is_shown_only_when_two_groups_pass_the_floor():
+    typed = [(msg(n, minutes_ago=1000 - 40 * n), {"calls": [call("stock_check", status=200)]}) for n in range(SPLIT_FLOOR)]
+    voice = [(msg(100 + n, kind="voice", minutes_ago=999 - 40 * n), {"calls": [call("stock_check", status=200)]})
+             for n in range(SPLIT_FLOOR)]
+    photo = [(msg(300, kind="image", minutes_ago=5000), {"calls": [call("stock_check", status=200)]})]
+    by_how = next(s for s in splits(intents_of(*typed, *voice, *photo)) if s["key"] == "how")
+    assert sorted(g["name"] for g in by_how["groups"]) == ["Typed", "Voice note"] and by_how["hidden"] == 1
+    assert [s["key"] for s in splits(intents_of(*typed, *photo))] == []
+
+
+def test_the_script_is_read_from_the_letters():
+    assert script_of("20 bag cement vannu")[0] == "latin"
+    assert script_of("ഇന്ന് 50 ചാക്ക് സിമന്റ് വന്നു")[0] == "malayalam"
+    assert script_of("आज तीन कारपेंटर आये")[0] == "devanagari"
+    assert script_of("Main Block mein aaj 3 carpenter aaye")[0] == "latin"  # Hinglish in Latin letters
+    assert script_of("")[0] == "none"
+
+
+def test_after_a_failure_the_person_tries_again_moves_on_or_stops():
+    steps = ((msg(1, "20 bag cement vannu", minutes_ago=60), {"calls": [call("record_receipt", error=REFUSED)]}),
+             (msg(2, "20 bag cement vannu", minutes_ago=59), {"calls": [call("record_receipt", error=REFUSED)]}),
+             (msg(3, "how many workers?", minutes_ago=58), {"calls": [call("labour_attendance", status=200)]}))
+    intents = intents_of(*steps)
+    rows = {m["id"]: m for m, _t in steps}
+    kinds = {k["key"]: k["count"] for k in after_failure(intents, rows)["kinds"]}
+    assert kinds == {"repeated": 1, "said_wrong": 0, "moved_on": 1, "stopped": 0}
+    alone = intents_of((msg(9, minutes_ago=60), {"calls": [call("record_receipt", error=REFUSED)]}))
+    assert {k["key"]: k["count"] for k in after_failure(alone, {})["kinds"]}["stopped"] == 1
+
+
 # ── the route ───────────────────────────────────────────────────────────────
 
 
@@ -488,4 +560,6 @@ async def test_the_intents_route_splits_this_window_from_the_one_before():
     assert intent["text"] == "20 bag cement vannu" and "sender" not in intent  # never the phone number
     assert body["fix_first"] == []
     assert body["playbook"][0]["capabilities"][0]["journeys"][0]["best"] == intent["id"]
+    assert body["patterns"]["causes"] == [] and body["patterns"]["split_floor"] == 10
+    assert intent["correlation_ids"] == ["cor_1", "cor_2"]
     assert logger.asked["since"] < now - timedelta(days=13) and logger.asked["limit"] == 10001

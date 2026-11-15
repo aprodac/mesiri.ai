@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from admin.intents import build_intents
+from admin.intents_patterns import patterns
 from admin.intents_playbook import playbook
 from admin.intents_summary import previous_window, summarise
 from admin.message_map import build_map, build_thread
@@ -53,7 +54,7 @@ async def get_message_map(
 #: The fields of an intent the panel needs; the rest is internal.
 _INTENT_FIELDS = ("id", "started_at", "how", "company", "messages", "text", "sender_name", "sender_role",
                   "capability", "section", "tools", "ending", "reason", "journeys", "corrected_later",
-                  "slowest_reply_s")
+                  "slowest_reply_s", "correlation_ids")
 
 
 @router.get("/intents")
@@ -80,13 +81,15 @@ async def get_message_intents(
     previous = [m for m in rows if m["received_at"] <= since]
     built = build_intents(current, turns, now=now)
     summary = summarise(built["intents"], {str(m["id"]): m for m in current})
-    earlier = summarise(build_intents(previous, turns, now=now)["intents"])
+    earlier_intents = build_intents(previous, turns, now=now)["intents"]
+    earlier = summarise(earlier_intents)
     return {
         "window": {"since": since.isoformat(), "until": now.isoformat(), "days": days},
         "truncated": truncated,
         "links": built["links"],
         **summary,
         "playbook": playbook(built["intents"]),
+        "patterns": patterns(built["intents"], earlier_intents, {str(m["id"]): m for m in current}),
         "previous": {
             "totals": earlier["totals"],
             "sections": {s["key"]: {"count": s["count"], "finished": s["finished"]} for s in earlier["sections"]},
