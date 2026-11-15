@@ -258,6 +258,34 @@ class PostgresTraceLogger:
             )
         return [dict(row) for row in rows]
 
+    async def get_turns(self, correlation_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Read path for the control panel's "What works" page (SA-38): each message's v3 turn
+        (`agent_api_turn`: the tools called and what each answered, saves, the question asked), by
+        correlation id. The large context blocks a turn also keeps (facts, state block, the messages
+        before) are left in the database. Platform-admin only at the caller. A query failure is NOT
+        swallowed."""
+        from sqlalchemy import bindparam, text
+
+        if not correlation_ids:
+            return {}
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT DISTINCT ON (correlation_id) correlation_id, "
+                            "stage_payload - 'facts' - 'state_block' - 'before' AS turn "
+                            "FROM journey_traces WHERE stage = 'agent_api_turn' "
+                            "AND correlation_id IN :ids ORDER BY correlation_id, created_at DESC"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"ids": correlation_ids},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return {row["correlation_id"]: row["turn"] for row in rows if isinstance(row["turn"], dict)}
+
     async def get_review_providers(self, correlation_ids: list[str]) -> list[dict[str, Any]]:
         """Read path for the assistant review export: which AI/API calls each
         message made and how long they took. Same columns as

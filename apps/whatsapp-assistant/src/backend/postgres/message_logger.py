@@ -420,6 +420,76 @@ class PostgresMessageLogger:
             )
         return [dict(row) for row in rows]
 
+    #: SA-38: what the "What works" page reads of a message (full text and reply, who sent it and how).
+    _MAP_COLUMNS = (
+        "im.id, im.correlation_id, im.sender_wa_id, im.organization_id, "
+        f"{company_name_sql('im.organization_id')} AS organization_name, "
+        "im.message_type, im.body_text, im.assistant_reply, im.processing_status, im.error_code, "
+        "im.received_at, im.processed_at, su.full_name AS sender_name, su.role AS sender_role "
+        "FROM inbound_messages im "
+        "LEFT JOIN organizations o ON o.id = im.organization_id "
+        "LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u "
+        " WHERE u.organization_id = im.organization_id "
+        " AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') "
+        " = regexp_replace(im.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true "
+    )
+
+    async def list_for_map(
+        self, *, since: datetime, organization_id: uuid.UUID | None = None, limit: int
+    ) -> list[dict[str, Any]]:
+        """Read path for the control panel's "What works" page (admin/message_map_router.py, SA-38):
+        the newest `limit` messages received after `since`, newest first, with the full body and reply
+        and the sender's name and role. Platform-admin only at the caller. A query failure is NOT
+        swallowed."""
+        from sqlalchemy import text
+
+        where = "im.received_at > :since"
+        params: dict[str, Any] = {"since": since, "limit": limit}
+        if organization_id is not None:
+            where += " AND im.organization_id = :organization_id"
+            params["organization_id"] = organization_id
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            f"SELECT {self._MAP_COLUMNS} WHERE {where} "
+                            "ORDER BY im.received_at DESC, im.id DESC LIMIT :limit"
+                        ),
+                        params,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(row) for row in rows]
+
+    async def list_around(self, message_id: uuid.UUID, *, hours: int = 6) -> list[dict[str, Any]]:
+        """Read path for the "What works" WhatsApp view (SA-38): the messages the same person sent
+        within `hours` before and after one message, oldest first, in the shape of `list_for_map`.
+        Empty when the message does not exist. A query failure is NOT swallowed."""
+        from sqlalchemy import text
+
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            f"SELECT {self._MAP_COLUMNS} "
+                            "JOIN inbound_messages target ON target.id = :id "
+                            "AND im.sender_wa_id = target.sender_wa_id "
+                            "AND im.received_at BETWEEN target.received_at - make_interval(hours => :hours) "
+                            "AND target.received_at + make_interval(hours => :hours) "
+                            "ORDER BY im.received_at ASC, im.id ASC LIMIT 400"
+                        ),
+                        {"id": message_id, "hours": hours},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(row) for row in rows]
+
     async def get_message_detail(self, message_id: str) -> dict[str, Any] | None:
         """Full record for the log detail view — the only place full
         `body_text` and `raw_payload` are ever returned."""
