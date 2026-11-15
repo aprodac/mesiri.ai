@@ -143,6 +143,8 @@ REMOVE_PREFIX = "apiag:remove:"
 OPTION_PREFIX = "apiag:opt:"
 #: WA-168: an admin's one tap confirming a size proposed for the company ("apiag:size:<request id>").
 SIZE_PREFIX = "apiag:size:"
+#: BOQ-01: one tap puts saved work on the BOQ line chosen (``apiag:boq:<activity>:<quantity>:<line>``).
+BOQ_PREFIX = "apiag:boq:"
 #: WA-146: one tap on why a ready list was cancelled ("apiag:why:<reason>").
 WHY_PREFIX = "apiag:why:"
 CANCEL_REASONS = {"site": "wrong site", "amount": "wrong amount or quantity", "other": "something else"}
@@ -388,6 +390,9 @@ class ApiWhatsApp:
         elif tap.startswith(SIZE_PREFIX):
             said = "(tapped to confirm a size)"
             reply = await self._on_size_tap(tap[len(SIZE_PREFIX):], ctx)
+        elif tap.startswith(BOQ_PREFIX):
+            said = "(tapped a BOQ line)"
+            reply = await self._on_boq_tap(tap[len(BOQ_PREFIX):], ctx)
         elif tap.startswith(OPTION_PREFIX) and said and (closed := await self._closed_question(tap, ctx)) is not None:
             # WA-266: a button of a question that is no longer the open one never answers another question.
             said = "(tapped an option of an earlier question)"
@@ -1075,6 +1080,23 @@ class ApiWhatsApp:
             return ReplySpec(text=plain_refusal(_detail(answer.body), (await self._state(ctx)).get("language")))
         return ReplySpec(text=f"✅ {answer.body.get('message')}")
 
+    async def _on_boq_tap(self, ids: str, ctx: Any) -> ReplySpec:
+        """BOQ-01: the line tapped under "Which BOQ line?": the saved work goes on it (the API checks the unit, the
+        project and that this person may correct the work). No model turn."""
+        language = (await self._state(ctx)).get("language")
+        activity_id, _, rest = ids.partition(":")
+        quantity_id, _, line_id = rest.partition(":")
+        client = ApiClient(_actor(ctx), app=self._app)
+        try:
+            put = await client.call("PUT", f"/progress/activities/{activity_id}/quantities/{quantity_id}/boq-line",
+                                    json={"line_id": line_id})
+        finally:
+            await client.close()
+        if not put.ok:
+            return ReplySpec(text=plain_refusal(_detail(put.body), language))
+        work = ((put.body or {}).get("line") or {}).get("work") or ""
+        return ReplySpec(text=_in_with(language, "api.boq_put", BOQ_PUT, work=work))
+
     async def _feedback_only(self, message: Any, ctx: Any, state: dict, calls: list[dict[str, Any]], text: str,
                              started: float) -> ReplySpec:
         """"mesiri bad ux / fix it": passed to the team by the code, no model turn. Without a reason, the person is
@@ -1491,7 +1513,15 @@ class ApiWhatsApp:
             await self._save_state(ctx, state)
             return ReplySpec(text=text, buttons=(ListRow(id=f"{CANCEL_PREFIX}{state['batch']}", title="Cancel"),))
         await self._save_state(ctx, state)
-        return _save_buttons(text, state["batch"], send=only_sends(left)) if left else ReplySpec(text=text)
+        # BOQ-01: where the saved work went on the BOQ; when no line was clear, the lines to tap (only when nothing
+        # else waits, so the Save buttons keep their place).
+        on_boq, ask, rows = boq_follow_up(results, state.get("language"))
+        text = "\n\n".join(t for t in (text, on_boq, "" if left else ask) if t)
+        if left:
+            return _save_buttons(text, state["batch"], send=only_sends(left))
+        if rows:
+            return ReplySpec(text=text, list_button_label=BOQ_LIST_BUTTON, list_rows=rows)
+        return ReplySpec(text=text)
 
     # (WA-263: a tap on a card that is done says what happened to it, never "nothing waiting to save" for a Cancel.)
 
@@ -2529,6 +2559,35 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
                                                      for r in waiting), example=size_example(waiting))
         text = f"{text}\n\n{later}".strip()
     return text
+
+
+BOQ_ON = "📐 On the BOQ: {lines}"
+BOQ_WHICH = "📐 Which BOQ line is *{work}* on? Choose it below; if none fits, the office puts it on a line."
+BOQ_PUT = "✅ Put on the BOQ line *{work}*."
+BOQ_LIST_BUTTON = "Choose BOQ line"
+
+
+def boq_follow_up(results: list[WriteResult], language: str | None) -> tuple[str, str, tuple[ListRow, ...]]:
+    """BOQ-01: what the API did with saved work on the BOQ (``record_work``'s ``boq``): the lines it went on by
+    itself (one line of text), and for the first quantity with no clear line, the question and its lines to tap
+    (one question at a time; the rest wait for the office on the BOQ page). Empty when there is no BOQ."""
+    put: list[str] = []
+    ask, rows = "", ()
+    for r in results:
+        body = r.body if isinstance(r.body, dict) else {}
+        if not r.ok or held(r) or r.pending.tool != "record_work":
+            continue
+        for q in body.get("boq") or []:
+            if q.get("auto") and q.get("line"):
+                put.append(str(q["line"]["work"]))
+            elif q.get("choices") and not rows and body.get("id"):
+                work = str(q.get("work") or r.pending.body.get("work_type") or "this work")
+                ask = _in_with(language, "api.boq_which", BOQ_WHICH, work=work)
+                rows = tuple(ListRow(id=f"{BOQ_PREFIX}{body['id']}:{q['quantity_id']}:{c['id']}",
+                                     title=str(c["work"])[:24], description=str(c["work"])[:72])
+                             for c in q["choices"][:3])
+    on = _in_with(language, "api.boq_on", BOQ_ON, lines=", ".join(dict.fromkeys(put))) if put else ""
+    return on, ask, rows
 
 
 #: Writes nothing waits for (WEB-58), held until they finish so none is dropped half-way.

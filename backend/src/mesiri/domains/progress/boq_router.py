@@ -39,7 +39,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
-from mesiri.domains.progress.boq import line_amounts, line_progress, suggest_line, totals
+from mesiri.domains.progress.boq import (
+    line_amounts,
+    line_choices,
+    line_progress,
+    suggest_line,
+    totals,
+)
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
 from mesiri.http.activity import saves_nothing
@@ -512,7 +518,8 @@ async def list_work(
 ):
     """Recorded work quantities, newest first; each with its line, or a suggested one to confirm.
 
-    The suggestion is only offered, never saved: a person puts the work on a line.
+    New work goes on a clear line by itself when it is saved (BOQ-01, ``place_new_work``); what is left here
+    has no clear line, or came before BOQ-01, and the suggestion is only offered: a person puts it on a line.
     """
     repo = await _scope(project_id, auth, conn)
     lines = await repo.list_lines(auth.organization_id, project_id)
@@ -543,22 +550,76 @@ async def put_work_on_line(
     through a work order (it is changed there, so the two never disagree).
     """
     repo = await _scope(project_id, auth, conn)
-    work = await repo.get_work_update(auth.organization_id, project_id, quantity_id)
+    await set_work_line_checked(repo, auth.organization_id, project_id, quantity_id, body.line_id)
+    return Response(status_code=204)
+
+
+async def set_work_line_checked(
+    repo: PostgresBoqRepository, organization_id: uuid.UUID, project_id: uuid.UUID, quantity_id: uuid.UUID,
+    line_id: uuid.UUID | None,
+) -> dict:
+    """The one rule for putting a work quantity on a BOQ line (this page, and the site's own tap on WhatsApp,
+    BOQ-01): the line is this project's and in the work's own unit, and work counted through a work order is
+    changed there. Returns the line (empty when taken off)."""
+    work = await repo.get_work_update(organization_id, project_id, quantity_id)
     if work is None:
         raise HTTPException(status_code=404, detail="Work update not found")
     if work["work_order_line_id"] is not None:
         raise HTTPException(status_code=409, detail="This work is counted on a work order; change it on the work order.")
-    if body.line_id is not None:
-        line = await repo.get_line(auth.organization_id, project_id, body.line_id)
-        if line is None:
+    line: dict = {}
+    if line_id is not None:
+        line = await repo.get_line(organization_id, project_id, line_id) or {}
+        if not line:
             raise HTTPException(status_code=422, detail="That BOQ line is not in this project.")
         if line["unit_id"] != work["unit_id"]:
             raise HTTPException(
                 status_code=422,
                 detail=f"That line is measured in {line['unit']}; this work is in another unit, so it can't be added to it.",
             )
-    await repo.set_work_line(quantity_id, body.line_id)
-    return Response(status_code=204)
+    await repo.set_work_line(quantity_id, line_id)
+    return line
+
+
+async def place_new_work(conn: AsyncConnection, organization_id: uuid.UUID, activity_id: uuid.UUID) -> list[dict]:
+    """BOQ-01: a work entry just saved goes on its BOQ line by itself when the line is clear (``suggest_line``:
+    same unit, most words shared, no tie); otherwise the lines to choose from are returned for one tap.
+
+    One item per quantity: ``quantity_id``, ``work`` (what it says), ``line`` ({id, work} or None), ``auto`` (put there just now),
+    ``choices`` ([{id, work}], empty when linked or nothing fits). No rates: anyone who records work sees this.
+    Work already on a line or on a work order is left as it is.
+    """
+    repo = PostgresBoqRepository(conn)
+    rows = await repo.activity_work(organization_id, activity_id)
+    if not rows:
+        return []
+    lines = await repo.list_lines(organization_id, rows[0]["project_id"])
+    if not lines:
+        return []
+    by_id = {ln["id"]: ln for ln in lines}
+    current = await repo.current_revision_of(organization_id, rows[0]["project_id"])
+
+    def named(line_id: uuid.UUID) -> dict:
+        return {"id": str(line_id), "work": by_id[line_id]["work_type"]}
+
+    out = []
+    for w in rows:
+        if w["work_order_line_id"] is not None:
+            continue
+        said = w["work"] or w["narrative"]
+        if w["line_id"] is not None:
+            on = current.get(w["line_id"], w["line_id"])
+            out.append({"quantity_id": str(w["id"]), "work": said, "line": named(on) if on in by_id else None,
+                        "auto": False, "choices": []})
+            continue
+        pick = suggest_line(said, w["unit_id"], w["section_id"], lines)
+        if pick is not None:
+            await repo.set_work_line(w["id"], pick)
+            out.append({"quantity_id": str(w["id"]), "work": said, "line": named(pick), "auto": True, "choices": []})
+        else:
+            choices = line_choices(said, w["unit_id"], w["section_id"], lines)
+            out.append({"quantity_id": str(w["id"]), "work": said, "line": None, "auto": False,
+                        "choices": [named(c) for c in choices]})
+    return out
 
 
 # -- import from Excel (ST-03) ------------------------------------------------------------------------------------------
