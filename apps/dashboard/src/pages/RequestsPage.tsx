@@ -303,6 +303,7 @@ function RequestRow({ request: r, selected, onPick }: { request: MaterialRequest
     <button
       type="button"
       onClick={onPick}
+      data-record-id={r.id}
       aria-current={selected || undefined}
       className={cn('flex w-full gap-3 border-b px-3 py-3 text-left transition hover:bg-muted/40 sm:px-4', selected && 'bg-yellow-50 shadow-[inset_0_0_0_2px_theme(colors.yellow.300)] dark:bg-yellow-950/40')}
     >

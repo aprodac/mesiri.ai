@@ -294,7 +294,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
             const site = r.site_id ? siteNames.get(r.site_id) : undefined
             const after = balanceAfter.get(r.id)
             return (
-              <li key={`m-${r.direction}-${r.id}`}>
+              <li key={`m-${r.direction}-${r.id}`} data-record-id={r.id}>
                 {newDay && <div className="bg-muted/50 px-3 py-1 text-xs font-semibold">{dayLabel(r.occurred_date)}</div>}
                 <button type="button" onClick={() => setOpenRow(r)} className="flex w-full items-center gap-3 px-3 py-2 text-left">
                   <div className="flex min-w-0 flex-1 flex-col">
@@ -342,6 +342,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
                 return (
                   <tr
                     key={`${r.direction}-${r.id}`}
+                    data-record-id={r.id}
                     onClick={() => setOpenRow(r)}
                     className={cn(
                       'cursor-pointer border-t hover:bg-muted/40',

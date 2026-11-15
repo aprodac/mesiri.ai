@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, Loader2, Send, Undo2 } from 'lucide-react'
 import { Spark } from '@/components/live/spark'
@@ -8,10 +8,13 @@ import { TourOverlay, findTarget, useRect } from '@/components/tour'
 import { api } from '@/lib/api'
 import { ALL_PAGES } from '@/lib/module-map'
 import { useAuth } from '@/lib/AuthContext'
-import { useGuideSeen, usePreferences } from '@/lib/start-mode'
-import { WALKTHROUGH_EVENT, setWalkthroughRunning } from '@/lib/tour-events'
+import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
+import { Button } from '@/components/ui/button'
+import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
-import { findWalkthrough, learnKey, pageOpenFor, type WalkCheck, type WalkStep, type Walkthrough } from '@/lib/walkthroughs'
+import {
+  OUTCOME_WALKS, findWalkthrough, learnKey, pageOpenFor, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
+} from '@/lib/walkthroughs'
 import { waLink } from '@/lib/whatsapp-modal'
 
 // The walkthrough engine (SS-42, learning-centre-plan.md section 4): runs any walkthrough from lib/walkthroughs.ts,
@@ -54,7 +57,7 @@ function pageDialogOpen(): boolean {
 }
 
 /** Watches a list for a new record: `got` turns true when one appears that was not there at the start. */
-function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean) {
+function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean, onFresh: (id: string) => void) {
   const qc = useQueryClient()
   const [got, setGot] = React.useState(false)
   const before = React.useRef<Set<string> | null>(null)
@@ -62,9 +65,11 @@ function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean) 
     if (!check || !before.current) return false
     try {
       const now = await readIds(check)
-      const fresh = [...now].some((id) => !before.current!.has(id))
-      if (fresh) {
+      const added = [...now].find((id) => !before.current!.has(id))
+      const fresh = !!added
+      if (added) {
         setGot(true)
+        onFresh(added)
         // The page under the tour read its lists before the record existed: read them again, so the next step
         // ("There it is") shows it.
         void qc.invalidateQueries()
@@ -73,7 +78,7 @@ function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean) 
     } catch {
       return false
     }
-  }, [check, qc])
+  }, [check, qc, onFresh])
 
   React.useEffect(() => {
     setGot(false)
@@ -147,6 +152,49 @@ function SayThis({ say, number }: { say: string; number: string | null }) {
   )
 }
 
+/** After an outcome, the role's next outcome not done yet; after anything else, the first such outcome. */
+function nextWalk(walk: Walkthrough, role: string | undefined, seen: Record<string, number>): Walkthrough | undefined {
+  const mine = OUTCOME_WALKS.filter((w) => walkFor(w, role))
+  const done = (w: Walkthrough) => w.id === walk.id || (seen[learnKey(w.id)] ?? 0) >= (w.version ?? 1)
+  const at = mine.findIndex((w) => w.id === walk.id)
+  return [...mine.slice(at + 1), ...mine.slice(0, Math.max(at, 0))].find((w) => !done(w))
+}
+
+/** "Done": the Spark says so, and offers the next thing worth learning. */
+function Finished({ walk, next, onClose }: { walk: Walkthrough; next?: Walkthrough; onClose: () => void }) {
+  return createPortal(
+    <div
+      role="status"
+      data-tour=""
+      className="fixed inset-x-3 bottom-4 z-[60] mx-auto flex max-w-md items-start gap-3 rounded-2xl border bg-background p-4 shadow-xl sm:inset-x-auto sm:right-6"
+    >
+      <Spark mood="happy" size={52} className="shrink-0" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <p className="m-0 text-sm font-semibold">Done: {walk.title}</p>
+        {next ? (
+          <p className="m-0 text-sm text-muted-foreground">Next: {next.title}</p>
+        ) : (
+          <p className="m-0 text-sm text-muted-foreground">You can play it again any time from Learn Mesiri.</p>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {next && (
+            <Button size="sm" onClick={() => startWalkthrough(next.id)}>
+              Start
+            </Button>
+          )}
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/learn" onClick={onClose}>Learn Mesiri</Link>
+          </Button>
+          <button type="button" onClick={onClose} className="text-xs text-muted-foreground underline underline-offset-2">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export function WalkthroughRunner() {
   const { me } = useAuth()
   const trial = useTrial()
@@ -159,6 +207,11 @@ export function WalkthroughRunner() {
   const [shownKey, setShownKey] = React.useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [note, setNote] = React.useState<string | null>(null)
+  /** The record the last practice saved, to light up its row ("There it is"). */
+  const [newRecord, setNewRecord] = React.useState<string | null>(null)
+  /** Just finished: "Done", and the next one to do. */
+  const [finished, setFinished] = React.useState<{ walk: Walkthrough; next?: Walkthrough } | null>(null)
+  const guide = useStartMode()
   const next = React.useRef<HTMLButtonElement>(null)
   const number = prefs.data?.whatsapp_number ?? null
   const role = me?.role
@@ -174,6 +227,8 @@ export function WalkthroughRunner() {
       const walk = findWalkthrough((e as CustomEvent<string>).detail)
       if (!walk) return
       setWalkthroughRunning(true)
+      setNewRecord(null)
+      setFinished(null)
       setRun({ walk, index: 0, dir: 1 })
     }
     window.addEventListener(WALKTHROUGH_EVENT, begin)
@@ -190,8 +245,9 @@ export function WalkthroughRunner() {
   const finish = React.useCallback(() => {
     if (!run) return
     markSeen.mutate({ page: learnKey(run.walk.id), version: run.walk.version ?? 1 })
+    setFinished({ walk: run.walk, next: nextWalk(run.walk, role, guide.seen) })
     stop()
-  }, [run, markSeen, stop])
+  }, [run, markSeen, stop, role, guide.seen])
 
   const go = React.useCallback(
     (dir: 1 | -1) => {
@@ -204,8 +260,8 @@ export function WalkthroughRunner() {
   )
 
   // Enter a step: skip it if this role can't open its page or it is practice on a read-only account; else go to its
-  // page and wait for its target. A target that never shows (no data yet, a button this role doesn't have) is
-  // skipped, never pointed at nothing.
+  // page and wait for its target. A target that never shows (no data yet, a button this role doesn't have) is never
+  // pointed at: a page-tour step is skipped, a workflow step is told in the middle of the screen.
   const navigated = React.useRef<string | null>(null)
   const goRef = React.useRef(go)
   goRef.current = go
@@ -236,7 +292,8 @@ export function WalkthroughRunner() {
         setShownKey(here)
       } else if (Date.now() - startedAt > WAIT_MS) {
         window.clearInterval(timer)
-        if (arrived && !step.target) setShownKey(here)
+        // Its element never drew: a page-tour step is skipped; a workflow step is told without the light.
+        if (arrived && (!step.target || !step.optional)) setShownKey(here)
         else goRef.current(run.dir)
       }
     }, 150)
@@ -250,7 +307,7 @@ export function WalkthroughRunner() {
   }, [pathname, search, run, step, shown, stop])
 
   const tryIt = step?.try
-  const check = useCheck(tryIt?.check, shown, tryIt?.kind === 'whatsapp')
+  const check = useCheck(tryIt?.check, shown, tryIt?.kind === 'whatsapp', setNewRecord)
 
   // Try here: the person opens the real dialog; the tour steps aside, and comes back when the dialog closes.
   React.useEffect(() => {
@@ -273,7 +330,9 @@ export function WalkthroughRunner() {
     return () => window.clearInterval(timer)
   }, [shown, tryIt, check])
 
-  const rect = useRect(shown && !dialogOpen ? step?.target : undefined, run?.index ?? -1)
+  // "There it is": the row of what the practice just saved, else the step's own target.
+  const target = step?.showNew && newRecord ? [`record:${newRecord}`, step.target].filter(Boolean).join('|') : step?.target
+  const rect = useRect(shown && !dialogOpen ? target : undefined, run?.index ?? -1)
 
   // A step that waits for its page's content (a project to pick first): watch for it while the person picks.
   const [pageShows, setPageShows] = React.useState(true)
@@ -299,6 +358,7 @@ export function WalkthroughRunner() {
     return () => window.removeEventListener('keydown', keys)
   }, [run, shown, dialogOpen, tryIt, stop])
 
+  if (finished && !run) return <Finished walk={finished.walk} next={finished.next} onClose={() => setFinished(null)} />
   if (!run || !step) return null
 
   if (!shown) {

@@ -30,7 +30,17 @@ const BUBBLE_H = 190
 
 /** The first marked element that is on screen (a hidden sidebar on a phone does not count). */
 export function findTarget(id: string): HTMLElement | null {
-  for (const el of document.querySelectorAll<HTMLElement>(`[data-guide="${id}"]`)) {
+  // `a|b`: the first of them that is on screen. `record:<id>`: a list row of that record (`data-record-id`), so a
+  // walkthrough can light up what was just saved.
+  if (id.includes('|')) {
+    for (const one of id.split('|')) {
+      const hit = findTarget(one)
+      if (hit) return hit
+    }
+    return null
+  }
+  const selector = id.startsWith('record:') ? `[data-record-id="${CSS.escape(id.slice(7))}"]` : `[data-guide="${id}"]`
+  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
     const r = el.getBoundingClientRect()
     if (r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden') return el
   }
