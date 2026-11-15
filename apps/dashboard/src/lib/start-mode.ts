@@ -94,6 +94,8 @@ export interface Preferences {
   start_mode: string
   ask_start_mode: boolean
   guide_seen: Record<string, number>
+  /** The number people message Mesiri on, for "Try it on WhatsApp"; null when not set. */
+  whatsapp_number?: string | null
 }
 
 const KEY = ['me-preferences']

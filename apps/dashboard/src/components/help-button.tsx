@@ -9,6 +9,7 @@ import { openJump } from '@/lib/jump'
 import { MODES, useResetGuides, useStartMode } from '@/lib/start-mode'
 import { StartChoices } from '@/components/onboarding/start-question'
 import { WithTerms } from '@/components/term'
+import { SeeOnWhatsApp } from '@/components/whatsapp-page-button'
 
 // UX-08 (asked 9 Nov: "a help icon in the top bar which for each page makes it easier to understand what that
 // page is"): the page explains itself here instead of in paragraphs on the page. Everything comes from
@@ -16,7 +17,7 @@ import { WithTerms } from '@/components/term'
 // the map has its help, and pages stay free of descriptions.
 
 /** Help for the few pages outside the module map. */
-const EXTRA: Record<string, { title: string; about: string; example?: string; whatsapp?: string }> = {
+const EXTRA: Record<string, { title: string; about: string; example?: string }> = {
   '/live': {
     title: 'Live',
     about: 'Every message to Mesiri as it lands, with what Mesiri understood and did, across all your sites.',
@@ -42,7 +43,8 @@ export function HelpButton() {
   const title = page?.title ?? extra?.title ?? 'Mesiri'
   const about = page?.about ?? extra?.about ?? 'Your sites, reported on WhatsApp: open any part of Mesiri from the sidebar or search.'
   const example = page?.example ?? extra?.example
-  const whatsapp = page?.whatsapp ?? extra?.whatsapp
+  const whatsapp = page?.whatsapp ?? []
+  const whatsappNone = page?.whatsappNone
   const where = group ? (group.key === 'site' ? SECTION_TITLES.daily : (SECTION_TITLES[group.section] === group.title ? group.title : `${SECTION_TITLES[group.section]} › ${group.title}`)) : null
   const siblings =
     group?.pages.filter(
@@ -84,12 +86,13 @@ export function HelpButton() {
                 </div>
               </section>
             )}
-            {whatsapp && (
-              <section className="flex gap-3 rounded-lg bg-success-soft px-3 py-2.5 text-success">
-                <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden />
+            {whatsapp.length > 0 && <SeeOnWhatsApp onOpen={() => setOpen(false)} />}
+            {whatsapp.length === 0 && whatsappNone && (
+              <section className="flex gap-3 rounded-lg bg-muted/60 px-3 py-2.5">
+                <MessageSquareText className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
                 <div>
-                  <h3 className="text-xs font-semibold">On WhatsApp</h3>
-                  <p className="text-sm">“{whatsapp}”</p>
+                  <h3 className="text-xs font-semibold text-muted-foreground">From WhatsApp</h3>
+                  <p className="text-sm">{whatsappNone}</p>
                 </div>
               </section>
             )}

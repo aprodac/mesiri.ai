@@ -1,7 +1,8 @@
 import { useLocation } from 'react-router-dom'
-import { Lightbulb, MessageSquareText, Sparkles, X } from 'lucide-react'
+import { Lightbulb, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WithTerms } from '@/components/term'
+import { SeeOnWhatsApp } from '@/components/whatsapp-page-button'
 import { findPage } from '@/lib/module-map'
 import { useGuideSeen, useStartMode } from '@/lib/start-mode'
 import { guideKey, stripFor } from '@/lib/page-guide'
@@ -54,12 +55,7 @@ export function PageGuide() {
             <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />
             <span>For example: <WithTerms text={page.example} /></span>
           </p>
-          {page.whatsapp && (
-            <p className="m-0 flex items-start gap-2 text-success">
-              <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>On WhatsApp, a message like “{page.whatsapp}” fills this page.</span>
-            </p>
-          )}
+          {page.whatsapp && page.whatsapp.length > 0 && <SeeOnWhatsApp />}
           <Button type="button" size="sm" variant="outline" className="self-start" onClick={close}>
             Got it
           </Button>
