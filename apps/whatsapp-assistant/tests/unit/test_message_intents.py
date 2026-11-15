@@ -14,9 +14,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import jwt
+import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+import admin.message_map_router as map_router
 from admin.intents import (
     ABANDONED,
     ASKED_ANSWERED,
@@ -506,6 +508,40 @@ class FakeMessageLogger:
         self.asked = kwargs
         return self.rows
 
+    async def list_around(self, message_id: Any, **_: Any) -> list[dict[str, Any]]:
+        return [r for r in self.rows if str(r["id"]) == str(message_id)]
+
+
+@dataclass
+class FakePins:
+    """The pins store, in memory; records what each write was asked to audit."""
+
+    pins: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    audited: list[tuple[str, str, str | None]] = field(default_factory=list)
+    broken: bool = False
+
+    async def list(self) -> dict[tuple[str, str], dict[str, Any]]:
+        if self.broken:
+            raise RuntimeError("relation what_works_pins does not exist")
+        return dict(self.pins)
+
+    async def pin(self, *, capability: str, journey: str, message_id: Any, note: str | None, actor: Any) -> None:
+        self.pins[(capability, journey)] = {"message_id": str(message_id), "note": note, "by": actor.label, "at": None}
+        self.audited.append(("what_works.pinned", f"{capability}/{journey}", actor.label))
+
+    async def unpin(self, *, capability: str, journey: str, actor: Any) -> bool:
+        if self.pins.pop((capability, journey), None) is None:
+            return False
+        self.audited.append(("what_works.unpinned", f"{capability}/{journey}", actor.label))
+        return True
+
+
+@pytest.fixture(autouse=True)
+def pins(monkeypatch: pytest.MonkeyPatch) -> FakePins:
+    store = FakePins()
+    monkeypatch.setattr(map_router, "_pin_store", lambda: store)
+    return store
+
 
 @dataclass
 class FakeTraceLogger:
@@ -516,7 +552,8 @@ class FakeTraceLogger:
 
 
 def _token(*, role: str, org: str | None) -> str:
-    payload = {"sub": "user_1", "org": org, "role": role, "exp": datetime.now(UTC) + timedelta(hours=1)}
+    payload = {"sub": "user_1", "org": org, "role": role, "name": "Ilan",
+               "exp": datetime.now(UTC) + timedelta(hours=1)}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -563,3 +600,87 @@ async def test_the_intents_route_splits_this_window_from_the_one_before():
     assert body["patterns"]["causes"] == [] and body["patterns"]["split_floor"] == 10
     assert intent["correlation_ids"] == ["cor_1", "cor_2"]
     assert logger.asked["since"] < now - timedelta(days=13) and logger.asked["limit"] == 10001
+
+
+# ── pinning the model example (phase 5, decision D3) ────────────────────────
+
+
+def test_a_pinned_request_is_the_example_and_the_clean_runs_are_offered():
+    steps = (*_receipt(1, 400, reply_s=30.0), *_receipt(3, 300, reply_s=4.0))
+    intents = intents_of(*steps)
+    pin = {("record_receipt", ONE_THING): {"message_id": msg(1)["id"], "note": None, "by": "Ilan", "at": None}}
+    one_thing = next(j for j in playbook(intents, pin)[0]["capabilities"][0]["journeys"] if j["key"] == ONE_THING)
+    assert one_thing["best"].startswith(msg(1)["id"])  # pinned beats the faster scored pick
+    assert one_thing["pinned"]["in_window"] is True and one_thing["pinned"]["by"] == "Ilan"
+    assert one_thing["candidates"][0].startswith(msg(3)["id"]) and len(one_thing["candidates"]) == 2
+
+
+def test_a_pin_outside_the_window_says_so_and_the_scored_pick_shows():
+    intents = intents_of(*_receipt(3, 300))
+    pin = {("record_receipt", ONE_THING): {"message_id": "gone-message", "note": None, "by": "Ilan", "at": None}}
+    one_thing = next(j for j in playbook(intents, pin)[0]["capabilities"][0]["journeys"] if j["key"] == ONE_THING)
+    assert one_thing["pinned"]["in_window"] is False and one_thing["best"].startswith(msg(3)["id"])
+
+
+async def test_pin_and_unpin_are_for_platform_admins_only(pins: FakePins):
+    client, _ = _client([msg(1)], {})
+    url = "/admin/message-map/pins/record_receipt/one_thing"
+    tenant_admin = {"Authorization": f"Bearer {_token(role='ADMIN', org='org_1')}"}
+    async with client:
+        assert (await client.put(url, json={"message_id": msg(1)["id"]})).status_code == 401
+        assert (await client.put(url, json={"message_id": msg(1)["id"]}, headers=tenant_admin)).status_code == 403
+        assert (await client.delete(url, headers=tenant_admin)).status_code == 403
+    assert pins.pins == {} and pins.audited == []
+
+
+async def test_a_pin_is_stored_audited_and_shown_and_an_unpin_brings_back_the_score(pins: FakePins):
+    now = datetime.now(UTC)
+    rows = [{**msg(1), "received_at": now - timedelta(hours=2), "processed_at": now - timedelta(hours=2)},
+            {**msg(2, "Save", kind="interactive"), "received_at": now - timedelta(hours=2) + timedelta(seconds=30),
+             "processed_at": now - timedelta(hours=2) + timedelta(seconds=31)}]
+    turns = {"cor_1": {"calls": [call("record_receipt", **READY)]}, "cor_2": saved("record_receipt")}
+    client, _ = _client(rows, turns)
+    admin = {"Authorization": f"Bearer {_token(role='ADMIN', org=None)}"}
+    url = "/admin/message-map/pins/record_receipt/one_thing"
+    async with client:
+        resp = await client.put(url, json={"message_id": rows[0]["id"], "note": " the clearest "}, headers=admin)
+        assert resp.status_code == 200 and resp.json()["pinned"] is True
+        assert pins.pins[("record_receipt", "one_thing")]["note"] == "the clearest"
+        assert pins.audited == [("what_works.pinned", "record_receipt/one_thing", "Ilan")]
+
+        body = (await client.get("/admin/message-map/intents?days=7", headers=admin)).json()
+        journey = body["playbook"][0]["capabilities"][0]["journeys"][0]
+        assert body["pins_ok"] is True and journey["pinned"]["in_window"] is True
+
+        assert (await client.delete(url, headers=admin)).status_code == 200
+        assert (await client.delete(url, headers=admin)).status_code == 404  # nothing pinned any more
+        assert pins.audited[-1] == ("what_works.unpinned", "record_receipt/one_thing", "Ilan")
+
+
+async def test_a_pin_must_name_a_real_journey_capability_and_message():
+    client, _ = _client([msg(1)], {})
+    admin = {"Authorization": f"Bearer {_token(role='ADMIN', org=None)}"}
+    body = {"message_id": msg(1)["id"]}
+    async with client:
+        assert (await client.put("/admin/message-map/pins/record_receipt/flying", json=body, headers=admin)).status_code == 404
+        assert (await client.put("/admin/message-map/pins/no_such_tool/one_thing", json=body, headers=admin)).status_code == 404
+        assert (await client.put("/admin/message-map/pins/tell_the_team/one_thing", json=body, headers=admin)).status_code == 404
+        missing = {"message_id": "00000000-0000-4000-8000-000000000099"}
+        assert (await client.put("/admin/message-map/pins/record_receipt/one_thing", json=missing, headers=admin)).status_code == 404
+        too_long = {"message_id": msg(1)["id"], "note": "x" * 301}
+        assert (await client.put("/admin/message-map/pins/record_receipt/one_thing", json=too_long, headers=admin)).status_code == 422
+
+
+async def test_the_page_still_opens_when_the_pins_cannot_be_read(pins: FakePins):
+    pins.broken = True
+    client, _ = _client([], {})
+    admin = {"Authorization": f"Bearer {_token(role='ADMIN', org=None)}"}
+    async with client:
+        resp = await client.get("/admin/message-map/intents", headers=admin)
+    assert resp.status_code == 200 and resp.json()["pins_ok"] is False
+
+
+def test_pin_and_unpin_are_known_audit_actions():
+    from mesiri.domains.audit.actions import ACTIONS
+
+    assert {"what_works.pinned", "what_works.unpinned"} <= ACTIONS

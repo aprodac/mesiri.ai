@@ -56,16 +56,31 @@ def score(intent: dict[str, Any]) -> tuple[float, ...]:
             intent.get("slowest_reply_s") or 0.0, -intent["started_at"].timestamp())
 
 
+#: At most this many clean runs per journey are offered to step through (and to pin).
+MAX_CANDIDATES = 10
+
+
+def candidates(intents: list[dict[str, Any]], journey: str) -> list[dict[str, Any]]:
+    """The clean requests of a journey, best first."""
+    return sorted((i for i in intents if journey in i["journeys"] and clean(i, journey)), key=score)
+
+
 def best_case(intents: list[dict[str, Any]], journey: str) -> dict[str, Any] | None:
     """The best clean request of a journey, or None when there is none."""
-    candidates = [i for i in intents if journey in i["journeys"] and clean(i, journey)]
-    return min(candidates, key=score) if candidates else None
+    found = candidates(intents, journey)
+    return found[0] if found else None
 
 
-def playbook(intents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def playbook(intents: list[dict[str, Any]],
+             pins: dict[tuple[str, str], dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Modules -> capabilities -> journeys, each with its best case (an intent id) or none, and how many real
     requests of that journey end the same way. Only capabilities that are a tool a person asks for: talk with no
-    tool, failures and the team feedback tool have no "how it should work"."""
+    tool, failures and the team feedback tool have no "how it should work".
+
+    ``pins`` (decision D3): an admin's chosen example per (capability, journey), by the first message of the
+    request. A pinned request in the window is the best case whatever its score; a pin whose request is not in
+    the window is reported (``pinned.in_window`` false) and the scored pick shows."""
+    pins = pins or {}
     done = [i for i in intents if i["ending"] != OPEN and not i["capability"].startswith("_")
             and i["capability"] != FEEDBACK]
     by_section: dict[str, dict[str, list[dict[str, Any]]]] = {}
@@ -81,13 +96,23 @@ def playbook(intents: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 used = [i for i in rows if journey in i["journeys"]]
                 if not used:
                     continue
-                best = best_case(used, journey)
+                clean_runs = candidates(used, journey)
+                best = clean_runs[0] if clean_runs else None
+                pin = pins.get((tool, journey))
+                pinned = None
+                if pin:
+                    chosen = next((i for i in used if i["messages"] and i["messages"][0] == pin["message_id"]), None)
+                    pinned = {**pin, "in_window": chosen is not None}
+                    if chosen is not None:
+                        best = chosen
                 journeys.append({
                     "key": journey, "label": label, "count": len(used),
                     "same_end": sum(1 for i in used if i["ending"] in _good(journey)),
                     "best": best["id"] if best else None,
                     "best_messages": len(best["messages"]) if best else 0,
                     "best_reply_s": best.get("slowest_reply_s") if best else None,
+                    "pinned": pinned,
+                    "candidates": [i["id"] for i in clean_runs[:MAX_CANDIDATES]],
                 })
             capabilities.append({"key": tool, "name": capability_name(tool), "tool": tool, "count": len(rows),
                                  "journeys": journeys,
