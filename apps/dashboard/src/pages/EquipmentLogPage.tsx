@@ -12,7 +12,7 @@ import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
-import { dayWords, errorWords, fetchLogs, hrs, iso, saveLogs, type LogLineInput } from '@/lib/equipment'
+import { dayWords, errorWords, fetchLogs, hrs, iso, saveLogs, voidLog, type LogLineInput } from '@/lib/equipment'
 import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-11: Equipment > Daily log. One date, every machine at the sites in view on one screen, typed in place: the
@@ -22,6 +22,8 @@ import { ModuleTitle } from '@/components/page/page-kit'
 
 type Row = {
   id: string
+  /** The saved day log, which can be taken back (WEB-52); null when the machine is not logged that day. */
+  logId: string | null
   name: string
   type: string | null
   kind: 'machine' | 'vehicle' | null
@@ -56,12 +58,12 @@ export default function EquipmentLogPage() {
     const d = day.data
     if (!d) return []
     const logged: Row[] = d.items.map((l) => ({
-      id: l.equipment_id, name: l.machine ?? '', type: l.type, kind: l.kind, siteId: l.site_id ?? '', siteName: l.site_name ?? '', projectName: l.project_name ?? '', logged: true,
+      id: l.equipment_id, logId: l.id, name: l.machine ?? '', type: l.type, kind: l.kind, siteId: l.site_id ?? '', siteName: l.site_name ?? '', projectName: l.project_name ?? '', logged: true,
       worked: l.worked_hours ?? '', idle: l.idle_hours ?? '', breakdown: l.breakdown_hours ?? '', reason: l.breakdown_reason ?? '', fuel: l.fuel_litres ?? '',
       cost: l.fuel_cost ? String(Number(l.fuel_cost)) : '', operator: l.operator_name ?? '', trips: l.trips ? String(l.trips) : '',
     }))
     const missing: Row[] = d.missing.map((m) => ({
-      id: m.id, name: m.name, type: m.type, kind: m.kind, siteId: m.site_id, siteName: m.site_name ?? '', projectName: m.project_name ?? '', logged: false,
+      id: m.id, logId: null, name: m.name, type: m.type, kind: m.kind, siteId: m.site_id, siteName: m.site_name ?? '', projectName: m.project_name ?? '', logged: false,
       worked: '', idle: '', breakdown: '', reason: '', fuel: '', cost: '', operator: m.operator_name ?? '', trips: '',
     }))
     return [...logged, ...missing].sort((a, b) => a.projectName.localeCompare(b.projectName) || a.siteName.localeCompare(b.siteName) || a.name.localeCompare(b.name))
@@ -106,6 +108,20 @@ export default function EquipmentLogPage() {
     },
     onError: (e) => toast.error('Not saved', errorWords(e)),
   })
+
+  // WEB-52: a line saved by mistake is taken back here, as on the machine's page; it stays in the history as voided.
+  const undo = useMutation({
+    mutationFn: voidLog,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['equipment'] })
+      qc.invalidateQueries({ queryKey: ['finance', 'costs'] })
+      toast.success('Log taken back')
+    },
+    onError: (e) => toast.error('Not taken back', errorWords(e)),
+  })
+  const takeBack = (r: Row) => {
+    if (r.logId && window.confirm(`Take back ${r.name}'s log of ${dayWords(date, today).toLowerCase()}?`)) undo.mutate(r.logId)
+  }
 
   const t = rows.reduce((n, r) => ({ worked: n.worked + Number(r.worked || 0), idle: n.idle + Number(r.idle || 0), breakdown: n.breakdown + Number(r.breakdown || 0), fuel: n.fuel + Number(r.fuel || 0) }), { worked: 0, idle: 0, breakdown: 0, fuel: 0 })
   const sites = [...new Map(rows.map((r) => [r.siteId, r])).values()]
@@ -168,6 +184,9 @@ export default function EquipmentLogPage() {
                     <span className="truncate text-xs text-muted-foreground">{r.type ?? ''}{!r.logged && !dirty ? ' · not logged' : ''}</span>
                   </span>
                   {!readOnly && !r.worked && !r.idle && !r.breakdown && <button type="button" className="shrink-0 rounded-full border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => set(r.id, { worked: '8' })}>Full day</button>}
+                  {!readOnly && r.logId && !dirty && (
+                    <button type="button" className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" disabled={undo.isPending} onClick={() => takeBack(r)} aria-label={`Take back ${r.name}'s log`}>Take back</button>
+                  )}
                 </div>
                 {(['worked', 'idle', 'breakdown'] as const).map((f) => (
                   <label key={f} className="flex flex-col gap-0.5">

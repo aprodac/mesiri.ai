@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import { Building, Building2, ChevronRight, Clock, History, ListChecks, MessageSquare, Puzzle, Upload, Users } from 'lucide-react'
-import { useAuth } from '@/lib/AuthContext'
 import { MODULE_KEYS, MODULE_NAMES, useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { SETUP_URL, setupCounts, useGuideSteps, useSetupProgress } from '@/lib/setup'
 import { usePageTitle } from '@/lib/page-title'
@@ -23,16 +22,14 @@ const ROWS = [
 
 export default function SettingsPage() {
   usePageTitle('Settings')
-  const { me } = useAuth()
   const isModuleEnabled = useModuleEnabled()
   const setup = useSetupProgress()
   const guideSteps = useGuideSteps()
   const counts = setup.data ? setupCounts(setup.data, guideSteps) : null
-  const companyName = me?.org_name || me?.organization_name || 'Your company'
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
-      <PageHeader title="Settings" subtitle={companyName} />
+      <PageHeader title="Settings" />
 
       {counts && counts.done < counts.total && (
         <Link

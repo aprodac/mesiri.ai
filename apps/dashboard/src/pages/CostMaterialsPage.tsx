@@ -116,7 +116,7 @@ export default function CostMaterialsPage() {
     )
   }
   const header = (
-    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Materials vs BOQ" date={projectId && scope.mode !== 'portfolio' ? scope.projectName : 'Pick a project'} />
+    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Materials vs BOQ" date={projectId ? undefined : 'Pick a project'} />
   )
   if (!projectId) {
     return (

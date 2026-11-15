@@ -1,15 +1,16 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Download, ReceiptText, Scale } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/toast-notification'
 import { HireBillDialog } from '@/components/equipment/actions'
 import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
-import { RATE_WORDS, fetchHireCheck, hrs, iso, type HireCheckRow, inr } from '@/lib/equipment'
+import { RATE_WORDS, deleteHireBill, errorWords, fetchHireCheck, hrs, iso, type HireCheckRow, inr } from '@/lib/equipment'
 import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-13: Equipment > Hire check. "The bill says 8 hours a day; how many did it work?" Per hired machine in the period:
@@ -39,6 +40,14 @@ export default function HireCheckPage() {
   const [billFor, setBillFor] = React.useState<HireCheckRow | null>(null)
   const { data, isLoading, isError } = useQuery({ queryKey: ['equipment', 'hire-check', from, to], queryFn: () => fetchHireCheck({ date_from: from, date_to: to }) })
   const items = data?.items ?? []
+  // WEB-52: a bill entered by mistake is removed here too, as on the machine's page.
+  const qc = useQueryClient()
+  const toast = useToast()
+  const dropBill = useMutation({
+    mutationFn: deleteHireBill,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['equipment'] }); toast.success('Bill removed') },
+    onError: (e) => toast.error('Not removed', errorWords(e)),
+  })
 
   const exportIt = () => exportCsv(`hire-check-${from}.csv`,
     ['Machine', 'Hire company', 'Rate', 'Per', 'Min h/day', 'Site', 'Worked (h)', 'Idle (h)', 'Breakdown (h)', 'Days on site', 'Chargeable (h)', 'Comes to', 'Billed', 'Not billed', 'Check'],
@@ -99,6 +108,7 @@ export default function HireCheckPage() {
               <div key={b.id} className={cn('rounded-lg px-3 py-2 text-xs', b.check.status === 'over' ? 'bg-red-50 dark:bg-red-950/40' : 'bg-muted/50')}>
                 <span className="font-semibold">{b.bill_ref ?? 'Bill'} {b.period_from} – {b.period_to}: {inr(b.amount)}</span>
                 {b.check.flags.length ? b.check.flags.map((f) => <span key={f} className="block text-muted-foreground">• {f}</span>) : <span className="ml-2 text-emerald-700 dark:text-emerald-300">matches the hours recorded</span>}
+                {!readOnly && <button type="button" className="mt-1 block text-muted-foreground hover:text-destructive" disabled={dropBill.isPending} onClick={() => { if (window.confirm('Remove this bill?')) dropBill.mutate(b.id) }}>Remove</button>}
               </div>
             ))}
             {!readOnly && <Button size="sm" variant="outline" className="w-fit gap-1.5" onClick={() => setBillFor(r)}><ReceiptText className="size-4" />Enter a bill</Button>}

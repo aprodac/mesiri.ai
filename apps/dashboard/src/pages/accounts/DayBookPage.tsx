@@ -135,7 +135,6 @@ export default function DayBookPage() {
         back={{ to: '/accounts/trial-balance', label: 'Trial balance' }}
         crumb="Accounts"
         title="Day book"
-        date={d?.scope}
         action={
           <div className="flex items-center gap-2">
             <ExcelButton path="/accounts/day-book/export" params={{ ...period, ...sp, voucher_type: type, q: search }} name={`day-book-${period.date_from}-to-${period.date_to}`} />

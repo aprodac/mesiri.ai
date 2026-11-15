@@ -172,7 +172,7 @@ export default function CostBudgetPage() {
     )
   }
   const header = (
-    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Budget vs actual" date={projectId ? scope.mode !== 'portfolio' ? scope.projectName : '' : 'Pick a project'} action={projectId ? <CostExportButton projectId={projectId} projectName={scope.mode !== 'portfolio' ? scope.projectName : undefined} /> : undefined} />
+    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Budget vs actual" date={projectId ? undefined : 'Pick a project'} action={projectId ? <CostExportButton projectId={projectId} projectName={scope.mode !== 'portfolio' ? scope.projectName : undefined} /> : undefined} />
   )
   if (!projectId) {
     return (

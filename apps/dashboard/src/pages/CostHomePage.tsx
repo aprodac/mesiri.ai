@@ -113,7 +113,7 @@ export default function CostHomePage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="Cost control" date={q.data ? scope.mode === 'portfolio' ? `${rows.length} projects with a BOQ` : scope.projectName : ''} />
+      <DprHeader back={{ to: '/today', label: 'Today' }} crumb="Cost control" title="Cost control" date={q.data ? scope.mode === 'portfolio' ? `${rows.length} projects with a BOQ` : undefined : ''} />
       {q.isLoading ? (
         <Skeleton className="h-64 rounded-lg" />
       ) : rows.length === 0 ? (
