@@ -79,19 +79,19 @@ export default function WorkOrdersPage() {
           <ModuleTitle icon={Handshake} title="Work orders" />
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" disabled={!shown.length} onClick={() => exportCsv('work-orders.csv',
+          <Button variant="outline" className="gap-2" data-guide="wo.export" disabled={!shown.length} onClick={() => exportCsv('work-orders.csv',
             ['Work order', 'Status', 'Subcontractor', 'Project', 'Site', 'Work', 'Done %', ...(money ? ['Value', 'Measured', 'Billed', 'Paid', 'Retention held', 'Advance left', 'Payable now'] : [])],
             shown.map((w) => [w.ref, WO_LOOK[w.status].label, w.vendor_name, w.project_name, w.site_name ?? '', w.title ?? w.lines.map((l) => l.description).join('; '), Number(w.totals.progress_pct),
               ...(money ? [n(w.totals.value), n(w.totals.measured_value), n(w.totals.billed), n(w.totals.paid), n(w.totals.retention_held), n(w.totals.advance_left), n(w.totals.payable_now)] : [])]))}>
             <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
           </Button>
-          {office && <Button className="gap-1.5 font-semibold" onClick={() => setCreating(true)}><Plus className="size-4" /> <span className="hidden sm:inline">New work order</span><span className="sm:hidden">New</span></Button>}
+          {office && <Button className="gap-1.5 font-semibold" data-guide="wo.add" onClick={() => setCreating(true)}><Plus className="size-4" /> <span className="hidden sm:inline">New work order</span><span className="sm:hidden">New</span></Button>}
         </div>
       </header>
 
       {money && <ValueStrip projectId={projectId} />}
 
-      <div className={cn('grid grid-cols-2 gap-2 sm:gap-3', money ? 'sm:grid-cols-5' : 'sm:grid-cols-3')}>
+      <div className={cn('grid grid-cols-2 gap-2 sm:gap-3', money ? 'sm:grid-cols-5' : 'sm:grid-cols-3')} data-guide="wo.tiles">
         {tiles.map((t) => (
           <button key={t.label} type="button" disabled={!t.click} onClick={t.click} aria-pressed={!!t.key && tile === t.key}
             className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition', t.click && 'hover:-translate-y-px', !!t.key && tile === t.key && 'ring-2 ring-primary', !t.click && 'cursor-default')}>
@@ -105,7 +105,7 @@ export default function WorkOrdersPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Status" className="flex gap-0.5 rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Status" className="flex gap-0.5 rounded-xl bg-muted p-1" data-guide="wo.tabs">
           {TABS.map((t) => (
             <button key={t.value} role="tab" type="button" aria-selected={tab === t.value} onClick={() => setTab(t.value)}
               className={cn('inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm', tab === t.value ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>
@@ -113,7 +113,7 @@ export default function WorkOrdersPage() {
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="wo.filters">
           <div className="relative">
             <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="WO, work, site" aria-label="Search work orders" className="h-8 w-[180px] pl-8" />
@@ -127,14 +127,14 @@ export default function WorkOrdersPage() {
       ) : list.isLoading ? (
         <div className="flex flex-col gap-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
       ) : shown.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="wo.empty">
           <Handshake className="size-6 text-muted-foreground" />
           <p className="text-sm font-medium">{all.length ? 'No work order matches' : 'No work orders yet'}</p>
           <p className="max-w-md text-sm text-muted-foreground">{all.length ? 'Try another tab or clear the filters.' : 'Concreting, plastering, wiring: who does it, at what rate.'}</p>
           {office && !all.length && <Button size="sm" className="mt-1 gap-1.5" onClick={() => setCreating(true)}><Plus className="size-4" /> New work order</Button>}
         </div>
       ) : (
-        <ul className="grid gap-2">
+        <ul className="grid gap-2" data-guide="wo.list">
           {shown.map((w) => (
             <li key={w.id}>
               <button type="button" onClick={() => navigate(woUrl(w.id))} className="flex w-full flex-col gap-2 rounded-xl border bg-card p-3 text-left transition hover:bg-muted/30 sm:flex-row sm:items-center sm:gap-4">

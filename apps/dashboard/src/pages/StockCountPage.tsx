@@ -55,7 +55,7 @@ export default function StockCountPage() {
       </header>
 
       {!!list.data?.due.length && (
-        <section className="flex flex-col gap-1 rounded-xl border border-orange-300 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40">
+        <section className="flex flex-col gap-1 rounded-xl border border-orange-300 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40" data-guide="counts.due">
           <span className="flex items-center gap-2 font-semibold"><AlarmClock className="size-4" /> Due for a count</span>
           {list.data.due.map((d) => (
             <button key={d.site_id} type="button" className="text-left hover:underline" onClick={() => setStartSite(d.site_id)}>
@@ -66,7 +66,7 @@ export default function StockCountPage() {
       )}
 
       {canCount && (
-        <form className="flex flex-wrap items-end gap-2 rounded-xl border p-3" onSubmit={(e) => { e.preventDefault(); setError(''); start.mutate() }}>
+        <form className="flex flex-wrap items-end gap-2 rounded-xl border p-3" data-guide="counts.start" onSubmit={(e) => { e.preventDefault(); setError(''); start.mutate() }}>
           <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs font-semibold text-muted-foreground">
             Site
             <select value={startSite} onChange={(e) => setStartSite(e.target.value)} className="h-10 rounded-md border bg-background px-2 text-sm text-foreground">
@@ -87,7 +87,7 @@ export default function StockCountPage() {
       )}
 
       <div className="flex flex-col items-start gap-4 lg:flex-row">
-        <ul className="w-full divide-y overflow-hidden rounded-xl border lg:max-w-sm">
+        <ul className="w-full divide-y overflow-hidden rounded-xl border lg:max-w-sm" data-guide={list.isLoading ? undefined : counts.length ? 'counts.list' : 'counts.empty'}>
           {list.isLoading && <li className="h-16 animate-pulse bg-muted/40" />}
           {!list.isLoading && counts.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground"><strong className="block text-foreground">No counts yet</strong></li>}
           {counts.map((c) => (
@@ -137,7 +137,7 @@ function CountSheet({ id }: { id: string }) {
   const money = c.net_value !== undefined
 
   return (
-    <section className="flex w-full min-w-0 flex-1 flex-col gap-3 rounded-xl border p-3 sm:p-4">
+    <section className="flex w-full min-w-0 flex-1 flex-col gap-3 rounded-xl border p-3 sm:p-4" data-guide="counts.sheet">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{c.ref} · {c.site_name}</h2>
