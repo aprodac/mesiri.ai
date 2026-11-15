@@ -33,7 +33,7 @@ const WIDTHS = (process.env.WIDTHS || '390,1440').split(',').map(Number)
 const THEMES = (process.env.THEMES || 'light,dark').split(',')
 const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null
 
-const EXTRA = ['/today', '/reports', '/issues', '/site-log', '/analytics', '/labour', '/projects', '/team', '/company', '/whatsapp', '/settings', '/live']
+const EXTRA = ['/today', '/reports', '/issues', '/site-log', '/analytics', '/labour', '/projects', '/team', '/company', '/whatsapp', '/settings', '/live', '/learn']
 const PUBLIC = ['/login', '/signup']
 
 function builtPages() {

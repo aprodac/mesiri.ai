@@ -20,6 +20,7 @@ import {
   Search,
   Settings as SettingsIcon,
   Upload,
+  GraduationCap,
   ChevronsUpDown,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -512,6 +513,8 @@ export function AppSidebar() {
     guide.ready && guide.rules.bringDataInSidebar && setup.isCompanyAdmin && !trial.readOnly
       ? { title: 'Bring your data', url: '/bring-data', icon: Upload }
       : null
+  // SS-41: Learn Mesiri with the everyday pages, for everyone who gets guidance; "I'll find my way" reaches it from Help.
+  const learn: NavItem | null = guide.ready && guide.rules.tours !== 'none' ? { title: 'Learn Mesiri', url: '/learn', icon: GraduationCap } : null
   const renderCategory = (category: NavCategory) => (
     <CollapsibleNavCategory
       key={category.key}
@@ -647,6 +650,7 @@ export function AppSidebar() {
                 </SidebarMenuItem>
                 {PRIMARY_ITEMS.map(renderLink)}
                 {bringData && renderLink(bringData)}
+                {learn && renderLink(learn)}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

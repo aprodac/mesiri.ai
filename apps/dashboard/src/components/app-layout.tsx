@@ -15,6 +15,7 @@ import { WhatsAppPageButton, WhatsAppPreviewModal } from '@/components/whatsapp-
 import { InboxBell } from '@/components/inbox-bell'
 import { PageGuide } from '@/components/page-guide'
 import { GuidedTour } from '@/components/tour'
+import { WalkthroughRunner } from '@/components/walkthrough'
 import { StartQuestionDialog } from '@/components/onboarding/start-question'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
@@ -132,6 +133,8 @@ export function AppLayout() {
       <WhatsAppPreviewModal />
       {/* The Spark's guided tours (lib/tours.ts). */}
       <GuidedTour />
+      {/* SS-42: walkthroughs started from Learn Mesiri (lib/walkthroughs.ts). */}
+      <WalkthroughRunner />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>

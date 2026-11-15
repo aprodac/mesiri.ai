@@ -55,3 +55,26 @@ def test_every_example_uses_real_tools_of_the_right_kind(line: str) -> None:
             assert writes, "a 'save' example must use a tool that writes"
         else:
             assert not writes, f"an 'answer' example must only read, not {writes}"
+
+
+# Learn Mesiri (SS-42): a walkthrough's WhatsApp practice and its take-back name their tools the same way, so a
+# walkthrough never asks someone to send what WhatsApp can't do.
+WALKS = MAP.parent / "walkthroughs.ts"
+
+
+def _walk_tools() -> list[tuple[str, list[str]]]:
+    text = WALKS.read_text(encoding="utf-8")
+    return [(say, re.findall(r"'([a-z_]+)'", tools))
+            for say, tools in re.findall(r"say: '([^']+)', tools: \[([^\]]*)\]", text)]
+
+
+def test_walkthroughs_have_whatsapp_practice() -> None:
+    assert _walk_tools(), "no WhatsApp practice found in walkthroughs.ts: has its format changed?"
+
+
+@pytest.mark.parametrize(("say", "tools"), _walk_tools(), ids=lambda v: v if isinstance(v, str) else None)
+def test_every_walkthrough_practice_uses_real_writing_tools(say: str, tools: list[str]) -> None:
+    assert tools, "a practice with no tools"
+    unknown = [t for t in tools if t not in TOOLS]
+    assert not unknown, f"not WhatsApp-assistant tools (agent_api/tools.py ALLOWED): {unknown}"
+    assert any(TOOLS[t] != "GET" for t in tools), "a practice saves something, so it must use a tool that writes"

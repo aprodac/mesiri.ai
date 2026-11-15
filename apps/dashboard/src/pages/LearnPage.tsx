@@ -1,0 +1,205 @@
+import * as React from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowRight, Check, ChevronDown, Clock, Footprints, MessageSquareText, Play, RotateCcw } from 'lucide-react'
+import { Spark } from '@/components/live/spark'
+import { PageHeader, Section, Segmented } from '@/components/page/page-kit'
+import { Button } from '@/components/ui/button'
+import { WhatsAppPreview } from '@/components/whatsapp-preview'
+import { useAuth } from '@/lib/AuthContext'
+import { MODULE_GROUPS, findPage, type ModulePage } from '@/lib/module-map'
+import { useModuleEnabled } from '@/lib/modules'
+import { usePageTitle } from '@/lib/page-title'
+import { useStartMode } from '@/lib/start-mode'
+import { startWalkthrough } from '@/lib/tour-events'
+import { useTrial } from '@/lib/trial'
+import { cn } from '@/lib/utils'
+import {
+  MODULE_WALKS, PAGE_WALKS, ROLE_PATHS, WORKFLOWS, learnKey, walkFor, type Walkthrough,
+} from '@/lib/walkthroughs'
+
+// Learn Mesiri (SS-41, learning-centre-plan.md section 3): one page to pick a walkthrough and run it, by role,
+// workflow, module or page, and per page the WhatsApp messages to try. The walkthroughs and their engine:
+// lib/walkthroughs.ts and components/walkthrough.tsx. Done or not comes from users.guide_seen (`/learn/<id>`).
+
+type Tab = 'you' | 'workflows' | 'modules' | 'pages'
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'you', label: 'For you' },
+  { value: 'workflows', label: 'Workflows' },
+  { value: 'modules', label: 'Modules' },
+  { value: 'pages', label: 'Pages' },
+]
+
+const KIND_LABEL: Record<Walkthrough['kind'], string> = {
+  role: 'Your path',
+  workflow: 'Workflow',
+  module: 'Module',
+  page: 'Page',
+}
+
+function WalkCard({ walk, done }: { walk: Walkthrough; done: boolean }) {
+  const practice = walk.steps.some((s) => s.try)
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{KIND_LABEL[walk.kind]}</span>
+        {done ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
+            <Check className="size-3" aria-hidden /> Done
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">Not started</span>
+        )}
+      </div>
+      <h3 className="m-0 text-[15px] font-semibold">{walk.title}</h3>
+      <p className="m-0 flex-1 text-sm text-muted-foreground">{walk.about}</p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1"><Clock className="size-3.5" aria-hidden /> {walk.minutes} min</span>
+        <span className="inline-flex items-center gap-1"><Footprints className="size-3.5" aria-hidden /> {walk.steps.length} steps</span>
+        {practice && <span className="inline-flex items-center gap-1"><MessageSquareText className="size-3.5" aria-hidden /> You try it</span>}
+      </div>
+      <Button size="sm" variant={done ? 'outline' : 'default'} className="mt-1 gap-1.5 self-start" onClick={() => startWalkthrough(walk.id)}>
+        {done ? <RotateCcw className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />}
+        {done ? 'Play again' : 'Start'}
+      </Button>
+    </li>
+  )
+}
+
+function Cards({ walks, seen }: { walks: Walkthrough[]; seen: Record<string, number> }) {
+  return (
+    <ul className="grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
+      {walks.map((w) => (
+        <WalkCard key={w.id} walk={w} done={(seen[learnKey(w.id)] ?? 0) >= (w.version ?? 1)} />
+      ))}
+    </ul>
+  )
+}
+
+/** A page on the Pages tab: its tour, what to try on WhatsApp, and a way there. */
+function PageRow({ page, walk, done }: { page: ModulePage; walk?: Walkthrough; done: boolean }) {
+  const [open, setOpen] = React.useState(false)
+  const examples = page.whatsapp ?? []
+  return (
+    <li className="flex flex-col gap-2 px-3 py-3">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <div className="min-w-0 flex-1 basis-56">
+          <p className="m-0 flex items-center gap-1.5 text-sm font-medium">
+            {page.title}
+            {done && <Check className="size-3.5 text-success" aria-label="Tour done" />}
+          </p>
+          <p className="m-0 text-xs text-muted-foreground">{page.about}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {walk && (
+            <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => startWalkthrough(walk.id)}>
+              <Play className="size-3" aria-hidden /> {done ? 'Tour again' : 'Tour'}
+            </Button>
+          )}
+          {examples.length > 0 && (
+            <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" aria-expanded={open} onClick={() => setOpen(!open)}>
+              Try it <ChevronDown className={cn('size-3 transition-transform', open && 'rotate-180')} aria-hidden />
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" asChild>
+            <Link to={page.url}>Open <ArrowRight className="size-3" aria-hidden /></Link>
+          </Button>
+        </div>
+      </div>
+      {open && <WhatsAppPreview examples={examples} className="max-w-md" />}
+    </li>
+  )
+}
+
+export default function LearnPage() {
+  usePageTitle('Learn Mesiri')
+  const { me } = useAuth()
+  const guide = useStartMode()
+  const trial = useTrial()
+  const moduleOn = useModuleEnabled()
+  const [params, setParams] = useSearchParams()
+  const tab = (TABS.find((t) => t.value === params.get('view'))?.value ?? 'you') as Tab
+  const role = me?.role
+  const seen = guide.seen
+  const mine = (walks: Walkthrough[]) => walks.filter((w) => walkFor(w, role))
+  const isDone = (w: Walkthrough) => (seen[learnKey(w.id)] ?? 0) >= (w.version ?? 1)
+
+  const groups = MODULE_GROUPS.filter((g) => moduleOn(g.module))
+  const visiblePage = (p: ModulePage) =>
+    p.status === 'built' && !p.shortcut && moduleOn(p.module) && (!p.roles || p.roles.includes((role ?? '').toUpperCase()))
+  const pageVisible = (url: string | undefined) => {
+    const hit = url ? findPage(url.split('?')[0]) : null
+    return !!hit && moduleOn(hit.group.module) && visiblePage(hit.page)
+  }
+  const pageWalk = (p: ModulePage) =>
+    PAGE_WALKS.find((w) => w.id !== 'app' && w.steps[0]?.page?.split('?')[0] === p.url.split('?')[0])
+  const modules = mine(MODULE_WALKS).filter((w) => groups.some((g) => `module-${g.key}` === w.id))
+
+  // For you: the person's path first, then the workflows they can do, then the app and the page tours not done yet.
+  const forYou = [
+    ...mine(ROLE_PATHS),
+    ...mine(WORKFLOWS),
+    ...mine(PAGE_WALKS).filter((w) => !isDone(w) && (w.id === 'app' || pageVisible(w.steps[0]?.page))).slice(0, 6),
+  ]
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader title="Learn Mesiri" subtitle="Pick a walkthrough. I show you each thing on the real page, and you try it yourself." />
+
+      <div className="flex items-center gap-3 rounded-xl border bg-[#facc15]/10 px-4 py-3">
+        <Spark mood="hello" size={44} quiet className="shrink-0" />
+        <p className="m-0 text-sm">
+          Practice is real: what you send or save is recorded, and every practice ends by showing you how to take it back.
+          {trial.readOnly && ' Your account is read-only right now, so the walkthroughs show the steps without the practice.'}
+        </p>
+      </div>
+
+      <Segmented<Tab>
+        label="Walkthroughs"
+        value={tab}
+        onChange={(v) => setParams((p) => {
+          p.set('view', v)
+          return p
+        }, { replace: true })}
+        options={TABS}
+      />
+
+      {tab === 'you' && (
+        <Section title="For you" note="Start at the top.">
+          <Cards walks={forYou} seen={seen} />
+        </Section>
+      )}
+
+      {tab === 'workflows' && (
+        <Section title="Workflows" note="One job from start to finish, across pages.">
+          <Cards walks={mine(WORKFLOWS)} seen={seen} />
+          <p className="m-0 text-sm text-muted-foreground">More workflows are on the way: the daily report, labour to wages, a supplier bill, billing the client.</p>
+        </Section>
+      )}
+
+      {tab === 'modules' && (
+        <Section title="Modules" note="Every page of a module, one after another.">
+          <Cards walks={modules} seen={seen} />
+        </Section>
+      )}
+
+      {tab === 'pages' && (
+        <div className="flex flex-col gap-5">
+          {groups.map((g) => {
+            const pages = g.pages.filter(visiblePage).filter((p) => pageWalk(p) || (p.whatsapp?.length ?? 0) > 0)
+            if (pages.length === 0) return null
+            return (
+              <Section key={g.key} title={g.title} note={g.about}>
+                <ul className="flex list-none flex-col divide-y rounded-lg border p-0">
+                  {pages.map((p) => {
+                    const walk = pageWalk(p)
+                    return <PageRow key={p.url} page={p} walk={walk} done={!!walk && isDone(walk)} />
+                  })}
+                </ul>
+              </Section>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

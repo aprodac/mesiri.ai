@@ -5,9 +5,10 @@ import { Spark } from '@/components/live/spark'
 import { WithTerms } from '@/components/term'
 import { Button } from '@/components/ui/button'
 import { prefersReducedMotion } from '@/lib/timeline'
+import { cn } from '@/lib/utils'
 import { useGuideSeen, useStartMode } from '@/lib/start-mode'
 import { APP_TOUR, tourForPage, type Tour, type TourStep } from '@/lib/tours'
-import { TOUR_EVENT } from '@/lib/tour-events'
+import { TOUR_EVENT, walkthroughRunning } from '@/lib/tour-events'
 
 // The guided tour, game style (asked 15 Nov): the screen dims, one thing lights up, and the Spark (Mesiri's
 // character from Live) says what it is; Next, Back, Skip. Content and rules: lib/tours.ts. One component in the
@@ -28,7 +29,7 @@ const BUBBLE_W = 340
 const BUBBLE_H = 190
 
 /** The first marked element that is on screen (a hidden sidebar on a phone does not count). */
-function findTarget(id: string): HTMLElement | null {
+export function findTarget(id: string): HTMLElement | null {
   for (const el of document.querySelectorAll<HTMLElement>(`[data-guide="${id}"]`)) {
     const r = el.getBoundingClientRect()
     if (r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden') return el
@@ -42,7 +43,7 @@ function resolve(tour: Tour, intro?: { title: string; about: string }): TourStep
   return tour.introFromPage && intro ? [{ title: intro.title, text: intro.about, mood: 'hello' }, ...steps] : steps
 }
 
-function useRect(target: string | undefined, index: number): DOMRect | null {
+export function useRect(target: string | undefined, index: number): DOMRect | null {
   const [rect, setRect] = React.useState<DOMRect | null>(null)
   React.useEffect(() => {
     if (!target) {
@@ -78,6 +79,7 @@ export function GuidedTour() {
 
   const start = React.useCallback(
     (force: boolean) => {
+      if (walkthroughRunning()) return
       const page = tourForPage(pathname, search)
       const pageRun = page && (force || (guide.rules.tours === 'all' && unseen(page.tour)))
         ? { tour: page.tour, steps: resolve(page.tour, page) }
@@ -151,10 +153,50 @@ export function GuidedTour() {
 
   if (!running || !step) return null
   const last = running.index === running.steps.length - 1
+  return (
+    <TourOverlay
+      step={step}
+      rect={rect}
+      sparkKey={`${running.tour.key}-${running.index}`}
+      counter={`${running.index + 1} of ${running.steps.length}`}
+      nextRef={next}
+      onBack={running.index > 0 ? () => go(-1) : undefined}
+      onNext={() => go(1)}
+      nextLabel={last ? (running.then ? 'Next: this page' : 'Done') : 'Next'}
+      onSkip={skip}
+    />
+  )
+}
+
+export interface TourOverlayProps {
+  step: TourStep
+  rect: DOMRect | null
+  /** Changes per step, so the Spark plays its entrance again. */
+  sparkKey: string
+  counter: string
+  nextRef?: React.Ref<HTMLButtonElement>
+  onBack?: () => void
+  onNext: () => void
+  nextLabel: string
+  nextDisabled?: boolean
+  onSkip: () => void
+  skipLabel?: string
+  /** Let clicks reach the page (a "try it here" step: the person clicks the lit button). */
+  passThrough?: boolean
+  /** More in the bubble, under the text (a WhatsApp practice, a take-back). */
+  children?: React.ReactNode
+}
+
+/** The dimmed screen, the lit window and the Spark's bubble: one look for the page tours and the walkthroughs
+ *  (components/walkthrough.tsx). */
+export function TourOverlay({
+  step, rect, sparkKey, counter, nextRef, onBack, onNext, nextLabel, nextDisabled, onSkip, skipLabel = 'Skip tour', passThrough, children,
+}: TourOverlayProps) {
   const phone = window.innerWidth < 640
   const spot = rect
     ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
     : null
+  const bubbleH = children ? BUBBLE_H + 110 : BUBBLE_H
 
   // Where the bubble goes: under the lit thing if there is room, else above it; on a phone, docked at the bottom.
   let bubble: React.CSSProperties
@@ -167,18 +209,19 @@ export function GuidedTour() {
     const W = window.innerWidth
     const H = window.innerHeight
     const left = Math.min(Math.max(12, spot.left), W - BUBBLE_W - 12)
-    const top = (t: number) => Math.min(Math.max(12, t), H - BUBBLE_H - 12)
+    const top = (t: number) => Math.min(Math.max(12, t), H - bubbleH - 12)
     const below = spot.top + spot.height + GAP
-    if (H - below >= BUBBLE_H + 12) bubble = { left, top: below, width: BUBBLE_W }
-    else if (spot.top - GAP >= BUBBLE_H + 12) bubble = { left, top: spot.top - GAP - BUBBLE_H, width: BUBBLE_W }
+    if (H - below >= bubbleH + 12) bubble = { left, top: below, width: BUBBLE_W }
+    else if (spot.top - GAP >= bubbleH + 12) bubble = { left, top: spot.top - GAP - bubbleH, width: BUBBLE_W }
     else if (W - (spot.left + spot.width + GAP) >= BUBBLE_W + 12) bubble = { left: spot.left + spot.width + GAP, top: top(spot.top), width: BUBBLE_W }
     else if (spot.left - GAP >= BUBBLE_W + 12) bubble = { left: spot.left - GAP - BUBBLE_W, top: top(spot.top), width: BUBBLE_W }
-    else bubble = { left: '50%', top: top(H / 2 - BUBBLE_H / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+    else bubble = { left: '50%', top: top(H / 2 - bubbleH / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[60]" role="presentation">
-      {/* The dimmed screen with one lit window; clicks on the page are held while the tour runs. */}
+    <div className={cn('fixed inset-0 z-[60]', passThrough && 'pointer-events-none')} role="presentation" data-tour="">
+      {/* The dimmed screen with one lit window; clicks on the page are held while the tour runs, except on a
+          "try it here" step. */}
       {spot ? (
         <div
           aria-hidden
@@ -186,18 +229,19 @@ export function GuidedTour() {
           style={{ ...spot, boxShadow: '0 0 0 9999px rgba(15, 17, 20, 0.58)' }}
         />
       ) : (
-        <div aria-hidden className="fixed inset-0 bg-[rgba(15,17,20,0.58)]" />
+        <div aria-hidden className={cn('fixed inset-0 bg-[rgba(15,17,20,0.58)]', passThrough && 'pointer-events-none')} />
       )}
 
       <div
         role="dialog"
-        aria-modal="true"
+        aria-modal={passThrough ? undefined : true}
         aria-labelledby="tour-title"
         aria-describedby="tour-text"
-        className="fixed flex gap-3 rounded-2xl border bg-background p-4 text-foreground shadow-xl"
+        data-tour=""
+        className="pointer-events-auto fixed flex gap-3 rounded-2xl border bg-background p-4 text-foreground shadow-xl"
         style={bubble}
       >
-        <Spark key={`${running.tour.key}-${running.index}`} mood={step.mood ?? 'idle'} size={phone ? 52 : 64} className="shrink-0 self-start" />
+        <Spark key={sparkKey} mood={step.mood ?? 'idle'} size={phone ? 52 : 64} className="shrink-0 self-start" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div aria-live="polite">
             <h2 id="tour-title" className="m-0 text-base font-semibold">{step.title}</h2>
@@ -205,21 +249,20 @@ export function GuidedTour() {
               <WithTerms text={step.text} />
             </p>
           </div>
+          {children}
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {running.index + 1} of {running.steps.length}
-            </span>
-            <button type="button" onClick={skip} className="text-xs text-muted-foreground underline underline-offset-2">
-              Skip tour
+            <span className="text-xs tabular-nums text-muted-foreground">{counter}</span>
+            <button type="button" onClick={onSkip} className="text-xs text-muted-foreground underline underline-offset-2">
+              {skipLabel}
             </button>
             <span className="ml-auto flex gap-1.5">
-              {running.index > 0 && (
-                <Button type="button" size="sm" variant="outline" onClick={() => go(-1)}>
+              {onBack && (
+                <Button type="button" size="sm" variant="outline" onClick={onBack}>
                   Back
                 </Button>
               )}
-              <Button ref={next} type="button" size="sm" onClick={() => go(1)}>
-                {last ? (running.then ? 'Next: this page' : 'Done') : 'Next'}
+              <Button ref={nextRef} type="button" size="sm" onClick={onNext} disabled={nextDisabled}>
+                {nextLabel}
               </Button>
             </span>
           </div>

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ArrowRight, CircleHelp, Compass, Info, LayoutList, Lightbulb, ListOrdered, MessageSquareText, Search, Sparkles } from 'lucide-react'
+import { ArrowRight, CircleHelp, Compass, GraduationCap, Info, LayoutList, Lightbulb, ListOrdered, MessageSquareText, Search, Sparkles } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/lib/AuthContext'
 import { useModuleEnabled } from '@/lib/modules'
@@ -205,6 +205,13 @@ export function HelpButton() {
                 <Spark mood="hello" size={26} quiet /> Show me around this page
               </button>
             )}
+            <Link
+              to="/learn"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 self-start rounded-lg border px-3 py-1.5 text-sm hover:bg-muted/60"
+            >
+              <GraduationCap className="size-4 text-muted-foreground" aria-hidden /> Learn Mesiri: walkthroughs to try
+            </Link>
             <button
               type="button"
               onClick={() => {
