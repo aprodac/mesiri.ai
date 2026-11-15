@@ -15,9 +15,14 @@ export function waLink(number: string, text: string): string {
   return `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`
 }
 
+/** Record pages under another module's address that are about a module page of their own: a project's BOQ lives
+ *  under /projects but is the BOQ, not "Projects & sites" (whose example is adding a site). */
+const SAME_AS: [RegExp, string][] = [[/^\/projects\/[^/]+\/boq\/?$/, '/boq']]
+
 /** The WhatsApp examples of the page at this address, if it is built and has any. */
 export function useWhatsAppExamples(): { page: ModulePage | null; examples: NonNullable<ModulePage['whatsapp']> } {
   const { pathname, search } = useLocation()
-  const page = findPage(pathname, search)?.page ?? null
+  const alias = SAME_AS.find(([pattern]) => pattern.test(pathname))?.[1]
+  const page = findPage(alias ?? pathname, alias ? '' : search)?.page ?? null
   return { page, examples: page?.status === 'built' ? page.whatsapp ?? [] : [] }
 }
