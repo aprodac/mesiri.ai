@@ -35,6 +35,19 @@ def test_questions_come_in_order_one_a_day() -> None:
     assert _next(progress, 3) is None  # all done
 
 
+def test_start_mode_comes_first_only_when_asked_for() -> None:
+    # SS-34: a new owner who has not answered on the dashboard is asked how they want to start, first.
+    assert _next({}) == rules.BRANDING  # the default: unchanged for everyone else
+    progress: dict = {}
+    first = rules.next_question(progress, today=CREATED, company_created_on=CREATED, ask_start_mode=True)
+    assert first == rules.START_MODE
+    progress = rules.record(progress, rules.START_MODE, rules.ASKED, today=CREATED)
+    nxt = rules.next_question(
+        progress, today=CREATED + dt.timedelta(days=1), company_created_on=CREATED, ask_start_mode=True
+    )
+    assert nxt == rules.BRANDING  # asked once, never again; the day after, the usual order
+
+
 def test_nothing_after_the_ask_window() -> None:
     assert _next({}, rules.ASK_WITHIN_DAYS) == rules.BRANDING
     assert _next({}, rules.ASK_WITHIN_DAYS + 1) is None

@@ -74,6 +74,12 @@ export interface ModulePage {
   related?: { title: string; url: string }[]
   /** Hidden when the company has this module switched off, when it differs from its group's (Accounts, ACC). */
   module?: ModuleKey
+  /** SS-37: the version of this page's guide (default 1). Raise it when the page changes in a way its users would
+   *  notice, and say what changed in `guideNew`: the page's strip shows once more as "Updated", and its help shows
+   *  it under "What's new" (guided-onboarding-plan.md 6.7 rule 5). */
+  guideVersion?: number
+  /** SS-37: what changed at `guideVersion`, in one line ("Filter by vendor; export to Excel"). */
+  guideNew?: string
 }
 
 export interface ModuleGroup {
@@ -365,6 +371,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
       { title: 'Team', url: '/team', status: 'built', phase: 'V1', about: 'Everyone who reports to or reads from Mesiri, with their role and sites.', example: 'Arun, site engineer, Main building.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
       { title: 'Company', url: '/company', status: 'built', phase: 'V1', about: 'Company details, letterhead, logo and report settings.', example: 'GSTIN, address and logo on every PDF.', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
       { title: 'WhatsApp', url: '/whatsapp', status: 'built', phase: 'V1', about: 'Conversations with Mesiri, every message, and scheduled messages.', example: "Arun's 6 pm update and Mesiri's reply.", roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
+      { title: 'Bring your data', url: '/bring-data', status: 'built', phase: 'V1', about: 'Everything you already have, brought into Mesiri in one place: sites, team, materials and vendors, the BOQ, drawings. Each shows whether it is in yet.', example: 'Upload your materials Excel and your BOQ; send anything else to Mesiri on WhatsApp.', tracker: 'SS-32', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
       { title: 'Activity log', url: '/settings/activity', status: 'built', phase: 'V1', about: 'Who changed what, when: every save, edit, delete and approval, on the web and on WhatsApp, newest first. Read only.', example: 'Meera · Submit RA bill RA-02 · 4:10 pm · Web.', tracker: 'ADM-01, ADM-02', roles: ['ADMIN', 'OWNER', 'SUPER_ADMIN'] },
     ],
   },

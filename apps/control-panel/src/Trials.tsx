@@ -26,6 +26,8 @@ interface Trial {
   converted_at: string | null;
   hours_to_first_update: number | null;
   reached: string[];
+  /** SS-35: how the owner chose to start (guided onboarding); null: not answered. */
+  start_mode: string | null;
   ai_calls: number;
   whatsapp_messages: number;
   cost_inr: string;
@@ -38,7 +40,16 @@ interface Funnel {
   still_on_trial: number;
   cost: { total_inr: string; per_trial_inr: string | null; per_conversion_inr: string | null; unpriced: number };
   trials: Trial[];
+  /** SS-35: the same steps for each answer to "How would you like to start?". */
+  by_start_mode?: { start_mode: string | null; label: string; steps: { key: string; count: number; percent: number | null }[] }[];
 }
+
+const START_MODE_LABEL: Record<string, string> = {
+  guided: 'Step by step',
+  bring_data: 'Bring my data',
+  switching: 'Used other software',
+  free: 'Find my own way',
+};
 
 const RANGES = [
   { days: 7, label: 'Started in the last 7 days' },
@@ -145,6 +156,37 @@ export default function Trials() {
             {data.cost.unpriced > 0 && <span style={muted}>{data.cost.unpriced} call(s) with no price, not included</span>}
           </div>
 
+          {data.by_start_mode && data.by_start_mode.length > 0 && (
+            <section style={{ marginTop: 'var(--space-8)' }}>
+              <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-3)' }}>By how the owner chose to start</h2>
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Answer</th>
+                      {data.steps.map((s) => (
+                        <th key={s.key} style={right}>{s.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.by_start_mode.map((row) => (
+                      <tr key={row.start_mode ?? 'none'}>
+                        <td>{row.label}</td>
+                        {row.steps.map((s) => (
+                          <td key={s.key} style={right}>
+                            {s.count}
+                            {s.key !== 'started' && s.percent !== null && <span style={muted}> · {s.percent}%</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           <section style={{ marginTop: 'var(--space-8)' }}>
             <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-3)' }}>
               {started === 0 ? 'No trials started in this period.' : `The ${started} trial${started === 1 ? '' : 's'}, newest first`}
@@ -176,7 +218,10 @@ export default function Trials() {
                             >
                               {t.name}
                             </button>
-                            <div style={muted}>{t.signup_source}</div>
+                            <div style={muted}>
+                              {t.signup_source}
+                              {t.start_mode && ` · ${START_MODE_LABEL[t.start_mode] ?? t.start_mode}`}
+                            </div>
                           </td>
                           <td>{when(t.trial_started_at)}</td>
                           <td>

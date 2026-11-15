@@ -1,11 +1,14 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ArrowRight, CircleHelp, Lightbulb, MessageSquareText, Search } from 'lucide-react'
+import { ArrowRight, CircleHelp, Compass, Lightbulb, MessageSquareText, Search, Sparkles } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/lib/AuthContext'
 import { useModuleEnabled } from '@/lib/modules'
 import { SECTION_TITLES, findPage } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
+import { MODES, useResetGuides, useStartMode } from '@/lib/start-mode'
+import { StartChoices } from '@/components/onboarding/start-question'
+import { WithTerms } from '@/components/term'
 
 // UX-08 (asked 9 Nov: "a help icon in the top bar which for each page makes it easier to understand what that
 // page is"): the page explains itself here instead of in paragraphs on the page. Everything comes from
@@ -46,6 +49,12 @@ export function HelpButton() {
       (p) => p.status === 'built' && !p.shortcut && p.url !== page?.url && (!p.roles || p.roles.includes(role)) && (!p.module || isModuleEnabled(p.module)),
     ) ?? []
   const related = page?.related ?? []
+  // SS-28/SS-37: how Mesiri guides this person, changeable here (every role has this button), and what changed.
+  const guide = useStartMode()
+  const resetGuides = useResetGuides()
+  const [changing, setChanging] = React.useState(false)
+  React.useEffect(() => setChanging(false), [open])
+  const whatsNew = page?.guideNew
 
   return (
     <>
@@ -63,7 +72,7 @@ export function HelpButton() {
           <SheetHeader className="border-b bg-primary/10 px-5 py-4">
             {where && <p className="text-xs font-medium text-muted-foreground">{where}</p>}
             <SheetTitle className="text-xl">{title}</SheetTitle>
-            <SheetDescription className="text-sm text-foreground/80">{about}</SheetDescription>
+            <SheetDescription className="text-sm text-foreground/80"><WithTerms text={about} /></SheetDescription>
           </SheetHeader>
           <div className="flex flex-col gap-5 px-5 py-4">
             {example && (
@@ -71,7 +80,7 @@ export function HelpButton() {
                 <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />
                 <div>
                   <h3 className="text-xs font-semibold text-muted-foreground">For example</h3>
-                  <p className="text-sm">{example}</p>
+                  <p className="text-sm"><WithTerms text={example} /></p>
                 </div>
               </section>
             )}
@@ -81,6 +90,15 @@ export function HelpButton() {
                 <div>
                   <h3 className="text-xs font-semibold">On WhatsApp</h3>
                   <p className="text-sm">“{whatsapp}”</p>
+                </div>
+              </section>
+            )}
+            {whatsNew && (
+              <section className="flex gap-3">
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground">What's new</h3>
+                  <p className="text-sm">{whatsNew}</p>
                 </div>
               </section>
             )}
@@ -125,6 +143,33 @@ export function HelpButton() {
               <Search className="size-4" aria-hidden /> Find any page or project
               <kbd className="ml-1 rounded border px-1 text-[10px]">Ctrl K</kbd>
             </button>
+            {guide.ready && (
+              <section className="flex flex-col gap-2 border-t pt-4">
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <Compass className="size-3.5" aria-hidden /> How Mesiri guides you
+                </h3>
+                {changing ? (
+                  <StartChoices current={guide.mode} onChosen={() => setChanging(false)} />
+                ) : (
+                  <p className="m-0 text-sm">
+                    {MODES[guide.mode].label}.{' '}
+                    <button type="button" className="underline underline-offset-2" onClick={() => setChanging(true)}>
+                      Change
+                    </button>
+                  </p>
+                )}
+                {guide.rules.strips !== 'none' && (
+                  <button
+                    type="button"
+                    disabled={resetGuides.isPending || Object.keys(guide.seen).length === 0}
+                    onClick={() => resetGuides.mutate()}
+                    className="self-start text-sm text-muted-foreground underline underline-offset-2 disabled:no-underline disabled:opacity-60"
+                  >
+                    {resetGuides.isSuccess ? 'Every page will explain itself again' : 'Show me around again'}
+                  </button>
+                )}
+              </section>
+            )}
           </div>
         </SheetContent>
       </Sheet>

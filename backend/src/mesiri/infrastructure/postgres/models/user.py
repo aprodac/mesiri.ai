@@ -2,7 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Enum, String, func
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 
 from .base import Base
 
@@ -33,6 +33,10 @@ class UserModel(Base):
     reply_language = Column(String(20), nullable=True)
     # WA-246: show what was heard above a voice note's reply; NULL follows the company's voice_transcript setting.
     voice_transcript = Column(Boolean, nullable=True)
+    # Migration 0553 (SS-27): "How would you like to start?" (guided / bring_data / switching / free); NULL = not asked.
+    start_mode = Column(String(20), nullable=True)
+    # Migration 0553 (SS-27): per dashboard page, the guide version the person closed ({"/today": 1}).
+    guide_seen = Column(JSONB, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

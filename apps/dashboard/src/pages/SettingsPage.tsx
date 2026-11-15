@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
-import { Building, Building2, ChevronRight, Clock, History, ListChecks, MessageSquare, Puzzle, Users } from 'lucide-react'
+import { Building, Building2, ChevronRight, Clock, History, ListChecks, MessageSquare, Puzzle, Upload, Users } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 import { MODULE_KEYS, MODULE_NAMES, useModuleEnabled, type ModuleKey } from '@/lib/modules'
-import { SETUP_URL, setupCounts, useSetupProgress } from '@/lib/setup'
+import { SETUP_URL, setupCounts, useGuideSteps, useSetupProgress } from '@/lib/setup'
 import { usePageTitle } from '@/lib/page-title'
 import { PageHeader, Section } from '@/components/page/page-kit'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,7 @@ const ROWS = [
   { title: 'Projects & sites', about: 'Each project, its sites, who reports from each and who gets the reports.', url: '/projects', icon: Building2 },
   { title: 'Team', about: 'Everyone who uses Mesiri, their role and their sites. Invite by WhatsApp number.', url: '/team', icon: Users },
   { title: 'WhatsApp', about: 'Conversations with Mesiri, every message sent and received, and site groups.', url: '/whatsapp', icon: MessageSquare },
+  { title: 'Bring your data', about: 'Your materials, vendors, opening stock, BOQ and drawings, brought in from Excel and files.', url: '/bring-data', icon: Upload },
   { title: 'Activity log', about: 'Who changed what, when: every save, edit and approval, on the web and on WhatsApp.', url: '/settings/activity', icon: History },
   { title: 'Scheduled messages', about: 'Reminders and summaries Mesiri sends on a timetable.', url: '/whatsapp?view=automations', icon: Clock, module: 'automations' as ModuleKey },
 ]
@@ -25,7 +26,8 @@ export default function SettingsPage() {
   const { me } = useAuth()
   const isModuleEnabled = useModuleEnabled()
   const setup = useSetupProgress()
-  const counts = setup.data ? setupCounts(setup.data) : null
+  const guideSteps = useGuideSteps()
+  const counts = setup.data ? setupCounts(setup.data, guideSteps) : null
   const companyName = me?.org_name || me?.organization_name || 'Your company'
 
   return (

@@ -19,6 +19,8 @@ import {
   Radio,
   Search,
   Settings as SettingsIcon,
+  Upload,
+  ChevronsUpDown,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -38,7 +40,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
 import { fetchBranding, logout, type Me } from '@/lib/api'
 import { MesiriMark, MesiriWordmark } from '@/components/brand/mesiri-logo'
-import { SETUP_URL, setupCounts, useSetupProgress } from '@/lib/setup'
+import { SETUP_URL, setupCounts, useGuideSteps, useSetupProgress } from '@/lib/setup'
 import { useTrial } from '@/lib/trial'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
@@ -48,6 +50,7 @@ import { useNavCounts, useTaskCounts } from '@/lib/nav-counts'
 import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, sectionOrder, type ModuleGroup, type NavSection } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
 import { usePlannedPreview } from '@/lib/preview'
+import { useShowEverything, useStartMode } from '@/lib/start-mode'
 
 type NavItem = {
   title: string
@@ -445,8 +448,9 @@ export function AppSidebar() {
   // "Finish setup" (SS-19): the getting-started card stays one click away,
   // hidden or not, until everything is done.
   const setup = useSetupProgress()
+  const guideSteps = useGuideSteps()
   const trial = useTrial()
-  const setupDone = setup.data ? setupCounts(setup.data) : null
+  const setupDone = setup.data ? setupCounts(setup.data, guideSteps) : null
   const finishSetup: NavItem | null =
     setup.isCompanyAdmin && !trial.readOnly && setupDone && setupDone.done < setupDone.total
       ? { title: 'Finish setup', url: SETUP_URL, icon: ListChecks, note: `${setupDone.done}/${setupDone.total}` }
@@ -493,9 +497,21 @@ export function AppSidebar() {
     }
     return entries
   }
-  const sections = sectionOrder(role)
+  const allSections = sectionOrder(role)
     .map((key) => ({ key, title: SECTION_TITLES[key], entries: sectionEntries(key) }))
     .filter((section) => section.entries.length > 0)
+  // SS-31 (guided-onboarding-plan.md 6.2): step-by-step mode starts with the everyday pages and the role's own
+  // first section (UX-04: each role's day comes first), and one row
+  // shows the rest. Help only: search and every link still reach every page this role may see.
+  const guide = useStartMode()
+  const [showEverything, setShowEverything] = useShowEverything()
+  const canShorten = guide.ready && guide.rules.shortSidebar && !showPlanned
+  const sections = canShorten && !showEverything ? allSections.slice(0, 1) : allSections
+  const hiddenEntries = allSections.filter((s) => !sections.includes(s)).reduce((n, s) => n + s.entries.length, 0)
+  const bringData: NavItem | null =
+    guide.ready && guide.rules.bringDataInSidebar && setup.isCompanyAdmin && !trial.readOnly
+      ? { title: 'Bring your data', url: '/bring-data', icon: Upload }
+      : null
   const renderCategory = (category: NavCategory) => (
     <CollapsibleNavCategory
       key={category.key}
@@ -629,6 +645,7 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 {PRIMARY_ITEMS.map(renderLink)}
+                {bringData && renderLink(bringData)}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -648,6 +665,27 @@ export function AppSidebar() {
               </SidebarGroupContent>
             </SidebarGroup>
           ))}
+
+          {canShorten && (hiddenEntries > 0 || showEverything) && (
+            <SidebarGroup className="p-1">
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setShowEverything(!showEverything)}
+                    tooltip={showEverything ? 'Show fewer' : `Show all (${hiddenEntries} more)`}
+                    className={cn(NAV_LINK_BASE, S.rowIdle, S.ring)}
+                    aria-expanded={showEverything}
+                  >
+                    <ChevronsUpDown className={cn('size-4 shrink-0', S.icon)} />
+                    <span className="truncate">{showEverything ? 'Show fewer' : 'Show all'}</span>
+                    {!showEverything && (
+                      <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden">+{hiddenEntries}</span>
+                    )}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroup>
+          )}
 
           {visibleManagementItems.length > 0 && (
             <SidebarGroup className="p-1">

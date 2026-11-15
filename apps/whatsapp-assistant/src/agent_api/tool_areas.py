@@ -82,9 +82,10 @@ AREAS: dict[str, Area] = {
          "give_subcontract_advance", "subcontractor_statement")),
     "setup": Area(
         "setting things up: add or change a site, change a material or its category, another name for a material, "
-        "add a new person by phone number, sizes other people are waiting for, weather and site conditions of a day",
+        "add a new person by phone number, sizes other people are waiting for, weather and site conditions of a day, "
+        "how much Mesiri explains to this person (tips on or off)",
         ("update_material", "material_categories", "add_standard_categories", "size_requests", "add_site",
-         "update_site", "add_material_alias", "add_person", "set_site_conditions")),
+         "update_site", "add_material_alias", "add_person", "set_site_conditions", "set_start_mode")),
     "reports_out": Area(
         "ONLY these four: all projects together in one brief (the owner's portfolio), send a weekly or monthly "
         "report to OTHER named people, set a report to go by itself on a schedule, what is waiting for this "

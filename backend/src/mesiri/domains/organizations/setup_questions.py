@@ -9,6 +9,11 @@ setup question a day, right after replying to one of their own messages
     report_time   "your report goes out by 9 pm, change it?"
     more_sites    "working on another site too?"
 
+and, before them, for an owner who has not answered it on the dashboard (SS-34, guided onboarding):
+
+    start_mode    "How would you like to start?" -- the owner's own answer, stored on their user
+                  (users.start_mode, the same as the dashboard's question)
+
 Each is asked once; answered or skipped, it is never asked again. Nothing
 is asked after `ASK_WITHIN_DAYS` days from the company's creation.
 
@@ -35,6 +40,9 @@ BRANDING = "branding"
 REPORT_TIME = "report_time"
 MORE_SITES = "more_sites"
 QUESTIONS: tuple[str, ...] = (BRANDING, REPORT_TIME, MORE_SITES)
+#: SS-34: asked first, only when the caller says so (the owner is new and has not answered on the dashboard).
+START_MODE = "start_mode"
+_RECORDABLE: frozenset[str] = frozenset((*QUESTIONS, START_MODE))
 
 ASKED = "asked"
 ANSWERED = "answered"
@@ -54,15 +62,18 @@ def _state(progress: dict[str, Any], question: str) -> str | None:
     return entry.get("state") if isinstance(entry, dict) else None
 
 
-def next_question(progress: object, *, today: dt.date, company_created_on: dt.date) -> str | None:
+def next_question(
+    progress: object, *, today: dt.date, company_created_on: dt.date, ask_start_mode: bool = False
+) -> str | None:
     """The question to ask today, or None. One a day; a question asked but
-    never answered is not asked again; nothing after ASK_WITHIN_DAYS."""
+    never answered is not asked again; nothing after ASK_WITHIN_DAYS.
+    ``ask_start_mode`` (SS-34): the owner should still be asked how they want to start; it comes first."""
     progress = progress if isinstance(progress, dict) else {}
     if (today - company_created_on).days > ASK_WITHIN_DAYS:
         return None
     if progress.get("last_asked_on") == today.isoformat():
         return None
-    for question in QUESTIONS:
+    for question in ((START_MODE,) if ask_start_mode else ()) + QUESTIONS:
         if _state(progress, question) is None:
             return question
     return None
@@ -70,7 +81,7 @@ def next_question(progress: object, *, today: dt.date, company_created_on: dt.da
 
 def record(progress: object, question: str, state: str, *, today: dt.date) -> dict[str, Any]:
     """`progress` with `question` set to `state` (asked/answered/skipped)."""
-    if question not in QUESTIONS:
+    if question not in _RECORDABLE:
         raise ValueError(f"unknown setup question: {question}")
     updated = dict(progress) if isinstance(progress, dict) else {}
     updated[question] = {"state": state, "on": today.isoformat()}

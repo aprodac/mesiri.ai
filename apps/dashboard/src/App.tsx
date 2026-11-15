@@ -89,6 +89,7 @@ import ReturnablesPage from '@/pages/ReturnablesPage'
 import WorkOrdersPage from '@/pages/WorkOrdersPage'
 import WorkOrderPage from '@/pages/WorkOrderPage'
 import { BillsChecksPage, StatementPage, SubcontractorsPage, WorkOrderDocumentPage } from '@/pages/SubcontractPages'
+import BringDataPage from '@/pages/BringDataPage'
 import { ToastProvider } from '@/components/ui/toast-notification'
 
 // V1 routes (WEB-21, docs/DESIGN.md "Pages and routes"): one address per
@@ -237,6 +238,8 @@ export default function App() {
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/activity" element={<ActivityLogPage />} />
+          {/* SS-32: guided onboarding, everything brought in from one place. */}
+          <Route path="bring-data" element={<BringDataPage />} />
           <Route path="company" element={<CompanyDetails />} />
           <Route path="company/messages" element={<Moved to="/whatsapp?view=messages" />} />
           <Route path="whatsapp" element={<WhatsAppPage />} />

@@ -4,6 +4,10 @@
 > (superadmin) in [V1_TRACKER.md](V1_TRACKER.md). This file is the "why" and the shape;
 > the tracker is the status.
 
+> **Proposed 15 Nov 2026, not approved:** a start that fits the person (beginner, data in
+> Excel, other software, expert): [guided-onboarding-plan.md](guided-onboarding-plan.md),
+> SS-26 to SS-37.
+
 ## The target experience
 
 **The client never fills a form. They have a short WhatsApp chat, and the first daily

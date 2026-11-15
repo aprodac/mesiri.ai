@@ -639,6 +639,10 @@ TAKE_BACK = "take_back"
 #: The language of the person's message (``runtime.agent.wording.language_of``) as told to the model.
 #: [243]: set at once by the code, never held on the card.
 LANGUAGE_TOOL = "set_reply_language"
+#: SS-34: how much Mesiri explains to this person (guided onboarding).
+START_MODE_TOOL = "set_start_mode"
+#: The person's own settings: set at once by the code, never a Ready-to-save line ([243], SS-34).
+SET_AT_ONCE: frozenset[str] = frozenset({LANGUAGE_TOOL, START_MODE_TOOL})
 LANGUAGE_LINES = {
     "english": "English",
     "manglish": "Manglish (Malayalam words in Latin letters; never Malayalam script)",
@@ -1155,16 +1159,17 @@ class ApiAgent:
             tool = self._tools.get(name)
             if tool is None:
                 return ToolOutcome(content={"error": f"no tool named {name}"})
-            if name == LANGUAGE_TOOL:
-                # [243]: a reply-language choice is not a record: the code sets it at once, never a Ready-to-save line.
+            if name in SET_AT_ONCE:
+                # [243] / SS-34: a person's own setting is not a record: the code sets it at once, never a
+                # Ready-to-save line.
                 response = await client.call(tool.method, tool.path, json={
                     f: arguments[f] for f in tool.body_fields if f in arguments})
                 acted.append(name)
-                if response.ok:
+                if response.ok and name == LANGUAGE_TOOL:
                     language_set[:] = [str(arguments.get("reply_language") or "")]
-                return ToolOutcome(content={"status": (
-                    "set now (not on the card, nothing to save); reply in that language from this reply on" if response.ok
-                    else f"not set: {_detail(response.body)}")})
+                done = ("set now (not on the card, nothing to save); reply in that language from this reply on"
+                        if name == LANGUAGE_TOOL else "set now (not on the card, nothing to save)")
+                return ToolOutcome(content={"status": done if response.ok else f"not set: {_detail(response.body)}"})
             site_note = ""
             unit_note = ""  # WA-166: "(= 60 bags)" -- what a line in another unit is in stock, seen before Save
             size_hint = ""  # WA-166: a held line for a new material that needs its size asked in this turn

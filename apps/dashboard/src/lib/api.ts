@@ -2358,6 +2358,9 @@ export interface SetupProgress {
   has_team: boolean
   has_site: boolean
   has_logo: boolean
+  /** SS-30: a vendor is in (materials workbook or the Vendors page); a BOQ line is in. */
+  has_vendors: boolean
+  has_boq: boolean
   report_time_set: boolean
   first_update_at: string | null
   first_dpr_sent_at: string | null
