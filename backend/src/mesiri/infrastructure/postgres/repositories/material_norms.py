@@ -86,3 +86,19 @@ class MaterialNormRepository:
             {"org": organization_id, "p": project_id, "id": line["id"], "u": line["unit_id"],
              "w": line["work_type"]})).mappings().all()
         return [dict(r) for r in rows]
+
+    async def catalogue(self, organization_id: uuid.UUID) -> list[dict]:
+        """The company's active materials with their stock unit's code (BOQ-04: standard norms are matched to them)."""
+        rows = (await self.conn.execute(text(
+            "SELECT m.id, m.name, u.code AS unit, m.is_active FROM materials_catalog m "
+            "JOIN units_of_measure u ON u.id = m.default_unit_id "
+            "WHERE m.organization_id = :org AND m.is_active ORDER BY lower(m.name)"),
+            {"org": organization_id})).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def lines_with_norms(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> set[uuid.UUID]:
+        rows = (await self.conn.execute(text(
+            "SELECT DISTINCT n.planned_item_id FROM boq_material_norms n "
+            "JOIN work_package_planned_items i ON i.id = n.planned_item_id JOIN work_packages w ON w.id = i.work_package_id "
+            "WHERE n.organization_id = :org AND w.project_id = :p"), {"org": organization_id, "p": project_id}))
+        return {r[0] for r in rows}

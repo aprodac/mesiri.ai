@@ -178,3 +178,24 @@ export function formatRupees(value: string | null | undefined): string {
   const amount = `₹${Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })}`
   return n < 0 ? `−${amount}` : amount
 }
+
+/** BOQ-04: the usual materials per unit for a line with none yet, in the company's own materials. */
+export interface StandardNormLine {
+  line_id: string
+  work: string
+  unit: string
+  /** The assumption, e.g. "M20 / 1:1.5:3 nominal". */
+  standard: string
+  norms: { material_id: string; material: string; unit: string; quantity_per_unit: string; wastage_pct: string; note: string }[]
+  /** Kinds the company has no material for, or buys in a unit that can't be converted. */
+  missing: string[]
+}
+
+export async function fetchStandardNorms(projectId: string): Promise<StandardNormLine[]> {
+  return (await api.get<{ lines: StandardNormLine[] }>(`${base(projectId)}/norms/standard`)).data.lines
+}
+
+/** BOQ-04: put them on every line they fit (never a line that has materials). */
+export async function applyStandardNorms(projectId: string, lineIds?: string[]): Promise<{ line_id: string }[]> {
+  return (await api.post<{ lines: { line_id: string }[] }>(`${base(projectId)}/norms/standard`, { line_ids: lineIds ?? null })).data.lines
+}
