@@ -81,7 +81,7 @@ def test_the_caption_names_the_dates() -> None:
 def test_the_tools_that_take_the_window_are_real_report_routes() -> None:
     tools = _real_tools()
     assert {"period_report", "portfolio_report"} <= set(tools)
-    assert documents.ROLLING_WEEK_TOOLS == {"period_report", "portfolio_report", documents.SEND_REPORT}
+    assert documents.ROLLING_WEEK_TOOLS == {"period_report", "portfolio_report", documents.SEND_REPORT, "send_report_to"}
 
 
 # -- the reported message -------------------------------------------------------------------------------------------
@@ -167,3 +167,18 @@ async def test_guard_a_named_week_read_sends_no_pdf() -> None:
     finally:
         await client.close()
     assert sender.sent == [] and [r[0] for r in read] == ["period"]
+
+
+async def test_live_a_send_to_self_drops_the_made_up_id() -> None:
+    """15 Nov 16:14 ("PDF ?"): send_report_to with recipient_user_ids ["self"] was held and failed at Save."""
+    client = ApiClient(ACTOR, app=_app([]))
+    script = [[("send_report_to", {"scope": "project", "project_id": PROJECT, "period": "week",
+                                   "recipient_user_ids": ["self"], "confirm_line": "Send Green Villa weekly report"})],
+              "Ready."]
+    try:
+        turn = await ApiAgent(FakeToolCallingProvider(script), _real_tools()).run(client, "PDF ?")
+    finally:
+        await client.close()
+    body = turn.pending[0].body
+    assert "recipient_user_ids" not in body and "site_id" not in body
+    assert body["period"] == "custom" and body["date_to"] >= body["date_from"]

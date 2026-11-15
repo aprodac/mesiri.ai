@@ -22,7 +22,6 @@ production app (``runtime/lifecycle.py``).
 from __future__ import annotations
 
 import datetime
-import re
 import uuid
 from typing import Any, Literal
 
@@ -94,11 +93,10 @@ async def period_report(
 
 
 def _filename(report: dict[str, Any], ext: str) -> str:
-    name = re.sub(r"[^A-Za-z0-9]+", "-", report["project"]["name"]).strip("-").lower() or "project"
-    p = report["period"]
-    when = p["from"][:7] if p["kind"] == "month" else f"{p['from']}" if p["kind"] == "week" else f"{p['from']}-{p['to']}"
-    kind = {"week": "week", "month": "month"}.get(p["kind"], "week" if p.get("days") == 7 else "report")
-    return f"mesiri-{name}-{kind}-{when}.{ext}"
+    from mesiri.domains.reports.period.periods import report_file
+
+    where = report["project"]["name"] + (f" {report['site']['name']}" if report.get("site") else "")
+    return report_file(where, report["period"], ext)
 
 
 @router.get("/period/pdf")
@@ -180,9 +178,9 @@ async def portfolio_report(
 
 
 def _brief_filename(brief: dict[str, Any], ext: str) -> str:
-    p = brief["period"]
-    when = p["from"][:7] if p["kind"] == "month" else p["from"] if p["kind"] == "week" else f"{p['from']}-{p['to']}"
-    return f"mesiri-all-projects-{p['kind']}-{when}.{ext}"
+    from mesiri.domains.reports.period.periods import report_file
+
+    return report_file("All projects", brief["period"], ext)
 
 
 @router.get("/portfolio/pdf")

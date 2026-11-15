@@ -459,6 +459,9 @@ def build_message_handlers(
             # WA-132: the SAVED card after a Save, drawn by the same builder classic uses.
             receipt_builder=getattr(interaction_handler, "_receipt_builder", None),
             send_image=getattr(sender, "send_image", None),
+            # Live, 15 Nov 16:14 (Aprodac: "PDF ?" got "no tool named send_report"): without the document sender the
+            # file tools (DOC-05's send_document, PRC-20's send_report, the code's weekly PDF) were never offered.
+            send_document=getattr(sender, "send_document", None),
         ))
         return _api_agent[0]
 

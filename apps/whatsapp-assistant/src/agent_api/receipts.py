@@ -131,7 +131,7 @@ def slip_for(entries: list[PendingWrite], ctx: Any, names: tuple[dict, dict], no
     material, unit = names
     sites = {str(s.id): s.name for s in (getattr(ctx, "sites", None) or [])}
     projects = {str(p.id): p.name for p in (getattr(ctx, "projects", None) or [])}
-    lines = [_line(i, e, material, unit, sites, targets) for i, e in enumerate(entries, 1)]
+    lines = [_line(i, e, material, unit, sites, targets, projects) for i, e in enumerate(entries, 1)]
     places = {str(e.body.get("site_id") or e.body.get("from_site_id") or "") for e in entries} - {""}
     if len(places) == 1:
         site = sites.get(next(iter(places)), "")
@@ -154,8 +154,30 @@ def _plural(trade: str, count: int) -> str:
     return trade if count == 1 or trade.endswith("s") else f"{trade}s"
 
 
+def _report_line(number: int, entry: PendingWrite, sites: dict[str, str], projects: dict[str, str]) -> SlipLine:
+    """"📤 Send: *Weekly report* · Green Villa · 9 – 15 Nov 2026 · to Sajan": what goes, for which project, which
+    dates, to whom (live, 15 Nov: the card said only "Send report · Annex")."""
+    from .documents import report_words
+
+    body = entry.body
+    title, when = report_words(body)
+    where = (sites.get(str(body.get("site_id") or ""), "") or projects.get(str(body.get("project_id") or ""), "")
+             or ("All projects" if body.get("scope") == "portfolio" or not body.get("project_id") else ""))
+    names = [str(n) for n in body.get("recipient_names") or [] if str(n).strip()]
+    to = f"to {', '.join(names)}" if names else "to you"
+    if entry.tool == "schedule_report":
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        freq = str(body.get("frequency") or "").upper()
+        at = str(body.get("time_of_day") or "08:00")
+        when = (f"every {days[int(body.get('day_of_week') or 0) % 7]} {at}" if freq == "WEEKLY"
+                else f"on the 1st, {at}")
+        title = "Monthly report" if freq == "MONTHLY" else "Weekly report"
+    return SlipLine(number, "send", title, _clean(" · ".join(p for p in (where, when, to) if p), 70))
+
+
 def _line(number: int, entry: PendingWrite, material: dict[str, str], unit: dict[str, str],
-          sites: dict[str, str], targets: dict[str, str] | None = None) -> SlipLine:
+          sites: dict[str, str], targets: dict[str, str] | None = None,
+          projects: dict[str, str] | None = None) -> SlipLine:
     body, tool = entry.body, entry.tool
     if tool in _MATERIAL_TOOLS:
         raw = str(body.get("material_id") or "")
@@ -207,6 +229,8 @@ def _line(number: int, entry: PendingWrite, material: dict[str, str], unit: dict
     if tool == "add_material":
         return SlipLine(number, "list", _clean(body.get("name") or entry.summary, 40), "new on your material list",
                         new=True)
+    if tool in ("send_report_to", "schedule_report"):
+        return _report_line(number, entry, sites, projects or {})
     return _structured(number, entry, material, unit, sites, targets or {})
 
 

@@ -83,7 +83,33 @@ REPORT_TOOL = ToolSpec(name=SEND_REPORT, description=(
 
 
 #: [302]: the reads and the send whose "week" is the last 7 days when no week is named.
-ROLLING_WEEK_TOOLS = frozenset({"period_report", "portfolio_report", SEND_REPORT})
+ROLLING_WEEK_TOOLS = frozenset({"period_report", "portfolio_report", SEND_REPORT, "send_report_to"})
+
+
+def report_words(body: dict[str, Any], today: dt.date | None = None) -> tuple[str, str]:
+    """The card's words for a report to send or schedule: ("Weekly report", "9 – 15 Nov 2026"), ("Monthly report",
+    "October 2026"), or ("Monthly report", "last month") when the API picks it. Live, 15 Nov: the card said only
+    "Send report"."""
+    from mesiri.domains.reports.period import periods
+
+    kind = str(body.get("period") or body.get("frequency") or "week").lower()
+    try:
+        start = dt.date.fromisoformat(str(body.get("date_from") or "")[:10])
+        end = dt.date.fromisoformat(str(body.get("date_to") or "")[:10])
+    except ValueError:
+        start = end = None
+    if start and end:
+        word = "Weekly" if (end - start).days == 6 else "Monthly" if kind == "month" else "Period"
+        return f"{word} report", periods.range_text(start, end)
+    try:
+        day = dt.date.fromisoformat(str(body.get("date") or "")[:10])
+    except ValueError:
+        day = None
+    if kind in ("month", "monthly"):
+        return "Monthly report", periods.month_of(day).label if day else "last month"
+    if day:
+        return "Weekly report", periods.week_of(day).range_text
+    return "Weekly report", "every week" if body.get("frequency") else "last 7 days"
 
 
 def rolling_week(arguments: dict[str, Any], today: dt.date) -> dict[str, Any]:

@@ -772,15 +772,16 @@ class ApiWhatsApp:
                             client, send_file, wa, arguments,
                             today=dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date())),
                 }
-                renderer = getattr(self._receipts, "renderer", None)
-                if renderer is not None and self._send_image is not None:
-                    # [304]: stock of several materials as pictures, drawn by the code from the stock records.
-                    image_out, day = self._send_image, dt.datetime.now(
-                        ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date()
-                    run["actions"][stock_images.SEND_STOCK_LIST] = (
-                        stock_images.TOOL,
-                        lambda arguments: stock_images.send(client, renderer.render_png, image_out, wa, ctx, day,
-                                                            arguments))
+            renderer = getattr(self._receipts, "renderer", None)
+            if renderer is not None and self._send_image is not None:
+                # [304]: stock of several materials as pictures, drawn by the code from the stock records. Needs only
+                # the image sender, never the document one.
+                image_out, wa_to, day = self._send_image, message.sender.wa_id, dt.datetime.now(
+                    ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date()
+                run.setdefault("actions", {})[stock_images.SEND_STOCK_LIST] = (
+                    stock_images.TOOL,
+                    lambda arguments: stock_images.send(client, renderer.render_png, image_out, wa_to, ctx, day,
+                                                        arguments))
             try:
                 turn = await self._agent.run(client, **run)
                 _lap("v3_model_tools")

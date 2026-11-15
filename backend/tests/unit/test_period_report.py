@@ -344,7 +344,7 @@ def test_seven_days_in_a_row_is_titled_weekly_report():
     ten = periods.resolve("custom", D(2026, 11, 15), date_from=D(2026, 11, 1), date_to=D(2026, 11, 10)).as_dict()
     assert periods.kind_word(ten) == "Period"
     report = {"project": {"name": "Green Villa"}, "period": rolling}
-    assert _filename(report, "pdf") == "mesiri-green-villa-week-2026-11-09-2026-11-15.pdf"
+    assert _filename(report, "pdf") == "Weekly-report-Green-Villa-9-15-Nov-2026.pdf"
 
 
 # -- [303] work on site ----------------------------------------------------------------------------------------------

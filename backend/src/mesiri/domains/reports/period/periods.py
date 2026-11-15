@@ -57,6 +57,17 @@ def kind_word(period: dict[str, object]) -> str:
     return {"week": "Weekly", "month": "Monthly"}.get(str(period.get("kind")), "Period")
 
 
+def report_file(where: str, period: dict[str, object], ext: str = "pdf") -> str:
+    """The file name a report goes out with, which WhatsApp shows as the document's preview: what it is first ("Weekly
+    report"), then where and when: ``Weekly-report-Green-Villa-9-15-Nov-2026.pdf``, ``Monthly-report-Green-Villa-
+    November-2026.pdf``. Live, 15 Nov: "Green-Villa-Annex-2026-11.pdf" said nothing of being a monthly report."""
+    import re
+
+    when = str(period.get("label") if period.get("kind") == "month" else period.get("range") or "")
+    words = f"{kind_word(period)} report {where} {when}"
+    return (re.sub(r"[^A-Za-z0-9]+", "-", words).strip("-")[:90] or "report") + f".{ext}"
+
+
 def range_text(start: datetime.date, end: datetime.date) -> str:
     """'3 – 9 Nov 2026', '28 Oct – 3 Nov 2026', '29 Dec 2025 – 4 Jan 2026'."""
     if start.year != end.year:

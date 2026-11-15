@@ -448,7 +448,10 @@ class Places:
 def site_scoped(tool: ApiTool) -> bool:
     """A write that reports something at a site (a receipt, labour, work, an issue, an expense, conditions); not one
     that creates or changes a project or site itself."""
-    return tool.is_write and ("site_id" in tool.body_fields or tool.path_params == ("site_id",))
+    # Live, 15 Nov 16:14 (Aprodac): a report to send got the chat's working site ("Send report · Annex"), so a
+    # project's report would have gone as one site's. A report is the project's unless they name a site.
+    return (tool.is_write and not tool.path.startswith("/reports/")
+            and ("site_id" in tool.body_fields or tool.path_params == ("site_id",)))
 
 
 def _named(name: str, said: str) -> bool:
@@ -1279,8 +1282,8 @@ class ApiAgent:
             pdf_note = ""
             if name in ROLLING_WEEK_TOOLS:
                 unnamed = rolling_week(arguments, today)
-                if (unnamed is not arguments and name != SEND_REPORT and actions and SEND_REPORT in actions
-                        and SEND_REPORT not in acted):
+                if (unnamed is not arguments and name in ("period_report", "portfolio_report") and actions
+                        and SEND_REPORT in actions and SEND_REPORT not in acted):
                     # [303] (live, 15 Nov 15:42: "orachcha motham progress report" was answered with period_report as
                     # text, though the SOP says the PDF): a week nobody named is a report of the last 7 days, and the
                     # report is the PDF. The code sends it, whatever the model picked; the read still gives the
@@ -1293,6 +1296,13 @@ class ApiAgent:
                                 "most. Never the whole report in words, never call send_report."
                                 if str(sent.get("status", "")).startswith("sent") else "")
                 arguments = unnamed  # [302]: a week nobody named is the last 7 days
+            if name == "send_report_to" and arguments.get("recipient_user_ids"):
+                # Live, 15 Nov 16:14 (Aprodac, "PDF ?"): recipient_user_ids ["self"] was held and Save failed. Only real
+                # ids go; none left is the person asking (the API's own default).
+                ids = [str(i) for i in arguments["recipient_user_ids"] if _is_uuid(str(i))]
+                arguments = {k: v for k, v in arguments.items() if k != "recipient_user_ids"}
+                if ids:
+                    arguments["recipient_user_ids"] = ids
             path = tool.path
             for p in tool.path_params:
                 path = path.replace("{" + p + "}", str(arguments[p]))

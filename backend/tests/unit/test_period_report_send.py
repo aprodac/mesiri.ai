@@ -97,8 +97,10 @@ def test_template_params_and_file_name():
     params = send.template_params(_sample(), "Villa Kakkanad")
     assert params == ["Weekly", "Villa Kakkanad, Week 45 (2 – 8 Nov 2026)", "Work is behind plan. Finishes is 3 days late."]
     p = periods.month_of(datetime.date(2026, 10, 9))
-    assert send.file_name("Villa Kakkanad · Main", p) == "Villa-Kakkanad-Main-2026-10.pdf"
-    assert send.file_name("All projects", periods.week_of(datetime.date(2026, 11, 4))) == "All-projects-week-45.pdf"
+    # Live, 15 Nov: the file name is WhatsApp's preview of the document: it says what it is first.
+    assert send.file_name("Villa Kakkanad · Main", p) == "Monthly-report-Villa-Kakkanad-Main-October-2026.pdf"
+    assert send.file_name("All projects", periods.week_of(datetime.date(2026, 11, 4))) == (
+        "Weekly-report-All-projects-2-8-Nov-2026.pdf")
 
 
 def test_changed_since_lists_only_moved_figures():

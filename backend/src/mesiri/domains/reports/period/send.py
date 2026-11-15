@@ -17,7 +17,6 @@ import datetime
 import json
 import logging
 import os
-import re
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -82,10 +81,7 @@ def template_params(report: dict[str, Any], where: str) -> list[str]:
 
 
 def file_name(where: str, period: periods.Period) -> str:
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", where).strip("-")[:40] or "report"
-    when = {"week": f"week-{period.start.isocalendar()[1]}", "month": f"{period.start:%Y-%m}"}.get(
-        period.kind, f"{period.start}-{period.end}")
-    return f"{slug}-{when}.pdf"
+    return periods.report_file(where, period.as_dict())
 
 
 async def _people(conn: AsyncConnection, org: uuid.UUID, ids: list[uuid.UUID]) -> dict[str, dict[str, Any]]:
