@@ -223,3 +223,33 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
 - **Not done here**: lighting up the new record itself on the page ("Got it" reloads the list but does not point at
   the row); W1's take-back (a site update has no WhatsApp undo, and the Site log has no undo button: work entries
   can only be voided from the old Activities page, which now redirects; SS-43 must settle this before writing W1).
+
+## 10. Built (SS-43, 15 Nov 2026): outcomes, W1 / W2 / W4, role paths
+
+- **"What you get" (asked 15 Nov in session: "a list of things the owner finds valuable, that is the title, and how
+  to get it")**: `OUTCOMES` in `lib/walkthroughs.ts`. Each is a title in the role's words, one line on why it matters,
+  and the walkthroughs it runs, so nothing is written twice. They lead the For you tab ("What you get from Mesiri"),
+  then the role path ("Everything ..., in order" = the role's outcomes back to back). The build fails when an outcome
+  or workflow names a walkthrough that does not exist. Draft, for Ilan to edit:
+
+  | Role | Outcome | Runs |
+  |---|---|---|
+  | Owner / admin | Know every site's day without a phone call | W1 |
+  | | See where every bag of cement goes | W2 |
+  | | Pay wages right, with no arguments | W4 |
+  | | Catch a cost overrun before the bill comes | BOQ, Material plan tours (W9 later) |
+  | | Start a new project in an afternoon | Project start, Schedule, Team tours (W6 later) |
+  | | Hear about problems the day they happen | Issues tour (W7 later) |
+  | Site engineer | Send the day's update in one message | W1 first half |
+  | | Get material on site on time | W2: asking, then delivery and use |
+  | | Mark attendance in one line | W4 first half |
+  | | Report a problem and get it fixed | Issues tour |
+
+  SS-48 adds: owner "Get paid faster by the client" (W8) and "Month end without chasing the accountant" (W11), and
+  the Project manager and Finance outcomes.
+- **Workflows are made of parts** (`part: true`, not listed alone): W1 = site update + daily report; W2 = asking +
+  ordering + delivery; W4 = attendance + wages. A role path or outcome can use half a workflow.
+- **Practice that can't be taken back** (D-L3, decided in build): a site update, attendance and an advance have no
+  WhatsApp undo, so their practice is `save: false`: send the message, look at the card, tap **Cancel**. Nothing is
+  saved, nothing to take back, and no new undo button was needed on the Site log (the W1 question in section 9).
+  Requests take back with `cancel_material_request`; deliveries with `undo_receipt`.
