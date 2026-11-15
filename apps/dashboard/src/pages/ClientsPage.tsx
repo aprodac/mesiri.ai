@@ -44,7 +44,7 @@ export default function ClientsPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={Users} title="Clients" />
-        {allowed && <Button size="sm" className="gap-1.5" onClick={() => setEditing('new')}><Plus className="size-4" /> Add a client</Button>}
+        {allowed && <Button size="sm" className="gap-1.5" data-guide="clients.add" onClick={() => setEditing('new')}><Plus className="size-4" /> Add a client</Button>}
       </header>
       {!allowed ? (
         <NoAccess roles={BOOKS_PEOPLE} />
@@ -53,11 +53,11 @@ export default function ClientsPage() {
       ) : !clients ? (
         <Skeleton className="h-40 w-full" />
       ) : clients.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" data-guide="clients.empty">
           {projectId ? 'No client for this project yet' : 'No clients yet'}
         </p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y rounded-lg border" data-guide="clients.list">
           {clients.map((c) => {
             const total = c.projects?.reduce((s, p) => s + Number(p.contract_value || 0), 0) ?? 0
             return (
@@ -80,7 +80,7 @@ export default function ClientsPage() {
                     </p>
                   )}
                 </div>
-                <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setEditing(c)}><Pencil className="size-3.5" /> Edit</Button>
+                <Button size="sm" variant="ghost" className="gap-1.5" data-guide="clients.edit" onClick={() => setEditing(c)}><Pencil className="size-3.5" /> Edit</Button>
               </li>
             )
           })}

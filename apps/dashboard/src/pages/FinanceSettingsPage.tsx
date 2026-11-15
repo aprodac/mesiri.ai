@@ -61,7 +61,7 @@ export default function FinanceSettingsPage() {
             <Tags className="size-4 text-muted-foreground" aria-hidden="true" /> Expense categories
           </h2>
           {canManage && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing(null)}>
+            <Button size="sm" variant="outline" className="gap-1.5" data-guide="finset.add" onClick={() => setEditing(null)}>
               <Plus className="size-3.5" /> Add category
             </Button>
           )}
@@ -73,9 +73,9 @@ export default function FinanceSettingsPage() {
         ) : categories.isLoading ? (
           <Skeleton className="h-32 rounded-lg" />
         ) : list.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No categories yet. An expense whose category is not here is kept under Uncategorized.</p>
+          <p className="text-sm text-muted-foreground" data-guide="finset.empty">No categories yet. An expense whose category is not here is kept under Uncategorized.</p>
         ) : (
-          <ul className="divide-y rounded-lg border">
+          <ul className="divide-y rounded-lg border" data-guide="finset.categories">
             {!readOnly && !canManage && (
               <li className="px-3 py-2 text-xs text-muted-foreground">Owner, admin or finance can change these.</li>
             )}
@@ -113,6 +113,7 @@ export default function FinanceSettingsPage() {
           <Wallet className="size-4 text-muted-foreground" aria-hidden="true" /> Petty cash
         </h2>
         <form
+          data-guide="finset.petty"
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
             e.preventDefault()
