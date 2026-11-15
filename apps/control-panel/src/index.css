@@ -954,6 +954,15 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--neutral-900); 
 .ww-row:hover { background: var(--neutral-50); }
 .ww-row.on { background: var(--brand-soft); }
 .ww-side-health .ww-chat { max-height: max(300px, calc(100vh - 520px)); }
+/* SA-39 phase 3: Playbook -- a module, the things people ask for in it, one row per journey. */
+.ww-pb-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: none; background: transparent; text-align: left; font: inherit; cursor: pointer; flex-wrap: wrap; }
+.ww-pb-head:hover, .ww-pb-head[aria-expanded='true'] { background: var(--neutral-50); }
+.ww-pb-cap { padding: 12px 14px 14px 40px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 8px; }
+.ww-pb-journeys { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.ww-pb-row { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--white); text-align: left; font: inherit; cursor: pointer; }
+.ww-pb-row:hover { border-color: var(--border-strong); }
+.ww-pb-row.none { background: var(--warning-soft); border-style: dashed; }
+.ww-pb-row.on { border-color: var(--neutral-900); box-shadow: 0 0 0 1px var(--neutral-900); }
 @media (max-width: 1024px) {
   .ww-side-health .ww-chat { max-height: 70vh; }
 }
@@ -964,5 +973,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--neutral-900); 
   .ww-module-bar { grid-column: 2 / 4; grid-row: 2; }
   .ww-module-change { grid-column: 2 / 4; grid-row: 3; text-align: left; }
   .ww-caps { grid-template-columns: minmax(0, 1fr); padding-left: 14px; }
+  .ww-pb-cap { padding-left: 14px; }
+  .ww-pb-journeys { grid-template-columns: minmax(0, 1fr); }
   .ww-views { width: 100%; }
 }

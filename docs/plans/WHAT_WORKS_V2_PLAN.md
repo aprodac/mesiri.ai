@@ -1,7 +1,7 @@
 # What works, version 2: plan (SA-39)
 
-> Written 15 Nov 2026 for the session that will build it. **Phases 1 and 2 are built (15 Nov)**: see sections
-> 12-13 and [what-works.md](../backend/what-works.md). Phases 3-5 are not. D1 and D4 confirmed (15 Nov).
+> Written 15 Nov 2026 for the session that will build it. **Phases 1-3 are built (15 Nov)**: see sections
+> 12-14 and [what-works.md](../backend/what-works.md). Phases 4-5 are not. D1, D2 and D4 confirmed (15 Nov).
 > Version 1 (SA-38) is live: [what-works.md](../backend/what-works.md). Read that first, it is short.
 > Process: root `CLAUDE.md` governs (five phases, work on `main`, verify before every push, phase report).
 
@@ -258,3 +258,31 @@ Checked in a real browser (Playwright) against a stand-in API that ran the real 
 data, names replaced: desktop 1440 px and iPhone 13; no console error; no sideways scroll on the phone; a
 module and a capability (two clicks) open a conversation; the selection survives a reload. Not opened on the
 live control panel.
+
+## 14. Phase 3 (15 Nov 2026)
+
+D2 confirmed: the best case is a real conversation picked by a score. Built: `admin/intents_playbook.py`
+(`clean`, `score`, `best_case`, `playbook`), the route's `playbook`, the Playbook view (`WhatWorksPlaybook.tsx`).
+
+On 11 days of production data: 96 journey rows across the modules, 8 with no clean run. Reading the picked
+examples changed three rules underneath (all with tests):
+
+- **"One message, one thing / several things"** now count only what the first message put on the card; before,
+  a request that started with "ys" could be the example.
+- **A question asked in words** (a reply ending in "?" with no card waiting, no `asked` in the trace) links the
+  next message as its answer (rule 3). Intents 395 -> 372 on the 11 days, "not sure" 104 -> 86; the 13 Nov hand
+  count moves from 41 to 40 intents ("cancel all" after "...Kilograms undu?" is now part of that request).
+- **A card change sent after Save** marks the saved request as corrected later, not "changed before saving".
+
+Known limit: nothing in the record says a message was rude, so a best case can be one nobody would pick by hand
+(seen once on the sample). Pinning (phase 5, D3) is the override.
+
+Checked with Playwright on the stand-in API (real route, production sample, names replaced), desktop and
+iPhone 13: no console error, no sideways scroll, selection kept on reload. Not opened on the live panel.
+
+**Feedback during phase 3 (15 Nov): "too much descriptions ... the page look bad and unreadable".** Both views
+were cut to labels and numbers: the explaining paragraphs became tooltips (ⓘ), capability cards show the name,
+tool, bar, finished share and top reason only (no phrasings, no how-sent line), the request list shows ending,
+time and first words, the change against the window before is "+N pts" (hidden when there was no window
+before), a Playbook row is its label and "41% of 17" or "No example yet". Later phases follow the same rule:
+a number or a label on the page, anything longer in a tooltip.

@@ -131,9 +131,7 @@ export function Chat({ messageId, highlight, empty }: { messageId: string | null
       </div>
       {selected && (
         <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border-default)', ...muted }}>
-          {highlight ? 'The highlighted messages are this request. ' : 'The highlighted message is the one you picked. '}
-          Its id, for <Link to="/logs">Assistant logs</Link>:{' '}
-          <code style={{ fontSize: 11.5, userSelect: 'all' }}>{selected.correlation_id}</code>
+          <Link to="/logs">Log</Link> id: <code style={{ fontSize: 11.5, userSelect: 'all' }}>{selected.correlation_id}</code>
         </div>
       )}
     </div>

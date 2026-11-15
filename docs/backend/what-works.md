@@ -5,7 +5,7 @@ what does it reply, and where does it fall short", from the messages people real
 
 ## What the page shows
 
-Two views on a segmented control at the top (the view, window, company and selection live in the address):
+Three views on a segmented control at the top (the view, window, company and selection live in the address):
 
 **Health** (the default, SA-39 phase 2) judges *requests*, not single messages (see "Version 2" below):
 
@@ -13,15 +13,34 @@ Two views on a segmented control at the top (the view, window, company and selec
   finished after a question, left without Save, cancelled, failed, complaint or 'not yet', not sure), and the
   change against the window of the same length before it.
 - **Fix these first**: the five largest problems of the window across every module, one line each in plain
-  words with its count and the capabilities it hit ("29 requests failed: AI unavailable").
+  words with its count ("29 requests failed: AI unavailable"; the capabilities it hit on hover).
 - **By module**: one row per section with its bar, its finished share and count, and the change. A row opens
   to its **capabilities** (what a person can ask for, named from the tool's own description, the tool name in
-  small grey text): how often it was asked, the share that finished, how people sent it, three real
-  phrasings, its top two failure reasons.
+  small grey text): how often it was asked, the share that finished, its top failure reason.
 - A capability card or a problem opens the **panel** on the right (below on a phone): its requests, the ones
   that did not finish first (a problem: newest first), and the WhatsApp conversation of the one picked with
   every message of that request highlighted. The worst one is open already: two clicks from the page to a
   real conversation.
+
+**Playbook** (SA-39 phase 3) shows how each module should work. Per module, per thing people ask for, one
+row per journey it was really used in (one thing then Save, several things in one message, Mesiri asks and the
+person answers, changed before saving, corrected after saving, a follow-up that needs memory, a question
+answered from the records, voice note, photo, cancelled). Each row has its **best case**: the cleanest *real*
+request of the window (never written by hand, decision D2), and beside it how many real requests of that
+journey end the same way. A row with no clean run is amber and says so. Picking a row shows the conversation
+on the right with the request highlighted.
+
+The best case is picked in `admin/intents_playbook.py`: the request must end the way the journey should
+(finished; cancelled for "Cancelled"), must not have been corrected later, and must not have had a question
+the journey does not need. Among those: the one whose own messages hold its Save or Cancel (on a shared card
+another request may hold the tap), then the fewest refusals the model recovered from, the fewest messages, the
+fastest slowest reply, the newest. "One message, one thing" and "several things" count only what the first
+message put on the card. Nothing in the record says a message was rude: a best case can be a message nobody
+would pick by hand; pinning (phase 5, decision D3) is the way to override it.
+
+**Short on purpose** (asked 15 Nov: "too much descriptions ... unreadable"): the page shows labels and numbers;
+explanations are tooltips (the ⓘ beside a heading, the endings in the legend, a journey's row). The answer still
+carries phrasings and how people sent each request; the page does not show them on the cards.
 
 **Every message** is version 1, kept for its search: every kind of message, one message at a time.
 
@@ -95,8 +114,8 @@ How a message is linked (first rule that fits):
    **The card is shared**: one Save ends every intent waiting on it (a refused save line fails only the intent
    that prepared that tool).
 2. A tap continues the latest intent with a card or a question waiting, else the latest intent.
-3. Right after Mesiri asked a question, a message that calls no tool, or a tool the intent already called,
-   is the answer.
+3. Right after Mesiri asked a question (the trace says so, or the reply ends in "?" with no card waiting), a
+   message that calls no tool, or a tool the intent already called, is the answer.
 4. Messages with no trace in a row (sign-up, classic, taps the code answers) are one intent.
 5. Anything else starts an intent.
 

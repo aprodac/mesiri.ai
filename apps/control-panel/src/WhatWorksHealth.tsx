@@ -5,7 +5,7 @@
 // Read-only, from GET /admin/message-map/intents (platform admins only). The selection lives in the address.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { api } from './api';
 import { getErrorMessage } from './Toast';
 import { Chat, Dot, HowIcon } from './WhatWorksChat';
@@ -105,14 +105,14 @@ function StackedBar({ bar, height = 10 }: { bar: Bar; height?: number }) {
   );
 }
 
+/** The change in finished share against the window before; nothing when that window had no requests. */
 function Change({ now, before, days }: { now: { count: number; finished: number }; before?: { count: number; finished: number }; days: number }) {
-  if (!before || before.count === 0) return <span style={muted}>none in the {days} days before</span>;
+  if (!before || before.count === 0 || now.count === 0) return null;
   const delta = pct(now.finished, now.count) - pct(before.finished, before.count);
   const color = delta > 0 ? 'var(--success)' : delta < 0 ? 'var(--error)' : 'var(--neutral-500)';
   return (
-    <span style={muted}>
-      was {before.count} at {pct(before.finished, before.count)}%{' '}
-      {now.count > 0 && <span style={{ color, fontWeight: 600 }}>{delta > 0 ? '+' : ''}{delta} pts</span>}
+    <span style={{ color, fontWeight: 600, fontSize: 12.5 }} title={`${pct(before.finished, before.count)}% of ${before.count} in the ${days} days before`}>
+      {delta > 0 ? '+' : ''}{delta} pts
     </span>
   );
 }
@@ -127,21 +127,10 @@ function CapabilityCard({ cap, on, onPick }: { cap: Capability; on: boolean; onP
       </span>
       {cap.tool && <span className="ww-tool">{cap.tool}</span>}
       <StackedBar bar={cap.endings} height={6} />
-      <span style={{ ...muted, fontSize: 12 }}>
-        {done} of {cap.count} finished ({pct(done, cap.count)}%) · {Object.entries(cap.how).map(([t, n]) => `${n} ${how(t)}`).join(' · ')}
-      </span>
-      {cap.phrasings.length > 0 && (
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {cap.phrasings.map((p) => (
-            <span key={p} className="ww-quote">“{p}”</span>
-          ))}
-        </span>
-      )}
-      {cap.top_reasons.length > 0 && (
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {cap.top_reasons.map((r) => (
-            <span key={r.reason} style={{ fontSize: 12, color: 'var(--error)', overflowWrap: 'anywhere' }}>{r.count} × {r.reason}</span>
-          ))}
+      <span style={{ ...muted, fontSize: 12 }}>{pct(done, cap.count)}% finished</span>
+      {cap.top_reasons[0] && (
+        <span className="ww-quote" style={{ color: 'var(--error)', fontSize: 12 }} title={cap.top_reasons.map((r) => `${r.count} × ${r.reason}`).join('\n')}>
+          {cap.top_reasons[0].count} × {cap.top_reasons[0].reason}
         </span>
       )}
     </button>
@@ -166,14 +155,11 @@ function Panel({ title, sub, intents, picked, onPick }: { title: string; sub: st
                   <Dot color={ENDING[i.ending]?.color || 'var(--neutral-300)'} /> {ENDING[i.ending]?.label || i.ending}
                   <span style={{ marginLeft: 'auto', fontWeight: 400, color: 'var(--neutral-500)' }}>{when(i.started_at)}</span>
                 </span>
-                <span style={{ fontSize: 13, color: 'var(--neutral-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span title={[how(i.how), i.sender_name, role(i.sender_role), i.company].filter(Boolean).join(' · ')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--neutral-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: 'var(--neutral-400)', flex: 'none', display: 'inline-flex' }}><HowIcon type={i.how} /></span>
                   {i.text || <span style={{ color: 'var(--neutral-400)' }}>({how(i.how)}, no text)</span>}
                 </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5, ...muted, fontSize: 11.5, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                  <HowIcon type={i.how} /> {how(i.how)} · {[i.sender_name || 'Unknown sender', role(i.sender_role), i.company].filter(Boolean).join(' · ')}
-                  {i.messages.length > 1 && ` · ${i.messages.length} messages`}
-                </span>
-                {i.reason && <span style={{ fontSize: 11.5, color: 'var(--neutral-600)', overflowWrap: 'anywhere' }}>{i.reason}</span>}
+                {i.reason && <span className="ww-quote" style={{ fontSize: 11.5, color: 'var(--neutral-600)' }}>{i.reason}</span>}
               </button>
             );
           })}
@@ -215,14 +201,13 @@ export default function WhatWorksHealth({ days, company, params, set, reload }: 
     const found = (ids: string[]) => ids.map((id) => byId.get(id)).filter((i): i is Intent => !!i);
     if (problem) {
       const p = data.fix_first.find((x) => x.key === problem);
-      if (p) return { title: p.line, sub: `In ${p.capabilities.map((c) => c.name).join(' · ')}. Newest first.`, intents: found(p.intents) };
+      if (p) return { title: p.line, sub: 'Newest first', intents: found(p.intents) };
     }
     if (cap) {
       for (const s of data.sections) {
         const c = s.capabilities.find((x) => x.key === cap);
         if (c && (!openModule || s.key === openModule)) {
-          const shown = c.intents.length < c.count ? ` Showing ${c.intents.length} of ${c.count}.` : '';
-          return { title: c.name, sub: `${s.label} · ${c.count} requests, the ones that did not finish first.${shown}`, intents: found(c.intents) };
+          return { title: c.name, sub: `${c.count} requests · not finished first`, intents: found(c.intents) };
         }
       }
     }
@@ -245,8 +230,11 @@ export default function WhatWorksHealth({ days, company, params, set, reload }: 
         <section className="card">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 26, fontWeight: 600, color: 'var(--neutral-900)', fontVariantNumeric: 'tabular-nums' }}>{pct(done, t.intents)}%</span>
-            <span style={{ fontSize: 13.5, color: 'var(--neutral-700)' }}>
-              of {t.intents} requests finished ({done})
+            <span style={{ fontSize: 13.5, color: 'var(--neutral-700)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              of {t.intents} requests finished
+              <span style={{ color: 'var(--neutral-400)', display: 'inline-flex', cursor: 'help' }} title={'A request is one message that starts something, plus the taps, answers and changes that continue it. Finished means the record shows a save, a send or an answer, not that the answer was right.' + (t.still_going ? ` ${t.still_going} still going are not counted.` : '')}>
+                <Info size={14} />
+              </span>
             </span>
             <span style={{ marginLeft: 'auto' }}>
               <Change now={{ count: t.intents, finished: done }} before={{ count: prev.intents, finished: finished(prev) }} days={days} />
@@ -258,19 +246,13 @@ export default function WhatWorksHealth({ days, company, params, set, reload }: 
               <span key={e.key} title={e.note}><Dot color={e.color} /> {e.label} <b>{t[e.key] || 0}</b></span>
             ))}
           </div>
-          <p style={{ ...muted, fontSize: 12, margin: '8px 0 0' }}>
-            A request is one message that starts something, plus the taps, answers and changes that continue it.
-            Finished means the record shows a save, a send or an answer, not that the answer was right.
-            {t.still_going > 0 && ` ${t.still_going} still going (the person wrote in the last 30 minutes) are not counted.`}
-            {data.truncated && ' Only the newest 10,000 messages of this window and the one before were read.'}
-          </p>
+          {data.truncated && <p style={{ ...muted, fontSize: 12, margin: '8px 0 0' }}>Only the newest 10,000 messages were read.</p>}
         </section>
 
         {/* Fix these first */}
         {data.fix_first.length > 0 && (
           <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <h2 style={{ fontSize: 15, margin: 0, padding: '12px 14px 4px' }}>Fix these first</h2>
-            <p style={{ ...muted, fontSize: 12, margin: 0, padding: '0 14px 8px' }}>The largest problems of the window, the same cause counted once wherever it happened.</p>
+            <h2 style={{ fontSize: 15, margin: 0, padding: '12px 14px' }}>Fix these first</h2>
             <ol className="ww-fix">
               {data.fix_first.map((p, n) => {
                 const on = problem === p.key;
@@ -279,10 +261,9 @@ export default function WhatWorksHealth({ days, company, params, set, reload }: 
                     <button className={on ? 'on' : ''} aria-pressed={on} onClick={() => { set({ problem: p.key, cap: '', module: '', intent: '' }); showPanel(); }}>
                       <span className="ww-fix-n">{n + 1}</span>
                       <span style={{ minWidth: 0 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 600, color: 'var(--neutral-900)', overflowWrap: 'anywhere' }}>
+                        <span title={`In ${p.capabilities.map((c) => `${c.name} (${c.count})`).join(' · ')}`} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 600, color: 'var(--neutral-900)', overflowWrap: 'anywhere' }}>
                           <Dot color={ENDING[p.ending]?.color === 'var(--neutral-200)' ? 'var(--neutral-400)' : ENDING[p.ending]?.color} /> {p.line}
                         </span>
-                        <span style={{ display: 'block', ...muted, fontSize: 12 }}>in {p.capabilities.map((c) => `${c.name} (${c.count})`).join(' · ')}</span>
                       </span>
                     </button>
                   </li>
@@ -327,7 +308,7 @@ export default function WhatWorksHealth({ days, company, params, set, reload }: 
           <Panel title={selection.title} sub={selection.sub} intents={selection.intents} picked={picked} onPick={(id) => set({ intent: id })} />
         ) : (
           <div className="card" style={{ ...muted, textAlign: 'center', padding: 'var(--space-10) var(--space-5)' }}>
-            Pick a problem under “Fix these first”, or open a module and pick what people asked for, to see the requests and their WhatsApp conversations here.
+            Pick a problem or a module to see its conversations.
           </div>
         )}
       </aside>
