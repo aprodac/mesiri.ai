@@ -50,12 +50,16 @@ def _api(saved: dict[str, Any]) -> FastAPI:
     return app
 
 
-async def _turn(calls: list, saved: dict[str, Any] | None = None) -> Any:  # noqa: ANN401
+#: What they said ([308]: a client or place on a project must be in their words).
+SAID = "The client is Day to Day Supermarket, a turnkey contract"
+
+
+async def _turn(calls: list, saved: dict[str, Any] | None = None, said: str = SAID) -> Any:  # noqa: ANN401
     app = _api(saved or {})
     client = ApiClient(ACTOR, app=app)
     tools = build_tools(app.openapi(), tuple(a for a in ALLOWED if a.name in ("update_project", "create_project")))
     try:
-        return await ApiAgent(FakeToolCallingProvider([calls, "Ready."]), tools).run(client, "voice", places=PLACES)
+        return await ApiAgent(FakeToolCallingProvider([calls, "Ready."]), tools).run(client, said, places=PLACES)
     finally:
         await client.close()
 
@@ -87,7 +91,8 @@ async def test_guard_a_description_that_already_holds_the_old_one_is_kept_as_is(
 
 async def test_a_new_project_line_comes_from_its_body() -> None:
     turn = await _turn([("create_project", {"name": "Day 2 Day Mart", "client": "Supermarket",
-                                            "location": "Kerala", CONFIRM_ARG: "Ok, a new project is ready"})])
+                                            "location": "Kerala", CONFIRM_ARG: "Ok, a new project is ready"})],
+                       said="Day 2 Day Mart, client Supermarket, in Kerala")
     assert turn.pending[0].summary == "New project *Day 2 Day Mart*: client Supermarket; location Kerala"
 
 

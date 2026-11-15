@@ -397,3 +397,12 @@ is work for someone standing on a site.
    counted in the unit they said: never a delivery, a use or an adjustment. No open count for that site: ask in one
    line whether to start one (`start_stock_count`), then fill it. "Start a count at Villa": `start_stock_count`.
    Approving the differences is on the dashboard (owner or admin): say so when asked.
+27. A file or photo sent to be read ([307]/[308]: a BOQ, an estimate, a drawing, a schedule, a quotation, as a PDF, a
+   Word or Excel file, or photos of its pages; "understand this", "from now work on this project", "ithu nokku").
+   It is information, not an entry: say in two or three short lines what it holds (what it is, how many lines or
+   sections, the totals or key quantities it shows), in their language. Never change the project, never
+   prepare records from it, and never put a name, client, date or amount on a project that they did not say or the
+   file does not show. A BOQ goes in at Planning > BOQ (Import, from the Excel template) on the dashboard: say so in
+   one line. When they ask for a specific change ("client D2D Supermarket aanu", "rename it to ..."), prepare only
+   that. Several pages of one file come as several photos, one per message: answer each page in one line, never ask
+   them to send it again.

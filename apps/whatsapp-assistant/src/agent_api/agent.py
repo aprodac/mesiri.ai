@@ -1588,6 +1588,20 @@ class ApiAgent:
                         f"confirm_line must be in {reply_in}: Latin letters only, with material, work and site words in "
                         "English (\"30 bags cement, Green Villa\"). Nothing was prepared: call it again now with "
                         "confirm_line rewritten that way.")})
+                if name in PROJECT_LINE_TOOLS:
+                    # [308] (15 Nov, an owner: "try to understand this BOQ ... work on this project" with a BOQ photo became
+                    # a project change with the client "Commercial Supermarket Client", a name nobody said or wrote,
+                    # saved over the project on one tap): a name the person did not say, and the photo or document does
+                    # not show, is never put on a project. The code drops it; what is left is what the card shows.
+                    current = await project_now(client, path) if name == "update_project" else {}
+                    body, dropped = without_unsaid_names(body, their_words, current)
+                    if name == "update_project" and not project_changes(body, current):
+                        return ToolOutcome(content={"status": "not prepared: nothing to change", "note": (
+                            "Nothing they said changes this project" + (
+                                f" ({', '.join(dropped)} not in their words or what they sent, so never used)"
+                                if dropped else "") + ". Nothing was prepared. A file or photo sent to be read or "
+                            "understood is not a change to the project: say in a few lines what it holds. Change a "
+                            "project only with the name, client or place they give.")})
                 if name == "update_project" and body.get("description"):
                     body = await kept_description(client, path, body)
                 said_line = str(arguments.get(CONFIRM_ARG) or "").strip()
@@ -3093,6 +3107,50 @@ async def kept_description(client: ApiClient, path: str, body: dict[str, Any]) -
     if not old or old.casefold() in new.casefold():
         return body
     return {**body, "description": f"{old.rstrip('. ')}. {new}"}
+
+
+#: [308]: the project fields that are names: each must be in the person's words or what their photo / file shows.
+_NAMED_FIELDS = ("name", "client", "location")
+_WORD = re.compile(r"[^\W\d_]{3,}")
+
+
+async def project_now(client: ApiClient, path: str) -> dict[str, Any]:
+    """[308]: the project as saved now ({} when it can't be read: every field then counts as a change)."""
+    try:
+        current = await client.call("GET", path)
+    except Exception:  # noqa: BLE001
+        return {}
+    return current.body if current.ok and isinstance(current.body, dict) else {}
+
+
+def without_unsaid_names(body: dict[str, Any], their_words: str,
+                         current: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """[308]: ``body`` without the name fields (project name, client, location) whose words are neither in what the
+    person said and sent (their messages and the reading of their photo or file) nor already the project's own; and
+    the fields dropped. Only words in Latin letters are checked: a name said in Malayalam or Hindi script is kept
+    (translated to English by the code, it can't be found in their words)."""
+    said = {w.casefold() for w in _WORD.findall(their_words or "")}
+    if SCRIPT.search(their_words or ""):
+        return body, []
+    out, dropped = dict(body), []
+    for key in _NAMED_FIELDS:
+        value = str(body.get(key) or "").strip()
+        if not value or value.casefold() == str(current.get(key) or "").strip().casefold():
+            continue
+        if any(w.casefold() not in said for w in _WORD.findall(value)):
+            out.pop(key, None)
+            dropped.append(f'{key} "{value}"')
+    return out, dropped
+
+
+def project_changes(body: dict[str, Any], current: dict[str, Any]) -> bool:
+    """[308]: whether an update changes anything of the project as saved (a name the same as now is no change)."""
+    for key, value in body.items():
+        if key in ("project_id", "id") or value in (None, ""):
+            continue
+        if not current or str(value).strip().casefold() != str(current.get(key) or "").strip().casefold():
+            return True
+    return False
 
 
 def project_line(tool: str, body: dict[str, Any], places: Places | None, path: str = "") -> str:

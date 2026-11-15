@@ -254,6 +254,8 @@ TITLES: dict[str, str] = {
     "update_site": "Change site", "add_project_member": "Add to project", "add_material_alias": "Other name",
     "add_person": "Add person",
 }
+#: [308]: project writes whose line the code drew from the body (agent.PROJECT_LINE_TOOLS).
+_PROJECT_LINES = frozenset({"create_project", "update_project"})
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 #: WA-262: each tool's look on the slip (channel/receipt/draft_slip.KINDS): its own colour, icon and label.
 _KIND_BY_TOOL = {
@@ -288,6 +290,11 @@ def _structured(number: int, entry: PendingWrite, material: dict[str, str], unit
     summary = without_ids(entry.summary or "").strip()
     if summary.startswith(_CODE_DRAWN):
         return SlipLine(number, kind_of(tool), title, _clean(summary.lstrip("".join(_CODE_DRAWN)).strip(), 70))
+    if tool in _PROJECT_LINES and summary:
+        # [308] (15 Nov: the line said only "Change project · Supermarket Kerala" while Save wrote a client nobody said
+        # over the project's own): a project line shows every field Save writes, drawn by the code from the body
+        # (agent.project_line, [257]), never only the project's name.
+        return SlipLine(number, kind_of(tool), title, _clean(summary.replace("*", ""), 160))
     place = sites.get(str(body.get("site_id") or ""), "")
     items = [ln for ln in body.get("lines") or [] if isinstance(ln, dict) and ln.get("material_id")]
     if body.get("material_id") and body.get("quantity") is not None:
