@@ -37,6 +37,7 @@ export default function SettingsPage() {
       {counts && counts.done < counts.total && (
         <Link
           to={SETUP_URL}
+          data-guide="settings.finish"
           className="flex items-center gap-3 rounded-lg border border-draft/30 bg-draft-soft px-4 py-3 text-sm transition-colors hover:border-draft/60"
         >
           <ListChecks className="size-5 shrink-0 text-draft" aria-hidden />
@@ -51,7 +52,7 @@ export default function SettingsPage() {
       )}
 
       <Section title="Set up">
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y rounded-lg border" data-guide="settings.setup">
           {ROWS.filter((row) => isModuleEnabled(row.module)).map((row) => {
             const Icon = row.icon
             return (
@@ -71,7 +72,7 @@ export default function SettingsPage() {
       </Section>
 
       <Section title="Modules" note="Switched on by the Mesiri team. Ask us to add one.">
-        <ul className="flex flex-wrap gap-2">
+        <ul className="flex flex-wrap gap-2" data-guide="settings.modules">
           {MODULE_KEYS.map((key) => {
             const on = isModuleEnabled(key)
             return (

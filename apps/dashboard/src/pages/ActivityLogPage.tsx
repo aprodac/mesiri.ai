@@ -69,19 +69,19 @@ export default function ActivityLogPage() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <Segmented label="When" value={range} onChange={setRange} options={[
+            <Segmented label="When" guide="activity.when" value={range} onChange={setRange} options={[
               { value: 'today', label: 'Today' }, { value: 'week', label: '7 days' },
               { value: 'month', label: '30 days' }, { value: 'all', label: 'All' }]} />
-            <Segmented label="Where" value={source} onChange={setSource} options={[
+            <Segmented label="Where" guide="activity.where" value={source} onChange={setSource} options={[
               { value: 'all', label: 'All' }, { value: 'web', label: 'Web' }, { value: 'whatsapp', label: 'WhatsApp' }]} />
             <Select value={person} onValueChange={setPerson}>
-              <SelectTrigger className="h-9 w-[180px]" aria-label="Person"><SelectValue placeholder="Everyone" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[180px]" aria-label="Person" data-guide="activity.person"><SelectValue placeholder="Everyone" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Everyone</SelectItem>
                 {people.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <label className="relative min-w-[180px] flex-1 sm:max-w-xs">
+            <label className="relative min-w-[180px] flex-1 sm:max-w-xs" data-guide="activity.search">
               <span className="sr-only">Search</span>
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="RA-02, task, cement…" className="h-9 pl-8" />
@@ -92,9 +92,9 @@ export default function ActivityLogPage() {
           ) : !query.data ? (
             <Skeleton className="h-48 w-full" />
           ) : items.length === 0 ? (
-            <EmptyState icon={History} title="Nothing in this view" />
+            <div data-guide="activity.empty"><EmptyState icon={History} title="Nothing in this view" /></div>
           ) : (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4" data-guide="activity.list">
               {days.map(([day, rows]) => (
                 <section key={day}>
                   <h2 className="mb-1 text-xs font-semibold text-muted-foreground">{dayLabel(day)}</h2>
