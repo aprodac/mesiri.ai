@@ -92,14 +92,14 @@ export default function TasksPage() {
       <PageHeader
         title="Tasks"
         actions={canCreate && (
-          <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)}>
+          <Button className="hidden gap-2 font-semibold md:inline-flex" data-guide="tasks.add" onClick={() => setCreating(true)}>
             <Plus className="size-4" strokeWidth={2.6} /> New task
           </Button>
         )}
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="View" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="View" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="tasks.views">
           {VIEWS.map((v) => {
             const on = view === v.value
             return (
@@ -117,7 +117,7 @@ export default function TasksPage() {
             )
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="tasks.filters">
           {!siteId && options.sites.length > 1 && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={options.sites} onChange={setSite} />}
           {view !== 'mine' && <FilterPill icon={User} label="For" allLabel="Anyone" value={person} options={options.people} onChange={setPerson} />}
           <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-2.5">
@@ -136,7 +136,7 @@ export default function TasksPage() {
 
       {isError ? <PageError message="Tasks did not load." onRetry={() => refetch()} back={{ to: '/today', label: 'Back to Today' }} /> : (
         <div className="flex flex-col items-start gap-5 lg:flex-row">
-          <section aria-label="Tasks" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border empty:hidden">
+          <section aria-label="Tasks" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border empty:hidden" data-guide={isLoading ? undefined : list.length ? 'tasks.list' : 'tasks.empty'}>
             {isLoading && [0, 1, 2, 3].map((i) => <div key={i} className="h-20 animate-pulse border-b bg-muted/40" />)}
             {!isLoading && list.length === 0 && (
               <EmptyState
@@ -151,7 +151,7 @@ export default function TasksPage() {
           </section>
 
           {!isMobile && current && (
-            <aside aria-label="Task detail" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[420px]">
+            <aside aria-label="Task detail" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[420px]" data-guide="tasks.detail">
               <TaskDetail task={current} today={today} />
             </aside>
           )}
@@ -168,7 +168,7 @@ export default function TasksPage() {
       )}
 
       {canCreate && (
-        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setCreating(true)}>
+        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" data-guide="tasks.add" onClick={() => setCreating(true)}>
           <Plus className="size-5" strokeWidth={2.6} /> Task
         </Button>
       )}

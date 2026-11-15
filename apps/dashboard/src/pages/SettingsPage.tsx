@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import { Building, Building2, ChevronRight, Clock, History, ListChecks, MessageSquare, Puzzle, Upload, Users } from 'lucide-react'
-import { useAuth } from '@/lib/AuthContext'
 import { MODULE_KEYS, MODULE_NAMES, useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { SETUP_URL, setupCounts, useGuideSteps, useSetupProgress } from '@/lib/setup'
 import { usePageTitle } from '@/lib/page-title'
@@ -23,20 +22,19 @@ const ROWS = [
 
 export default function SettingsPage() {
   usePageTitle('Settings')
-  const { me } = useAuth()
   const isModuleEnabled = useModuleEnabled()
   const setup = useSetupProgress()
   const guideSteps = useGuideSteps()
   const counts = setup.data ? setupCounts(setup.data, guideSteps) : null
-  const companyName = me?.org_name || me?.organization_name || 'Your company'
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
-      <PageHeader title="Settings" subtitle={companyName} />
+      <PageHeader title="Settings" />
 
       {counts && counts.done < counts.total && (
         <Link
           to={SETUP_URL}
+          data-guide="settings.finish"
           className="flex items-center gap-3 rounded-lg border border-draft/30 bg-draft-soft px-4 py-3 text-sm transition-colors hover:border-draft/60"
         >
           <ListChecks className="size-5 shrink-0 text-draft" aria-hidden />
@@ -51,7 +49,7 @@ export default function SettingsPage() {
       )}
 
       <Section title="Set up">
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y rounded-lg border" data-guide="settings.setup">
           {ROWS.filter((row) => isModuleEnabled(row.module)).map((row) => {
             const Icon = row.icon
             return (
@@ -71,7 +69,7 @@ export default function SettingsPage() {
       </Section>
 
       <Section title="Modules" note="Switched on by the Mesiri team. Ask us to add one.">
-        <ul className="flex flex-wrap gap-2">
+        <ul className="flex flex-wrap gap-2" data-guide="settings.modules">
           {MODULE_KEYS.map((key) => {
             const on = isModuleEnabled(key)
             return (

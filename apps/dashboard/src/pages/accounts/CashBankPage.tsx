@@ -29,7 +29,7 @@ export default function CashBankPage() {
   const keep = window.location.search
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Cash & bank" date={d?.scope} />
+      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Cash & bank" />
       <BooksTabs current="/accounts/cash-bank" />
       <PeriodBar state={periodState} />
       {!d ? (

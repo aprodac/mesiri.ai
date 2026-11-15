@@ -51,11 +51,11 @@ export default function AdvancesPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={HandCoins} title="Advances" />
-        {!readOnly && <Button className="gap-1.5 font-semibold" onClick={() => setGiving(true)}><HandCoins className="size-4" /> Give advance</Button>}
+        {!readOnly && <Button className="gap-1.5 font-semibold" data-guide="advances.give" onClick={() => setGiving(true)}><HandCoins className="size-4" /> Give advance</Button>}
       </header>
 
       {money && balances.data && (
-        <StatStrip stats={[
+        <StatStrip guide="advances.stats" stats={[
           { label: 'Outstanding', value: inr(balances.data.outstanding), tone: n(balances.data.outstanding) > 0 ? 'warn' : 'good', hint: 'taken back from the next wages' },
           { label: 'People and teams', value: String(outstanding.length) },
           { label: 'Given (shown)', value: inr(live.reduce((a, x) => a + n(x.amount), 0)) },
@@ -64,7 +64,7 @@ export default function AdvancesPage() {
 
       {money && outstanding.length > 0 && (
         <Section title="Still to take back" note="Most first">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" data-guide="advances.owed">
             {outstanding.map((b) => (
               <div key={b.payee_key} className="flex items-center justify-between gap-3 rounded-xl border border-draft/25 bg-draft-soft/40 px-4 py-3">
                 <div className="min-w-0">
@@ -80,9 +80,11 @@ export default function AdvancesPage() {
 
       <Section title="Given" note={live.length ? `${live.length}` : undefined}>
         {list.isLoading ? <Skeleton className="h-40 w-full rounded-xl" /> : (list.data?.items ?? []).length === 0 ? (
-          <EmptyState icon={HandCoins} title="No advances yet"             whatsapp="Gave Ravi 500 advance" action={!readOnly && <Button size="sm" onClick={() => setGiving(true)}>Give advance</Button>} />
+          <div data-guide="advances.empty">
+            <EmptyState icon={HandCoins} title="No advances yet" whatsapp="Gave Ravi 500 advance" action={!readOnly && <Button size="sm" onClick={() => setGiving(true)}>Give advance</Button>} />
+          </div>
         ) : (
-          <ul className="divide-y rounded-xl border">
+          <ul className="divide-y rounded-xl border" data-guide="advances.list">
             {(list.data?.items ?? []).map((a) => (
               <li key={a.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm', a.voided_at && 'opacity-50')}>
                 <span className="w-16 shrink-0 text-muted-foreground tabular-nums">{day(a.given_on)}</span>

@@ -61,7 +61,6 @@ export default function ReceivablesPage() {
         back={{ to: '/billing/ra-bills', label: 'RA bills' }}
         crumb="Accounts"
         title="Receivables"
-        date="What clients owe"
         action={
           <div className="flex items-center gap-2">
             <BooksLink to="/accounts/ledgers?kind=client" label="Client ledgers" className="hidden sm:inline-flex" />

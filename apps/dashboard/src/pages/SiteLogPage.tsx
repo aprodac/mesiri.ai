@@ -40,6 +40,7 @@ export default function SiteLogPage() {
       <PageHeader title="Site log" />
       <Segmented<View>
         label="View"
+        guide="sitelog.views"
         value={view}
         onChange={switchTo}
         options={[

@@ -220,7 +220,7 @@ export default function TrialBalancePage() {
             </span>
           )
         }
-        date={d ? `${d.financial_year} · ${d.scope}` : undefined}
+        date={d ? d.financial_year : undefined}
         action={d && <ExcelButton path="/accounts/trial-balance/export" params={{ ...period, ...sp }} name={`trial-balance-${period.date_from}-to-${period.date_to}`} />}
       />
       <BooksTabs current="/accounts/trial-balance" />

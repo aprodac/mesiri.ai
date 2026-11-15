@@ -131,7 +131,6 @@ export default function CostCentresPage() {
         back={{ to: '/cost', label: 'Overview' }}
         crumb="Cost control"
         title="Cost centres"
-        date={scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'site' ? `${scope.projectName} · ${scope.siteName}` : scope.projectName}
         action={<span data-guide="centres.period"><PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} /></span>}
       />
 

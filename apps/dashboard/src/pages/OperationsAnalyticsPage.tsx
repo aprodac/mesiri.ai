@@ -218,7 +218,7 @@ export default function OperationsAnalyticsPage() {
         actions={
           <>
             <Select value={range} onValueChange={(v) => setRange(v as Range)}>
-              <SelectTrigger className="h-9 w-[140px]" aria-label="Date range">
+              <SelectTrigger className="h-9 w-[140px]" aria-label="Date range" data-guide="analytics.range">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -254,6 +254,7 @@ export default function OperationsAnalyticsPage() {
             {longDate(data.date_from)} – {longDate(data.date_to)} · work on {totals.daysWithWork} of {plural(nDays, 'day')}
           </p>
           <StatStrip
+            guide="analytics.stats"
             stats={[
               { label: 'Worker-days', value: totals.workerDays.toLocaleString() || '—', icon: IcHardHat },
               { label: 'Work items', value: totals.workItems || '—', icon: IcHammer },
@@ -263,7 +264,7 @@ export default function OperationsAnalyticsPage() {
             ]}
           />
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2" data-guide="analytics.charts">
             <ChartPanel title="Workers on site" note="People per day, all sites in view" table={<DaysTable days={data.days} field="workers" unit="Workers" />}>
               <DailyBars days={data.days} field="workers" label="Workers" />
             </ChartPanel>
@@ -353,7 +354,7 @@ export default function OperationsAnalyticsPage() {
               )}
             </ChartPanel>
 
-            <section className="flex flex-col gap-3 rounded-xl border p-4">
+            <section className="flex flex-col gap-3 rounded-xl border p-4" data-guide="analytics.reporting">
               <header>
                 <h2 className="text-[15px] font-semibold">Site reporting</h2>
                 <p className="text-xs text-muted-foreground">

@@ -35,3 +35,33 @@ switch a page's views, plain words, colours from tokens, checked at 390 px and 1
 
 Labour's pages beyond the shared header rule (they follow WEB-22). The WhatsApp assistant. Any API behaviour, except
 where a CRUD gap needs a route (each one listed in its item).
+
+## WEB-52 done (15 Nov 2026)
+
+**Repeated subtitles.** Every built page was opened (stubbed API, 1440 px) and the short grey lines under each title
+read; the pages that crash on an empty stub were read in the code. Removed: lines that repeat the top bar's project
+("All projects", the project's name) on the five Cost pages and the Accounts pages that follow the top bar (Accounts
+home, Trial balance, Day book, Profit & loss, Cash & bank, a ledger); the company name under Settings (the sidebar
+shows it); the one-line descriptions on Receivables ("What clients owe"), Projects books, a project's books and Tally
+export (the ? help panel says what a page is for, UX-13). Kept: counts ("3 projects running", "12 people"), the
+financial year and date, "Pick a project" where the page waits for one, Balance sheet's "whole company" (it ignores
+the top bar), GST's GSTIN and TDS's section.
+
+**CRUD audit.** For each page, the add / edit / remove-or-take-back actions it reaches (its components followed, the
+`lib/` functions that write found in them), set against the backend's write routes. Most pages had all three; where
+history must stay, removing is a take-back, cancel or switch-off, as planned. Closed here, with routes that existed:
+
+| Page | Was missing | Now |
+|---|---|---|
+| Equipment › Daily log | Take back a line saved by mistake (only possible on each machine's page) | "Take back" on a saved, unchanged line (voided, stays in history) |
+| Equipment › Hire check | Remove a hire bill entered by mistake (only on the machine's page) | "Remove" under each bill |
+
+Left open, each a tracker row:
+
+| Page | Gap | Why not here |
+|---|---|---|
+| Finance › Expenses | Edit an expense in place (today: take back and record again) | No route: needs `PATCH /expenses/{id}` and its effect on the books (WEB-96) |
+| Client billing › Clients | Switch a client off | No route: `PATCH /billing/clients/{id}` has no status (WEB-97) |
+| Issues | Change an issue's words or how bad it is | No route: issues have acknowledge / resolve / won't fix only (WEB-98) |
+| Labour › Attendance | Remove an attendance entry from the dashboard (`DELETE /labour/attendance/{id}` exists, used by nothing) | Workforce code: needs Ilan's approval (WEB-99) |
+| Client billing › Client view | Revoke a client link (`POST /client-links/{id}/revoke` exists, used by nothing) | A link is a token: security-sensitive, needs Ilan's approval (WEB-99) |

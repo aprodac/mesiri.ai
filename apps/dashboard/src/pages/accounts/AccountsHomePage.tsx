@@ -76,7 +76,7 @@ export default function AccountsHomePage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/finance/money', label: 'Money' }} crumb="Accounts" title="Accounts" date={d ? `${d.financial_year} · ${d.scope} · ${formatDay(d.today)}` : undefined} />
+      <DprHeader back={{ to: '/finance/money', label: 'Money' }} crumb="Accounts" title="Accounts" date={d ? `${d.financial_year} · ${formatDay(d.today)}` : undefined} />
       <BooksTabs current="/accounts" />
       {!d || !tm || !lm ? (
         <Skeleton className="h-[32rem] rounded-xl" />

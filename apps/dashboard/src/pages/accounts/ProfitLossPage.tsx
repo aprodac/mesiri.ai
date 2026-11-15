@@ -33,7 +33,7 @@ export default function ProfitLossPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" date={d?.scope} />
+      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" />
       <BooksTabs current="/accounts/pl" />
       <div className="flex flex-wrap items-center gap-2">
         <PeriodBar state={periodState} />

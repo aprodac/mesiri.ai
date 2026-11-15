@@ -48,9 +48,9 @@ export function BillsChecksPage() {
       {waiting.isError ? <Callout tone="draft" icon={TriangleAlert}>The bills could not be loaded.</Callout>
         : waiting.isLoading ? <Skeleton className="h-40 rounded-xl" />
         : !list.length ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm"><Check className="size-6 text-success" /><span className="font-medium">Nothing waiting</span></div>
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm" data-guide="bills.empty"><Check className="size-6 text-success" /><span className="font-medium">Nothing waiting</span></div>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-2" data-guide="bills.list">
             {list.map((b) => (
               <li key={b.id} className="rounded-xl border bg-card p-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -64,7 +64,7 @@ export function BillsChecksPage() {
                 </div>
                 {n(b.caught) > 0 && <div className="mt-1 text-sm font-semibold text-destructive">{rupees(n(b.caught))} of it is for work not measured or above the agreed rate</div>}
                 {b.flags.length > 0 && <ul className="mt-2 grid gap-0.5 text-sm text-destructive">{b.flags.map((f, i) => <li key={i}>⚠ {f.words}</li>)}</ul>}
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-2" data-guide="bills.decide">
                   {!readOnly && <Button size="sm" className="gap-1" onClick={() => setDeciding({ bill: b, decision: 'approve' })}><Check className="size-4" /> Approve</Button>}
                   {!readOnly && <Button size="sm" variant="outline" onClick={() => setDeciding({ bill: b, decision: 'reject' })}>Reject</Button>}
                   <Button size="sm" variant="ghost" onClick={() => navigate(woUrl(b.work_order_id, 'bills'))}>Open work order</Button>
@@ -109,12 +109,12 @@ export function SubcontractorsPage() {
         <div className="flex items-center gap-3">
           <ModuleTitle icon={Handshake} title="Subcontractors" />
         </div>
-        <Button variant="outline" onClick={() => navigate('/subcontract/work-orders')}>Work orders</Button>
+        <Button variant="outline" data-guide="subs.orders" onClick={() => navigate('/subcontract/work-orders')}>Work orders</Button>
       </header>
       {wos.isLoading ? <Skeleton className="h-48 rounded-xl" /> : !teams.length ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground"><Handshake className="size-6" />No subcontractor yet: a work order adds one.</div>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground" data-guide="subs.empty"><Handshake className="size-6" />No subcontractor yet: a work order adds one.</div>
       ) : (
-        <ul className="grid gap-2 md:grid-cols-2">
+        <ul className="grid gap-2 md:grid-cols-2" data-guide="subs.list">
           {teams.map((t) => (
             <li key={t.id} className="rounded-xl border bg-card p-3">
               <div className="flex items-center gap-3">
@@ -127,14 +127,14 @@ export function SubcontractorsPage() {
               </div>
               {t.value > 0 && <Progress3 className="mt-3" done={Math.round(t.done / t.value * 100)} billed={money ? Math.round(t.billed / t.value * 100) : undefined} />}
               {money && (
-                <dl className="mt-2 grid grid-cols-4 gap-2 text-xs">
+                <dl className="mt-2 grid grid-cols-4 gap-2 text-xs" data-guide="subs.money">
                   <div><dt className="text-muted-foreground">Work</dt><dd className="font-medium tabular-nums">{rupees(t.value)}</dd></div>
                   <div><dt className="text-muted-foreground">Payable now</dt><dd className="font-medium tabular-nums">{rupees(t.payable)}</dd></div>
                   <div><dt className="text-muted-foreground">Retention</dt><dd className="font-medium tabular-nums">{rupees(t.held)}</dd></div>
                   <div><dt className="text-muted-foreground">Advance left</dt><dd className="font-medium tabular-nums">{rupees(t.advance)}</dd></div>
                 </dl>
               )}
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-2" data-guide="subs.actions">
                 <Button size="sm" variant="outline" onClick={() => navigate(`/subcontract/work-orders?vendor=${t.id}&tab=all`)}>Work orders</Button>
                 {money && <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate(`/subcontract/statement/${t.id}`)}><FileText className="size-4" /> Statement</Button>}
                 <Button size="sm" variant="ghost" onClick={() => navigate(vendorUrl(t.id))}>Account</Button>

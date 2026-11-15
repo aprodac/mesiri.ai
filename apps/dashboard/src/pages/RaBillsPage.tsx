@@ -82,7 +82,7 @@ function ProjectBills({ projectId }: { projectId: string }) {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div data-guide="ra.terms">
           <p className="font-semibold">{contract.data?.project.name ?? '…'}</p>
           <p className="text-sm text-muted-foreground">
             {c ? [c.client_name ?? 'No client set', c.contract_value && `contract ${rupees(c.contract_value)}`,
@@ -91,9 +91,9 @@ function ProjectBills({ projectId }: { projectId: string }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setContractOpen(true)}><ScrollText className="size-4" /> Contract terms</Button>
-          <Button size="sm" variant="outline" className="gap-1.5" asChild><Link to={`/billing/client-view?project=${projectId}`}><Share2 className="size-4" /> Share with client</Link></Button>
-          <Button size="sm" className="gap-1.5" disabled={create.isPending || hasDraft || !c} onClick={() => create.mutate()} title={!c ? 'Set the contract terms first' : hasDraft ? 'Submit or remove the draft first' : undefined}>
+          <Button size="sm" variant="outline" className="gap-1.5" data-guide="ra.contract" onClick={() => setContractOpen(true)}><ScrollText className="size-4" /> Contract terms</Button>
+          <Button size="sm" variant="outline" className="gap-1.5" data-guide="ra.share" asChild><Link to={`/billing/client-view?project=${projectId}`}><Share2 className="size-4" /> Share with client</Link></Button>
+          <Button size="sm" className="gap-1.5" data-guide="ra.new" disabled={create.isPending || hasDraft || !c} onClick={() => create.mutate()} title={!c ? 'Set the contract terms first' : hasDraft ? 'Submit or remove the draft first' : undefined}>
             <FilePlus2 className="size-4" /> New RA bill
           </Button>
         </div>
@@ -106,12 +106,12 @@ function ProjectBills({ projectId }: { projectId: string }) {
       {!list.data ? (
         <Skeleton className="h-48 w-full" />
       ) : list.data.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" data-guide="ra.empty">
           No bills yet
         </p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
-          <ul className="flex gap-2 overflow-x-auto lg:flex-col">
+          <ul className="flex gap-2 overflow-x-auto lg:flex-col" data-guide="ra.list">
             {list.data.map((b) => (
               <li key={b.id}>
                 <button type="button" onClick={() => pick(b.id)}
@@ -167,7 +167,7 @@ function BillView({ billId, onRemoved }: { billId: string; onRemoved: () => void
   ]
 
   return (
-    <section className="flex min-w-0 flex-col gap-3 rounded-xl border p-4">
+    <section className="flex min-w-0 flex-col gap-3 rounded-xl border p-4" data-guide="ra.bill">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{b.ref} <span className={cn('ml-1 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold', BILL_STATUS[b.status].tone)}>{BILL_STATUS[b.status].label}</span></h2>

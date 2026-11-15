@@ -28,7 +28,7 @@ export function ValueStrip({ projectId, className }: { projectId?: string; class
     { label: 'Retention held', value: rupees(n(v.retention_held)) },
   ]
   return (
-    <section className={cn('overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white dark:border-emerald-900 dark:from-emerald-950/50 dark:to-background', className)} aria-label="Money protected">
+    <section className={cn('overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white dark:border-emerald-900 dark:from-emerald-950/50 dark:to-background', className)} aria-label="Money protected" data-guide="sub.value">
       <div className="flex flex-wrap items-center gap-4 p-4">
         <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-emerald-600 text-white"><ShieldCheck className="size-6" /></span>
         <div className="min-w-0 flex-1">

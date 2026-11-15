@@ -217,11 +217,11 @@ export default function MoneyPage() {
         <BooksLink to="/accounts/ledgers?kind=money" label="Bank & cash books" className="hidden sm:inline-flex" />
       {canMove && (
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" disabled={active.length < 2} onClick={() => setDialog('transfer')}>
+          <Button variant="outline" className="gap-2" data-guide="money.transfer" disabled={active.length < 2} onClick={() => setDialog('transfer')}>
             <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Transfer</span>
           </Button>
           {canManage && (
-            <Button className="gap-2 font-semibold" onClick={() => addAccount(null)}>
+            <Button className="gap-2 font-semibold" data-guide="money.add" onClick={() => addAccount(null)}>
               <Plus className="size-4" /> <span className="hidden sm:inline">Add account</span>
             </Button>
           )}
@@ -233,6 +233,7 @@ export default function MoneyPage() {
   const switcher = (
     <Segmented<View>
       label="View"
+      guide="money.views"
       value={view}
       onChange={setView}
       options={[
@@ -243,7 +244,7 @@ export default function MoneyPage() {
   )
 
   const accountRows = (list: Account[]) => (
-    <ul className="divide-y rounded-lg border">
+    <ul className="divide-y rounded-lg border" data-guide="money.accounts">
       {list.map((a) => {
         const low = a.kind === 'petty' && a.balance < LOW_PETTY
         return (
@@ -330,7 +331,7 @@ export default function MoneyPage() {
             </div>
           ) : all.length === 0 ? (
             <>
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="money.empty">
               <Landmark className="size-6 text-muted-foreground" aria-hidden="true" />
               <p className="text-sm font-medium">No accounts yet</p>
               <p className="max-w-sm text-sm text-muted-foreground">Bank and site petty cash</p>
@@ -400,7 +401,7 @@ export default function MoneyPage() {
                         {KIND_LABEL[k]} <span className="font-normal text-muted-foreground">{list.length}</span>
                       </span>
                       {k === 'petty' && canMove && (
-                        <span className="flex gap-1">
+                        <span className="flex gap-1" data-guide="money.petty">
                           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setDialog('topup')}>
                             Top up
                           </Button>
@@ -663,7 +664,7 @@ function MoneyTiles({
   onOpen: (to: string) => void
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4" data-guide="money.tiles">
       {tiles.map((t) => {
         const body = (
           <>
@@ -707,7 +708,7 @@ function SetupGuide({
   if (readOnly || (hasBank && sitesWithoutCash.length === 0)) return null
   const shown = sitesWithoutCash.slice(0, 4)
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900 dark:bg-sky-950/30">
+    <section className="flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900 dark:bg-sky-950/30" data-guide="money.setup">
       <div>
         <h3 className="text-sm font-semibold">Set up where money is kept</h3>
       </div>

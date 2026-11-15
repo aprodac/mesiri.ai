@@ -47,14 +47,14 @@ export default function ReturnablesPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={Layers} title="Shuttering & tools" />
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" asChild><Link to="/materials?view=movements"><ArrowRightLeft className="size-4" /><span className="hidden sm:inline">Send to a site</span></Link></Button>
+          <Button variant="outline" className="gap-2" data-guide="assets.send" asChild><Link to="/materials?view=movements"><ArrowRightLeft className="size-4" /><span className="hidden sm:inline">Send to a site</span></Link></Button>
           <Button variant="outline" className="gap-2" disabled={!items.length} onClick={exportIt}><Download className="size-4" /><span className="hidden sm:inline">Export</span></Button>
-          {office && <Button variant={setup || !anyReturnable ? 'default' : 'outline'} className="gap-2" onClick={() => setSetup((s) => !s)}><Settings2 className="size-4" />Categories</Button>}
+          {office && <Button variant={setup || !anyReturnable ? 'default' : 'outline'} className="gap-2" data-guide="assets.categories" onClick={() => setSetup((s) => !s)}><Settings2 className="size-4" />Categories</Button>}
         </div>
       </header>
 
       {(setup || (office && data && !anyReturnable)) && (
-        <section aria-label="Returnable categories" className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+        <section aria-label="Returnable categories" className="flex flex-col gap-2 rounded-xl border bg-card p-4" data-guide="assets.setup">
           <p className="text-sm font-semibold">Which categories come back?</p>
           <div className="flex flex-wrap gap-2">
             {(data?.categories ?? []).filter((c) => !c.parent_id || !c.via_parent).map((c) => {
@@ -74,10 +74,10 @@ export default function ReturnablesPage() {
       {isLoading && <div className="h-40 animate-pulse rounded-xl bg-muted/40" />}
       {isError && <p className="text-sm text-destructive">Did not load. Refresh to try again.</p>}
       {data && items.length === 0 && anyReturnable && (
-        <p className="rounded-xl border p-8 text-center text-sm text-muted-foreground">Nothing at a site yet</p>
+        <p className="rounded-xl border p-8 text-center text-sm text-muted-foreground" data-guide="assets.empty">Nothing at a site yet</p>
       )}
       {items.length > 0 && (
-        <section className="overflow-x-auto rounded-xl border">
+        <section className="overflow-x-auto rounded-xl border" data-guide="assets.table">
           <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-muted/30 text-xs text-muted-foreground">
               <tr>
