@@ -2,6 +2,7 @@
 // One page, views on a segmented control, sharing the filters and the WhatsApp panel:
 //   Health (default): by module and by what people ask for, judged by request (WhatWorksHealth.tsx);
 //   Playbook: how each module should work, the best real conversation per journey (WhatWorksPlaybook.tsx);
+//   Patterns: the connections between failures and the actions that make a fix fast (WhatWorksPatterns.tsx);
 //   Every message: version 1's list of every kind of message (WhatWorksMessages.tsx).
 // The view, window, company and selection live in the address, so a view can be shared.
 
@@ -11,6 +12,7 @@ import { RefreshCw } from 'lucide-react';
 import { api } from './api';
 import WhatWorksHealth from './WhatWorksHealth';
 import WhatWorksMessages from './WhatWorksMessages';
+import WhatWorksPatterns from './WhatWorksPatterns';
 import WhatWorksPlaybook from './WhatWorksPlaybook';
 import { WINDOWS } from './whatWorksShared';
 
@@ -22,12 +24,13 @@ interface CompanyOption {
 const VIEWS = [
   { key: 'health', label: 'Health', note: 'How each module is doing, by request: what finished, what was left, what failed, and what to fix first.' },
   { key: 'playbook', label: 'Playbook', note: 'How each module should work: the best real conversation for every way people ask, and how often it goes that way.' },
+  { key: 'patterns', label: 'Patterns', note: 'The connections between failures: the same cause in many places, where flows leak, what makes it worse, what people do next.' },
   { key: 'messages', label: 'Every message', note: 'Every kind of message people sent, one message at a time, with a search.' },
 ] as const;
 type View = (typeof VIEWS)[number]['key'];
 
 // The address keys that belong to one view only: cleared when the view changes.
-const VIEW_KEYS = ['module', 'cap', 'problem', 'intent', 'journey', 'tab', 'message', 'q'];
+const VIEW_KEYS = ['module', 'cap', 'problem', 'intent', 'journey', 'pattern', 'tab', 'message', 'q'];
 
 export default function WhatWorks() {
   const [params, setParams] = useSearchParams();
@@ -97,6 +100,7 @@ export default function WhatWorks() {
 
       {view === 'health' && <WhatWorksHealth {...props} />}
       {view === 'playbook' && <WhatWorksPlaybook {...props} />}
+      {view === 'patterns' && <WhatWorksPatterns {...props} />}
       {view === 'messages' && <WhatWorksMessages {...props} />}
     </div>
   );

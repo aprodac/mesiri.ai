@@ -8,11 +8,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { api } from './api';
 import { getErrorMessage } from './Toast';
-import { Chat, Dot, HowIcon } from './WhatWorksChat';
-import { how, muted, role, showPanel, when } from './whatWorksShared';
-
-type Ending = 'finished' | 'finished_after_question' | 'abandoned' | 'cancelled' | 'failed' | 'complained' | 'unsure' | 'open';
-type Bar = Record<Ending, number>;
+import { Dot } from './WhatWorksChat';
+import { Panel, StackedBar } from './WhatWorksRequests';
+import { ENDING, ENDINGS, finished, muted, pct, showPanel, type Bar, type Ending, type Intent } from './whatWorksShared';
 
 interface Capability {
   key: string;
@@ -47,22 +45,6 @@ interface Problem {
   intents: string[];
 }
 
-interface Intent {
-  id: string;
-  started_at: string;
-  how: string;
-  company: string | null;
-  messages: string[];
-  text: string;
-  sender_name: string | null;
-  sender_role: string | null;
-  capability: string;
-  section: string;
-  ending: Ending;
-  reason: string;
-  journeys: string[];
-}
-
 interface Health {
   window: { since: string; until: string; days: number };
   truncated: boolean;
@@ -71,38 +53,6 @@ interface Health {
   sections: Module[];
   previous: { totals: { intents: number } & Bar; sections: Record<string, { count: number; finished: number }> };
   intents: Intent[];
-}
-
-/** The endings, in the order the bars draw them. */
-const ENDINGS: { key: Ending; label: string; color: string; note: string }[] = [
-  { key: 'finished', label: 'Finished', color: 'var(--success)', note: 'Saved, sent, or answered from the records.' },
-  { key: 'finished_after_question', label: 'Finished after a question', color: '#6FBF8A', note: 'Mesiri asked one thing first, then it was saved or answered.' },
-  { key: 'abandoned', label: 'Left without Save', color: 'var(--warning)', note: 'A card or a question was still waiting when the person stopped.' },
-  { key: 'cancelled', label: 'Cancelled', color: 'var(--neutral-400)', note: 'The person cancelled the card.' },
-  { key: 'failed', label: 'Failed', color: 'var(--error)', note: 'No reply, an outage, a refusal, or a save that did not save.' },
-  { key: 'complained', label: "Complaint or 'not yet'", color: '#9F1239', note: 'The person said the reply was bad or wrong, or Mesiri cannot do it yet and told the team.' },
-  { key: 'unsure', label: 'Not sure', color: 'var(--neutral-200)', note: 'Mesiri replied but the record shows nothing done (no tool, a question back). Each one says why.' },
-];
-const ENDING = Object.fromEntries(ENDINGS.map((e) => [e.key, e])) as Record<Ending, (typeof ENDINGS)[number]>;
-const GOOD: Ending[] = ['finished', 'finished_after_question'];
-
-function pct(part: number, whole: number): number {
-  return whole ? Math.round((part / whole) * 100) : 0;
-}
-
-function finished(bar: Bar): number {
-  return GOOD.reduce((n, k) => n + (bar[k] || 0), 0);
-}
-
-function StackedBar({ bar, height = 10 }: { bar: Bar; height?: number }) {
-  const total = ENDINGS.reduce((n, e) => n + (bar[e.key] || 0), 0);
-  return (
-    <div className="ww-bar" style={{ height }} role="img" aria-label={ENDINGS.filter((e) => bar[e.key]).map((e) => `${bar[e.key]} ${e.label}`).join(', ')}>
-      {ENDINGS.filter((e) => bar[e.key]).map((e) => (
-        <span key={e.key} title={`${bar[e.key]} ${e.label}`} style={{ width: `${(bar[e.key] / total) * 100}%`, background: e.color }} />
-      ))}
-    </div>
-  );
 }
 
 /** The change in finished share against the window before; nothing when that window had no requests. */
@@ -134,39 +84,6 @@ function CapabilityCard({ cap, on, onPick }: { cap: Capability; on: boolean; onP
         </span>
       )}
     </button>
-  );
-}
-
-/** The requests of one capability or problem, worst first, and the conversation of the one picked. */
-function Panel({ title, sub, intents, picked, onPick }: { title: string; sub: string; intents: Intent[]; picked: Intent | null; onPick: (id: string) => void }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--neutral-900)', overflowWrap: 'anywhere' }}>{title}</div>
-          <div style={{ ...muted, fontSize: 12 }}>{sub}</div>
-        </div>
-        <div className="ww-list">
-          {intents.map((i) => {
-            const on = picked?.id === i.id;
-            return (
-              <button key={i.id} className={`ww-row${on ? ' on' : ''}`} onClick={() => onPick(i.id)} aria-pressed={on}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: ENDING[i.ending]?.color === 'var(--neutral-200)' ? 'var(--neutral-600)' : ENDING[i.ending]?.color }}>
-                  <Dot color={ENDING[i.ending]?.color || 'var(--neutral-300)'} /> {ENDING[i.ending]?.label || i.ending}
-                  <span style={{ marginLeft: 'auto', fontWeight: 400, color: 'var(--neutral-500)' }}>{when(i.started_at)}</span>
-                </span>
-                <span title={[how(i.how), i.sender_name, role(i.sender_role), i.company].filter(Boolean).join(' · ')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--neutral-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ color: 'var(--neutral-400)', flex: 'none', display: 'inline-flex' }}><HowIcon type={i.how} /></span>
-                  {i.text || <span style={{ color: 'var(--neutral-400)' }}>({how(i.how)}, no text)</span>}
-                </span>
-                {i.reason && <span className="ww-quote" style={{ fontSize: 11.5, color: 'var(--neutral-600)' }}>{i.reason}</span>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <Chat messageId={picked?.messages[0] || null} highlight={picked?.messages} empty="Pick a request above to see its WhatsApp conversation." />
-    </div>
   );
 }
 

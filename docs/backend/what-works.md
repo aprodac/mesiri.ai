@@ -5,7 +5,7 @@ what does it reply, and where does it fall short", from the messages people real
 
 ## What the page shows
 
-Three views on a segmented control at the top (the view, window, company and selection live in the address):
+Four views on a segmented control at the top (the view, window, company and selection live in the address):
 
 **Health** (the default, SA-39 phase 2) judges *requests*, not single messages (see "Version 2" below):
 
@@ -37,6 +37,24 @@ another request may hold the tap), then the fewest refusals the model recovered 
 fastest slowest reply, the newest. "One message, one thing" and "several things" count only what the first
 message put on the card. Nothing in the record says a message was rude: a best case can be a message nobody
 would pick by hand; pinning (phase 5, decision D3) is the way to override it.
+
+**Patterns** (SA-39 phase 4) shows the connections between failures (`admin/intents_patterns.py`):
+
+- **Same cause**: every problem once, wherever it happened ("3 places"), with its trend against the window before
+  (new / growing / shrinking) and how many causes of the window before are gone. A cause opens its requests and
+  the fix actions: copy the replay command (`python3 scripts/replay_to_test.py <correlation id>`, the start of
+  every fix), copy all its correlation ids, and the team request references when Mesiri passed one on. The
+  reference is `release_notes.request_ref` of the message's correlation id: the same "#a83f12" the team's
+  request log and group show (TM-21), so it is matched by id, never by text. The nightly review findings table
+  is empty on production (15 Nov), so nothing is linked from it.
+- **Where it leaks**: per thing people ask for, asked -> a tool was called -> on the card or answered ->
+  finished ("26 -> 26 -> 25 -> 11"), and the step that loses most.
+- **What makes it worse**: the finished share by how it was sent, the script of the words (read from the
+  letters: Latin, Malayalam, Devanagari, ...), who sent it, the company. A group shows only with 10 requests or
+  more, and a split only when two groups pass that.
+- **After a failure**: what the person did next in the same conversation: sent it again, said it was wrong,
+  asked something else, stopped. "Sent it again" and "said it was wrong" are `admin/friction.py`'s signals (the
+  nightly reviewer's), not new rules.
 
 **Short on purpose** (asked 15 Nov: "too much descriptions ... unreadable"): the page shows labels and numbers;
 explanations are tooltips (the ⓘ beside a heading, the endings in the legend, a journey's row). The answer still

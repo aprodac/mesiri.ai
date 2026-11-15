@@ -1,7 +1,7 @@
 # What works, version 2: plan (SA-39)
 
-> Written 15 Nov 2026 for the session that will build it. **Phases 1-3 are built (15 Nov)**: see sections
-> 12-14 and [what-works.md](../backend/what-works.md). Phases 4-5 are not. D1, D2 and D4 confirmed (15 Nov).
+> Written 15 Nov 2026 for the session that will build it. **Phases 1-4 are built (15 Nov)**: see sections
+> 12-15 and [what-works.md](../backend/what-works.md). Phase 5 (pinning) waits on D3. D1, D2 and D4 confirmed (15 Nov).
 > Version 1 (SA-38) is live: [what-works.md](../backend/what-works.md). Read that first, it is short.
 > Process: root `CLAUDE.md` governs (five phases, work on `main`, verify before every push, phase report).
 
@@ -286,3 +286,26 @@ tool, bar, finished share and top reason only (no phrasings, no how-sent line), 
 time and first words, the change against the window before is "+N pts" (hidden when there was no window
 before), a Playbook row is its label and "41% of 17" or "No example yet". Later phases follow the same rule:
 a number or a label on the page, anything longer in a tooltip.
+
+## 15. Phase 4 (15 Nov 2026)
+
+Built: `admin/intents_patterns.py` (`causes`, `leaks`, `splits`, `after_failure`, `patterns`), the route's
+`patterns`, the Patterns view (`WhatWorksPatterns.tsx`); the request panel and the endings bar moved to
+`WhatWorksRequests.tsx` so Health and Patterns share them; `problem_groups` in `intents_summary.py` serves both
+"Fix these first" and the causes.
+
+Answers to section 5's last "not yet known":
+
+- **Team request log:** linked by id. A request Mesiri passes on is referenced by `release_notes.request_ref`
+  (the first 6 hex characters of its correlation id), which the request log and the group use too; a cause
+  shows those references. **Nightly review findings:** the table is empty on production, so nothing to link.
+- **Scripted tests as "as designed" previews:** not built (D2 chose real conversations).
+
+Read on the sample with a 7-day window (the 4 days before as the previous window): 12 causes, trends shown,
+21 causes of the window before gone; the widest leak is "material receipt 26 -> 26 -> 25 -> 11" (lost at Save,
+mostly cancelled); the "how sent" split passes the floor (typed 79, voice 28) and so do role and company;
+after a failure: 6 sent it again, 21 asked something else, 8 stopped. The trend compares 7 days with 4 on the
+sample; on production both windows are full.
+
+Checked with Playwright on the stand-in API (real route, production sample, names replaced), desktop and
+iPhone 13: no console error, no sideways scroll, the selection survives a reload. Not opened on the live panel.

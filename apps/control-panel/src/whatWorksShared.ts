@@ -53,3 +53,47 @@ export function showPanel() {
   }
 }
 
+
+// SA-39: requests (intents) as the route answers them, and how they ended.
+
+export type Ending = 'finished' | 'finished_after_question' | 'abandoned' | 'cancelled' | 'failed' | 'complained' | 'unsure' | 'open';
+export type Bar = Record<Ending, number>;
+
+export interface Intent {
+  id: string;
+  started_at: string;
+  how: string;
+  company: string | null;
+  messages: string[];
+  text: string;
+  sender_name: string | null;
+  sender_role: string | null;
+  capability: string;
+  section: string;
+  ending: Ending;
+  reason: string;
+  journeys: string[];
+  correlation_ids: string[];
+}
+
+/** The endings, in the order the bars draw them. */
+export const ENDINGS: { key: Ending; label: string; color: string; note: string }[] = [
+  { key: 'finished', label: 'Finished', color: 'var(--success)', note: 'Saved, sent, or answered from the records.' },
+  { key: 'finished_after_question', label: 'Finished after a question', color: '#6FBF8A', note: 'Mesiri asked one thing first, then it was saved or answered.' },
+  { key: 'abandoned', label: 'Left without Save', color: 'var(--warning)', note: 'A card or a question was still waiting when the person stopped.' },
+  { key: 'cancelled', label: 'Cancelled', color: 'var(--neutral-400)', note: 'The person cancelled the card.' },
+  { key: 'failed', label: 'Failed', color: 'var(--error)', note: 'No reply, an outage, a refusal, or a save that did not save.' },
+  { key: 'complained', label: "Complaint or 'not yet'", color: '#9F1239', note: 'The person said the reply was bad or wrong, or Mesiri cannot do it yet and told the team.' },
+  { key: 'unsure', label: 'Not sure', color: 'var(--neutral-200)', note: 'Mesiri replied but the record shows nothing done (no tool, a question back). Each one says why.' },
+];
+export const ENDING = Object.fromEntries(ENDINGS.map((e) => [e.key, e])) as Record<Ending, (typeof ENDINGS)[number]>;
+export const GOOD: Ending[] = ['finished', 'finished_after_question'];
+
+export function pct(part: number, whole: number): number {
+  return whole ? Math.round((part / whole) * 100) : 0;
+}
+
+export function finished(bar: Bar): number {
+  return GOOD.reduce((n, k) => n + (bar[k] || 0), 0);
+}
+
