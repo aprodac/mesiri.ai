@@ -53,7 +53,7 @@ from runtime.ai_outage import (
 from runtime.release_notes import request_ref
 from runtime.team_notify import poke_watch_soon
 
-from . import bill_photo, documents
+from . import bill_photo, documents, stock_images
 from .agent import (
     CHANGE_READY,
     CORRECT_SAVED,
@@ -744,8 +744,19 @@ class ApiWhatsApp:
                     # PRC-20: "send me last week's report": the report PDF, fetched as the person.
                     documents.SEND_REPORT: (
                         documents.REPORT_TOOL,
-                        lambda arguments: documents.send_report(client, send_file, wa, arguments)),
+                        lambda arguments: documents.send_report(
+                            client, send_file, wa, arguments,
+                            today=dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date())),
                 }
+                renderer = getattr(self._receipts, "renderer", None)
+                if renderer is not None and self._send_image is not None:
+                    # [304]: stock of several materials as pictures, drawn by the code from the stock records.
+                    image_out, day = self._send_image, dt.datetime.now(
+                        ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date()
+                    run["actions"][stock_images.SEND_STOCK_LIST] = (
+                        stock_images.TOOL,
+                        lambda arguments: stock_images.send(client, renderer.render_png, image_out, wa, ctx, day,
+                                                            arguments))
             try:
                 turn = await self._agent.run(client, **run)
                 _lap("v3_model_tools")

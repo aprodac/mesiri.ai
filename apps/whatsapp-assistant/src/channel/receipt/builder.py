@@ -44,6 +44,11 @@ class RecordReceiptBuilder:
         #: an empty result leaves the card in English.
         self._localize = localize
 
+    @property
+    def renderer(self) -> ReceiptRenderer:
+        """[304]: the one browser the cards use, for other pictures drawn the same way (the stock list)."""
+        return self._renderer
+
     async def build(
         self, confirmed: ConfirmedActionV2, execution: ExecutionResult, actor, *, saved: bool = False
     ) -> bytes | None:

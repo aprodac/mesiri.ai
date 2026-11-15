@@ -58,7 +58,7 @@ def message_text(report: dict[str, Any], *, where: str, link: str, note: dict | 
     """The WhatsApp text that goes with the PDF: what it is, the headline, the key figures, the note, the link. Pure;
     at most 1,000 characters (WhatsApp's caption limit is 1,024)."""
     p = report["period"]
-    title = f"*{_TITLE[p['kind']]} report · {where}*"
+    title = f"*{periods.kind_word(p)} report · {where}*"
     when = f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"]
     if report.get("running"):
         when += " (so far)"
@@ -78,7 +78,7 @@ def template_params(report: dict[str, Any], where: str) -> list[str]:
     p = report["period"]
     when = f"{p['label']} ({p['range']})" if p["kind"] != "custom" else p["range"]
     line = report["headline"]["lead"] + (" " + report["headline"]["facts"][0] if report["headline"]["facts"] else "")
-    return [_TITLE[p["kind"]], f"{where}, {when}", line[:180]]
+    return [periods.kind_word(p), f"{where}, {when}", line[:180]]
 
 
 def file_name(where: str, period: periods.Period) -> str:

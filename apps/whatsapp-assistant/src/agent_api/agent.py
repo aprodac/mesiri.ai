@@ -34,6 +34,7 @@ from runtime.ai_outage import is_budget_error
 
 from . import tool_areas
 from .client import ApiClient, new_idempotency_key
+from .documents import ROLLING_WEEK_TOOLS, rolling_week
 from .expense_account import BUTTONS, EXPENSE_TOOL, account_question, paying_accounts
 from .fill import (
     NARRATIVE_REFUSAL,
@@ -1271,6 +1272,8 @@ class ApiAgent:
                         f"{p} {arguments[p]} is not one of these records. Call {lister} (status all) and use the id "
                         "of the one they mean (one saved earlier in this chat is listed with its id). Then prepare "
                         "this again.")})
+            if name in ROLLING_WEEK_TOOLS:
+                arguments = rolling_week(arguments, today)  # [302]: a week nobody named is the last 7 days
             path = tool.path
             for p in tool.path_params:
                 path = path.replace("{" + p + "}", str(arguments[p]))

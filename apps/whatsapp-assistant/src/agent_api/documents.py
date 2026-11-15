@@ -7,6 +7,7 @@ is the API's) and sends it; it never sends a revision that is out of date, and s
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -70,13 +71,44 @@ SEND_REPORT = "send_report"
 REPORT_TOOL = ToolSpec(name=SEND_REPORT, description=(
     "Send the weekly or monthly report as a PDF in this chat, to the person asking: scope project (project_id; "
     "site_id for one site) or portfolio (all their projects); period week or month (custom: date_from and date_to); "
-    "date: any day in it, none for the last finished one. Only when they ask for the report itself."),
+    "date: any day in the week or month they NAMED (\"last week\": a day of last Monday-Sunday; \"this week\": "
+    "today); none when they named none: a week is then the last 7 days ending today, a month the last finished "
+    "month. Only when they ask for the report itself."),
     parameters={"type": "object", "required": ["scope", "period"], "properties": {
         "scope": {"type": "string", "enum": ["project", "portfolio"]},
         "project_id": {"type": "string"}, "site_id": {"type": "string"},
         "period": {"type": "string", "enum": ["week", "month", "custom"]},
         "date": {"type": "string", "description": "YYYY-MM-DD"},
         "date_from": {"type": "string"}, "date_to": {"type": "string"}}})
+
+
+#: [302]: the reads and the send whose "week" is the last 7 days when no week is named.
+ROLLING_WEEK_TOOLS = frozenset({"period_report", "portfolio_report", SEND_REPORT})
+
+
+def rolling_week(arguments: dict[str, Any], today: dt.date) -> dict[str, Any]:
+    """[302] (15 Nov, Ilan: "orazhchathe mottham progress report" on a Sunday got 2-8 Nov, the week before last): a
+    week nobody named is the last 7 days ending today, never the API's "last finished week" (the Monday report's
+    default, which the dashboard and the schedules keep). A named week (``date``) or dates stay as they are."""
+    period = str(arguments.get("period") or "week")
+    if period != "week" or any(arguments.get(k) for k in ("date", "date_from", "date_to")):
+        return arguments
+    return {**arguments, "period": "custom", "date_from": (today - dt.timedelta(days=6)).isoformat(),
+            "date_to": today.isoformat()}
+
+
+def report_caption(arguments: dict[str, Any]) -> str:
+    """[303]: what the PDF covers, under the file in the chat ("Weekly report · 9 – 15 Nov 2026"); "" when the API
+    chose the dates (a named week or month: the file name carries them)."""
+    from mesiri.domains.reports.period.periods import range_text
+
+    try:
+        start = dt.date.fromisoformat(str(arguments.get("date_from") or "")[:10])
+        end = dt.date.fromisoformat(str(arguments.get("date_to") or "")[:10])
+    except ValueError:
+        return ""
+    word = "Weekly report" if (end - start).days == 6 else "Report"
+    return f"{word} · {range_text(start, end)}"
 
 
 def report_path(arguments: dict[str, Any]) -> str | None:
@@ -108,7 +140,9 @@ def report_path(arguments: dict[str, Any]) -> str | None:
 
 
 async def send_report(client: ApiClient, send_document: Callable[..., Awaitable[Any]], wa_id: str,
-                      arguments: dict[str, Any]) -> dict[str, Any]:
+                      arguments: dict[str, Any], today: dt.date | None = None) -> dict[str, Any]:
+    if today is not None:
+        arguments = rolling_week(arguments, today)
     path = report_path(arguments)
     if path is None:
         return {"status": "not sent: say which project (project_id from list_projects), or all projects"}
@@ -121,7 +155,8 @@ async def send_report(client: ApiClient, send_document: Callable[..., Awaitable[
         return {"status": "not sent; tell them to ask again in a minute"}
     name = _file_name({k.lower(): v for k, v in headers.items()}.get("content-disposition"), "report")
     try:
-        sent = await send_document(wa_id, data, filename=name, caption="", mime_type="application/pdf",
+        sent = await send_document(wa_id, data, filename=name, caption=report_caption(arguments),
+                                   mime_type="application/pdf",
                                    shows=f"period report {name}")
     except Exception:  # noqa: BLE001 -- the model tells them it did not go
         _log.exception("agent_api.send_report_failed")

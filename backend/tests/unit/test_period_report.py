@@ -328,3 +328,17 @@ async def test_pdf_prints_photos_and_skips_one_it_cannot_read(stubbed):
     with_photos = pdf.render(r, {"company_name": "Periyar Builders"}, images)
     without = pdf.render(r, {"company_name": "Periyar Builders"}, [])
     assert with_photos.startswith(b"%PDF") and len(with_photos) > len(without)
+
+
+def test_seven_days_in_a_row_is_titled_weekly_report():
+    """[303] (15 Nov): the last 7 days asked on WhatsApp is a weekly report, never a bare "Report"."""
+    from mesiri.domains.reports.period.router import _filename
+
+    rolling = periods.resolve("custom", D(2026, 11, 15), date_from=D(2026, 11, 9), date_to=D(2026, 11, 15)).as_dict()
+    assert periods.kind_word(rolling) == "Weekly"
+    assert periods.kind_word(periods.week_of(D(2026, 11, 4)).as_dict()) == "Weekly"
+    assert periods.kind_word(periods.month_of(D(2026, 11, 4)).as_dict()) == "Monthly"
+    ten = periods.resolve("custom", D(2026, 11, 15), date_from=D(2026, 11, 1), date_to=D(2026, 11, 10)).as_dict()
+    assert periods.kind_word(ten) == "Period"
+    report = {"project": {"name": "Green Villa"}, "period": rolling}
+    assert _filename(report, "pdf") == "mesiri-green-villa-week-2026-11-09-2026-11-15.pdf"

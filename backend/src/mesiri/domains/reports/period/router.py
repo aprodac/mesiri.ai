@@ -97,7 +97,7 @@ def _filename(report: dict[str, Any], ext: str) -> str:
     name = re.sub(r"[^A-Za-z0-9]+", "-", report["project"]["name"]).strip("-").lower() or "project"
     p = report["period"]
     when = p["from"][:7] if p["kind"] == "month" else f"{p['from']}" if p["kind"] == "week" else f"{p['from']}-{p['to']}"
-    kind = {"week": "week", "month": "month"}.get(p["kind"], "report")
+    kind = {"week": "week", "month": "month"}.get(p["kind"], "week" if p.get("days") == 7 else "report")
     return f"mesiri-{name}-{kind}-{when}.{ext}"
 
 

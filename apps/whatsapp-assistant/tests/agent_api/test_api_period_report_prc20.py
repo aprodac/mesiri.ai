@@ -125,7 +125,10 @@ async def test_how_did_last_week_go_only_reads() -> None:
     client = ApiClient(ACTOR, app=app)
     tools = build_tools(app.openapi(), tuple(a for a in ALLOWED if a.name == "period_report"))
     try:
-        turn = await ApiAgent(FakeToolCallingProvider([[("period_report", {"project_id": PROJECT, "period": "week"})],
+        # [302]: "last week" names a week, so the model passes a day of it (SOP rule 23); a week left unnamed is the
+        # last 7 days (test_api_week_report_302_303).
+        turn = await ApiAgent(FakeToolCallingProvider([[("period_report", {"project_id": PROJECT, "period": "week",
+                                                                           "date": "2026-11-04"})],
                                                        "Work is behind plan; RA-3 is unpaid."]), tools).run(
             client, "how did last week go at villa")
     finally:

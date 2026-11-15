@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 from mesiri.domains.dpr.pdf import _latin1
+from mesiri.domains.reports.period.periods import kind_word
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,6 @@ SOFT = (246, 246, 243)
 YELLOW = (250, 204, 21)
 TONE = {"good": (15, 81, 50), "warn": (154, 62, 11), "bad": (180, 35, 24), "none": (107, 113, 120),
         "info": (30, 58, 138)}
-_TITLE = {"week": "Weekly report", "month": "Monthly report", "custom": "Report"}
 
 
 def t(text: Any) -> str:
@@ -144,7 +144,7 @@ def _title(pdf, report: dict[str, Any]) -> None:
     p = report["period"]
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(*MUTED)
-    sub = f"{_TITLE[p['kind']]}: " + (f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"])
+    sub = f"{kind_word(p)} report: " + (f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"])
     if report.get("running"):
         sub += " (so far)"
     pdf.cell(0, 5, t(sub), new_x="LMARGIN", new_y="NEXT")
@@ -451,7 +451,7 @@ def render_portfolio(brief: dict[str, Any], company: dict[str, Any], note: dict[
     p = brief["period"]
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(*MUTED)
-    sub = f"{_TITLE[p['kind']]}: " + (f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"])
+    sub = f"{kind_word(p)} report: " + (f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"])
     pdf.cell(0, 5, t(sub + (" (so far)" if brief.get("running") else "")), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(*INK)

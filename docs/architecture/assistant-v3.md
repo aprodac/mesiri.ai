@@ -165,6 +165,12 @@ Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
 While a size question is open the model also has `size_not_known` (WA-268): it reads "I don't know" in any
 words, and the code answers as it does for the 🤷 button.
 
+Files and pictures the code sends itself (`actions`, run at once, nothing to Save): `send_document` (DOC-05),
+`send_report` (the weekly or monthly report PDF, PRC-20; a week nobody named is the last 7 days ending today,
+WA-302/303, `documents.rolling_week`, also applied to the `period_report` / `portfolio_report` reads), and
+`send_stock_list` (WA-304, `stock_images.py`: stock of more than one material drawn as pictures from
+`GET /materials/inventory`, as many as the list needs, minus stock marked CHECK). The model only says one line after.
+
 ### Tools on demand (WA-277 step E, per company, off by default)
 
 Approved by Ilan, 11 Nov 2026. Every call carried all 131 tool definitions (about 22,000 tokens, more than half the

@@ -49,6 +49,14 @@ class Period:
                 "label": self.label, "range": self.range_text}
 
 
+def kind_word(period: dict[str, object]) -> str:
+    """"Weekly", "Monthly" or "Period" for a period's ``as_dict``. [303]: seven days in a row ("the last 7 days" asked
+    on WhatsApp) is a weekly report too, never a bare "Report"."""
+    if period.get("kind") == "custom" and period.get("days") == 7:
+        return "Weekly"
+    return {"week": "Weekly", "month": "Monthly"}.get(str(period.get("kind")), "Period")
+
+
 def range_text(start: datetime.date, end: datetime.date) -> str:
     """'3 – 9 Nov 2026', '28 Oct – 3 Nov 2026', '29 Dec 2025 – 4 Jan 2026'."""
     if start.year != end.year:
