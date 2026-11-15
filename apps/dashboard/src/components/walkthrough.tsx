@@ -331,7 +331,8 @@ export function WalkthroughRunner() {
   const last = run.index === run.walk.steps.length - 1
   const counter = `${run.walk.title} · ${run.index + 1} of ${run.walk.steps.length}`
   let nextLabel = last ? 'Done' : 'Next'
-  if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = "I've sent it"
+  const cardOnly = tryIt?.kind === 'whatsapp' && tryIt.save === false
+  if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
   if (tryIt?.kind === 'here' && !note) nextLabel = 'Skip this'
 
   return (
@@ -357,6 +358,9 @@ export function WalkthroughRunner() {
       {tryIt?.kind === 'whatsapp' && (
         <div className="flex flex-col gap-1.5">
           <SayThis say={tryIt.say} number={number} />
+          {cardOnly && (
+            <p className="m-0 text-xs text-muted-foreground">Practice only: tap Cancel on the card, so nothing is saved.</p>
+          )}
           {check.watching && (
             <p className="m-0 flex items-center gap-1.5 text-xs" role="status">
               {check.got ? (

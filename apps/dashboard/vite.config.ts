@@ -51,6 +51,18 @@ function checkTourMarkers(): Plugin {
       if (gone.length) {
         this.error(`Walkthrough steps go to pages that are not built pages in lib/module-map.ts: ${[...new Set(gone)].join(', ')}`)
       }
+      // A workflow, outcome or role path made of other walkthroughs names them by id: each must exist. Ids are written
+      // (`id: '...'`), or made from a page tour (`page-<path>`), a module (`module-<key>`), or an outcome (`goal-<id>`).
+      const walks = fs.readFileSync(path.join(SRC, 'lib/walkthroughs.ts'), 'utf8')
+      const tourKeys = [...guides.matchAll(/^ {2}'(\/[^']+)': \{/gm)].map((m) => `page${m[1].replace(/\//g, '-')}`)
+      const moduleKeys = [...map.matchAll(/^ {4}key: '([a-z_-]+)'/gm)].map((m) => `module-${m[1]}`)
+      const written = [...walks.matchAll(/\bid: '([a-z0-9-]+)'|composed\('([a-z0-9-]+)'/g)].map((m) => m[1] ?? m[2])
+      const known = new Set([...written, ...written.map((id) => `goal-${id}`), ...tourKeys, ...moduleKeys, 'app'])
+      const lists = [...walks.matchAll(/walks: \[([^\]]*)\]/g), ...walks.matchAll(/composed\([^\n]*?\[([^\]]*)\]/g)]
+      const unknown = lists.flatMap((m) => [...m[1].matchAll(/'([a-z0-9-]+)'/g)].map((x) => x[1])).filter((id) => !known.has(id))
+      if (unknown.length) {
+        this.error(`Walkthroughs made of walkthroughs that don't exist (src/lib/walkthroughs.ts): ${[...new Set(unknown)].join(', ')}`)
+      }
     },
   }
 }

@@ -14,7 +14,7 @@ import { startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import {
-  MODULE_WALKS, PAGE_WALKS, ROLE_PATHS, WORKFLOWS, learnKey, walkFor, type Walkthrough,
+  FULL_WORKFLOWS, MODULE_WALKS, OUTCOME_WALKS, PAGE_WALKS, ROLE_PATHS, WORKFLOWS, learnKey, walkFor, type Walkthrough,
 } from '@/lib/walkthroughs'
 
 // Learn Mesiri (SS-41, learning-centre-plan.md section 3): one page to pick a walkthrough and run it, by role,
@@ -31,6 +31,7 @@ const TABS: { value: Tab; label: string }[] = [
 
 const KIND_LABEL: Record<Walkthrough['kind'], string> = {
   role: 'Your path',
+  outcome: 'What you get',
   workflow: 'Workflow',
   module: 'Module',
   page: 'Page',
@@ -134,10 +135,15 @@ export default function LearnPage() {
     PAGE_WALKS.find((w) => w.id !== 'app' && w.steps[0]?.page?.split('?')[0] === p.url.split('?')[0])
   const modules = mine(MODULE_WALKS).filter((w) => groups.some((g) => `module-${g.key}` === w.id))
 
-  // For you: the person's path first, then the workflows they can do, then the app and the page tours not done yet.
+  // The workflows tab: the full ones and any written whole; the parts (W2's first half) only appear inside them.
+  const workflows = mine([...FULL_WORKFLOWS, ...WORKFLOWS.filter((w) => !w.part)])
+  // For you: what this role gets out of Mesiri (asked 15 Nov: titled by the value, with how to get it), all of it as
+  // one path, then the app and the page tours not done yet. A role without outcomes yet gets the workflows.
+  const outcomes = mine(OUTCOME_WALKS)
   const forYou = [
+    ...outcomes,
     ...mine(ROLE_PATHS),
-    ...mine(WORKFLOWS),
+    ...(outcomes.length ? [] : workflows),
     ...mine(PAGE_WALKS).filter((w) => !isDone(w) && (w.id === 'app' || pageVisible(w.steps[0]?.page))).slice(0, 6),
   ]
 
@@ -148,7 +154,7 @@ export default function LearnPage() {
       <div className="flex items-center gap-3 rounded-xl border bg-[#facc15]/10 px-4 py-3">
         <Spark mood="hello" size={44} quiet className="shrink-0" />
         <p className="m-0 text-sm">
-          Practice is real: what you send or save is recorded, and every practice ends by showing you how to take it back.
+          Practice is real: what you save is recorded. So each practice either has you tap Cancel on Mesiri's card, or ends by showing you how to take it back.
           {trial.readOnly && ' Your account is read-only right now, so the walkthroughs show the steps without the practice.'}
         </p>
       </div>
@@ -164,15 +170,15 @@ export default function LearnPage() {
       />
 
       {tab === 'you' && (
-        <Section title="For you" note="Start at the top.">
+        <Section title={outcomes.length ? 'What you get from Mesiri' : 'For you'} note="Start at the top, or with what matters most to you.">
           <Cards walks={forYou} seen={seen} />
         </Section>
       )}
 
       {tab === 'workflows' && (
         <Section title="Workflows" note="One job from start to finish, across pages.">
-          <Cards walks={mine(WORKFLOWS)} seen={seen} />
-          <p className="m-0 text-sm text-muted-foreground">More workflows are on the way: the daily report, labour to wages, a supplier bill, billing the client.</p>
+          <Cards walks={workflows} seen={seen} />
+          <p className="m-0 text-sm text-muted-foreground">More workflows are on the way: a supplier bill to payment, subcontractors, billing the client, cost control, month end.</p>
         </Section>
       )}
 
