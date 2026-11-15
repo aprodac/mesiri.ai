@@ -277,3 +277,38 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
   back can't leave a new supplier; the requests check reads open requests (the route has no paging); deliveries are
   read 100 deep, newest first.
 - **Requests**: a "There it is" step lights the new request before it is taken back.
+
+## 12. Built (SS-48, 15 Nov 2026): W3, W5–W11, Project manager and Finance
+
+- **Eight workflows, each whole** (not parts), in `WORKFLOWS` in `lib/walkthroughs.ts`: W3 Supplier bill to payment,
+  W5 Subcontractor, W6 Start a new project, W7 An issue, W8 Billing the client, W9 Cost control, W10 Machines and hire,
+  W11 Month end.
+- **Practice** follows D-L3. Only W3's expense can be taken back on WhatsApp (`record_expense`, then `undo_expense`;
+  the message names no supplier, so taking it back leaves none behind). A work order, a new project, a person added,
+  an issue, a client payment and a machine log have no WhatsApp undo, so they are `save: false`: look at the card,
+  then Cancel. W9 and W11 are questions only ("How is Green Villa doing on cost?", "Send me October's report"), said in
+  the text: a practice must save something (the assistant's test).
+- **Who gets which:** W3, W5, W9 the money roles (owner, admin, finance, project manager); W8, W11 owner, admin and
+  finance; W6 owner, admin and project manager; W10 the roles that record from site; W7 everyone.
+- **Outcomes:** the owner's "Catch a cost overrun", "Start a new project" and "Hear about problems" now run W9, W6
+  and W7 instead of page tours; "Get paid faster by the client" (W8) and "Month end without chasing the accountant"
+  (W11) are added. Project manager (W6, W1, W2, W5, W9) and Finance (W3, wages, W8, W11) have their outcomes and role
+  paths, as in section 5.1. Drafts, for Ilan to edit:
+
+  | Role | Outcome | Runs |
+  |---|---|---|
+  | Project manager | Get a new project going | W6 |
+  | | Review every site's day in minutes | W1 |
+  | | Keep material arriving before it is needed | W2 |
+  | | Pay subcontractors for measured work only | W5 |
+  | | Know which work is losing money | W9 |
+  | Finance | Pay suppliers for what actually came | W3 |
+  | | Pay wages straight from attendance | W4 second half |
+  | | Bill the client and see what they owe | W8 |
+  | | Close the month and hand it to Tally | W11 |
+
+- **Not verified in a browser:** the steps on Expenses, Weekly & monthly, Subcontract bills, Receivables and the two
+  Equipment pages. Those pages crash in the stubbed screenshot mode (the stub answers `[]` where they expect an
+  object; `scripts/screens.mjs` shows the same before this change). The steps there have no marker (the Spark speaks
+  in the middle), so they do not depend on the page's layout. W6, W7 and W9 were clicked through; the Learn page was
+  checked for owner, project manager and finance.
