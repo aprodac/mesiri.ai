@@ -923,3 +923,46 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--neutral-900); 
   .ww-side { position: static; }
   .ww-chat { max-height: 70vh; }
 }
+
+/* SA-39: What works, Health view -- endings bars, "Fix these first", module rows, capability cards, the panel. */
+.ww-bar { display: flex; width: 100%; border-radius: 3px; overflow: hidden; background: var(--neutral-100); gap: 1px; }
+.ww-bar span { display: block; height: 100%; min-width: 2px; }
+.ww-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--neutral-600); }
+.ww-legend span { display: inline-flex; align-items: center; gap: 6px; cursor: help; }
+.ww-legend b { color: var(--neutral-900); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ww-fix { list-style: none; margin: 0; padding: 0; }
+.ww-fix li { border-top: 1px solid var(--border-subtle); }
+.ww-fix button { display: flex; gap: 12px; width: 100%; padding: 10px 14px; border: none; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.ww-fix button:hover { background: var(--neutral-50); }
+.ww-fix button.on { background: var(--brand-soft); }
+.ww-fix-n { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--neutral-100); color: var(--neutral-700); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.ww-module { display: grid; grid-template-columns: 16px minmax(140px, 1.2fr) minmax(120px, 2fr) 92px minmax(150px, 1fr); gap: 12px; align-items: center; width: 100%; padding: 11px 14px; border: none; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.ww-module:hover, .ww-module[aria-expanded='true'] { background: var(--neutral-50); }
+.ww-module-name { font-weight: 600; font-size: 13.5px; color: var(--neutral-900); }
+.ww-module-num { font-size: 12.5px; color: var(--neutral-600); text-align: right; font-variant-numeric: tabular-nums; }
+.ww-module-num b { color: var(--neutral-900); font-size: 13.5px; }
+.ww-module-change { text-align: right; }
+.ww-caps { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; padding: 4px 14px 14px 42px; background: var(--neutral-50); }
+.ww-cap { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--white); text-align: left; font: inherit; cursor: pointer; }
+.ww-cap:hover { border-color: var(--border-strong); }
+.ww-cap.on { border-color: var(--neutral-900); box-shadow: 0 0 0 1px var(--neutral-900); }
+.ww-tool { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--neutral-400); margin-top: -4px; }
+.ww-quote { font-size: 12.5px; color: var(--neutral-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ww-list { max-height: 260px; overflow-y: auto; }
+.ww-row { display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; padding: 8px 14px; border: none; border-top: 1px solid var(--border-subtle); background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.ww-row:first-child { border-top: none; }
+.ww-row:hover { background: var(--neutral-50); }
+.ww-row.on { background: var(--brand-soft); }
+.ww-side-health .ww-chat { max-height: max(300px, calc(100vh - 520px)); }
+@media (max-width: 1024px) {
+  .ww-side-health .ww-chat { max-height: 70vh; }
+}
+@media (max-width: 720px) {
+  .ww-module { grid-template-columns: 16px minmax(0, 1fr) auto; row-gap: 6px; }
+  .ww-module-name { grid-column: 2; grid-row: 1; }
+  .ww-module-num { grid-column: 3; grid-row: 1; }
+  .ww-module-bar { grid-column: 2 / 4; grid-row: 2; }
+  .ww-module-change { grid-column: 2 / 4; grid-row: 3; text-align: left; }
+  .ww-caps { grid-template-columns: minmax(0, 1fr); padding-left: 14px; }
+  .ww-views { width: 100%; }
+}

@@ -5,6 +5,28 @@ what does it reply, and where does it fall short", from the messages people real
 
 ## What the page shows
 
+Two views on a segmented control at the top (the view, window, company and selection live in the address):
+
+**Health** (the default, SA-39 phase 2) judges *requests*, not single messages (see "Version 2" below):
+
+- One line for the window: the share of requests that finished, a bar of how all of them ended (finished,
+  finished after a question, left without Save, cancelled, failed, complaint or 'not yet', not sure), and the
+  change against the window of the same length before it.
+- **Fix these first**: the five largest problems of the window across every module, one line each in plain
+  words with its count and the capabilities it hit ("29 requests failed: AI unavailable").
+- **By module**: one row per section with its bar, its finished share and count, and the change. A row opens
+  to its **capabilities** (what a person can ask for, named from the tool's own description, the tool name in
+  small grey text): how often it was asked, the share that finished, how people sent it, three real
+  phrasings, its top two failure reasons.
+- A capability card or a problem opens the **panel** on the right (below on a phone): its requests, the ones
+  that did not finish first (a problem: newest first), and the WhatsApp conversation of the one picked with
+  every message of that request highlighted. The worst one is open already: two clicks from the page to a
+  real conversation.
+
+**Every message** is version 1, kept for its search: every kind of message, one message at a time.
+
+The rest of this section describes that view.
+
 - **Sections**: what a message was about (Materials and stock, Labour, Reports, ...).
 - **Kinds** inside a section: the tool the assistant used plus how the turn ended, e.g. *Record receipt ·
   Ready on the card*, *Record receipt · Could not do it: … is not in the company's material list*.
@@ -57,14 +79,14 @@ First rule that fits:
 - A new first path part in `ALLOWED` needs a name in `SECTIONS` (a test fails until it has one). A new
   tool handled by the code (no route) goes in `CODE_TOOLS`, else it shows under *Talk and everything else*.
 
-## Version 2, phase 1: intents (SA-39)
+## Version 2: intents (SA-39)
 
-The page itself is still version 1; phase 2 builds the new one on this. Plan: [WHAT_WORKS_V2_PLAN.md](../plans/WHAT_WORKS_V2_PLAN.md).
+Phase 1 built this; phase 2's Health view shows it (`apps/control-panel/src/WhatWorksHealth.tsx`). Plan: [WHAT_WORKS_V2_PLAN.md](../plans/WHAT_WORKS_V2_PLAN.md).
 
 `GET /admin/message-map/intents?days=&organization_id=` (platform admins only, read-only) judges
 **conversations** (one person, no silence over 30 minutes) split into **intents**: a message that starts
 something plus the taps, answers and changes that continue it. Rules: `apps/whatsapp-assistant/src/admin/intents.py`
-(pure; tests in `tests/unit/test_message_intents.py`). Each message is still filed by version 1's `classify`
+(pure; the page's summary and "Fix these first" in `admin/intents_summary.py`; tests in `tests/unit/test_message_intents.py`). Each message is still filed by version 1's `classify`
 first; intents only link them.
 
 How a message is linked (first rule that fits):

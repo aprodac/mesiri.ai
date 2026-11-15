@@ -1,7 +1,7 @@
 # What works, version 2: plan (SA-39)
 
-> Written 15 Nov 2026 for the session that will build it. **Phase 1 is built (15 Nov)**: see section 12
-> and [what-works.md](../backend/what-works.md). Phases 2-5 are not.
+> Written 15 Nov 2026 for the session that will build it. **Phases 1 and 2 are built (15 Nov)**: see sections
+> 12-13 and [what-works.md](../backend/what-works.md). Phases 3-5 are not. D1 and D4 confirmed (15 Nov).
 > Version 1 (SA-38) is live: [what-works.md](../backend/what-works.md). Read that first, it is short.
 > Process: root `CLAUDE.md` governs (five phases, work on `main`, verify before every push, phase report).
 
@@ -241,3 +241,20 @@ Built: `admin/intents.py`, `GET /admin/message-map/intents`, `agent_api/tools.py
   it is a finding for phase 4, not noise.
 - **Built differently from the plan:** none of the rules needed more than the plan's "nearest earlier intent
   with something waiting", except that one Save ends all of them (shared card).
+
+## 13. Phase 2 (15 Nov 2026)
+
+D1 (section 1's list is what felt bad) and D4 (one page, several views) were confirmed by the person who asked.
+
+Built: the Health view as the page's default (`WhatWorksHealth.tsx`), "Fix these first" in the route's answer
+(`admin/intents_summary.py` `fix_first`; the summary moved there to keep `intents.py` under 500 lines), the
+first words and the sender of each request in the answer, error codes in words ("AI unavailable").
+
+**One difference from the plan:** version 1's list stays as a second view, "Every message", because it has the
+only search over messages and replies. It can go once the Patterns view (phase 4) covers search; the segmented
+control gets Playbook and Patterns as those phases land.
+
+Checked in a real browser (Playwright) against a stand-in API that ran the real route on 11 days of production
+data, names replaced: desktop 1440 px and iPhone 13; no console error; no sideways scroll on the phone; a
+module and a capability (two clicks) open a conversation; the selection survives a reload. Not opened on the
+live control panel.
