@@ -139,6 +139,9 @@ own pickers carry it too (they are three copies of one list: worth merging into 
 | 12 | Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 5 |
 | 13 | Settings | Settings, Company, WhatsApp, Bring your data, Activity log | 5 |
 
+SS-51 (15 Nov) added the open record's buttons to the Procurement tours (order, quotes, send, Material came, chase,
+cheaper elsewhere, compare, debit note); they show where the record opens beside the list, and are skipped on a phone.
+
 **How to write one page tour** (the recipe, so any session can continue):
 
 1. Read the page component (`apps/dashboard/src/pages/...`) and its `module-map.ts` entry (`about`, `example`,
