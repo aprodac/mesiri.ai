@@ -23,6 +23,7 @@ import Database from './Database';
 import Overview from './Overview';
 import People from './People';
 import Announcements from './Announcements';
+import WhatWorks from './WhatWorks';
 
 function AppLayout() {
   return (
@@ -36,6 +37,7 @@ function AppLayout() {
             <Route path="/organizations/:id" element={<OrganizationDetail />} />
             <Route path="/people" element={<People />} />
             <Route path="/branding-requests" element={<BrandingRequests />} />
+            <Route path="/what-works" element={<WhatWorks />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/costs" element={<Costs />} />
             <Route path="/trials" element={<Trials />} />

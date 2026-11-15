@@ -54,7 +54,7 @@ function when(iso: string): string {
 }
 
 /** WhatsApp's own formatting, as the person will see it: *bold*, _italic_, line breaks. */
-function WhatsAppText({ text }: { text: string }) {
+export function WhatsAppText({ text }: { text: string }) {
   return (
     <>
       {text.split('\n').map((line, i) => (

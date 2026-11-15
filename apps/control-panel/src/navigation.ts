@@ -12,6 +12,7 @@ import {
   Inbox,
   IndianRupee,
   LayoutGrid,
+  ListTree,
   Megaphone,
   ListChecks,
   ListOrdered,
@@ -48,6 +49,7 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     label: 'WhatsApp',
     items: [
       { to: '/logs', label: 'Assistant logs', icon: ScrollText, hint: 'Every message and what it did' },
+      { to: '/what-works', label: 'What works', icon: ListTree, hint: 'Every kind of message, what Mesiri replied, what fails' },
       { to: '/replies', label: 'Reply insights', icon: MessageSquareReply, hint: 'Reply time and AI tokens per message' },
       { to: '/requests', label: 'Requests', icon: Inbox, hint: 'What people asked for: building, live, verified, who asked' },
       { to: '/test-message', label: 'Test message', icon: FlaskConical, hint: 'Send a message through the pipeline' },
