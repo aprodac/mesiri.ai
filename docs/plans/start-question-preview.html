@@ -1,0 +1,251 @@
+<title>Mesiri Start Question</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a phone on the left replays the real messages; the live-test checklist sits beside it, stacking on a phone. */
+:root {
+  --bg: #f6f6f3;
+  --panel: #ffffff;
+  --ink: #1a1d21;
+  --muted: #5d6168;
+  --line: #e2e1db;
+  --brand: #facc15;
+  --brand-ink: #7a5d00;
+  --chat: #ece9e1;
+  --mine: #fff3b8;
+  --theirs: #ffffff;
+  --ok: #1f7a4d;
+  --ok-soft: #e3f3ea;
+  --warn: #9a5b00;
+  --warn-soft: #fbefd9;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171a; --panel: #1d2024; --ink: #ecebe6; --muted: #a3a6ad; --line: #2e3238;
+    --brand: #facc15; --brand-ink: #f5d65a; --chat: #101214; --mine: #3a3313; --theirs: #23262b;
+    --ok: #6fd3a0; --ok-soft: #173327; --warn: #f0b860; --warn-soft: #3a2c14; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171a; --panel: #1d2024; --ink: #ecebe6; --muted: #a3a6ad; --line: #2e3238;
+  --brand: #facc15; --brand-ink: #f5d65a; --chat: #101214; --mine: #3a3313; --theirs: #23262b;
+  --ok: #6fd3a0; --ok-soft: #173327; --warn: #f0b860; --warn-soft: #3a2c14; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); }
+.stripe { height: 4px; background: repeating-linear-gradient(135deg, #1a1d21 0 8px, #facc15 8px 16px); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header h1 { font: 800 clamp(28px, 4vw, 40px)/1.05 var(--display); letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+header p { color: var(--muted); max-width: 64ch; margin: 10px 0 0; }
+.grid { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 32px; margin-top: 28px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* the phone */
+.phone { background: var(--panel); border: 1px solid var(--line); border-radius: 28px; padding: 10px; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); }
+@media (max-width: 860px) { .phone { position: static; } }
+.top { display: flex; align-items: center; gap: 10px; padding: 10px 12px 12px; border-bottom: 1px solid var(--line); }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: var(--brand); display: grid; place-items: center; font: 800 15px var(--display); }
+.top b { display: block; font: 700 15px var(--display); }
+.top span { color: var(--muted); font-size: 12px; }
+.chat { background: var(--chat); border-radius: 0 0 20px 20px; padding: 14px 10px; display: flex; flex-direction: column; gap: 8px; min-height: 520px; }
+.msg { max-width: 86%; padding: 8px 10px 6px; border-radius: 10px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 0 rgba(0,0,0,.06); }
+.msg.in { background: var(--theirs); align-self: flex-start; border-top-left-radius: 2px; }
+.msg.out { background: var(--mine); align-self: flex-end; border-top-right-radius: 2px; }
+.msg time { display: block; text-align: right; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.msg .btn { display: block; margin: 8px -10px -6px; padding: 9px; border-top: 1px solid var(--line); text-align: center; color: var(--ok); font-weight: 600; }
+.sheet { align-self: stretch; background: var(--theirs); border-radius: 14px; padding: 6px 0; border: 1px solid var(--line); }
+.sheet h4 { margin: 4px 14px 6px; font: 600 13px var(--body); color: var(--muted); }
+.row { display: flex; gap: 10px; align-items: center; width: 100%; padding: 9px 14px; background: none; border: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; border-top: 1px solid var(--line); }
+.row:first-of-type { border-top: 0; }
+.row:hover, .row:focus-visible { background: var(--bg); outline: none; }
+.row:focus-visible { box-shadow: inset 0 0 0 2px var(--brand); }
+.row .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--muted); flex: none; }
+.row[aria-pressed="true"] .dot { border-color: var(--ok); background: radial-gradient(var(--ok) 0 4px, transparent 5px); }
+.row b { display: block; font-weight: 600; font-size: 14px; }
+.row small { color: var(--muted); font-size: 12px; }
+.note { align-self: center; font-size: 11px; color: var(--muted); background: var(--panel); padding: 3px 10px; border-radius: 99px; }
+.scenes { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 4px 4px; }
+.scenes button { font: 500 12px var(--body); padding: 6px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.scenes button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.scenes button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* the checklist */
+section h2 { font: 700 20px var(--display); margin: 0 0 4px; }
+section > p { color: var(--muted); margin: 0 0 14px; max-width: 70ch; }
+.tests { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: t; }
+.tests li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 14px 52px; position: relative; counter-increment: t; }
+.tests li::before { content: counter(t); position: absolute; left: 16px; top: 14px; width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: #1a1d21; font: 700 12px/24px var(--display); text-align: center; }
+.tests h3 { margin: 0; font: 600 15px var(--body); }
+.tests .do, .tests .see { margin: 6px 0 0; font-size: 14px; }
+.tests .do span, .tests .see span { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-right: 6px; }
+.tests code, .say { font: 13px var(--mono); background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.tag { display: inline-block; font: 500 11px var(--mono); padding: 2px 7px; border-radius: 99px; margin-left: 6px; vertical-align: 2px; }
+.tag.gap { background: var(--warn-soft); color: var(--warn); }
+.tag.guard { background: var(--ok-soft); color: var(--ok); }
+.gaps { margin-top: 28px; background: var(--warn-soft); border-radius: 12px; padding: 14px 16px; }
+.gaps h2 { font-size: 16px; color: var(--warn); }
+.gaps ul { margin: 6px 0 0; padding-left: 18px; }
+@media (prefers-reduced-motion: no-preference) { .msg.fresh { animation: pop .25s ease-out; } }
+@keyframes pop { from { transform: translateY(6px); opacity: .4; } to { transform: none; opacity: 1; } }
+</style>
+
+<div class="stripe" aria-hidden="true"></div>
+<div class="wrap">
+  <header>
+    <h1>“How would you like to start?” on WhatsApp</h1>
+    <p>What a new owner sees on WhatsApp after signing up, with the exact words the code sends (SS-34). Tap an answer in the phone to see its reply. Beside it: what to check by hand on the live number after the deploy.</p>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="phone" aria-label="Preview of the WhatsApp conversation">
+        <div class="top">
+          <div class="avatar" aria-hidden="true">M</div>
+          <div><b>Mesiri</b><span>Example owner: Suresh Builders, Green Villa</span></div>
+        </div>
+        <div class="chat" id="chat">
+          <div class="note">Day 1, after signing up</div>
+          <div class="msg out">Today 6 masons, 4 helpers. First-floor slab shuttering done. Cement ran out.<time>6:12 pm</time></div>
+          <div class="msg in">(Mesiri's usual reply to the update)<time>6:12 pm</time></div>
+          <div class="note">Then, as the day's setup question</div>
+          <div class="msg in" id="ask">How would you like to start? It only changes how much Mesiri explains, here and on the dashboard. You can change it any time.<time>6:12 pm</time><span class="btn">☰ Choose</span></div>
+          <div class="sheet" role="group" aria-label="The four answers">
+            <h4>Choose</h4>
+            <button class="row" data-mode="guided" aria-pressed="false"><span class="dot"></span><span><b>Step by step</b><small>I'm new to tools like this</small></span></button>
+            <button class="row" data-mode="bring_data" aria-pressed="false"><span class="dot"></span><span><b>Bring my Excel or paper</b><small>Help me bring my data in</small></span></button>
+            <button class="row" data-mode="switching" aria-pressed="false"><span class="dot"></span><span><b>Used other software</b><small>Show me where things are</small></span></button>
+            <button class="row" data-mode="free" aria-pressed="false"><span class="dot"></span><span><b>I'll find my way</b><small>No tips</small></span></button>
+          </div>
+          <div id="answer" hidden></div>
+        </div>
+        <div class="scenes" role="group" aria-label="Other moments">
+          <button type="button" data-scene="ask" aria-pressed="true">The question</button>
+          <button type="button" data-scene="notips" aria-pressed="false">“no more tips” later</button>
+          <button type="button" data-scene="mixed" aria-pressed="false">Tip change + a record</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <section>
+        <h2>Test these on the live number</h2>
+        <p>The automated tests cover each of these with stand-ins. They have not been seen on real WhatsApp. Use a test phone number that has never signed up, and a second number for a team member.</p>
+        <ol class="tests">
+          <li>
+            <h3>A new owner is asked, once</h3>
+            <p class="do"><span>Do</span>Sign up a new number on WhatsApp (Set up my company), then send a site update.</p>
+            <p class="see"><span>See</span>After Mesiri's reply, the question above with a <b>Choose</b> list of four rows. Titles fit without “…”.</p>
+          </li>
+          <li>
+            <h3>Each answer saves and gives its tip</h3>
+            <p class="do"><span>Do</span>Tap an answer. On the dashboard, open the <b>?</b> at the top.</p>
+            <p class="see"><span>See</span>The reply shown in the phone here; the dashboard's “How Mesiri guides you” shows the same answer and asks nothing.</p>
+          </li>
+          <li>
+            <h3>Answered on the dashboard first <span class="tag guard">guard</span></h3>
+            <p class="do"><span>Do</span>New web signup, answer on the welcome screen, then message Mesiri.</p>
+            <p class="see"><span>See</span>No start question on WhatsApp; the next setup question (letterhead) as before.</p>
+          </li>
+          <li>
+            <h3>Not in the middle of something <span class="tag guard">guard</span></h3>
+            <p class="do"><span>Do</span>As a new owner, send <span class="say">20 bags cement came</span> and do not tap Save.</p>
+            <p class="see"><span>See</span>No question while the card waits; it comes after a later reply.</p>
+          </li>
+          <li>
+            <h3>An existing owner is never asked <span class="tag guard">guard</span></h3>
+            <p class="do"><span>Do</span>Message from an owner account older than two weeks.</p>
+            <p class="see"><span>See</span>Nothing new on WhatsApp; no dialog on the dashboard.</p>
+          </li>
+          <li>
+            <h3>A team member is not asked on WhatsApp</h3>
+            <p class="do"><span>Do</span>From a site engineer's number, send an update.</p>
+            <p class="see"><span>See</span>No question on WhatsApp (setup questions are for the owner). The dialog appears on their first dashboard visit.</p>
+          </li>
+          <li>
+            <h3>Changing it in chat</h3>
+            <p class="do"><span>Do</span>Send <span class="say">no more tips</span>, then <span class="say">tips venda</span>, then <span class="say">explain step by step</span>.</p>
+            <p class="see"><span>See</span>Set at once, no Save card, a short confirmation; the dashboard's ? panel follows.</p>
+          </li>
+          <li>
+            <h3>A record in the same message still waits <span class="tag guard">guard</span></h3>
+            <p class="do"><span>Do</span>Send <span class="say">no more tips, and 10 bags cement came</span>.</p>
+            <p class="see"><span>See</span>The tip setting changes now; the cement waits on the card for Save.</p>
+          </li>
+          <li>
+            <h3>The day after</h3>
+            <p class="do"><span>Do</span>Next day, message again as the same owner.</p>
+            <p class="see"><span>See</span>The letterhead question, then report time, then more sites, one a day, as before.</p>
+          </li>
+          <li>
+            <h3>Control panel</h3>
+            <p class="do"><span>Do</span>Open Control panel → Trials.</p>
+            <p class="see"><span>See</span>The test trials show their answer under the company name, and the “By how the owner chose to start” table counts them.</p>
+          </li>
+        </ol>
+        <div class="gaps">
+          <h2>Known gaps to watch for</h2>
+          <ul>
+            <li>The question and the four tips are in English, like the other setup questions today. A Manglish or Malayalam owner gets them in English.</li>
+            <li>Only the first tip is sent. The week of daily tips is not built yet (SS-38).</li>
+            <li>The confirmation after <span class="say">no more tips</span> is written by the model, so its words vary.</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const REPLY = {
+  guided: "👍 Step by step it is. Every day, just tell me what happened at site, the way you'd tell a colleague: *6 masons, 4 helpers, slab shuttering done, cement over*. Text, voice note or photo. Every evening I make the daily report from it. On the dashboard, each page explains itself the first time.",
+  bring_data: "👍 To bring your lists in, open *Bring your data* on the dashboard: your materials and vendors Excel, and your BOQ. Or send me the file here with a line saying what it is.",
+  switching: "👍 On the dashboard, the sidebar follows a project's life: Plan, Site, Buy, Money. Search (Ctrl K) finds any page, and the ? at the top says what each page is for. Your site team only needs WhatsApp.",
+  free: "👍 Got it, no tips. Message me any time."
+};
+const TITLE = { guided: "Step by step", bring_data: "Bring my Excel or paper", switching: "Used other software", free: "I'll find my way" };
+const chat = document.getElementById('chat');
+const answer = document.getElementById('answer');
+const original = chat.innerHTML;
+
+// WhatsApp's *bold*, drawn as bold.
+function bubble(cls, text, time, extra) {
+  const el = document.createElement('div');
+  el.className = 'msg fresh ' + cls;
+  const safe = text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  el.innerHTML = safe.replace(/\*([^*]+)\*/g, '<b>$1</b>') + '<time>' + time + '</time>' + (extra || '');
+  return el;
+}
+function note(text) { const n = document.createElement('div'); n.className = 'note'; n.textContent = text; return n; }
+
+function choose(mode) {
+  chat.querySelectorAll('.row').forEach((r) => r.setAttribute('aria-pressed', String(r.dataset.mode === mode)));
+  const box = chat.querySelector('#answer');
+  box.hidden = false;
+  box.style.display = 'contents';
+  box.replaceChildren(bubble('out', TITLE[mode], '6:13 pm'), bubble('in', REPLY[mode], '6:13 pm'));
+}
+function wire() { chat.querySelectorAll('.row').forEach((r) => r.addEventListener('click', () => choose(r.dataset.mode))); }
+
+function scene(name) {
+  document.querySelectorAll('[data-scene]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.scene === name)));
+  chat.innerHTML = original;
+  if (name === 'ask') { wire(); return; }
+  chat.replaceChildren(note('A few days later'));
+  if (name === 'notips') {
+    chat.append(bubble('out', 'no more tips please', '9:40 am'),
+                bubble('in', 'Done, no more tips. (Example: the model writes this line, so the words vary.)', '9:40 am'),
+                note('Saved at once: no Save card. The dashboard stops its tips too.'));
+  } else {
+    chat.append(bubble('out', 'no more tips, and 10 bags cement came', '9:42 am'),
+                bubble('in', '(the usual card: 10 bags cement, Green Villa)', '9:42 am', '<span class="btn">Save</span>'),
+                note('Tips: off now. The cement waits for Save, as any record does.'));
+  }
+}
+document.querySelectorAll('[data-scene]').forEach((b) => b.addEventListener('click', () => scene(b.dataset.scene)));
+wire();
+choose('guided');
+</script>
