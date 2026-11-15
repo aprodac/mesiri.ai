@@ -1,6 +1,7 @@
 # What works, version 2: plan (SA-39)
 
-> Written 15 Nov 2026 for the session that will build it. Nothing here is built yet.
+> Written 15 Nov 2026 for the session that will build it. **Phase 1 is built (15 Nov)**: see section 12
+> and [what-works.md](../backend/what-works.md). Phases 2-5 are not.
 > Version 1 (SA-38) is live: [what-works.md](../backend/what-works.md). Read that first, it is short.
 > Process: root `CLAUDE.md` governs (five phases, work on `main`, verify before every push, phase report).
 
@@ -220,3 +221,23 @@ phase 5; that table is additive and can stay unused.
 | D2 | Best case = the best real conversation, or one written by hand per module? | Real, picked by score: always current, shows the true replies. |
 | D3 | Should an admin be able to pin the model example? | Later, after the scored pick has been seen in use. |
 | D4 | One page with three views, or three pages in the menu? | One page: the three views share the filters and the chat panel. |
+
+## 12. Phase 1 findings (15 Nov 2026)
+
+Built: `admin/intents.py`, `GET /admin/message-map/intents`, `agent_api/tools.py` `plain_line` (taken out of
+`what_mesiri_does`, same output). Answers to section 5's "not yet known":
+
+- **A tap tied to one intent:** always possible on 11 days of data (0 unlinked). What *is* shared is the card:
+  14 of 122 Saves/Cancels closed lines from more than one intent, so a Save ends every intent waiting on it,
+  and a save line is matched to its intent by tool.
+- **Memory follow-ups:** told apart well enough to count when defined as typed words that change the card or
+  answer the question (20 intents in 11 days). A message that only leans on context without touching the
+  card (e.g. "what did I just correct?") cannot be told apart and is not counted.
+- **Requests log / nightly findings matched to a message:** not checked yet; it belongs with the Patterns
+  view (phase 4). Nothing is shown until an id links them.
+- **Scripted tests as "as designed" previews:** not looked at; waits on D2.
+- **"Not sure":** 26% of intents, every one carries its reason from the record. The biggest piece is
+  "replied with a question of its own, no tool" (a test script's typed "cancel" asked back again and again):
+  it is a finding for phase 4, not noise.
+- **Built differently from the plan:** none of the rules needed more than the plan's "nearest earlier intent
+  with something waiting", except that one Save ends all of them (shared card).

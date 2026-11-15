@@ -56,3 +56,50 @@ First rule that fits:
   at most 25 different messages.
 - A new first path part in `ALLOWED` needs a name in `SECTIONS` (a test fails until it has one). A new
   tool handled by the code (no route) goes in `CODE_TOOLS`, else it shows under *Talk and everything else*.
+
+## Version 2, phase 1: intents (SA-39)
+
+The page itself is still version 1; phase 2 builds the new one on this. Plan: [WHAT_WORKS_V2_PLAN.md](../plans/WHAT_WORKS_V2_PLAN.md).
+
+`GET /admin/message-map/intents?days=&organization_id=` (platform admins only, read-only) judges
+**conversations** (one person, no silence over 30 minutes) split into **intents**: a message that starts
+something plus the taps, answers and changes that continue it. Rules: `apps/whatsapp-assistant/src/admin/intents.py`
+(pure; tests in `tests/unit/test_message_intents.py`). Each message is still filed by version 1's `classify`
+first; intents only link them.
+
+How a message is linked (first rule that fits):
+
+1. A Save or Cancel, or a turn that only changes the card, continues the intents whose lines are on the card.
+   **The card is shared**: one Save ends every intent waiting on it (a refused save line fails only the intent
+   that prepared that tool).
+2. A tap continues the latest intent with a card or a question waiting, else the latest intent.
+3. Right after Mesiri asked a question, a message that calls no tool, or a tool the intent already called,
+   is the answer.
+4. Messages with no trace in a row (sign-up, classic, taps the code answers) are one intent.
+5. Anything else starts an intent.
+
+An intent ends as: **finished**, **finished after a question**, **left without Save** (a card or a question
+waiting when the conversation ended), **cancelled**, **failed** (no reply, outage, refusal, a refused save),
+**complained** (`tell_the_team` wrong_reply / bad_ux / missing_feature), **not sure** (with the reason from
+the record: replied with a question of its own, replied with no tool, the code took a question out, a card
+was waiting and nothing changed, a voice note with no words, no trace), or **still going** (the
+conversation's last message is under 30 minutes old: left out of every count). Something put on the card
+finishes only by a Save; a read in the same message does not finish it.
+
+Journeys (an intent can have several): one thing then Save, several things in one message, Mesiri asks and
+the person answers, changed before saving, corrected after saving (`correct_saved_entry`, `correct_work`,
+`undo_*`; the intent it corrected is marked `corrected_later`), a follow-up that leans on memory (typed words
+that change the card or answer the question; a typed Save or Cancel does not count), a question answered from
+the records, voice note, photo, cancelled.
+
+A capability is named from the tool's description (`agent_api.tools.plain_line`, the line `what_mesiri_does`
+shows the model, without "Prepare"). The answer also carries the funnel (asked -> a tool was called -> ready
+on the card or answered -> finished, with the widest drop), per module the previous window of the same
+length, and `links` (`continued`, `shared_card`, `unlinked`).
+
+**Checked on production (15 Nov, 11 days, 620 messages):** 395 intents; 225 messages continued an intent;
+no tap was left without an intent to continue; 14 of 122 Saves/Cancels closed a card shared by more than one
+intent. Version 1 called 370 of those messages "works"; as intents, 159 finished, 31 were cancelled and 9
+were left without Save. "Not sure" is 104 of 395 (26%), every one with its reason: mostly a reply with a
+question of its own or a reply with no tool. A hand count of one day (13 Nov, 70 messages, 41 intents)
+matched the code on every intent and every ending. 5,000 messages take about 0.2 s.

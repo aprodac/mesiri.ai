@@ -681,17 +681,23 @@ def _clean(schema: dict[str, Any], components: dict[str, Any], depth: int = 0) -
     return out
 
 
+def plain_line(description: str, tool_names: set[str] | frozenset[str]) -> str:
+    """A tool's description as one plain line: its first sentence, with no tool name in it (at most 80 characters).
+    Used by ``what_mesiri_does`` and by the control panel's What works page (SA-39) to name what a person can ask."""
+    first = description.replace(_WRITE, "").split(". ")[0].strip().rstrip(".")
+    # [249]: plain words only: the model copied tool names into the answer (a description can name another tool).
+    from agent_api.reply_guard import without_tool_names
+
+    return without_tool_names(first, tool_names)[:80].strip()
+
+
 def what_mesiri_does(tools: dict[str, ApiTool]) -> str:
     """[247] A short "What Mesiri does" block drawn from the tool list itself, so a new route is in it with no edit
     here. Three groups by what the route is: record (a write, saved on one Save tap), reports (the day, the DPR, the
     timeline) and ask (every other read). The model answers "what can Mesiri do" from it (SOP rule 11)."""
     groups: dict[str, list[str]] = {"record": [], "ask": [], "reports": []}
     for tool in tools.values():
-        first = tool.spec.description.replace(_WRITE, "").split(". ")[0].strip().rstrip(".")
-        # [249]: plain words only: the model copied tool names into the answer (a description can name another tool).
-        from agent_api.reply_guard import without_tool_names
-
-        line = without_tool_names(first, set(tools))[:80].strip()
+        line = plain_line(tool.spec.description, set(tools))
         if tool.is_write:
             groups["record"].append(line)
         elif tool.path.startswith(("/dpr", "/timeline")):

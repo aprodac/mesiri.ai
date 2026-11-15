@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from admin.intents import build_intents, previous_window, summarise
 from admin.message_map import build_map, build_thread
 from mesiri.domains.shared.auth import require_platform_admin
 
@@ -44,6 +45,49 @@ async def get_message_map(
         "window": {"since": since.isoformat(), "until": now.isoformat(), "days": days},
         "truncated": truncated,
         **build_map(messages, turns, now=now),
+    }
+
+
+#: The fields of an intent the panel needs; the rest is internal.
+_INTENT_FIELDS = ("id", "started_at", "how", "company", "messages", "capability", "section", "tools", "ending",
+                  "reason", "journeys", "corrected_later")
+
+
+@router.get("/intents")
+async def get_message_intents(
+    request: Request,
+    days: int = Query(default=14, ge=1, le=30),
+    organization_id: uuid.UUID | None = None,
+    _admin: dict = Depends(require_platform_admin),
+) -> dict[str, Any]:
+    """What works, version 2 (SA-39): the window's conversations as intents, by module and capability, with
+    how each ended, the journeys, the funnel, and the totals of the window of the same length before it."""
+    container = request.app.state.container
+    now = datetime.now(UTC)
+    since = now - timedelta(days=days)
+    before, _ = previous_window(since, now)
+    # One read for both windows; one row over the limit tells us it was cut.
+    rows = await container.message_logger.list_for_map(
+        since=before, organization_id=organization_id, limit=2 * MESSAGE_LIMIT + 1
+    )
+    truncated = len(rows) > 2 * MESSAGE_LIMIT
+    rows = rows[: 2 * MESSAGE_LIMIT]
+    turns = await container.trace_logger.get_turns([m["correlation_id"] for m in rows])
+    current = [m for m in rows if m["received_at"] > since]
+    previous = [m for m in rows if m["received_at"] <= since]
+    built = build_intents(current, turns, now=now)
+    summary = summarise(built["intents"], {str(m["id"]): m for m in current})
+    earlier = summarise(build_intents(previous, turns, now=now)["intents"])
+    return {
+        "window": {"since": since.isoformat(), "until": now.isoformat(), "days": days},
+        "truncated": truncated,
+        "links": built["links"],
+        **summary,
+        "previous": {
+            "totals": earlier["totals"],
+            "sections": {s["key"]: {"count": s["count"], "finished": s["finished"]} for s in earlier["sections"]},
+        },
+        "intents": [{k: intent[k] for k in _INTENT_FIELDS} for intent in built["intents"]],
     }
 
 
