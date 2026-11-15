@@ -13,6 +13,12 @@ question a day:
     report_time  [7 pm] [8 pm] [Keep 9 pm] -> every project's send deadline
     more_sites   [Add a site] [No] -> the existing "add a site" workflow
 
+Before them, for a new owner who has not answered it on the dashboard (SS-34, guided onboarding):
+
+    start_mode   "How would you like to start?" [Step by step] [Bring my Excel/paper]
+                 [Used other software] [I'll find my way] -> users.start_mode, the same answer
+                 as the dashboard's question; the reply is the first tip for that answer
+
 Never asked while the owner has a confirmation or question open, or entries
 waiting for Save (v3's ready list, classic's card or draft, WA-176), so a
 setup question can't land in the middle of something else.
@@ -31,6 +37,7 @@ from zoneinfo import ZoneInfo
 import sqlalchemy as sa
 
 from channel.replies import ListRow, ReplySpec
+from mesiri.domains.identity.preferences_router import START_MODES, start_mode_for
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.organizations import setup_questions as rules
 from mesiri.infrastructure.postgres.repositories.organization_settings import (
@@ -56,6 +63,8 @@ NO_SITE = "setup_q:site_no"
 SITE_IN_PREFIX = "setup_q:site_in:"
 TIME_FOR_PREFIX = "setup_q:time_for:"
 ALL_PROJECTS = "all"
+#: SS-34: "How would you like to start?" answers, ``setup_q:mode:<start mode>``.
+MODE_PREFIX = "setup_q:mode:"
 
 #: onboarding_progress writes today's date here when it sends the progress card.
 CARD_SENT_KEY = "user:{user_id}:onboarding_card_sent"
@@ -99,6 +108,35 @@ REPORT_TIME_CHOICES = "The report can go out at 7 pm, 8 pm or 9 pm."
 
 _TIME_LABEL = {"19:00": "7 pm", "20:00": "8 pm", "21:00": "9 pm"}
 
+#: SS-34 (guided-onboarding-plan.md 6.1): the dashboard's four answers, in WhatsApp's 24-character titles.
+ASK_START_MODE = (
+    "How would you like to start? It only changes how much Mesiri explains, here and on the dashboard. "
+    "You can change it any time."
+)
+START_MODE_ROWS: tuple[ListRow, ...] = (
+    ListRow(id=f"{MODE_PREFIX}guided", title="Step by step", description="I'm new to tools like this"),
+    ListRow(id=f"{MODE_PREFIX}bring_data", title="Bring my Excel or paper", description="Help me bring my data in"),
+    ListRow(id=f"{MODE_PREFIX}switching", title="Used other software", description="Show me where things are"),
+    ListRow(id=f"{MODE_PREFIX}free", title="I'll find my way", description="No tips"),
+)
+#: The reply to each answer: its first tip (nothing for "I'll find my way" beyond the thanks).
+START_MODE_REPLY: dict[str, str] = {
+    "guided": (
+        "👍 Step by step it is. Every day, just tell me what happened at site, the way you'd tell a colleague: "
+        "*6 masons, 4 helpers, slab shuttering done, cement over*. Text, voice note or photo. "
+        "Every evening I make the daily report from it. On the dashboard, each page explains itself the first time."
+    ),
+    "bring_data": (
+        "👍 To bring your lists in, open *Bring your data* on the dashboard: your materials and vendors Excel, "
+        "and your BOQ. Or send me the file here with a line saying what it is."
+    ),
+    "switching": (
+        "👍 On the dashboard, the sidebar follows a project's life: Plan, Site, Buy, Money. Search (Ctrl K) finds "
+        "any page, and the ? at the top says what each page is for. Your site team only needs WhatsApp."
+    ),
+    "free": "👍 Got it, no tips. Message me any time.",
+}
+
 
 class _RedisLike(Protocol):
     async def set_json(self, key: str, value: Any, *, ttl_seconds: int | None = None) -> None: ...
@@ -111,6 +149,15 @@ _organizations = sa.Table(
     sa.Column("id", sa.UUID(as_uuid=True)),
     sa.Column("name", sa.String),
     sa.Column("timezone", sa.String),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
+)
+#: SS-34: the owner's own start mode (migration 0553), read to know whether to ask and written by the answer.
+_users = sa.Table(
+    "users",
+    sa.MetaData(),
+    sa.Column("id", sa.UUID(as_uuid=True)),
+    sa.Column("organization_id", sa.UUID(as_uuid=True)),
+    sa.Column("start_mode", sa.String),
     sa.Column("created_at", sa.DateTime(timezone=True)),
 )
 _projects = sa.Table(
@@ -197,6 +244,7 @@ class SetupQuestions:
                     progress,
                     today=today,
                     company_created_on=org.created_at.astimezone(_zone(org.timezone)).date(),
+                    ask_start_mode=await self._should_ask_start_mode(conn, actor),
                 )
                 if question is None:
                     await self._redis.set_json(
@@ -280,6 +328,8 @@ class SetupQuestions:
             return None
         hint = await self._redis.get_json(self._hint_key(actor.user_id))
         question = hint.get("question") if isinstance(hint, dict) else None
+        if tap.startswith(MODE_PREFIX):
+            return await self._start_mode_tap(actor, question, tap[len(MODE_PREFIX) :])
         expected = {
             SKIP_BRANDING: rules.BRANDING,
             ADD_SITE: rules.MORE_SITES,
@@ -429,7 +479,43 @@ class SetupQuestions:
             return ReplySpec(text=REPORT_TIME_SET_FOR.format(project=project.name, time=_time_label(chosen)))
         return ReplySpec(text=REPORT_TIME_SET.format(time=_time_label(chosen)))
 
+    async def _should_ask_start_mode(self, conn: Any, actor: ActorIdentity) -> bool:
+        """SS-34: the dashboard's rule (``start_mode_for``): asked only of a new person who has not answered."""
+        row = (
+            await conn.execute(
+                sa.select(_users.c.start_mode, _users.c.created_at).where(
+                    _users.c.id == uuid.UUID(str(actor.user_id)),
+                    _users.c.organization_id == actor.organization_id,
+                )
+            )
+        ).first()
+        if row is None:
+            return False
+        return start_mode_for(row.start_mode, row.created_at, self._now())[1]
+
+    async def _start_mode_tap(self, actor: ActorIdentity, question: str | None, mode: str) -> ReplySpec:
+        """SS-34: the answer to "How would you like to start?", on the owner's own row, as the dashboard saves it.
+        A late tap after the question was answered elsewhere still just records the newer answer."""
+        if mode not in START_MODES:
+            return ReplySpec(text=EXPIRED)
+        if question == rules.START_MODE:
+            await self._clear_hint(actor.user_id)
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                _users.update()
+                .where(
+                    _users.c.id == uuid.UUID(str(actor.user_id)),
+                    _users.c.organization_id == actor.organization_id,
+                )
+                .values(start_mode=mode)
+            )
+        await self._record(actor, rules.START_MODE, rules.ANSWERED)
+        _log.info("setup_question.start_mode org=%s mode=%s", actor.organization_id, mode)
+        return ReplySpec(text=START_MODE_REPLY[mode])
+
     async def _question_spec(self, conn: Any, org_id: Any, question: str) -> ReplySpec:
+        if question == rules.START_MODE:
+            return ReplySpec(text=ASK_START_MODE, list_button_label="Choose", list_rows=START_MODE_ROWS)
         if question == rules.BRANDING:
             return ReplySpec(text=ASK_BRANDING, buttons=[ListRow(id=SKIP_BRANDING, title="Skip")])
         if question == rules.REPORT_TIME:
