@@ -339,12 +339,15 @@ def _issue_words(value: str | None) -> set[str]:
     return {w.removesuffix("s") for w in cleaned.split() if len(w) > 2} - _NOT_WORK
 
 
-def activity_for_issue(narrative: str | None, site_id: Any, activities: Iterable[Mapping[str, Any]]) -> Any | None:
+def activity_for_issue(narrative: str | None, site_id: Any, activities: Iterable[Mapping[str, Any]],
+                       today: datetime.date | None = None) -> Any | None:
     """The schedule activity an issue holds up, from its words: the one whose name or BOQ lines share the most words
     with the issue ("shuttering not ready, slab can't be cast" -> Slab). Only activities on the issue's site or on no
     site, not done ones; None when nothing shares a word or two tie (never a guess: it then counts on its site).
 
-    ``activities``: id, site_id, done, and ``words``: the activity's name and its lines' work, as one text.
+    ``activities``: id, site_id, done, and ``words``: the activity's name and its lines' work, as one text; with
+    ``start`` / ``end`` and ``today``, a tie is broken by the one running today (BOQ-03b: "slab delayed" with a
+    ground- and a first-floor slab goes on the slab being built now).
     """
     said = _issue_words(narrative)
     if not said:
@@ -355,8 +358,9 @@ def activity_for_issue(narrative: str | None, site_id: Any, activities: Iterable
             continue
         shared = len(said & _issue_words(a.get("words")))
         if shared:
-            scored.append((shared, a["id"]))
-    scored.sort(key=lambda s: s[0], reverse=True)
-    if not scored or (len(scored) > 1 and scored[0][0] == scored[1][0]):
+            running = bool(today and a.get("start") and a.get("end") and a["start"] <= today <= a["end"])
+            scored.append((shared, running, a["id"]))
+    scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
+    if not scored or (len(scored) > 1 and scored[0][:2] == scored[1][:2]):
         return None
-    return scored[0][1]
+    return scored[0][2]

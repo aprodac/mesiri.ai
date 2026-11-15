@@ -275,3 +275,26 @@ async def test_boq01c_a_retry_is_told_where_it_is_and_never_links_again(conn):
     await set_work_line_checked(PostgresBoqRepository(conn), org, project, quantity, None)  # a person took it off
     (retry,) = await place_new_work(conn, org, activity, link=False)
     assert retry["line"] is None and retry["choices"][0]["id"] == str(plaster) and await _on(conn, quantity) is None
+
+
+async def test_boq03b_an_issue_saved_with_no_activity_is_placed_when_the_schedule_is_read(conn):
+    from mesiri.domains.schedule import store
+    from mesiri.infrastructure.postgres.repositories.progress import PostgresProgressReadRepository
+
+    org, project, site, _finishes = await _project(conn)
+    slab = uuid.uuid4()
+    await conn.execute(text("INSERT INTO work_packages (id, organization_id, project_id, name) "
+                            "VALUES (:id, :o, :p, 'First floor slab')"), {"id": slab, "o": org, "p": project})
+    user = uuid.uuid4()
+    await conn.execute(text("INSERT INTO users (id, organization_id, full_name, role, status, hashed_password) "
+                            "VALUES (:id, :o, 'Ravi', 'SITE_SUPERVISOR', 'active', 'x')"), {"id": user, "o": org})
+    repo = PostgresProgressReadRepository(conn)
+    for words in ("Slab props short", "Gate lock broken"):  # as saved before BOQ-03: no activity
+        await repo.create_issue(org, user, {"project_id": project, "site_id": site, "issue_type": "OTHER",
+                                            "severity": "LOW", "narrative": words})
+
+    sched = await store.load(conn, org, project, dt.date(2026, 11, 15))
+
+    by_name = {a["name"]: a for a in sched["activities"]}
+    assert by_name["First floor slab"]["open_issues"] == 1
+    assert sched["summary"]["open_issues"] == 2 and sched["summary"]["issues_on_no_activity"] == 1  # the gate

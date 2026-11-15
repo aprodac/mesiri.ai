@@ -92,6 +92,16 @@ export function LabourGroupRow({
           ))}
         </ul>
       )}
+      {group.auto && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Put on these lines by Mesiri from the work measured that day.</span>
+          {!readOnly && (
+            <Button size="sm" variant="outline" className="h-7" disabled={saving} onClick={() => onSave(current)}>
+              Confirm
+            </Button>
+          )}
+        </div>
+      )}
       {group.over_allocated && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           Attendance for this day was sent again with fewer people. The lines share what it cost now; check the split.

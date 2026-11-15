@@ -79,7 +79,7 @@ async def test_a_failing_source_is_named_and_hides_nothing_else(monkeypatch):
 
     monkeypatch.setattr(inbox, "SOURCES", {
         "site_report": _source(_row("site_report", "2026-11-09", False)), "material_request": broken,
-        "subcontract_bill": refused, "ra_bill": odd, "wage_sheet": _source(), "task": _source(),
+        "subcontract_bill": refused, "ra_bill": odd, "wage_sheet": _source(), "labour_split": _source(), "task": _source(),
     })
     box = await inbox.waiting(_Conn(), _Auth(), lambda m: True)
     assert box["total"] == 1 and box["unavailable"] == ["material_request", "ra_bill"]  # a 403 is "not yours", quiet

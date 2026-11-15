@@ -77,6 +77,9 @@ export interface Schedule {
     progress: number | null
     first_start: string | null
     conflicts: number
+    /** BOQ-03: every open issue of the project, and those on no activity (their words name none of the work). */
+    open_issues?: number
+    issues_on_no_activity?: number
   }
   can_edit: boolean
 }

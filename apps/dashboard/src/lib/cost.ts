@@ -93,6 +93,8 @@ export interface LabourGroup {
   /** More man-days were put on lines than attendance now counts (the list was re-sent lower). */
   over_allocated: boolean
   suggested_line_id: string | null
+  /** BOQ-02: Mesiri put it on these lines from that day's work; nobody has confirmed it yet. */
+  auto?: boolean
 }
 
 export interface ProjectLabour {
@@ -129,7 +131,7 @@ export async function fetchProjectBudget(projectId: string): Promise<ProjectBudg
 
 export async function fetchProjectLabour(
   projectId: string,
-  params: { date_from?: string; date_to?: string; unallocated?: boolean } = {},
+  params: { date_from?: string; date_to?: string; unallocated?: boolean; to_confirm?: boolean } = {},
 ): Promise<ProjectLabour> {
   return (await api.get<ProjectLabour>(`/cost/projects/${projectId}/labour`, { params })).data
 }

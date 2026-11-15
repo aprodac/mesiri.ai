@@ -596,6 +596,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "✅ BOQ से हटा दिया: ऑफिस सही लाइन पर जोड़ेगा।",
         "hinglish": "✅ BOQ se hata diya: office sahi line par jodega.",
     },
+    "api.boq_more": {
+        "english": "{n} more after this",
+        "manglish": "ithu kazhinju {n} koodi",
+        "malayalam": "ഇത് കഴിഞ്ഞ് {n} കൂടി",
+        "hindi": "इसके बाद {n} और",
+        "hinglish": "iske baad {n} aur",
+    },
+    "api.boq_skipped": {
+        "english": "OK, the office puts that one on a line.",
+        "manglish": "Sheri, athu office line-il cherkkum.",
+        "malayalam": "ശരി, അത് ഓഫീസ് ലൈനിൽ ചേർക്കും.",
+        "hindi": "ठीक है, उसे ऑफिस लाइन पर जोड़ देगा।",
+        "hinglish": "Theek hai, use office line par jod dega.",
+    },
     "api.boq_put": {
         "english": "✅ Put on the BOQ line *{work}*.",
         "manglish": "✅ BOQ line *{work}*-il cherthu.",

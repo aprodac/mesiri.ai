@@ -383,12 +383,15 @@ async def project_labour(
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
     unallocated: bool = False,
+    to_confirm: bool = False,
     auth: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """A period's attendance per site, day and trade (newest first), the BOQ lines each was put on, and what is on
     none, with a suggested line (never saved by itself). A day nobody split is put on the lines its site's work
-    went to that day (BOQ-02, ``auto`` true). ``unallocated``: only groups with man-days on no line."""
+    went to that day (BOQ-02, ``auto`` true). ``unallocated``: only groups with man-days on no line.
+    ``to_confirm`` (BOQ-02c): those and the ones Mesiri split, for a person to confirm (a PUT with the same lines
+    confirms it: the split becomes theirs and stops being ``auto``)."""
     repo = await _project_repo(auth, conn, project_id)
     date_to = date_to or await _today(conn, auth.organization_id)
     date_from = date_from or date_to - datetime.timedelta(days=29)
@@ -403,6 +406,8 @@ async def project_labour(
         summary["left_cost"] += Decimal(g["not_on_a_line"]["cost"] or 0)
     if unallocated:
         groups = [g for g in groups if Decimal(g["not_on_a_line"]["man_days"]) > 0]
+    if to_confirm:  # BOQ-02c: what a person should look at: on no line, or put on lines by Mesiri (auto)
+        groups = [g for g in groups if g["auto"] or Decimal(g["not_on_a_line"]["man_days"]) > 0]
     return {
         "project_id": str(project_id), "date_from": str(date_from), "date_to": str(date_to),
         "total": {"man_days": _q(summary["man_days"]), "cost": _m(summary["cost"])},
