@@ -196,11 +196,14 @@ async def record_activity(
         await _mark_finished(database, repo, auth_context, result.material_row_id, key, body)
     response = execution_response(result)
     boq: list[dict] = []
-    if result.status == ExecutionStatus.SUCCEEDED and result.material_row_id and body.quantities:
+    if result.status in (ExecutionStatus.SUCCEEDED, ExecutionStatus.ALREADY_EXECUTED) and result.material_row_id \
+            and body.quantities:
         # BOQ-01: the work goes on its BOQ line by itself when the line is clear; else the lines to tap from.
+        # BOQ-01c: the same key again (a retry after a dropped reply) is told the same, and links nothing.
         from mesiri.domains.progress.boq_router import place_new_work
 
-        placed = await place_new_work(conn, auth_context.organization_id, uuid.UUID(result.material_row_id))
+        placed = await place_new_work(conn, auth_context.organization_id, uuid.UUID(result.material_row_id),
+                                      link=result.status == ExecutionStatus.SUCCEEDED)
         # BOQ-01b (security): the BOQ's lines are seen only by the roles that see the BOQ page (CC-11 boundary).
         # Anyone's clear work is still put on its line; only what it says back, and the question, are for them.
         boq = boq_seen_by(auth_context.role, placed)

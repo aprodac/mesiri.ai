@@ -141,46 +141,88 @@ def _trade_words(trade_key: str | None) -> set[str]:
     return out
 
 
+#: BOQ-02b: a line never takes more of a day's labour by itself than this many times the labour budget its work that
+#: day earned (done x labour rate). What is left stays "not on a BOQ line": shown, for a person to put.
+EARNED_CAP = Decimal(2)
+
+
 def auto_split(
     groups: Iterable[Mapping[str, Any]],
     allocations: Iterable[Mapping[str, Any]],
-    worked: Mapping[tuple, Mapping[Any, str]],
+    worked: Mapping[tuple, Mapping[Any, Any]],
+    skip: Iterable[tuple] = (),
 ) -> list[dict[str, Any]]:
-    """BOQ-02: the man-days of each site-day-trade nobody put on a line, put on the lines that site's work went to
-    that day (approved 15 Nov 2026: "split by work done"; D-CC2 had left them on no line).
+    """BOQ-02: the man-days of each site-day-trade nobody split, put on the lines that site's work went to that day
+    (approved 15 Nov 2026: "split by work done"; D-CC2 had left them on no line).
 
-    ``worked``: per (site_id, work_date) as ``group_key`` writes them, the BOQ lines work was counted on that day
-    -> each line's name. One line: all of the day on it. Several: the lines the trade does (``TRADE_WORK``, and
-    the words attendance gave for the day), else every line, the man-days shared evenly. No work on a line that
-    day: nothing (the day stays "not on a BOQ line", never guessed). A group a person split is never touched.
-    Returns allocation rows like the stored ones (site_id, work_date, trade_key, planned_item_id, man_days) with
-    ``auto`` True; they are worked out each time, so a corrected attendance or work update moves them too.
+    ``worked``: per (site_id, work_date) as ``group_key`` writes them, the BOQ lines work was counted on that day ->
+    {"name", "earned"} (``earned``: the labour budget that day's work there earned; None when it can't be told).
+    ``skip``: group keys a person took off every line (never put back).
+
+    Which lines (BOQ-02b, only where the reported work plausibly covers it):
+    - a trade Mesiri knows (``TRADE_WORK``: masons, bar benders, carpenters ...) goes only to the lines it does, or
+      that attendance's own words name; none of them worked that day: it stays off every line (masons never land
+      on the steel just because steel was the only work reported);
+    - any other trade (helpers) is shared over every line worked that day;
+    - the man-days are shared evenly, but no line takes more than ``EARNED_CAP`` x what its work earned that day,
+      skilled trades first; the rest stays "not on a BOQ line". A line with no labour rate has no cap.
+    A group a person split, or a day whose split was kept (rows exist), is never touched.
+    Returns allocation rows like the stored ones (site_id, work_date, trade_key, planned_item_id, man_days), ``auto``.
     """
-    split_by_hand = {group_key(a["site_id"], a["work_date"], a["trade_key"]) for a in allocations}
+    split = {group_key(a["site_id"], a["work_date"], a["trade_key"]) for a in allocations} | set(skip)
+    room: dict[tuple, Decimal | None] = {}
     out: list[dict[str, Any]] = []
-    for g in groups:
+
+    def known(g: Mapping[str, Any]) -> bool:
+        return bool(_trade_words(g.get("trade_key")))
+
+    for g in sorted(groups, key=lambda g: not known(g)):  # skilled trades first: they take the room first
         key = group_key(g["site_id"], g["work_date"], g["trade_key"])
         man_days = Decimal(g["man_days"])
         lines = worked.get(key[:2]) or {}
-        if key in split_by_hand or man_days <= 0 or not lines:
+        if key in split or man_days <= 0 or not lines:
             continue
-        targets = list(lines)
-        if len(targets) > 1:
-            said = _trade_words(g.get("trade_key")) | _words(" ".join(g.get("activities") or []))
-            fits = [ln for ln, name in lines.items() if said & _words(name)]
-            targets = fits or targets
+        said = _trade_words(g.get("trade_key")) | _words(" ".join(g.get("activities") or []))
+        fits = [ln for ln, info in lines.items() if said & _words(info["name"])]
+        if known(g):
+            targets = fits
+        else:
+            targets = fits or list(lines)
+        if not targets:
+            continue
+        per_day = Decimal(g["cost"]) / man_days if Decimal(g.get("cost") or 0) > 0 else Decimal(0)
         each = (man_days / len(targets)).quantize(_CENT, rounding=ROUND_HALF_UP)
+        given = _ZERO
         for i, line_id in enumerate(targets):
-            md = man_days - each * (len(targets) - 1) if i == len(targets) - 1 else each
-            out.append({"site_id": g["site_id"], "work_date": g["work_date"], "trade_key": g["trade_key"],
-                        "planned_item_id": line_id, "man_days": md, "auto": True})
+            r = (key[0], key[1], line_id)
+            if r not in room:
+                earned = lines[line_id].get("earned")
+                room[r] = None if earned is None else Decimal(earned) * EARNED_CAP
+            md = man_days - given if i == len(targets) - 1 else each  # the last line takes the rounding
+            if room[r] is not None and per_day > 0:
+                md = min(md, (room[r] / per_day).quantize(_CENT, rounding=ROUND_HALF_UP))
+                room[r] -= md * per_day
+            given += md
+            if md > 0:
+                out.append({"site_id": g["site_id"], "work_date": g["work_date"], "trade_key": g["trade_key"],
+                            "planned_item_id": line_id, "man_days": md, "auto": True})
     return out
 
 
-def worked_lines(work: Iterable[Mapping[str, Any]], names: Mapping[Any, str]) -> dict[tuple, dict[Any, str]]:
-    """Per (site, day), the BOQ lines work was counted on (``boq_router.counted_work`` rows), for ``auto_split``."""
-    out: dict[tuple, dict[Any, str]] = {}
+def worked_lines(work: Iterable[Mapping[str, Any]], lines: Mapping[Any, Mapping[str, Any]]) -> dict[tuple, dict]:
+    """Per (site, day), the BOQ lines work was counted on (``boq_router.counted_work`` rows) -> {"name", "earned"}:
+    the labour budget that day's work earned there (quantity in the line's unit x its labour rate; None when the
+    line has no labour rate or the work was in another unit), for ``auto_split``."""
+    out: dict[tuple, dict] = {}
     for w in work:
-        if w["line_id"] in names:
-            out.setdefault(group_key(w["site_id"], w["work_date"], None)[:2], {})[w["line_id"]] = names[w["line_id"]]
+        line = lines.get(w["line_id"])
+        if line is None:
+            continue
+        day = out.setdefault(group_key(w["site_id"], w["work_date"], None)[:2], {})
+        info = day.setdefault(w["line_id"], {"name": line["work_type"], "earned": Decimal(0)})
+        rate = line.get("labour_rate")
+        if info["earned"] is None or rate is None or w["quantity"] is None:
+            info["earned"] = None
+        else:
+            info["earned"] += Decimal(w["quantity"]) * Decimal(rate)
     return out
