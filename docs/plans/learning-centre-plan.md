@@ -1,6 +1,7 @@
 # Learn Mesiri: walkthroughs by role, workflow, module and page
 
-> **Status: approved 15 Nov 2026 in session, not built yet** (beyond the engine pieces listed in section 2).
+> **Status: approved 15 Nov 2026 in session. Phase 1 started: SS-41 (Learn page) and SS-42 (engine) built 15 Nov**
+> (section 9); SS-43 onwards still to build.
 > Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
 > [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
 >
@@ -174,3 +175,35 @@ Rough, from this session (guided onboarding + WhatsApp pop-ups + 8 tours ≈ 50�
 Per item: one page tour ~$1–2 (Accounts ~$2); one workflow ~$2–4. Fresh sessions per phase keep cost low (a long
 session re-reads more each step). On a Claude plan this is usage-limit time, not money: phase 2 alone is several
 5-hour windows.
+
+## 9. Built (SS-41, SS-42, 15 Nov 2026)
+
+- **Learn page** `/learn` (`pages/LearnPage.tsx`): For you / Workflows / Modules / Pages (`?view=`), a card per
+  walkthrough (kind, minutes, steps, "You try it", Done / Not started, Start / Play again). Pages tab: every built page
+  the person can open that has a tour or WhatsApp examples, by module, with **Tour**, **Try it** (the same
+  `WhatsAppPreview` as the "On WhatsApp" pop-up: Copy, Try it on WhatsApp) and **Open**. In the sidebar's everyday
+  pages for every start mode but "I'll find my way"; in Help for everyone ("Learn Mesiri: walkthroughs to try").
+- **Definitions** `lib/walkthroughs.ts`: page walkthroughs and module walkthroughs are **made from `PAGE_TOURS`**
+  (views of one page share its tour and start on the first view), so each new page tour (SS-44..47) appears on the
+  Learn page and in its module with no other change; a module card says "N of M pages so far" until all are written.
+  Workflows and role paths are written by hand.
+- **Engine** `components/walkthrough.tsx`, drawing with the page tours' overlay (`TourOverlay`, now exported from
+  `components/tour.tsx`, so both look and place the bubble the same way). Across pages (navigates once per step,
+  waits up to 4 s for the target, else skips the step in the direction of travel); a step on a page the role can't
+  open is skipped; leaving the walkthrough's page by hand ends it; page tours don't start by themselves while a
+  walkthrough runs. **Try on WhatsApp**: the message, Copy, Try it on WhatsApp, "I've sent it"; with a `check`, reads
+  the list route before and every 4 s, says "Got it. It's saved." and reloads the page's data so the next step shows
+  the record. **Try here**: clicks pass through to the lit button; while the page's dialog is open the tour is a
+  small Spark chip; when it closes, a new record moves on, none says "Nothing saved yet". **Take back** block: the
+  WhatsApp words (Copy, Try it) and/or the dashboard way. On a read-only account, practice and take-back steps are
+  skipped. Progress: `guide_seen` `/learn/<id>` on Done (not on Stop).
+- **Guards**: the build check (`vite.config.ts`) covers walkthrough markers too, and fails when a step's `page` is
+  not a built page in `module-map.ts`; `test_module_map_whatsapp.py` checks each walkthrough practice / take-back
+  names real WhatsApp-assistant tools that write.
+- **First workflow** (to prove the engine end to end): *A delivery, from site to stock*: WhatsApp delivery with
+  check → it in Movements → take back on WhatsApp (`undo_receipt`, the receipts card label "Take back delivery";
+  SOP.md has no fixed words, the model maps "take back") → Record delivery here → Correct to take it back → Record
+  use. It is W2's second half; SS-43 writes W1, W2 in full and W4 and the first role paths.
+- **Not done here**: lighting up the new record itself on the page ("Got it" reloads the list but does not point at
+  the row); W1's take-back (a site update has no WhatsApp undo, and the Site log has no undo button: work entries
+  can only be voided from the old Activities page, which now redirects; SS-43 must settle this before writing W1).
