@@ -37,8 +37,8 @@ from admin.intents import (
     VOICE,
     build_intents,
     capability_name,
-    summarise,
 )
+from admin.intents_summary import fix_first, plain_reason, summarise
 from admin.message_map_router import router
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 
@@ -218,7 +218,8 @@ def test_a_new_request_after_a_question_starts_its_own_intent():
 
 
 def test_an_outage_fails_the_intent_and_a_refusal_the_model_recovered_from_does_not():
-    assert one((msg(1, status="failed", reply=None, error_code="AI_UNAVAILABLE", minutes_ago=60), None))["ending"] == FAILED
+    outage = one((msg(1, status="failed", reply=None, error_code="AI_UNAVAILABLE", minutes_ago=60), None))
+    assert (outage["ending"], outage["reason"]) == (FAILED, "AI unavailable")  # a code reads as words in every list
     recovered = one((msg(2, minutes_ago=60), {"calls": [call("record_receipt", error="'Tata steel' is not in the list."),
                                                        call("add_material", **READY)]}),
                     (msg(3, "Save", kind="interactive", minutes_ago=59), saved("add_material")))
@@ -276,6 +277,8 @@ def test_two_people_never_share_an_intent():
 def test_a_capability_is_named_from_the_tool_description_in_plain_words():
     assert capability_name("record_receipt").startswith("A material receipt")
     assert "_" not in capability_name("record_receipt")
+    long = capability_name("set_unit_conversion")  # cut at 80 characters: ends on a whole word, says so
+    assert long.endswith(" …") and len(long) <= 82
     assert capability_name("_talk") == "Talk with no tool used"
     assert capability_name("a_tool_that_does_not_exist") == "A tool that does not exist"
 
@@ -306,6 +309,35 @@ def test_summarise_counts_endings_per_module_and_capability_and_names_the_widest
     assert receipt["intents"][0].startswith(msg(3)["id"])  # the failure first
     assert [s["count"] for s in out["funnel"]["steps"]] == [3, 2, 2, 1]
     assert out["funnel"]["widest_drop"] == {"at": "A tool was called", "lost": 1}
+
+
+def test_fix_first_is_one_line_per_cause_across_capabilities_largest_first():
+    refused = "'TMT' is not in the company's material list. Nothing is prepared."
+    steps = ((msg(1, "tmt vannu", minutes_ago=400), {"calls": [call("record_receipt", error=refused)]}),
+             (msg(2, "tmt used", minutes_ago=300), {"calls": [call("record_usage", error=refused)]}),
+             (msg(3, "hi", minutes_ago=200, status="failed", reply=None, error_code="AI_UNAVAILABLE"), None),
+             (msg(4, "Set up my company", kind="interactive", minutes_ago=100), None))  # sign-up: not a problem
+    first, second = fix_first(intents_of(*steps))
+    assert first["line"] == "2 requests failed: … is not in the company's material list."
+    assert [c["key"] for c in first["capabilities"]] == ["record_receipt", "record_usage"]
+    assert first["intents"][0].startswith(msg(2)["id"])  # newest first
+    assert second["line"] == "1 request failed: AI unavailable"
+
+
+def test_fix_first_says_a_reply_with_nothing_done_in_plain_words():
+    (problem,) = fix_first(intents_of((msg(1, "cancel", reply="What should I cancel?", minutes_ago=60), {"calls": []})))
+    assert problem["line"] == "1 request: Mesiri replied with a question of its own and used no tool"
+
+
+def test_an_error_code_reads_as_words_and_a_sentence_is_left_alone():
+    assert plain_reason("AI_UNAVAILABLE") == "AI unavailable"
+    assert plain_reason("PROVIDER_TIMEOUT") == "Provider timeout"
+    assert plain_reason("Issue not found") == "Issue not found"
+
+
+def test_an_intent_carries_its_first_words_and_who_sent_them():
+    intent = one((msg(1, "20  bag\ncement vannu", minutes_ago=60), {"calls": [call("stock_check", status=200)]}))
+    assert (intent["text"], intent["sender_name"], intent["sender_role"]) == ("20 bag cement vannu", "Ravi", "SITE_ENGINEER")
 
 
 # ── the route ───────────────────────────────────────────────────────────────
@@ -371,4 +403,6 @@ async def test_the_intents_route_splits_this_window_from_the_one_before():
     assert body["sections"][0]["capabilities"][0]["phrasings"] == ["20 bag cement vannu"]
     (intent,) = body["intents"]
     assert intent["ending"] == FINISHED and intent["messages"] == [rows[0]["id"], rows[1]["id"]]
+    assert intent["text"] == "20 bag cement vannu" and "sender" not in intent  # never the phone number
+    assert body["fix_first"] == []
     assert logger.asked["since"] < now - timedelta(days=13) and logger.asked["limit"] == 10001

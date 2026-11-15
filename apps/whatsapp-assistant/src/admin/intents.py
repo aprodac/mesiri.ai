@@ -27,8 +27,9 @@ How a message is linked (first rule that fits):
 
 from __future__ import annotations
 
+import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from admin.message_map import (
@@ -37,7 +38,6 @@ from admin.message_map import (
     OUTCOMES,
     _args,
     _call_verdict,
-    _label,
     _real_calls,
     _save_ok,
     _tools,
@@ -113,7 +113,10 @@ NO_TOOL_NAMES = {"_talk": "Talk with no tool used", "_no_record": "No record of 
                  "_failed": "No reply: failures and outages", "_taps": "Button taps the code answers",
                  "_card": "Save, change or cancel with nothing waiting"}
 
-MAX_INTENT_EXAMPLES = 25
+#: A capability's name is cut to this many characters.
+NAME_CHARS = 80
+#: The first message of an intent, as shown in a list.
+MAX_TEXT_CHARS = 240
 
 
 def capability_name(tool: str) -> str:
@@ -126,10 +129,12 @@ def capability_name(tool: str) -> str:
         return human(tool)
     from agent_api.tools import plain_line
 
-    line = plain_line(description, set(_tools()))
+    line = plain_line(description, set(_tools()), limit=1000)
     # Write tools say "Prepare a receipt ...": the person asks for the receipt, the card is how it is kept.
     if line.startswith("Prepare "):
         line = line[len("Prepare "):]
+    if len(line) > NAME_CHARS:  # cut on a whole word, and say so
+        line = line[: line.rfind(" ", 0, NAME_CHARS)].rstrip(",;:( ") + " …"
     return (line[:1].upper() + line[1:]) or human(tool)
 
 
@@ -158,6 +163,8 @@ def _new_intent(n: int, message: dict[str, Any], conversation: str) -> dict[str,
         "id": f"{conversation}:{n}", "conversation": conversation, "sender": str(message.get("sender_wa_id")),
         "started_at": message["received_at"], "first_type": str(message.get("message_type") or "unknown"),
         "organization_name": message.get("organization_name"),
+        "text": " ".join(str(message.get("body_text") or "").split())[:MAX_TEXT_CHARS],
+        "sender_name": message.get("sender_name"), "sender_role": message.get("sender_role"),
         "messages": [], "tools": [], "ready_tools": [], "ready_lines": 0,
         "waiting": False, "question": False, "had_question": False, "changed": False, "memory": False,
         "saved": False, "save_failed": None, "cancelled": False, "complained": None, "failed": None,
@@ -293,9 +300,20 @@ def _capability(intent: dict[str, Any]) -> str:
     return NO_TOOL.get(str(intent["first_outcome"]), "_talk")
 
 
+_CODE = re.compile(r"^[A-Z][A-Z0-9_]+$")
+
+
+def plain_reason(reason: str) -> str:
+    """An error code in words (``AI_UNAVAILABLE`` -> ``AI unavailable``); any other reason as it is."""
+    if not _CODE.match(reason or ""):
+        return reason
+    words = reason.split("_")
+    return " ".join([words[0] if len(words[0]) <= 3 else words[0].capitalize(), *(w.lower() for w in words[1:])])
+
+
 def _reason(intent: dict[str, Any], ending: str) -> str:
     if ending == FAILED:
-        return str(intent["save_failed"] or intent["failed"] or "")
+        return plain_reason(str(intent["save_failed"] or intent["failed"] or ""))
     if ending == COMPLAINED:
         return OUTCOMES["cannot_yet" if intent["complained"] == "missing_feature" else "complaint"][1]
     if ending == ABANDONED:
@@ -310,12 +328,12 @@ UNSURE_REASONS = {
     "no_record": "No trace of what Mesiri did (sign-up, classic, a tap the code answered)",
     "greeting": "A greeting the code answered",
     "idea": "An idea, passed to the team",
-    "card_waiting": "Replied while a card was waiting; nothing changed",
-    "dropped_question": "Replied; the code took a question out of the reply",
-    "asked_back": "Replied with a question of its own, no tool used",
-    "voice_unread": "A voice note with no words recorded, no tool used",
-    "photo": "A photo, no tool used",
-    "talk": "Replied without using a tool",
+    "card_waiting": "Mesiri replied while a card was waiting, and nothing changed",
+    "dropped_question": "Mesiri replied, and the code took a question out of the reply",
+    "asked_back": "Mesiri replied with a question of its own and used no tool",
+    "voice_unread": "A voice note with no words recorded, and no tool used",
+    "photo": "A photo, and no tool used",
+    "talk": "Mesiri replied without using a tool",
 }
 
 
@@ -413,7 +431,8 @@ def build_intents(messages: list[dict[str, Any]], turns: dict[str, dict[str, Any
             intents.append({
                 "id": intent["id"], "conversation": intent["conversation"], "sender": intent["sender"],
                 "started_at": intent["started_at"], "how": intent["first_type"],
-                "company": intent["organization_name"], "messages": intent["messages"],
+                "company": intent["organization_name"], "messages": intent["messages"], "text": intent["text"],
+                "sender_name": intent["sender_name"], "sender_role": intent["sender_role"],
                 "capability": tool, "section": section_of(tool) if not tool.startswith("_") else _no_tool_section(tool),
                 "tools": intent["tools"], "ending": ending, "reason": _reason(intent, ending),
                 "journeys": _journeys(intent), "reached_card": bool(intent["ready_tools"]),
@@ -424,75 +443,3 @@ def build_intents(messages: list[dict[str, Any]], turns: dict[str, dict[str, Any
 
 def _no_tool_section(key: str) -> str:
     return {"_failed": "failed", "_taps": "taps", "_card": "card"}.get(key, "other")
-
-
-# ── the summary the page shows ───────────────────────────────────────────────
-
-
-def _bar(rows: list[dict[str, Any]]) -> dict[str, int]:
-    endings = Counter(r["ending"] for r in rows)
-    return {key: endings.get(key, 0) for key in ENDINGS}
-
-
-def _funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """intents -> a tool was called -> ready on the card or answered -> finished, and the widest drop."""
-    steps = [
-        ("asked", "Asked", len(rows)),
-        ("called", "A tool was called", sum(1 for r in rows if r["called_tool"])),
-        ("prepared", "Ready on the card or answered",
-         sum(1 for r in rows if r["reached_card"] or r["ending"] in GOOD_ENDINGS)),
-        ("finished", "Saved, sent or answered", sum(1 for r in rows if r["ending"] in GOOD_ENDINGS)),
-    ]
-    drops = [(steps[i][2] - steps[i + 1][2], steps[i + 1][1]) for i in range(len(steps) - 1)]
-    widest = max(drops, key=lambda d: d[0], default=(0, ""))  # the first one on a tie
-    return {"steps": [{"key": k, "label": label, "count": n} for k, label, n in steps],
-            "widest_drop": {"at": widest[1], "lost": widest[0]} if widest[0] > 0 else None}
-
-
-def summarise(intents: list[dict[str, Any]], messages_by_id: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Modules -> capabilities, each with its ending bar, journeys, how it was sent, top failure reasons,
-    a few real phrasings and the funnel. Intents still going are left out of every count."""
-    done = [r for r in intents if r["ending"] != OPEN]
-    messages_by_id = messages_by_id or {}
-    by_section: dict[str, list[dict[str, Any]]] = {}
-    for r in done:
-        by_section.setdefault(r["section"], []).append(r)
-
-    sections = []
-    for section, rows in by_section.items():
-        by_capability: dict[str, list[dict[str, Any]]] = {}
-        for r in rows:
-            by_capability.setdefault(r["capability"], []).append(r)
-        capabilities = []
-        for tool, crows in sorted(by_capability.items(), key=lambda kv: -len(kv[1])):
-            reasons = Counter(r["reason"] for r in crows if r["ending"] not in GOOD_ENDINGS and r["reason"])
-            phrasings: list[str] = []
-            for r in sorted(crows, key=lambda r: r["started_at"], reverse=True):
-                text = (messages_by_id.get(r["messages"][0]) or {}).get("body_text") or ""
-                text = " ".join(str(text).split())[:160]
-                if text and text not in phrasings:
-                    phrasings.append(text)
-                if len(phrasings) == 3:
-                    break
-            capabilities.append({
-                "key": tool, "name": capability_name(tool), "tool": None if tool.startswith("_") else tool,
-                "count": len(crows), "finished": sum(1 for r in crows if r["ending"] in GOOD_ENDINGS),
-                "endings": _bar(crows), "how": dict(Counter(r["how"] for r in crows).most_common()),
-                "journeys": dict(Counter(j for r in crows for j in r["journeys"]).most_common()),
-                "top_reasons": [{"reason": why, "count": n} for why, n in reasons.most_common(2)],
-                "phrasings": phrasings, "funnel": _funnel(crows),
-                "intents": [r["id"] for r in sorted(crows, key=lambda r: (r["ending"] in GOOD_ENDINGS,
-                                                                           -r["started_at"].timestamp()))][:MAX_INTENT_EXAMPLES],
-            })
-        sections.append({"key": section, "label": _label(section), "count": len(rows),
-                         "finished": sum(1 for r in rows if r["ending"] in GOOD_ENDINGS),
-                         "endings": _bar(rows), "capabilities": capabilities})
-    sections.sort(key=lambda s: -s["count"])
-    return {"totals": {"intents": len(done), "still_going": len(intents) - len(done), **_bar(done)},
-            "funnel": _funnel(done), "sections": sections}
-
-
-def previous_window(since: datetime, until: datetime) -> tuple[datetime, datetime]:
-    """The window of the same length just before ``since`` (for "change against the previous window")."""
-    length: timedelta = until - since
-    return since - length, since

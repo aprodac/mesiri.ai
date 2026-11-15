@@ -14,7 +14,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from admin.intents import build_intents, previous_window, summarise
+from admin.intents import build_intents
+from admin.intents_summary import previous_window, summarise
 from admin.message_map import build_map, build_thread
 from mesiri.domains.shared.auth import require_platform_admin
 
@@ -49,8 +50,8 @@ async def get_message_map(
 
 
 #: The fields of an intent the panel needs; the rest is internal.
-_INTENT_FIELDS = ("id", "started_at", "how", "company", "messages", "capability", "section", "tools", "ending",
-                  "reason", "journeys", "corrected_later")
+_INTENT_FIELDS = ("id", "started_at", "how", "company", "messages", "text", "sender_name", "sender_role",
+                  "capability", "section", "tools", "ending", "reason", "journeys", "corrected_later")
 
 
 @router.get("/intents")

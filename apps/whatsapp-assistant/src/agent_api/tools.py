@@ -681,14 +681,14 @@ def _clean(schema: dict[str, Any], components: dict[str, Any], depth: int = 0) -
     return out
 
 
-def plain_line(description: str, tool_names: set[str] | frozenset[str]) -> str:
-    """A tool's description as one plain line: its first sentence, with no tool name in it (at most 80 characters).
+def plain_line(description: str, tool_names: set[str] | frozenset[str], limit: int = 80) -> str:
+    """A tool's description as one plain line: its first sentence, with no tool name in it (at most ``limit`` characters).
     Used by ``what_mesiri_does`` and by the control panel's What works page (SA-39) to name what a person can ask."""
     first = description.replace(_WRITE, "").split(". ")[0].strip().rstrip(".")
     # [249]: plain words only: the model copied tool names into the answer (a description can name another tool).
     from agent_api.reply_guard import without_tool_names
 
-    return without_tool_names(first, tool_names)[:80].strip()
+    return without_tool_names(first, tool_names)[:limit].strip()
 
 
 def what_mesiri_does(tools: dict[str, ApiTool]) -> str:
