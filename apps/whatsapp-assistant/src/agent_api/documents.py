@@ -70,16 +70,16 @@ def _file_name(disposition: str | None, fallback: str) -> str:
 SEND_REPORT = "send_report"
 REPORT_TOOL = ToolSpec(name=SEND_REPORT, description=(
     "Send the weekly or monthly report as a PDF in this chat, to the person asking: scope project (project_id; "
-    "site_id for one site) or portfolio (all their projects); period week or month (custom: date_from and date_to); "
-    "date: any day in the week or month they NAMED (\"last week\": a day of last Monday-Sunday; \"this week\": "
-    "today; \"last month\" / \"October\": a day in it); none when they named none: a week is then the last 7 days "
-    "ending today, a month the last 30. Only when they ask for the report itself."),
+    "site_id for one site) or portfolio (all their projects); period week or month. window: \"recent\" (the "
+    "default) is the last 7 days or the last 30 ending today, for \"a week's report\", \"1 month report\", "
+    "\"orazhchathe report\"; \"named\" only when they named WHICH week or month (\"last week\", \"this week\", "
+    "\"October\", \"last month\"), with date = any day in it. Only when they ask for the report itself."),
     parameters={"type": "object", "required": ["scope", "period"], "properties": {
         "scope": {"type": "string", "enum": ["project", "portfolio"]},
         "project_id": {"type": "string"}, "site_id": {"type": "string"},
-        "period": {"type": "string", "enum": ["week", "month", "custom"]},
-        "date": {"type": "string", "description": "YYYY-MM-DD"},
-        "date_from": {"type": "string"}, "date_to": {"type": "string"}}})
+        "period": {"type": "string", "enum": ["week", "month"]},
+        "window": {"type": "string", "enum": ["recent", "named"]},
+        "date": {"type": "string", "description": "YYYY-MM-DD, any day of the week or month they named"}}})
 
 
 #: [302]: the reads and the send whose "week" is the last 7 days when no week is named.
@@ -174,6 +174,10 @@ def report_path(arguments: dict[str, Any]) -> str | None:
 async def send_report(client: ApiClient, send_document: Callable[..., Awaitable[Any]], wa_id: str,
                       arguments: dict[str, Any], today: dt.date | None = None) -> dict[str, Any]:
     if today is not None:
+        if str(arguments.get("window") or "recent") != "named" and arguments.get("period") in ROLLING_DAYS:
+            # Live, 15 Nov 16:37: "1 month progress report ayakk" came with date 2026-10-15 (the model's "a month ago")
+            # and October went. Unless they named which week or month, the report is the recent one: the code's dates.
+            arguments = {k: v for k, v in arguments.items() if k not in ("date", "date_from", "date_to")}
         arguments = rolling_week(arguments, today)
     path = report_path(arguments)
     if path is None:

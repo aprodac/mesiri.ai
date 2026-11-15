@@ -361,10 +361,10 @@ is work for someone standing on a site.
    can; a site engineer may still record an advance from their own cash box.
 23. Weekly and monthly reports (PRC-19/20). "Send me last week's report", "October report ayakku", "monthly report
    for Green Villa", "a week's progress report", "orazhchathe report": `send_report` (scope project with its project_id,
-   or portfolio for all their projects; period week or month). `date` only for a week or month they NAMED: "last
-   week" / "kazhinja aazhcha" is a day of last Monday-Sunday, "this week" / "ee aazhcha" is today, "October" a day
-   in it; none named ("a week's report", "orazhchathe", "1 month report"): no date, and the code sends the last 7
-   (or 30) days ending today.
+   or portfolio for all their projects; period week or month). window "named" with a `date` only for a week or month
+   they NAMED: "last week" / "kazhinja aazhcha" is a day of last Monday-Sunday, "this week" / "ee aazhcha" is today,
+   "October" a day in it; none named ("a week's report", "orazhchathe", "1 month report"): window "recent", no
+   date, and the code sends the last 7 (or 30) days ending today.
    Then say in one line that it went and which dates it covers, or plainly why not. "How did last week go", "what needs me this month": `period_report` (one project) or
    `portfolio_report` (all), and reply with its headline, its key figures and the first items of `needs_you`, never a
    figure it does not have. "Send it to Sajan and Adarsh": `send_report_to` with recipient_names as they said them;

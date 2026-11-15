@@ -135,7 +135,7 @@ async def test_guard_last_week_named_keeps_its_date_on_the_read() -> None:
 def test_the_sop_sends_a_weeks_progress_report_as_the_pdf() -> None:
     from agent_api.agent import SOP
 
-    assert "orazhchathe" in SOP and "the code sends the last 7\n   (or 30) days ending today" in SOP
+    assert "orazhchathe" in SOP and "the code sends the last 7 (or 30) days ending today" in SOP
     assert "is rule 23: the PDF" in SOP
 
 
@@ -189,3 +189,21 @@ async def test_live_a_send_to_self_drops_the_made_up_id() -> None:
     body = turn.pending[0].body
     assert "recipient_user_ids" not in body and "site_id" not in body
     assert body["period"] == "custom" and body["date_to"] >= body["date_from"]
+
+
+async def test_live_a_month_ago_date_on_a_recent_report_is_the_last_30_days() -> None:
+    """15 Nov 16:37 (test chat): "1 month progress report ayakk" came as send_report with date 2026-10-15 and
+    October went. Unless window is "named", the code's dates stand."""
+    read: list = []
+    client = ApiClient(ACTOR, app=_app(read))
+    sender = _Sender()
+    try:
+        await documents.send_report(client, sender, "91", {"scope": "project", "project_id": PROJECT,
+                                                          "period": "month", "date": "2026-10-15"}, today=SUNDAY)
+        await documents.send_report(client, sender, "91", {"scope": "project", "project_id": PROJECT, "period": "month",
+                                                          "window": "named", "date": "2026-10-15"}, today=SUNDAY)
+    finally:
+        await client.close()
+    assert read == [("period_pdf", "custom", None, "2026-10-17", "2026-11-15"),
+                    ("period_pdf", "month", "2026-10-15", None, None)]  # guard: "October" named stays October
+    assert sender.sent[0][1] == "Monthly report · 17 Oct – 15 Nov 2026"
