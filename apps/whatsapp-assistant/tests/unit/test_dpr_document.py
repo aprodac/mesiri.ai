@@ -458,4 +458,12 @@ def test_redesign_a_project_day_with_no_trade_split_shows_workers_per_site():
                   {"site_name": "Main block", "reported": True, "headcount": 14}]})
     html = render_html(data)
     assert "No attendance recorded" not in html
-    assert '<span class="n">7</span><span class="t">Annex</span>' in html and '<span class="n">21</span>' in html
+    assert '<span>Annex</span><b>7</b>' in html and '<span class="n">21</span>' in html  # a bar per site, the total
+
+
+def test_redesign_the_date_block_and_embedded_font():
+    """The second redesign (15 Nov): the day as a big date block, the font embedded (the server has none)."""
+    html = render_html(build_document_data(code="DPR-1", payload=_payload(report_date="2026-11-14")))
+    assert '<div class="dnum">14</div>' in html and "Nov 2026" in html and "Saturday" in html
+    assert 'font-family: "Inter"' in html and "data:font/woff2" in html
+
