@@ -370,6 +370,8 @@ start; the rest can follow in any order.
 | SS-35 | Trials funnel: each trial's start mode, and the funnel steps per answer | `trials_funnel.py`, control panel `Trials.tsx` |
 | SS-37 | `guideVersion` / `guideNew` on a module-map page: the strip comes back once as "Updated", the help sheet shows "What's new". `guideLink()` checks every guidance link against the module map: a dead or planned link is a console error in development, which fails the UX-10 screenshot run. `about` and `example` are required by the type, so a page cannot be added without its explanation | `lib/guide-links.ts`, `lib/module-map.ts` |
 
+| SS-39 | Every built page shows how it works from WhatsApp, in one pop-up opened from the top bar's "On WhatsApp", the ? panel or the page strip: the message, Mesiri's card or answer, Copy, Try it on WhatsApp. Examples live in `module-map.ts` with the assistant tools that do them; a test in the assistant checks them | `components/whatsapp-page-button.tsx`, `components/whatsapp-preview.tsx`, `tests/agent_api/test_module_map_whatsapp.py` |
+
 **Not built yet**
 
 - **SS-38:** a week of daily WhatsApp tips by mode (6.2's last row). Only the first tip, in the reply to the answer, exists.

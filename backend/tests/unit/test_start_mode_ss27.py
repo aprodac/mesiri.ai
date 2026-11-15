@@ -138,3 +138,18 @@ async def test_show_me_around_again_clears_every_page() -> None:
     out = await me.reset_guide_seen(CTX, conn)
     assert out.guide_seen == {} and conn.seen == {}
     assert _where(conn.statements[-1]) == {USER, ORG}
+
+
+async def test_get_gives_mesiris_number_to_every_role(monkeypatch) -> None:
+    from mesiri.bootstrap.settings import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("MESIRI_WHATSAPP__DISPLAY_NUMBER", " +91 90000 12345 ")
+    try:
+        engineer = SimpleNamespace(user_id=USER, organization_id=ORG, role="SITE_ENGINEER")
+        assert (await me.get_preferences(engineer, Conn())).whatsapp_number == "+91 90000 12345"
+        monkeypatch.delenv("MESIRI_WHATSAPP__DISPLAY_NUMBER")
+        get_settings.cache_clear()
+        assert (await me.get_preferences(engineer, Conn())).whatsapp_number is None
+    finally:
+        get_settings.cache_clear()

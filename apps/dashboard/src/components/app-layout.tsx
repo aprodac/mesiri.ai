@@ -11,6 +11,7 @@ import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
 import { JumpBox } from '@/components/jump-box'
 import { HelpButton } from '@/components/help-button'
+import { WhatsAppPageButton, WhatsAppPreviewModal } from '@/components/whatsapp-page-button'
 import { InboxBell } from '@/components/inbox-bell'
 import { PageGuide } from '@/components/page-guide'
 import { StartQuestionDialog } from '@/components/onboarding/start-question'
@@ -79,6 +80,8 @@ function TopBar() {
               <span className="rounded-full bg-orange-500 px-1.5 text-[11px] font-semibold text-white tabular-nums">{drafts}</span>
             )}
           </Link>
+          {/* Guided onboarding: what to send Mesiri for this page, as a chat preview. */}
+          <WhatsAppPageButton />
           <HelpButton />
           {/* NXT-08: everything waiting for me, each opening its record. */}
           <InboxBell />
@@ -124,6 +127,8 @@ export function AppLayout() {
       <StartProjectDialog />
       {/* SS-28: "How would you like to start?" for anyone not asked yet. */}
       <StartQuestionDialog />
+      {/* The current page's WhatsApp preview, opened from the top bar, the ? panel or the page strip. */}
+      <WhatsAppPreviewModal />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>

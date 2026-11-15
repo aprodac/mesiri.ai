@@ -105,16 +105,49 @@ async def _work_orders(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.U
 
 
 async def _open_issues(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID) -> list[dict]:
-    """Open site issues (hindrances) with the site and section they were reported on."""
+    """Open site issues (hindrances) with the site and section they were reported on, newest first."""
     return [dict(r) for r in (await conn.execute(text(
-        "SELECT site_id, work_package_id FROM site_issues WHERE organization_id = :org AND project_id = :p "
-        "AND status IN ('OPEN', 'ACKNOWLEDGED')"), {"org": org, "p": project_id})).mappings()]
+        "SELECT id, site_id, work_package_id, issue_type, severity, narrative, occurred_at FROM site_issues "
+        "WHERE organization_id = :org AND project_id = :p AND status IN ('OPEN', 'ACKNOWLEDGED') "
+        "ORDER BY occurred_at DESC"), {"org": org, "p": project_id})).mappings()]
+
+
+def _on_section(issue: dict, section_id: Any, site_id: Any) -> bool:
+    """An issue on the section itself, or on its site and not tied to another section."""
+    return issue["work_package_id"] == section_id or (
+        issue["work_package_id"] is None and site_id is not None and issue["site_id"] == site_id)
 
 
 def _issues_for(issues: list[dict], section_id: Any, site_id: Any) -> int:
-    """Issues on the section itself, plus the ones on its site not tied to another section."""
-    return sum(1 for i in issues if i["work_package_id"] == section_id
-               or (i["work_package_id"] is None and site_id is not None and i["site_id"] == site_id))
+    """How many open issues hold the section up (``_on_section``)."""
+    return sum(1 for i in issues if _on_section(i, section_id, site_id))
+
+
+#: BOQ-03: at most this many issues are listed on an activity (newest first; the count says how many in all).
+ISSUES_LISTED = 3
+
+
+def _issues_listed(issues: list[dict], section_id: Any, site_id: Any) -> list[dict]:
+    return [{"id": i["id"], "what": (i["narrative"] or i["issue_type"].replace("_", " ").lower())[:120],
+             "severity": i["severity"], "since": i["occurred_at"].date() if i["occurred_at"] else None}
+            for i in issues if _on_section(i, section_id, site_id)][:ISSUES_LISTED]
+
+
+async def place_issue(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, site_id: Any,
+                      narrative: str | None) -> uuid.UUID | None:
+    """BOQ-03: the schedule activity (BOQ section) a new issue holds up, from its words and the section's name and
+    lines (``logic.activity_for_issue``); None when it is not clear (it then counts on its site)."""
+    if not (narrative or "").strip():
+        return None
+    sections = await _sections(conn, org, project_id)
+    if not sections:
+        return None
+    names: dict[Any, list[str]] = defaultdict(list)
+    for line in await _lines(conn, org, project_id):
+        names[line["work_package_id"]].append(line["work_type"])
+    return logic.activity_for_issue(narrative, site_id, [
+        {"id": s["id"], "site_id": s["site_id"], "done": s["status"] == "COMPLETED",
+         "words": " ".join([s["name"], *names.get(s["id"], [])])} for s in sections])
 
 
 async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, today: datetime.date) -> dict[str, Any]:
@@ -175,6 +208,7 @@ async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, tod
             "critical": s["id"] in critical, "after": after.get(s["id"], []),
             "assigned_to": s["assigned_name"], "last_update": seen.get("last_day"), "updates": seen.get("updates", 0),
             "open_issues": _issues_for(issues, s["id"], s["site_id"]),
+            "issues": _issues_listed(issues, s["id"], s["site_id"]),
             "work_orders": orders.get(s["id"], []),
             "lines": [{"id": ln["id"], "work": ln["work"], "unit": ln["unit"], "boq_code": ln["boq_code"],
                        "planned_quantity": str(ln["planned_quantity"]), "done_quantity": str(ln["done_quantity"]),
@@ -193,6 +227,10 @@ async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, tod
         "progress": _pct(logic.line_progress([ln for ls in by_section.values() for ln in ls])),
         "first_start": min((a["start"] for a in acts if a["start"]), default=None),
         "conflicts": len(conflicts),
+        # BOQ-03: every open issue of the project, and those on no activity (no section, and no section on its site).
+        "open_issues": len(issues),
+        "issues_on_no_activity": sum(1 for i in issues if not any(
+            _on_section(i, s["id"], s["site_id"]) for s in sections)),
     }
     return {"project": proj, "today": today, "activities": out, "links": link_rows, "conflicts": conflicts,
             "summary": summary}

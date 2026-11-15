@@ -172,3 +172,27 @@ def test_import_headings_read_like_names():
     assert heading_name("SITE PREPARATION & EARTHWORK") == "Site Preparation & Earthwork"
     assert heading_name("WORKS OF THE GROUND FLOOR") == "Works of the Ground Floor"
     assert heading_name("Ground floor RCC") == "Ground floor RCC"
+
+
+# -- BOQ-03: the activity an issue holds up ---------------------------------------------------------------------------
+
+
+def test_an_issue_goes_on_the_activity_its_words_name():
+    from mesiri.domains.schedule.logic import activity_for_issue
+
+    acts = [{"id": "slab", "site_id": None, "done": False, "words": "First floor slab Shuttering M20 concrete"},
+            {"id": "plaster", "site_id": None, "done": False, "words": "Plastering Internal plastering 12 mm"}]
+    assert activity_for_issue("Shuttering material not came, slab delayed", "s1", acts) == "slab"
+    assert activity_for_issue("plastering stopped, no sand", "s1", acts) == "plaster"
+
+
+def test_no_guess_on_a_tie_another_site_a_done_activity_or_words_that_name_no_work():
+    from mesiri.domains.schedule.logic import activity_for_issue
+
+    acts = [{"id": "a", "site_id": None, "done": False, "words": "Ground floor brickwork"},
+            {"id": "b", "site_id": None, "done": False, "words": "First floor brickwork"}]
+    assert activity_for_issue("brickwork stopped", "s1", acts) is None  # tie
+    assert activity_for_issue("rain, work stopped today", "s1", acts) is None  # no work named
+    other = [{"id": "x", "site_id": "s2", "done": False, "words": "Slab"},
+             {"id": "y", "site_id": None, "done": True, "words": "Slab"}]
+    assert activity_for_issue("slab delayed", "s1", other) is None

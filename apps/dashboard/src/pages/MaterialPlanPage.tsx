@@ -1,15 +1,15 @@
 import * as React from 'react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Calculator, PackageSearch, ShoppingCart } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, Calculator, PackageSearch, ShoppingCart, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout, PageError, StatStrip, type Stat } from '@/components/dpr-page'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { useAuth } from '@/lib/AuthContext'
-import { maySeeBoq } from '@/lib/boq'
+import { applyStandardNorms, fetchStandardNorms, maySeeBoq } from '@/lib/boq'
 import { fetchMaterialPlan, type MaterialPlan, type MaterialPlanRow } from '@/lib/material-plan'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
@@ -94,6 +94,28 @@ function PlanView({ projectId }: { projectId: string }) {
   const order = (row: MaterialPlanRow) => setOrdering(orderPrefill(projectId, row))
   const query = useQuery<MaterialPlan>({ queryKey: ['material-plan', projectId, weeks], queryFn: () => fetchMaterialPlan(projectId, weeks) })
   const boqLink = `/projects/${projectId}/boq`
+  // BOQ-04: the usual materials for the lines with none yet, put on in one tap (each stays editable on the BOQ).
+  const qc = useQueryClient()
+  const standard = useQuery({ queryKey: ['boq-standard-norms', projectId], queryFn: () => fetchStandardNorms(projectId) })
+  const fill = useMutation({
+    mutationFn: () => applyStandardNorms(projectId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['material-plan', projectId] })
+      void qc.invalidateQueries({ queryKey: ['boq-standard-norms', projectId] })
+    },
+  })
+  const fits = standard.data ?? []
+  const fillCallout = fits.length > 0 ? (
+    <Callout
+      tone="info"
+      icon={Wand2}
+      action={<Button size="sm" className="gap-1.5" disabled={fill.isPending} onClick={() => fill.mutate()}><Wand2 className="size-3.5" /> {fill.isPending ? 'Filling…' : `Fill ${fits.length} line${fits.length > 1 ? 's' : ''}`}</Button>}
+    >
+      {fits.length} BOQ line{fits.length > 1 ? 's' : ''} with no materials {fits.length > 1 ? 'are' : 'is'} common work Mesiri knows ({fits.slice(0, 3).map((l) => `${l.work}: ${l.standard}`).join('; ')}{fits.length > 3 ? '…' : ''}).
+      Fill them with the usual materials per unit; you can change any of them on the BOQ.
+      {fill.isError ? ' That did not work; try again.' : ''}
+    </Callout>
+  ) : null
 
   if (query.isError) return <PageError message="The material plan did not load." onRetry={() => query.refetch()} back={{ to: '/planning/materials', label: 'All projects' }} />
   const plan = query.data
@@ -120,6 +142,8 @@ function PlanView({ projectId }: { projectId: string }) {
       </div>
       {!plan ? (
         <Skeleton className="h-64 w-full" />
+      ) : plan.lines_with_norms === 0 && fillCallout ? (
+        fillCallout
       ) : plan.lines_with_norms === 0 ? (
         <Callout tone="info" icon={Calculator} action={<Button asChild size="sm"><Link to={boqLink}>Open the BOQ</Link></Button>}>
           No BOQ line has its materials yet
@@ -127,6 +151,7 @@ function PlanView({ projectId }: { projectId: string }) {
       ) : (
         <>
           <StatStrip stats={stats} />
+          {fillCallout}
           {short.length > 0 && (
             <Callout tone="draft" icon={AlertTriangle}>
               {short.slice(0, 3).map((m) => `${m.material}: ${qty(m.short_by, true)} ${m.unit} short from ${dayLabel(m.short_day as string)}, ${m.order_now ? 'order now' : `order by ${dayLabel(m.order_by as string)}`}`).join(' · ')}

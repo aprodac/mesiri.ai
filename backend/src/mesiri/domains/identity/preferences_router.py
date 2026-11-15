@@ -19,6 +19,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.bootstrap.settings import get_settings
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -74,6 +75,9 @@ class Preferences(BaseModel):
     ask_start_mode: bool = False
     #: SS-29/SS-37: per page, the guide version they closed.
     guide_seen: dict[str, int] = Field(default_factory=dict)
+    #: The number people message Mesiri on (MESIRI_WHATSAPP__DISPLAY_NUMBER), for every page's "Try it on WhatsApp";
+    #: None when the deployment has not set one. The same public number setup-progress gives admins.
+    whatsapp_number: str | None = None
 
 
 class StartModeIn(BaseModel):
@@ -140,7 +144,8 @@ async def get_preferences(
     return Preferences(reply_language=effective_reply_language(row.reply_language if row else None),
                        voice_transcript=await _voice_transcript(conn, ctx, row.voice_transcript if row else None),
                        start_mode=mode, ask_start_mode=ask and row is not None,
-                       guide_seen=clean_guide_seen(getattr(row, "guide_seen", None)))
+                       guide_seen=clean_guide_seen(getattr(row, "guide_seen", None)),
+                       whatsapp_number=(get_settings().whatsapp.display_number or "").strip() or None)
 
 
 async def _voice_transcript(conn: AsyncConnection, ctx: AuthorizationContext, person: bool | None) -> bool:

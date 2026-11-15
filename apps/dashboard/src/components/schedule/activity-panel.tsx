@@ -286,6 +286,13 @@ export function ActivityPanel({
           {a.open_issues > 0 && (
             <Link to={`/issues?project=${projectId}`} className="inline-flex items-center gap-1 font-medium text-red-700 hover:underline dark:text-red-300"><AlertTriangle className="size-3.5" /> {plural(a.open_issues, 'open issue')}</Link>
           )}
+          {(a.issues ?? []).length > 0 && (
+            <ul className="flex flex-col gap-0.5 text-muted-foreground">
+              {(a.issues ?? []).map((i) => (
+                <li key={i.id} className="truncate" title={i.what}>· {i.what}{i.since ? `, since ${shortDay(i.since, today)}` : ''}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
     </div>
