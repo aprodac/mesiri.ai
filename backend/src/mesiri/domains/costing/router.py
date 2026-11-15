@@ -254,19 +254,34 @@ def _line_labour(line: dict, labour: dict | None) -> dict:
     }
 
 
-async def _labour(conn: AsyncConnection, repo, org: uuid.UUID, project_id: uuid.UUID,
-                  date_from: datetime.date, date_to: datetime.date) -> dict:
-    """The project's labour per BOQ line and not on a line, over the period (attendance counted by Labour)."""
+async def _allocations(conn: AsyncConnection, repo, org: uuid.UUID, project_id: uuid.UUID,
+                       date_from: datetime.date, date_to: datetime.date, groups: list[dict]) -> list[dict]:
+    """The labour put on BOQ lines over the period: what people split (CC-05), and for every other site-day-trade,
+    the split by that day's work (BOQ-02, ``auto_split``, rows marked ``auto``). The one read every labour figure
+    uses (this page, the budget, the variance), so they never disagree."""
+    from mesiri.domains.costing.labour import auto_split, worked_lines
+    from mesiri.domains.progress.boq_router import counted_work
     from mesiri.infrastructure.postgres.repositories.labour_allocations import (
         PostgresLabourAllocationRepository,
     )
+
+    manual = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    lines = await repo.list_lines(org, project_id)
+    work = [w for w in await counted_work(repo, org, project_id, lines) if date_from <= w["work_date"] <= date_to]
+    worked = worked_lines(work, {ln["id"]: ln["work_type"] for ln in lines})
+    return [*manual, *auto_split(groups, manual, worked)]
+
+
+async def _labour(conn: AsyncConnection, repo, org: uuid.UUID, project_id: uuid.UUID,
+                  date_from: datetime.date, date_to: datetime.date) -> dict:
+    """The project's labour per BOQ line and not on a line, over the period (attendance counted by Labour)."""
     from mesiri.infrastructure.postgres.repositories.workforce import (
         PostgresWorkforceReadRepository,
     )
 
     groups = await PostgresWorkforceReadRepository(conn).attendance_by_site_day_trade(
         organization_id=org, project_id=project_id, date_from=date_from, date_to=date_to)
-    allocations = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    allocations = await _allocations(conn, repo, org, project_id, date_from, date_to, groups)
     return labour_by_line(groups, allocations, await repo.current_revision_of(org, project_id))
 
 
@@ -291,23 +306,24 @@ async def _labour_groups(conn: AsyncConnection, repo, org: uuid.UUID, project_id
                          date_from: datetime.date, date_to: datetime.date) -> list[dict]:
     """Attendance per site, day and trade, each with the lines it is on and a suggested line for the rest."""
     from mesiri.domains.progress.boq import suggest_line
-    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
-        PostgresLabourAllocationRepository,
-    )
     from mesiri.infrastructure.postgres.repositories.workforce import (
         PostgresWorkforceReadRepository,
     )
 
     groups = await PostgresWorkforceReadRepository(conn).attendance_by_site_day_trade(
         organization_id=org, project_id=project_id, date_from=date_from, date_to=date_to)
-    allocations = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    allocations = await _allocations(conn, repo, org, project_id, date_from, date_to, groups)
     current = await repo.current_revision_of(org, project_id)
     lines = await repo.list_lines(org, project_id)
     line_by_id = {ln["id"]: ln for ln in lines}
     by_group: dict[tuple, list[dict]] = {}
+    auto: set[tuple] = set()
     for a in allocations:
-        by_group.setdefault(group_key(a["site_id"], a["work_date"], a["trade_key"]), []).append(
+        key = group_key(a["site_id"], a["work_date"], a["trade_key"])
+        by_group.setdefault(key, []).append(
             {"line_id": current.get(a["planned_item_id"], a["planned_item_id"]), "man_days": a["man_days"]})
+        if a.get("auto"):
+            auto.add(key)
     # The lines that got measured work on a site and day: when only one did, that day's labour most likely
     # went into it (a suggestion only; a person confirms).
     worked: dict[tuple, set] = {}
@@ -338,6 +354,8 @@ async def _labour_groups(conn: AsyncConnection, repo, org: uuid.UUID, project_id
                 "unit": (line_by_id.get(p["line_id"]) or {}).get("unit"),
                 "man_days": _q(p["man_days"]), "cost": _m(p["cost"]) if p["cost"] is not None else None,
             } for p in shared["on_lines"]],
+            # BOQ-02: put on its lines by that day's work, not by a person; a person's split replaces it.
+            "auto": key in auto,
             "not_on_a_line": {"man_days": _q(shared["not_on_a_line"]["man_days"]),
                               "cost": _m(shared["not_on_a_line"]["cost"])
                               if shared["not_on_a_line"]["cost"] is not None else None},
@@ -357,7 +375,8 @@ async def project_labour(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """A period's attendance per site, day and trade (newest first), the BOQ lines each was put on, and what is on
-    none, with a suggested line (never saved by itself). ``unallocated``: only groups with man-days on no line."""
+    none, with a suggested line (never saved by itself). A day nobody split is put on the lines its site's work
+    went to that day (BOQ-02, ``auto`` true). ``unallocated``: only groups with man-days on no line."""
     repo = await _project_repo(auth, conn, project_id)
     date_to = date_to or await _today(conn, auth.organization_id)
     date_from = date_from or date_to - datetime.timedelta(days=29)
@@ -561,9 +580,6 @@ async def variance_for(
     from mesiri.domains.costing.variance import line_variance, sort_worst_first, summarise
     from mesiri.domains.progress.boq_router import counted_work
     from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
-    from mesiri.infrastructure.postgres.repositories.labour_allocations import (
-        PostgresLabourAllocationRepository,
-    )
     from mesiri.infrastructure.postgres.repositories.workforce import (
         PostgresWorkforceReadRepository,
     )
@@ -580,7 +596,7 @@ async def variance_for(
             if date_from <= w["work_date"] <= date_to and in_scope(w["site_id"])]
     groups = [g for g in await PostgresWorkforceReadRepository(conn).attendance_by_site_day_trade(
         organization_id=org, project_id=project_id, date_from=date_from, date_to=date_to) if in_scope(g["site_id"])]
-    allocations = await PostgresLabourAllocationRepository(conn).list(org, project_id, date_from, date_to)
+    allocations = await _allocations(conn, repo, org, project_id, date_from, date_to, groups)
     current = await repo.current_revision_of(org, project_id)
 
     def judge(day: datetime.date | None) -> tuple[list[dict], dict]:

@@ -919,6 +919,20 @@ Approved by Ilan in session, 9 Nov 2026 ("Go with it": decisions D-R1..D-R8 in t
 | RPT-03 | **Specialist reports (R4):** cost & margin, cash & receivables 6-week outlook, labour productivity (CC-07), materials & waste, procurement, equipment, subcontractors | L | Should | PRC-19 | todo | — | Fills `/labour/productivity`, `/procurement/reports`, `/accounts/cash-flow`. |
 | RPT-04 | **Delay register (R5):** what slipped, why, knock-on, evidence for extension-of-time claims | M | Later | PRC-19 | todo | — | With CC-14 (closeout). |
 
+## BOQ — Everything a message says reaches the BOQ and the schedule (15 Nov 2026)
+
+Asked in session (15 Nov): "how much do messages connect to the BOQ, schedule and plan?" The audit found five gaps;
+the asker chose: work → BOQ line automatic when clear and asked with buttons when not; a day's labour split by that
+day's work; push straight to `main`. Explainer: [boq-connections.md](../architecture/boq-connections.md).
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| BOQ-01 | **Work → BOQ line by itself:** a saved work update goes on its BOQ line when the line is clear (`suggest_line`); else "Which BOQ line?" with up to 3 lines to tap (`line_choices`); `PUT /progress/activities/{id}/quantities/{qid}/boq-line` (same reach as correcting the work) | M | Must | CC-04 | in progress | Claude (session 15 Nov) | Was "suggestion only, a person links it" (CC-04). No migration. |
+| BOQ-02 | **Labour → BOQ lines by that day's work:** a site-day-trade nobody split goes on the lines the site's work went to that day (trade words first, else even); `auto` on the group; a person's split replaces it | S | Must | BOQ-01, CC-05 | in progress | Claude (session 15 Nov) | Replaces D-CC2 "never guessed" (asker's choice, 15 Nov). Worked out on read: no migration. |
+| BOQ-03 | **Issues on the schedule:** an open issue shows on the schedule activity it holds up (Gantt + WhatsApp `schedule`); never moves dates | S | Must | ST-04 | todo | | |
+| BOQ-04 | **Standard material norms:** materials per unit suggested for common BOQ work (brickwork, plastering, concrete…), applied by the office in one tap, so the material plan works without typing every line | M | Must | MP-01 | todo | | |
+| BOQ-05 | **BOQ Excel sent on WhatsApp:** imported through the same preview + import as Planning › BOQ, after a confirm card | M | Should | ST-03 | todo | | |
+
 ## Done log
 
 | Date | ID / work | Commit |
