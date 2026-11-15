@@ -288,7 +288,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
       ) : (
         <>
         {/* Phones: one line per entry, the quantity in green or red on the right. */}
-        <ul className="divide-y rounded-lg border sm:hidden">
+        <ul className="divide-y rounded-lg border sm:hidden" data-guide="materials.list">
           {lines.map((r, i) => {
             const newDay = i === 0 || lines[i - 1].occurred_date !== r.occurred_date
             const site = r.site_id ? siteNames.get(r.site_id) : undefined
@@ -317,7 +317,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
             )
           })}
         </ul>
-        <div className="hidden overflow-x-auto rounded-lg border sm:block">
+        <div className="hidden overflow-x-auto rounded-lg border sm:block" data-guide="materials.list">
           <table className="w-full min-w-[760px] text-sm">
             <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
               <tr className="text-left">

@@ -7,7 +7,7 @@ import { findPage } from './module-map'
 // is caught before the push. In production the link is returned unchanged and nothing is logged.
 
 /** Pages outside the module map that guidance may link to. */
-const OUTSIDE_MAP = new Set(['/welcome', '/live', '/company'])
+const OUTSIDE_MAP = new Set(['/welcome', '/live', '/company', '/learn'])
 
 export function guideLinkProblem(url: string): string | null {
   const [path, query = ''] = url.split('?')

@@ -24,14 +24,16 @@ function checkTourMarkers(): Plugin {
   return {
     name: 'mesiri-check-tour-markers',
     buildStart() {
-      const tours = fs.readFileSync(path.join(SRC, 'lib/tours.ts'), 'utf8')
+      // The page tours and the walkthroughs (SS-42, src/lib/walkthroughs.ts) point at markers the same way.
+      const files = ['lib/tours.ts', 'lib/walkthroughs.ts']
+      const guides = files.map((f) => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n')
       const wanted = [
-        ...[...tours.matchAll(/target: '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
+        ...[...guides.matchAll(/target: '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
         // A tour's startWhen markers (the page's content it waits for) must exist too.
-        ...[...tours.matchAll(/startWhen: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/'([A-Za-z0-9._-]+)'/g)].map((x) => x[1])),
+        ...[...guides.matchAll(/startWhen: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/'([A-Za-z0-9._-]+)'/g)].map((x) => x[1])),
       ]
       const code = sources(SRC)
-        .filter((file) => !file.endsWith(path.join('lib', 'tours.ts')))
+        .filter((file) => !files.some((f) => file.endsWith(path.join(...f.split('/')))))
         .map((file) => fs.readFileSync(file, 'utf8'))
         .join('\n')
       // A marker as text (data-guide="x", guide="x") or set by a condition (data-guide={next ? 'x' : undefined}).
@@ -39,7 +41,27 @@ function checkTourMarkers(): Plugin {
         code.includes(`data-guide="${id}"`) || code.includes(`guide="${id}"`) || new RegExp(`guide=\\{[^}]*'${id.replace(/\./g, '\\.')}'`).test(code)
       const missing = wanted.filter((id) => !has(id))
       if (missing.length) {
-        this.error(`Tour steps point at markers no element has (src/lib/tours.ts): ${[...new Set(missing)].join(', ')}`)
+        this.error(`Tour steps point at markers no element has (src/lib/tours.ts, src/lib/walkthroughs.ts): ${[...new Set(missing)].join(', ')}`)
+      }
+      // A walkthrough step's `page` must be a built page (module-map.ts), or the walkthrough would lead nowhere.
+      const map = fs.readFileSync(path.join(SRC, 'lib/module-map.ts'), 'utf8')
+      const built = new Set([...map.matchAll(/url: '([^']+)', status: 'built'/g)].map((m) => m[1]))
+      const pages = [...guides.matchAll(/page: '([^']+)'/g)].map((m) => m[1])
+      const gone = pages.filter((url) => !built.has(url) && !built.has(url.split('?')[0]))
+      if (gone.length) {
+        this.error(`Walkthrough steps go to pages that are not built pages in lib/module-map.ts: ${[...new Set(gone)].join(', ')}`)
+      }
+      // A workflow, outcome or role path made of other walkthroughs names them by id: each must exist. Ids are written
+      // (`id: '...'`), or made from a page tour (`page-<path>`), a module (`module-<key>`), or an outcome (`goal-<id>`).
+      const walks = fs.readFileSync(path.join(SRC, 'lib/walkthroughs.ts'), 'utf8')
+      const tourKeys = [...guides.matchAll(/^ {2}'(\/[^']+)': \{/gm)].map((m) => `page${m[1].replace(/\//g, '-')}`)
+      const moduleKeys = [...map.matchAll(/^ {4}key: '([a-z_-]+)'/gm)].map((m) => `module-${m[1]}`)
+      const written = [...walks.matchAll(/\bid: '([a-z0-9-]+)'|composed\('([a-z0-9-]+)'/g)].map((m) => m[1] ?? m[2])
+      const known = new Set([...written, ...written.map((id) => `goal-${id}`), ...tourKeys, ...moduleKeys, 'app'])
+      const lists = [...walks.matchAll(/walks: \[([^\]]*)\]/g), ...walks.matchAll(/composed\([^\n]*?\[([^\]]*)\]/g)]
+      const unknown = lists.flatMap((m) => [...m[1].matchAll(/'([a-z0-9-]+)'/g)].map((x) => x[1])).filter((id) => !known.has(id))
+      if (unknown.length) {
+        this.error(`Walkthroughs made of walkthroughs that don't exist (src/lib/walkthroughs.ts): ${[...new Set(unknown)].join(', ')}`)
       }
     },
   }

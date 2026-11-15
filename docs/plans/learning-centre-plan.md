@@ -1,7 +1,8 @@
 # Learn Mesiri: walkthroughs by role, workflow, module and page
 
 > **Status: approved 15 Nov 2026 in session; being built.** Order changed 15 Nov in session: the page tours (phase 2)
-> come before the Learn page and the engine (phase 1), since each tour is useful the day it ships. Done: **SS-44 Planning**.
+> come first, since each tour is useful the day it ships; SS-41 (Learn page) and SS-42 (engine) were also built 15 Nov
+> in a parallel session (section 9). Done: **SS-41, SS-42, SS-44 Planning**.
 > Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
 > [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
 >
@@ -190,3 +191,65 @@ Rough, from this session (guided onboarding + WhatsApp pop-ups + 8 tours ≈ 50�
 Per item: one page tour ~$1–2 (Accounts ~$2); one workflow ~$2–4. Fresh sessions per phase keep cost low (a long
 session re-reads more each step). On a Claude plan this is usage-limit time, not money: phase 2 alone is several
 5-hour windows.
+
+## 9. Built (SS-41, SS-42, 15 Nov 2026)
+
+- **Learn page** `/learn` (`pages/LearnPage.tsx`): For you / Workflows / Modules / Pages (`?view=`), a card per
+  walkthrough (kind, minutes, steps, "You try it", Done / Not started, Start / Play again). Pages tab: every built page
+  the person can open that has a tour or WhatsApp examples, by module, with **Tour**, **Try it** (the same
+  `WhatsAppPreview` as the "On WhatsApp" pop-up: Copy, Try it on WhatsApp) and **Open**. In the sidebar's everyday
+  pages for every start mode but "I'll find my way"; in Help for everyone ("Learn Mesiri: walkthroughs to try").
+- **Definitions** `lib/walkthroughs.ts`: page walkthroughs and module walkthroughs are **made from `PAGE_TOURS`**
+  (views of one page share its tour and start on the first view), so each new page tour (SS-44..47) appears on the
+  Learn page and in its module with no other change; a module card says "N of M pages so far" until all are written.
+  Workflows and role paths are written by hand.
+- **Engine** `components/walkthrough.tsx`, drawing with the page tours' overlay (`TourOverlay`, now exported from
+  `components/tour.tsx`, so both look and place the bubble the same way). Across pages (navigates once per step,
+  waits up to 4 s for the target, else skips the step in the direction of travel); a step on a page the role can't
+  open is skipped; leaving the walkthrough's page by hand ends it; page tours don't start by themselves while a
+  walkthrough runs. **Try on WhatsApp**: the message, Copy, Try it on WhatsApp, "I've sent it"; with a `check`, reads
+  the list route before and every 4 s, says "Got it. It's saved." and reloads the page's data so the next step shows
+  the record. **Try here**: clicks pass through to the lit button; while the page's dialog is open the tour is a
+  small Spark chip; when it closes, a new record moves on, none says "Nothing saved yet". **Take back** block: the
+  WhatsApp words (Copy, Try it) and/or the dashboard way. On a read-only account, practice and take-back steps are
+  skipped. Progress: `guide_seen` `/learn/<id>` on Done (not on Stop).
+- **Guards**: the build check (`vite.config.ts`) covers walkthrough markers too, and fails when a step's `page` is
+  not a built page in `module-map.ts`; `test_module_map_whatsapp.py` checks each walkthrough practice / take-back
+  names real WhatsApp-assistant tools that write.
+- **First workflow** (to prove the engine end to end): *A delivery, from site to stock*: WhatsApp delivery with
+  check → it in Movements → take back on WhatsApp (`undo_receipt`, the receipts card label "Take back delivery";
+  SOP.md has no fixed words, the model maps "take back") → Record delivery here → Correct to take it back → Record
+  use. It is W2's second half; SS-43 writes W1, W2 in full and W4 and the first role paths.
+- **Not done here**: lighting up the new record itself on the page ("Got it" reloads the list but does not point at
+  the row); W1's take-back (a site update has no WhatsApp undo, and the Site log has no undo button: work entries
+  can only be voided from the old Activities page, which now redirects; SS-43 must settle this before writing W1).
+
+## 10. Built (SS-43, 15 Nov 2026): outcomes, W1 / W2 / W4, role paths
+
+- **"What you get" (asked 15 Nov in session: "a list of things the owner finds valuable, that is the title, and how
+  to get it")**: `OUTCOMES` in `lib/walkthroughs.ts`. Each is a title in the role's words, one line on why it matters,
+  and the walkthroughs it runs, so nothing is written twice. They lead the For you tab ("What you get from Mesiri"),
+  then the role path ("Everything ..., in order" = the role's outcomes back to back). The build fails when an outcome
+  or workflow names a walkthrough that does not exist. Draft, for Ilan to edit:
+
+  | Role | Outcome | Runs |
+  |---|---|---|
+  | Owner / admin | Know every site's day without a phone call | W1 |
+  | | See where every bag of cement goes | W2 |
+  | | Pay wages right, with no arguments | W4 |
+  | | Catch a cost overrun before the bill comes | BOQ, Material plan tours (W9 later) |
+  | | Start a new project in an afternoon | Project start, Schedule, Team tours (W6 later) |
+  | | Hear about problems the day they happen | Issues tour (W7 later) |
+  | Site engineer | Send the day's update in one message | W1 first half |
+  | | Get material on site on time | W2: asking, then delivery and use |
+  | | Mark attendance in one line | W4 first half |
+  | | Report a problem and get it fixed | Issues tour |
+
+  SS-48 adds: owner "Get paid faster by the client" (W8) and "Month end without chasing the accountant" (W11), and
+  the Project manager and Finance outcomes.
+- **Workflows are made of parts** (`part: true`, not listed alone): W1 = site update + daily report; W2 = asking +
+  ordering + delivery; W4 = attendance + wages. A role path or outcome can use half a workflow.
+- **Practice that can't be taken back** (D-L3, decided in build): a site update, attendance and an advance have no
+  WhatsApp undo, so their practice is `save: false`: send the message, look at the card, tap **Cancel**. Nothing is
+  saved, nothing to take back, and no new undo button was needed on the Site log (the W1 question in section 9).
+  Requests take back with `cancel_material_request`; deliveries with `undo_receipt`.
