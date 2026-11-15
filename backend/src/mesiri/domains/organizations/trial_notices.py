@@ -97,6 +97,42 @@ def expired_member_message(*, company: str, owner_name: str | None) -> str:
 
 CONTINUE_RECEIVED = "👍 Thank you! Our team will call you today to keep your daily reports going."
 CONTINUE_ALREADY = "👍 We have your request. Our team will call you soon."
+#: [305]: how often the team group hears that an owner who asked to continue is still writing while waiting.
+NUDGE_EVERY = dt.timedelta(hours=3)
+
+
+def open_continue_request(requests: object) -> dict[str, Any] | None:
+    """[305]: the company's open continue request, else None."""
+    items = requests if isinstance(requests, list) else []
+    return next((dict(r) for r in items if isinstance(r, dict) and r.get("status") == OPEN), None)
+
+
+def continue_pending_message(*, asked_day: str, safe_until: str) -> str:
+    """[305] (15 Nov, an owner tapped Continue, then asked "When will i get" and was sent the trial-ended message and its
+    button again): the reply to an owner whose continue request is open, whatever they send. One wording for a second
+    Continue too."""
+    return (
+        f"👍 We have your request from *{asked_day}*. Our team will call you on this number to switch Mesiri "
+        f"back on. Your reports and data are safe until *{safe_until}*."
+    )
+
+
+def nudge_due(request: dict[str, Any], now: dt.datetime) -> bool:
+    """[305]: whether the team should hear again that this owner is waiting (at most once per ``NUDGE_EVERY``)."""
+    last = request.get("last_nudged_at")
+    try:
+        return last is None or now - dt.datetime.fromisoformat(str(last)) >= NUDGE_EVERY
+    except ValueError:
+        return True
+
+
+def with_nudged(requests: object, now: dt.datetime) -> list[dict[str, Any]]:
+    """[305]: ``requests`` with the open one marked as nudged now."""
+    items = [dict(r) for r in requests] if isinstance(requests, list) else []
+    for r in items:
+        if r.get("status") == OPEN:
+            r["last_nudged_at"] = now.isoformat()
+    return items
 
 
 def add_continue_request(
@@ -114,6 +150,8 @@ def add_continue_request(
             "created_at": now.isoformat(),
             "user_id": user_id,
             "via": via,  # "whatsapp" or "dashboard"
+            # [305]: the team hears of a new request at once; a reminder comes NUDGE_EVERY after it at the earliest.
+            "last_nudged_at": now.isoformat(),
         }
     )
     return items, True

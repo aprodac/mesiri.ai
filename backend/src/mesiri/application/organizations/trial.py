@@ -119,13 +119,44 @@ async def expiry_details(conn: AsyncConnection, organization_id: Any) -> dict[st
             {"org": organization_id},
         )
     ).first()
+    retention_days = int(policy.get("retention_days_after_expiry") or 30)
+    # [305]: an open continue request (the same settings key record_continue_request writes).
+    request = notices.open_continue_request(
+        await PostgresOrganizationSettingsRepository(conn).get(organization_id, org_settings.CONTINUE_REQUESTS)
+    )
+    asked_at = _parsed(request.get("created_at")) if request else None
     return {
         "company": org["name"],
         "effective_status": lifecycle.effective_status(org["status"], org["trial_ends_at"], now),
         "end_day": notices.end_day_label(org["trial_ends_at"], org["timezone"]),
-        "retention_days": int(policy.get("retention_days_after_expiry") or 30),
+        "retention_days": retention_days,
         "owner_name": owner.full_name if owner else None,
+        "open_request": request,
+        "asked_day": notices.end_day_label(asked_at, org["timezone"]) if asked_at else None,
+        "safe_until": notices.end_day_label(
+            org["trial_ends_at"] + dt.timedelta(days=retention_days), org["timezone"]
+        ) if org["trial_ends_at"] else None,
     }
+
+
+async def continue_nudge_due(conn: AsyncConnection, organization_id: Any) -> bool:
+    """[305]: True (and noted) when the team should hear that an owner with an open continue request is still
+    writing; at most once per ``trial_notices.NUDGE_EVERY``. False with no open request."""
+    repo = PostgresOrganizationSettingsRepository(conn)
+    requests = await repo.get(organization_id, org_settings.CONTINUE_REQUESTS)
+    request = notices.open_continue_request(requests)
+    now = dt.datetime.now(dt.UTC)
+    if request is None or not notices.nudge_due(request, now):
+        return False
+    await repo.set(organization_id, org_settings.CONTINUE_REQUESTS, notices.with_nudged(requests, now), updated_by=None)
+    return True
+
+
+def _parsed(value: object) -> dt.datetime | None:
+    try:
+        return dt.datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
 
 
 async def record_continue_request(

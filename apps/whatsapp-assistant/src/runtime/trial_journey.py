@@ -22,7 +22,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from channel.replies import ListRow, ReplySpec
-from mesiri.application.organizations.trial import expiry_details, record_continue_request
+from mesiri.application.organizations.trial import (
+    continue_nudge_due,
+    expiry_details,
+    record_continue_request,
+)
 from mesiri.domains.organizations import lifecycle
 from mesiri.domains.organizations import trial_notices as notices
 
@@ -39,6 +43,12 @@ _OWNER_ROLE = "ADMIN"
 def _wants_to_continue(message: Any) -> bool:
     tap = str((message.metadata or {}).get("interactive_reply_id") or "")
     return tap == notices.CONTINUE_TAP or notices.is_continue(message.text)
+
+
+def _pending(details: dict[str, Any]) -> str:
+    """[305]: the reply to an owner whose continue request is open."""
+    return notices.continue_pending_message(asked_day=details.get("asked_day") or "today",
+                                            safe_until=details.get("safe_until") or "your call")
 
 
 class TrialJourney:
@@ -59,6 +69,12 @@ class TrialJourney:
                     company=details["company"], owner_name=details["owner_name"]
                 )
             )
+        if details.get("open_request"):
+            # [305] (15 Nov, an owner: Continue, then "When will i get" got the trial-ended message and its button again):
+            # once the owner has asked, anything they send (a question, a photo, a file, Continue again) hears that the
+            # request is with us; the team hears they are still waiting, at most once every 3 hours.
+            await self._nudge(actor, details)
+            return ReplySpec(text=_pending(details))
         if _wants_to_continue(message):
             return await self._continue(actor)
         return ReplySpec(
@@ -67,6 +83,20 @@ class TrialJourney:
             ),
             buttons=[ListRow(id=notices.CONTINUE_TAP, title="Continue with Mesiri")],
         )
+
+    async def _nudge(self, actor: ActorIdentity, details: dict[str, Any]) -> None:
+        """[305]: tell the team group the owner is still waiting for the call (rate-limited). Never fails the reply."""
+        try:
+            async with self._db.transaction() as conn:
+                due = await continue_nudge_due(conn, actor.organization_id)
+            if due:
+                await self._notifier.post(
+                    f"⏳ *{actor.org_name or details.get('company') or 'A trial company'}* ({actor.full_name}) is still "
+                    f"waiting for the continue call, asked on {details.get('asked_day') or 'an earlier day'}. Please "
+                    "call them and convert in the control panel."
+                )
+        except Exception:  # noqa: BLE001 -- the owner's reply never waits on the team notice
+            _log.warning("trial.continue_nudge_failed org=%s", actor.organization_id, exc_info=True)
 
     async def handle_continue(self, message: Any, actor: ActorIdentity) -> ReplySpec | None:
         """A trial company owner's "CONTINUE", while the trial still runs; None for
@@ -87,7 +117,10 @@ class TrialJourney:
                 conn, actor.organization_id, user_id=str(actor.user_id), via="whatsapp"
             )
         if not added:
-            return ReplySpec(text=notices.CONTINUE_ALREADY)
+            async with self._db.transaction() as conn:
+                details = await expiry_details(conn, actor.organization_id)
+            return ReplySpec(text=_pending(details) if details and details.get("open_request")
+                             else notices.CONTINUE_ALREADY)
         _log.info("trial.continue_requested org=%s", actor.organization_id)
         await self._notifier.post(
             f"💰 *{actor.org_name or 'A trial company'}* wants to continue with Mesiri "

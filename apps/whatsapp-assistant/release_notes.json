@@ -470,6 +470,21 @@
         "cor_96fc6cd286bc4961a115ae146227e231"
       ],
       "message": "Midhlaj, innu ningal test cheythappol vanna 3 prashnangalum sheriyaakki: weekly report ippo kittum ('technical issue' ini illa), card-il 'Steel' maattittu 'TMT steel' aakkan paranjal athu puthiya material aayi maarum, pinne record-il illatha kanakkukal (42 man-days pole) Mesiri ini parayilla. Onnu koode try cheyyoo: '20 ton Tata steel, 30 ton TMT steel vannu' ennu ayachu, card-il TMT steel aakkan parayoo, ennittu 'last week report' chodikkoo. Thanks!"
+    },
+    {
+      "id": "boq-files-and-photos-307",
+      "date": "2026-11-15",
+      "for": [
+        "cor_5b481e8a2d594233ab1036b07ed59a9a",
+        "cor_268eac813fc84361b7b3b3598646aea4",
+        "cor_80eecf8d05e64063967d5a6c8806cb3c",
+        "cor_5e741b31a1a941458ee8f83b3666ad32",
+        "cor_7d8fcc9ed15e45388885d6bbff7e4756",
+        "cor_98e2149ad92c492abdc8a924f8cca178",
+        "cor_268d9699e1ec4085881e5c3457370b85",
+        "cor_2b9574f8ec7a4050a089766a2c1c524a"
+      ],
+      "message": "Thanks for sending your BOQ today. Mesiri now reads PDF, Word and Excel files, and every page photo you send together, and it tells you what the BOQ holds without changing your project. Please send the BOQ file again to try it. To load the BOQ lines into the project, use Planning > BOQ > Import on the dashboard, or ask us and we'll do it for you."
     }
   ]
 }
