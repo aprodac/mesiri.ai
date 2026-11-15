@@ -126,7 +126,7 @@ export default function ReturnsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Returns" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide="returns.list">
+        <section aria-label="Returns" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide={isLoading ? undefined : 'returns.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Returns did not load. Refresh to try again.</p>}
           {!isLoading && !isError && list.length === 0 && (

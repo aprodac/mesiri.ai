@@ -70,7 +70,7 @@ export function ReturnDetail({ ret: r, inSheet }: { ret: MaterialReturn; inSheet
             </span>
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" data-guide="returns.act">
           {r.status !== 'cancelled' && (
             <Button asChild variant="outline" className="gap-2"><Link to={`/procurement/returns/${r.id}/document`}><FileText className="size-4" /> Debit note</Link></Button>
           )}

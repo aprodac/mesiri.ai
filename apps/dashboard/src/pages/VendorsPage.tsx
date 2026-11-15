@@ -172,7 +172,7 @@ export default function VendorsPage() {
             })}
           </div>
           {payables.data && num(payables.data.totals.payable) + num(payables.data.totals.unbilled) > 0 && (
-            <div className="rounded-xl border bg-card p-3">
+            <div className="rounded-xl border bg-card p-3" data-guide="vendors.age">
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 text-sm">
                 <span className="font-medium">How long it has waited</span>
                 <span className="text-xs text-muted-foreground">Unpaid bills and deliveries not billed, by their date{payables.data.partial ? ' · your projects only' : ''}</span>

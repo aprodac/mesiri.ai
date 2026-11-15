@@ -245,7 +245,7 @@ function PendingCard({ p, company, showSupplier, onOpen }: { p: PendingLine; com
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
         {p.order.may_receive ? (
-          <Button size="sm" className="h-8 gap-1.5 font-semibold" onClick={onOpen}><PackageCheck className="size-3.5" /> Material came</Button>
+          <Button size="sm" className="h-8 gap-1.5 font-semibold" onClick={onOpen} data-guide="pending.came"><PackageCheck className="size-3.5" /> Material came</Button>
         ) : (
           <Button size="sm" variant="ghost" className="h-8" onClick={onOpen}>Open order</Button>
         )}

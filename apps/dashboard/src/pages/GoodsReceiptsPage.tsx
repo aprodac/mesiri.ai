@@ -119,7 +119,7 @@ export default function GoodsReceiptsPage() {
                   </Button>
                 )}
                 {g.photo_url ? (
-                  <a href={g.photo_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/50"><Image className="size-3.5" /> Challan photo</a>
+                  <a href={g.photo_url} target="_blank" rel="noreferrer" data-guide="grn.challan" className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/50"><Image className="size-3.5" /> Challan photo</a>
                 ) : (
                   <span className="shrink-0 self-start text-xs text-muted-foreground">{g.has_photo ? 'Photo saved (cannot be opened right now)' : 'No photo'}</span>
                 )}

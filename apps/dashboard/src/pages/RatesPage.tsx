@@ -217,7 +217,7 @@ export default function RatesPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Items and their rates" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide="rates.list">
+        <section aria-label="Items and their rates" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide={isLoading ? undefined : 'rates.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2, 3].map((i) => <div key={i} className="h-[72px] animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && !forbidden && (
             <div className="flex flex-col items-center gap-3 p-6 text-center text-sm">

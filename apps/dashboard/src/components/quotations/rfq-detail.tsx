@@ -79,7 +79,7 @@ export function RfqDetail({ rfq: listed, inSheet }: { rfq: Rfq; inSheet?: boolea
       </header>
 
       <Section title="Suppliers" count={r.suppliers.length} hint={`${r.counts.quoted} quoted · ${r.counts.invited} waiting${r.counts.declined ? ` · ${r.counts.declined} declined` : ''}`}>
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2" data-guide="quotes.suppliers">
           {r.suppliers.map((s) => (
             <li key={s.rfq_vendor_id} className={cn('flex flex-col gap-2 rounded-xl border p-3', s.best_total && 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/30')}>
               <div className="flex items-center gap-2.5">
@@ -232,7 +232,7 @@ function CompareSheet({ rfq, picks, onPick }: { rfq: Rfq; picks: Record<string, 
 
   if (isMobile) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3" data-guide="quotes.compare">
         {rfq.lines.map((line) => (
           <div key={line.id} className="overflow-hidden rounded-xl border">
             <div className="flex items-center gap-2 bg-muted/40 px-3 py-2">
@@ -263,7 +263,7 @@ function CompareSheet({ rfq, picks, onPick }: { rfq: Rfq; picks: Record<string, 
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border">
+    <div className="overflow-x-auto rounded-xl border" data-guide="quotes.compare">
       <table className="w-full min-w-[560px] border-collapse text-sm">
         <thead>
           <tr className="bg-muted/40 text-left">
