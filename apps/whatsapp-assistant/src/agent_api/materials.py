@@ -40,7 +40,21 @@ def pending_ref(value: Any, names: list[str]) -> str | None:
 
 
 def _words(text: str) -> set[str]:
-    return set(_WORD.findall(alias_key(text)))
+    """The words of a name, spelled-out letters joined ([301]: speech gives "T M T steel" for "TMT steel", "P P C
+    cement" for "PPC cement")."""
+    words: list[str] = []
+    letters = ""
+    for w in _WORD.findall(alias_key(text)):
+        if len(w) == 1 and w.isalpha():
+            letters += w
+            continue
+        if letters:
+            words.append(letters)
+            letters = ""
+        words.append(w)
+    if letters:
+        words.append(letters)
+    return set(words)
 
 
 def _names(row: dict[str, Any]) -> list[str]:
@@ -87,8 +101,21 @@ def nearest(said: str, rows: list[dict[str, Any]], first: dict[str, Any] | None,
     return ([first] if first else [])[:k] + ranked[: k - (1 if first else 0)]
 
 
+def joined_letters(text: str) -> str:
+    """[301]: "T M T steel" -> "TMT steel" (letters spelled out one by one, as speech gives them, joined upper case);
+    the rest as it was said."""
+    out: list[str] = []
+    for part in text.split():
+        if len(part) == 1 and part.isalpha() and out and out[-1].isupper() and out[-1].isalpha() and len(out[-1]) < 6:
+            out[-1] += part.upper()
+        else:
+            out.append(part.upper() if len(part) == 1 and part.isalpha() else part)
+    return " ".join(out)
+
+
 def title(said: str) -> str:
-    return " ".join(said.split())[:1].upper() + " ".join(said.split())[1:]
+    said = joined_letters(" ".join(said.split()))
+    return said[:1].upper() + said[1:]
 
 
 def trade_rows(said: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -53,7 +53,7 @@ async def test_plain_metal_asks_which_aggregate_with_both_as_buttons_never_new()
 
 @pytest.mark.parametrize(("said", "expected"), [
     ("20mm jelly", AGG20), ("40 mm metal", AGG40), ("msand", MSAND), ("M-sand", MSAND), ("p sand", PSAND),
-    ("kambi", STEEL), ("TMT bars", STEEL),
+    ("kambi", STEEL), ("steel rods", STEEL),
 ])
 async def test_a_trade_name_of_one_listed_material_takes_the_line(said: str, expected: str) -> None:
     body, problem, buttons = await _settle(said)

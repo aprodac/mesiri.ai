@@ -62,7 +62,11 @@ TRADE_NAMES: dict[str, tuple[str, ...]] = {
                        "40mm aggregate", "1 1/2 metal"),
     "M Sand": ("msand", "manufactured sand", "crusher sand"),
     "P Sand": ("psand", "plastering sand", "plaster sand"),
-    "Steel": ("kambi", "tmt", "tmt bar", "tmt bars", "tmt steel", "rod", "rods", "steel rod", "steel rods"),
+    # [301] (15 Nov, Aprodac and the test company: "3 ton TMT steel" went on plain Steel, the card said "Steel" and TMT
+    # was lost; where "TMT steel bars" was listed it was passed over): TMT is a TYPE of steel, never a trade name for
+    # the generic one. Words that only say "steel" stay here; a type word goes to the listed material of that type,
+    # or becomes one (Ilan, #9652: sites read stock by type).
+    "Steel": ("kambi", "rod", "rods", "steel rod", "steel rods"),
     "Solid Blocks": ("solid block", "concrete block", "concrete blocks", "cement block", "cement blocks"),
     "Laterite Stone": ("chenkallu", "chenkal", "vettukallu"),
     "Bricks": ("ishtika", "ishtik"),

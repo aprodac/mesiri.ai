@@ -34,14 +34,26 @@ def _change(changes: list[tuple[str, str]], line: str, number: int = 1) -> tuple
                            "confirm_line": line})
 
 
-SAID = [ChatMessage(role="user", text="30 ton TMT steel vannu"), ChatMessage(role="model", text="Ready.")]
+SAID = [ChatMessage(role="user", text="30 ton steel vannu"), ChatMessage(role="model", text="Ready.")]
 
 
 async def _on_steel(store: Store):  # noqa: ANN202
+    # [301] (15 Nov): "TMT steel" is no longer folded into Steel at all (it is a type, held as its own material from
+    # the first message); a line on Steel to correct is now one said as plain "steel".
+    turn = await _turn(store, [[_receipt(STEEL, "steel", LITRE, 30, "30 ton steel, Green Villa")], "Ready."],
+                       "30 ton steel vannu")
+    assert [e.body["material_id"] for e in turn.pending] == [STEEL]
+    return turn.pending
+
+
+async def test_301_tmt_steel_said_first_is_its_own_material_from_the_first_message() -> None:
+    """The 11 Nov message itself ("30 ton TMT steel vannu"; the customer: "they are different items") no longer needs
+    a correction: Save adds TMT steel with its line, Steel's stock untouched."""
+    store = _store()
     turn = await _turn(store, [[_receipt(STEEL, "TMT steel", LITRE, 30, "30 ton TMT steel, Green Villa")], "Ready."],
                        "30 ton TMT steel vannu")
-    assert [e.body["material_id"] for e in turn.pending] == [STEEL]  # [254]: TMT is the trade name of Steel
-    return turn.pending
+    assert [e.tool for e in turn.pending] == ["add_material", "record_receipt"]
+    assert turn.pending[0].body["name"] == "TMT steel" and turn.pending[1].body["material_id"] == "new:TMT steel"
 
 
 async def test_the_reported_correction_puts_the_line_on_a_new_tmt_steel() -> None:
