@@ -49,6 +49,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.reports.period.router",  # PRC-19/20: the weekly / monthly report and the owner's brief
     "mesiri.domains.admin.my_requests_router",  # request 230: the person's own requests
     "mesiri.domains.identity.preferences_router",  # WA-169: the reply language they chose
+    "dpr_preview.router",  # WA-311: a day's DPR as its document (the dashboard's own), for "send me today's report"
 )
 
 

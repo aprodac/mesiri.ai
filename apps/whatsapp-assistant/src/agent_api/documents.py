@@ -200,3 +200,88 @@ async def send_report(client: ApiClient, send_document: Callable[..., Awaitable[
     if not sent:
         return {"status": "not sent; tell them to ask again in a minute"}
     return {"status": "sent to their WhatsApp", "sent": name}
+
+
+# -- WA-311: "innathe report pdf ayakk" -- the day's DPR, as the person sees it, in this chat -------------------------
+
+SEND_DAY_REPORT = "send_day_report"
+DAY_REPORT_TOOL = ToolSpec(name=SEND_DAY_REPORT, description=(
+    "Send the DAILY report (DPR) of a day as a PDF in this chat, to the person asking: \"innathe report\", \"today's "
+    "report pdf\", \"DPR ayakk\", \"yesterday's report\". project_id, and site_id when they named one site (none: "
+    "each site of the project that has anything that day). date YYYY-MM-DD, default today. Not for a week or a "
+    "month (send_report), and not for sending the DPR to the client or others (send_dpr)."),
+    parameters={"type": "object", "required": ["project_id"], "properties": {
+        "project_id": {"type": "string"}, "site_id": {"type": "string"},
+        "date": {"type": "string", "description": "YYYY-MM-DD; default today"}}})
+#: At most this many site PDFs for one ask.
+DAY_REPORT_MAX_SITES = 4
+#: What a site's document says when the day has nothing on it.
+_NOTHING = ("No activities logged", "No attendance recorded", "No material movements recorded")
+
+
+def _uuid_or_none(value: Any) -> str | None:
+    try:
+        return str(uuid.UUID(str(value or "").strip()))
+    except ValueError:
+        return None
+
+
+def day_file(project: str, site: str, day: dt.date) -> str:
+    import re
+
+    words = f"Daily report {project} {site if site and site != project else ''} {day.day} {day:%b %Y}"
+    return (re.sub(r"[^A-Za-z0-9]+", "-", words).strip("-")[:90] or "Daily-report") + ".pdf"
+
+
+async def send_day_report(client: ApiClient, send_document: Callable[..., Awaitable[Any]],
+                          render_pdf: Callable[[str], Awaitable[bytes]], wa_id: str, ctx: Any, today: dt.date,
+                          arguments: dict[str, Any]) -> dict[str, Any]:
+    """The day's DPR document of each site (the dashboard's own page, read as the person), printed to PDF and sent."""
+    project_id = _uuid_or_none(arguments.get("project_id"))
+    if project_id is None:
+        return {"status": "not sent: say which project (project_id from the facts)"}
+    try:
+        day = dt.date.fromisoformat(str(arguments.get("date") or "")[:10]) if arguments.get("date") else today
+    except ValueError:
+        day = today
+    if day > today:
+        return {"status": "not sent: that day has not come yet"}
+    projects = {str(p.id): str(p.name) for p in getattr(ctx, "projects", None) or []}
+    sites = [(str(s.id), str(s.name)) for s in getattr(ctx, "sites", None) or [] if str(s.project_id) == project_id]
+    named = _uuid_or_none(arguments.get("site_id"))
+    if named:
+        sites = [s for s in sites if s[0] == named] or [(named, "")]
+    if not sites:
+        return {"status": "not sent: this project has no site to report on"}
+    sent: list[str] = []
+    empty: list[str] = []
+    for site_id, site_name in sites[:DAY_REPORT_MAX_SITES]:
+        status, data, _ = await client.fetch_bytes(f"/dpr/site-days/{site_id}/document?date={day.isoformat()}")
+        if status in (403, 404):
+            continue
+        if status != 200 or not data:
+            return {"status": "not sent; tell them to ask again in a minute"}
+        html = data.decode("utf-8", errors="replace")
+        if not named and all(n in html for n in _NOTHING):
+            empty.append(site_name)
+            continue
+        try:
+            pdf = await render_pdf(html)
+            went = await send_document(wa_id, pdf, filename=day_file(projects.get(project_id, ""), site_name, day),
+                                       caption=f"Daily report · {site_name or projects.get(project_id, '')} · "
+                                               f"{day:%a} {day.day} {day:%b}",
+                                       mime_type="application/pdf", shows=f"Daily report PDF {site_name}")
+        except Exception:  # noqa: BLE001 -- the model says it did not go
+            _log.exception("agent_api.send_day_report_failed site=%s", site_id)
+            went = False
+        if went:
+            sent.append(site_name or "the site")
+    if not sent:
+        return {"status": "nothing sent: nothing is recorded there for that day" if empty or not named
+                else "not sent; tell them to ask again in a minute"}
+    out = {"status": f"sent {len(sent)} daily report PDF(s) to their WhatsApp: {', '.join(sent)}",
+           "note": "Reply in one short line that it went (the day and the site). Never the report in words."}
+    if empty:
+        out["nothing_recorded_at"] = ", ".join(empty)
+    return out
+

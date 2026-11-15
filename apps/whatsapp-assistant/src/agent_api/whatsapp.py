@@ -262,6 +262,13 @@ _NOT_A_NAME = {"tons", "ton", "bags", "bag", "nos", "cum", "cft", "the", "and", 
                "counted", "site", "block", "main"}
 
 
+async def _day_pdf(html: str) -> bytes:
+    """WA-311: a day's DPR document as PDF, by the one DPR renderer of the process."""
+    from channel.dpr_document.day_document import shared_renderer
+
+    return await shared_renderer().render_pdf(html)
+
+
 def already_saved_lines(recent: list[dict[str, Any]] | None, now: float, said: str, hours: float = 12) -> str:
     """What this chat saved in the last ``hours`` that ``said`` repeats: its numbers all said again and a word of
     its material said ("2 tons Tata steel, Green Villa" for "2 ton Tata steel vannu"); newest last, at most four, or
@@ -771,6 +778,13 @@ class ApiWhatsApp:
                         lambda arguments: documents.send_report(
                             client, send_file, wa, arguments,
                             today=dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date())),
+                    # WA-311: "innathe report pdf ayakk": the day's DPR document, printed by the same renderer.
+                    documents.SEND_DAY_REPORT: (
+                        documents.DAY_REPORT_TOOL,
+                        lambda arguments: documents.send_day_report(
+                            client, send_file, _day_pdf, wa, ctx,
+                            dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date(),
+                            arguments)),
                 }
             renderer = getattr(self._receipts, "renderer", None)
             if renderer is not None and self._send_image is not None:
