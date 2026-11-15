@@ -1,6 +1,7 @@
 # Learn Mesiri: walkthroughs by role, workflow, module and page
 
-> **Status: approved 15 Nov 2026 in session, not built yet** (beyond the engine pieces listed in section 2).
+> **Status: approved 15 Nov 2026 in session; being built.** Order changed 15 Nov in session: the page tours (phase 2)
+> come before the Learn page and the engine (phase 1), since each tour is useful the day it ships. Done: **SS-44 Planning**.
 > Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
 > [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
 >
@@ -23,11 +24,17 @@
 - **Spark tours** (SS-40): `apps/dashboard/src/components/tour.tsx` draws them; content in `src/lib/tours.ts`. Dims the
   screen, lights one element, the Spark (Live's character, `components/live/spark.tsx`) explains; Next, Back, Skip,
   "2 of 5". Remembered per person in `users.guide_seen` (`/tour/...`, migration 0553). Replay from Help.
-- **App tour** (sidebar, Search, project picker, On WhatsApp, Help) and **8 hand-written page tours**: Today, Daily
-  reports, Issues, Materials, Labour, BOQ, Projects, Team.
+- **App tour** (sidebar, Search, project picker, On WhatsApp, Help) and **15 hand-written page tours**: Today, Daily
+  reports, Issues, Materials, Labour, BOQ, Projects, Team (SS-40); Project start, Schedule, Material plan, Live plans,
+  Places, Drawing check, Documents (SS-44).
+- **A tour waits for its page** (`startWhen`, SS-44): it starts by itself only once one of its markers is on screen,
+  so it never plays (and is never marked seen) on a project picker or a loading skeleton; picking a project starts it.
+  Replay from Help shows whatever is there, and every Planning tour's first step points at the project list
+  (`planning.pick`) for that case.
 - **Markers**: steps point at `data-guide="..."` on the element (or `guide="..."` on `Segmented` / `StatStrip`).
-  A step whose element is not on screen is skipped. **The build fails** when a step's marker is on no element
-  (`apps/dashboard/vite.config.ts`, `checkTourMarkers`).
+  A step whose element is not on screen is skipped. **The build fails** when a step's (or `startWhen`'s) marker is on
+  no element (`apps/dashboard/vite.config.ts`, `checkTourMarkers`). A marker set by a condition counts
+  (`data-guide={next ? 'setup.next' : undefined}`), for "the one that is lit up".
 - **WhatsApp examples on every page** (SS-39): `module-map.ts` `whatsapp` examples (save / answer, what to say,
   the reply, the assistant tools), shown in the "On WhatsApp" pop-up; `whatsapp-assistant/tests/agent_api/
   test_module_map_whatsapp.py` keeps them true.
@@ -107,12 +114,13 @@ Equipment, Settings: each = its pages' tours back to back (sidebar order).
 
 ### 5.4 Page tours: all hand-written (D-L2), in build order (Planning first, D-L4)
 
-Built (8): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
-sites, Team.
+Built (15): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
+sites, Team; **Planning (SS-44, 15 Nov)**: Project start, Schedule, Material plan, Live plans, Places, Drawing check,
+Documents.
 
-| Order | Module | Pages to write (61) | Count |
+| Order | Module | Pages to write (61; 54 left) | Count |
 |---|---|---|---|
-| 1 | Planning | Project start, Schedule, Material plan, Live plans, Places, Drawing check, Documents | 7 |
+| 1 | Planning | Project start, Schedule, Material plan, Live plans, Places, Drawing check, Documents | 7 (**done**) |
 | 2 | Procurement | Requests, Purchase orders, Goods received (GRN), Pending deliveries, Rates, Quotations, Suppliers, Returns | 8 |
 | 3 | Cost control | Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost centres | 5 |
 | 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 |
@@ -133,10 +141,15 @@ sites, Team.
 2. Pick 3–6 things a new person must know: the view tabs, the key numbers, the main action, the list, filters.
 3. Add `data-guide="<page>.<thing>"` to each element (or `guide="..."` on `Segmented` / `StatStrip`).
 4. Add the tour to `PAGE_TOURS` in `src/lib/tours.ts`, keyed by the page path (no `?view=`): `introFromPage: true`,
-   then the steps; plain words, construction terms are explained by the glossary on their own; give a Spark mood.
+   `startWhen` (the markers of the page's real content: what shows once a project is picked and the data loaded,
+   including its empty state when that state teaches something), then the steps; a page that needs a project starts
+   with the `planning.pick` step; the last step can point at `app.whatsapp` with the page's WhatsApp example; plain words, construction terms are explained by the glossary on their own; give a Spark mood.
    A step may mention the WhatsApp message from the page's `whatsapp` example.
 5. `npx tsc -b --noEmit && npx oxlint src/ && npx vite build` (the build fails on a missing marker), then click it
-   through in a browser (stub API script pattern: scratch `tour.mjs` from SS-40).
+   through in a browser: Playwright against `vite` with `/me/preferences` stubbed (`start_mode: 'guided'`,
+   `guide_seen: {'/tour/app': 1}`), `/projects` + `/lifecycle/projects` with two projects (so the picker shows) and the
+   page's own route with sample data; check picker → no tour, pick → tour, every step, phone and dark, and the empty
+   state.
 
 ## 6. Rollout and safety
 
@@ -147,6 +160,9 @@ sites, Team.
 - Rollback: revert the commits; tours and the Learn page are front-end only.
 
 ## 7. Phases and tracker
+
+Build order since 15 Nov (in session: "we need to complete the rest pages first"): SS-44 → SS-45 → SS-46 → SS-47,
+then SS-41 → SS-42 → SS-43, then SS-48 → SS-49.
 
 | ID | Item | Phase |
 |---|---|---|
