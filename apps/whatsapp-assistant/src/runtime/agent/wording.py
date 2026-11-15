@@ -668,6 +668,19 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "सेव करने के लिए अभी कुछ तैयार नहीं है। जो छूटा है उसके साथ फिर भेजिए।",
         "hinglish": "Save karne ke liye abhi kuch ready nahi hai. Jo chhoota hai uske saath phir bhejiye.",
     },
+    # Live, 15 Nov (Aprodac): the same steel sent again after it was saved got "nothing is ready, send it again".
+    "api.repeat_of_saved": {
+        "english": "Already saved in this chat: {lines}. Nothing new was added. If this is another one (a new "
+                   "delivery), say so and I'll add it.",
+        "manglish": "Ithu ee chat-il nerathe save aayittundu: {lines}. Onnum puthiyathaayi cherthittilla. Ithu "
+                    "puthiya onnaanenkil (puthiya delivery), athu paranjal njan cherkkaam.",
+        "malayalam": "ഇത് ഈ ചാറ്റിൽ നേരത്തെ സേവ് ആയിട്ടുണ്ട്: {lines}. പുതിയതായി ഒന്നും ചേർത്തിട്ടില്ല. ഇത് പുതിയ ഒന്നാണെങ്കിൽ "
+                     "(പുതിയ ഡെലിവറി), അത് പറഞ്ഞാൽ ഞാൻ ചേർക്കാം.",
+        "hindi": "यह इस चैट में पहले ही सेव हो चुका है: {lines}. कुछ नया नहीं जोड़ा गया। अगर यह नया है (नई डिलीवरी), तो बताइए, "
+                 "मैं जोड़ दूँगा।",
+        "hinglish": "Yeh is chat mein pehle hi save ho chuka hai: {lines}. Kuch naya nahi joda. Agar yeh naya hai (nayi "
+                    "delivery), bataiye, main jod dunga.",
+    },
     "preview.ask": {
         "english": "👀 *Preview* of the change you asked for. Is this how you want it? We're already building it.",
         "manglish": "👀 Ningal chodicha maattathinte *preview*. Ingane aano venda? Njangal ithu undaakki thudangi.",

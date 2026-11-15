@@ -28,7 +28,9 @@ _SAVED = re.compile(
 #: The same words that say the opposite: not yet, once they tap, or about an earlier day ("saved an hour ago").
 _NOT_A_CLAIM = re.compile(
     r"\b(?:not|nothing|never|no|yet|will|would|should|can|once|when|after|until|till|if|to\s+be|to\s+get|gets?"
-    r"|ago|yesterday|earlier|already|illa|cheythittilla|nahi|nahin)\b|n't\b|ില്ല|नहीं|\?",
+    r"|ago|yesterday|earlier|already|illa|cheythittilla|nahi|nahin"
+    # 15 Nov: "earlier" in Manglish / Hinglish names a save of before, never one of this turn.
+    r"|nerathe|neratthe|munpe|munne|innale|pehle|pahle)\b|n't\b|ില്ല|നേരത്തെ|पहले|नहीं|\?",
     re.IGNORECASE,
 )
 _CLAUSE = re.compile(r"[^,;]*(?:[,;]\s*|$)")

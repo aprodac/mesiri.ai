@@ -256,6 +256,30 @@ def _in_with(language: str | None, key: str, english: str, **values: str) -> str
     return say(key, language, **values)
 
 
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_NAME_WORD = re.compile(r"[^\W\d_]{3,}")
+_NOT_A_NAME = {"tons", "ton", "bags", "bag", "nos", "cum", "cft", "the", "and", "kg", "litres", "new", "material",
+               "counted", "site", "block", "main"}
+
+
+def already_saved_lines(recent: list[dict[str, Any]] | None, now: float, said: str, hours: float = 12) -> str:
+    """What this chat saved in the last ``hours`` that ``said`` repeats: its numbers all said again and a word of
+    its material said ("2 tons Tata steel, Green Villa" for "2 ton Tata steel vannu"); newest last, at most four, or
+    "" when the message repeats none of them (then it is not about an earlier save)."""
+    words = {w.casefold() for w in _NAME_WORD.findall(said)}
+    numbers = set(_NUMBER.findall(said))
+    lines = []
+    for r in recent or []:
+        line = str(r.get("summary") or "").strip()
+        if not line or now - float(r.get("at") or 0) >= hours * 3600:
+            continue
+        its_numbers = set(_NUMBER.findall(line))
+        its_words = {w.casefold() for w in _NAME_WORD.findall(line)} - _NOT_A_NAME
+        if its_numbers and its_numbers <= numbers and its_words & words:
+            lines.append(line)
+    return " · ".join(dict.fromkeys(lines[-4:]))
+
+
 def _in(language: str | None, key: str, english: str) -> str:
     """The line in the person's language (the English constant for English or unknown)."""
     if not language or language == "english":
@@ -870,6 +894,13 @@ class ApiWhatsApp:
             return ReplySpec(text=without_ready_block(whatsapp_bold(words)) or "OK.")
         if turn.nothing_held:
             words = _in(state.get("language"), "api.nothing_held", NOTHING_HELD)  # [229]: nothing is held: say so
+            if (earlier := already_saved_lines(state.get("recent_saves"), time.time(), text)):
+                # Live, 15 Nov 15:42 (Aprodac): the steel sent again after it was saved at 15:15; the model said "saved"
+                # with nothing done and the person read "send it again" (a second copy waiting to happen). What this
+                # chat saved is named, and a new one is added only when they say so.
+                from runtime.agent.wording import say
+
+                words = say("api.repeat_of_saved", state.get("language") or "english", lines=earlier)
         if turn.not_held:  # [248]: lines that are not on the card are said, never left to look "ready"
             from runtime.agent.wording import say
 
