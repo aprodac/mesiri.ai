@@ -125,6 +125,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
     introFromPage: true,
     startWhen: ['boq.empty', 'boq.lines'],
     steps: [
+      { target: 'project.pick', title: 'Pick a project', text: 'This page works on one project at a time. Pick it here, or in the bar at the top.' },
       { target: 'boq.empty', title: 'Start here', text: 'Upload the estimate Excel you already have; I read its items, units and quantities. Or start one section by hand.' },
       { target: 'boq.import', title: 'From your Excel', text: 'Bring the BOQ in from the Excel you already have.' },
       { target: 'boq.lines', title: 'Every line', text: 'Each work item with its quantity and rates. Work the site sends on WhatsApp counts on its line by itself, with the budget it earned.', mood: 'think' },

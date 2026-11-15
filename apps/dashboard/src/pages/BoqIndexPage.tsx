@@ -33,7 +33,7 @@ export default function BoqIndexPage() {
       ) : (projects.data ?? []).length === 0 ? (
         <p className="text-sm text-muted-foreground">No projects yet. Add one in Projects & Sites.</p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y rounded-lg border" data-guide="project.pick">
           {(projects.data ?? []).map((p, i) => {
             const t = boqs[i]?.data?.totals
             return (

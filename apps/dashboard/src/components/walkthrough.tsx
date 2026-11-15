@@ -6,8 +6,11 @@ import { Check, Copy, Loader2, Send, Undo2 } from 'lucide-react'
 import { Spark } from '@/components/live/spark'
 import { TourOverlay, findTarget, useRect } from '@/components/tour'
 import { api } from '@/lib/api'
-import { ALL_PAGES } from '@/lib/module-map'
+import { ALL_PAGES, findPage } from '@/lib/module-map'
 import { useAuth } from '@/lib/AuthContext'
+import { useScope } from '@/lib/ScopeContext'
+import { urlWithScope } from '@/lib/scope-url'
+import { PAGE_TOURS } from '@/lib/tours'
 import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
 import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
@@ -23,6 +26,12 @@ import { waLink } from '@/lib/whatsapp-modal'
 
 /** How long a step waits for its page to draw its target before it is skipped. */
 const WAIT_MS = 4000
+/** Once a step of the same page has been on screen (the page has drawn), how long a page-tour step whose target is
+ *  not there waits before it is skipped: what is missing then is missing (no data, a button this role doesn't have),
+ *  and the person would only see a blank screen (SS-52). Counted from when that page first showed a step. */
+const SETTLED_MS = 1500
+/** On a page that has fetched everything, how long a step waits for its target to draw (React draws after the data). */
+const IDLE_MS = 600
 const POLL_MS = 4000
 
 interface Run {
@@ -35,7 +44,9 @@ interface Run {
 /** Is the browser on this page (its path, and its ?view= when it has one)? No ?view= is the page's first view. */
 function onPage(url: string, pathname: string, search: string): boolean {
   const [path, query = ''] = url.split('?')
-  if (pathname !== path) return false
+  // A page can redirect to its own address for the project picked (/boq to /projects/<id>/boq): the module map's
+  // findPage knows they are one page (SAME_AS), so the walkthrough has arrived (SS-52).
+  if (pathname !== path) return findPage(pathname, search)?.page.url.split('?')[0] === path && !query
   const want = new URLSearchParams(query).get('view')
   if (!want) return true
   const view = new URLSearchParams(search).get('view')
@@ -213,6 +224,8 @@ export function WalkthroughRunner() {
   const [finished, setFinished] = React.useState<{ walk: Walkthrough; next?: Walkthrough } | null>(null)
   const guide = useStartMode()
   const next = React.useRef<HTMLButtonElement>(null)
+  /** The top bar's scope as it is now; a walkthrough starts from it. */
+  const scopeNow = React.useRef<ReturnType<typeof useScope>['scope']>({ mode: 'portfolio' })
   const number = prefs.data?.whatsapp_number ?? null
   const role = me?.role
 
@@ -227,6 +240,9 @@ export function WalkthroughRunner() {
       const walk = findWalkthrough((e as CustomEvent<string>).detail)
       if (!walk) return
       setWalkthroughRunning(true)
+      drawnPage.current = null
+      shownPage.current = null
+      scopeRef.current = scopeNow.current
       setNewRecord(null)
       setFinished(null)
       setRun({ walk, index: 0, dir: 1 })
@@ -268,6 +284,26 @@ export function WalkthroughRunner() {
   // useNavigate changes with the address; the step must not start over when it does.
   const navigateRef = React.useRef(navigate)
   navigateRef.current = navigate
+  // The project picked (on a picker step or in the top bar) goes with every page the walkthrough opens, or each
+  // project page would ask for it again (SS-52). Kept through a page whose address carries no ?project= (the BOQ's
+  // own address, /projects/<id>/boq). A ref: picking one must not start the step over.
+  const { scope } = useScope()
+  scopeNow.current = scope
+  const scopeRef = React.useRef(scope)
+  if (scope.mode !== 'portfolio') scopeRef.current = scope
+  else {
+    // A project's own page (/projects/<id>/boq) names it in the path, not in ?project=; the top bar doesn't pick it up.
+    const own = /^\/projects\/([^/]+)\/./.exec(pathname)?.[1]
+    if (own) scopeRef.current = { mode: 'project', projectId: own, projectName: '' }
+  }
+  /** The page that last lit up a step's element, and since when: its later steps don't wait the full WAIT_MS. */
+  const drawnPage = React.useRef<{ page: string; since: number } | null>(null)
+  // Is the page still fetching its data? When nothing is, a missing element is really missing (SS-52).
+  const queries = useQueryClient()
+  const queriesRef = React.useRef(queries)
+  queriesRef.current = queries
+  /** The page that last had any step on screen (lit or told in the middle), and since when. */
+  const shownPage = React.useRef<{ page: string; since: number } | null>(null)
   React.useEffect(() => {
     setShownKey(null)
     setNote(null)
@@ -281,20 +317,37 @@ export function WalkthroughRunner() {
     }
     if (step.page && navigated.current !== here && !onPage(step.page, window.location.pathname, window.location.search)) {
       navigated.current = here
-      navigateRef.current(step.page)
+      navigateRef.current(urlWithScope(step.page, scopeRef.current))
     }
     const startedAt = Date.now()
     const timer = window.setInterval(() => {
       const arrived = !step.page || onPage(step.page, window.location.pathname, window.location.search)
       const drawn = !step.target || !!findTarget(step.target)
+      // When is a missing target really missing (no data, the other of an either/or step, a picker already passed)?
+      // At once when the page tour's content markers (startWhen) are on screen: the page has loaded. Else shortly
+      // after another step of this page lit up. Else (still loading) the full WAIT_MS.
+      const content = step.page ? PAGE_TOURS[step.page.split('?')[0]]?.startWhen : undefined
+      const loaded = !!step.optional && !!content?.some((id) => !!findTarget(id))
+      // A workflow step is told in the middle when its element is missing, so nothing is lost by deciding sooner:
+      // once any step of its page has been on screen (SS-52; an empty company paused 4 s on each).
+      const mark = step.optional ? drawnPage.current : shownPage.current
+      const since = mark && mark.page === step.page ? mark.since : null
+      // Nothing left to fetch on the page it has arrived at: what is not drawn now won't be.
+      const idle = arrived && Date.now() - startedAt > IDLE_MS && queriesRef.current.isFetching() === 0
+      const limit = loaded || idle ? 250 : step.page && since !== null ? Math.max(250, since + SETTLED_MS - startedAt) : WAIT_MS
       if (arrived && drawn && Date.now() - startedAt > 250) {
         window.clearInterval(timer)
+        // A lit element proves the page has drawn its content (the hello with no target can show before the data).
+        if (step.page && step.target && drawnPage.current?.page !== step.page) drawnPage.current = { page: step.page, since: Date.now() }
+        if (step.page && shownPage.current?.page !== step.page) shownPage.current = { page: step.page, since: Date.now() }
         setShownKey(here)
-      } else if (Date.now() - startedAt > WAIT_MS) {
+      } else if (Date.now() - startedAt > limit) {
         window.clearInterval(timer)
         // Its element never drew: a page-tour step is skipped; a workflow step is told without the light.
-        if (arrived && (!step.target || !step.optional)) setShownKey(here)
-        else goRef.current(run.dir)
+        if (arrived && (!step.target || !step.optional)) {
+          if (step.page && shownPage.current?.page !== step.page) shownPage.current = { page: step.page, since: Date.now() }
+          setShownKey(here)
+        } else goRef.current(run.dir)
       }
     }, 150)
     return () => window.clearInterval(timer)

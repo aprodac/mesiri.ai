@@ -3,6 +3,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { ArrowRight, CircleHelp, Compass, GraduationCap, Info, LayoutList, Lightbulb, ListOrdered, MessageSquareText, Search, Sparkles } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/lib/AuthContext'
+import { useScope } from '@/lib/ScopeContext'
+import { urlWithScope } from '@/lib/scope-url'
 import { useModuleEnabled } from '@/lib/modules'
 import { SECTION_TITLES, findPage } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
@@ -44,6 +46,7 @@ export function HelpButton() {
   const [open, setOpen] = React.useState(false)
   const { pathname, search } = useLocation()
   const { me } = useAuth()
+  const { scope } = useScope()
   const role = (me?.role || '').toUpperCase()
   const isModuleEnabled = useModuleEnabled()
   const hit = findPage(pathname, search)
@@ -169,7 +172,7 @@ export function HelpButton() {
                 <ul className="flex flex-col divide-y rounded-lg border">
                   {siblings.map((p) => (
                     <li key={p.url}>
-                      <Link to={p.url} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-muted/60">
+                      <Link to={urlWithScope(p.url, scope)} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-muted/60">
                         <span className="min-w-0 flex-1">
                           <span className="block font-medium">{p.title}</span>
                           <span className="block text-xs text-muted-foreground">{p.about}</span>
@@ -186,7 +189,7 @@ export function HelpButton() {
                 <h3 className="text-xs font-semibold text-muted-foreground">Connected pages</h3>
                 <div className="flex flex-wrap gap-1.5">
                   {related.map((r) => (
-                    <Link key={r.url} to={r.url} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-sm hover:bg-muted/60">
+                    <Link key={r.url} to={urlWithScope(r.url, scope)} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-sm hover:bg-muted/60">
                       {r.title} <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden />
                     </Link>
                   ))}

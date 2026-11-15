@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { SETTINGS_PATHS, urlWithScope } from '@/lib/scope-url'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -202,8 +203,7 @@ const BADGE = {
 const NAV_LINK_BASE =
   'group/row flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors'
 
-// Settings' pages keep their own addresses (UX-04); the Settings row lights up on any of them.
-const SETTINGS_PATHS = ['/settings', '/projects', '/team', '/company', '/whatsapp']
+// Settings' pages keep their own addresses (UX-04); the Settings row lights up on any of them (lib/scope-url.ts).
 
 function checkIsItemActive(pathname: string, itemUrl: string): boolean {
   if (pathname === itemUrl) return true
@@ -407,21 +407,7 @@ export function AppSidebar() {
     })
   }
 
-  const getUrlWithScope = (baseUrl: string) => {
-    const isOperational = !SETTINGS_PATHS.includes(baseUrl.split('?')[0])
-    if (!isOperational) return baseUrl
-
-    const params = new URLSearchParams()
-    if (scope.mode === 'project' || scope.mode === 'site') {
-      params.set('project', scope.projectId)
-    }
-    if (scope.mode === 'site') {
-      params.set('site', scope.siteId)
-    }
-    const qs = params.toString()
-    if (!qs) return baseUrl
-    return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${qs}`
-  }
+  const getUrlWithScope = (baseUrl: string) => urlWithScope(baseUrl, scope)
 
   const showBackButton = location.pathname.startsWith('/projects/') || location.pathname.startsWith('/team/')
 

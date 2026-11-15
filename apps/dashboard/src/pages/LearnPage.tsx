@@ -6,6 +6,8 @@ import { PageHeader, Section, Segmented } from '@/components/page/page-kit'
 import { Button } from '@/components/ui/button'
 import { WhatsAppPreview } from '@/components/whatsapp-preview'
 import { useAuth } from '@/lib/AuthContext'
+import { useScope } from '@/lib/ScopeContext'
+import { urlWithScope } from '@/lib/scope-url'
 import { MODULE_GROUPS, findPage, type ModulePage } from '@/lib/module-map'
 import { useModuleEnabled } from '@/lib/modules'
 import { usePageTitle } from '@/lib/page-title'
@@ -79,6 +81,7 @@ function Cards({ walks, seen }: { walks: Walkthrough[]; seen: Record<string, num
 /** A page on the Pages tab: its tour, what to try on WhatsApp, and a way there. */
 function PageRow({ page, walk, done }: { page: ModulePage; walk?: Walkthrough; done: boolean }) {
   const [open, setOpen] = React.useState(false)
+  const { scope } = useScope()
   const examples = page.whatsapp ?? []
   return (
     <li className="flex flex-col gap-2 px-3 py-3">
@@ -102,7 +105,7 @@ function PageRow({ page, walk, done }: { page: ModulePage; walk?: Walkthrough; d
             </Button>
           )}
           <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" asChild>
-            <Link to={page.url}>Open <ArrowRight className="size-3" aria-hidden /></Link>
+            <Link to={urlWithScope(page.url, scope)}>Open <ArrowRight className="size-3" aria-hidden /></Link>
           </Button>
         </div>
       </div>
