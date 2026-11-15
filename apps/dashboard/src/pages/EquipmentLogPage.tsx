@@ -135,7 +135,7 @@ export default function EquipmentLogPage() {
       <Link to="/equipment" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />Machines</Link>
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={ClipboardPen} title="Daily log" />
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" data-guide="elog.day">
           <Button variant="outline" size="icon" aria-label="Day before" onClick={() => setDate(add(date, -1))}><ChevronLeft className="size-4" /></Button>
           <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold">
             {dayWords(date, today)}
@@ -145,7 +145,7 @@ export default function EquipmentLogPage() {
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3" data-guide="elog.totals">
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm tabular-nums">
           <span><strong className="text-lg">{hrs(String(t.worked))}</strong> <span className="text-muted-foreground">worked</span></span>
           <span className="text-amber-700 dark:text-amber-300"><strong className="text-lg">{hrs(String(t.idle))}</strong> idle</span>
@@ -154,7 +154,7 @@ export default function EquipmentLogPage() {
           <span className="text-muted-foreground">{rows.length - empty} of {rows.length} machines logged</span>
         </div>
         <div className="flex gap-2">
-          {!readOnly && empty > 0 && <Button variant="outline" size="sm" className="gap-1.5" onClick={copyYesterday} disabled={!yesterday.data?.items.length}><Copy className="size-4" />Copy yesterday</Button>}
+          {!readOnly && empty > 0 && <Button variant="outline" size="sm" className="gap-1.5" data-guide="elog.copy" onClick={copyYesterday} disabled={!yesterday.data?.items.length}><Copy className="size-4" />Copy yesterday</Button>}
           <Button variant="outline" size="sm" className="gap-1.5" disabled={!rows.some((r) => r.logged)} onClick={exportDay}><Download className="size-4" />Export</Button>
         </div>
       </div>
@@ -162,14 +162,14 @@ export default function EquipmentLogPage() {
       {day.isLoading && <div className="h-40 animate-pulse rounded-xl bg-muted/40" />}
       {day.isError && <p className="text-sm text-destructive">The log did not load. Refresh to try again.</p>}
       {day.data && rows.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-12 text-center text-sm text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-12 text-center text-sm text-muted-foreground" data-guide="elog.empty">
           <ClipboardPen className="size-8 opacity-40" />
           No machine on a site here. <Link to="/equipment" className="font-medium text-primary underline">Add machines</Link>
         </div>
       )}
 
       {sites.map((s) => (
-        <section key={s.siteId} aria-label={s.siteName} className="overflow-hidden rounded-xl border">
+        <section key={s.siteId} aria-label={s.siteName} className="overflow-hidden rounded-xl border" data-guide="elog.sites">
           <h2 className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2 text-sm font-semibold"><MapPin className="size-4 text-muted-foreground" />{s.projectName} › {s.siteName}</h2>
           <div className="hidden grid-cols-[minmax(140px,1.4fr)_repeat(3,72px)_minmax(120px,1fr)_72px_minmax(100px,0.8fr)] gap-2 border-b px-4 py-1.5 text-[11px] font-medium text-muted-foreground uppercase md:grid">
             <span>Machine</span><span className="text-right">Worked</span><span className="text-right">Idle</span><span className="text-right">Broken</span><span>What broke</span><span className="text-right">Diesel L</span><span>Operator</span>
@@ -217,7 +217,7 @@ export default function EquipmentLogPage() {
           <div className="flex items-center justify-end gap-3">
             {changed.length > 0 && <span className="text-sm text-muted-foreground">{changed.length} changed</span>}
             {changed.length > 0 && <Button variant="ghost" onClick={() => setEdits({})}>Undo changes</Button>}
-            <Button className="gap-2 font-semibold" disabled={!canSave || save.isPending} onClick={() => save.mutate()}><Save className="size-4" />{save.isPending ? 'Saving…' : 'Save'}</Button>
+            <Button className="gap-2 font-semibold" data-guide={changed.length ? 'elog.save' : undefined} disabled={!canSave || save.isPending} onClick={() => save.mutate()}><Save className="size-4" />{save.isPending ? 'Saving…' : 'Save'}</Button>
           </div>
         </div>
       )}

@@ -60,7 +60,7 @@ export default function HireCheckPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={Scale} title="Hire check" />
         <div className="flex items-center gap-2">
-          <div role="tablist" aria-label="Month" className="flex gap-0.5 rounded-xl bg-muted p-1">
+          <div role="tablist" aria-label="Month" className="flex gap-0.5 rounded-xl bg-muted p-1" data-guide="hire.month">
             {[-2, -1, 0].map((o) => (
               <button key={o} role="tab" type="button" aria-selected={Number(offset) === o} onClick={() => setOffset(String(o))}
                 className={cn('h-8 rounded-lg px-3 text-sm', Number(offset) === o ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75')}>{monthRange(o)[2]}</button>
@@ -70,7 +70,7 @@ export default function HireCheckPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-guide="hire.tiles">
         {[
           { label: 'Hours recorded come to', value: inr(data?.totals.expected ?? 0), icon: ClipboardList, tone: 'bg-muted' },
           { label: 'Billed', value: inr(data?.totals.billed ?? 0), icon: ReceiptText, tone: 'bg-muted' },
@@ -84,7 +84,7 @@ export default function HireCheckPage() {
         ))}
       </div>
 
-      <section aria-label={`Hired machines, ${label}`} className="overflow-hidden rounded-xl border">
+      <section aria-label={`Hired machines, ${label}`} className="overflow-hidden rounded-xl border" data-guide={!data ? undefined : items.length ? 'hire.list' : 'hire.empty'}>
         {isLoading && <div className="h-32 animate-pulse bg-muted/40" />}
         {isError && <p className="p-6 text-sm text-destructive">The hire check did not load.</p>}
         {data && items.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No hired machine in {label}.</p>}
@@ -111,7 +111,7 @@ export default function HireCheckPage() {
                 {!readOnly && <button type="button" className="mt-1 block text-muted-foreground hover:text-destructive" disabled={dropBill.isPending} onClick={() => { if (window.confirm('Remove this bill?')) dropBill.mutate(b.id) }}>Remove</button>}
               </div>
             ))}
-            {!readOnly && <Button size="sm" variant="outline" className="w-fit gap-1.5" onClick={() => setBillFor(r)}><ReceiptText className="size-4" />Enter a bill</Button>}
+            {!readOnly && <Button size="sm" variant="outline" className="w-fit gap-1.5" data-guide="hire.bill" onClick={() => setBillFor(r)}><ReceiptText className="size-4" />Enter a bill</Button>}
           </div>
         ))}
       </section>

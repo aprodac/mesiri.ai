@@ -296,7 +296,7 @@ export default function WhatsAppInboxPage({ embedded = false }: { embedded?: boo
       <aside className={cn('min-h-0 w-full shrink-0 flex-col border-r sm:flex sm:w-[300px] xl:w-[340px]', current ? 'hidden' : 'flex')}>
         <div className="flex shrink-0 flex-col gap-2 border-b p-3">
           <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+            <div className="relative flex-1" data-guide="wa.search">
               <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or number" className="h-9 pl-8" aria-label="Search" />
             </div>
@@ -306,6 +306,7 @@ export default function WhatsAppInboxPage({ embedded = false }: { embedded?: boo
           </div>
           <Segmented<Filter>
             label="Show"
+            guide="wa.filter"
             value={filter}
             onChange={setFilter}
             options={[
@@ -330,11 +331,11 @@ export default function WhatsAppInboxPage({ embedded = false }: { embedded?: boo
               </Button>
             </div>
           ) : shown.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">
+            <p className="p-6 text-center text-sm text-muted-foreground" data-guide="wa.empty">
               {search ? 'No one matches.' : filter === 'all' ? 'No WhatsApp messages yet.' : 'None right now.'}
             </p>
           ) : (
-            <ul className="divide-y">
+            <ul className="divide-y" data-guide="wa.list">
               {shown.map((c) => (
                 <ConversationRow key={c.sender_wa_id} c={c} active={c.sender_wa_id === selected} onClick={() => setSelected(c.sender_wa_id)} />
               ))}
@@ -343,7 +344,7 @@ export default function WhatsAppInboxPage({ embedded = false }: { embedded?: boo
         </div>
       </aside>
 
-      <section className={cn('min-h-0 min-w-0 flex-1 flex-col', current ? 'flex' : 'hidden sm:flex')}>
+      <section className={cn('min-h-0 min-w-0 flex-1 flex-col', current ? 'flex' : 'hidden sm:flex')} data-guide={current ? 'wa.thread' : undefined}>
         {current ? (
           <Thread key={current.sender_wa_id} c={current} onBack={() => setSelected('')} />
         ) : (

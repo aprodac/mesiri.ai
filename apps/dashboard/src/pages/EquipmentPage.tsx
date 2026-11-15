@@ -130,13 +130,13 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
         <div className="flex items-center gap-3">
           <span className="hidden text-sm text-muted-foreground lg:inline">Today: <strong className="text-foreground tabular-nums">{hrs(String(todayHours))}</strong>{todayFuel ? <> · <strong className="text-foreground tabular-nums">{todayFuel} L</strong> diesel</> : null}</span>
           {monthCost > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">This month: <strong className="text-foreground tabular-nums">{inr(monthCost)}</strong></span>}
-          <Button variant="outline" className="gap-2" asChild><Link to="/equipment/log"><ClipboardPen className="size-4" /> <span className="hidden sm:inline">Daily log</span></Link></Button>
-          <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportMachines(list)} title="The machines shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
-          {!readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2.6} /> {vehicles ? 'Vehicle' : 'Machine'}</Button>}
+          <Button variant="outline" className="gap-2" data-guide="equip.log" asChild><Link to="/equipment/log"><ClipboardPen className="size-4" /> <span className="hidden sm:inline">Daily log</span></Link></Button>
+          <Button variant="outline" className="gap-2" data-guide="equip.export" disabled={!list.length} onClick={() => exportMachines(list)} title="The machines shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
+          {!readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" data-guide="equip.add" onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2.6} /> {vehicles ? 'Vehicle' : 'Machine'}</Button>}
         </div>
       </header>
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-4 gap-2 sm:gap-3" data-guide="equip.tiles">
         {tiles.map((t) => {
           const on = tile === t.value
           return (
@@ -152,7 +152,7 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="equip.tabs">
           {TABS.map((t) => {
             const on = !tile && tab === t.value
             const n = filtered.filter((m) => inTab(m, t.value)).length
@@ -164,7 +164,7 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
             )
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="equip.filters">
           {!siteScope && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={options.sites} onChange={setSite} />}
           <FilterPill icon={LayoutGrid} label="Type" allLabel="Every type" value={type} options={options.types} onChange={setType} />
           <FilterPill icon={CircleOff} label="Owned / hired" allLabel="Owned and hired" value={owner} options={options.owners} onChange={setOwner} />
@@ -178,7 +178,7 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label={vehicles ? 'Vehicles' : 'Machines'} className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border">
+        <section aria-label={vehicles ? 'Vehicles' : 'Machines'} className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide={isLoading || isError ? undefined : all.length ? 'equip.list' : 'equip.empty'}>
           <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-1.5 sm:px-4"><Legend /><span className="text-[11px] text-muted-foreground">last 14 days</span></div>
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Machines did not load. Refresh to try again.</p>}
@@ -197,7 +197,7 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
           {list.map((m) => <MachineRow key={m.id} machine={m} selected={current?.id === m.id} onPick={() => setSelected(m.id)} seesMoney={seesMoney} />)}
         </section>
         {!isMobile && current && (
-          <aside aria-label="Machine" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[440px]"><MachinePanel key={current.id} machine={current} /></aside>
+          <aside aria-label="Machine" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[440px]" data-guide="equip.detail"><MachinePanel key={current.id} machine={current} /></aside>
         )}
       </div>
 
@@ -210,7 +210,7 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
         </Sheet>
       )}
       {!readOnly && (
-        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setAdding(true)}><Plus className="size-5" strokeWidth={2.6} /> {vehicles ? 'Vehicle' : 'Machine'}</Button>
+        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" data-guide="equip.add" onClick={() => setAdding(true)}><Plus className="size-5" strokeWidth={2.6} /> {vehicles ? 'Vehicle' : 'Machine'}</Button>
       )}
       <MachineDialog open={adding} onOpenChange={setAdding} defaultKind={kind} defaultSiteId={siteScope ?? undefined} onSaved={(m) => setSelected(m.id)} />
     </div>
