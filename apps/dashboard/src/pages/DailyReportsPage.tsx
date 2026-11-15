@@ -123,7 +123,7 @@ function ReportRow({ item, onPdf, nested }: { item: DprHistoryItem; onPdf: (item
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {item.version_no !== null && !unsentProject(item) && (
-          <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" title="PDF" aria-label="Open the PDF" onClick={() => onPdf(item)}>
+          <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" title="PDF" aria-label="Open the PDF" onClick={() => onPdf(item)} data-guide="reports.pdf">
             <FileText />
           </Button>
         )}
@@ -248,7 +248,7 @@ export default function DailyReportsPage() {
         title="Reports"
         actions={
           <>
-            <Button variant="outline" size="sm" className="gap-1.5" disabled={items.length === 0} onClick={exportRows}>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={items.length === 0} onClick={exportRows} data-guide="reports.export">
               <Download className="size-4" /> Export CSV
             </Button>
             <Button variant="ghost" size="icon" className="size-8" onClick={() => query.refetch()} disabled={query.isFetching} title="Refresh" aria-label="Refresh">
@@ -258,7 +258,7 @@ export default function DailyReportsPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-guide="reports.filters">
         <Select value={range} onValueChange={(v) => setRange(v as RangeKey)}>
           <SelectTrigger className="h-9 w-[140px]" aria-label="Dates">
             <SelectValue />
@@ -341,7 +341,7 @@ export default function DailyReportsPage() {
                       <Building2 className="size-4 text-muted-foreground" />
                       <span className="font-medium">{group.name}</span>
                     </p>
-                    <ul className="flex flex-col divide-y">
+                    <ul className="flex flex-col divide-y" data-guide="reports.list">
                       {group.project && <ReportRow item={group.project} onPdf={openPdf} />}
                       {group.sites.map((item) => (
                         <ReportRow key={item.id} item={item} onPdf={openPdf} nested={!!group.project} />

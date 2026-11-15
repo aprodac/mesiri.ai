@@ -14,6 +14,7 @@ import { HelpButton } from '@/components/help-button'
 import { WhatsAppPageButton, WhatsAppPreviewModal } from '@/components/whatsapp-page-button'
 import { InboxBell } from '@/components/inbox-bell'
 import { PageGuide } from '@/components/page-guide'
+import { GuidedTour } from '@/components/tour'
 import { StartQuestionDialog } from '@/components/onboarding/start-question'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
@@ -129,6 +130,8 @@ export function AppLayout() {
       <StartQuestionDialog />
       {/* The current page's WhatsApp preview, opened from the top bar, the ? panel or the page strip. */}
       <WhatsAppPreviewModal />
+      {/* The Spark's guided tours (lib/tours.ts). */}
+      <GuidedTour />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>

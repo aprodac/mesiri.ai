@@ -11,6 +11,9 @@ import { cn } from '@/lib/utils'
 import { MODES, useResetGuides, useStartMode } from '@/lib/start-mode'
 import { StartChoices } from '@/components/onboarding/start-question'
 import { WithTerms } from '@/components/term'
+import { Spark } from '@/components/live/spark'
+import { tourForPage } from '@/lib/tours'
+import { showMeAround } from '@/lib/tour-events'
 import { SeeOnWhatsApp } from '@/components/whatsapp-page-button'
 
 // UX-08 (asked 9 Nov: "a help icon in the top bar which for each page makes it easier to understand what that
@@ -74,6 +77,7 @@ export function HelpButton() {
     <>
       <button
         type="button"
+        data-guide="app.help"
         onClick={() => setOpen(true)}
         className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 text-sm font-medium text-foreground hover:bg-primary/20 sm:px-3"
         title={`What is ${title}?`}
@@ -189,6 +193,18 @@ export function HelpButton() {
                 </div>
               </section>
             )}
+            {tourForPage(pathname, search) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  showMeAround()
+                }}
+                className="flex items-center gap-2 self-start rounded-lg border border-[#facc15] bg-[#facc15]/15 px-3 py-1.5 text-sm font-medium hover:bg-[#facc15]/25"
+              >
+                <Spark mood="hello" size={26} quiet /> Show me around this page
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -215,14 +231,14 @@ export function HelpButton() {
                     </button>
                   </p>
                 )}
-                {guide.rules.strips !== 'none' && (
+                {(guide.rules.strips !== 'none' || guide.rules.tours !== 'none') && (
                   <button
                     type="button"
                     disabled={resetGuides.isPending || Object.keys(guide.seen).length === 0}
                     onClick={() => resetGuides.mutate()}
                     className="self-start text-sm text-muted-foreground underline underline-offset-2 disabled:no-underline disabled:opacity-60"
                   >
-                    {resetGuides.isSuccess ? 'Every page will explain itself again' : 'Show me around again'}
+                    {resetGuides.isSuccess ? 'Every page will show you around again' : 'Show me around again'}
                   </button>
                 )}
               </section>

@@ -33,6 +33,8 @@ export interface ModeRules {
   termsUnderlined: boolean
   /** "Bring your data" is in the sidebar's everyday pages. */
   bringDataInSidebar: boolean
+  /** The Spark's guided tours (components/tour.tsx): the app tour and every page's, only the app tour, or none. */
+  tours: 'all' | 'app' | 'none'
 }
 
 export const MODES: Record<StartMode, ModeRules> = {
@@ -47,6 +49,7 @@ export const MODES: Record<StartMode, ModeRules> = {
     strips: 'all',
     termsUnderlined: true,
     bringDataInSidebar: true,
+    tours: 'all',
   },
   bring_data: {
     label: 'I have my data in Excel or on paper',
@@ -59,6 +62,7 @@ export const MODES: Record<StartMode, ModeRules> = {
     strips: 'data',
     termsUnderlined: false,
     bringDataInSidebar: true,
+    tours: 'app',
   },
   switching: {
     label: "I've used other construction software",
@@ -71,6 +75,7 @@ export const MODES: Record<StartMode, ModeRules> = {
     strips: 'none',
     termsUnderlined: false,
     bringDataInSidebar: false,
+    tours: 'app',
   },
   free: {
     label: "I'll find my way",
@@ -83,6 +88,7 @@ export const MODES: Record<StartMode, ModeRules> = {
     strips: 'none',
     termsUnderlined: false,
     bringDataInSidebar: false,
+    tours: 'none',
   },
 }
 

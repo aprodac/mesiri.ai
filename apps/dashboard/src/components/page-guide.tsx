@@ -6,6 +6,7 @@ import { SeeOnWhatsApp } from '@/components/whatsapp-page-button'
 import { findPage } from '@/lib/module-map'
 import { useGuideSeen, useStartMode } from '@/lib/start-mode'
 import { guideKey, stripFor } from '@/lib/page-guide'
+import { tourForPage } from '@/lib/tours'
 
 // SS-29 + SS-37 (guided-onboarding-plan.md 6.4, 6.7): a page explains itself once, at the top, for the people whose
 // start mode asks for it. One component in the layout serves every page, and its words come only from
@@ -20,6 +21,8 @@ export function PageGuide() {
   const hit = findPage(pathname, search)
   if (!guide.ready || !hit) return null
   const { page } = hit
+  // The Spark's tour already explains this page (lib/tours.ts): no strip as well.
+  if (guide.rules.tours === 'all' && tourForPage(pathname, search)) return null
   const kind = stripFor(page, guide.rules, guide.seen)
   if (!kind) return null
   const close = () => markSeen.mutate({ page: guideKey(page), version: page.guideVersion ?? 1 })

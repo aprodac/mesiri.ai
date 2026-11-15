@@ -62,7 +62,7 @@ export function ScopeBar() {
 
   if (!canSwitch) {
     return (
-      <div className={cn(pill, 'max-w-[55vw] pr-2.5 sm:max-w-sm')} title="What this page shows">
+      <div className={cn(pill, 'max-w-[55vw] pr-2.5 sm:max-w-sm')} title="What this page shows" data-guide="app.scope">
         {badge}
         <span className="ml-1 min-w-0">{label}</span>
       </div>
@@ -82,7 +82,7 @@ export function ScopeBar() {
   )
 
   return (
-    <nav aria-label="What the pages show" className={cn(pill, 'max-w-[62vw] md:max-w-none')}>
+    <nav aria-label="What the pages show" className={cn(pill, 'max-w-[62vw] md:max-w-none')} data-guide="app.scope">
       {badge}
       {up.map((part) => (
         <React.Fragment key={part.label}>

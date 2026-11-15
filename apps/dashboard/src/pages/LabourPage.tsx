@@ -29,6 +29,7 @@ export default function LabourPage() {
 
   const switcher = (
     <Segmented<View>
+      guide="labour.views"
       label="View"
       value={view}
       onChange={setView}
@@ -51,6 +52,7 @@ export default function LabourPage() {
               size="sm"
               variant={view === 'workers' ? 'default' : 'outline'}
               className="gap-1.5"
+              data-guide="labour.add"
               onClick={() => {
                 setView('workers')
                 setAddOpen(true)

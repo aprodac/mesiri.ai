@@ -332,7 +332,7 @@ export default function TodayPage() {
                 </Link>
               </Button>
             )}
-            <div className="flex items-center rounded-lg border">
+            <div className="flex items-center rounded-lg border" data-guide="today.day">
               <Button variant="ghost" size="icon" className="size-8" onClick={() => shiftDay(-1)} title="Previous day" aria-label="Previous day">
                 <ChevronLeft className="size-4" />
               </Button>
@@ -429,7 +429,7 @@ export default function TodayPage() {
           />
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 flex-col" data-guide="today.sites">
               {projects.map((project) => {
                 const projectSites = sites.filter((s) => s.project_id === project.project_id)
                 const confirmed = projectSites.filter((s) => FROZEN.includes(s.status)).length
@@ -452,7 +452,7 @@ export default function TodayPage() {
                           </Link>
                         </Button>
                         {canSend && (
-                          <Button variant="outline" size="sm" className="gap-1.5" disabled={busyProject === project.project_id} onClick={() => sendNow(project)}>
+                          <Button variant="outline" size="sm" className="gap-1.5" disabled={busyProject === project.project_id} onClick={() => sendNow(project)} data-guide="today.send">
                             <Send className="size-3.5" /> Send now
                           </Button>
                         )}
@@ -473,11 +473,11 @@ export default function TodayPage() {
                   </DprSection>
                 )
               })}
-              {isToday && <TellMesiri className="mt-4 rounded-xl border px-4 py-3" />}
+              {isToday && <div data-guide="today.tell"><TellMesiri className="mt-4 rounded-xl border px-4 py-3" /></div>}
             </div>
 
             <DprAside>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3" data-guide="today.issues">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-semibold">
                     Open issues

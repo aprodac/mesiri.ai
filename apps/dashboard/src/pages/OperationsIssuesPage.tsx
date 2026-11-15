@@ -330,7 +330,7 @@ export default function OperationsIssuesPage() {
         title="Issues"
         actions={
           <>
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={openCreate}>
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={openCreate} data-guide="issues.add">
               <Plus className="size-4" /> Report issue
             </Button>
             <Button variant="ghost" size="icon" className="size-8" onClick={loadIssues} disabled={loading} title="Refresh" aria-label="Refresh">
@@ -341,6 +341,7 @@ export default function OperationsIssuesPage() {
       />
 
       <StatStrip
+        guide="issues.stats"
         stats={[
           { label: 'Open', value: stats.openCount || '—', tone: stats.openCount > 0 ? 'warn' : 'good', icon: IcCircleDot, hint: stats.openCount ? 'not closed yet' : 'nothing stuck' },
           { label: 'High or critical', value: stats.urgentOpenCount || '—', tone: stats.urgentOpenCount > 0 ? 'bad' : 'default', icon: IcSiren, hint: stats.urgentOpenCount ? 'deal with these first' : 'none' },
@@ -349,7 +350,7 @@ export default function OperationsIssuesPage() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full sm:w-64" data-guide="issues.search">
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input
             placeholder="Search issues…"
@@ -414,7 +415,7 @@ export default function OperationsIssuesPage() {
           <p className="text-sm font-medium">{filtered ? 'No issues match these filters' : 'Nothing is stuck right now'}</p>
         </div>
       ) : (
-        <ul className="flex flex-col divide-y overflow-hidden rounded-xl border px-4">
+        <ul className="flex flex-col divide-y overflow-hidden rounded-xl border px-4" data-guide="issues.list">
           {filteredIssues.map((item) => {
             const closed = isClosed(item.status)
             return (

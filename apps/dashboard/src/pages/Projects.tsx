@@ -108,7 +108,7 @@ export default function Projects() {
         subtitle={query.isLoading ? 'Loading…' : `${plural(current, 'project')} running${paused.length ? ` · ${paused.length} paused or done` : ''}`}
         actions={
           !readOnly && (
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={openNew}>
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={openNew} data-guide="projects.add">
               <Plus className="size-4" /> New project
             </Button>
           )
@@ -156,7 +156,7 @@ export default function Projects() {
       ) : visible.length === 0 ? (
         <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">No projects match.</p>
       ) : (
-        <ul className="flex flex-col divide-y rounded-xl border">
+        <ul className="flex flex-col divide-y rounded-xl border" data-guide="projects.list">
           {visible.map((project) => (
             <ProjectRow
               key={project.id}

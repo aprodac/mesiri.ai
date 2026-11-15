@@ -260,7 +260,7 @@ function SectionTable({
     )
   }
   return (
-    <div className="overflow-x-auto rounded-lg border [contain:inline-size]">
+    <div className="overflow-x-auto rounded-lg border [contain:inline-size]" data-guide="boq.lines">
       <table className="w-full min-w-[1040px] text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
@@ -623,10 +623,10 @@ export default function ProjectBoqPage() {
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" className="gap-1.5" asChild>
-              <Link to={`/planning/schedule?project=${id}`}><CalendarRange className="size-3.5" /> Schedule</Link>
+              <Link to={`/planning/schedule?project=${id}`} data-guide="boq.schedule"><CalendarRange className="size-3.5" /> Schedule</Link>
             </Button>
             {!readOnly && (
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImporting(true)}>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImporting(true)} data-guide="boq.import">
                 <FileSpreadsheet className="size-3.5" /> Import from Excel
               </Button>
             )}
@@ -646,7 +646,7 @@ export default function ProjectBoqPage() {
       </Callout>
 
       {boq.sections.length === 0 ? (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6">
+        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6" data-guide="boq.empty">
           <p className="font-medium">No BOQ yet for this project.</p>
           <p className="text-sm text-muted-foreground">Upload the estimate Excel, or start one section by hand.</p>
           {!readOnly && (

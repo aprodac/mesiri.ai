@@ -43,6 +43,7 @@ export function WhatsAppPageButton() {
     <button
       type="button"
       onClick={openWhatsAppPreview}
+      data-guide="app.whatsapp"
       className="inline-flex h-8 items-center gap-1.5 rounded-full border border-success/30 bg-success-soft px-2.5 text-xs font-medium text-success hover:border-success/60"
       title={`How ${page.title} works from WhatsApp`}
       aria-label={`How ${page.title} works from WhatsApp`}

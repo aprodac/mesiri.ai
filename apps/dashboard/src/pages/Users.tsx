@@ -98,7 +98,7 @@ export default function Users() {
         subtitle={query.isLoading ? 'Loading…' : `${active.length} ${active.length === 1 ? 'person' : 'people'}${inactive ? ` · ${inactive} deactivated` : ''}`}
         actions={
           !readOnly && (
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog({ kind: 'edit', user: null })}>
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog({ kind: 'edit', user: null })} data-guide="team.add">
               <Plus className="size-4" /> Add person
             </Button>
           )
@@ -117,7 +117,7 @@ export default function Users() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input placeholder="Search name, email or number…" aria-label="Search the team" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
+          <Input data-guide="team.search" placeholder="Search name, email or number…" aria-label="Search the team" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
         </div>
         {/* WEB-40: dropdowns, like the other filters. */}
         {roleCounts.length > 1 && (
@@ -156,7 +156,7 @@ export default function Users() {
           <p className="text-sm font-medium">{users.length === 0 ? 'No one on the team yet' : 'No one matches'}</p>
         </div>
       ) : (
-        <ul className="flex flex-col divide-y rounded-xl border">
+        <ul className="flex flex-col divide-y rounded-xl border" data-guide="team.list">
           {visible.map((user) => {
             const access = memberships.loading
               ? { text: '…', none: false }

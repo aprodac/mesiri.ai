@@ -629,13 +629,14 @@ export function AppSidebar() {
           </div>
         </SidebarHeader>
 
-        <SidebarContent className={cn('px-1.5 py-1 gap-1', S.scrollbar)}>
+        <SidebarContent className={cn('px-1.5 py-1 gap-1', S.scrollbar)} data-guide="app.nav">
           <SidebarGroup className="p-1">
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     onClick={openJump}
+                    data-guide="app.search"
                     tooltip="Search (Ctrl K)"
                     className={cn(NAV_LINK_BASE, 'mb-1 border', S.divider, S.rowIdle, S.ring)}
                   >

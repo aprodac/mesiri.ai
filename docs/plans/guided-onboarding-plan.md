@@ -372,6 +372,8 @@ start; the rest can follow in any order.
 
 | SS-39 | Every built page shows how it works from WhatsApp, in one pop-up opened from the top bar's "On WhatsApp", the ? panel or the page strip: the message, Mesiri's card or answer, Copy, Try it on WhatsApp. Examples live in `module-map.ts` with the assistant tools that do them; a test in the assistant checks them | `components/whatsapp-page-button.tsx`, `components/whatsapp-preview.tsx`, `tests/agent_api/test_module_map_whatsapp.py` |
 
+| SS-40 | Game-style guided tours with the Spark (Live's character): an app tour, then the page's own, for 8 main pages. Who gets them is the start mode's `tours` rule. Markers on the elements, missing ones skipped, a build check against stale steps. This supersedes 6.4's "no tour library, no arrows": the tour is built so a moved button keeps its step | `components/tour.tsx`, `lib/tours.ts`, `vite.config.ts` |
+
 **Not built yet**
 
 - **SS-38:** a week of daily WhatsApp tips by mode (6.2's last row). Only the first tip, in the reply to the answer, exists.

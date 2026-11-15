@@ -76,8 +76,11 @@ const STAT_TONE: Record<StatTone, { value: string; icon: string; bar: string }> 
 export function StatStrip({
   stats,
   phoneCols,
+  guide,
 }: {
   stats: Stat[]
+  /** A tour step's marker (lib/tours.ts). */
+  guide?: string
   /** Columns on phones when the values are long (e.g. "+365 bags"). */
   phoneCols?: 2
 }) {
@@ -85,6 +88,7 @@ export function StatStrip({
     // One row; on phones more than four wrap to rows of three. The 1px gap
     // over a border-coloured ground draws the rules in either layout.
     <dl
+      data-guide={guide}
       className={cn(
         'grid gap-px overflow-hidden rounded-xl border bg-border sm:flex',
         stats.length <= 2 || phoneCols === 2 ? 'grid-cols-2' : stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
@@ -316,14 +320,17 @@ export function Segmented<T extends string>({
   value,
   options,
   onChange,
+  guide,
 }: {
   label: string
   value: T
   options: { value: T; label: string; count?: number }[]
   onChange: (value: T) => void
+  /** A tour step's marker (lib/tours.ts). */
+  guide?: string
 }) {
   return (
-    <div className="flex w-fit max-w-full overflow-x-auto rounded-lg border p-0.5" role="group" aria-label={label}>
+    <div className="flex w-fit max-w-full overflow-x-auto rounded-lg border p-0.5" role="group" aria-label={label} data-guide={guide}>
       {options.map((o) => (
         <button
           key={o.value}

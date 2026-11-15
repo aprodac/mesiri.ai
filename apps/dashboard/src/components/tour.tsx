@@ -1,0 +1,231 @@
+import * as React from 'react'
+import { createPortal } from 'react-dom'
+import { useLocation } from 'react-router-dom'
+import { Spark } from '@/components/live/spark'
+import { WithTerms } from '@/components/term'
+import { Button } from '@/components/ui/button'
+import { prefersReducedMotion } from '@/lib/timeline'
+import { useGuideSeen, useStartMode } from '@/lib/start-mode'
+import { APP_TOUR, tourForPage, type Tour, type TourStep } from '@/lib/tours'
+import { TOUR_EVENT } from '@/lib/tour-events'
+
+// The guided tour, game style (asked 15 Nov): the screen dims, one thing lights up, and the Spark (Mesiri's
+// character from Live) says what it is; Next, Back, Skip. Content and rules: lib/tours.ts. One component in the
+// layout runs every tour. Who gets which tour is the start mode's `tours` rule (lib/start-mode.ts).
+
+interface Running {
+  tour: Tour
+  steps: TourStep[]
+  index: number
+  /** Run this tour next, when this one ends (the page's tour after the app tour). */
+  then?: { tour: Tour; steps: TourStep[] }
+}
+
+const PAD = 6
+const GAP = 12
+const BUBBLE_W = 340
+/** The bubble's usual height, to place it where it fits. */
+const BUBBLE_H = 190
+
+/** The first marked element that is on screen (a hidden sidebar on a phone does not count). */
+function findTarget(id: string): HTMLElement | null {
+  for (const el of document.querySelectorAll<HTMLElement>(`[data-guide="${id}"]`)) {
+    const r = el.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden') return el
+  }
+  return null
+}
+
+/** The tour's steps that can be shown now: the page's hello first, then each step whose element is on screen. */
+function resolve(tour: Tour, intro?: { title: string; about: string }): TourStep[] {
+  const steps = tour.steps.filter((s) => !s.target || findTarget(s.target))
+  return tour.introFromPage && intro ? [{ title: intro.title, text: intro.about, mood: 'hello' }, ...steps] : steps
+}
+
+function useRect(target: string | undefined, index: number): DOMRect | null {
+  const [rect, setRect] = React.useState<DOMRect | null>(null)
+  React.useEffect(() => {
+    if (!target) {
+      setRect(null)
+      return
+    }
+    const el = findTarget(target)
+    el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    let frame = 0
+    const measure = () => {
+      const now = findTarget(target)
+      setRect((old) => {
+        const r = now?.getBoundingClientRect() ?? null
+        if (!r || !old) return r
+        return r.top === old.top && r.left === old.left && r.width === old.width && r.height === old.height ? old : r
+      })
+      frame = requestAnimationFrame(measure)
+    }
+    measure()
+    return () => cancelAnimationFrame(frame)
+  }, [target, index])
+  return rect
+}
+
+export function GuidedTour() {
+  const guide = useStartMode()
+  const markSeen = useGuideSeen()
+  const { pathname, search } = useLocation()
+  const [running, setRunning] = React.useState<Running | null>(null)
+  const next = React.useRef<HTMLButtonElement>(null)
+
+  const unseen = React.useCallback((tour: Tour) => (guide.seen[tour.key] ?? 0) < tour.version, [guide.seen])
+
+  const start = React.useCallback(
+    (force: boolean) => {
+      const page = tourForPage(pathname, search)
+      const pageRun = page && (force || (guide.rules.tours === 'all' && unseen(page.tour)))
+        ? { tour: page.tour, steps: resolve(page.tour, page) }
+        : undefined
+      if (!force && guide.rules.tours !== 'none' && unseen(APP_TOUR)) {
+        const steps = resolve(APP_TOUR)
+        setRunning({ tour: APP_TOUR, steps, index: 0, then: pageRun })
+        return
+      }
+      if (pageRun && pageRun.steps.length > 0) setRunning({ ...pageRun, index: 0 })
+    },
+    [pathname, search, guide.rules.tours, unseen],
+  )
+
+  // On a page change: start what this person has not seen yet, once the page has drawn. Never over the start question.
+  const startRef = React.useRef(start)
+  startRef.current = start
+  React.useEffect(() => {
+    setRunning(null)
+    if (!guide.ready || guide.ask || guide.rules.tours === 'none') return
+    const timer = window.setTimeout(() => startRef.current(false), 900)
+    return () => window.clearTimeout(timer)
+  }, [pathname, guide.ready, guide.ask, guide.rules.tours])
+
+  // "Show me around this page" from Help.
+  React.useEffect(() => {
+    const replay = () => window.setTimeout(() => startRef.current(true), 250)
+    window.addEventListener(TOUR_EVENT, replay)
+    return () => window.removeEventListener(TOUR_EVENT, replay)
+  }, [])
+
+  const step = running?.steps[running.index]
+  const rect = useRect(step?.target, running?.index ?? -1)
+
+  const finish = React.useCallback(() => {
+    if (!running) return
+    markSeen.mutate({ page: running.tour.key, version: running.tour.version })
+    if (running.then && running.then.steps.length > 0) setRunning({ ...running.then, index: 0 })
+    else setRunning(null)
+  }, [running, markSeen])
+
+  const skip = React.useCallback(() => {
+    if (!running) return
+    // Skipping the app tour skips this page's tour too, for now; both are remembered as seen.
+    markSeen.mutate({ page: running.tour.key, version: running.tour.version })
+    if (running.then) markSeen.mutate({ page: running.then.tour.key, version: running.then.tour.version })
+    setRunning(null)
+  }, [running, markSeen])
+
+  const go = React.useCallback(
+    (delta: number) => {
+      if (!running) return
+      const index = running.index + delta
+      if (index >= running.steps.length) finish()
+      else if (index >= 0) setRunning({ ...running, index })
+    },
+    [running, finish],
+  )
+
+  React.useEffect(() => {
+    if (!running) return
+    next.current?.focus()
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') skip()
+      else if (e.key === 'ArrowRight') go(1)
+      else if (e.key === 'ArrowLeft') go(-1)
+    }
+    window.addEventListener('keydown', keys)
+    return () => window.removeEventListener('keydown', keys)
+  }, [running, go, skip])
+
+  if (!running || !step) return null
+  const last = running.index === running.steps.length - 1
+  const phone = window.innerWidth < 640
+  const spot = rect
+    ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
+    : null
+
+  // Where the bubble goes: under the lit thing if there is room, else above it; on a phone, docked at the bottom.
+  let bubble: React.CSSProperties
+  if (phone || !spot) {
+    bubble = phone
+      ? { left: 12, right: 12, bottom: `calc(12px + env(safe-area-inset-bottom, 0px))` }
+      : { left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: BUBBLE_W + 40 }
+  } else {
+    // Below, above, or beside a tall thing (the sidebar); always fully on screen.
+    const W = window.innerWidth
+    const H = window.innerHeight
+    const left = Math.min(Math.max(12, spot.left), W - BUBBLE_W - 12)
+    const top = (t: number) => Math.min(Math.max(12, t), H - BUBBLE_H - 12)
+    const below = spot.top + spot.height + GAP
+    if (H - below >= BUBBLE_H + 12) bubble = { left, top: below, width: BUBBLE_W }
+    else if (spot.top - GAP >= BUBBLE_H + 12) bubble = { left, top: spot.top - GAP - BUBBLE_H, width: BUBBLE_W }
+    else if (W - (spot.left + spot.width + GAP) >= BUBBLE_W + 12) bubble = { left: spot.left + spot.width + GAP, top: top(spot.top), width: BUBBLE_W }
+    else if (spot.left - GAP >= BUBBLE_W + 12) bubble = { left: spot.left - GAP - BUBBLE_W, top: top(spot.top), width: BUBBLE_W }
+    else bubble = { left: '50%', top: top(H / 2 - BUBBLE_H / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60]" role="presentation">
+      {/* The dimmed screen with one lit window; clicks on the page are held while the tour runs. */}
+      {spot ? (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed rounded-xl ring-2 ring-[#facc15] transition-all duration-300 ease-out motion-reduce:transition-none"
+          style={{ ...spot, boxShadow: '0 0 0 9999px rgba(15, 17, 20, 0.58)' }}
+        />
+      ) : (
+        <div aria-hidden className="fixed inset-0 bg-[rgba(15,17,20,0.58)]" />
+      )}
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tour-title"
+        aria-describedby="tour-text"
+        className="fixed flex gap-3 rounded-2xl border bg-background p-4 text-foreground shadow-xl"
+        style={bubble}
+      >
+        <Spark key={`${running.tour.key}-${running.index}`} mood={step.mood ?? 'idle'} size={phone ? 52 : 64} className="shrink-0 self-start" />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div aria-live="polite">
+            <h2 id="tour-title" className="m-0 text-base font-semibold">{step.title}</h2>
+            <p id="tour-text" className="m-0 mt-1 text-sm text-foreground/85">
+              <WithTerms text={step.text} />
+            </p>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {running.index + 1} of {running.steps.length}
+            </span>
+            <button type="button" onClick={skip} className="text-xs text-muted-foreground underline underline-offset-2">
+              Skip tour
+            </button>
+            <span className="ml-auto flex gap-1.5">
+              {running.index > 0 && (
+                <Button type="button" size="sm" variant="outline" onClick={() => go(-1)}>
+                  Back
+                </Button>
+              )}
+              <Button ref={next} type="button" size="sm" onClick={() => go(1)}>
+                {last ? (running.then ? 'Next: this page' : 'Done') : 'Next'}
+              </Button>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}

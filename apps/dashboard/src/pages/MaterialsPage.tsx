@@ -67,6 +67,7 @@ export default function MaterialsPage() {
 
   const switcher = (
     <Segmented<MaterialsView>
+      guide="materials.views"
       label="View"
       value={view}
       onChange={setView}
@@ -85,15 +86,15 @@ export default function MaterialsPage() {
         <ModuleTitle icon={Boxes} title={VIEW_TITLE[view]} />
         {canRecord && (
           <div className="flex shrink-0 items-center gap-2">
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog('in')}>
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog('in')} data-guide="materials.in">
               <PackagePlus className="size-4" /> <span className="sm:hidden">Delivery</span>
               <span className="hidden sm:inline">Record delivery</span>
             </Button>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setDialog('out')}>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setDialog('out')} data-guide="materials.out">
               <PackageMinus className="size-4" /> <span className="sm:hidden">Use</span>
               <span className="hidden sm:inline">Record use</span>
             </Button>
-            <Button size="icon" variant="outline" className="size-8 sm:w-auto sm:px-3" title="Move between sites" onClick={() => setDialog('transfer')}>
+            <Button size="icon" variant="outline" className="size-8 sm:w-auto sm:px-3" title="Move between sites" onClick={() => setDialog('transfer')} data-guide="materials.move">
               <ArrowLeftRight className="size-4" /> <span className="hidden sm:inline">Move</span>
             </Button>
           </div>
