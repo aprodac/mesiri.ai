@@ -400,7 +400,17 @@ export const ALL_PAGES = MODULE_GROUPS.flatMap((group) => group.pages.filter((pa
 export const PLANNED_PAGES = ALL_PAGES.filter((p) => p.page.status === 'planned')
 
 /** The module and page an address belongs to (for the breadcrumb and the placeholder). */
+/** Record pages whose address sits under another module but which are a module page of their own: a project's BOQ
+ *  lives under /projects, yet it is the BOQ, not "Projects & sites". One table, so the breadcrumb, the sidebar, the
+ *  tab title, the ? help, the page strip and the WhatsApp button all agree. */
+const SAME_AS: [RegExp, string][] = [[/^\/projects\/[^/]+\/boq\/?$/, '/boq']]
+
 export function findPage(pathname: string, search = ''): { group: ModuleGroup; page: ModulePage } | null {
+  const alias = SAME_AS.find(([pattern]) => pattern.test(pathname))?.[1]
+  if (alias) {
+    pathname = alias
+    search = ''
+  }
   const view = new URLSearchParams(search).get('view')
   let best: { group: ModuleGroup; page: ModulePage; score: number } | null = null
   for (const entry of ALL_PAGES) {
