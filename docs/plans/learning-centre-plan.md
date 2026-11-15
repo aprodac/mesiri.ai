@@ -220,8 +220,8 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
   check → it in Movements → take back on WhatsApp (`undo_receipt`, the receipts card label "Take back delivery";
   SOP.md has no fixed words, the model maps "take back") → Record delivery here → Correct to take it back → Record
   use. It is W2's second half; SS-43 writes W1, W2 in full and W4 and the first role paths.
-- **Not done here**: lighting up the new record itself on the page ("Got it" reloads the list but does not point at
-  the row); W1's take-back (a site update has no WhatsApp undo, and the Site log has no undo button: work entries
+- **Not done here** (the first two were filled in by SS-50): lighting up the new record itself on the page ("Got it"
+  reloads the list but does not point at the row); W1's take-back (a site update has no WhatsApp undo, and the Site log has no undo button: work entries
   can only be voided from the old Activities page, which now redirects; SS-43 must settle this before writing W1).
 
 ## 10. Built (SS-43, 15 Nov 2026): outcomes, W1 / W2 / W4, role paths
@@ -253,3 +253,17 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
   WhatsApp undo, so their practice is `save: false`: send the message, look at the card, tap **Cancel**. Nothing is
   saved, nothing to take back, and no new undo button was needed on the Site log (the W1 question in section 9).
   Requests take back with `cancel_material_request`; deliveries with `undo_receipt`.
+
+## 11. Gaps filled (SS-50, 15 Nov 2026)
+
+- **The saved record lights up**: list rows carry `data-record-id` (material movements, requests); "Got it" keeps the
+  new id and a step with `showNew` lights that row (`record:<id>`, falling back to the step's target with `a|b`).
+- **A workflow keeps its story on an empty company**: a hand-written step whose element never draws (no sites
+  reported yet, no reports) is told in the middle of the screen; only page-tour steps (`optional`) are skipped. Before,
+  W1 on a new company jumped from the Site log to the end.
+- **Done card**: when a walkthrough ends, the Spark says "Done: ..." and offers the role's next outcome not done yet
+  (Start), or the way back to Learn Mesiri.
+- **Practice leaves nothing behind**: the delivery practice names no supplier ("10 bags cement came"), so taking it
+  back can't leave a new supplier; the requests check reads open requests (the route has no paging); deliveries are
+  read 100 deep, newest first.
+- **Requests**: a "There it is" step lights the new request before it is taken back.
