@@ -12,6 +12,9 @@ Sources, and who they are waiting for:
 - ``subcontract_bill``: a subcontractor's bill flagged by the check or sent for approval. Those who see spending
   (the approve route's own rule).
 - ``ra_bill``: a client RA bill still in draft. Those who see client bills (``may_manage_money``).
+- ``wage_sheet``: a past pay week to approve or pay. The roles that see wages.
+- ``labour_split``: BOQ-02c, the last 7 days' labour Mesiri put on BOQ lines by itself, or on no line, per project,
+  for a person to confirm. The roles that see the BOQ (cost control's own route, asked as the caller).
 - ``task``: my own tasks, overdue or due today (the tasks module).
 
 A source the person may not use is left out; a source that fails is named in ``unavailable`` so the page can say
@@ -38,10 +41,12 @@ from mesiri.authorization.roles import (
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("site_report", "material_request", "subcontract_bill", "ra_bill", "wage_sheet", "task")
+KINDS = ("site_report", "material_request", "subcontract_bill", "ra_bill", "wage_sheet", "labour_split", "task")
 #: The module each source belongs to (``organization.settings.MODULES``); None: always on.
 MODULE_OF = {"site_report": "dpr", "material_request": "materials", "subcontract_bill": None, "ra_bill": "dpr",
-             "wage_sheet": "labour", "task": "tasks"}
+             "wage_sheet": "labour", "labour_split": "cost", "task": "tasks"}
+#: BOQ-02c: how far back labour splits are asked about (older ones are on the Budget page, never nagged about).
+LABOUR_SPLIT_DAYS = 7
 RA_DRAFT_STALE_DAYS = 7
 
 
@@ -195,9 +200,42 @@ async def wage_sheets(conn: AsyncConnection, auth: AuthorizationContext, today: 
     return out
 
 
+async def labour_splits(conn: AsyncConnection, auth: AuthorizationContext, today: datetime.date) -> list[dict]:
+    """BOQ-02c: per running project, the last ``LABOUR_SPLIT_DAYS`` days' site-day-trades Mesiri put on BOQ lines by
+    itself (``auto``) or that are on no line, from cost control's own labour route as the caller. One row a project."""
+    if not may_view_expenses(auth.role):
+        return []
+    from sqlalchemy import text
+
+    from mesiri.domains.costing.router import project_labour
+
+    rows = (await conn.execute(text(
+        "SELECT p.id, p.name FROM projects p WHERE p.organization_id = :org AND lower(coalesce(p.status, 'active')) "
+        "NOT IN ('completed', 'closed', 'archived', 'cancelled') ORDER BY p.name"),
+        {"org": auth.organization_id})).mappings().all()
+    scope = None if auth.project_scope.grants_all_org_projects else set(auth.project_scope.project_ids)
+    out = []
+    for p in rows:
+        if scope is not None and p["id"] not in scope:
+            continue
+        listed = await project_labour(project_id=p["id"], date_from=today - datetime.timedelta(days=LABOUR_SPLIT_DAYS),
+                                      date_to=today, unallocated=False, to_confirm=True, auth=auth, conn=conn)
+        groups = listed["groups"]
+        if not groups:
+            continue
+        auto = sum(1 for g in groups if g.get("auto"))
+        off = len(groups) - auto
+        detail = ", ".join(x for x in (f"{auto} put on lines by Mesiri" if auto else "",
+                                       f"{off} on no line" if off else "") if x)
+        out.append(_item("labour_split", f"labour:{p['id']}", f"Labour on the BOQ: {p['name']}",
+                         f"{detail}: check and confirm", since=min(g["date"] for g in groups), urgent=False,
+                         project_id=p["id"], project_name=p["name"], count=len(groups)))
+    return out
+
+
 SOURCES: dict[str, Callable[[AsyncConnection, AuthorizationContext, datetime.date], Awaitable[list[dict]]]] = {
     "site_report": site_reports, "material_request": material_requests, "subcontract_bill": subcontract_bills,
-    "ra_bill": ra_bills, "wage_sheet": wage_sheets, "task": tasks,
+    "ra_bill": ra_bills, "wage_sheet": wage_sheets, "labour_split": labour_splits, "task": tasks,
 }
 
 

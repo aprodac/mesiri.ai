@@ -196,3 +196,14 @@ def test_no_guess_on_a_tie_another_site_a_done_activity_or_words_that_name_no_wo
     other = [{"id": "x", "site_id": "s2", "done": False, "words": "Slab"},
              {"id": "y", "site_id": None, "done": True, "words": "Slab"}]
     assert activity_for_issue("slab delayed", "s1", other) is None
+
+
+def test_boq03b_a_tie_goes_to_the_activity_running_today():
+    from mesiri.domains.schedule.logic import activity_for_issue
+
+    d = datetime.date
+    acts = [{"id": "gf", "site_id": None, "done": False, "words": "Ground floor slab", "start": d(2026, 11, 8), "end": d(2026, 11, 20)},
+            {"id": "ff", "site_id": None, "done": False, "words": "First floor slab", "start": d(2026, 12, 1), "end": d(2026, 12, 12)}]
+    assert activity_for_issue("slab delayed", "s1", acts, d(2026, 11, 15)) == "gf"
+    assert activity_for_issue("slab delayed", "s1", acts) is None  # no day given: still no guess
+    assert activity_for_issue("slab delayed", "s1", acts, d(2026, 11, 25)) is None  # neither running: no guess

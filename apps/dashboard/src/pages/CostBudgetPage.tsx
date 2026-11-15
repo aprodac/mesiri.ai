@@ -151,7 +151,7 @@ export default function CostBudgetPage() {
   })
   const labour = useQuery({
     queryKey: ['cost', 'labour', projectId, 'unallocated'],
-    queryFn: () => fetchProjectLabour(projectId!, { unallocated: true }),
+    queryFn: () => fetchProjectLabour(projectId!, { to_confirm: true }),
     enabled: allowed && !!projectId,
   })
   const qc = useQueryClient()
@@ -288,19 +288,19 @@ export default function CostBudgetPage() {
           </DprSection>
 
           <div id="labour-to-lines" className="scroll-mt-20">
-            <DprSection icon={HardHat} title="Labour not on a BOQ line yet" meta={labour.data?.groups.length || undefined}>
+            <DprSection icon={HardHat} title="Labour to check" meta={labour.data?.groups.length || undefined}>
               {labour.isLoading ? (
                 <Skeleton className="h-24 rounded-lg" />
               ) : labour.isError ? (
                 <p className="text-sm text-muted-foreground">The labour list could not be loaded.</p>
               ) : (labour.data?.groups.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">All labour (30 days) is on a BOQ line.</p>
+                <p className="text-sm text-muted-foreground">All labour (30 days) is on a BOQ line, and every split is confirmed.</p>
               ) : (
                 <>
                   <p className="mb-2 text-sm text-muted-foreground">
-                    The last 30 days' attendance, per site, day and trade. Pick the line they worked on and press Put on line; split a day over
-                    several lines by man-days. Mesiri suggests a line from what the attendance said or the work measured that day, but never puts
-                    it on by itself.
+                    The last 30 days' attendance, per site, day and trade, that is on no BOQ line or that Mesiri put on lines by itself from
+                    the work measured that day. Confirm Mesiri's split, or pick the line they worked on and press Put on line; split a day over
+                    several lines by man-days.
                   </p>
                   <ul className="divide-y rounded-lg border text-sm">
                     {labour.data!.groups.map((g) => (

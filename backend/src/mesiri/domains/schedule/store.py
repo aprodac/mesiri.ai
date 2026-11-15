@@ -145,9 +145,12 @@ async def place_issue(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UU
     names: dict[Any, list[str]] = defaultdict(list)
     for line in await _lines(conn, org, project_id):
         names[line["work_package_id"]].append(line["work_type"])
-    return logic.activity_for_issue(narrative, site_id, [
-        {"id": s["id"], "site_id": s["site_id"], "done": s["status"] == "COMPLETED",
-         "words": " ".join([s["name"], *names.get(s["id"], [])])} for s in sections])
+    return logic.activity_for_issue(narrative, site_id, _issue_targets(sections, names), datetime.date.today())
+
+
+def _issue_targets(sections: list[dict], names: dict[Any, list[str]]) -> list[dict]:
+    return [{"id": s["id"], "site_id": s["site_id"], "done": s["status"] == "COMPLETED", "start": s["planned_start"],
+             "end": s["planned_end"], "words": " ".join([s["name"], *names.get(s["id"], [])])} for s in sections]
 
 
 async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, today: datetime.date) -> dict[str, Any]:
@@ -169,6 +172,12 @@ async def load(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, tod
     updates = await _site_updates(conn, org, project_id)
     orders = await _work_orders(conn, org, project_id)
     issues = await _open_issues(conn, org, project_id)
+    # BOQ-03b: an issue saved with no activity (before BOQ-03, or a tie then) is placed by its words now, on read
+    # (nothing is written); one still on none is counted in the summary so the page can say so.
+    targets = _issue_targets(sections, {k: [ln["work"] for ln in v] for k, v in by_section.items()})
+    issues = [i if i["work_package_id"] is not None else
+              {**i, "work_package_id": logic.activity_for_issue(i["narrative"], i["site_id"], targets, today)}
+              for i in issues]
 
     acts = []
     for s in sections:

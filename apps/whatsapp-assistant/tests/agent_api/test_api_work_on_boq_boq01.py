@@ -103,7 +103,7 @@ async def test_no_clear_line_asks_with_the_lines_and_one_tap_puts_it_there() -> 
                                                {"id": CEILING, "work": "Plastering ceiling"}]}], put)
     reply = sent[-1]
     assert reply.text.startswith("Saved.") and "Which BOQ line is *plastering* on?" in reply.text
-    assert [r.title for r in reply.list_rows] == ["Plastering walls", "Plastering ceiling"]
+    assert [r.title for r in reply.list_rows] == ["Plastering walls", "Plastering ceiling", wa.BOQ_SKIP_TITLE]
     assert reply.list_button_label == wa.BOQ_LIST_BUTTON
     await service.handle(_message("Plastering ceiling", tap=reply.list_rows[1].id), CTX)
     assert put == [(ACTIVITY, QUANTITY, CEILING)]
@@ -129,11 +129,13 @@ def test_one_question_at_a_time_and_lines_put_by_themselves_are_said_once() -> N
            "choices": [{"id": "l1", "work": "Brickwork 9 inch"}, {"id": "l2", "work": "Brickwork 4.5 inch"}]}
     auto = {"quantity_id": "q2", "work": "brickwork", "auto": True, "choices": [],
             "line": {"id": "l1", "work": "Brickwork 9 inch"}}
-    on, question, rows, label = wa.boq_follow_up([WriteResult(e, 201, {"id": "a", "boq": [ask, ask, auto, auto]})],
-                                                 None)
+    on, question, rows, label, queue = wa.boq_follow_up(
+        [WriteResult(e, 201, {"id": "a", "boq": [ask, ask, auto, auto]})], None)
     assert on == "📐 On the BOQ: Brickwork 9 inch"
-    assert question.count("Which") == 1 and len(rows) == 2 and label == wa.BOQ_LIST_BUTTON
-    assert wa.boq_follow_up([WriteResult(e, 422, {"detail": "no"})], None) == ("", "", (), wa.BOQ_LIST_BUTTON)
+    assert question.count("Which") == 1 and "(1 more after this)" in question and label == wa.BOQ_LIST_BUTTON
+    assert [r.title for r in rows] == ["Brickwork 9 inch", "Brickwork 4.5 inch", wa.BOQ_SKIP_TITLE]
+    assert len(queue) == 1  # BOQ-01d: the second is asked after the first is answered
+    assert wa.boq_follow_up([WriteResult(e, 422, {"detail": "no"})], None) == ("", "", (), wa.BOQ_LIST_BUTTON, [])
 
 
 # -- BOQ-01b: a wrong guess is put right in one tap; a line it would overrun is asked ---------------------------------
@@ -158,10 +160,30 @@ async def test_a_quantity_past_the_plan_says_why_it_is_asked() -> None:
                                       "planned": "300", "after": "400.000", "unit": "sqft"},
                              "choices": [{"id": CEILING, "work": "Plastering ceiling"}]}], [])
     assert "would take *Plastering ceiling* to 400 of 300 sqft" in sent[-1].text
-    assert [r.title for r in sent[-1].list_rows] == ["Plastering ceiling"]
+    assert [r.title for r in sent[-1].list_rows] == ["Plastering ceiling", wa.BOQ_SKIP_TITLE]
 
 
 async def test_guard_a_line_with_nothing_else_it_could_be_asks_nothing() -> None:
     _, sent = await _saved([{"quantity_id": QUANTITY, "work": "plastering", "auto": True, "choices": [],
                              "line": {"id": WALLS, "work": "Plastering walls"}}], [])
     assert "Wrong line" not in sent[-1].text and not sent[-1].list_rows
+
+
+# -- BOQ-01d: several unclear quantities in one message are each asked, one after another ---------------------------
+
+
+async def test_every_unclear_quantity_is_asked_in_turn_and_skip_moves_on() -> None:
+    put: list = []
+    second = str(uuid.uuid4())
+    service, sent = await _saved([
+        {"quantity_id": QUANTITY, "work": "plastering", "auto": False, "line": None,
+         "choices": [{"id": WALLS, "work": "Plastering walls"}, {"id": CEILING, "work": "Plastering ceiling"}]},
+        {"quantity_id": second, "work": "more plastering", "auto": False, "line": None,
+         "choices": [{"id": WALLS, "work": "Plastering walls"}, {"id": CEILING, "work": "Plastering ceiling"}]},
+    ], put)
+    assert "*plastering*" in sent[-1].text and "(1 more after this)" in sent[-1].text
+    await service.handle(_message("Plastering walls", tap=sent[-1].list_rows[0].id), CTX)
+    assert put == [(ACTIVITY, QUANTITY, WALLS)]
+    assert sent[-1].text.startswith("✅ Put on the BOQ line *Plastering walls*.") and "*more plastering*" in sent[-1].text
+    await service.handle(_message("Skip", tap=sent[-1].list_rows[-1].id), CTX)
+    assert len(put) == 1 and sent[-1].text == wa.BOQ_SKIPPED and not sent[-1].list_rows  # nothing left to ask

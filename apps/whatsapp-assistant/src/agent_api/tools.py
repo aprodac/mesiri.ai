@@ -437,13 +437,15 @@ ALLOWED: tuple[Allowed, ...] = (
             "worst first. lines_without_norms: BOQ lines whose materials are not set."),
     Allowed("labour_not_on_boq", "GET", "/cost/projects/{project_id}/labour",
             "The project's attendance per site, day and trade (date_from / date_to, default the last 30 days; "
-            "unallocated=true for only what is on no BOQ line): man_days, cost, on_lines (the BOQ lines it is on), "
-            "not_on_a_line, suggested_line_id. Use its site_id, date and trade_key to put labour on a line."),
+            "unallocated=true for only what is on no BOQ line; to_confirm=true for that and what Mesiri put on lines "
+            "by itself): man_days, cost, on_lines (the BOQ lines it is on), not_on_a_line, auto (Mesiri split it from "
+            "that day's work; a person has not confirmed it), suggested_line_id. Use its site_id, date and trade_key "
+            "to put labour on a line."),
     Allowed("put_labour_on_boq", "PUT", "/cost/projects/{project_id}/labour",
             "Prepare putting a site's day of one trade on BOQ lines by man-days (site_id, date and trade from "
             "labour_not_on_boq; lines: [{line_id, man_days}] with line_id from budget_vs_actual's BOQ lines; it "
-            "replaces the lines that day and trade was on; [] takes it off every line). Never more man-days than "
-            "the day had." + _WRITE),
+            "replaces the lines that day and trade was on; [] takes it off every line; the same lines as an auto "
+            "split confirm it). Never more man-days than the day had." + _WRITE),
     # LP-04 (8 Nov 2026): progress by place. Read by everyone on the project; places are set up on the dashboard.
     Allowed("place_progress", "GET", "/projects/{project_id}/places/progress",
             "Progress floor by floor and room by room (place: a floor or room in their words, e.g. 'first floor'): "
@@ -561,7 +563,8 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("waiting", "GET", "/approvals/waiting",
             "What is waiting for this person, urgent first then oldest: site reports with entries to confirm (today, "
             "yesterday), material requests to decide, subcontractor bills flagged or sent for approval, RA bills in "
-            "draft, pay weeks whose wages are to approve or pay, their own tasks overdue or due today. Each item: kind, ref, "
+            "draft, pay weeks whose wages are to approve or pay, labour Mesiri put on BOQ lines to confirm "
+            "(labour_split), their own tasks overdue or due today. Each item: kind, ref, "
             "title, detail, project_name, "
             "site_name, since, urgent; plus counts per kind and total. Read only: acting goes through each kind's own "
             "tool."),

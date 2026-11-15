@@ -253,6 +253,11 @@ function ScheduleView({ projectId }: { projectId: string }) {
                   <span className="inline-flex items-center gap-1"><MessageCircle className="size-3.5" /> Fills from WhatsApp</span>
                   {canEdit && <span>Drag a bar to move it</span>}
                   {s.summary.conflicts > 0 && <span className="text-red-600">{plural(s.summary.conflicts, 'link')} broken by the dates (red dashed).</span>}
+                  {(s.summary.issues_on_no_activity ?? 0) > 0 && (
+                    <Link to={`/issues?project=${projectId}`} className="text-red-600 underline underline-offset-2">
+                      {plural(s.summary.issues_on_no_activity ?? 0, 'open issue')} not on any activity here
+                    </Link>
+                  )}
                 </p>
               </div>
               {current && (

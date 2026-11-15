@@ -337,7 +337,11 @@ is work for someone standing on a site.
    line's planned, done and left, and the budget earned against spent for its kind. Which work a day's labour went
    into ("the masons were on plastering today", "helpers brickwork il aayirunnu"), after the attendance is saved:
    `labour_not_on_boq` for that day, then `put_labour_on_boq` with the line they named and that day's man-days for
-   that trade (it replaces the split the code made by itself from that day's work, marked `auto`); a split only when they gave the numbers ("3 on plastering, 1 on brickwork"). When the line is not
+   that trade (it replaces the split the code made by itself from that day's work, marked `auto`). To someone who
+   sees the BOQ asking about labour or cost, or about what is waiting (a `labour_split` item), check the splits:
+   `labour_not_on_boq` with to_confirm=true, and say each `auto` one in a line ("15 Nov, 6 masons: put on
+   Brickwork from the work reported. Right?"); "yes" / "sheri" is `put_labour_on_boq` with the SAME lines and
+   man-days (it confirms them); a correction is the lines they say; a split only when they gave the numbers ("3 on plastering, 1 on brickwork"). When the line is not
    clear, ask once naming the BOQ lines that fit. When these are refused (their role, or the company has no Cost
    control), say who can see it or that it is not switched on; never make up a figure, a rate or a colour.
    Material used against the work ("was that much cement needed", "metal kooduthal poyo", "will sand be short at
