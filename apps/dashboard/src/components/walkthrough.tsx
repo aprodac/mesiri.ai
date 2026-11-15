@@ -388,14 +388,22 @@ export function WalkthroughRunner() {
   const rect = useRect(shown && !dialogOpen ? target : undefined, run?.index ?? -1)
 
   // A step that waits for its page's content (a project to pick first): watch for it while the person picks.
-  const [pageShows, setPageShows] = React.useState(true)
+  const [holding, setHolding] = React.useState<'pick' | 'loading' | null>(null)
+  const pageShows = holding === null
   React.useEffect(() => {
     const wanted = step?.waitFor
     if (!shown || !wanted?.length) {
-      setPageShows(true)
+      setHolding(null)
       return
     }
-    const look = () => setPageShows(wanted.some((id) => !!findTarget(id)))
+    // Hold the step only while there is something to wait for: a project list to pick from, or data still coming.
+    // A page that has loaded without its content (an error, nothing yet) lets the person go on, never traps them
+    // with a disabled Next and "pick a project" on a page that has no project list (SS-52).
+    const look = () => {
+      if (wanted.some((id) => !!findTarget(id))) setHolding(null)
+      else if (findTarget('project.pick')) setHolding('pick')
+      else setHolding(queriesRef.current.isFetching() === 0 ? null : 'loading')
+    }
     look()
     const timer = window.setInterval(look, 500)
     return () => window.clearInterval(timer)
@@ -465,7 +473,7 @@ export function WalkthroughRunner() {
     >
       {!pageShows && (
         <p className="m-0 text-xs font-medium" role="status">
-          Pick a project on this page first. I'll carry on when it opens.
+          {holding === 'pick' ? "Pick a project on this page first. I'll carry on when it opens." : 'Opening the page…'}
         </p>
       )}
       {tryIt?.kind === 'whatsapp' && (
