@@ -63,6 +63,18 @@ class SetupProgressResponse(BaseModel):
     # "Hide for now" (SS-19): the card stays hidden for the whole company
     # until then. None: showing.
     hidden_until: dt.datetime | None = None
+    # SS-30 (guided onboarding): the data-in steps for people who start with their own data. A vendor means the
+    # materials workbook (or the Vendors page) has been used; a BOQ line means the BOQ is in. Starter materials are
+    # seeded for every company (BE-24), so materials alone would always read as done.
+    has_vendors: bool = False
+    has_boq: bool = False
+
+
+#: SS-30: one read for both data-in steps.
+_DATA_IN = sa.text(
+    "SELECT EXISTS (SELECT 1 FROM vendors WHERE organization_id = :org) AS has_vendors, "
+    "EXISTS (SELECT 1 FROM work_package_planned_items WHERE organization_id = :org) AS has_boq"
+)
 
 
 #: How long "Hide for now" hides the card before it comes back, if unfinished.
@@ -120,6 +132,7 @@ async def get_setup_progress(
     )
 
     setup = company.setup
+    data_in = (await conn.execute(_DATA_IN, {"org": org_id})).mappings().first() or {}
     card = await PostgresOrganizationSettingsRepository(conn).get(
         org_id, org_settings.GETTING_STARTED
     )
@@ -144,6 +157,8 @@ async def get_setup_progress(
         trial_days_left=company.trial_days_left,
         whatsapp_number=mesiri_whatsapp_number(),
         hidden_until=hidden_until(card, dt.datetime.now(dt.UTC)),
+        has_vendors=bool(data_in.get("has_vendors")),
+        has_boq=bool(data_in.get("has_boq")),
     )
 
 
