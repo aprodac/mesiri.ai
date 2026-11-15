@@ -405,6 +405,8 @@ class ApiWhatsApp:
             said = await self._photo(message, ctx)
             _lap("v3_vision")
             key = getattr(getattr(message, "media", None), "object_key", None)
+            if message.modality is InputModality.DOCUMENT and not _picture(message):
+                key = None  # [307]: a PDF, Word or Excel file is never put on a record as its photo (shown as a picture)
             if said:
                 reply = await self._on_words(said, message, ctx, photo_key=key)
             else:
@@ -658,6 +660,12 @@ class ApiWhatsApp:
             return ""
         if not seen:
             return ""
+        if message.modality is InputModality.DOCUMENT:
+            # [307]: a PDF, Word or Excel file; its name says a lot ("Preliminary_BOQ_Supermarket.docx"). The marker
+            # after it stays the photo one: own_words and the language check split on it.
+            name = str((getattr(message, "metadata", None) or {}).get("filename") or "").strip()
+            sent = f"(sent a document{' ' + name if name else ''}{': ' + caption if caption else ''})"
+            return f"{sent}\nWhat the photo shows: {seen}"
         return f"(sent a photo{': ' + caption if caption else ''})\nWhat the photo shows: {seen}"
 
     # -- a message ---------------------------------------------------------------------------
@@ -2598,6 +2606,11 @@ def speech_hint(language: str | None, names: list[str]) -> str:
     own = list(dict.fromkeys(n.strip() for n in names if n and n.strip()))[:HINT_NAMES]
     words = ", ".join([*own, *SITE_WORDS])
     return f"{_SPEAKS.get(language or '', _SPEAKS['manglish'])} Construction site update. Likely words: {words}."
+
+
+def _picture(message: Any) -> bool:
+    """[307]: a document that can stand as a record's photo: a picture sent as a file."""
+    return str(getattr(getattr(message, "media", None), "mime_type", None) or "").lower().startswith("image/")
 
 
 _KINDS = {InputModality.VOICE: "voice note", InputModality.IMAGE: "photo", InputModality.DOCUMENT: "document"}

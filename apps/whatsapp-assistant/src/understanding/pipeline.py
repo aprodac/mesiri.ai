@@ -18,6 +18,7 @@ from mesiri_ai.ports.voice_extraction import VoiceExtractionProvider
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from mesiri_contracts.common.errors import ErrorCategory, MesiriError
 from mesiri_contracts.common.storage import ObjectStoragePort
+from understanding.office_text import office_kind, office_text
 
 
 def _vision_source(vision: Any) -> str | None:
@@ -29,7 +30,11 @@ def _vision_source(vision: Any) -> str | None:
     "Restaurant bill for tea and toast" never mentions the total), so the
     fields are kept alongside, or a real numeric field like amount is
     silently lost between the vision call and whatever reads it next."""
-    if (vision.document_classification or "").lower() == "unknown" and not vision.raw_fields:
+    if (vision.document_classification or "").lower() == "unknown" and not vision.raw_fields \
+            and not (vision.description or "").strip():
+        # [307] (15 Nov: three pages of a printed BOQ, sent without a caption, came back "unknown" with a description
+        # and no fields, and were answered "couldn't read that photo"): only an empty read is unreadable. What the
+        # model saw is kept; the agent decides what it is.
         return None
     source = vision.description or ""
     if vision.raw_fields:
@@ -96,11 +101,18 @@ class UnderstandingPipeline:
         from it (amount, vendor, ...), or None when it cannot be read. The
         tool-calling agent reads this as the message; same vision call as
         `_handle_image`."""
+        data = await self._read_media(message)
+        if (kind := office_kind(data)) is not None:
+            # [307]: a Word or Excel file is text already: the code reads it, no vision call (it can't take them).
+            text = office_text(data)
+            return f"{kind}:\n{text}" if text else None
         return _vision_source(await self._analyze(message, hint)) or None
 
     async def _analyze(self, message: NormalizedMessage, hint: str | None) -> Any:
         image = await self._read_media(message)
         mime = message.media.mime_type if message.media else None
+        if image.startswith(b"%PDF"):
+            mime = "application/pdf"  # [307]: a PDF sent as a document, whatever type the download said
         return await self._vision.analyze_image(
             image, mime_type=mime, hint=hint, correlation_id=message.correlation_id
         )

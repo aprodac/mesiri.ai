@@ -43,6 +43,51 @@ def audio_media(message: Mapping[str, Any]) -> Mapping[str, Any] | None:
     return audio if ("ogg" in mime or "opus" in mime) else None
 
 
+#: [307] (15 Nov, an owner sent his BOQ as a Word file and was told "can't read documents or PDFs"): the files Mesiri reads
+#: when sent as a WhatsApp document. A PDF or a picture goes to the vision model as it is; Word and Excel files are
+#: read as text by the code (understanding/office_text.py). Older .doc / .xls and anything else stay declined.
+WORD_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+OFFICE_MIMES = frozenset({WORD_MIME, EXCEL_MIME})
+_BY_EXTENSION = {".pdf": "application/pdf", ".docx": WORD_MIME, ".xlsx": EXCEL_MIME,
+                 ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+
+def document_mime(document: Mapping[str, Any]) -> str:
+    """The type of a WhatsApp document, from its mime type, else from its file name's extension (some phones send
+    ``application/octet-stream``)."""
+    mime = str(document.get("mime_type") or "").split(";")[0].strip().lower()
+    if mime and mime != "application/octet-stream":
+        return mime
+    name = str(document.get("filename") or "").lower()
+    return next((m for ext, m in _BY_EXTENSION.items() if name.endswith(ext)), mime)
+
+
+def readable_document(message: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """[307]: the ``document`` of a message when Mesiri can read it (a PDF, a picture sent as a file, a Word or Excel
+    file), else None. The one decision for both normalisation (DOCUMENT) and the media download."""
+    if message.get("type") != "document":
+        return None
+    document = message.get("document") or {}
+    mime = document_mime(document)
+    if mime == "application/pdf" or mime in OFFICE_MIMES or (mime.startswith("image/") and mime != "image/gif"):
+        return document
+    return None
+
+
+def raw_type_of(message: Mapping[str, Any]) -> str | None:
+    """Meta's ``type``, except an ``unsupported`` message whose ``unsupported.type`` says what it was ([307], 15 Nov:
+    four photos sent at once arrive as an ``album`` marker, as ``unsupported``, and then each photo as an ``image``;
+    the marker was answered "can't read this kind of message" while the photos themselves were read). The inner type
+    is what decides the reply (channel/replies.py)."""
+    raw_type = message.get("type")
+    if raw_type == "unsupported":
+        inner = (message.get("unsupported") or {}).get("type")
+        if inner:
+            return str(inner)
+    return raw_type
+
+
 class MessageNormalizer:
     """Map Meta webhook message payloads to Mesiri's canonical message format."""
 
@@ -66,7 +111,7 @@ class MessageNormalizer:
         metadata: dict[str, Any] = {
             "phone_number_id": phone_number_id,
             "display_phone_number": display_phone_number,
-            "raw_type": message.get("type"),
+            "raw_type": raw_type_of(message),
         }
         if message.get("group_id"):
             # WA-87: sent in a WhatsApp group Mesiri is in; `from` is the
@@ -82,6 +127,9 @@ class MessageNormalizer:
             # chain message that was never about this site at all.
             if frequently_forwarded:
                 metadata["frequently_forwarded"] = True
+
+        if (document := readable_document(message)) is not None and document.get("filename"):
+            metadata["filename"] = str(document["filename"])  # [307]: "Preliminary_BOQ.docx" tells what it is
 
         if message.get("type") == "contacts":
             # SS-13: a shared contact card adds that person to the team.
@@ -129,6 +177,8 @@ class MessageNormalizer:
             return InputModality.VOICE  # [250]: forwarded / recorded audio and audio files too
         if raw_type == "audio":
             return InputModality.UNKNOWN  # an audio format the speech step can't take yet: declined politely
+        if readable_document(message) is not None:
+            return InputModality.DOCUMENT  # [307]: a PDF, Word or Excel file, or a picture sent as a file
         return _SUPPORTED_TYPES.get(raw_type, InputModality.UNKNOWN)
 
     def _resolve_sender(
@@ -193,6 +243,9 @@ class MessageNormalizer:
         if modality is InputModality.IMAGE:
             image_payload = message.get("image") or {}
             return image_payload.get("caption")
+
+        if modality is InputModality.DOCUMENT:
+            return (message.get("document") or {}).get("caption")
 
         return None
 

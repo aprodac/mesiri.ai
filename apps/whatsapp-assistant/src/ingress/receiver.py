@@ -14,7 +14,7 @@ from channel.whatsapp import usage as message_usage
 from ingress.deduplication import DeduplicationStore
 from ingress.media_handoff import upload_downloaded_media
 from ingress.media_ingestion import DownloadedMedia, MediaDownloader
-from ingress.normalization import MessageNormalizer, audio_media
+from ingress.normalization import MessageNormalizer, audio_media, readable_document
 from mesiri_contracts.assistant import NormalizedMessage
 from mesiri_contracts.common.storage import ObjectStoragePort
 from runtime.ai_outage import AIUnavailableError
@@ -444,13 +444,16 @@ class WhatsAppReceiver:
         message_type = message.get("type")
 
         audio = audio_media(message)  # [250]: the same decision normalisation makes
+        document = readable_document(message)  # [307]: the same decision normalisation makes
         if message_type == "image":
             media_id = (message.get("image") or {}).get("id")
         elif audio is not None:
             media_id = audio.get("id")
+        elif document is not None:
+            media_id = document.get("id")
         else:
             # Text, interactive, and everything Mesiri can't act on yet
-            # (document/video/sticker/location/contacts, or a music file
+            # (other documents/video/sticker/location/contacts, or a music file
             # rather than a voice note). Downloading a PDF we have no way to
             # read would burn a Meta API call and storage for nothing --
             # and raising here used to abort ingress entirely, leaving the

@@ -534,7 +534,8 @@ def render_material_picker(candidates: list[tuple[str, str]]) -> ReplySpec:
 # normalizes to the same UNKNOWN modality -- the raw type is the only thing
 # left that can make the reply specific.
 _UNSUPPORTED_TYPE_LABELS: dict[str, str] = {
-    "document": "documents or PDFs",
+    # [307]: PDFs, Word (.docx) and Excel (.xlsx) files are read; only another file type (.doc, .zip) reaches here.
+    "document": "this file type",
     "video": "videos",
     "sticker": "stickers",
     "location": "location pins",
@@ -548,7 +549,9 @@ _UNSUPPORTED_TYPE_LABELS: dict[str, str] = {
 # 👍 with "I can't handle this" would be maddening), and `system` is Meta's
 # own notice (e.g. the sender changed their number). Both are dropped
 # quietly -- still logged, just not replied to.
-SILENTLY_IGNORED_RAW_TYPES: frozenset[str] = frozenset({"reaction", "system", "order"})
+# [307]: an `album` is Meta's marker before several photos sent at once; each photo
+# follows as its own `image` message and is read, so the marker needs no answer.
+SILENTLY_IGNORED_RAW_TYPES: frozenset[str] = frozenset({"reaction", "system", "order", "album"})
 
 
 def render_unsupported_media_reply(raw_type: str | None) -> str:

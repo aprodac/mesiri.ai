@@ -47,7 +47,8 @@ def _normalize(message: dict):
 @pytest.mark.parametrize(
     ("raw_type", "payload"),
     [
-        ("document", {"document": {"id": "media-doc-1", "mime_type": "application/pdf"}}),
+        # [307]: a PDF, Word or Excel file is read now; an old .doc is still declined.
+        ("document", {"document": {"id": "media-doc-1", "mime_type": "application/msword"}}),
         ("video", {"video": {"id": "media-vid-1", "mime_type": "video/mp4"}}),
         ("sticker", {"sticker": {"id": "media-stk-1"}}),
         ("location", {"location": {"latitude": 12.9, "longitude": 77.5}}),
@@ -104,7 +105,7 @@ def test_text_and_image_are_unaffected() -> None:
 @pytest.mark.parametrize(
     ("raw_type", "expected_fragment"),
     [
-        ("document", "documents or PDFs"),
+        ("document", "this file type"),
         ("video", "videos"),
         ("sticker", "stickers"),
         ("location", "location pins"),
@@ -181,8 +182,8 @@ def _document_webhook_payload() -> dict:
                                     "type": "document",
                                     "document": {
                                         "id": "media-doc-1",
-                                        "mime_type": "application/pdf",
-                                        "filename": "invoice.pdf",
+                                        "mime_type": "application/msword",
+                                        "filename": "invoice.doc",
                                     },
                                 }
                             ],
@@ -195,8 +196,9 @@ def _document_webhook_payload() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_receiver_accepts_a_pdf_without_downloading_it() -> None:
-    """The end-to-end guard for the reported bug: a PDF must reach the
+async def test_receiver_accepts_a_doc_without_downloading_it() -> None:
+    """The end-to-end guard for the reported bug: a file Mesiri can't read (an old .doc; [307]: a PDF, Word or Excel
+    file is read now) must reach the
     normalized-message store (so the runtime gets a chance to reply) rather
     than dying in ingress. It must also NOT be downloaded -- fetching a file
     we have no way to read would burn a Meta API call and storage for
@@ -225,7 +227,7 @@ async def test_receiver_accepts_a_pdf_without_downloading_it() -> None:
 
     normalized = await message_store.get("wamid.doc")
     assert normalized is not None, (
-        "the PDF must survive ingress -- if it dies here the sender gets no reply at all"
+        "the file must survive ingress -- if it dies here the sender gets no reply at all"
     )
     assert normalized.modality is InputModality.UNKNOWN
     assert normalized.metadata["raw_type"] == "document"
@@ -249,7 +251,7 @@ def test_an_ogg_audio_document_is_a_voice_note_and_a_pdf_is_not() -> None:
     assert _normalize(ogg).modality is InputModality.VOICE
     assert audio_media(ogg) == {"id": "d1", "mime_type": "audio/ogg", "filename": "site.ogg"}
     pdf = _message("document", document={"id": "d2", "mime_type": "application/pdf"})
-    assert _normalize(pdf).modality is InputModality.UNKNOWN and audio_media(pdf) is None
+    assert _normalize(pdf).modality is InputModality.DOCUMENT and audio_media(pdf) is None  # [307]: read, not heard
 
 
 def test_an_audio_decline_never_asks_for_the_audio_they_just_sent() -> None:
