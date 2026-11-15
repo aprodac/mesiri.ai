@@ -1,0 +1,176 @@
+# Learn Mesiri: walkthroughs by role, workflow, module and page
+
+> **Status: approved 15 Nov 2026 in session, not built yet** (beyond the engine pieces listed in section 2).
+> Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
+> [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
+>
+> Asked 15 Nov: "not only page-wise but module, workflow and user-wise too; a dedicated page where we pick one
+> walkthrough and run it; and the places where we can send a WhatsApp message or enter something and test it, so a
+> full learning is done."
+
+## 1. Decisions (15 Nov 2026, in session)
+
+| # | Decision | Answer |
+|---|---|---|
+| D-L1 | Walkthroughs by page, module, workflow and role, from one Learn page | **Yes** |
+| D-L2 | Page tours hand-written or automatic | **All hand-written** (61 still to write; no automatic tours) |
+| D-L3 | Where practice entries go | **Real entries, then take back**: each practice ends by showing how to undo it. No Practice site (that would need a new site flag kept out of reports, cost and accounts, and Ilan's approval) |
+| D-L4 | Which module's hand-written tours come first after the engine | **Planning** |
+| D-L5 | Estimates in Claude Opus 5.5 usage, not days | Section 8 |
+
+## 2. What already exists (built 15 Nov, on `main`)
+
+- **Spark tours** (SS-40): `apps/dashboard/src/components/tour.tsx` draws them; content in `src/lib/tours.ts`. Dims the
+  screen, lights one element, the Spark (Live's character, `components/live/spark.tsx`) explains; Next, Back, Skip,
+  "2 of 5". Remembered per person in `users.guide_seen` (`/tour/...`, migration 0553). Replay from Help.
+- **App tour** (sidebar, Search, project picker, On WhatsApp, Help) and **8 hand-written page tours**: Today, Daily
+  reports, Issues, Materials, Labour, BOQ, Projects, Team.
+- **Markers**: steps point at `data-guide="..."` on the element (or `guide="..."` on `Segmented` / `StatStrip`).
+  A step whose element is not on screen is skipped. **The build fails** when a step's marker is on no element
+  (`apps/dashboard/vite.config.ts`, `checkTourMarkers`).
+- **WhatsApp examples on every page** (SS-39): `module-map.ts` `whatsapp` examples (save / answer, what to say,
+  the reply, the assistant tools), shown in the "On WhatsApp" pop-up; `whatsapp-assistant/tests/agent_api/
+  test_module_map_whatsapp.py` keeps them true.
+- **Start modes** (SS-27/28): who gets tours is `MODES[mode].tours` in `src/lib/start-mode.ts`.
+
+## 3. The Learn page (SS-41)
+
+`/learn`, in the sidebar's everyday pages and opened from Help ("Learn Mesiri").
+
+- Four tabs: **For you** (the person's role path first), **Workflows**, **Modules**, **Pages**.
+- A card per walkthrough: title, one line on what it teaches, minutes, number of steps, **Start**, and done / not
+  started (from `guide_seen` key `/learn/<id>`). Replay any time.
+- A **Try it** section per page: the WhatsApp messages to send (from `module-map.ts` examples, with Copy and Try it
+  on WhatsApp) and the dashboard actions to try there.
+
+## 4. The walkthrough engine (SS-42), extending `tour.tsx`
+
+One definition for every kind (`src/lib/walkthroughs.ts`):
+
+```ts
+interface Walkthrough { id: string; kind: 'role' | 'workflow' | 'module' | 'page'; title: string; about: string;
+  minutes: number; roles?: string[]; steps: WalkStep[] }
+interface WalkStep extends TourStep {   // TourStep: target?, title, text, mood?
+  page?: string                          // go to this page first (the engine navigates and waits for the target)
+  try?: TryWhatsApp | TryHere            // a practice step
+  takeBack?: string                      // after a practice: how to undo it (WhatsApp words or the dashboard button)
+}
+```
+
+- **Across pages**: a step with `page` navigates there (react-router), waits up to ~4 s for its target, then shows.
+- **Page walkthrough** = that page's hand-written tour. **Module walkthrough** = its pages' tours back to back.
+  **Role path** = its workflows in order. One runner for all; progress saved per walkthrough.
+- **Try on WhatsApp**: the bubble shows the message, **Copy**, **Try it on WhatsApp** (wa.me with Mesiri's number,
+  `waLink`), and **I've sent it**. Optional `check`: the engine reads an API list before and polls it every ~4 s;
+  when a new record appears it says "Got it" and lights it up on the page.
+- **Try here**: the Spark lights the real button ("Record delivery") and the spotlight lets clicks through; when a
+  dialog opens the tour shrinks to a small Spark chip; when that dialog closes (saved) the tour comes back and moves
+  on. **Done** / **Skip** always available.
+- **Take back** (D-L3): each practice ends with a step that shows the undo, and points at it:
+  WhatsApp: "take back the last delivery" (assistant tools `undo_receipt`, `undo_usage`, `undo_transfer`,
+  `undo_expense`; **check the exact words against `agent_api/SOP.md` before writing them**); dashboard: the record's
+  reverse / delete button.
+- The build check (`checkTourMarkers`) also covers walkthrough steps; every `page` must be a built page in
+  `module-map.ts` (`guideLink`).
+
+## 5. Catalogue
+
+### 5.1 Role paths (4)
+
+| Role (system role) | Path |
+|---|---|
+| Owner / admin (ADMIN) | App tour → W6 Start a project → W1 Site update to daily report → W9 Cost control → W8 Billing the client |
+| Project manager (PROJECT_MANAGER) | W6 Start a project → W1 Daily site review → W2 Material → W5 Subcontractor → W9 Cost control |
+| Site engineer / supervisor (SITE_ENGINEER) | Mostly WhatsApp: W1 daily update → people (W4 first half) → material in and used (W2 last half) → W7 an issue → asking for material (W2 first step) |
+| Accounts / finance (FINANCE) | W3 Supplier bill to payment → W4 wages paid → W8 billing → W11 Month end |
+
+### 5.2 Workflows (11)
+
+| # | Workflow | Pages in order | Practice steps |
+|---|---|---|---|
+| W1 | Site update to daily report | WhatsApp → Today → Site log → Daily reports | WhatsApp: "6 masons, 4 helpers, slab shuttering done" → Save; take back |
+| W2 | Material, from asking to using | Requests → Purchase orders → GRN → Materials (Stock, Movements) | WhatsApp: request, order, delivery, use; take back each |
+| W3 | Supplier bill to payment | Expenses → Suppliers → link deliveries → pay | Here: record an expense with a bill photo; take back |
+| W4 | Labour to wages | Attendance → Wages → approve → pay; Advances | WhatsApp: attendance, an advance; take back |
+| W5 | Subcontractor | Work orders → measure → Bills & checks → approve → advance | WhatsApp: work order, measurement |
+| W6 | Start a new project | Project start → BOQ import → Schedule → Team → first report | Here: new project; WhatsApp: add a person |
+| W7 | An issue, start to finish | Issues: report → seen → fixed | WhatsApp: report and close an issue |
+| W8 | Billing the client | RA bills → Receivables (client payment) | WhatsApp: "Client paid 5 lakh for RA-03"; take back |
+| W9 | Cost control | BOQ lines → Green / red → Budget vs actual → Materials vs BOQ | Ask on WhatsApp: "How is Green Villa doing on cost?" |
+| W10 | Machines and hire | Equipment daily log → Hire check | WhatsApp: "JCB 6 hrs, 30 L diesel"; take back |
+| W11 | Month end | Weekly & monthly → Accounts → Months → Tally export | Ask: "Send me October's report" |
+
+### 5.3 Modules (13)
+
+Site, Tasks, Planning, Cost control, Materials, Procurement, Labour, Subcontract, Finance, Accounts, Client billing,
+Equipment, Settings: each = its pages' tours back to back (sidebar order).
+
+### 5.4 Page tours: all hand-written (D-L2), in build order (Planning first, D-L4)
+
+Built (8): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
+sites, Team.
+
+| Order | Module | Pages to write (61) | Count |
+|---|---|---|---|
+| 1 | Planning | Project start, Schedule, Material plan, Live plans, Places, Drawing check, Documents | 7 |
+| 2 | Procurement | Requests, Purchase orders, Goods received (GRN), Pending deliveries, Rates, Quotations, Suppliers, Returns | 8 |
+| 3 | Cost control | Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost centres | 5 |
+| 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 |
+| 5 | Site | Weekly & monthly, Site log, Analytics | 3 |
+| 6 | Tasks | Tasks (all 4 views share one tour) | 1 |
+| 7 | Materials | Stock count, Stock value | 2 |
+| 8 | Labour | Wages, Advances | 2 |
+| 9 | Subcontract | Subcontractors, Work orders, Bills & checks | 3 |
+| 10 | Finance | Expenses, Money, Finance settings | 3 |
+| 11 | Client billing | Clients, RA bills, Client view | 3 |
+| 12 | Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 5 |
+| 13 | Settings | Settings, Company, WhatsApp, Bring your data, Activity log | 5 |
+
+**How to write one page tour** (the recipe, so any session can continue):
+
+1. Read the page component (`apps/dashboard/src/pages/...`) and its `module-map.ts` entry (`about`, `example`,
+   `whatsapp`).
+2. Pick 3–6 things a new person must know: the view tabs, the key numbers, the main action, the list, filters.
+3. Add `data-guide="<page>.<thing>"` to each element (or `guide="..."` on `Segmented` / `StatStrip`).
+4. Add the tour to `PAGE_TOURS` in `src/lib/tours.ts`, keyed by the page path (no `?view=`): `introFromPage: true`,
+   then the steps; plain words, construction terms are explained by the glossary on their own; give a Spark mood.
+   A step may mention the WhatsApp message from the page's `whatsapp` example.
+5. `npx tsc -b --noEmit && npx oxlint src/ && npx vite build` (the build fails on a missing marker), then click it
+   through in a browser (stub API script pattern: scratch `tour.mjs` from SS-40).
+
+## 6. Rollout and safety
+
+- No database change (progress uses `users.guide_seen`, migration 0553). No backend change except, if a `check`
+  needs it, reading existing list routes.
+- Practice is real data, taken back at the end (D-L3). Never on a company in trial read-only mode.
+- Who sees what: role paths filter by `me.role`; a step for a page the role cannot open is skipped.
+- Rollback: revert the commits; tours and the Learn page are front-end only.
+
+## 7. Phases and tracker
+
+| ID | Item | Phase |
+|---|---|---|
+| SS-41 | Learn page (`/learn`): tabs, cards, progress, Try it lists | 1 |
+| SS-42 | Engine: across pages, Try on WhatsApp (with check), Try here (dialog watch), Take back, walkthrough definitions | 1 |
+| SS-43 | Workflows W1, W2, W4 + role paths Site engineer, Owner | 1 |
+| SS-44 | Planning page tours (7) | 2 |
+| SS-45 | Procurement (8) and Cost control (5) page tours | 2 |
+| SS-46 | Accounts page tours (14) | 2 |
+| SS-47 | The other page tours (27: Site, Tasks, Materials, Labour, Subcontract, Finance, Client billing, Equipment, Settings) | 2 |
+| SS-48 | Workflows W3, W5–W11 + role paths Project manager, Finance | 3 |
+| SS-49 | Module walkthroughs (13) | 3 |
+
+## 8. Estimate (Claude Opus 5.5: $4 / 1M input, $0.20 / 1M cached input, $20 / 1M output)
+
+Rough, from this session (guided onboarding + WhatsApp pop-ups + 8 tours ≈ 50–70 M tokens processed, ≈ $25–45).
+
+| Phase | Tokens processed | At API prices |
+|---|---|---|
+| 1 (SS-41..43) | ~35–55 M | ~$20–35 |
+| 2 (SS-44..47, 61 tours) | ~100–200 M | ~$60–120 |
+| 3 (SS-48..49) | ~40–70 M | ~$25–45 |
+| **Total** | **~175–325 M** | **~$105–200** |
+
+Per item: one page tour ~$1–2 (Accounts ~$2); one workflow ~$2–4. Fresh sessions per phase keep cost low (a long
+session re-reads more each step). On a Claude plan this is usage-limit time, not money: phase 2 alone is several
+5-hour windows.
