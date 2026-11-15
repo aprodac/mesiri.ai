@@ -4,7 +4,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { confirmReportTime, hideSetupCard, requestContinue, showSetupCard, type SetupProgress } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
-import { setupSteps, useSetupProgress } from '@/lib/setup'
+import { WHERE_THINGS_ARE, setupSteps, useGuideSteps, useSetupProgress, type GuideSteps } from '@/lib/setup'
+import { useGuideSeen, useStartMode } from '@/lib/start-mode'
+import { guideLink } from '@/lib/guide-links'
+import { openJump } from '@/lib/jump'
+import { WithTerms } from '@/components/term'
 import { updateProject } from '@/lib/projects'
 import { useTrial } from '@/lib/trial'
 import { inviteText } from '@/lib/invite'
@@ -17,6 +21,8 @@ interface Item {
   done: boolean
   title: string
   detail: React.ReactNode
+  /** SS-30: why this step matters, in plain words (step-by-step mode). */
+  why?: string
   action?: React.ReactNode
 }
 
@@ -68,17 +74,24 @@ function ReportTimeChoice({ progress, onSaved }: { progress: SetupProgress; onSa
   )
 }
 
-function items(p: SetupProgress, onTimeSaved: (p: SetupProgress) => void, invite: (() => void) | null): Item[] {
+function items(
+  p: SetupProgress,
+  onTimeSaved: (p: SetupProgress) => void,
+  invite: (() => void) | null,
+  guide: GuideSteps,
+  onWhereRead: () => void,
+): Item[] {
   const sendTime = formatClock(p.first_project?.send_time) ?? '9:00 pm'
   const linkClass = 'font-medium text-foreground underline underline-offset-2'
-  return [
+  const list: Item[] = [
     {
       key: 'site',
       done: p.has_site,
       title: 'Add your first site',
       detail: 'Each site gets its own daily report.',
+      why: 'Mesiri keeps every update under the site it came from, so each site has its own record and report.',
       action: (
-        <Link to="/projects" className={linkClass}>
+        <Link to={guideLink('/projects')} className={linkClass}>
           Projects & sites
         </Link>
       ),
@@ -89,6 +102,7 @@ function items(p: SetupProgress, onTimeSaved: (p: SetupProgress) => void, invite
       // The person who reports from site: in Mesiri's roles, a Site Engineer
       // (supervisors included; WEB-17 decided against a separate role).
       title: 'Add the person who reports from site',
+      why: 'They are the one on site every day. They send updates the way they already talk on WhatsApp; no app to learn.',
       detail: 'Your site engineer or supervisor. On WhatsApp, share their contact with Mesiri, or add them on the Team page with just their number.',
       action: (
         <span className="flex items-center gap-3">
@@ -97,7 +111,7 @@ function items(p: SetupProgress, onTimeSaved: (p: SetupProgress) => void, invite
               Copy invite
             </button>
           )}
-          <Link to="/team" className={linkClass}>
+          <Link to={guideLink('/team')} className={linkClass}>
             Team
           </Link>
         </span>
@@ -108,8 +122,9 @@ function items(p: SetupProgress, onTimeSaved: (p: SetupProgress) => void, invite
       done: p.first_update_at !== null,
       title: 'Get the first update from site',
       detail: "You or your supervisor send today's work to Mesiri on WhatsApp: a text, a voice note or photos.",
+      why: 'One message is enough to see how it works: who came, what work was done, what ran out.',
       action: (
-        <Link to="/welcome" className={linkClass}>
+        <Link to={guideLink('/welcome')} className={linkClass}>
           Send it now
         </Link>
       ),
@@ -120,6 +135,7 @@ function items(p: SetupProgress, onTimeSaved: (p: SetupProgress) => void, invite
       // Asked as a real choice: the default time used to look already chosen.
       title: 'When should the daily report go out?',
       detail: 'Every evening at this time, made from the day\'s updates.',
+      why: 'The daily report (DPR) is the one page that tells you, and your client, how the day went at each site.',
       action: p.first_project && !p.report_time_set && <ReportTimeChoice progress={p} onSaved={onTimeSaved} />,
     },
     {
@@ -127,8 +143,9 @@ function items(p: SetupProgress, onTimeSaved: (p: SetupProgress) => void, invite
       done: p.has_logo,
       title: 'Put your logo on the report',
       detail: 'It goes at the top of every daily report.',
+      why: 'Your client sees your name on every report, not ours.',
       action: (
-        <Link to="/company?tab=letterhead" className={linkClass}>
+        <Link to={guideLink('/company?tab=letterhead')} className={linkClass}>
           Add logo
         </Link>
       ),
@@ -148,6 +165,57 @@ function items(p: SetupProgress, onTimeSaved: (p: SetupProgress) => void, invite
       ),
     },
   ]
+  // SS-30: the start mode's own steps (guided-onboarding-plan.md 6.2), in the same order setupSteps counts them.
+  if (guide.dataSteps) {
+    list.push(
+      {
+        key: 'vendors',
+        done: p.has_vendors,
+        title: 'Bring your materials and vendors list',
+        detail: 'Fill the Excel template (items, vendors, opening stock) or upload your own list in its columns.',
+        action: (
+          <Link to={guideLink('/bring-data')} className={linkClass}>
+            Bring your data
+          </Link>
+        ),
+      },
+      {
+        key: 'boq',
+        done: p.has_boq,
+        title: 'Bring your BOQ or estimate',
+        detail: 'Upload the Excel you already have; Mesiri reads its items, units and quantities.',
+        action: (
+          <Link to={guideLink('/bring-data')} className={linkClass}>
+            Bring your data
+          </Link>
+        ),
+      },
+    )
+  }
+  if (guide.whereThingsAre) {
+    list.push({
+      key: 'where',
+      done: guide.whereSeen,
+      title: 'Where things are',
+      detail: (
+        <>
+          The sidebar follows a project's life: Plan, Site, Buy, Money. Search (Ctrl K) finds any page, project or
+          record. The ? at the top says what each page is for. Your site team never opens this: they use WhatsApp.
+        </>
+      ),
+      action: (
+        <span className="flex items-center gap-3">
+          <button type="button" className={linkClass} onClick={openJump}>
+            Search
+          </button>
+          <button type="button" className={linkClass} onClick={onWhereRead}>
+            Got it
+          </button>
+        </span>
+      ),
+    })
+  }
+  return list
 }
 
 /**
@@ -204,11 +272,18 @@ export function GettingStartedCard() {
   // WEB-49: folded to the next step by default (it took the whole first screen on a phone); "All steps" opens the
   // rest with their explanations.
   const [expanded, setExpanded] = React.useState(asked)
+  // SS-30: the start mode decides whether the card shows by itself, its why-lines and its extra steps.
+  const guide = useStartMode()
+  const guideSteps = useGuideSteps()
+  const markSeen = useGuideSeen()
+  const onWhereRead = () => markSeen.mutate({ page: WHERE_THINGS_ARE, version: 1 })
 
   // Once the trial has ended the banner (trial-banner.tsx) takes over: the
   // dashboard is read-only, so none of these could be done anyway.
   const hidden = !!hiddenUntil && !(asked && !hide.isSuccess)
   if (!isCompanyAdmin || hidden || trial.readOnly || !progress.data) return null
+  // "I'll find my way": no card unless asked for from "Finish setup"; nothing at all until the mode is known.
+  if (!guide.ready || (!guide.rules.checklist && !asked)) return null
   const number = progress.data.whatsapp_number
   const site = progress.data.first_project?.name
   // A message the owner forwards to their supervisor (SS-18): Mesiri's
@@ -224,8 +299,8 @@ export function GettingStartedCard() {
         }
       }
     : null
-  const list = items(progress.data, save, invite)
-  const doneCount = setupSteps(progress.data).filter(Boolean).length
+  const list = items(progress.data, save, invite, guideSteps, onWhereRead)
+  const doneCount = setupSteps(progress.data, guideSteps).filter(Boolean).length
   if (doneCount === list.length) return null
   const daysLeft = progress.data.effective_status === 'trial' ? progress.data.trial_days_left : null
   const continueAsked = trial.continueRequested || continueAsk.isSuccess
@@ -287,7 +362,8 @@ export function GettingStartedCard() {
                 <p className={cn('text-sm font-medium', item.done && 'text-muted-foreground line-through')}>
                   {item.title}
                 </p>
-                {!item.done && expanded && <p className="text-xs text-muted-foreground">{item.detail}</p>}
+                {!item.done && (expanded || guide.rules.whyLines) && <p className="text-xs text-muted-foreground">{typeof item.detail === 'string' ? <WithTerms text={item.detail} /> : item.detail}</p>}
+                {!item.done && guide.rules.whyLines && item.why && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Why: </span><WithTerms text={item.why} /></p>}
               </div>
               {!item.done && item.action && <div className="text-sm shrink-0">{item.action}</div>}
             </div>

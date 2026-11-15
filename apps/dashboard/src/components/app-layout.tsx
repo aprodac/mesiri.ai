@@ -12,6 +12,8 @@ import { TrialBanner } from '@/components/trial-banner'
 import { JumpBox } from '@/components/jump-box'
 import { HelpButton } from '@/components/help-button'
 import { InboxBell } from '@/components/inbox-bell'
+import { PageGuide } from '@/components/page-guide'
+import { StartQuestionDialog } from '@/components/onboarding/start-question'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
@@ -120,6 +122,8 @@ export function AppLayout() {
       </a>
       <JumpBox />
       <StartProjectDialog />
+      {/* SS-28: "How would you like to start?" for anyone not asked yet. */}
+      <StartQuestionDialog />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
@@ -127,6 +131,8 @@ export function AppLayout() {
           <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 p-4 outline-none">
             <TrialBanner />
             <ScopeNote />
+            {/* SS-29: the page explains itself once, for the start modes that want it. */}
+            <PageGuide />
             <Outlet />
           </div>
         </SidebarInset>

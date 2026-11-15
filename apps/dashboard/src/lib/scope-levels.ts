@@ -79,6 +79,7 @@ const LEVELS: [string, ScopeLevel][] = [
   ['/team', 'company'],
   ['/settings', 'company'],
   ['/settings/activity', 'company'],
+  ['/bring-data', 'company'],
   ['/company', 'company'],
   ['/whatsapp', 'company'],
 ]
