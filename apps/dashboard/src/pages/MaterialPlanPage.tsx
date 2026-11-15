@@ -132,7 +132,7 @@ function PlanView({ projectId }: { projectId: string }) {
     <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Heading />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-guide="matplan.weeks">
           <label className="text-xs text-muted-foreground" htmlFor="mp-weeks">Weeks</label>
           <select id="mp-weeks" className="h-9 rounded-md border bg-background px-2 text-sm" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
             {[4, 8, 12].map((w) => <option key={w} value={w}>{w}</option>)}
@@ -142,15 +142,17 @@ function PlanView({ projectId }: { projectId: string }) {
       </div>
       {!plan ? (
         <Skeleton className="h-64 w-full" />
-      ) : plan.lines_with_norms === 0 && fillCallout ? (
-        fillCallout
       ) : plan.lines_with_norms === 0 ? (
-        <Callout tone="info" icon={Calculator} action={<Button asChild size="sm"><Link to={boqLink}>Open the BOQ</Link></Button>}>
-          No BOQ line has its materials yet
-        </Callout>
+        <div data-guide="matplan.empty">
+          {fillCallout ?? (
+            <Callout tone="info" icon={Calculator} action={<Button asChild size="sm"><Link to={boqLink}>Open the BOQ</Link></Button>}>
+              No BOQ line has its materials yet
+            </Callout>
+          )}
+        </div>
       ) : (
         <>
-          <StatStrip stats={stats} />
+          <StatStrip stats={stats} guide="matplan.stats" />
           {fillCallout}
           {short.length > 0 && (
             <Callout tone="draft" icon={AlertTriangle}>
@@ -206,7 +208,7 @@ function Notes({ row }: { row: MaterialPlanRow }) {
 
 function PlanTable({ plan, onOrder }: { plan: MaterialPlan; onOrder: (row: MaterialPlanRow) => void }) {
   return (
-    <div className="hidden overflow-x-auto rounded-lg border [contain:inline-size] md:block">
+    <div className="hidden overflow-x-auto rounded-lg border [contain:inline-size] md:block" data-guide="matplan.table">
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
@@ -243,7 +245,7 @@ function PlanTable({ plan, onOrder }: { plan: MaterialPlan; onOrder: (row: Mater
 
 function PlanCards({ plan, onOrder }: { plan: MaterialPlan; onOrder: (row: MaterialPlanRow) => void }) {
   return (
-    <ul className="flex flex-col gap-2 md:hidden">
+    <ul className="flex flex-col gap-2 md:hidden" data-guide="matplan.table">
       {plan.materials.map((row) => {
         const next = plan.weeks.map((w, i) => ({ w, v: row.weeks[i] })).filter((x) => Number(x.v) > 0).slice(0, 3)
         return (

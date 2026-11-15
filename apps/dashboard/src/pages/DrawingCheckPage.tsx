@@ -82,6 +82,7 @@ export default function DrawingCheckPage() {
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); pick(e.dataTransfer.files?.[0]) }}
+        data-guide="drawing.drop"
         className={cn('flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-6 text-sm transition', dragging ? 'border-primary bg-primary/5' : 'hover:bg-muted/40')}
       >
         <Upload className="size-6 text-muted-foreground" />
@@ -112,7 +113,7 @@ function Result({ r }: { r: DrawingRead }) {
       </div>
       <StatStrip stats={stats} />
 
-      <section className="flex flex-col gap-2">
+      <section className="flex flex-col gap-2" data-guide="drawing.checks">
         <h2 className="text-base font-semibold">What to check</h2>
         {r.checks.length === 0 ? (
           <Callout tone="success" icon={Info}>Nothing found to ask about. Levels, sizes and areas agree.</Callout>

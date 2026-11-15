@@ -114,7 +114,7 @@ function StartView({ projectId }: { projectId: string }) {
               <span><strong>Ready for site.</strong> From now on the site's WhatsApp updates fill the schedule, the daily report and the cost.</span>
             </div>
           )}
-          <ol className="flex flex-col gap-2">
+          <ol className="flex flex-col gap-2" data-guide="setup.steps">
             {d.steps.map((step, i) => (
               <StepCard key={step.key} n={i + 1} step={step} next={d.next === step.key} projectId={projectId} data={d} canEdit={canEdit}
                 saving={update.isPending} onDates={(body) => update.mutate(body)} onImport={() => setImporting(true)} />
@@ -124,7 +124,7 @@ function StartView({ projectId }: { projectId: string }) {
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
           {sched && sched.summary.scheduled > 0 && (
-            <Link to={`/planning/schedule?project=${projectId}`} className="flex flex-col gap-2 rounded-xl border p-4 hover:bg-muted/40">
+            <Link to={`/planning/schedule?project=${projectId}`} className="flex flex-col gap-2 rounded-xl border p-4 hover:bg-muted/40" data-guide="setup.schedule">
               <span className="flex items-center justify-between text-sm font-semibold"><span className="flex items-center gap-2"><CalendarRange className="size-4" /> Schedule today</span><ChevronRight className="size-4 text-muted-foreground" /></span>
               <span className="grid grid-cols-3 gap-2 text-center">
                 <Mini label="Done" value={sched.summary.progress !== null ? `${sched.summary.progress}%` : '—'} />
@@ -151,7 +151,7 @@ function StartView({ projectId }: { projectId: string }) {
 function StageTrack({ data, canEdit, onPick }: { data: ProjectStart; canEdit: boolean; onPick: (s: Stage) => void }) {
   const at = data.stages.findIndex((s) => s.key === data.project.stage)
   return (
-    <nav aria-label="Project stage" className="overflow-x-auto rounded-xl border p-1.5">
+    <nav aria-label="Project stage" className="overflow-x-auto rounded-xl border p-1.5" data-guide="setup.stage">
       <ol className="flex min-w-max items-center gap-1">
         {data.stages.map((s, i) => {
           const done = i < at
@@ -226,7 +226,7 @@ function StepCard({
   }
 
   return (
-    <li className={cn('flex gap-3 rounded-xl border p-4 transition', next && 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30', step.done && !next && 'bg-card')}>
+    <li data-guide={next ? 'setup.next' : undefined} className={cn('flex gap-3 rounded-xl border p-4 transition', next && 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30', step.done && !next && 'bg-card')}>
       <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', step.done ? 'bg-success-soft text-success' : next ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
         {step.done ? <Check className="size-5" strokeWidth={3} /> : <Icon className="size-4" />}
       </span>

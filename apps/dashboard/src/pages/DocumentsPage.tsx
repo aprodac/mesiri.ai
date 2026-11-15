@@ -61,7 +61,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
       )}
       <Dropzone projectId={projectId} folder={folder} />
       <div className="grid min-w-0 gap-4 md:grid-cols-[13rem_1fr]">
-        <nav className="flex gap-1 overflow-x-auto md:flex-col" aria-label="Folders">
+        <nav className="flex gap-1 overflow-x-auto md:flex-col" aria-label="Folders" data-guide="docs.folders">
           <FolderButton active={folder === null} onClick={() => setFolder(null)} label="All" count={total} />
           {folders.map((f) => (
             <FolderButton key={f} active={folder === f} onClick={() => setFolder(f)} label={FOLDER_NAMES[f]} count={data?.counts[f] ?? 0}
@@ -69,7 +69,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
           ))}
         </nav>
         <div className="flex min-w-0 flex-col gap-3">
-          <div className="relative max-w-sm">
+          <div className="relative max-w-sm" data-guide="docs.search">
             <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
             <Input className="pl-8" placeholder="Search number or title" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search documents" />
           </div>
@@ -78,7 +78,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
               {q || folder ? 'Nothing here.' : 'No documents yet. Drop the drawings, permits and contract above.'}
             </p>
           ) : (
-            <ul className="divide-y rounded-lg border">
+            <ul className="divide-y rounded-lg border" data-guide="docs.list">
               {data.documents.map((d) => <DocRow key={d.id} doc={d} onOpen={() => setOpenId(d.id)} />)}
             </ul>
           )}
@@ -169,6 +169,7 @@ function Dropzone({ projectId, folder }: { projectId: string; folder: Folder | n
       onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { e.preventDefault(); setDragging(false); send(e.dataTransfer.files) }}
+      data-guide="docs.drop"
       className={cn('flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-4', dragging && 'border-primary bg-primary/5')}
     >
       <div className="flex items-center gap-3">

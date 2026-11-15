@@ -25,12 +25,19 @@ function checkTourMarkers(): Plugin {
     name: 'mesiri-check-tour-markers',
     buildStart() {
       const tours = fs.readFileSync(path.join(SRC, 'lib/tours.ts'), 'utf8')
-      const wanted = [...tours.matchAll(/target: '([A-Za-z0-9._-]+)'/g)].map((m) => m[1])
+      const wanted = [
+        ...[...tours.matchAll(/target: '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
+        // A tour's startWhen markers (the page's content it waits for) must exist too.
+        ...[...tours.matchAll(/startWhen: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/'([A-Za-z0-9._-]+)'/g)].map((x) => x[1])),
+      ]
       const code = sources(SRC)
         .filter((file) => !file.endsWith(path.join('lib', 'tours.ts')))
         .map((file) => fs.readFileSync(file, 'utf8'))
         .join('\n')
-      const missing = wanted.filter((id) => !code.includes(`data-guide="${id}"`) && !code.includes(`guide="${id}"`))
+      // A marker as text (data-guide="x", guide="x") or set by a condition (data-guide={next ? 'x' : undefined}).
+      const has = (id: string) =>
+        code.includes(`data-guide="${id}"`) || code.includes(`guide="${id}"`) || new RegExp(`guide=\\{[^}]*'${id.replace(/\./g, '\\.')}'`).test(code)
+      const missing = wanted.filter((id) => !has(id))
       if (missing.length) {
         this.error(`Tour steps point at markers no element has (src/lib/tours.ts): ${[...new Set(missing)].join(', ')}`)
       }
