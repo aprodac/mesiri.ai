@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { findPage } from '@/lib/module-map'
-import { ArrowRight, ChevronRight, MessageSquareText } from 'lucide-react'
+import { ArrowRight, ChevronRight, Lock, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // The page kit (UX-05, docs/DESIGN.md "Page kit"): the parts every dashboard page is built from, in one
@@ -98,7 +98,8 @@ export function EmptyState({
 }: {
   icon?: React.ComponentType<{ className?: string }>
   title: string
-  about: React.ReactNode
+  /** One short line at most (UX-13): the page's help says the rest. */
+  about?: React.ReactNode
   /** The one thing to do first: a button or link. */
   action?: React.ReactNode
   /** A message the site can send on WhatsApp that fills this page. */
@@ -114,7 +115,7 @@ export function EmptyState({
       )}
       <div className="flex max-w-md flex-col gap-1">
         <h2 className="text-base font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground">{about}</p>
+        {about && <p className="text-sm text-muted-foreground">{about}</p>}
       </div>
       {whatsapp && (
         <p className="inline-flex max-w-md items-start gap-2 rounded-lg bg-success-soft px-3 py-2 text-left text-sm text-success">
@@ -126,6 +127,39 @@ export function EmptyState({
       )}
       {action}
     </div>
+  )
+}
+
+/**
+ * UX-13: a page this role cannot open, without a paragraph about why: a lock, one line, the roles that can as
+ * chips, and a way back. Replaces the two-sentence "X shows the company's rates. Only owners, ... can open it."
+ */
+export function NoAccess({ roles, back, className }: { roles: string[]; back?: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('flex flex-col items-center gap-3 py-16 text-center', className)}>
+      <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground" aria-hidden>
+        <Lock className="size-5" />
+      </span>
+      <p className="font-medium">Not open to your role</p>
+      <ul className="flex flex-wrap justify-center gap-1.5" aria-label="Who can open it">
+        {roles.map((r) => (
+          <li key={r} className="rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground">
+            {r}
+          </li>
+        ))}
+      </ul>
+      {back}
+    </div>
+  )
+}
+
+/** UX-13: the WhatsApp message that does this, as a green chip instead of a sentence about it. */
+export function SayOnWhatsApp({ text, className }: { text: string; className?: string }) {
+  return (
+    <p className={cn('inline-flex max-w-md items-start gap-2 rounded-lg bg-success-soft px-3 py-1.5 text-left text-sm text-success', className)}>
+      <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <span className="font-medium">“{text}”</span>
+    </p>
   )
 }
 

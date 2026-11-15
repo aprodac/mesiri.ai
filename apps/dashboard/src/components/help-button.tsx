@@ -1,11 +1,13 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ArrowRight, CircleHelp, Compass, Lightbulb, MessageSquareText, Search, Sparkles } from 'lucide-react'
+import { ArrowRight, CircleHelp, Compass, Info, LayoutList, Lightbulb, ListOrdered, MessageSquareText, Search, Sparkles } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/lib/AuthContext'
 import { useModuleEnabled } from '@/lib/modules'
 import { SECTION_TITLES, findPage } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
+import { helpFor, type HelpTone } from '@/lib/page-help'
+import { cn } from '@/lib/utils'
 import { MODES, useResetGuides, useStartMode } from '@/lib/start-mode'
 import { StartChoices } from '@/components/onboarding/start-question'
 import { WithTerms } from '@/components/term'
@@ -23,6 +25,15 @@ const EXTRA: Record<string, { title: string; about: string; example?: string; wh
     example: 'A voice note in Malayalam from Compound wall turns into "6 masons, 4 helpers, plastering 120 sq ft".',
   },
   '/reports': { title: 'Daily reports', about: 'Every daily report (DPR), newest first: each site\'s day and each project\'s report that goes to the owner.' },
+}
+
+// UX-13: the same colours the page uses for a state, so "red" in the help is the red on the page.
+const DOT: Record<HelpTone | 'none', string> = {
+  good: 'bg-success',
+  attention: 'bg-draft',
+  bad: 'bg-destructive',
+  info: 'bg-info',
+  none: 'bg-muted-foreground/40',
 }
 
 export function HelpButton() {
@@ -55,17 +66,19 @@ export function HelpButton() {
   const [changing, setChanging] = React.useState(false)
   React.useEffect(() => setChanging(false), [open])
   const whatsNew = page?.guideNew
+  const help = helpFor(page?.url, pathname)
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 text-sm font-medium text-foreground hover:bg-primary/20 sm:px-3"
         title={`What is ${title}?`}
         aria-label={`Help: what is ${title}?`}
       >
-        <CircleHelp className="size-[18px]" />
+        <CircleHelp className="size-[18px] text-primary-ink" />
+        <span className="hidden sm:inline">Help</span>
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-md">
@@ -75,6 +88,47 @@ export function HelpButton() {
             <SheetDescription className="text-sm text-foreground/80"><WithTerms text={about} /></SheetDescription>
           </SheetHeader>
           <div className="flex flex-col gap-5 px-5 py-4">
+            {help?.parts && help.parts.length > 0 && (
+              <section className="flex flex-col gap-1.5">
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <LayoutList className="size-3.5" aria-hidden /> On this page
+                </h3>
+                <dl className="flex flex-col divide-y rounded-lg border">
+                  {help.parts.map((p) => (
+                    <div key={p.name} className="flex items-start gap-2.5 px-3 py-2">
+                      <span aria-hidden className={cn('mt-1.5 size-2 shrink-0 rounded-full', DOT[p.tone ?? 'none'])} />
+                      <dt className="w-32 shrink-0 text-sm font-medium">{p.name}</dt>
+                      <dd className="min-w-0 flex-1 text-sm text-muted-foreground">
+                        <WithTerms text={p.means} />
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            )}
+            {help?.steps && help.steps.length > 0 && (
+              <section className="flex flex-col gap-1.5">
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <ListOrdered className="size-3.5" aria-hidden /> How to use it
+                </h3>
+                <ol className="flex flex-col gap-1.5">
+                  {help.steps.map((step, i) => (
+                    <li key={step} className="flex items-start gap-2.5 text-sm">
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[11px] font-semibold text-primary-ink">{i + 1}</span>
+                      <span className="pt-px">
+                        <WithTerms text={step} />
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+            {help?.tip && (
+              <section className="flex gap-3 rounded-lg bg-info-soft px-3 py-2.5 text-info">
+                <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <p className="text-sm">{help.tip}</p>
+              </section>
+            )}
             {example && (
               <section className="flex gap-3">
                 <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary-ink" aria-hidden />

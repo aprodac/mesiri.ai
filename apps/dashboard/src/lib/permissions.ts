@@ -51,3 +51,7 @@ export function highestAllowedScope(role: string, accessPolicy: AccessPolicy | n
   if (scopes.includes('site')) return 'site'
   return null
 }
+
+/** UX-13: who can open a money page, as NoAccess shows it (mirrors MONEY_ROLES and mayManageMoney). */
+export const MONEY_PEOPLE = ['Owner', 'Admin', 'Finance', 'Project manager']
+export const BOOKS_PEOPLE = ['Owner', 'Admin', 'Finance']
