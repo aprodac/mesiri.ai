@@ -575,6 +575,27 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "📐 *{work}* किस BOQ लाइन पर है? नीचे से चुनिए; कोई सही न हो तो ऑफिस जोड़ देगा।",
         "hinglish": "📐 *{work}* kis BOQ line par hai? Neeche se chuniye; koi sahi na ho to office jod dega.",
     },
+    "api.boq_over": {
+        "english": "📐 *{work}* would take *{line}* to {after} of {planned} {unit}, more than planned, so it is not on a line yet. Which BOQ line is it? Choose it below, or the office checks it.",
+        "manglish": "📐 *{work}* *{line}*-il cherthaal {planned} {unit}-il {after} aakum, plan-ne kaalum kooduthal, athukondu ippo oru line-ilum cherthilla. Ethu BOQ line aanu? Thaazhe ninnu thiranjedukkuka, allenkil office nokkum.",
+        "malayalam": "📐 *{work}* *{line}*-ൽ ചേർത്താൽ {planned} {unit}-ൽ {after} ആകും, പ്ലാനിനേക്കാൾ കൂടുതൽ, അതുകൊണ്ട് ഇപ്പോൾ ഒരു ലൈനിലും ചേർത്തില്ല. ഏത് BOQ ലൈൻ ആണ്? താഴെ നിന്ന് തിരഞ്ഞെടുക്കുക, അല്ലെങ്കിൽ ഓഫീസ് നോക്കും.",
+        "hindi": "📐 *{work}* से *{line}* {planned} {unit} में {after} हो जाएगा, प्लान से ज़्यादा, इसलिए अभी किसी लाइन पर नहीं जोड़ा। कौन सी BOQ लाइन है? नीचे से चुनिए, या ऑफिस देखेगा।",
+        "hinglish": "📐 *{work}* se *{line}* {planned} {unit} mein {after} ho jayega, plan se zyada, isliye abhi kisi line par nahi joda. Kaun si BOQ line hai? Neeche se chuniye, ya office dekhega.",
+    },
+    "api.boq_change": {
+        "english": "Wrong line? Change it below.",
+        "manglish": "Line thettiyo? Thaazhe ninnu maattuka.",
+        "malayalam": "ലൈൻ തെറ്റിയോ? താഴെ നിന്ന് മാറ്റുക.",
+        "hindi": "लाइन गलत है? नीचे से बदलिए।",
+        "hinglish": "Line galat hai? Neeche se badaliye.",
+    },
+    "api.boq_off": {
+        "english": "✅ Taken off the BOQ: the office puts it on the right line.",
+        "manglish": "✅ BOQ-il ninnu maatti: office sheriyaaya line-il cherkkum.",
+        "malayalam": "✅ BOQ-ൽ നിന്ന് മാറ്റി: ഓഫീസ് ശരിയായ ലൈനിൽ ചേർക്കും.",
+        "hindi": "✅ BOQ से हटा दिया: ऑफिस सही लाइन पर जोड़ेगा।",
+        "hinglish": "✅ BOQ se hata diya: office sahi line par jodega.",
+    },
     "api.boq_put": {
         "english": "✅ Put on the BOQ line *{work}*.",
         "manglish": "✅ BOQ line *{work}*-il cherthu.",

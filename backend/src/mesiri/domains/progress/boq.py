@@ -117,9 +117,18 @@ def line_progress(line: Mapping[str, Any], done: Decimal) -> dict[str, Any]:
     }
 
 
+#: BOQ-01b: words that say nothing about WHICH work it is ("Shuttering for column" must not match "Shuttering for
+#: slab" on "for"). Kept out of every match; place words (floor, slab, column, ceiling) stay in.
+FILLER = frozenset({
+    "for", "and", "the", "with", "from", "into", "upto", "including", "incl", "etc", "all", "per", "each", "any",
+    "work", "works", "done", "doing", "finished", "complete", "completed", "today", "yesterday", "site", "providing",
+    "laying", "fixing", "making", "nos", "kazhinju", "cheythu", "aayi", "ho", "gaya",
+})
+
+
 def _words(value: str | None) -> set[str]:
     cleaned = "".join(ch if ch.isalnum() else " " for ch in (value or "").lower())
-    return {w for w in cleaned.split() if len(w) > 2 or any(ch.isdigit() for ch in w)}
+    return {w for w in cleaned.split() if (len(w) > 2 or any(ch.isdigit() for ch in w)) and w not in FILLER}
 
 
 def suggest_line(

@@ -200,7 +200,10 @@ async def record_activity(
         # BOQ-01: the work goes on its BOQ line by itself when the line is clear; else the lines to tap from.
         from mesiri.domains.progress.boq_router import place_new_work
 
-        boq = await place_new_work(conn, auth_context.organization_id, uuid.UUID(result.material_row_id))
+        placed = await place_new_work(conn, auth_context.organization_id, uuid.UUID(result.material_row_id))
+        # BOQ-01b (security): the BOQ's lines are seen only by the roles that see the BOQ page (CC-11 boundary).
+        # Anyone's clear work is still put on its line; only what it says back, and the question, are for them.
+        boq = boq_seen_by(auth_context.role, placed)
     if (place_label or boq) and response.status_code in (200, 201):
         payload = json.loads(response.body)
         if place_label:
@@ -210,6 +213,14 @@ async def record_activity(
             payload["boq"] = boq
         return JSONResponse(status_code=response.status_code, content=payload)
     return response
+
+
+def boq_seen_by(role: str | None, placed: list[dict]) -> list[dict]:
+    """BOQ-01b (security): what a work save tells its sender about the BOQ: everything for the roles that see the BOQ
+    page (``may_view_expenses``), nothing for the others (their clear work is still put on its line)."""
+    from mesiri.authorization.roles import may_view_expenses
+
+    return placed if may_view_expenses(role) else []
 
 
 class WorkBoqLine(BaseModel):
@@ -225,12 +236,16 @@ async def put_own_work_on_line(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """BOQ-01: the person who can correct this work puts it on a BOQ line (the WhatsApp tap on "Which BOQ line?").
-    The same check as the BOQ page (``set_work_line_checked``: this project, same unit, not on a work order);
-    the same reach as correcting the work (``_authorized_activity_or_404``). Returns the line's name, no rates."""
+    """BOQ-01: put saved work on a BOQ line, or off it (the WhatsApp tap on "Which BOQ line?" / "Change BOQ line").
+    Only the roles that see the BOQ (``may_view_expenses``, as the BOQ page), and only for work they can reach
+    (``_authorized_activity_or_404``). The same check as the BOQ page (``set_work_line_checked``: this project,
+    same unit, not on a work order). Returns the line's name, no rates."""
+    from mesiri.authorization.roles import may_view_expenses
     from mesiri.domains.progress.boq_router import set_work_line_checked
     from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
+    if not may_view_expenses(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only the people who see the BOQ can put work on its lines")
     item = await _authorized_activity_or_404(PostgresProgressReadRepository(conn), auth_context, activity_id)
     repo = PostgresBoqRepository(conn)
     if not any(str(w["id"]) == str(quantity_id) for w in await repo.activity_work(auth_context.organization_id,

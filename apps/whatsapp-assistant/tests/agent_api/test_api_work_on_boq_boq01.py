@@ -44,7 +44,7 @@ class _Work(BaseModel):
 
 
 class _Line(BaseModel):
-    line_id: uuid.UUID | None
+    line_id: uuid.UUID | None = None
 
 
 @pytest.fixture(autouse=True)
@@ -64,6 +64,9 @@ def _app(boq: list[dict], put: list) -> FastAPI:
 
     @app.put("/progress/activities/{activity_id}/quantities/{quantity_id}/boq-line")
     async def line(activity_id: str, quantity_id: str, body: _Line, jwt: dict = Depends(get_current_user)):
+        if body.line_id is None:
+            put.append((activity_id, quantity_id, None))
+            return {"quantity_id": quantity_id, "line": None}
         if str(body.line_id) not in (WALLS, CEILING):
             raise HTTPException(422, "That BOQ line is not in this project.")
         put.append((activity_id, quantity_id, str(body.line_id)))
@@ -126,8 +129,39 @@ def test_one_question_at_a_time_and_lines_put_by_themselves_are_said_once() -> N
            "choices": [{"id": "l1", "work": "Brickwork 9 inch"}, {"id": "l2", "work": "Brickwork 4.5 inch"}]}
     auto = {"quantity_id": "q2", "work": "brickwork", "auto": True, "choices": [],
             "line": {"id": "l1", "work": "Brickwork 9 inch"}}
-    on, question, rows = wa.boq_follow_up([WriteResult(e, 201, {"id": "a", "boq": [ask, ask, auto, auto]})], None)
+    on, question, rows, label = wa.boq_follow_up([WriteResult(e, 201, {"id": "a", "boq": [ask, ask, auto, auto]})],
+                                                 None)
     assert on == "📐 On the BOQ: Brickwork 9 inch"
-    assert question.count("Which") == 1 and len(rows) == 2
-    on, question, rows = wa.boq_follow_up([WriteResult(e, 422, {"detail": "no"})], None)
-    assert (on, question, rows) == ("", "", ())
+    assert question.count("Which") == 1 and len(rows) == 2 and label == wa.BOQ_LIST_BUTTON
+    assert wa.boq_follow_up([WriteResult(e, 422, {"detail": "no"})], None) == ("", "", (), wa.BOQ_LIST_BUTTON)
+
+
+# -- BOQ-01b: a wrong guess is put right in one tap; a line it would overrun is asked ---------------------------------
+
+
+async def test_a_line_put_by_itself_can_be_changed_or_taken_off_in_one_tap() -> None:
+    put: list = []
+    service, sent = await _saved([{"quantity_id": QUANTITY, "work": "plastering", "auto": True,
+                                   "line": {"id": WALLS, "work": "Plastering walls"},
+                                   "choices": [{"id": CEILING, "work": "Plastering ceiling"}]}], put)
+    reply = sent[-1]
+    assert "📐 On the BOQ: Plastering walls" in reply.text and "Wrong line? Change it below." in reply.text
+    assert reply.list_button_label == wa.BOQ_CHANGE_BUTTON
+    assert [r.title for r in reply.list_rows] == ["Plastering ceiling", wa.BOQ_NONE_TITLE]
+    await service.handle(_message("Not on the BOQ", tap=reply.list_rows[1].id), CTX)
+    assert put == [(ACTIVITY, QUANTITY, None)] and sent[-1].text == wa.BOQ_OFF
+
+
+async def test_a_quantity_past_the_plan_says_why_it_is_asked() -> None:
+    _, sent = await _saved([{"quantity_id": QUANTITY, "work": "ceiling plastering", "auto": False, "line": None,
+                             "over": {"line": {"id": CEILING, "work": "Plastering ceiling"}, "done": "0",
+                                      "planned": "300", "after": "400.000", "unit": "sqft"},
+                             "choices": [{"id": CEILING, "work": "Plastering ceiling"}]}], [])
+    assert "would take *Plastering ceiling* to 400 of 300 sqft" in sent[-1].text
+    assert [r.title for r in sent[-1].list_rows] == ["Plastering ceiling"]
+
+
+async def test_guard_a_line_with_nothing_else_it_could_be_asks_nothing() -> None:
+    _, sent = await _saved([{"quantity_id": QUANTITY, "work": "plastering", "auto": True, "choices": [],
+                             "line": {"id": WALLS, "work": "Plastering walls"}}], [])
+    assert "Wrong line" not in sent[-1].text and not sent[-1].list_rows

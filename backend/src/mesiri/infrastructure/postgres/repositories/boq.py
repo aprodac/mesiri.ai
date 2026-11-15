@@ -228,7 +228,7 @@ class PostgresBoqRepository:
         res = await self.conn.execute(
             text(
                 "SELECT q.id, a.project_id, a.work_package_id AS section_id, "
-                "COALESCE(q.work_type, a.work_type) AS work, a.narrative, q.unit_id, "
+                "COALESCE(q.work_type, a.work_type) AS work, a.narrative, q.unit_id, q.quantity, "
                 "q.planned_item_id AS line_id, q.work_order_line_id "
                 "FROM activity_quantities q JOIN activities a ON a.id = q.activity_id "
                 "WHERE q.activity_id = :a AND a.organization_id = :org AND a.deleted_at IS NULL ORDER BY q.created_at"

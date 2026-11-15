@@ -1081,20 +1081,22 @@ class ApiWhatsApp:
         return ReplySpec(text=f"✅ {answer.body.get('message')}")
 
     async def _on_boq_tap(self, ids: str, ctx: Any) -> ReplySpec:
-        """BOQ-01: the line tapped under "Which BOQ line?": the saved work goes on it (the API checks the unit, the
-        project and that this person may correct the work). No model turn."""
+        """BOQ-01: the line tapped under "Which BOQ line?" / "Change BOQ line": the saved work goes on it, or off the
+        BOQ for "Not on the BOQ" (the API checks the role, the unit and the project). No model turn."""
         language = (await self._state(ctx)).get("language")
         activity_id, _, rest = ids.partition(":")
         quantity_id, _, line_id = rest.partition(":")
         client = ApiClient(_actor(ctx), app=self._app)
         try:
             put = await client.call("PUT", f"/progress/activities/{activity_id}/quantities/{quantity_id}/boq-line",
-                                    json={"line_id": line_id})
+                                    json={"line_id": None if line_id == "none" else line_id})
         finally:
             await client.close()
         if not put.ok:
             return ReplySpec(text=plain_refusal(_detail(put.body), language))
         work = ((put.body or {}).get("line") or {}).get("work") or ""
+        if not work:  # BOQ-01b: "Not on the BOQ": taken off, the office puts it on the right line
+            return ReplySpec(text=_in(language, "api.boq_off", BOQ_OFF))
         return ReplySpec(text=_in_with(language, "api.boq_put", BOQ_PUT, work=work))
 
     async def _feedback_only(self, message: Any, ctx: Any, state: dict, calls: list[dict[str, Any]], text: str,
@@ -1515,12 +1517,12 @@ class ApiWhatsApp:
         await self._save_state(ctx, state)
         # BOQ-01: where the saved work went on the BOQ; when no line was clear, the lines to tap (only when nothing
         # else waits, so the Save buttons keep their place).
-        on_boq, ask, rows = boq_follow_up(results, state.get("language"))
+        on_boq, ask, rows, label = boq_follow_up(results, state.get("language"))
         text = "\n\n".join(t for t in (text, on_boq, "" if left else ask) if t)
         if left:
             return _save_buttons(text, state["batch"], send=only_sends(left))
         if rows:
-            return ReplySpec(text=text, list_button_label=BOQ_LIST_BUTTON, list_rows=rows)
+            return ReplySpec(text=text, list_button_label=label, list_rows=rows)
         return ReplySpec(text=text)
 
     # (WA-263: a tap on a card that is done says what happened to it, never "nothing waiting to save" for a Cancel.)
@@ -2563,31 +2565,59 @@ def _saved_text(results: list[WriteResult], language: str | None = None, *, toda
 
 BOQ_ON = "📐 On the BOQ: {lines}"
 BOQ_WHICH = "📐 Which BOQ line is *{work}* on? Choose it below; if none fits, the office puts it on a line."
+BOQ_OVER = ("📐 *{work}* would take *{line}* to {after} of {planned} {unit}, more than planned, so it is not on a "
+            "line yet. Which BOQ line is it? Choose it below, or the office checks it.")
+BOQ_CHANGE = "Wrong line? Change it below."
 BOQ_PUT = "✅ Put on the BOQ line *{work}*."
+BOQ_OFF = "✅ Taken off the BOQ: the office puts it on the right line."
 BOQ_LIST_BUTTON = "Choose BOQ line"
+BOQ_CHANGE_BUTTON = "Change BOQ line"
+BOQ_NONE_TITLE = "Not on the BOQ"
 
 
-def boq_follow_up(results: list[WriteResult], language: str | None) -> tuple[str, str, tuple[ListRow, ...]]:
-    """BOQ-01: what the API did with saved work on the BOQ (``record_work``'s ``boq``): the lines it went on by
-    itself (one line of text), and for the first quantity with no clear line, the question and its lines to tap
-    (one question at a time; the rest wait for the office on the BOQ page). Empty when there is no BOQ."""
+def boq_follow_up(results: list[WriteResult], language: str | None) -> tuple[str, str, tuple[ListRow, ...], str]:
+    """BOQ-01: what the API did with saved work on the BOQ (``record_work``'s ``boq``, sent only to the roles that
+    see the BOQ): the lines it went on by itself (one line of text), then ONE list (WhatsApp sends one):
+
+    - the first quantity with no line: "Which BOQ line?" (or, BOQ-01b, why the clear line was not used: it would
+      pass its planned quantity) with its lines to tap;
+    - else the first quantity put on a line by itself that has other lines it could be: "Wrong line? Change it",
+      those lines and "Not on the BOQ" (BOQ-01b: a wrong guess is put right in one tap, never left for the office).
+
+    Returns (on-the-BOQ text, question text, rows, list button label); empty when there is no BOQ."""
     put: list[str] = []
-    ask, rows = "", ()
+    ask, rows, label = "", (), BOQ_LIST_BUTTON
+    change: tuple[str, tuple[ListRow, ...]] | None = None
     for r in results:
         body = r.body if isinstance(r.body, dict) else {}
-        if not r.ok or held(r) or r.pending.tool != "record_work":
+        if not r.ok or held(r) or r.pending.tool != "record_work" or not body.get("id"):
             continue
         for q in body.get("boq") or []:
+            tap = f"{BOQ_PREFIX}{body['id']}:{q['quantity_id']}:"
+
+            def row(c: dict, tap: str = tap) -> ListRow:
+                return ListRow(id=f"{tap}{c['id']}", title=str(c["work"])[:24], description=str(c["work"])[:72])
+
             if q.get("auto") and q.get("line"):
                 put.append(str(q["line"]["work"]))
-            elif q.get("choices") and not rows and body.get("id"):
+                if change is None and q.get("choices"):
+                    change = (_in(language, "api.boq_change", BOQ_CHANGE),
+                              (*(row(c) for c in q["choices"][:2]),
+                               ListRow(id=f"{tap}none", title=BOQ_NONE_TITLE, description="The office puts it on a line")))
+            elif q.get("choices") and not rows:
                 work = str(q.get("work") or r.pending.body.get("work_type") or "this work")
-                ask = _in_with(language, "api.boq_which", BOQ_WHICH, work=work)
-                rows = tuple(ListRow(id=f"{BOQ_PREFIX}{body['id']}:{q['quantity_id']}:{c['id']}",
-                                     title=str(c["work"])[:24], description=str(c["work"])[:72])
-                             for c in q["choices"][:3])
+                over = q.get("over")
+                if over:
+                    ask = _in_with(language, "api.boq_over", BOQ_OVER, work=work, line=str(over["line"]["work"]),
+                                   after=_amount(Decimal(str(over["after"]))),
+                                   planned=_amount(Decimal(str(over["planned"]))), unit=str(over.get("unit") or ""))
+                else:
+                    ask = _in_with(language, "api.boq_which", BOQ_WHICH, work=work)
+                rows = tuple(row(c) for c in q["choices"][:3])
+    if not rows and change is not None:
+        ask, rows, label = change[0], change[1], BOQ_CHANGE_BUTTON
     on = _in_with(language, "api.boq_on", BOQ_ON, lines=", ".join(dict.fromkeys(put))) if put else ""
-    return on, ask, rows
+    return on, ask, rows, label
 
 
 #: Writes nothing waits for (WEB-58), held until they finish so none is dropped half-way.

@@ -645,23 +645,32 @@ async def set_work_line_checked(
     return line
 
 
+#: BOQ-01b: work is never put on a line by itself when it would take that line past this share of its planned
+#: quantity (a wrong guess shows as false progress on the Gantt and in cost); the person is asked instead.
+AUTO_LIMIT = Decimal("1.10")
+
+
 async def place_new_work(conn: AsyncConnection, organization_id: uuid.UUID, activity_id: uuid.UUID) -> list[dict]:
     """BOQ-01: a work entry just saved goes on its BOQ line by itself when the line is clear (``suggest_line``:
-    same unit, most words shared, no tie); otherwise the lines to choose from are returned for one tap.
+    same unit, most words shared, no tie) and the quantity fits it; otherwise the lines to choose from are returned.
 
-    One item per quantity: ``quantity_id``, ``work`` (what it says), ``line`` ({id, work} or None), ``auto`` (put there just now),
-    ``choices`` ([{id, work}], empty when linked or nothing fits). No rates: anyone who records work sees this.
-    Work already on a line or on a work order is left as it is.
+    One item per quantity: ``quantity_id``, ``work`` (what it says), ``line`` ({id, work} or None), ``auto`` (put
+    there just now), ``choices`` ([{id, work}]: the lines to tap when not linked, or the OTHER lines to change to
+    when linked by itself), and ``over`` when the clear line was not used because the quantity would take it past
+    ``AUTO_LIMIT`` ({line, done, planned, after}). Work already on a line or a work order is left as it is.
+    Names only, never rates; who may SEE this is the caller's decision (``record_activity``).
     """
     repo = PostgresBoqRepository(conn)
     rows = await repo.activity_work(organization_id, activity_id)
     if not rows:
         return []
-    lines = await repo.list_lines(organization_id, rows[0]["project_id"])
+    project_id = rows[0]["project_id"]
+    lines = await repo.list_lines(organization_id, project_id)
     if not lines:
         return []
     by_id = {ln["id"]: ln for ln in lines}
-    current = await repo.current_revision_of(organization_id, rows[0]["project_id"])
+    current = await repo.current_revision_of(organization_id, project_id)
+    done = {k: v["done"] for k, v in (await _done_by_line(repo, organization_id, project_id, lines)).items()}
 
     def named(line_id: uuid.UUID) -> dict:
         return {"id": str(line_id), "work": by_id[line_id]["work_type"]}
@@ -671,19 +680,28 @@ async def place_new_work(conn: AsyncConnection, organization_id: uuid.UUID, acti
         if w["work_order_line_id"] is not None:
             continue
         said = w["work"] or w["narrative"]
+        item = {"quantity_id": str(w["id"]), "work": said, "line": None, "auto": False, "choices": []}
         if w["line_id"] is not None:
             on = current.get(w["line_id"], w["line_id"])
-            out.append({"quantity_id": str(w["id"]), "work": said, "line": named(on) if on in by_id else None,
-                        "auto": False, "choices": []})
+            out.append({**item, "line": named(on) if on in by_id else None})
             continue
+        choices = line_choices(said, w["unit_id"], w["section_id"], lines)
         pick = suggest_line(said, w["unit_id"], w["section_id"], lines)
         if pick is not None:
+            planned = Decimal(by_id[pick]["planned_quantity"])
+            after = done.get(pick, Decimal(0)) + Decimal(w["quantity"])
+            if planned > 0 and after > planned * AUTO_LIMIT:
+                item["over"] = {"line": named(pick), "done": str(done.get(pick, Decimal(0))), "planned": str(planned),
+                                "after": str(after), "unit": by_id[pick]["unit"]}
+                item["choices"] = [named(pick)] + [named(c) for c in choices if c != pick][:2]
+                out.append(item)
+                continue
             await repo.set_work_line(w["id"], pick)
-            out.append({"quantity_id": str(w["id"]), "work": said, "line": named(pick), "auto": True, "choices": []})
+            done[pick] = after
+            out.append({**item, "line": named(pick), "auto": True,
+                        "choices": [named(c) for c in choices if c != pick][:2]})
         else:
-            choices = line_choices(said, w["unit_id"], w["section_id"], lines)
-            out.append({"quantity_id": str(w["id"]), "work": said, "line": None, "auto": False,
-                        "choices": [named(c) for c in choices]})
+            out.append({**item, "choices": [named(c) for c in choices]})
     return out
 
 

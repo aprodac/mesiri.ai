@@ -43,7 +43,8 @@ WhatsApp / dashboard
 | Decision | Where | Rule |
 | --- | --- | --- |
 | Which BOQ line a work quantity is on | `progress/boq.py` `suggest_line`, `line_choices` | Same unit only. Most shared words wins, own section breaks a tie; a remaining tie is never guessed. Up to 3 lines offered to tap. |
-| Who may put work on a line | `boq_router.set_work_line_checked` | The BOQ page (BOQ roles) and the person who may correct that work (WhatsApp tap). Same check for both. |
+| Who may put work on a line, or see where it went | `boq_router.set_work_line_checked`, `progress/router.boq_seen_by` | Only the roles that see the BOQ page (owner, admin, finance, PM: `may_view_expenses`), on the BOQ page or by a WhatsApp tap. A site role's clear work is still put on its line, but the reply names no line and asks nothing (BOQ-01b). |
+| When a clear line is NOT used | `boq_router.place_new_work`, `AUTO_LIMIT` | The quantity would take the line past 110% of planned: asked instead, saying why. Filler words ("for", "done", "work") never decide a match (`boq.FILLER`). A line put on by itself offers "Change BOQ line" (the other lines that fit, and "Not on the BOQ"). |
 | A day's labour on lines | `costing/labour.py` `auto_split` + `costing/router.py` `_allocations` | Worked out on every read, so corrections flow through. A person's split always wins. No linked work that day: stays "not on a BOQ line". |
 | Which activity an issue holds up | `schedule/logic.py` `activity_for_issue` | Words of the issue vs the section's name and its lines; its own site or no site; not done; no guess on a tie. |
 | Standard materials | `progress/standard_norms.py` | Nominal mixes only; plain "RCC" or M25+ never guessed; a unit that can't be converted is said missing. |

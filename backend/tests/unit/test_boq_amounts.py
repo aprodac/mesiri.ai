@@ -171,3 +171,17 @@ def test_no_shared_word_offers_a_short_boq_whole_but_never_a_long_list():
 def test_choices_stop_at_three():
     lines = [_boq_line(str(i), f"Plastering {i}", _SQFT, "s1") for i in range(6)]
     assert len(line_choices("plastering", _SQFT, "s1", lines)) == 3
+
+
+# -- BOQ-01b: filler words never decide the line ----------------------------------------------------------------------
+
+
+def test_filler_words_never_decide_the_line():
+    lines = [_boq_line("slab", "Shuttering for slab", _SQFT, "s1"), _boq_line("col", "Shuttering to columns", _SQFT, "s1")]
+    assert suggest_line("Shuttering for column", _SQFT, "s1", lines) is None  # "for" no longer tips it to the slab
+    assert suggest_line("shuttering slab done", _SQFT, "s1", lines) == "slab"  # the place word still decides
+
+
+def test_guard_a_number_or_grade_still_counts():
+    lines = [_boq_line("m20", "M20 concrete", _CUM, "s1"), _boq_line("m25", "M25 concrete", _CUM, "s1")]
+    assert suggest_line("m25 concrete done", _CUM, "s1", lines) == "m25"

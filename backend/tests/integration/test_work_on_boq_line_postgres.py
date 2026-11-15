@@ -45,11 +45,11 @@ async def _project(conn):
     return org, project, site, section
 
 
-async def _line(conn, org, section, work: str, unit: uuid.UUID) -> uuid.UUID:
+async def _line(conn, org, section, work: str, unit: uuid.UUID, planned: int = 1000) -> uuid.UUID:
     line = uuid.uuid4()
     await conn.execute(text("INSERT INTO work_package_planned_items (id, organization_id, work_package_id, work_type, "
-                            "unit_id, planned_quantity) VALUES (:id, :o, :s, :w, :u, 1000)"),
-                       {"id": line, "o": org, "s": section, "w": work, "u": unit})
+                            "unit_id, planned_quantity) VALUES (:id, :o, :s, :w, :u, :q)"),
+                       {"id": line, "o": org, "s": section, "w": work, "u": unit, "q": planned})
     return line
 
 
@@ -198,3 +198,29 @@ async def test_boq04_standard_norms_fill_lines_with_none_and_never_change_one_th
     first = offered[0]["norms"][0]
     await norms.replace(org, m20, [{**first, "unit_id": cum, "quantity_per_unit": 9}], user)
     assert await _standard_norms(conn, repo, org, project) == []  # a line with materials is never offered again
+
+
+async def test_boq01b_a_clear_line_the_quantity_would_overrun_is_asked_not_linked(conn):
+    org, project, site, section = await _project(conn)
+    sqft = await _unit(conn, "sqft")
+    ceiling = await _line(conn, org, section, "Ceiling plastering", sqft, planned=300)
+    activity, quantity = await _work(conn, org, project, site, "ceiling plastering", sqft)  # 400 sqft of 300
+
+    (out,) = await place_new_work(conn, org, activity)
+
+    assert out["line"] is None and out["auto"] is False and await _on(conn, quantity) is None
+    assert out["over"]["line"]["id"] == str(ceiling) and out["over"]["after"] == "400.000"
+    assert out["choices"][0]["id"] == str(ceiling)  # still offered first: the person decides
+
+
+async def test_boq01b_a_line_put_by_itself_offers_the_other_lines_to_change_to(conn):
+    org, project, site, section = await _project(conn)
+    sqft = await _unit(conn, "sqft")
+    walls = await _line(conn, org, section, "Internal plastering walls", sqft)
+    ceiling = await _line(conn, org, section, "Ceiling plastering", sqft)
+    activity, _ = await _work(conn, org, project, site, "internal plastering walls", sqft)
+
+    (out,) = await place_new_work(conn, org, activity)
+
+    assert out["auto"] and out["line"]["id"] == str(walls)
+    assert [c["id"] for c in out["choices"]] == [str(ceiling)]
