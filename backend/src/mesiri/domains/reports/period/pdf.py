@@ -88,18 +88,24 @@ def _note(pdf, note: dict[str, Any] | None) -> None:
 def render(report: dict[str, Any], company: dict[str, Any], images: list[tuple[dict, bytes]] | None = None,
            note: dict[str, Any] | None = None) -> bytes:
     pdf = _doc(report["generated_at"])
-    _letterhead(pdf, company)
-    _title(pdf, report)
+    p = report["period"]
+    where = report["project"]["name"] + (f" - {report['site']['name']}" if report.get("site") else "")
+    sub = f"Client: {report['project']['client']}" if report["project"].get("client") else ""
+    _band(pdf, company, f"{kind_word(p)} report", p["range"] + (" (so far)" if report.get("running") else ""),
+          where, sub)
     _headline(pdf, report["headline"])
     _note(pdf, note)
     _kpis(pdf, report["kpis"][:4])
+    s = report["sections"]
+    _work_first(pdf, s.get("site_work"))
     _areas(pdf, report["areas"])
     _needs_first(pdf, report["needs_you"][:PAGE_NEEDS])
     _photos(pdf, images or [])
 
-    s = report["sections"]
     pdf.add_page()
-    if "work" in s:
+    if "site_work" in s and len(s["site_work"]["rows"]) > PAGE_WORK:
+        _site_work(pdf, s["site_work"])
+    if "work" in s and (s["work"]["rows"] or s["work"].get("done_pct") is not None):
         _work(pdf, s["work"])
     if "schedule" in s and s["schedule"]["rows"]:
         _schedule(pdf, s["schedule"])
@@ -120,43 +126,114 @@ def render(report: dict[str, Any], company: dict[str, Any], images: list[tuple[d
 
 # -- page 1 -----------------------------------------------------------------------------------------------------------
 
-def _letterhead(pdf, company: dict[str, Any]) -> None:
+#: [303] (15 Nov, Ilan: "a good PDF in good design"): page 1 opens with a dark band (who, what, when), the project in
+#: large type, the headline, four figure cards, the work done on site, then the areas, what needs you and photos.
+PAGE_WORK = 8
+BAND = (24, 27, 31)
+
+
+def _band(pdf, company: dict[str, Any], kind: str, when: str, where: str, sub: str = "") -> None:
     name = company.get("letterhead_name") or company.get("company_name") or ""
-    top = pdf.get_y()
-    pdf.set_font("Helvetica", "B", 13)
+    contact = "  |  ".join(x for x in (f"GSTIN {company['gstin']}" if company.get("gstin") else None,
+                                       company.get("phone"), company.get("address")) if x)
+    pdf.set_fill_color(*BAND)
+    pdf.rect(0, 0, pdf.w, 34, style="F")
+    pdf.set_fill_color(*YELLOW)
+    pdf.rect(0, 34, pdf.w, 1.2, style="F")
+    pdf.set_xy(15, 9)
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(*YELLOW)
+    pdf.cell(_W * 0.55, 4, t(kind.upper()))
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(200, 203, 208)
+    pdf.cell(_W * 0.45, 4, t(name), align="R")
+    pdf.set_xy(15, 14.5)
+    pdf.set_font("Helvetica", "B", 17)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(_W, 9, t(when))
+    if contact:
+        pdf.set_xy(15, 25)
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(160, 165, 172)
+        pdf.cell(_W, 4, t(contact))
+    pdf.set_xy(15, 41)
+    pdf.set_font("Helvetica", "B", 20)
     pdf.set_text_color(*INK)
-    pdf.cell(_W * 0.6, 7, t(name))
-    pdf.set_font("Helvetica", "", 7.5)
-    pdf.set_text_color(*MUTED)
-    right = [x for x in (f"GSTIN {company['gstin']}" if company.get("gstin") else None, company.get("phone"),
-                         company.get("address")) if x]
-    pdf.set_xy(15 + _W * 0.6, top)
-    pdf.multi_cell(_W * 0.4, 3.6, t("\n".join(right)), align="R")
-    pdf.set_y(max(pdf.get_y(), top + 8))
-    pdf.set_draw_color(*INK)
-    pdf.set_line_width(0.5)
-    pdf.line(15, pdf.get_y() + 1, 15 + _W, pdf.get_y() + 1)
-    pdf.set_line_width(0.2)
+    pdf.cell(0, 9, t(where), new_x="LMARGIN", new_y="NEXT")
+    if sub:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(0, 5, t(sub), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
 
-def _title(pdf, report: dict[str, Any]) -> None:
-    p = report["period"]
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(*MUTED)
-    sub = f"{kind_word(p)} report: " + (f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"])
-    if report.get("running"):
-        sub += " (so far)"
-    pdf.cell(0, 5, t(sub), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(*INK)
-    where = report["project"]["name"] + (f" - {report['site']['name']}" if report.get("site") else "")
-    pdf.cell(0, 8, t(where), new_x="LMARGIN", new_y="NEXT")
-    if report["project"].get("client"):
-        pdf.set_font("Helvetica", "", 8.5)
+def _day_range(start: str, end: str) -> str:
+    """'12 - 13 Nov', '30 Oct - 2 Nov', '14 Nov'."""
+    import datetime
+
+    a, b = datetime.date.fromisoformat(start[:10]), datetime.date.fromisoformat(end[:10])
+    if a == b:
+        return f"{a.day} {a:%b}"
+    if a.month == b.month:
+        return f"{a.day} - {b.day} {b:%b}"
+    return f"{a.day} {a:%b} - {b.day} {b:%b}"
+
+
+def _work_rows(pdf, rows: list[dict[str, Any]]) -> None:
+    """One line per piece of work: a date chip, the site, what was done."""
+    for r in rows:
+        if pdf.get_y() > pdf.h - 24:
+            pdf.add_page()
+        y = pdf.get_y()
+        pdf.set_fill_color(*SOFT)
+        pdf.rect(15, y + 0.6, 24, 5.2, style="F")
+        pdf.set_xy(15, y + 0.6)
+        pdf.set_font("Helvetica", "B", 7.5)
+        pdf.set_text_color(*INK)
+        pdf.cell(24, 5.2, t(_day_range(r["from"], r["to"])), align="C")
+        pdf.set_xy(42, y + 0.6)
+        pdf.set_font("Helvetica", "B", 8)
         pdf.set_text_color(*MUTED)
-        pdf.cell(0, 4.5, t(f"Client: {report['project']['client']}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(30, 5.2, t(r.get("site") or "")[:22])
+        pdf.set_xy(72, y + 0.6)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*INK)
+        pdf.multi_cell(_W - 57, 5.2, t(r["work"]))
+        pdf.set_y(max(pdf.get_y(), y + 6.4) + 0.6)
+
+
+def _work_first(pdf, sw: dict[str, Any] | None) -> None:
+    if not sw or not sw["rows"]:
+        return
+    _label(pdf, "Work on site", f"{sw['days']} day{'s' if sw['days'] != 1 else ''} with work reported")
+    _work_rows(pdf, sw["rows"][:PAGE_WORK])
+    if len(sw["rows"]) > PAGE_WORK:
+        pdf.set_font("Helvetica", "", 7.5)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(0, 5, t(f"{len(sw['rows']) - PAGE_WORK} more on page 2."), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+
+
+def _site_work(pdf, sw: dict[str, Any]) -> None:
+    _heading(pdf, "Work on site", f"Everything reported, {sw['entries']} entries on {sw['days']} days.")
+    _work_rows(pdf, sw["rows"])
     pdf.ln(2)
+
+
+def _label(pdf, text: str, note: str = "") -> None:
+    """A page-1 block's title: a short yellow bar, the title, a quiet note."""
+    y = pdf.get_y()
+    pdf.set_fill_color(*YELLOW)
+    pdf.rect(15, y + 1, 1.4, 4.5, style="F")
+    pdf.set_xy(18.5, y)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(*INK)
+    pdf.cell(pdf.get_string_width(t(text)) + 3, 6.5, t(text))
+    if note:
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(*MUTED)
+        pdf.cell(0, 6.5, t(note))
+    pdf.ln(7.5)
 
 
 def _headline(pdf, h: dict[str, Any]) -> None:
@@ -192,12 +269,14 @@ def _kpis(pdf, kpis: list[dict[str, Any]]) -> None:
         x = 15 + i * (w + gap)
         pdf.set_draw_color(*LINE)
         pdf.rect(x, y, w, 19)
-        pdf.set_xy(x + 2.5, y + 2)
+        pdf.set_fill_color(*(TONE.get(k.get("tone") or "none") if k.get("tone") not in (None, "none") else INK))
+        pdf.rect(x, y, w, 1, style="F")
+        pdf.set_xy(x + 2.5, y + 2.5)
         pdf.set_font("Helvetica", "", 7.5)
         pdf.set_text_color(*MUTED)
         pdf.cell(w - 5, 4, t(k["label"]))
-        pdf.set_xy(x + 2.5, y + 6.5)
-        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_xy(x + 2.5, y + 6.8)
+        pdf.set_font("Helvetica", "B", 14)
         pdf.set_text_color(*INK)
         pdf.cell(w - 5, 6, t(k["value"]))
         pdf.set_xy(x + 2.5, y + 13)
@@ -224,11 +303,12 @@ def _areas(pdf, areas: list[dict[str, Any]]) -> None:
         pdf.cell(widths[0], 5, t(a["title"].replace("Is the data complete?", "Data")))
         colour = TONE.get(a["status"], MUTED)
         pdf.set_fill_color(*colour)
-        pdf.ellipse(15 + widths[0], y + 2.6, 2, 2, style="F")
-        pdf.set_text_color(*colour)
+        pdf.set_font("Helvetica", "B", 7)
+        word = t(a["word"])
+        pdf.set_xy(15 + widths[0], y + 1.6)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(min(pdf.get_string_width(word) + 4, widths[1] - 2), 3.8, word, fill=True, align="C")
         pdf.set_font("Helvetica", "", 8.5)
-        pdf.set_xy(15 + widths[0] + 3, y + 1)
-        pdf.cell(widths[1] - 3, 5, t(a["word"]))
         pdf.set_text_color(*INK)
         pdf.set_xy(15 + widths[0] + widths[1], y + 1)
         pdf.multi_cell(widths[2], 5, t(a["note"]))
@@ -240,9 +320,7 @@ def _needs_first(pdf, items: list[dict[str, Any]]) -> None:
     """Page 1's "Needs you": the worst few, a coloured mark each."""
     if not items:
         return
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*INK)
-    pdf.cell(0, 6, "Needs you", new_x="LMARGIN", new_y="NEXT")
+    _label(pdf, "Needs you")
     for n in items:
         y = pdf.get_y()
         pdf.set_fill_color(*TONE.get(n["level"], MUTED))
@@ -302,6 +380,10 @@ def _heading(pdf, text: str, note: str | None = None) -> None:
     if pdf.get_y() > pdf.h - 50:
         pdf.add_page()
     pdf.ln(2)
+    y = pdf.get_y()
+    pdf.set_fill_color(*YELLOW)
+    pdf.rect(15, y + 1.2, 1.6, 5, style="F")
+    pdf.set_x(19)
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(*INK)
     pdf.cell(0, 7, t(text), new_x="LMARGIN", new_y="NEXT")
@@ -447,16 +529,9 @@ def _inr(v: Any) -> str:
 def render_portfolio(brief: dict[str, Any], company: dict[str, Any], note: dict[str, Any] | None = None) -> bytes:
     """Page 1: letterhead, the headline, the totals, one row per project (worst first). Then each project's lines."""
     pdf = _doc(brief["generated_at"])
-    _letterhead(pdf, company)
     p = brief["period"]
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(*MUTED)
-    sub = f"{kind_word(p)} report: " + (f"{p['label']}, {p['range']}" if p["kind"] != "custom" else p["range"])
-    pdf.cell(0, 5, t(sub + (" (so far)" if brief.get("running") else "")), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(*INK)
-    pdf.cell(0, 8, "All projects", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
+    _band(pdf, company, f"{kind_word(p)} report", p["range"] + (" (so far)" if brief.get("running") else ""),
+          "All projects")
     _headline(pdf, brief["headline"])
     _note(pdf, note)
     _kpis(pdf, brief["kpis"][:4])

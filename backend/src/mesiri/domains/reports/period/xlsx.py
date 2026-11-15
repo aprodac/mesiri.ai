@@ -58,6 +58,10 @@ def workbook(report: dict[str, Any]) -> bytes:
                 for r in s["work"]["rows"] for d in (r["done_in_period"] or [{"work": None, "quantity": None,
                                                                               "unit": None}])],
                [34, 18, 34, 12, 8, 10, 10, 12, 10, 12])
+    if "site_work" in s:
+        _sheet(book, "Work on site", ["Site", "Work", "From", "To", "Days"],
+               [[r.get("site"), r["work"], r["from"], r["to"], r["days"]] for r in s["site_work"]["rows"]],
+               [18, 60, 12, 12, 8])
     if "schedule" in s:
         _sheet(book, "Schedule", ["Activity", "Site", "State", "Days late", "Slip days", "Planned end", "Now ends",
                                   "Critical path", "Who", "Open issues"],

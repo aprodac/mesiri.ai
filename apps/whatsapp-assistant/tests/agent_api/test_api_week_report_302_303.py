@@ -130,3 +130,40 @@ def test_the_sop_sends_a_weeks_progress_report_as_the_pdf() -> None:
 
     assert "orazhchathe" in SOP and "the code sends the last 7 days ending today" in SOP
     assert "is rule 23: the PDF" in SOP
+
+
+# -- live, 15 Nov 15:42 (Aprodac): "orachcha motham progress report" was answered as text with period_report ------
+
+async def test_a_week_nobody_named_sends_the_pdf_even_when_the_model_only_reads() -> None:
+    read: list = []
+    client = ApiClient(ACTOR, app=_app(read))
+    sender = _Sender()
+    actions = {documents.SEND_REPORT: (documents.REPORT_TOOL,
+                                       lambda a: documents.send_report(client, sender, "91", a, today=SUNDAY))}
+    script = [[("period_report", {"project_id": PROJECT, "period": "week"})],
+              [(documents.SEND_REPORT, {"scope": "project", "project_id": PROJECT, "period": "week"})],
+              "The weekly report (9 - 15 Nov) is above."]
+    try:
+        turn = await ApiAgent(FakeToolCallingProvider(script), _real_tools()).run(
+            client, "orachcha motham progress report", actions=actions)
+    finally:
+        await client.close()
+    assert [r[0] for r in read] == ["period_pdf", "period"]  # the PDF first, then the figures for the summary
+    assert len(sender.sent) == 1 and sender.sent[0][1] == "Weekly report · 9 – 15 Nov 2026"
+    assert "already SENT the weekly report PDF" in turn.calls[0]["result"]["note"]
+    assert turn.calls[1]["result"]["status"].startswith("already sent")  # never a second copy
+
+
+async def test_guard_a_named_week_read_sends_no_pdf() -> None:
+    read: list = []
+    client = ApiClient(ACTOR, app=_app(read))
+    sender = _Sender()
+    actions = {documents.SEND_REPORT: (documents.REPORT_TOOL,
+                                       lambda a: documents.send_report(client, sender, "91", a, today=SUNDAY))}
+    script = [[("period_report", {"project_id": PROJECT, "period": "week", "date": "2026-11-04"})], "Last week."]
+    try:
+        await ApiAgent(FakeToolCallingProvider(script), _real_tools()).run(
+            client, "kazhinja aazhcha engane poyi", actions=actions)
+    finally:
+        await client.close()
+    assert sender.sent == [] and [r[0] for r in read] == ["period"]

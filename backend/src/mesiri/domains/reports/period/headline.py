@@ -130,6 +130,13 @@ def kpis(s: dict[str, dict]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     work, labour, money, sched, mat, iss = (s.get(k) for k in ("work", "labour", "money", "schedule", "materials",
                                                                 "issues"))
+    site_work = s.get("site_work")
+    if site_work and site_work["rows"] and (not work or work.get("done_pct") is None):
+        # [303]: no BOQ to measure against: what the sites reported is the figure ("Work on 6 days").
+        out.append({"key": "site_work", "label": "Work on site", "value": f"{site_work['days']} days",
+                    "note": f"{site_work['entries']} entries · {site_work['sites']} site"
+                            f"{'s' if site_work['sites'] != 1 else ''}", "tone": "good", "section": "site_work"})
+        work = None
     if work:
         out.append({"key": "work", "label": "Work done", "value": f"{_pct_text(work['done_pct'])}%"
                     if work.get("done_pct") is not None else "—",
@@ -225,7 +232,8 @@ def areas(s: dict[str, dict]) -> list[dict[str, Any]]:
         out.append({"key": key, "title": sec["title"], "status": sec["status"],
                     "word": word or STATUS_WORD[sec["status"]], "note": note})
 
-    if "work" in s:
+    if "work" in s and not (s["work"].get("done_pct") is None and (s.get("site_work") or {}).get("rows")):
+        # [303]: with no BOQ, "No BOQ lines" says nothing when the work on site is listed just below.
         w = s["work"]
         if w.get("done_pct") is None:
             add("work", "No BOQ lines to measure work against yet.")
@@ -234,6 +242,11 @@ def areas(s: dict[str, dict]) -> list[dict[str, Any]]:
             add("work", f"{_pct_text(w['done_pct'])}% of the job done{plan}; {w['progress_to_date'] or 0}% done to"
                         f" date; work recorded on {w['lines_worked']} BOQ line{'s' if w['lines_worked'] != 1 else ''}.",
                 "No plan" if w["status"] == "none" else None)
+    if "site_work" in s:
+        sw = s["site_work"]
+        latest = sw["rows"][0]["work"] if sw["rows"] else ""
+        add("site_work", f"Work reported on {sw['days']} day{'s' if sw['days'] != 1 else ''}" +
+            (f"; latest: {latest}." if latest else "; nothing reported."), "Reported" if sw["rows"] else None)
     if "schedule" in s:
         sc = s["schedule"]
         if not sc["scheduled"]:

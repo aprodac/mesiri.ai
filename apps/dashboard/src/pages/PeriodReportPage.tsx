@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   FileText,
   HardHat,
+  Hammer,
   IndianRupee,
   Package,
   Ruler,
@@ -83,6 +84,7 @@ const STATE: Record<string, { word: string; tone: Tone }> = {
 
 const SECTION_META: Record<keyof Sections, { title: string; icon: React.ComponentType<{ className?: string }>; tile: string }> = {
   work: { title: 'Work', icon: Ruler, tile: 'bg-info-soft text-info' },
+  site_work: { title: 'Work on site', icon: Hammer, tile: 'bg-info-soft text-info' },
   schedule: { title: 'Schedule', icon: CalendarRange, tile: 'bg-draft-soft text-draft' },
   labour: { title: 'Labour', icon: HardHat, tile: 'bg-muted text-foreground/70' },
   materials: { title: 'Materials', icon: Package, tile: 'bg-muted text-foreground/70' },
@@ -497,6 +499,28 @@ function MoneySection({ m }: { m: NonNullable<Sections['money']> }) {
   )
 }
 
+function SiteWorkSection({ w }: { w: NonNullable<Sections['site_work']> }) {
+  if (w.rows.length === 0) return <Empty>No work reported on site in this period.</Empty>
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        {w.entries} entries on {w.days} {w.days === 1 ? 'day' : 'days'}, {w.sites} {w.sites === 1 ? 'site' : 'sites'}.
+      </p>
+      <ul className="divide-y rounded-lg border">
+        {w.rows.map((r, idx) => (
+          <li key={idx} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+            <span className="w-28 shrink-0 rounded-md bg-muted px-2 py-0.5 text-center text-xs font-medium tabular-nums">
+              {r.from === r.to ? shortDay(r.from) : `${shortDay(r.from)} – ${shortDay(r.to)}`}
+            </span>
+            {r.site ? <span className="text-xs font-medium text-muted-foreground">{r.site}</span> : null}
+            <span className="min-w-0 flex-1">{r.work}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function IssuesSection({ i }: { i: NonNullable<Sections['issues']> }) {
   return (
     <div className="flex flex-col gap-3">
@@ -566,6 +590,7 @@ function DataCheck({ c }: { c: NonNullable<Sections['completeness']> }) {
 function SectionBody({ k, s }: { k: keyof Sections; s: Sections }) {
   switch (k) {
     case 'work': return s.work ? <WorkSection w={s.work} /> : null
+    case 'site_work': return s.site_work ? <SiteWorkSection w={s.site_work} /> : null
     case 'schedule': return s.schedule ? <ScheduleSection s={s.schedule} /> : null
     case 'labour': return s.labour ? <LabourSection l={s.labour} /> : null
     case 'materials': return s.materials ? <MaterialsSection m={s.materials} /> : null

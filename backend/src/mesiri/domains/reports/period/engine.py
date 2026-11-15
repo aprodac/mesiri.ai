@@ -26,7 +26,7 @@ from mesiri.domains.reports.period.sections import MODULE_OF, SECTIONS, Ctx
 logger = logging.getLogger(__name__)
 
 #: Sections in the order the page, the PDF and the Excel show them.
-ORDER = ("work", "schedule", "labour", "materials", "stock_value", "money", "issues", "photos", "completeness")
+ORDER = ("work", "site_work", "schedule", "labour", "materials", "stock_value", "money", "issues", "photos", "completeness")
 NOUN = {"week": "week", "month": "month", "custom": "period"}
 
 

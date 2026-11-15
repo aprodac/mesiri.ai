@@ -132,6 +132,15 @@ export interface Sections {
     link: string
     bills_link?: string
   }
+  /** [303]: the work reported on site, the same work on days in a row as one line. */
+  site_work?: {
+    status: Tone
+    entries: number
+    days: number
+    sites: number
+    rows: { site: string | null; work: string; from: string; to: string; days: number }[]
+    link: string
+  }
   issues?: {
     status: Tone
     raised: number

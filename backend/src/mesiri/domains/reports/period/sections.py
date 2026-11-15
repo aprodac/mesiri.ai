@@ -6,6 +6,8 @@ what that module's page would show this person:
 
 - ``work``: work done in the period on BOQ lines (``progress.boq_router.counted_work``: the BOQ's one rule), and
   progress against plan (``schedule.store.load``: the Gantt's own read).
+- ``site_work``: the work done on site day by day, as reported (``progress.router.list_activities``, as the caller):
+  what a site engineer's weekly progress report lists, also for a project with no BOQ ([303], 15 Nov).
 - ``schedule``: what is late or behind, the forecast finish (the same read).
 - ``labour``: man-days by trade, day and site (``workforce.pay_store.attendance_lines`` and ``pay.build_rows``:
   the wage sheet's own counting); wages only for the roles that see spending.
@@ -263,6 +265,61 @@ async def work(ctx: Ctx) -> dict[str, Any]:
         "has_plan": n["has_plan"], "work_in_other_unit": n["other_unit"],
         "lines_worked": len(n["done_by_line"]),
         "rows": rows, "link": f"/projects/{ctx.project_id}/boq",
+    }
+
+
+# -- work on site (the daily work entries) ----------------------------------------------------------------------------
+
+SITE_WORK_ROWS = 60
+
+
+def merge_days(items: list[dict[str, Any]], sites: dict[str, str]) -> list[dict[str, Any]]:
+    """The work entries as lines a person reads: per site, the same work on days in a row is one line with its days
+    ("12 - 13 Nov: Plinth beam shuttering"); latest first within a site, sites by name."""
+    by_site: dict[str, dict[str, list[datetime.date]]] = defaultdict(lambda: defaultdict(list))
+    shown: dict[tuple[str, str], str] = {}
+    for item in items:
+        day = _date(item.get("activity_date"))
+        text = " ".join(str(item.get("narrative") or item.get("work_type") or "").split())
+        if day is None or not text:
+            continue
+        site = sites.get(str(item.get("site_id")), "")
+        key = text.casefold()
+        shown.setdefault((site, key), text[:1].upper() + text[1:])
+        by_site[site][key].append(day)
+    rows: list[dict[str, Any]] = []
+    for site in sorted(by_site, key=str.casefold):
+        lines: list[dict[str, Any]] = []
+        for key, days in by_site[site].items():
+            run: list[datetime.date] = []
+            for day in sorted(set(days)):
+                if run and (day - run[-1]).days > 1:
+                    lines.append({"site": site or None, "work": shown[(site, key)], "from": run[0].isoformat(),
+                                  "to": run[-1].isoformat(), "days": len(run)})
+                    run = []
+                run.append(day)
+            if run:
+                lines.append({"site": site or None, "work": shown[(site, key)], "from": run[0].isoformat(),
+                              "to": run[-1].isoformat(), "days": len(run)})
+        lines.sort(key=lambda r: (r["to"], r["from"]), reverse=True)
+        rows += lines
+    return rows
+
+
+async def site_work(ctx: Ctx) -> dict[str, Any]:
+    from mesiri.domains.progress.router import list_activities
+
+    listed = await list_activities(project_id=ctx.project_id, site_id=ctx.site_id, status=None,
+                                   date_from=ctx.period.start, date_to=ctx.last_day, limit=100, offset=0,
+                                   auth_context=ctx.auth, conn=ctx.conn)
+    items = [i if isinstance(i, dict) else i.model_dump() for i in listed["items"]]
+    items = [i for i in items if _in(ctx.period, _date(i.get("activity_date")))]
+    rows = merge_days(items, ctx.sites)
+    days = {_date(i.get("activity_date")) for i in items}
+    return {
+        "key": "site_work", "title": "Work on site", "status": "good" if rows else "none",
+        "entries": len(items), "days": len(days), "sites": len({r["site"] for r in rows}),
+        "rows": rows[:SITE_WORK_ROWS], "link": "/progress",
     }
 
 
@@ -567,13 +624,13 @@ def _span(ctx: Ctx) -> tuple[datetime.date, datetime.date]:
 
 
 SECTIONS = {
-    "work": work, "schedule": schedule, "labour": labour, "materials": materials, "stock_value": stock_value,
+    "work": work, "site_work": site_work, "schedule": schedule, "labour": labour, "materials": materials, "stock_value": stock_value,
     "money": money_section,
     "issues": issues, "photos": photos, "completeness": completeness,
 }
 #: The module switch each section needs (``organization.settings.MODULES``); None: always on.
 MODULE_OF: dict[str, str | None] = {
-    "work": "dpr", "schedule": "dpr", "labour": "labour", "materials": "materials", "stock_value": "materials",
+    "work": "dpr", "site_work": "dpr", "schedule": "dpr", "labour": "labour", "materials": "materials", "stock_value": "materials",
     "money": "finance",
     "issues": "dpr", "photos": "dpr", "completeness": "dpr",
 }

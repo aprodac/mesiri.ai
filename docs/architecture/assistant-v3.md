@@ -170,6 +170,8 @@ Files and pictures the code sends itself (`actions`, run at once, nothing to Sav
 WA-302/303, `documents.rolling_week`, also applied to the `period_report` / `portfolio_report` reads), and
 `send_stock_list` (WA-304, `stock_images.py`: stock of more than one material drawn as pictures from
 `GET /materials/inventory`, as many as the list needs, minus stock marked CHECK). The model only says one line after.
+A read of a week nobody named (`period_report`, `portfolio_report`) also sends the report PDF, by the code (WA-306):
+the model chose the text read for "orachcha motham progress report" though the SOP says the PDF.
 
 ### Tools on demand (WA-277 step E, per company, off by default)
 

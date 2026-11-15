@@ -34,7 +34,7 @@ from runtime.ai_outage import is_budget_error
 
 from . import tool_areas
 from .client import ApiClient, new_idempotency_key
-from .documents import ROLLING_WEEK_TOOLS, rolling_week
+from .documents import ROLLING_WEEK_TOOLS, SEND_REPORT, rolling_week
 from .expense_account import BUTTONS, EXPENSE_TOOL, account_question, paying_accounts
 from .fill import (
     NARRATIVE_REFUSAL,
@@ -1143,6 +1143,10 @@ class ApiAgent:
                     "an update or a corrected figure, prepare it now as a new line with its own tool; otherwise tell "
                     "me in one short line that nothing is waiting.")})
             if actions and name in actions:
+                if name == SEND_REPORT and name in acted:
+                    # [303]: the code already sent this turn's report PDF; one copy is enough.
+                    return ToolOutcome(content={"status": "already sent to their WhatsApp in this turn: do not send "
+                                                          "it again; say it went"})
                 acted.append(name)
                 return ToolOutcome(content=await actions[name][1](arguments))
             tool = self._tools.get(name)
@@ -1272,8 +1276,23 @@ class ApiAgent:
                         f"{p} {arguments[p]} is not one of these records. Call {lister} (status all) and use the id "
                         "of the one they mean (one saved earlier in this chat is listed with its id). Then prepare "
                         "this again.")})
+            pdf_note = ""
             if name in ROLLING_WEEK_TOOLS:
-                arguments = rolling_week(arguments, today)  # [302]: a week nobody named is the last 7 days
+                unnamed = rolling_week(arguments, today)
+                if (unnamed is not arguments and name != SEND_REPORT and actions and SEND_REPORT in actions
+                        and SEND_REPORT not in acted):
+                    # [303] (live, 15 Nov 15:42: "orachcha motham progress report" was answered with period_report as
+                    # text, though the SOP says the PDF): a week nobody named is a report of the last 7 days, and the
+                    # report is the PDF. The code sends it, whatever the model picked; the read still gives the
+                    # model the figures for its one-line summary. A NAMED week ("how did last week go") stays a read.
+                    acted.append(SEND_REPORT)
+                    sent = await actions[SEND_REPORT][1](
+                        {**unnamed, "scope": "portfolio" if name == "portfolio_report" else "project"})
+                    pdf_note = (" The code already SENT the weekly report PDF of these dates to their WhatsApp: your "
+                                "reply says so in one line (the dates), then at most 3 short lines of what matters "
+                                "most. Never the whole report in words, never call send_report."
+                                if str(sent.get("status", "")).startswith("sent") else "")
+                arguments = unnamed  # [302]: a week nobody named is the last 7 days
             path = tool.path
             for p in tool.path_params:
                 path = path.replace("{" + p + "}", str(arguments[p]))
@@ -1642,6 +1661,8 @@ class ApiAgent:
             content = json.dumps(response.body, default=str, ensure_ascii=False)
             if len(content) > READ_LIMIT:
                 content = content[:READ_LIMIT] + " ...(cut)"
+            if pdf_note:
+                return ToolOutcome(content={"status": response.status, "note": pdf_note.strip(), "result": content})
             return ToolOutcome(content={"status": response.status, "result": content})
 
         fixed_specs = [_ASK_TOOL, _EXPLAIN_TOOL, *feedback_specs(), web_link_spec()] + (

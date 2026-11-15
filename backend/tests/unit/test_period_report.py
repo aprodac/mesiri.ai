@@ -109,6 +109,9 @@ def _sections():
         "work": {"key": "work", "title": "Work", "status": "good", "done_pct": "6.4", "plan_pct": "5.5",
                  "progress_to_date": 58, "expected_to_date": "55.0", "has_plan": True, "lines_worked": 4,
                  "work_in_other_unit": 0, "rows": []},
+        "site_work": {"key": "site_work", "title": "Work on site", "status": "good", "entries": 3, "days": 2,
+                      "sites": 1, "rows": [{"site": "Main", "work": "Plinth beam shuttering", "from": "2026-11-03",
+                                            "to": "2026-11-04", "days": 2}]},
         "schedule": {"key": "schedule", "title": "Schedule", "status": "warn", "forecast_finish": "2027-03-12",
                      "planned_finish": "2027-03-09", "slip_days": 3, "scheduled": 5, "counts": {},
                      "rows": [{"activity": "Internal plastering", "site": None, "state": "behind", "days_late": 0,
@@ -265,7 +268,7 @@ async def test_engine_names_a_failing_section_and_hides_nothing_else(stubbed, mo
     r = await _build(pid)
     assert r["unavailable"] == ["materials"]
     assert "issues" not in r["sections"] and "materials" not in r["sections"]
-    assert r["order"] == ["work", "schedule", "labour", "stock_value", "money", "photos", "completeness"]
+    assert r["order"] == ["work", "site_work", "schedule", "labour", "stock_value", "money", "photos", "completeness"]
     assert r["headline"]["lead"] and r["kpis"] and r["areas"]
 
 
@@ -342,3 +345,63 @@ def test_seven_days_in_a_row_is_titled_weekly_report():
     assert periods.kind_word(ten) == "Period"
     report = {"project": {"name": "Green Villa"}, "period": rolling}
     assert _filename(report, "pdf") == "mesiri-green-villa-week-2026-11-09-2026-11-15.pdf"
+
+
+# -- [303] work on site ----------------------------------------------------------------------------------------------
+
+def _entry(day, site, text):
+    return {"activity_date": day, "site_id": site, "narrative": text}
+
+
+def test_the_same_work_on_days_in_a_row_is_one_line_latest_first():
+    from mesiri.domains.reports.period.sections import merge_days
+
+    rows = merge_days([_entry("2026-11-14", "a", "Plinth beam shuttering"), _entry("2026-11-13", "a", "plinth beam  shuttering"),
+                       _entry("2026-11-10", "a", "Plinth beam shuttering"), _entry("2026-11-11", "a", "Footings cast"),
+                       _entry("2026-11-15", "b", "Conduit fixing"), _entry("2026-11-12", "b", ""),
+                       {"activity_date": None, "site_id": "b", "narrative": "no date"}],
+                      {"a": "Annex", "b": "Main block"})
+    assert [(r["site"], r["work"], r["from"], r["to"], r["days"]) for r in rows] == [
+        ("Annex", "Plinth beam shuttering", "2026-11-13", "2026-11-14", 2),
+        ("Annex", "Footings cast", "2026-11-11", "2026-11-11", 1),
+        ("Annex", "Plinth beam shuttering", "2026-11-10", "2026-11-10", 1),  # a gap: a separate line
+        ("Main block", "Conduit fixing", "2026-11-15", "2026-11-15", 1)]
+
+
+def test_with_no_boq_the_work_on_site_is_the_figure_and_the_area():
+    from mesiri.domains.reports.period import headline as rules
+
+    s = {"work": {"status": "none", "done_pct": None, "plan_pct": None, "progress_to_date": None, "lines_worked": 0,
+                  "rows": []},
+         "site_work": {"key": "site_work", "title": "Work on site", "status": "good", "entries": 9, "days": 6,
+                       "sites": 2, "rows": [{"site": "Annex", "work": "Plinth beam", "from": "2026-11-14",
+                                             "to": "2026-11-14", "days": 1}]}}
+    kpis = rules.kpis(s)
+    assert kpis[0]["label"] == "Work on site" and kpis[0]["value"] == "6 days" and all(k["key"] != "work" for k in kpis)
+    areas = rules.areas(s)
+    assert [a["key"] for a in areas] == ["site_work"] and "latest: Plinth beam" in areas[0]["note"]
+
+
+def test_guard_with_a_boq_the_work_figure_stays():
+    from mesiri.domains.reports.period import headline as rules
+
+    s = {"work": {"title": "Work", "status": "good", "done_pct": "6.4", "plan_pct": "5.5", "progress_to_date": 58, "lines_worked": 4,
+                  "rows": []},
+         "site_work": {"key": "site_work", "title": "Work on site", "status": "good", "entries": 1, "days": 1,
+                       "sites": 1, "rows": [{"site": None, "work": "x", "from": "2026-11-14", "to": "2026-11-14",
+                                             "days": 1}]}}
+    assert rules.kpis(s)[0]["key"] == "work" and [a["key"] for a in rules.areas(s)][:2] == ["work", "site_work"]
+
+
+async def test_the_pdf_prints_the_work_on_site_on_page_one(stubbed):
+    pytest.importorskip("fpdf")
+    from mesiri.domains.reports.period import pdf
+    from mesiri.domains.reports.period.sections import merge_days
+
+    pid, _ = stubbed
+    r = await _build(pid)
+    rows = merge_days([_entry(f"2026-11-{d:02}", "a", f"Work item {d}") for d in range(2, 9)], {"a": "Annex"})
+    r["sections"]["site_work"] = {"key": "site_work", "title": "Work on site", "status": "good", "entries": 7,
+                                  "days": 7, "sites": 1, "rows": rows * 2}
+    data = pdf.render(r, {"company_name": "Periyar Builders"})
+    assert data.startswith(b"%PDF") and len(data) > 2000
