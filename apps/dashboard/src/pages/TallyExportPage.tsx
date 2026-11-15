@@ -1,6 +1,8 @@
 import * as React from 'react'
+import { BOOKS_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
-import { BookOpenCheck, FileCode2, Info } from 'lucide-react'
+import { ArrowRight, BookOpenCheck, FileCode2, Info } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,10 +42,7 @@ export default function TallyExportPage() {
 
   if (!allowed) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">The Tally export takes the company's books out of Mesiri.</p>
-        <p className="text-sm text-muted-foreground">Only the owner, an admin or finance can make it.</p>
-      </div>
+      <NoAccess roles={BOOKS_PEOPLE} />
     )
   }
   const presets = [
@@ -126,37 +125,26 @@ export default function TallyExportPage() {
         </>
       )}
 
-      {books && (
-        <Callout tone="muted" icon={Info}>
-          Your books are kept in Mesiri (Accounts), so this file is the posted vouchers themselves: purchases, payments, receipts, contra, sales and the
-          journals you entered by hand, with their numbers and narrations. Ledgers come from your chart of accounts under Tally's own groups. What
-          Tally imports matches Mesiri's trial balance.
-        </Callout>
-      )}
-      <DprSection icon={BookOpenCheck} title={books ? 'Where the vouchers come from' : 'What goes into Tally'}>
-        <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted-foreground">
-          <li>
-            <span className="font-medium text-foreground">Each expense</span> is a Journal: its category is debited, and the supplier (or the person who
-            paid from their own pocket, or "Expenses payable") is credited. GST that the bill says is included goes to "Input GST".
-          </li>
-          <li>
-            <span className="font-medium text-foreground">Each payment</span> is a Payment: the same party is debited and the bank or cash account it
-            left is credited. Advances paid to a supplier come in once, when paid.
-          </li>
-          <li>
-            <span className="font-medium text-foreground">Each RA bill sent</span> is a Sales voucher: the client is debited what they pay, with TDS,
-            retention and the advance recovered on their own ledgers; contract revenue and output GST are credited.{' '}
-            <span className="font-medium text-foreground">Money received</span> is a Receipt into the bank or cash account.
-          </li>
-          <li>
-            <span className="font-medium text-foreground">Ledgers</span> come first: suppliers under Sundry Creditors, categories under Indirect
-            Expenses, bank and cash under their groups. Your CA can move any of them in Tally.
-          </li>
+      {/* UX-13: how records become vouchers, as a map rather than paragraphs; the ? help has the detail. */}
+      <DprSection icon={BookOpenCheck} title="Into Tally as">
+        <ul className="flex flex-wrap gap-2 text-sm">
+          {[
+            ['Expense', 'Journal'],
+            ['Payment', 'Payment'],
+            ['RA bill', 'Sales'],
+            ['Money received', 'Receipt'],
+            ...(books ? [['Your journals', 'Journal']] : []),
+          ].map(([from, to]) => (
+            <li key={from} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1">
+              <span>{from}</span>
+              <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden />
+              <span className="font-medium">{to}</span>
+            </li>
+          ))}
         </ul>
       </DprSection>
-      <Callout tone="muted" icon={Info}>
-        One way: nothing comes back from Tally. Each voucher carries Mesiri's number, so importing the same period twice makes duplicates; import each
-        period once.
+      <Callout tone="draft" icon={Info}>
+        Import each period once: twice makes duplicates.
       </Callout>
     </div>
   )

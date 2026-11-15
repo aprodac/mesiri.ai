@@ -175,7 +175,7 @@ export default function QuotationsPage() {
           {!isLoading && !isError && list.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground">
               <PackageCheck className="size-8 opacity-40" />
-              {all.length === 0 ? <><strong className="text-foreground">Ask three shops before a big order.</strong>Send them the RFQ on WhatsApp, record their rates, and Mesiri shows who is really cheapest, GST and all.</> : 'No RFQs here with these filters.'}
+              {all.length === 0 ? <strong className="text-foreground">No quotes asked yet</strong> : 'No RFQs here with these filters.'}
               {all.length === 0 && office && !readOnly && <Button className="mt-2 gap-2" onClick={() => setCreating(true)}><Plus className="size-4" />Ask for quotes</Button>}
             </div>
           )}

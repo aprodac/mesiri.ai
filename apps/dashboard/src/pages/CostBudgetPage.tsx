@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { MONEY_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calculator, ChevronRight, ClipboardCheck, HardHat, Scale } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
@@ -166,10 +168,7 @@ export default function CostBudgetPage() {
 
   if (!allowed) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">Budget vs actual shows the company's rates and spending.</p>
-        <p className="text-sm text-muted-foreground">Only owners, admins, finance and project managers can open it.</p>
-      </div>
+      <NoAccess roles={MONEY_PEOPLE} />
     )
   }
   const header = (
@@ -195,7 +194,6 @@ export default function CostBudgetPage() {
       ) : lines.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6">
           <p className="font-medium">This project has no BOQ yet.</p>
-          <p className="text-sm text-muted-foreground">Budget vs actual sets spending against the BOQ's budget rates. Add the BOQ first.</p>
           <Link to={`/projects/${projectId}/boq`} className="text-sm font-medium underline underline-offset-2">
             Open the BOQ
           </Link>
@@ -287,10 +285,6 @@ export default function CostBudgetPage() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Labour spent: the attendance put on the line, at each person's wage. Labour vs earned: the labour budget the work done earned, less that
-              cost. Materials per line come with the material consumption register.
-            </p>
           </DprSection>
 
           <div id="labour-to-lines" className="scroll-mt-20">
@@ -300,7 +294,7 @@ export default function CostBudgetPage() {
               ) : labour.isError ? (
                 <p className="text-sm text-muted-foreground">The labour list could not be loaded.</p>
               ) : (labour.data?.groups.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">Every day of labour in the last 30 days is on a BOQ line.</p>
+                <p className="text-sm text-muted-foreground">All labour (30 days) is on a BOQ line.</p>
               ) : (
                 <>
                   <p className="mb-2 text-sm text-muted-foreground">

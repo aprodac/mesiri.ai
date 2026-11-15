@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { LinkedStrip } from '@/components/page/page-kit'
+import { BOOKS_PEOPLE } from '@/lib/permissions'
+import { LinkedStrip, NoAccess } from '@/components/page/page-kit'
 import { raBillLinks } from '@/lib/links'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -41,7 +42,7 @@ export default function RaBillsPage() {
         <ModuleTitle icon={ReceiptText} title="RA bills" />
       </header>
       {!allowed ? (
-        <p className="text-sm text-muted-foreground">Client bills are for the owner, admins and finance.</p>
+        <NoAccess roles={BOOKS_PEOPLE} />
       ) : !projectId ? (
         <>
           <p className="text-sm text-muted-foreground">Pick the project to bill.</p>
@@ -99,14 +100,14 @@ function ProjectBills({ projectId }: { projectId: string }) {
       </div>
       {!c && (
         <Callout tone="info" icon={ScrollText} action={<Button size="sm" onClick={() => setContractOpen(true)}>Set the terms</Button>}>
-          Set the client and the contract's retention, advance, GST and TDS first: every bill works them out from these.
+          Set the contract terms first
         </Callout>
       )}
       {!list.data ? (
         <Skeleton className="h-48 w-full" />
       ) : list.data.length === 0 ? (
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          No bills yet. “New RA bill” takes the work site has measured on each priced BOQ line and prices it at the client rate.
+          No bills yet
         </p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">

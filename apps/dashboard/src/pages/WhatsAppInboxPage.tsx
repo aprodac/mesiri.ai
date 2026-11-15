@@ -242,7 +242,7 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
           <div className="mx-auto flex max-w-3xl flex-col gap-2 px-3 py-4 sm:px-6">
             {!c.member && (
               <p className="mb-2 rounded-lg border border-draft/30 bg-draft/5 px-3 py-2 text-xs">
-                This number isn't on your team, so Mesiri can't file what it sends. Add them in Team with this WhatsApp number.
+                Not on your team: add this number in Team.
               </p>
             )}
             {days.map((d) => (

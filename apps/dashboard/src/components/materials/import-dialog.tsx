@@ -82,8 +82,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">Import from Excel</DialogTitle>
           <DialogDescription>
-            Your items with their categories, your vendors and each site's opening stock, from one workbook. You see what will
-            happen before anything is saved.
+            Items, vendors and opening stock. You check every row before it is saved.
           </DialogDescription>
         </DialogHeader>
 

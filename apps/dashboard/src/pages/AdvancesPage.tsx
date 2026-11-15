@@ -80,8 +80,7 @@ export default function AdvancesPage() {
 
       <Section title="Given" note={live.length ? `${live.length}` : undefined}>
         {list.isLoading ? <Skeleton className="h-40 w-full rounded-xl" /> : (list.data?.items ?? []).length === 0 ? (
-          <EmptyState icon={HandCoins} title="No advances yet" about="Money given to a worker or a labour team before payday. It comes back off their next wages on its own."
-            whatsapp="Gave Ravi 500 advance" action={!readOnly && <Button size="sm" onClick={() => setGiving(true)}>Give advance</Button>} />
+          <EmptyState icon={HandCoins} title="No advances yet"             whatsapp="Gave Ravi 500 advance" action={!readOnly && <Button size="sm" onClick={() => setGiving(true)}>Give advance</Button>} />
         ) : (
           <ul className="divide-y rounded-xl border">
             {(list.data?.items ?? []).map((a) => (

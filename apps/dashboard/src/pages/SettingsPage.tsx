@@ -11,13 +11,13 @@ import { cn } from '@/lib/utils'
 // that already does the job (their addresses are unchanged), so this page owns no settings of its own.
 
 const ROWS = [
-  { title: 'Company', about: 'Name, GSTIN, address, letterhead and logo on every PDF; report time and language.', url: '/company', icon: Building },
-  { title: 'Projects & sites', about: 'Each project, its sites, who reports from each and who gets the reports.', url: '/projects', icon: Building2 },
-  { title: 'Team', about: 'Everyone who uses Mesiri, their role and their sites. Invite by WhatsApp number.', url: '/team', icon: Users },
-  { title: 'WhatsApp', about: 'Conversations with Mesiri, every message sent and received, and site groups.', url: '/whatsapp', icon: MessageSquare },
-  { title: 'Bring your data', about: 'Your materials, vendors, opening stock, BOQ and drawings, brought in from Excel and files.', url: '/bring-data', icon: Upload },
-  { title: 'Activity log', about: 'Who changed what, when: every save, edit and approval, on the web and on WhatsApp.', url: '/settings/activity', icon: History },
-  { title: 'Scheduled messages', about: 'Reminders and summaries Mesiri sends on a timetable.', url: '/whatsapp?view=automations', icon: Clock, module: 'automations' as ModuleKey },
+  { title: 'Company', about: 'Name, GSTIN, logo, report time', url: '/company', icon: Building },
+  { title: 'Projects & sites', about: 'Sites and who reports', url: '/projects', icon: Building2 },
+  { title: 'Team', about: 'People, roles and sites', url: '/team', icon: Users },
+  { title: 'WhatsApp', about: 'Messages and site groups', url: '/whatsapp', icon: MessageSquare },
+  { title: 'Bring your data', about: 'Excel and files in', url: '/bring-data', icon: Upload },
+  { title: 'Activity log', about: 'Who changed what, when', url: '/settings/activity', icon: History },
+  { title: 'Scheduled messages', about: 'Reminders on a timetable', url: '/whatsapp?view=automations', icon: Clock, module: 'automations' as ModuleKey },
 ]
 
 

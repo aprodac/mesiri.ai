@@ -31,7 +31,7 @@ export default function BoqIndexPage() {
       {projects.isLoading ? (
         <Skeleton className="h-32 rounded-lg" />
       ) : (projects.data ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">No projects yet. Add one in Projects & Sites, then its BOQ.</p>
+        <p className="text-sm text-muted-foreground">No projects yet. Add one in Projects & Sites.</p>
       ) : (
         <ul className="divide-y rounded-lg border">
           {(projects.data ?? []).map((p, i) => {

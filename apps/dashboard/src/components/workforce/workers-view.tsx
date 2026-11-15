@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, History, MoreHorizontal, Pencil, Search, TriangleAlert, UserCheck, UserPlus, UserX, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -153,9 +154,7 @@ export function WorkersView({ addOpen, setAddOpen, leading }: { addOpen: boolean
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-10 text-center">
           <Users className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">No one on the register yet</p>
-          <p className="max-w-md text-sm text-muted-foreground">
-            Attendance works without it: sites send "24 workers: 8 mason, 12 helper". Add named workers to track days and wages per person.
-          </p>
+          <SayOnWhatsApp text="24 workers: 8 mason, 12 helper" />
           <Button size="sm" className="mt-1 gap-1.5" onClick={() => setAddOpen(true)}>
             <UserPlus className="size-4" /> Add worker
           </Button>
@@ -244,7 +243,7 @@ export function WorkersView({ addOpen, setAddOpen, leading }: { addOpen: boolean
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Retire {retiring?.name}?</DialogTitle>
-            <DialogDescription>They leave the active register. Every day they worked stays in the attendance history, and you can make them active again.</DialogDescription>
+            <DialogDescription>Their days stay. You can make them active again.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRetiring(null)}>

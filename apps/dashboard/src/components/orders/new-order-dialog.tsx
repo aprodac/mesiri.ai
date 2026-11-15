@@ -251,7 +251,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
               )
             })}
             {prefill?.lines.some((l) => l.request_line_id) && !editing && (
-              <p className="text-xs text-muted-foreground">Order part of it here: lower a quantity or take an item off, and the rest stays to buy for another supplier.</p>
+              <p className="text-xs text-muted-foreground">Lower a quantity or remove an item: the rest stays to buy.</p>
             )}
             {alsoWaiting.length > 0 && (
               <div className="flex flex-col gap-1.5 rounded-xl border border-dashed p-3">

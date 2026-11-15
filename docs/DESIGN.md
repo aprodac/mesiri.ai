@@ -91,6 +91,18 @@ A page does not draw its own header, empty box or tile.
   map, the title; the page's actions beside it.
 - **Visual cues:** a `Tile` in a state has a bar, a tinted ground and its figure in the state's colour; a `Section`
   title carries the yellow accent bar. Colour still means state only (§3).
+- **No paragraphs at all (UX-13, asked 15 Nov 2026).** On a page, text is a label, a figure or a line of at most
+  about eight words. In its place:
+  - **Help, top right** (the yellow "Help" pill; icon only on a phone). Besides `about` / `example` / `whatsapp`, it
+    shows **On this page** (each tile, tab, colour and button, with the same coloured dot the page uses) and **How to
+    use it** (numbered steps), plus one `tip`, all from `lib/page-help.ts`, keyed by the page's module-map `url`.
+    A new page adds an entry there; anything you are tempted to explain on the page goes there instead.
+  - **Empty states:** a title ("No orders yet"), the action button, and the WhatsApp sentence as a green chip
+    (`SayOnWhatsApp` from the page kit). `EmptyState.about` is optional and one short line at most.
+  - **Not for this role:** `NoAccess` (lock, "Not open to your role", the roles that can as chips;
+    `MONEY_PEOPLE` / `BOOKS_PEOPLE` in `lib/permissions.ts`), never two sentences about it.
+  - **Legends are swatches,** not sentences (the period report's day key, the muster's P / ½ / A).
+  - **Plain words only:** never "soft-deleted", "audit trail", "liquidity", "float", "dry-run", tool or database names.
 
 ## What the pages show: all projects, a project, a site (SCP-01..04, asked 9 Nov 2026)
 

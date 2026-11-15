@@ -72,7 +72,7 @@ export function WhatsAppLabourSandboxDialog({
             </div>
           </div>
           <DialogDescription className="text-xs">
-            Test how the VPS WhatsApp AI Assistant parses incoming site attendance messages, worker headcounts, and trade breakdowns in dry-run mode.
+            Try an attendance message. Nothing is saved.
           </DialogDescription>
         </DialogHeader>
 

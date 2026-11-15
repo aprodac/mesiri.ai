@@ -77,7 +77,7 @@ export default function FinanceSettingsPage() {
         ) : (
           <ul className="divide-y rounded-lg border">
             {!readOnly && !canManage && (
-              <li className="px-3 py-2 text-xs text-muted-foreground">Only the owner, an admin or finance can add or change categories.</li>
+              <li className="px-3 py-2 text-xs text-muted-foreground">Owner, admin or finance can change these.</li>
             )}
             {list.map((c) => (
               <li key={c.id} className={cn('flex items-center gap-3 px-3 py-2', c.status !== 'active' && 'text-muted-foreground')}>

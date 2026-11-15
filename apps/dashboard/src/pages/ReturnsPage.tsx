@@ -12,7 +12,7 @@ import { swatch } from '@/lib/requests'
 import { RETURN_LOOK, fetchReturns, type MaterialReturn, type ReturnStatus } from '@/lib/returns'
 import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/components/requests/parts'
 import { ReturnDetail } from '@/components/returns/return-detail'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 
 // PRC-46: Procurement › Returns, in the Requests / Purchase orders design: tiles (waiting for pickup, what suppliers
 // owe back, returns this month), status tabs, a list beside the chosen return (a sheet on a phone). A return is
@@ -133,7 +133,7 @@ export default function ReturnsPage() {
             <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground">
               <PackageX className="size-8 opacity-40" />
               {all.length === 0 ? (
-                <><strong className="text-foreground">Don't pay for bent steel.</strong>When material is bad, start a return from the GRN, the delivery in Movements or the supplier's page, or say it on WhatsApp ("12 bars bent, returning to KSL"). The debit note lowers what you owe them.</>
+                <><strong className="text-foreground">No returns yet</strong><SayOnWhatsApp text="12 bars bent, returning to KSL" /></>
               ) : 'No returns here with these filters.'}
             </div>
           )}

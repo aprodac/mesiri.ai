@@ -122,7 +122,7 @@ export function RecordVoucherDialog({
               <DialogTitle className="text-base font-bold">Record Petty Cash Expense Voucher</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
-              Log an immediate on-site cash expenditure from a site petty cash float.
+              Cash spent on site, from its cash box.
             </DialogDescription>
           </DialogHeader>
 

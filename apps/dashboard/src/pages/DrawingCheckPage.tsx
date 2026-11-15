@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { MONEY_PEOPLE } from '@/lib/permissions'
 import { useMutation } from '@tanstack/react-query'
 import { AlertTriangle, Building2, FileSearch, Info, Layers, Ruler, Upload } from 'lucide-react'
 import { Callout, StatStrip, type Stat } from '@/components/dpr-page'
@@ -10,7 +11,7 @@ import { DraftBoq, DraftSchedule } from '@/components/drawings/drafts'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, NoAccess } from '@/components/page/page-kit'
 
 // DR-04: Planning › Drawing check. Drop the architect's PDF: Mesiri reads its own text (title blocks, levels, room
 // sizes, fixtures) in a second and lists what to ask the architect before the drawing reaches site, such as an area
@@ -65,7 +66,7 @@ export default function DrawingCheckPage() {
   }
 
   if (!maySeeBoq(me?.role)) {
-    return <p className="mx-auto max-w-3xl p-4 text-sm text-muted-foreground">The drawing check is for the people who plan projects: owner, admins, finance and project managers.</p>
+    return <NoAccess roles={MONEY_PEOPLE} />
   }
   const r = read.data
 
@@ -292,7 +293,7 @@ function Structure({ st }: { st: StructureTakeoff }) {
       <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">How these are worked out</summary>
         <ul className="mt-1 list-disc pl-5">{st.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
-        <p className="mt-1">Net quantities read from the drawing, not a design check. Add your usual wastage.</p>
+        <p className="mt-1">Net quantities: add your wastage.</p>
       </details>
     </section>
   )

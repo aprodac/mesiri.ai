@@ -37,7 +37,7 @@ export function WhatsAppTraceModal({
             <DialogTitle className="text-base font-bold">WhatsApp Channel Audit Trace</DialogTitle>
           </div>
           <DialogDescription className="text-xs">
-            Correlation ID trace & Gemini AI extraction details for this transaction.
+            What Mesiri read from this message.
           </DialogDescription>
         </DialogHeader>
 
@@ -89,7 +89,7 @@ export function WhatsAppTraceModal({
           <div className="p-2.5 rounded border bg-emerald-500/5 text-[11px] text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
             <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
             <span>
-              Verified & Ledger Bound: Recorded into PostgreSQL financial ledger with immutable audit trail.
+              Saved to the books. It cannot be changed, only corrected.
             </span>
           </div>
         </div>

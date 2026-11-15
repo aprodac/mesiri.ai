@@ -86,7 +86,7 @@ function Live({ projectId }: { projectId: string }) {
       <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
         {header}
         <Callout tone="muted" icon={MapPinned} action={<Button asChild size="sm" variant="outline"><Link to={`/planning/documents?project=${projectId}`}>Open Documents</Link></Button>}>
-          No drawings with rooms or footings yet. Upload the architect's floor plans or the structural set in Documents: each room and footing shows here, coloured by the work site reports.
+          No floor plans yet
         </Callout>
       </div>
     )

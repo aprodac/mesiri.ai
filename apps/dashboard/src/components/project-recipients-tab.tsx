@@ -131,8 +131,7 @@ export function ProjectRecipientsTab({ projectId }: { projectId: string }) {
       <div className="flex flex-col gap-3">
           {data.using_defaults && (
             <p className="text-muted-foreground">
-              No list set yet, so the project's admins and project managers get the DPR. Adding anyone here
-              replaces that.
+              Now: admins and project managers. Adding anyone replaces them.
             </p>
           )}
 

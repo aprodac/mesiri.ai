@@ -39,7 +39,7 @@ function Overheads({ s, projects }: { s: OverheadSettings; projects: ProjectRow[
         <Settings2 className="size-4" /> Head-office costs in project profit
       </p>
       <p className="text-xs text-muted-foreground">
-        Off: office rent and salaries stay with the head office. On: each finished month, they are shared over the projects, so each project's profit is after its share (company profit does not change).
+        On: rent and salaries are shared over the projects each month.
       </p>
       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
         <div className="flex flex-col gap-1.5">
@@ -161,7 +161,6 @@ export default function ProjectsBooksPage() {
                 </table>
               </div>
             )}
-            <p className="text-xs text-muted-foreground">Billed: RA bills sent, before GST. Cost: every bill and expense booked to the project. Tap a project for its P&L, position and budget.</p>
           </DprSection>
           {mayReopen(me?.role) && <Overheads s={d} projects={d.projects} />}
         </>

@@ -155,7 +155,7 @@ function ChecksCallout({ checks }: { checks: Checks }) {
       <span className="font-medium">
         {differ === 1 ? '1 balance differs from its module.' : `${differ} balances differ from their modules.`}
       </span>{' '}
-      <span className="text-muted-foreground">Usually a payment saved without its money leaving an account (older records), or a record dated before an opening balance. The books follow the money in the accounts.</span>
+      <span className="text-muted-foreground">Usually an older payment with no account.</span>
       {open && (
         <ul className="mt-2 flex flex-col gap-1 text-xs">
           {parts.flatMap((p) =>

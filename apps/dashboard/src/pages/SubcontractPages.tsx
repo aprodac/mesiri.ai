@@ -45,11 +45,10 @@ export function BillsChecksPage() {
         <ModuleTitle icon={ClipboardCheck} title="Bills & checks" />
       </header>
       <ValueStrip />
-      <p className="text-sm text-muted-foreground">A subcontractor’s bill is checked against the work measured and the agreed rates. These did not pass, or were sent by the subcontractor: each waits for a person before anything is paid.</p>
       {waiting.isError ? <Callout tone="draft" icon={TriangleAlert}>The bills could not be loaded.</Callout>
         : waiting.isLoading ? <Skeleton className="h-40 rounded-xl" />
         : !list.length ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm"><Check className="size-6 text-success" /><span className="font-medium">Nothing waiting</span><span className="text-muted-foreground">Every subcontract bill passed its check or was decided.</span></div>
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm"><Check className="size-6 text-success" /><span className="font-medium">Nothing waiting</span></div>
         ) : (
           <ul className="grid gap-2">
             {list.map((b) => (

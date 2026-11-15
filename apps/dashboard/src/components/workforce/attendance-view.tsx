@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChevronRight, Download, HardHat, MessageSquare, TriangleAlert } from 'lucide-react'
@@ -161,7 +162,7 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
           <HardHat className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">No attendance in this period</p>
-          <p className="max-w-sm text-sm text-muted-foreground">Site engineers send it on WhatsApp, e.g. "24 workers today: 8 mason, 12 helper, 4 carpenter".</p>
+          <SayOnWhatsApp text="24 workers today: 8 mason, 12 helper, 4 carpenter" />
         </div>
       ) : (
         <>

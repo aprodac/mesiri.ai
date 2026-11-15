@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { MONEY_PEOPLE } from '@/lib/permissions'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Calculator, PackageSearch, ShoppingCart } from 'lucide-react'
@@ -12,7 +13,7 @@ import { maySeeBoq } from '@/lib/boq'
 import { fetchMaterialPlan, type MaterialPlan, type MaterialPlanRow } from '@/lib/material-plan'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, NoAccess } from '@/components/page/page-kit'
 
 // MP-02: Planning › Material plan. What the project needs of each material, week by week: the BOQ's work still to
 // do × the materials per unit (MP-01), over the schedule's dates, against what is in stock and on order. Red from
@@ -51,7 +52,7 @@ export default function MaterialPlanPage() {
     return (
       <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         <Heading />
-        <p className="text-sm text-muted-foreground">The material plan is read from the BOQ, so it shows to the people who see the BOQ: owner, admin, finance and project managers.</p>
+        <NoAccess roles={MONEY_PEOPLE} />
       </div>
     )
   }
@@ -121,8 +122,7 @@ function PlanView({ projectId }: { projectId: string }) {
         <Skeleton className="h-64 w-full" />
       ) : plan.lines_with_norms === 0 ? (
         <Callout tone="info" icon={Calculator} action={<Button asChild size="sm"><Link to={boqLink}>Open the BOQ</Link></Button>}>
-          No BOQ line says which materials it uses yet. On the BOQ, open a line's “Materials per unit” (e.g. 1 cum of M20 uses 8 bags of cement)
-          and the plan fills itself in.
+          No BOQ line has its materials yet
         </Callout>
       ) : (
         <>

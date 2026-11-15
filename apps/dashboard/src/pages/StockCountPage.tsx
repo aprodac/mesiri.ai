@@ -89,7 +89,7 @@ export default function StockCountPage() {
       <div className="flex flex-col items-start gap-4 lg:flex-row">
         <ul className="w-full divide-y overflow-hidden rounded-xl border lg:max-w-sm">
           {list.isLoading && <li className="h-16 animate-pulse bg-muted/40" />}
-          {!list.isLoading && counts.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground"><strong className="block text-foreground">Book stock drifts from real stock.</strong>Count a site once a month: the differences show in rupees, and approving them puts the book right.</li>}
+          {!list.isLoading && counts.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground"><strong className="block text-foreground">No counts yet</strong></li>}
           {counts.map((c) => (
             <li key={c.id}>
               <button type="button" onClick={() => setSelected(c.id)} className={cn('flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-muted/40', selected === c.id && 'bg-yellow-50 dark:bg-yellow-950/40')}>

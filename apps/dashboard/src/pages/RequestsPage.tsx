@@ -25,7 +25,7 @@ import {
 import { Avatar, CategoryTile, CoverBar, FilterPill, ProjectDot, StatusChip, UrgencyChip, WhatsAppMark, type FilterOption } from '@/components/requests/parts'
 import { RequestDetail } from '@/components/requests/request-detail'
 import { NewRequestDialog } from '@/components/requests/new-request-dialog'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 
 // PRC-22 (design approved by Ilan, 7 Nov 2026): Materials > Requests. What the sites need and what is happening
 // to it. Four tiles say what needs attention; tabs by status; filters as dropdowns with the same cues as the rows;
@@ -261,7 +261,7 @@ export default function RequestsPage() {
           {!isLoading && !isError && list.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground">
               <ClipboardList className="size-8 opacity-40" />
-              {all.length === 0 ? 'No requests yet. Engineers can also ask on WhatsApp: “need 50 bags cement tomorrow”.' : tab === 'waiting' ? 'Nothing waiting for the office.' : 'No requests here with these filters.'}
+              {all.length === 0 ? <><span className="font-medium text-foreground">No requests yet</span><SayOnWhatsApp text="Need 50 bags cement tomorrow" /></> : tab === 'waiting' ? 'Nothing waiting for the office.' : 'No requests here with these filters.'}
             </div>
           )}
           {list.map((r) => (

@@ -18,7 +18,7 @@ import { exportCsv } from '@/lib/export'
 import { swatch } from '@/lib/requests'
 import { cn } from '@/lib/utils'
 import { STATE_LOOK, fetchMachines, hrs, type Kind, type Machine, type MachineState, inr } from '@/lib/equipment'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 
 // NXT-11 / NXT-15: Equipment > Machines (and Vehicles, the same page for kind=vehicle), in the Purchase orders page's
 // visual language: tiles for what needs attention today, tabs, filter pills, the list beside the chosen machine (a
@@ -187,7 +187,8 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
               <Icon className="size-9 opacity-40" />
               {all.length === 0 ? (
                 <>
-                  <span className="max-w-sm">No {vehicles ? 'vehicles' : 'machines'} yet. Add the JCB, mixer or crane on each site, owned or hired, with its rate; then the site logs its day here or on WhatsApp: <em>"JCB 6 hrs, 2 hrs breakdown, 30 L diesel"</em>.</span>
+                  <span className="font-medium text-foreground">No {vehicles ? 'vehicles' : 'machines'} yet</span>
+                  <SayOnWhatsApp text={vehicles ? 'Tipper 6 trips of sand, 40 L diesel' : 'JCB 6 hrs, 2 hrs breakdown, 30 L diesel'} />
                   {!readOnly && <Button className="gap-2" onClick={() => setAdding(true)}><Plus className="size-4" />Add the first one</Button>}
                 </>
               ) : tile ? 'None right now.' : 'None here with these filters.'}

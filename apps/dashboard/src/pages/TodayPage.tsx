@@ -378,7 +378,7 @@ export default function TodayPage() {
           <EmptyState
             icon={Building2}
             title="Start your first project"
-            about="Name the project and its sites, bring the BOQ from your Excel if you have one, and add the person who reports from site. Each day's updates then show here."
+            about="Sites, BOQ and who reports"
             action={
               <Button asChild size="sm">
                 <Link to="/planning/setup">Start a project</Link>

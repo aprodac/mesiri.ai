@@ -312,7 +312,7 @@ export default function WorkOrderPage() {
             <HardHat className="size-5 text-muted-foreground" />
             <span><span className="font-semibold tabular-nums">{wo.team.man_days}</span> man-days of {wo.vendor_name.split(' ')[0]}’s team on {wo.team.days} days{wo.team.last ? ` · last ${day(wo.team.last)}` : ''}</span>
           </div>
-          <p className="text-sm text-muted-foreground">Attendance at this site in the last 30 days. Tick the lines that were this subcontractor’s team: their man-days show here (wages stay in Labour).</p>
+          <p className="text-sm text-muted-foreground">Tick their team’s days (last 30 days).</p>
           <ul className="divide-y rounded-xl border bg-card text-sm">
             {(team.data ?? []).map((l) => (
               <li key={l.id} className="flex items-center gap-3 px-3 py-2">

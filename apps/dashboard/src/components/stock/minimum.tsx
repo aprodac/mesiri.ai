@@ -178,7 +178,7 @@ export function SuggestMinimumsDialog({ open, onOpenChange, sites, initialSite }
       <DialogContent className="max-h-[92vh] gap-3 overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Minimum stock from use</DialogTitle>
-          <DialogDescription>A week of each item's use plus the days its supplier takes to deliver. Below the minimum, Mesiri tells the office each morning, with a draft request.</DialogDescription>
+          <DialogDescription>A week's use + delivery days</DialogDescription>
         </DialogHeader>
         {sites.length > 1 && (
           <select value={site} onChange={(e) => setSite(e.target.value)} className="h-9 rounded-lg border bg-background px-2 text-sm" aria-label="Site">
@@ -188,7 +188,7 @@ export function SuggestMinimumsDialog({ open, onOpenChange, sites, initialSite }
         {got.isLoading ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Working out the use…</p>
         ) : picks.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Nothing was used at this site in the last 7 days, so there is nothing to suggest from yet. Set a minimum on any item in the list instead.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">Nothing used here in the last 7 days</p>
         ) : (
           <ul className="divide-y rounded-xl border">
             {picks.map((p) => (

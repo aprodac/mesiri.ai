@@ -77,8 +77,8 @@ export default function HireCheckPage() {
 
       <section aria-label={`Hired machines, ${label}`} className="overflow-hidden rounded-xl border">
         {isLoading && <div className="h-32 animate-pulse bg-muted/40" />}
-        {isError && <p className="p-6 text-sm text-destructive">The hire check did not load (it is for the roles that see spending).</p>}
-        {data && items.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No hired machine in {label}. A machine added as hired, with its rate, shows here with its hours.</p>}
+        {isError && <p className="p-6 text-sm text-destructive">The hire check did not load.</p>}
+        {data && items.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No hired machine in {label}.</p>}
         {items.map((r) => (
           <div key={r.id} className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0">
             <div className="flex flex-wrap items-center justify-between gap-2">

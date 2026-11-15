@@ -35,7 +35,7 @@ export default function StockValuePage() {
         <ModuleTitle icon={Wallet} title="Stock value" />
         <Button variant="outline" className="gap-2" disabled={!v?.rows.length} onClick={exportRows}><Download className="size-4" /> <span className="hidden sm:inline">Excel</span></Button>
       </header>
-      {isError && <p className="text-sm text-destructive">Stock value did not load. It is for the roles that see spending.</p>}
+      {isError && <p className="text-sm text-destructive">Stock value did not load.</p>}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <Tile icon={IndianRupee} tone="bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" value={isLoading ? '–' : rupees(v?.total)} label={`Stock worth, ${v?.items ?? 0} items`} />

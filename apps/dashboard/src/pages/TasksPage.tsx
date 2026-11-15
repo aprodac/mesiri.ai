@@ -143,7 +143,7 @@ export default function TasksPage() {
                 className="m-3 border-0"
                 icon={ListChecks}
                 title={all.length ? 'No tasks with these filters' : EMPTY[view].title}
-                about={all.length ? 'Clear a filter to see more.' : EMPTY[view].about}
+                about={all.length ? 'Clear a filter to see more.' : EMPTY[view].about || undefined}
                 action={canCreate && !all.length && view !== 'done' ? <Button className="gap-2" onClick={() => setCreating(true)}><Plus className="size-4" /> New task</Button> : undefined}
               />
             )}
@@ -178,10 +178,10 @@ export default function TasksPage() {
 }
 
 const EMPTY: Record<View, { title: string; about: string }> = {
-  mine: { title: 'Nothing given to you', about: 'Tasks given to you show here, late first, then by the day they are due.' },
-  all: { title: 'No open tasks', about: 'Give a task to someone on the project: what to do, by when. It stays here until it is done.' },
-  overdue: { title: 'Nothing late', about: 'Every open task is on time.' },
-  done: { title: 'Nothing done yet', about: 'Finished tasks show here with who closed them.' },
+  mine: { title: 'Nothing given to you', about: '' },
+  all: { title: 'No open tasks', about: '' },
+  overdue: { title: 'Nothing late', about: '' },
+  done: { title: 'Nothing done yet', about: '' },
 }
 
 function TaskRow({ task: t, today, selected, onPick }: { task: Task; today: string; selected: boolean; onPick: () => void }) {

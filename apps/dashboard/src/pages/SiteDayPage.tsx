@@ -447,7 +447,7 @@ function EditActivityDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit work item</DialogTitle>
-          <DialogDescription>Fix what the AI read. Quantities are corrected by sending them again on WhatsApp.</DialogDescription>
+          <DialogDescription>Fix what Mesiri read. Resend quantities on WhatsApp.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1.5">
@@ -763,7 +763,6 @@ export default function SiteDayPage() {
           {detail.drafts > 0 && !frozen && (
             <Callout tone="draft" icon={CircleDashed}>
               <strong className="font-semibold">{plural(detail.drafts, 'item')} from WhatsApp still to confirm.</strong>
-              <span className="hidden sm:inline"> Confirm them one by one, or approve the day to confirm them all.</span>
             </Callout>
           )}
           {confirmed && current?.approved_at && (

@@ -141,9 +141,6 @@ export default function BalanceSheetPage() {
               <Side title="Assets" groups={d.assets} total={d.total_assets} />
             </div>
           )}
-          <p className="text-xs text-muted-foreground">
-            A supplier paid ahead shows under what is owed as a minus (an advance). A project has no balance sheet of its own: see its position under Projects.
-          </p>
         </>
       )}
     </div>

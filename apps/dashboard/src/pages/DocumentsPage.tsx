@@ -230,7 +230,7 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
 
             {doc.facts?.live_plan && (
               <Callout tone="info" icon={MapPinned} action={<Button asChild size="sm" variant="outline"><Link to={`/planning/live?project=${projectId}`}>Open live plan</Link></Button>}>
-                Its rooms and footings are on the live plans, coloured by site's updates.
+                On the live plans
               </Callout>
             )}
             {doc.facts && (

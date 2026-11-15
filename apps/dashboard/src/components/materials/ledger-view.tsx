@@ -259,7 +259,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
       )}
       {query.data?.truncated && (
         <Callout tone="muted" icon={TriangleAlert}>
-          Only the newest entries are shown. Pick a material, a site or shorter dates to see all of them.
+          Newest entries only. Narrow the filters to see all.
         </Callout>
       )}
 

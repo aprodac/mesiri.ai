@@ -1,11 +1,11 @@
 import * as React from 'react'
+import { MONEY_PEOPLE } from '@/lib/permissions'
 import { useQuery } from '@tanstack/react-query'
 import { BadgePercent, CalendarDays, Download, IndianRupee, LayoutGrid, MapPin, Search, Store, Tags, TrendingDown, TrendingUp } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { CategoryTile, FilterPill, type FilterOption } from '@/components/requests/parts'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
@@ -25,7 +25,7 @@ import { qty } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import { MONEY_ROLES } from '@/lib/module-map'
 import { RATE_PERIODS, fetchRates, rate, ratePeriodRange, shortDate, type RateItem, type RatePeriod, type RatePurchase, vendorColour } from '@/lib/rates'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, NoAccess, SayOnWhatsApp } from '@/components/page/page-kit'
 
 // PRC-14 / PRC-16: Procurement > Rates. What each item cost, from which supplier, over time: four tiles for what
 // needs a look (rates that went up, went down, cheaper elsewhere, spend), filters, one row per item with its trend
@@ -144,7 +144,7 @@ export default function RatesPage() {
   if (!(MONEY_ROLES as readonly string[]).includes(role) || forbidden) {
     return (
       <div className="mx-auto w-full py-12">
-        <Callout tone="draft" icon={Tags}>Rates are shown to the people who see the company's spending. Ask an admin if you need them.</Callout>
+        <NoAccess roles={MONEY_PEOPLE} />
       </div>
     )
   }
@@ -231,7 +231,7 @@ export default function RatesPage() {
               {all.length === 0 ? (
                 <>
                   <span className="font-medium text-foreground">No rates in this period yet</span>
-                  <span className="max-w-sm">A rate appears here when a delivery is recorded with its price: on WhatsApp ("200 bags cement came from Malabar at 410"), from a bill photo, or against an order.</span>
+                  <SayOnWhatsApp text="200 bags cement came from Malabar at 410" />
                 </>
               ) : (
                 'No items with these filters.'

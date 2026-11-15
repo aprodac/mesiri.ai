@@ -145,7 +145,7 @@ export function ActivityPanel({
             </Fact>
           </dl>
           {a.progress === null && (
-            <p className="text-xs text-muted-foreground">Progress comes from the site's work updates on this section's BOQ lines. Add BOQ lines to measure it.</p>
+            <p className="text-xs text-muted-foreground">Add BOQ lines to measure progress.</p>
           )}
         </section>
       )}

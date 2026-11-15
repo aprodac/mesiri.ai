@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { MONEY_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, ClipboardCheck, HardHat, Landmark, Package, PieChart, Scale, TrafficCone } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
@@ -98,10 +100,7 @@ export default function CostHomePage() {
 
   if (!allowed) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">Cost control shows the company's rates and spending.</p>
-        <p className="text-sm text-muted-foreground">Only owners, admins, finance and project managers can open it.</p>
-      </div>
+      <NoAccess roles={MONEY_PEOPLE} />
     )
   }
   if (q.isError) return <PageError message="Cost control could not be loaded." onRetry={() => q.refetch()} back={{ to: '/today', label: 'Today' }} />
@@ -121,7 +120,6 @@ export default function CostHomePage() {
         <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6">
           <p className="font-medium">{scope.mode === 'portfolio' ? 'No project has a BOQ yet.' : `${scope.projectName} has no BOQ yet.`}</p>
           <p className="text-sm text-muted-foreground">
-            Cost control sets what is spent against each project's BOQ budget.{' '}
             <Link to="/boq" className="font-medium underline underline-offset-2">
               Add a BOQ
             </Link>
@@ -151,10 +149,6 @@ export default function CostHomePage() {
                 <ProjectRow key={p.project_id} p={p} />
               ))}
             </ul>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Forecast at completion: what is spent, plus the work left at the rate it has cost so far, for the kinds (labour, materials,
-              subcontract) with enough work done and paid. Done / spent: the budget earned and the money spent, as a share of the budget.
-            </p>
           </DprSection>
         </>
       )}

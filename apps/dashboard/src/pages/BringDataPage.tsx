@@ -44,7 +44,7 @@ export default function BringDataPage() {
       key: 'sites',
       icon: Building2,
       title: 'Projects and sites',
-      about: 'Each project and its sites. A handful at most, so they are typed, not imported.',
+      about: 'Type them in',
       done: p?.has_site,
       action: <Button asChild size="sm" variant="outline"><Link to={guideLink('/projects')}>Projects & sites</Link></Button>,
     },
@@ -52,7 +52,7 @@ export default function BringDataPage() {
       key: 'team',
       icon: Users,
       title: 'Your team',
-      about: 'On WhatsApp, share each person\'s contact with Mesiri; or add them on the Team page with just their number.',
+      about: 'Share contacts on WhatsApp, or add a number',
       done: p?.has_team,
       action: <Button asChild size="sm" variant="outline"><Link to={guideLink('/team')}>Team</Link></Button>,
     },
@@ -61,7 +61,7 @@ export default function BringDataPage() {
           key: 'materials',
           icon: Package,
           title: 'Materials, vendors and opening stock',
-          about: 'One Excel workbook: your item list, your vendors, and what each site holds today. Download the template, fill it, upload it; you see every row before it is saved.',
+          about: 'Items, vendors and stock: one Excel',
           done: p?.has_vendors,
           action: <Button size="sm" variant="outline" onClick={() => setMaterialsOpen(true)}>Upload the Excel</Button>,
         }]
@@ -71,8 +71,8 @@ export default function BringDataPage() {
       icon: Calculator,
       title: 'BOQ or estimate',
       about: project
-        ? `The Excel you already have for ${project.name}: Mesiri reads its items, units and quantities. For another project, open it from BOQ.`
-        : 'Add a project first, then upload its BOQ.',
+        ? `Your estimate Excel for ${project.name}`
+        : 'Add a project first',
       done: p?.has_boq,
       action: project ? (
         <Button size="sm" variant="outline" onClick={() => setBoqOpen(true)}>Upload the BOQ</Button>
@@ -84,14 +84,14 @@ export default function BringDataPage() {
       key: 'documents',
       icon: FileText,
       title: 'Drawings and documents',
-      about: 'PDFs, photos, Word, Excel and DWG files, kept with the project.',
+      about: 'PDF, photo, Word, Excel, DWG',
       action: <Button asChild size="sm" variant="outline"><Link to={guideLink('/planning/documents')}>Documents</Link></Button>,
     },
   ]
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pb-4 sm:px-2">
-      <PageHeader title="Bring your data" subtitle="What you already have, in Mesiri, so nobody types it again." />
+      <PageHeader title="Bring your data" />
 
       <Section title="In this order">
         <ol className="divide-y rounded-lg border">
@@ -126,8 +126,7 @@ export default function BringDataPage() {
         <p className="m-0 flex items-start gap-2 text-sm text-muted-foreground">
           <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
-            A worker list, a rate sheet, last month's register: send the file to Mesiri on WhatsApp
-            {number ? ` (${number})` : ''} with a line saying what it is. Mesiri reads PDF, Word and Excel files.
+            Send the file on WhatsApp{number ? ` to ${number}` : ''}, with a line saying what it is
           </span>
         </p>
       </Section>

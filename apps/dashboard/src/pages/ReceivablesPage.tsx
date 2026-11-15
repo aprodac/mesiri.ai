@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { BOOKS_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { HandCoins, Landmark, ReceiptText, Undo2 } from 'lucide-react'
 import { BooksLink } from '@/components/accounts/books'
@@ -46,10 +48,7 @@ export default function ReceivablesPage() {
 
   if (!allowed) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">Receivables show what clients owe the company.</p>
-        <p className="text-sm text-muted-foreground">Only the owner, an admin or finance can open it.</p>
-      </div>
+      <NoAccess roles={BOOKS_PEOPLE} />
     )
   }
   if (owed.isError) return <PageError message="Receivables could not be loaded." onRetry={() => owed.refetch()} back={{ to: '/billing/ra-bills', label: 'RA bills' }} />
@@ -89,7 +88,7 @@ export default function ReceivablesPage() {
           <DprSection icon={ReceiptText} title="Clients, most owed first" meta={d.clients.length || undefined}>
             {d.clients.length === 0 ? (
               <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                No RA bill has been sent to a client yet. Bills sent from Client billing › RA bills show here until they are paid.
+                No RA bill sent yet
               </p>
             ) : (
               <ul className="flex flex-col gap-3">

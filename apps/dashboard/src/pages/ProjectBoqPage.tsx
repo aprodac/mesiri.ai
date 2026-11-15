@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { MONEY_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Calculator, CalendarRange, ClipboardCheck, FileSpreadsheet, MoreHorizontal, Package, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -590,8 +592,7 @@ export default function ProjectBoqPage() {
   if (!allowed) {
     return (
       <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">The BOQ shows the company's rates and margins.</p>
-        <p className="text-sm text-muted-foreground">Only owners, admins, finance and project managers can open it.</p>
+        <NoAccess roles={MONEY_PEOPLE} className="py-0" />
         <Button asChild variant="outline" size="sm">
           <Link to={back.to}>Back to {back.label}</Link>
         </Button>
@@ -647,10 +648,7 @@ export default function ProjectBoqPage() {
       {boq.sections.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6">
           <p className="font-medium">No BOQ yet for this project.</p>
-          <p className="text-sm text-muted-foreground">
-            Upload the estimate Excel you already have (Description, Unit, Qty, Rate): every line comes in with its section, and the
-            sections become the schedule. Or start with one section by hand, for example "Plastering".
-          </p>
+          <p className="text-sm text-muted-foreground">Upload the estimate Excel, or start one section by hand.</p>
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
               <Button size="sm" className="gap-1.5" onClick={() => setImporting(true)}>

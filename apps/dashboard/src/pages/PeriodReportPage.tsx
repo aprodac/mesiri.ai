@@ -309,7 +309,7 @@ function WorkSection({ w }: { w: NonNullable<Sections['work']> }) {
 }
 
 function ScheduleSection({ s }: { s: NonNullable<Sections['schedule']> }) {
-  if (!s.scheduled) return <Empty>No activity has plan dates yet. Set them in Schedule to compare work with the plan.</Empty>
+  if (!s.scheduled) return <Empty>No plan dates yet: set them in Schedule</Empty>
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
@@ -541,7 +541,7 @@ function IssuesSection({ i }: { i: NonNullable<Sections['issues']> }) {
 }
 
 function PhotosSection({ p }: { p: NonNullable<Sections['photos']> }) {
-  if (p.rows.length === 0) return <Empty>No photos from confirmed site days in this period. Photos show once the evening report is confirmed.</Empty>
+  if (p.rows.length === 0) return <Empty>No photos from confirmed days</Empty>
   return (
     <div className="flex flex-col gap-2">
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -582,7 +582,14 @@ function DataCheck({ c }: { c: NonNullable<Sections['completeness']> }) {
           )
         })}
       </ul>
-      <p className="text-xs text-muted-foreground">Green: confirmed with attendance. Amber: part of it. Grey: nothing confirmed.</p>
+      {/* UX-13: the legend as the same coloured boxes, not a sentence. */}
+      <ul className="flex flex-wrap gap-3 text-xs text-muted-foreground" aria-label="Key">
+        {([['good', 'Confirmed'], ['warn', 'Part'], ['none', 'None']] as [Tone, string][]).map(([t, label]) => (
+          <li key={t} className="inline-flex items-center gap-1.5">
+            <span aria-hidden className={cn('size-3 rounded-sm border', TONE_SOFT[t])} /> {label}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -1003,9 +1010,6 @@ export default function PeriodReportPage() {
             )}
           </div>
           <SentAndScheduled target={target} />
-          <p className="text-xs text-muted-foreground">
-            Every figure comes from the module that records it: the BOQ and schedule, attendance, stock, expenses and bills. Rupees only show for the roles that see spending.
-          </p>
         </div>
       )}
     </div>

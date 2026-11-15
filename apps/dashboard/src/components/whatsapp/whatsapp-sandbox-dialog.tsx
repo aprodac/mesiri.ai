@@ -66,7 +66,7 @@ export function WhatsAppSandboxDialog({
             </div>
           </div>
           <DialogDescription className="text-xs">
-            Test how the VPS WhatsApp AI Assistant parses incoming messages in dry-run mode without creating database records or consuming expense sequence numbers.
+            Try a message. Nothing is saved.
           </DialogDescription>
         </DialogHeader>
 

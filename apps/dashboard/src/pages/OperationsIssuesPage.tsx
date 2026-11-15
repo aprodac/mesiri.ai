@@ -412,7 +412,6 @@ export default function OperationsIssuesPage() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
           <CheckCircle2 className="size-6 text-success" aria-hidden="true" />
           <p className="text-sm font-medium">{filtered ? 'No issues match these filters' : 'Nothing is stuck right now'}</p>
-          <p className="text-sm text-muted-foreground">Issues reported on WhatsApp or here show up in this list.</p>
         </div>
       ) : (
         <ul className="flex flex-col divide-y overflow-hidden rounded-xl border px-4">

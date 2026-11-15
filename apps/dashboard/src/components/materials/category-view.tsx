@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Boxes, ChevronDown, ChevronRight, ClipboardList, MapPin, PackageX, Search, Target, TrendingDown, TriangleAlert, Truck } from 'lucide-react'
@@ -453,7 +454,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
           <Boxes className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">No stock in this period</p>
-          <p className="max-w-sm text-sm text-muted-foreground">Record a delivery or opening stock, or import your list from Excel in Items.</p>
+          <SayOnWhatsApp text="200 bags cement came from Malabar" />
         </div>
       ) : shown.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-8 text-center">

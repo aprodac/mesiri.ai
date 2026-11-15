@@ -147,7 +147,6 @@ export default function Projects() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-14 text-center">
           <Building2 className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="font-medium">No projects yet</p>
-          <p className="max-w-sm text-sm text-muted-foreground">Add a project and its sites; site updates on WhatsApp then land in its daily report.</p>
           {!readOnly && (
             <Button className="mt-2 gap-1.5" onClick={openNew}>
               <Plus className="size-4" /> New project
@@ -186,7 +185,7 @@ export default function Projects() {
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Archive {archiving?.name}?</DialogTitle>
             <DialogDescription>
-              It leaves the active list and its daily report stops. Its reports and records are kept.
+              Its daily report stops. Records are kept.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

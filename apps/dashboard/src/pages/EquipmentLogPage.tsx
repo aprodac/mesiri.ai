@@ -148,7 +148,7 @@ export default function EquipmentLogPage() {
       {day.data && rows.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-12 text-center text-sm text-muted-foreground">
           <ClipboardPen className="size-8 opacity-40" />
-          No machine is on a site here. Add machines on the <Link to="/equipment" className="font-medium text-primary underline">Machines</Link> page, at their site.
+          No machine on a site here. <Link to="/equipment" className="font-medium text-primary underline">Add machines</Link>
         </div>
       )}
 

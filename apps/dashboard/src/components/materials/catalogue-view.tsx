@@ -421,8 +421,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Delete {deleting?.name}?</DialogTitle>
             <DialogDescription>
-              Only possible while nothing has been recorded for it. Once it has deliveries or use, choose "Stop offering it" instead: its
-              records stay, and it is no longer offered.
+              Only while it has no records. Otherwise use "Stop offering it".
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

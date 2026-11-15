@@ -80,7 +80,7 @@ export default function GoodsReceiptsPage() {
       ) : list.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border p-10 text-center text-sm text-muted-foreground">
           <ClipboardCheck className="size-6" />
-          {all.length === 0 ? 'Nothing received against an order yet. Open an order and tap “Material came”: it records the challan, what was accepted and what was rejected.' : 'No goods received match this search.'}
+          {all.length === 0 ? 'Nothing received yet' : 'No goods received match this search.'}
         </div>
       ) : (
         <ul className="flex flex-col divide-y rounded-xl border">

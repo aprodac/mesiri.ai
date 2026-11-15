@@ -206,7 +206,7 @@ export default function ChartOfAccountsPage() {
       <DprHeader back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} crumb="Accounts" title="Chart of accounts" date={d ? `${d.groups.length} groups · ${d.ledgers.length} ledgers` : undefined} />
       <BooksTabs current="/accounts/chart" />
       <Callout tone="info" icon={ListTree}>
-        Tally's groups, so your CA reads it as theirs. Each supplier, client, bank or cash account, expense category and member of staff who paid from their own pocket gets its ledger on its own, the first time the books need it. Nothing to set up.
+        Tally's groups. Ledgers make themselves: nothing to set up.
       </Callout>
       {!d ? (
         <Skeleton className="h-96 rounded-xl" />

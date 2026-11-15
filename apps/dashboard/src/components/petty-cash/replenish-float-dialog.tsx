@@ -118,7 +118,7 @@ export function ReplenishFloatDialog({
               <DialogTitle className="text-base font-bold">Replenish Site Petty Cash Float</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
-              Top up a site cash box from corporate bank float (triggers instant WhatsApp notification to custodian).
+              Top up a site cash box from the bank. Its keeper gets a WhatsApp message.
             </DialogDescription>
           </DialogHeader>
 

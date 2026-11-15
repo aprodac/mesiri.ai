@@ -66,11 +66,11 @@ export function MusterView({ siteId: scopedSite, leading }: { siteId: string | n
         <Button variant="outline" size="sm" className="ml-auto h-9 gap-1.5" disabled={!m?.rows.length} onClick={exportCsv}><Download className="size-4" /> Excel (CSV)</Button>
       </div>
       {!siteId ? (
-        <EmptyState icon={Users} title="No sites yet" about="The muster roll is a site's month. Add a site first." />
+        <EmptyState icon={Users} title="No sites yet" />
       ) : !m ? (
         <Skeleton className="h-64 w-full rounded-xl" />
       ) : m.rows.length === 0 ? (
-        <EmptyState icon={Users} title="No attendance this month" about="Each day the site reports who came; this grid fills itself." whatsapp="Ravi, Anil present; 3 helpers from Suresh team" />
+        <EmptyState icon={Users} title="No attendance this month" whatsapp="Ravi, Anil present; 3 helpers from Suresh team" />
       ) : (
         <div className="overflow-x-auto rounded-xl border">
           <table className="w-full border-collapse text-xs">
@@ -140,7 +140,7 @@ export function TeamsView({ leading }: { leading?: React.ReactNode }) {
         <Button size="sm" className="ml-auto h-9 gap-1.5" onClick={() => setAdding(true)}><Plus className="size-4" /> Add team</Button>
       </div>
       {teams.isLoading ? <Skeleton className="h-40 w-full rounded-xl" /> : (teams.data?.items ?? []).length === 0 ? (
-        <EmptyState icon={Users} title="No labour teams yet" about="A labour contractor's team (Suresh's masons). Its days come from attendance, its wages are paid through the contractor, and advances to it come back off its wages."
+        <EmptyState icon={Users} title="No labour teams yet" about="Like Suresh's masons"
           action={<Button size="sm" onClick={() => setAdding(true)}>Add team</Button>} />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

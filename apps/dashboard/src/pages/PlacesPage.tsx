@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, ChevronDown, ChevronRight, Layers, MapPinned, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -94,7 +95,7 @@ function PlacesView({ projectId }: { projectId: string }) {
         </>} />
       {places.length === 0 ? (
         list.data.can_edit ? <QuickSetup projectId={projectId} suggested={list.data.suggested} /> : (
-          <Callout tone="info" icon={Layers}>Floors and rooms are not set up for this project yet. The owner, an admin or the project manager sets them up here.</Callout>
+          <Callout tone="info" icon={Layers}>No floors and rooms yet</Callout>
         )
       ) : editing ? (
         <EditPlaces projectId={projectId} list={list.data} />
@@ -102,9 +103,10 @@ function PlacesView({ projectId }: { projectId: string }) {
         <>
           <StatStrip stats={stats} phoneCols={2} />
           {kinds.length === 0 ? (
-            <Callout tone="info" icon={Layers}>
-              Nothing recorded by room yet. When site names the place in a work update (“FF R2 tiling 40 sqft”, “onnam nila kitchen wiring kazhinju”), it shows here.
-            </Callout>
+            <div className="flex flex-col items-start gap-2">
+              <Callout tone="info" icon={Layers}>Nothing recorded by room yet</Callout>
+              <SayOnWhatsApp text="FF R2 tiling 40 sqft" />
+            </div>
           ) : (
             <>
               <Legend />

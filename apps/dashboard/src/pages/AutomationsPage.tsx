@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock, MapPin, Plus, TriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
@@ -190,10 +191,7 @@ export default function AutomationsPage({ embedded = false }: { embedded?: boole
     <div className="flex w-full flex-col gap-4 pb-8">
       {embedded ? (
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Messages Mesiri sends on WhatsApp on a schedule. You can also set one up by telling Mesiri on WhatsApp, e.g. "every day at 5
-            pm send me the DPR".
-          </p>
+          <SayOnWhatsApp text="Every day at 5 pm send me the DPR" />
           {newButton}
         </div>
       ) : (

@@ -179,7 +179,7 @@ export default function ProjectDetails() {
             </Button>
           }
         >
-          Project created. Add its sites and the people who report from them.
+          Project created. Now add its sites.
         </Callout>
       ) : !sitesQuery.isLoading && sites.length === 0 ? (
         <Callout
@@ -193,7 +193,7 @@ export default function ProjectDetails() {
             )
           }
         >
-          No sites yet: updates from WhatsApp need a site to land on.
+          No sites yet
         </Callout>
       ) : null}
 
@@ -271,7 +271,7 @@ export default function ProjectDetails() {
               <Skeleton className="h-16 rounded-lg" />
             ) : members.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Only company admins see this project. Add its site engineers and managers so they can report and review.
+                Only admins see it so far
               </p>
             ) : (
               <ul className="divide-y rounded-lg border">
@@ -449,7 +449,7 @@ function BoqSummary({ projectId }: { projectId: string }) {
   if (t.line_count === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No BOQ yet. Add the estimate's work items, quantities and rates, so Mesiri can compare each day's work and spending against them.
+        No BOQ yet
       </p>
     )
   }

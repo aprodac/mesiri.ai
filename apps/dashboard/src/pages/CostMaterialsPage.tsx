@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { MONEY_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Package, PackageSearch } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
@@ -110,10 +112,7 @@ export default function CostMaterialsPage() {
   })
   if (!allowed) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">Materials vs BOQ is read from the BOQ and its rates.</p>
-        <p className="text-sm text-muted-foreground">Only owners, admins, finance and project managers can open it.</p>
-      </div>
+      <NoAccess roles={MONEY_PEOPLE} />
     )
   }
   const header = (

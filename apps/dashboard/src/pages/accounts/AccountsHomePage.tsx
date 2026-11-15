@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, BadgeIndianRupee, BookOpenCheck, Building2, CircleAlert, Landmark, Receipt, Scale, TrendingUp, Wallet } from 'lucide-react'
+import { ArrowRight, BadgeIndianRupee, Building2, CircleAlert, Landmark, Receipt, Scale, TrendingUp, Wallet } from 'lucide-react'
 import { BooksClosed, BooksTabs } from '@/components/accounts/books'
 import { Delta, DrCr, ShareBar, SplitBars, pctText } from '@/components/accounts/visuals'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
@@ -53,7 +53,7 @@ function ProjectHome({ d }: { d: Home }) {
         ]}
       />
       <Callout tone="info" icon={Building2} action={<Button asChild size="sm" variant="outline"><Link to="/accounts/projects">All projects</Link></Button>}>
-        A project's own books: its position below, and the full P&L and position under Projects.
+        This project's books
       </Callout>
     </>
   )
@@ -234,9 +234,6 @@ export default function AccountsHomePage() {
               </Link>
             </DprSection>
           )}
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <BookOpenCheck className="size-3.5" /> Posted from the records on their own: nothing to type. Every figure opens the entries behind it.
-          </p>
         </>
       )}
     </div>

@@ -293,7 +293,6 @@ export default function VendorPage() {
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
               <FileText className="size-6 text-muted-foreground" />
               <p className="text-sm font-medium">Nothing in this period</p>
-              <p className="max-w-sm text-sm text-muted-foreground">Deliveries with a rate, bills (expenses with this supplier) and payments appear here. Set an opening balance in Edit details to start from what was owed before.</p>
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border bg-card">
@@ -377,7 +376,6 @@ export default function VendorPage() {
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
               <CircleCheck className="size-6 text-success" />
               <p className="text-sm font-medium">No bill waiting</p>
-              <p className="max-w-sm text-sm text-muted-foreground">A bill is an expense recorded with this supplier, or their bill for deliveries (Not billed › Record bill).</p>
             </div>
           ) : (
             <>
@@ -508,7 +506,6 @@ export default function VendorPage() {
               })}
             </ul>
           )}
-          <p className="text-xs text-muted-foreground">A payment against one bill is undone from that bill (Expenses). Undoing a payment made here opens the bills it paid again and returns the money.</p>
         </section>
       )}
 
@@ -552,7 +549,6 @@ export default function VendorPage() {
                 {to && v.linked[k] ? <Link to={to} className="font-medium tabular-nums hover:underline">{v.linked[k]}</Link> : <span className="font-medium tabular-nums">{v.linked[k]}</span>}
               </div>
             ))}
-            <p className="mt-1 text-xs text-muted-foreground">A supplier with records is never deleted: switch it off, or merge it into the right one if it was saved twice.</p>
           </div>
         </section>
       )}

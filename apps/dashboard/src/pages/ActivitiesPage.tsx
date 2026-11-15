@@ -491,7 +491,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
         <EmptyState
           icon={ActivityIcon}
           title={hasActiveFilters ? 'Nothing matches these filters' : 'No work reported yet'}
-          about={hasActiveFilters ? 'Try clearing them.' : 'Every piece of work the sites send on WhatsApp lands here, with its photos, newest first.'}
+          about={hasActiveFilters ? 'Try clearing them.' : undefined}
           whatsapp={hasActiveFilters ? undefined : 'First-floor slab shuttering done, 6 masons, 4 helpers'}
           action={hasActiveFilters ? <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button> : undefined}
         />
@@ -837,7 +837,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold">Correct this work item</DialogTitle>
             <DialogDescription className="text-xs">
-              Header fields only -- allowed even if this day is part of an approved daily report.
+              Works on approved days too.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -902,8 +902,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold text-destructive">Remove this work item?</DialogTitle>
             <DialogDescription className="text-xs">
-              Soft-deleted, never a hard delete. Refused if this day is already part of an approved daily report --
-              a correction is used instead in that case.
+              Not on an approved day: correct it instead.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1">
@@ -938,7 +937,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold">Correct this update</DialogTitle>
             <DialogDescription className="text-xs">
-              Appends a corrected entry -- the original is kept for the audit trail, never edited or deleted.
+              The original is kept.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -979,7 +978,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold text-destructive">Remove this update?</DialogTitle>
             <DialogDescription className="text-xs">
-              Soft-deleted, never a hard delete. Refused if this day is already part of an approved daily report.
+              Not on an approved day.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1">

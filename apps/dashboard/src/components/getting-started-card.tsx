@@ -199,8 +199,7 @@ function items(
       title: 'Where things are',
       detail: (
         <>
-          The sidebar follows a project's life: Plan, Site, Buy, Money. Search (Ctrl K) finds any page, project or
-          record. The ? at the top says what each page is for. Your site team never opens this: they use WhatsApp.
+          Plan · Site · Buy · Money. Ctrl K finds anything; Help (top right) explains each page. Your site team uses WhatsApp.
         </>
       ),
       action: (

@@ -1,4 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom';
+import { MONEY_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query';
 import {
   ChevronRight,
@@ -360,14 +362,7 @@ export default function CostVariancePage() {
 
   if (!allowed) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">
-          Green / red shows the company's rates and labour cost.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Only owners, admins, finance and project managers can open it.
-        </p>
-      </div>
+      <NoAccess roles={MONEY_PEOPLE} />
     );
   }
   const title =
@@ -403,10 +398,6 @@ export default function CostVariancePage() {
     return (
       <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         {header}
-        <p className="text-sm text-muted-foreground">
-          For each BOQ line: was the labour worth the work measured? Pick a
-          project.
-        </p>
         <ProjectPicker />
       </div>
     );
@@ -419,7 +410,7 @@ export default function CostVariancePage() {
         <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
           {header}
           <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-            Pick your site in the bar at the top to see its green / red.
+            Pick a site in the top bar
           </p>
         </div>
       );
@@ -584,8 +575,7 @@ export default function CostVariancePage() {
             {v.lines.length === 0 ? (
               <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6">
                 <p className="font-medium">
-                  No work measured on a BOQ line and no labour put on one in
-                  this period.
+                  Nothing measured in this period.
                 </p>
                 <p className="text-sm text-muted-foreground">
                   A line is coloured once the site's work is on its BOQ line and

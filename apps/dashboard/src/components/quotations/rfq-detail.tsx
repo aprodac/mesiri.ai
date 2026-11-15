@@ -133,7 +133,7 @@ export function RfqDetail({ rfq: listed, inSheet }: { rfq: Rfq; inSheet?: boolea
         <Section title="Compare">
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             <Scale className="size-7 opacity-40" />
-            Send the RFQ to each supplier, then record their rates as they reply (or forward the quote on WhatsApp to Mesiri). The comparison fills in here.
+            Send the RFQ, then record each reply.
           </div>
         </Section>
       )}

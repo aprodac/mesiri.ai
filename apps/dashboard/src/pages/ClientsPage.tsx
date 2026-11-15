@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { BOOKS_PEOPLE } from '@/lib/permissions'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Pencil, Plus, Users } from 'lucide-react'
@@ -14,7 +15,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { useScope } from '@/lib/ScopeContext'
 import { createClient, fetchClients, mayBill, rupees, updateClient, type Client, type ClientInput } from '@/lib/billing'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, NoAccess } from '@/components/page/page-kit'
 
 // NXT-01: Client billing › Clients. Each client the company builds for, their projects and contract values.
 // A project's terms are set from Planning › Project start (Client and contract) or the RA bills page.
@@ -46,14 +47,14 @@ export default function ClientsPage() {
         {allowed && <Button size="sm" className="gap-1.5" onClick={() => setEditing('new')}><Plus className="size-4" /> Add a client</Button>}
       </header>
       {!allowed ? (
-        <p className="text-sm text-muted-foreground">Clients, contracts and bills are for the owner, admins and finance.</p>
+        <NoAccess roles={BOOKS_PEOPLE} />
       ) : query.isError ? (
         <PageError message="The clients did not load." onRetry={() => query.refetch()} back={{ to: '/', label: 'Home' }} />
       ) : !clients ? (
         <Skeleton className="h-40 w-full" />
       ) : clients.length === 0 ? (
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          {projectId ? 'No client is set for this project yet. Add one here,' : 'No clients yet. Add one here,'} or set a project's client and contract from Planning › Project start.
+          {projectId ? 'No client for this project yet' : 'No clients yet'}
         </p>
       ) : (
         <ul className="divide-y rounded-lg border">

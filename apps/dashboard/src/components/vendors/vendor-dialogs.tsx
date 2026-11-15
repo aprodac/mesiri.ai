@@ -135,7 +135,7 @@ export function VendorFormDialog({ open, onOpenChange, vendor, canSetOpening, on
           {canSetOpening && (
             <fieldset className="grid gap-2 rounded-lg border bg-muted/30 p-3">
               <legend className="px-1 text-sm font-medium">Opening balance</legend>
-              <p className="text-xs text-muted-foreground">What stood with them before you started in Mesiri. The account starts on this date: older bills and payments are inside this figure.</p>
+              <p className="text-xs text-muted-foreground">What was owed on this date, before Mesiri.</p>
               <div className="grid grid-cols-[1fr_auto] gap-2">
                 <Input type="number" min={0} step="any" inputMode="decimal" aria-label="Opening amount" value={f.opening} onChange={set('opening')} placeholder="0" className="bg-background" />
                 <Select value={f.opening_side} onValueChange={(v) => setF((x) => ({ ...x, opening_side: v as 'owe' | 'ahead' }))}>
@@ -523,7 +523,7 @@ export function LinkNamesDialog({ open, onOpenChange, names }: { open: boolean; 
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Supplier names on no account</DialogTitle>
-          <DialogDescription>Deliveries saved with these names point at no supplier, so they are on nobody's account, rates or bills. Pick the supplier each is, or add it.</DialogDescription>
+          <DialogDescription>These deliveries have no supplier. Pick one for each.</DialogDescription>
         </DialogHeader>
         <ul className="divide-y rounded-lg border">
           {names.map((n) => (

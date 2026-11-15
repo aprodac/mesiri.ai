@@ -140,7 +140,7 @@ export function AddWorkerDialog({ open, onOpenChange, onSuccess, initialValues }
             <DialogTitle className="text-base font-bold">Register Site Worker</DialogTitle>
           </div>
           <DialogDescription className="text-xs">
-            Add a new worker to the organization roster for attendance tracking and daily wage calculation.
+            Name, trade and wage.
           </DialogDescription>
         </DialogHeader>
 

@@ -130,7 +130,7 @@ export default function WorkOrdersPage() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
           <Handshake className="size-6 text-muted-foreground" />
           <p className="text-sm font-medium">{all.length ? 'No work order matches' : 'No work orders yet'}</p>
-          <p className="max-w-md text-sm text-muted-foreground">{all.length ? 'Try another tab or clear the filters.' : 'Give work to a subcontractor at an agreed rate: concreting, plastering, wiring. Their bills are then checked against what was measured on site before anyone pays.'}</p>
+          <p className="max-w-md text-sm text-muted-foreground">{all.length ? 'Try another tab or clear the filters.' : 'Concreting, plastering, wiring: who does it, at what rate.'}</p>
           {office && !all.length && <Button size="sm" className="mt-1 gap-1.5" onClick={() => setCreating(true)}><Plus className="size-4" /> New work order</Button>}
         </div>
       ) : (

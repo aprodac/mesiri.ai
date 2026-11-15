@@ -56,7 +56,7 @@ export default function TdsPage() {
           />
           {Number(d.overdue) > 0 && (
             <Callout tone="draft" icon={CircleAlert}>
-              <span className="font-medium">{rupees(d.overdue)} of TDS is past its due date.</span> Deposit it (a transfer into the TDS payable account in Finance › Money) and the month shows deposited.
+              <span className="font-medium">{rupees(d.overdue)} of TDS is past its due date.</span> Deposit it from Finance › Money.
             </Callout>
           )}
           {d.missing_pan.length > 0 && (
@@ -66,7 +66,7 @@ export default function TdsPage() {
           )}
           <DprSection icon={CalendarClock} title="Month by month" meta={d.months.length || undefined}>
             {d.months.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">No TDS deducted in this period. It is deducted when a subcontractor's bill is checked (Subcontract › Bills).</p>
+              <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">No TDS deducted in this period</p>
             ) : (
               <ul className="divide-y rounded-lg border text-sm">
                 {d.months.map((m) => (
@@ -123,7 +123,6 @@ export default function TdsPage() {
                 ))}
               </ul>
             )}
-            <p className="text-xs text-muted-foreground">Match these with Form 26AS / the client's Form 16A before claiming them against the company's tax.</p>
           </DprSection>
         </>
       )}

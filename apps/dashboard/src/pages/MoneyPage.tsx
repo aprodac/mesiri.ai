@@ -333,7 +333,7 @@ export default function MoneyPage() {
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
               <Landmark className="size-6 text-muted-foreground" aria-hidden="true" />
               <p className="text-sm font-medium">No accounts yet</p>
-              <p className="max-w-sm text-sm text-muted-foreground">Add the company's bank account and each site's petty cash to see what is spent from where.</p>
+              <p className="max-w-sm text-sm text-muted-foreground">Bank and site petty cash</p>
               {canManage && (
                 <Button size="sm" onClick={() => addAccount(null)}>
                   Add account
@@ -710,9 +710,6 @@ function SetupGuide({
     <section className="flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900 dark:bg-sky-950/30">
       <div>
         <h3 className="text-sm font-semibold">Set up where money is kept</h3>
-        <p className="text-sm text-muted-foreground">
-          Then every expense says whether it came from the bank or a site's petty cash, and the totals split both ways.
-        </p>
       </div>
       <ul className="grid gap-2 sm:grid-cols-2">
         <li className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2">

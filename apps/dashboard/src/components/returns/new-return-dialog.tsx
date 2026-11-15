@@ -105,7 +105,7 @@ export function NewReturnDialog({ open, onOpenChange, from, money, onCreated }: 
         {sources.isLoading ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Loading what can go back…</p>
         ) : shown.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Nothing here is left to send back: it is already on a return, or nothing came from this supplier in the last 90 days.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">Nothing to send back from the last 90 days.</p>
         ) : (
           <ul className="divide-y rounded-xl border">
             {shown.map((p) => (

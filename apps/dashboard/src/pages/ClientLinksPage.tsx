@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { BOOKS_PEOPLE } from '@/lib/permissions'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, Copy, ExternalLink, Link2, MessageCircle, Plus, Share2 } from 'lucide-react'
@@ -9,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast-notification'
 import { PageError } from '@/components/dpr-page'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, NoAccess } from '@/components/page/page-kit'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { useAuth } from '@/lib/AuthContext'
 import { billDay, mayBill } from '@/lib/billing'
@@ -33,12 +34,15 @@ export default function ClientLinksPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={Share2} title="Client view" />
       </header>
-      <p className="text-sm text-muted-foreground">
-        Send your client a link to their project. They open it on the phone, no login, and see progress, milestones,
-        photos from the site reports you approved, their bills and what they have paid. Never your rates, costs or suppliers.
-      </p>
+      {/* UX-13: what the client sees, as chips; the ? help says the rest. */}
+      <ul className="flex flex-wrap gap-1.5 text-xs" aria-label="What the client sees">
+        {['Progress', 'Milestones', 'Approved photos', 'Bills', 'Payments'].map((t) => (
+          <li key={t} className="rounded-full bg-success-soft px-2.5 py-0.5 text-success">✓ {t}</li>
+        ))}
+        <li className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-destructive">✕ Your rates and costs</li>
+      </ul>
       {!allowed ? (
-        <p className="text-sm text-muted-foreground">Sharing with clients is for the owner, admins and finance, because the bills are on the page.</p>
+        <NoAccess roles={BOOKS_PEOPLE} />
       ) : !projectId ? (
         <>
           <p className="text-sm font-medium">Pick the project to share</p>

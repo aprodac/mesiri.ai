@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { EmptyState, ModuleTitle, PageError, Segmented } from '@/components/page/page-kit'
+import { EmptyState, ModuleTitle, PageError, Segmented, NoAccess } from '@/components/page/page-kit'
 import { useAuth } from '@/lib/AuthContext'
 import { activityUrl, fetchActivity, type ActivityFilters, type ActivityItem } from '@/lib/admin'
 import { usePageTitle } from '@/lib/page-title'
@@ -65,7 +65,7 @@ export default function ActivityLogPage() {
         <ModuleTitle icon={History} title="Activity log" />
       </header>
       {!allowed ? (
-        <p className="text-sm text-muted-foreground">The activity log is for the owner and admins.</p>
+        <NoAccess roles={['Owner', 'Admin']} />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -92,8 +92,7 @@ export default function ActivityLogPage() {
           ) : !query.data ? (
             <Skeleton className="h-48 w-full" />
           ) : items.length === 0 ? (
-            <EmptyState icon={History} title="Nothing in this view"
-              about="Every save, edit, delete and approval shows here with who made it and when, from the web and from WhatsApp." />
+            <EmptyState icon={History} title="Nothing in this view" />
           ) : (
             <div className="flex flex-col gap-4">
               {days.map(([day, rows]) => (

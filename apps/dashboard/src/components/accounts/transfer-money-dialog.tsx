@@ -120,7 +120,7 @@ export function TransferMoneyDialog({
               <DialogTitle className="text-base font-bold">Transfer Money</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
-              Move liquidity between corporate bank accounts and site petty cash boxes.
+              Between bank and site cash.
             </DialogDescription>
           </DialogHeader>
 

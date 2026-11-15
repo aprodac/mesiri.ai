@@ -71,8 +71,7 @@ export function CorrectionDialog({
         </DialogHeader>
         <div className="space-y-4 py-2 text-xs">
           <p className="text-muted-foreground leading-relaxed">
-            Confirmed material movements are not edited directly. A correcting movement will be
-            recorded to preserve the audit trail.
+            A correction is added; the original is kept.
           </p>
           {transferId && (
             <p className="text-muted-foreground leading-relaxed">

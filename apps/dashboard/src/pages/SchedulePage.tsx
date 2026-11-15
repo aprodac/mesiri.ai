@@ -250,8 +250,8 @@ function ScheduleView({ projectId }: { projectId: string }) {
                   onAddDates={(id) => select(id)}
                 />
                 <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1"><MessageCircle className="size-3.5" /> Progress fills in from the site's WhatsApp work updates on each section's BOQ lines.</span>
-                  {canEdit && <span>Drag a bar to move it; the ones after it follow.</span>}
+                  <span className="inline-flex items-center gap-1"><MessageCircle className="size-3.5" /> Fills from WhatsApp</span>
+                  {canEdit && <span>Drag a bar to move it</span>}
                   {s.summary.conflicts > 0 && <span className="text-red-600">{plural(s.summary.conflicts, 'link')} broken by the dates (red dashed).</span>}
                 </p>
               </div>
@@ -321,10 +321,7 @@ function EmptySchedule({ canEdit, onImport, onAdd }: { canEdit: boolean; onImpor
       <span className="inline-flex size-14 items-center justify-center rounded-2xl bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200"><CalendarRange className="size-7" /></span>
       <div className="flex max-w-lg flex-col gap-1.5">
         <h2 className="text-lg font-semibold">Your schedule starts from your BOQ</h2>
-        <p className="text-sm text-muted-foreground">
-          Upload the estimate Excel you already have: each section becomes a bar. Give them days with Quick plan, and from then
-          on the site's WhatsApp work updates fill the bars in. You see a delay the day it happens, not at the monthly meeting.
-        </p>
+        <p className="text-sm text-muted-foreground">Upload the estimate Excel: each section becomes a bar.</p>
       </div>
       {canEdit ? (
         <div className="flex flex-wrap justify-center gap-2">

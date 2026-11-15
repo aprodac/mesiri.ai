@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { MONEY_PEOPLE } from '@/lib/permissions'
+import { NoAccess } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Gauge, Info, Tags } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
@@ -101,10 +103,7 @@ export default function CostCentresPage() {
 
   if (!allowed) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
-        <p className="font-medium">Cost control shows the company's spending.</p>
-        <p className="text-sm text-muted-foreground">Only owners, admins, finance and project managers can open it.</p>
-      </div>
+      <NoAccess roles={MONEY_PEOPLE} />
     )
   }
   if (data.isError) return <PageError message="Cost centres could not be loaded." onRetry={() => data.refetch()} back={{ to: '/today', label: 'Today' }} />

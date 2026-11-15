@@ -120,7 +120,7 @@ export default function WagesPage() {
       </header>
 
       {!siteId && !projectId ? (
-        <EmptyState icon={Wallet} title="Pick a site" about="Wages are worked out per site and week, from the attendance the site sends." />
+        <EmptyState icon={Wallet} title="Pick a site" />
       ) : sheet.isError ? (
         <Callout tone="draft" icon={TriangleAlert}>{errorWords(sheet.error)}</Callout>
       ) : !s ? (
@@ -147,7 +147,7 @@ export default function WagesPage() {
             ]}
           />
           {s.rows.length === 0 ? (
-            <EmptyState icon={Wallet} title="No attendance this week" about="Wages fill in from the attendance the site sends. Nothing was reported for this site and week."
+            <EmptyState icon={Wallet} title="No attendance this week" about="Nothing reported for this site and week"
               whatsapp="Suresh team: 4 masons, 2 helpers today" />
           ) : (
             <>

@@ -106,7 +106,6 @@ export default function CashBankPage() {
                 </table>
               </div>
             )}
-            <p className="text-xs text-muted-foreground">The same balances as Finance › Money. Tap an account for its book, day by day.</p>
           </DprSection>
         </>
       )}

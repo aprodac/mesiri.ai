@@ -10,7 +10,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { errorWords, fetchReturnables, setReturnable } from '@/lib/equipment'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 
 // NXT-14: Equipment > Shuttering & tools. Plates, props, scaffold pipes and tools are materials in a returnable
 // category (no second stock system): this page shows how many each site holds, what went out lost or damaged, and
@@ -55,7 +55,7 @@ export default function ReturnablesPage() {
 
       {(setup || (office && data && !anyReturnable)) && (
         <section aria-label="Returnable categories" className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-          <p className="text-sm"><strong>Which material categories come back?</strong> <span className="text-muted-foreground">Shuttering plates, props, scaffolding, tools: their stock per site shows here. A main category includes its sub-categories.</span></p>
+          <p className="text-sm font-semibold">Which categories come back?</p>
           <div className="flex flex-wrap gap-2">
             {(data?.categories ?? []).filter((c) => !c.parent_id || !c.via_parent).map((c) => {
               const on = c.returnable || c.via_parent
@@ -74,7 +74,7 @@ export default function ReturnablesPage() {
       {isLoading && <div className="h-40 animate-pulse rounded-xl bg-muted/40" />}
       {isError && <p className="text-sm text-destructive">Did not load. Refresh to try again.</p>}
       {data && items.length === 0 && anyReturnable && (
-        <p className="rounded-xl border p-8 text-center text-sm text-muted-foreground">Nothing in the returnable categories is at a site yet. Record plates or props coming to a site in Materials, as any delivery.</p>
+        <p className="rounded-xl border p-8 text-center text-sm text-muted-foreground">Nothing at a site yet</p>
       )}
       {items.length > 0 && (
         <section className="overflow-x-auto rounded-xl border">
@@ -104,7 +104,7 @@ export default function ReturnablesPage() {
           </table>
         </section>
       )}
-      <p className="text-xs text-muted-foreground">Send plates to another site with a material transfer (Materials › Movements, or on WhatsApp: "60 plates villa-il ninnu Chennai-ilekku ayachu"). Lost or damaged: record a usage marked wastage.</p>
+      <SayOnWhatsApp text="60 plates villa-il ninnu Chennai-ilekku ayachu" />
     </div>
   )
 }

@@ -150,7 +150,7 @@ export default function PendingDeliveriesPage() {
       {!isLoading && !isError && shown.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-12 text-center text-sm text-muted-foreground">
           <PackageCheck className="size-8 opacity-40" />
-          {all.length === 0 ? 'Nothing is waiting: every order has come in full. New orders show here until their material reaches the site.' : 'Nothing here with these filters.'}
+          {all.length === 0 ? 'Nothing waiting: every order came in full' : 'Nothing here with these filters.'}
         </div>
       )}
 

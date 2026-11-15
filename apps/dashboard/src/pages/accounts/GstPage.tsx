@@ -79,7 +79,7 @@ export default function GstPage() {
           />
           {!d.company_gstin && (
             <Callout tone="draft" icon={CircleAlert} action={<Link to="/company?tab=letterhead" className="text-sm underline">Company details</Link>}>
-              Add the company's GSTIN (Company details › letterhead) to split GST into IGST or CGST + SGST by the other party's state.
+              Add the company's GSTIN to split IGST / CGST + SGST
             </Callout>
           )}
           {d.warnings.map((w) => (
