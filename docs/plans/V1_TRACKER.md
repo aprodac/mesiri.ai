@@ -536,6 +536,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-47 | The other page tours, hand-written (27): Site, Tasks, Materials, Labour, Subcontract, Finance, Client billing, Equipment, Settings | L | Must | SS-40 | todo | | [plan](learning-centre-plan.md) section 5.4 |
 | SS-48 | Workflows W3, W5–W11 + role paths Project manager, Finance | M | Must | SS-42 | todo | | [plan](learning-centre-plan.md) section 5. Also: owner outcomes "Get paid faster by the client" (W8), "Month end without chasing the accountant" (W11), and Project manager and Finance outcomes (`OUTCOMES`, plan section 10) |
 | SS-49 | Module walkthroughs (13), each its pages' tours back to back | S | Must | SS-42, SS-44..SS-47 | todo | | [plan](learning-centre-plan.md) section 5.3 |
+| SS-50 | Learn Mesiri gaps after SS-41..SS-43: light up the saved record, workflow steps kept on an empty company, Done card with the next outcome, practice that leaves nothing behind | S | Must | SS-43 | done | Claude (session 15 Nov) | **Done 15 Nov** (b1820e8). [plan](learning-centre-plan.md) section 11. W1 now clicked through (stub answering unknown routes with an error, so Today renders). **Not verified:** real API and WhatsApp |
 
 ---
 
