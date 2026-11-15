@@ -133,7 +133,7 @@ async def build(conn: AsyncConnection, auth: AuthorizationContext, *, period: pe
         reports[str(p["id"])] = report
     rows.sort(key=lambda r: (-r["attention"], r["name"].lower()))
     sees_money = may_view_expenses(auth.role)
-    noun = engine.NOUN[period.kind]
+    noun = periods.noun_of(period)
     nxt = periods.following(period)
     return {
         "scope": "portfolio", "audience": "internal", "period": period.as_dict(),

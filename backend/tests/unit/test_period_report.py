@@ -405,3 +405,14 @@ async def test_the_pdf_prints_the_work_on_site_on_page_one(stubbed):
                                   "days": 7, "sites": 1, "rows": rows * 2}
     data = pdf.render(r, {"company_name": "Periyar Builders"})
     assert data.startswith(b"%PDF") and len(data) > 2000
+
+
+def test_the_last_30_days_is_a_monthly_report_and_the_headline_says_week_or_month():
+    """Live 15 Nov: "Here is the period." for the last 7 days; "1 month report" is the last 30 days."""
+    week = periods.resolve("custom", D(2026, 11, 15), date_from=D(2026, 11, 9), date_to=D(2026, 11, 15))
+    month = periods.resolve("custom", D(2026, 11, 15), date_from=D(2026, 10, 17), date_to=D(2026, 11, 15))
+    assert (periods.noun_of(week), periods.noun_of(month)) == ("week", "month")
+    assert periods.kind_word(month.as_dict()) == "Monthly"
+    assert periods.report_file("Green Villa", month.as_dict()) == "Monthly-report-Green-Villa-17-Oct-15-Nov-2026.pdf"
+    assert periods.noun_of(periods.resolve("custom", D(2026, 11, 15), date_from=D(2026, 11, 1),
+                                           date_to=D(2026, 11, 10))) == "period"

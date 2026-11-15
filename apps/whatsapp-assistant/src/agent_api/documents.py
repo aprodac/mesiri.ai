@@ -72,8 +72,8 @@ REPORT_TOOL = ToolSpec(name=SEND_REPORT, description=(
     "Send the weekly or monthly report as a PDF in this chat, to the person asking: scope project (project_id; "
     "site_id for one site) or portfolio (all their projects); period week or month (custom: date_from and date_to); "
     "date: any day in the week or month they NAMED (\"last week\": a day of last Monday-Sunday; \"this week\": "
-    "today); none when they named none: a week is then the last 7 days ending today, a month the last finished "
-    "month. Only when they ask for the report itself."),
+    "today; \"last month\" / \"October\": a day in it); none when they named none: a week is then the last 7 days "
+    "ending today, a month the last 30. Only when they ask for the report itself."),
     parameters={"type": "object", "required": ["scope", "period"], "properties": {
         "scope": {"type": "string", "enum": ["project", "portfolio"]},
         "project_id": {"type": "string"}, "site_id": {"type": "string"},
@@ -83,6 +83,8 @@ REPORT_TOOL = ToolSpec(name=SEND_REPORT, description=(
 
 
 #: [302]: the reads and the send whose "week" is the last 7 days when no week is named.
+#: [302]: a week or a month nobody named is this many days ending today.
+ROLLING_DAYS = {"week": 7, "month": 30}
 ROLLING_WEEK_TOOLS = frozenset({"period_report", "portfolio_report", SEND_REPORT, "send_report_to"})
 
 
@@ -99,7 +101,8 @@ def report_words(body: dict[str, Any], today: dt.date | None = None) -> tuple[st
     except ValueError:
         start = end = None
     if start and end:
-        word = "Weekly" if (end - start).days == 6 else "Monthly" if kind == "month" else "Period"
+        days = (end - start).days + 1
+        word = "Weekly" if days == 7 else "Monthly" if 28 <= days <= 31 or kind == "month" else "Period"
         return f"{word} report", periods.range_text(start, end)
     try:
         day = dt.date.fromisoformat(str(body.get("date") or "")[:10])
@@ -117,10 +120,12 @@ def rolling_week(arguments: dict[str, Any], today: dt.date) -> dict[str, Any]:
     week nobody named is the last 7 days ending today, never the API's "last finished week" (the Monday report's
     default, which the dashboard and the schedules keep). A named week (``date``) or dates stay as they are."""
     period = str(arguments.get("period") or "week")
-    if period != "week" or any(arguments.get(k) for k in ("date", "date_from", "date_to")):
+    if period not in ROLLING_DAYS or any(arguments.get(k) for k in ("date", "date_from", "date_to")):
         return arguments
-    return {**arguments, "period": "custom", "date_from": (today - dt.timedelta(days=6)).isoformat(),
-            "date_to": today.isoformat()}
+    # Live, 15 Nov 16:28: "1 month progress report ayakk" got October; a month nobody named is the last 30 days,
+    # as a week is the last 7 ("last month" / "October" pass a date and keep the calendar month).
+    return {**arguments, "period": "custom",
+            "date_from": (today - dt.timedelta(days=ROLLING_DAYS[period] - 1)).isoformat(), "date_to": today.isoformat()}
 
 
 def report_caption(arguments: dict[str, Any]) -> str:
@@ -133,7 +138,8 @@ def report_caption(arguments: dict[str, Any]) -> str:
         end = dt.date.fromisoformat(str(arguments.get("date_to") or "")[:10])
     except ValueError:
         return ""
-    word = "Weekly report" if (end - start).days == 6 else "Report"
+    days = (end - start).days + 1
+    word = "Weekly report" if days == 7 else "Monthly report" if 28 <= days <= 31 else "Report"
     return f"{word} · {range_text(start, end)}"
 
 

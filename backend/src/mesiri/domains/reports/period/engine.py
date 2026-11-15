@@ -79,7 +79,7 @@ async def build(conn: AsyncConnection, auth: AuthorizationContext, *, project_id
             unavailable.append(key)
 
     waiting = await _waiting(conn, auth, enabled, project_id, site_id) if with_waiting else []
-    noun = NOUN[period.kind]
+    noun = periods.noun_of(period)
     return {
         "audience": "internal",
         "project": {"id": str(project["id"]), "name": project["name"], "client": project.get("client")},

@@ -472,7 +472,9 @@ def _labour(pdf, lb: dict[str, Any], money: bool | None) -> None:
 
 def _materials(pdf, m: dict[str, Any], money: bool | None) -> None:
     _heading(pdf, "Materials", f"{m['received_items']} received, {m['used_items']} used, {m['running_low']} running low.")
-    rows = [[r["material"], r.get("site") or "", r["received"], r["used"], r["closing"], r["unit"],
+    rows = [[r["material"], r.get("site") or "", r["received"], r["used"],
+             # Live, 15 Nov: "-30" read as stock left; below zero is more used than received: a delivery to check.
+             f"check {r['closing']}" if str(r["closing"]).startswith("-") else r["closing"], r["unit"],
              str(r["days_left"]) if r.get("days_left") is not None else "-", "Low" if r["running_low"] else ""]
             + ([_inr(r.get("spend"))] if money else []) for r in m["rows"][:40]]
     head = ["Material", "Site", "In", "Used", "Left", "Unit", "Days", ""] + (["Spend"] if money else [])

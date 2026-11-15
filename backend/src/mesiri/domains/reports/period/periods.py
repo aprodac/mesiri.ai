@@ -51,10 +51,17 @@ class Period:
 
 def kind_word(period: dict[str, object]) -> str:
     """"Weekly", "Monthly" or "Period" for a period's ``as_dict``. [303]: seven days in a row ("the last 7 days" asked
-    on WhatsApp) is a weekly report too, never a bare "Report"."""
-    if period.get("kind") == "custom" and period.get("days") == 7:
-        return "Weekly"
+    on WhatsApp) is a weekly report, 28 to 31 days ("the last 30 days") a monthly one, never a bare "Report"."""
+    if period.get("kind") == "custom":
+        days = int(period.get("days") or 0)  # type: ignore[call-overload]
+        return "Weekly" if days == 7 else "Monthly" if 28 <= days <= 31 else "Period"
     return {"week": "Weekly", "month": "Monthly"}.get(str(period.get("kind")), "Period")
+
+
+def noun_of(period: Period) -> str:
+    """The headline's word for the period: "week", "month" or "period" (live 15 Nov: "Here is the period." for the
+    last 7 days)."""
+    return {"Weekly": "week", "Monthly": "month"}.get(kind_word(period.as_dict()), "period")
 
 
 def report_file(where: str, period: dict[str, object], ext: str = "pdf") -> str:

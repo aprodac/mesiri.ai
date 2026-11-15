@@ -133,7 +133,7 @@ def kpis(s: dict[str, dict]) -> list[dict[str, Any]]:
     site_work = s.get("site_work")
     if site_work and site_work["rows"] and (not work or work.get("done_pct") is None):
         # [303]: no BOQ to measure against: what the sites reported is the figure ("Work on 6 days").
-        out.append({"key": "site_work", "label": "Work on site", "value": f"{site_work['days']} days",
+        out.append({"key": "site_work", "label": "Work on site", "value": f"{site_work['days']} day{'s' if site_work['days'] != 1 else ''}",
                     "note": f"{site_work['entries']} entries · {site_work['sites']} site"
                             f"{'s' if site_work['sites'] != 1 else ''}", "tone": "good", "section": "site_work"})
         work = None

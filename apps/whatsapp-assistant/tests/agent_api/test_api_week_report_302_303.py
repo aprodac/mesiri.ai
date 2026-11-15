@@ -64,9 +64,16 @@ def test_a_week_nobody_named_is_the_last_seven_days_ending_today() -> None:
     assert documents.rolling_week({"project_id": PROJECT}, SUNDAY)["date_from"] == "2026-11-09"  # period left out
 
 
+def test_live_a_month_nobody_named_is_the_last_30_days() -> None:
+    """15 Nov 16:28 (test chat): "1 month progress report ayakk" got October."""
+    out = documents.rolling_week({"scope": "portfolio", "period": "month"}, SUNDAY)
+    assert (out["period"], out["date_from"], out["date_to"]) == ("custom", "2026-10-17", "2026-11-15")
+    assert documents.report_caption(out) == "Monthly report · 17 Oct – 15 Nov 2026"
+
+
 def test_guard_a_named_week_or_a_month_keeps_its_dates() -> None:
     last_week = {"period": "week", "date": "2026-11-04"}
-    month = {"period": "month"}
+    month = {"period": "month", "date": "2026-10-10"}
     custom = {"period": "custom", "date_from": "2026-11-01", "date_to": "2026-11-10"}
     for args in (last_week, month, custom):
         assert documents.rolling_week(args, SUNDAY) == args
@@ -128,7 +135,7 @@ async def test_guard_last_week_named_keeps_its_date_on_the_read() -> None:
 def test_the_sop_sends_a_weeks_progress_report_as_the_pdf() -> None:
     from agent_api.agent import SOP
 
-    assert "orazhchathe" in SOP and "the code sends the last 7 days ending today" in SOP
+    assert "orazhchathe" in SOP and "the code sends the last 7\n   (or 30) days ending today" in SOP
     assert "is rule 23: the PDF" in SOP
 
 
