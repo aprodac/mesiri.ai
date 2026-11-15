@@ -166,7 +166,7 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
       )}
 
       {(request.may_act || request.may_cancel) && !['done', 'rejected', 'cancelled'].includes(request.status) && (
-        <div className="mt-auto flex flex-wrap gap-2 border-t px-5 py-4">
+        <div className="mt-auto flex flex-wrap gap-2 border-t px-5 py-4" data-guide="req.act">
           {request.may_act && restToBuy && (
             <Button className="h-11 basis-full gap-2 font-semibold" onClick={() => setOrdering(true)}>
               <ShoppingCart className="size-4" /> Order the rest{buyWords}

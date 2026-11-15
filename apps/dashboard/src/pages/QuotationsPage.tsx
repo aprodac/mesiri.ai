@@ -169,7 +169,7 @@ export default function QuotationsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Quotations" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide="quotes.list">
+        <section aria-label="Quotations" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide={isLoading ? undefined : 'quotes.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Quotations did not load. Refresh to try again.</p>}
           {!isLoading && !isError && list.length === 0 && (

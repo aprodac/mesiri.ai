@@ -83,7 +83,7 @@ export function RateDetail({
         </div>
 
         {best && Number(item.above_best) > 0 && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2.5 dark:border-green-900 dark:bg-green-950/50">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2.5 dark:border-green-900 dark:bg-green-950/50" data-guide="rates.cheaper">
             <BadgePercent className="size-5 shrink-0 text-green-700 dark:text-green-400" />
             <p className="min-w-0 flex-1 text-sm">
               <span className="font-semibold">{best.name}</span> averaged <span className="font-semibold tabular-nums">{rate(best.avg_rate)}</span> / {item.unit}.
@@ -201,7 +201,7 @@ export function RateDetail({
       </p>
       {canOrder && (
         <div className="border-t p-4 sm:px-5">
-          <Button className="h-10 w-full gap-2 font-semibold" onClick={() => onOrder(item.last.vendor_name, item.last.rate, purchases?.[0])}>
+          <Button className="h-10 w-full gap-2 font-semibold" data-guide="rates.order" onClick={() => onOrder(item.last.vendor_name, item.last.rate, purchases?.[0])}>
             <PackageCheck className="size-4" /> Order again from {item.last.vendor_name} at {rate(item.last.rate)}
           </Button>
         </div>
