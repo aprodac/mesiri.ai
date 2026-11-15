@@ -3,6 +3,7 @@
 > **Status: approved 15 Nov 2026 in session; being built.** Order changed 15 Nov in session: the page tours (phase 2)
 > come first, since each tour is useful the day it ships; SS-41 (Learn page) and SS-42 (engine) were also built 15 Nov
 > in a parallel session (section 9). Done: **SS-41, SS-42, SS-43, SS-44 Planning, SS-45 Procurement and Cost control**.
+> **Rules for every later change: [LEARN_AND_TOURS.md](../engineering/LEARN_AND_TOURS.md).**
 > Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
 > [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
 >

@@ -169,6 +169,7 @@ Update the row's status as work progresses. A stale or missing row is worse than
 | Live's ripple: what one saved entry changed (WEB-82, WEB-86) | `backend/src/mesiri/domains/dpr/effects.py` (read-only; one table of rules, each figure from the owning module's own read) + `GET /dpr/effects/{kind}/{id}` in the dpr router; `apps/dashboard/src/components/live/ripple.tsx` | [live-value-plan.md](docs/plans/live-value-plan.md) | done (material came, material used, attendance, work done, issue, bill or expense, machine log); a question's ripple is WEB-87 |
 | Live's owner's board: six questions answered from the modules' own reads (WEB-83) | `backend/src/mesiri/domains/dpr/board.py` (read-only; one table of questions, each part a module's own route function and its sentence) + `GET /dpr/live/board` in the dpr router; `apps/dashboard/src/components/live/board.tsx` | [live-value-plan.md](docs/plans/live-value-plan.md) | done |
 | Live's demo deck: stories of ready messages for a presenter, demo companies only (WEB-84) | `backend/src/mesiri/domains/dpr/deck.py` (one table of stories) + `GET /dpr/live/deck` in the dpr router; `apps/dashboard/src/components/live/deck.tsx` (sends through Tell Mesiri's own call) | [live-value-plan.md](docs/plans/live-value-plan.md) | done |
+| Learn Mesiri: page tours, walkthroughs (workflows, outcomes, role paths) and the Learn page (SS-40..SS-50) | `apps/dashboard/src/lib/tours.ts`, `lib/walkthroughs.ts`, `components/tour.tsx`, `components/walkthrough.tsx`, `pages/LearnPage.tsx`; **rules for every change: [docs/engineering/LEARN_AND_TOURS.md](docs/engineering/LEARN_AND_TOURS.md)** | [learning-centre-plan.md](docs/plans/learning-centre-plan.md) | done (SS-45..SS-49 open) |
 
 ---
 
@@ -179,6 +180,7 @@ Some apps and packages have their own `AGENTS.md` with deeper architectural cons
 | Path | Document |
 |---|---|
 | `apps/whatsapp-assistant/` | [apps/whatsapp-assistant/AGENTS.md](apps/whatsapp-assistant/AGENTS.md) |
+| `apps/dashboard/` (tours, walkthroughs, Learn page) | [docs/engineering/LEARN_AND_TOURS.md](docs/engineering/LEARN_AND_TOURS.md), loaded by [apps/dashboard/CLAUDE.md](apps/dashboard/CLAUDE.md) |
 
 ---
 
