@@ -68,7 +68,7 @@ export default function GstPage() {
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="gst.stats"
             phoneCols={2}
             stats={[
               { label: 'Output GST (on RA bills)', value: rupees(d.output.gst), icon: ArrowUpRight },
@@ -116,7 +116,7 @@ export default function GstPage() {
               />
             </div>
           )}
-          <Segmented<View>
+          <Segmented<View> guide="gst.views"
             label="View"
             value={view}
             options={[
@@ -130,7 +130,7 @@ export default function GstPage() {
           {view === 'summary' && (
             <DprSection icon={ReceiptText} title="In the return's terms">
               <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
+                <table data-guide="gst.body" className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                       <th className="px-3 py-2 text-left font-medium">Table</th>
@@ -174,7 +174,7 @@ export default function GstPage() {
                 <p className="text-sm text-muted-foreground">No bill with GST in this period.</p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border">
-                  <table className="w-full text-sm">
+                  <table data-guide="gst.body" className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                         <th className="px-3 py-2 text-left font-medium">Bill</th>
@@ -213,7 +213,7 @@ export default function GstPage() {
               {d.sales.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No RA bill sent in this period.</p>
               ) : (
-                <ul className="divide-y rounded-lg border text-sm">
+                <ul data-guide="gst.body" className="divide-y rounded-lg border text-sm">
                   {d.sales.map((s) => (
                     <li key={s.id} className="flex flex-col gap-0.5 px-3 py-2 sm:flex-row sm:items-center sm:gap-4">
                       <span className="min-w-0 flex-1">
@@ -234,7 +234,7 @@ export default function GstPage() {
           )}
           {view === 'suppliers' && (
             <DprSection icon={ReceiptText} title="By supplier GSTIN (for matching with GSTR-2B)">
-              <ul className="divide-y rounded-lg border text-sm">
+              <ul data-guide="gst.body" className="divide-y rounded-lg border text-sm">
                 {d.by_supplier.map((s) => (
                   <li key={`${s.gstin}-${s.supplier}`} className="flex flex-col gap-0.5 px-3 py-2 sm:flex-row sm:items-center sm:gap-4">
                     <span className="min-w-0 flex-1">

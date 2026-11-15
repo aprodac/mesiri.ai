@@ -43,7 +43,7 @@ function ProjectHome({ d }: { d: Home }) {
   const p = d.position!
   return (
     <>
-      <StatStrip
+      <StatStrip guide="acc.stats"
         phoneCols={2}
         stats={[
           { label: 'Billed to the client', value: rupees(p.billed), icon: Receipt },
@@ -85,7 +85,7 @@ export default function AccountsHomePage() {
           {d.position ? (
             <ProjectHome d={d} />
           ) : (
-            <StatStrip
+            <StatStrip guide="acc.stats"
               phoneCols={2}
               stats={[
                 { label: 'Cash & bank today', value: rupees(d.cash_bank?.total ?? 0), icon: Wallet, tone: Number(d.cash_bank?.total) < 0 ? 'bad' : 'default' },
@@ -120,7 +120,7 @@ export default function AccountsHomePage() {
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <DprSection icon={TrendingUp} title={`Year ${d.financial_year}, month by month`} meta={<span className="tabular-nums">{rupees(d.year.net_profit)} {Number(d.year.net_profit) < 0 ? 'loss' : 'profit'} so far</span>}>
-              <div className="rounded-xl border px-4 py-3">
+              <div data-guide="acc.year" className="rounded-xl border px-4 py-3">
                 <YearChart months={d.months} />
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
@@ -167,7 +167,7 @@ export default function AccountsHomePage() {
               </DprSection>
             ) : (
               <DprSection icon={Wallet} title="Cash & bank today" meta={d.cash_bank?.accounts.length || undefined}>
-                <ul className="flex flex-col divide-y rounded-lg border text-sm">
+                <ul data-guide="acc.cash" className="flex flex-col divide-y rounded-lg border text-sm">
                   {(d.cash_bank?.accounts ?? []).map((a) => (
                     <li key={a.ledger_id}>
                       <Link to={`/accounts/ledgers/${a.ledger_id}`} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted/40">
@@ -177,7 +177,7 @@ export default function AccountsHomePage() {
                     </li>
                   ))}
                 </ul>
-                <div className="grid grid-cols-2 gap-2">
+                <div data-guide="acc.taxes" className="grid grid-cols-2 gap-2">
                   <Link to="/accounts/gst?range=this_month" className="rounded-lg border px-3 py-2 hover:bg-muted/40">
                     <p className="text-xs text-muted-foreground">GST payable this month</p>
                     <p className={cn('text-lg font-semibold tabular-nums', Number(d.gst_this_month?.payable) < 0 && 'text-success')}>
@@ -205,7 +205,7 @@ export default function AccountsHomePage() {
               {d.projects.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No project has income or cost in the books yet.</p>
               ) : (
-                <ul className="flex flex-col divide-y rounded-lg border text-sm">
+                <ul data-guide="acc.projects" className="flex flex-col divide-y rounded-lg border text-sm">
                   {d.projects.map((p) => (
                     <li key={p.project_id}>
                       <Link to={`/accounts/projects/${p.project_id}`} className="flex flex-col gap-1 px-3 py-2.5 hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4">

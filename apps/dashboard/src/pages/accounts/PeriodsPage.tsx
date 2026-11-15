@@ -61,7 +61,7 @@ export default function PeriodsPage() {
         <Skeleton className="h-72 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="periods.stats"
             stats={[
               { label: 'Closed months', value: String(closedCount), icon: Lock },
               { label: 'Last closed', value: lastClosed ? monthName(lastClosed) : 'None yet', icon: CalendarCheck2 },
@@ -79,7 +79,7 @@ export default function PeriodsPage() {
           </Callout>
           {[...years.entries()].map(([fy, list]) => (
             <DprSection key={fy} icon={CalendarCheck2} title={`Year ${fy}`} meta={`April to March`}>
-              <ul className="divide-y rounded-lg border">
+              <ul data-guide="periods.months" className="divide-y rounded-lg border">
                 {list.map((m) => (
                   <li key={m.id} className={cn('flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-4', m.is_current && 'bg-muted/30')}>
                     <div className="min-w-0 flex-1">
@@ -111,7 +111,7 @@ export default function PeriodsPage() {
                         <Link to={`/accounts/trial-balance?range=custom&from=${m.starts_on}&to=${m.ends_on}`}>Trial balance</Link>
                       </Button>
                       {m.status === 'open' ? (
-                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAsk({ month: m, action: 'close' })}>
+                        <Button data-guide="periods.close" size="sm" variant="outline" className="gap-1.5" onClick={() => setAsk({ month: m, action: 'close' })}>
                           <Lock className="size-3.5" /> Close
                         </Button>
                       ) : canReopen ? (

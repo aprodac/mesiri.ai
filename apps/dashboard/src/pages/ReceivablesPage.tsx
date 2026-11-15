@@ -65,7 +65,7 @@ export default function ReceivablesPage() {
         action={
           <div className="flex items-center gap-2">
             <BooksLink to="/accounts/ledgers?kind=client" label="Client ledgers" className="hidden sm:inline-flex" />
-            <Button size="sm" className="gap-1.5" onClick={() => setDialog({ open: true, bill: null })}>
+            <Button data-guide="recv.record" size="sm" className="gap-1.5" onClick={() => setDialog({ open: true, bill: null })}>
               <HandCoins className="size-4" /> Money received
             </Button>
           </div>
@@ -75,7 +75,7 @@ export default function ReceivablesPage() {
         <Skeleton className="h-48 rounded-lg" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="recv.stats"
             stats={[
               { label: 'Clients owe', value: formatRupees(d.outstanding), icon: Landmark, tone: Number(d.outstanding) > 0 ? 'warn' : 'good' },
               ...(Object.keys(BUCKET_LABEL) as Bucket[]).map((b) => ({
@@ -91,7 +91,7 @@ export default function ReceivablesPage() {
                 No RA bill sent yet
               </p>
             ) : (
-              <ul className="flex flex-col gap-3">
+              <ul data-guide="recv.clients" className="flex flex-col gap-3">
                 {d.clients.map((c) => (
                   <li key={c.client_id ?? c.client} className="rounded-lg border">
                     <div className="flex flex-col gap-1 border-b px-4 py-3 sm:flex-row sm:items-baseline sm:justify-between">
@@ -144,7 +144,7 @@ export default function ReceivablesPage() {
         ) : (receipts.data ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing recorded yet.</p>
         ) : (
-          <ul className="divide-y rounded-lg border text-sm">
+          <ul data-guide="recv.received" className="divide-y rounded-lg border text-sm">
             {receipts.data!.map((r) => (
               <li key={r.id} className={cn('flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-4', r.status === 'cancelled' && 'text-muted-foreground line-through')}>
                 <div className="min-w-0 flex-1">

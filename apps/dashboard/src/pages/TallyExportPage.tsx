@@ -68,7 +68,7 @@ export default function TallyExportPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/finance/expenses', label: 'Expenses' }} crumb="Accounts" title="Tally export" date="Expenses and payments for your CA" />
       <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-end">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Period">
+        <div data-guide="tally.period" className="flex flex-wrap gap-2" role="group" aria-label="Period">
           {presets.map((p) => {
             const on = p.value.date_from === period.date_from && p.value.date_to === period.date_to
             return (
@@ -94,7 +94,7 @@ export default function TallyExportPage() {
             <Input id="tally-to" type="date" value={period.date_to} min={period.date_from} onChange={(e) => e.target.value && setPeriod((p) => ({ ...p, date_to: e.target.value }))} />
           </div>
         </div>
-        <Button className="gap-1.5" onClick={download} disabled={busy || !s || !!empty}>
+        <Button data-guide="tally.download" className="gap-1.5" onClick={download} disabled={busy || !s || !!empty}>
           <FileCode2 className="size-4" /> {busy ? 'Preparing…' : 'Download for Tally'}
         </Button>
       </div>
@@ -105,7 +105,7 @@ export default function TallyExportPage() {
         <Skeleton className="h-24 rounded-lg" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="tally.stats"
             stats={books ? [
               // ACC-19: from the books, every voucher of its own type, so Tally holds what the trial balance holds.
               { label: 'Vouchers', value: String(s.vouchers ?? 0), hint: `${s.purchases ?? 0} purchase · ${s.payments} payment · ${s.receipts} receipt` },
@@ -127,7 +127,7 @@ export default function TallyExportPage() {
 
       {/* UX-13: how records become vouchers, as a map rather than paragraphs; the ? help has the detail. */}
       <DprSection icon={BookOpenCheck} title="Into Tally as">
-        <ul className="flex flex-wrap gap-2 text-sm">
+        <ul data-guide="tally.as" className="flex flex-wrap gap-2 text-sm">
           {[
             ['Expense', 'Journal'],
             ['Payment', 'Payment'],
