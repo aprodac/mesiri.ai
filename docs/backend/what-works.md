@@ -36,7 +36,17 @@ the journey does not need. Among those: the one whose own messages hold its Save
 another request may hold the tap), then the fewest refusals the model recovered from, the fewest messages, the
 fastest slowest reply, the newest. "One message, one thing" and "several things" count only what the first
 message put on the card. Nothing in the record says a message was rude: a best case can be a message nobody
-would pick by hand; pinning (phase 5, decision D3) is the way to override it.
+would pick by hand: pin another one.
+
+**Pinning** (SA-39 phase 5, decision D3): in the Playbook panel, ‹ › steps through the clean runs of the row
+(the shown example first) and **Pin as example** makes the one on screen the example; **Pinned · unpin** brings
+back the scored pick. A pinned row has a small pin mark. One pin per (capability, journey), kept by the request's
+first message in `what_works_pins` (migration 0552; all its SQL in
+`apps/whatsapp-assistant/src/backend/postgres/what_works_pins.py`). Routes, platform admins only:
+`PUT /admin/message-map/pins/{capability}/{journey}` `{message_id, note?}` and `DELETE` the same; each writes
+`what_works.pinned` / `what_works.unpinned` to `admin_audit_log` in the same transaction (if the audit entry
+cannot be written, the pin is not saved). A pin whose conversation is older than the window is reported and the
+scored pick shows. If the pins cannot be read, the page still opens (`pins_ok` false) without the pin buttons.
 
 **Patterns** (SA-39 phase 4) shows the connections between failures (`admin/intents_patterns.py`):
 

@@ -6,7 +6,7 @@
 // Read-only, from GET /admin/message-map/intents (platform admins only). The selection lives in the address.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Info, Pin, PinOff } from 'lucide-react';
 import { api } from './api';
 import { getErrorMessage } from './Toast';
 import { Chat } from './WhatWorksChat';
@@ -20,6 +20,8 @@ interface Journey {
   best: string | null;
   best_messages: number;
   best_reply_s: number | null;
+  pinned: { message_id: string; note: string | null; by: string | null; at: string | null; in_window: boolean } | null;
+  candidates: string[];
 }
 
 interface PlaybookCapability {
@@ -50,6 +52,7 @@ interface Intent {
 interface Answer {
   playbook: PlaybookModule[];
   intents: Intent[];
+  pins_ok: boolean;
 }
 
 const JOURNEY_NOTE: Record<string, string> = {
@@ -78,6 +81,8 @@ export default function WhatWorksPlaybook({ days, company, params, set, reload }
 }) {
   const [data, setData] = useState<Answer | null>(null);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [pinError, setPinError] = useState('');
 
   const load = useCallback(() => {
     setError('');
@@ -111,7 +116,26 @@ export default function WhatWorksPlaybook({ days, company, params, set, reload }
 
   const journeys = modules.reduce((n, m) => n + m.capabilities.reduce((k, c) => k + c.journeys.length, 0), 0);
   const missing = modules.reduce((n, m) => n + m.missing, 0);
-  const best = picked?.journey.best ? byId.get(picked.journey.best) : undefined;
+  // The runs to step through: the shown example first (pinned or scored), then the other clean runs.
+  const runs = picked ? [...new Set([picked.journey.best, ...picked.journey.candidates].filter((x): x is string => !!x))] : [];
+  const runId = runs.includes(params.get('run') || '') ? params.get('run')! : runs[0];
+  const best = runId ? byId.get(runId) : undefined;
+  const at = runs.indexOf(runId || '');
+  const pinnedHere = !!picked?.journey.pinned?.in_window && !!best && best.messages[0] === picked.journey.pinned.message_id;
+
+  const pinWrite = (pin: boolean) => {
+    if (!picked || !best) return;
+    const url = `/admin/message-map/pins/${encodeURIComponent(picked.cap.key)}/${encodeURIComponent(picked.journey.key)}`;
+    setBusy(true);
+    setPinError('');
+    (pin ? api.put(url, { message_id: best.messages[0] }) : api.delete(url))
+      .then(() => {
+        set({ run: '' });
+        load();
+      })
+      .catch((err) => setPinError(getErrorMessage(err, pin ? 'Could not pin it.' : 'Could not unpin it.')))
+      .finally(() => setBusy(false));
+  };
 
   return (
     <div className="ww-grid">
@@ -151,11 +175,12 @@ export default function WhatWorksPlaybook({ days, company, params, set, reload }
                           className={`ww-pb-row${on ? ' on' : ''}${j.best ? '' : ' none'}`}
                           aria-pressed={on}
                           title={JOURNEY_NOTE[j.key]}
-                          onClick={() => { set({ module: m.key, cap: c.key, journey: j.key }); showPanel(); }}
+                          onClick={() => { set({ module: m.key, cap: c.key, journey: j.key, run: '' }); showPanel(); }}
                         >
                           <span style={{ fontSize: 13, fontWeight: 550, color: 'var(--neutral-900)' }}>{j.label}</span>
                           <span style={{ fontSize: 12, color: j.best ? 'var(--neutral-600)' : 'var(--warning)', fontVariantNumeric: 'tabular-nums' }}>
                             {j.best ? `${share(j.same_end, j.count)} of ${j.count}` : 'No example yet'}
+                            {j.pinned?.in_window && <Pin size={11} style={{ marginLeft: 6, verticalAlign: -1 }} aria-label="pinned" />}
                           </span>
                         </button>
                       );
@@ -176,6 +201,30 @@ export default function WhatWorksPlaybook({ days, company, params, set, reload }
               <div style={{ ...muted, fontSize: 12, marginTop: 2 }}>
                 {picked.cap.name} · {picked.journey.same_end} of {picked.journey.count} end this way{best && ` · ${when(best.started_at)}`}
               </div>
+              {best && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {runs.length > 1 && (
+                    <>
+                      <button className="ww-copy" aria-label="Previous run" disabled={at <= 0} onClick={() => set({ run: runs[at - 1] })}><ChevronLeft size={13} /></button>
+                      <span style={{ ...muted, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{at + 1} / {runs.length}</span>
+                      <button className="ww-copy" aria-label="Next run" disabled={at >= runs.length - 1} onClick={() => set({ run: runs[at + 1] })}><ChevronRight size={13} /></button>
+                    </>
+                  )}
+                  {data.pins_ok && (pinnedHere ? (
+                    <button className="ww-copy" disabled={busy} onClick={() => pinWrite(false)} title={`Pinned by ${picked.journey.pinned?.by || 'an admin'}. Unpin to show the scored pick.`}>
+                      <PinOff size={12} /> Pinned · unpin
+                    </button>
+                  ) : (
+                    <button className="ww-copy" disabled={busy} onClick={() => pinWrite(true)} title="Show this one as the example of this row">
+                      <Pin size={12} /> Pin as example
+                    </button>
+                  ))}
+                  {picked.journey.pinned && !picked.journey.pinned.in_window && (
+                    <span style={{ ...muted, fontSize: 11.5 }} title="The pinned conversation is older than this window">pinned one not in window</span>
+                  )}
+                </div>
+              )}
+              {pinError && <div style={{ color: 'var(--error)', fontSize: 12, marginTop: 6 }}>{pinError}</div>}
             </div>
             {best ? (
               <Chat messageId={best.messages[0]} highlight={best.messages} />

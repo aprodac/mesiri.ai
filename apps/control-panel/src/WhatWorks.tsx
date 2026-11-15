@@ -30,7 +30,7 @@ const VIEWS = [
 type View = (typeof VIEWS)[number]['key'];
 
 // The address keys that belong to one view only: cleared when the view changes.
-const VIEW_KEYS = ['module', 'cap', 'problem', 'intent', 'journey', 'pattern', 'tab', 'message', 'q'];
+const VIEW_KEYS = ['module', 'cap', 'problem', 'intent', 'journey', 'run', 'pattern', 'tab', 'message', 'q'];
 
 export default function WhatWorks() {
   const [params, setParams] = useSearchParams();

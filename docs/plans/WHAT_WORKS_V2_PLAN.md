@@ -1,7 +1,7 @@
 # What works, version 2: plan (SA-39)
 
-> Written 15 Nov 2026 for the session that will build it. **Phases 1-4 are built (15 Nov)**: see sections
-> 12-15 and [what-works.md](../backend/what-works.md). Phase 5 (pinning) waits on D3. D1, D2 and D4 confirmed (15 Nov).
+> Written 15 Nov 2026 for the session that will build it. **All five phases are built (15 Nov)**: see sections
+> 12-16 and [what-works.md](../backend/what-works.md). D1-D4 all confirmed (15 Nov).
 > Version 1 (SA-38) is live: [what-works.md](../backend/what-works.md). Read that first, it is short.
 > Process: root `CLAUDE.md` governs (five phases, work on `main`, verify before every push, phase report).
 
@@ -309,3 +309,19 @@ sample; on production both windows are full.
 
 Checked with Playwright on the stand-in API (real route, production sample, names replaced), desktop and
 iPhone 13: no console error, no sideways scroll, the selection survives a reload. Not opened on the live panel.
+
+## 16. Phase 5 (15 Nov 2026)
+
+D3 confirmed (pinning now). Built: migration `0552_what_works_pins` (additive platform table, no company column,
+so no row-level security, like `announcements`), `backend/postgres/what_works_pins.py` (all its SQL; pin and
+unpin write `admin_audit_log` in the same transaction), two audit actions in
+`backend/src/mesiri/domains/audit/actions.py` (`what_works.pinned`, `what_works.unpinned`: one entry each in the
+existing list), the routes, `playbook(intents, pins)` (a pinned request in the window is the example; each row
+also returns its clean runs), and the panel's ‹ › / Pin / Unpin.
+
+**Verified on a real Postgres 16** (the container's own cluster, a throwaway database): the whole chain
+0001 -> 0552 upgrades with one head; 0552 downgrades (the table goes) and upgrades again; the store pins, replaces
+a pin (the audit entry carries the old message as `before`), lists, unpins, and reports nothing to unpin; when the
+audit write fails, the pin is not saved. End to end in the browser (Playwright, the real route and store on that
+database, the production sample, names replaced): step to the second run, Pin, the pin survives a reload, Unpin;
+both audit rows written. **Not verified:** the live panel and the deploy's migration run.
