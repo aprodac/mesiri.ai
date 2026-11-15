@@ -83,7 +83,7 @@ function ProjectPicker() {
   const projects = useQuery({ queryKey: ['scope-projects'], queryFn: fetchProjects })
   if (projects.isLoading) return <Skeleton className="h-32 rounded-lg" />
   return (
-    <ul className="divide-y rounded-lg border">
+    <ul className="divide-y rounded-lg border" data-guide="project.pick">
       {(projects.data ?? []).map((p) => (
         <li key={p.id}>
           <Link to={`/cost/materials?project=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
@@ -134,7 +134,7 @@ export default function CostMaterialsPage() {
       {q.isLoading || !d ? (
         <Skeleton className="h-64 rounded-lg" />
       ) : d.materials.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6">
+        <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6" data-guide="costmat.empty">
           <p className="font-medium">No BOQ line says what materials it uses yet.</p>
           <p className="text-sm text-muted-foreground">
             Set each line's materials per unit (cement bags per cum, sand cft per sq ft) on the BOQ, and this page sets what was used against
@@ -147,6 +147,7 @@ export default function CostMaterialsPage() {
       ) : (
         <>
           <StatStrip
+            guide="costmat.stats"
             stats={[
               { label: 'Used beyond the work', value: `${d.summary.red} red · ${d.summary.amber} amber`, tone: d.summary.red > 0 ? 'bad' : d.summary.amber > 0 ? 'warn' : 'good' },
               { label: 'Within the norm', value: String(d.summary.green), tone: 'good' },
@@ -164,7 +165,7 @@ export default function CostMaterialsPage() {
             </Callout>
           )}
           <DprSection icon={Package} title="Materials, worst first" meta={d.materials.length}>
-            <ul className="divide-y rounded-lg border">
+            <ul className="divide-y rounded-lg border" data-guide="costmat.list">
               {d.materials.map((m) => (
                 <Row key={m.material_id} m={m} />
               ))}

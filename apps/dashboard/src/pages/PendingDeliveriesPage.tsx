@@ -115,7 +115,7 @@ export default function PendingDeliveriesPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-4 gap-2 sm:gap-3" data-guide="pending.tiles">
         {tiles.map((t) => {
           const on = tile === t.value
           const count = filtered.filter((p) => p.bucket === t.value).length
@@ -133,7 +133,7 @@ export default function PendingDeliveriesPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Group by" className="flex gap-0.5 rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Group by" className="flex gap-0.5 rounded-xl bg-muted p-1" data-guide="pending.group">
           {([['date', 'By date'], ['supplier', 'By supplier']] as [GroupBy, string][]).map(([v, label]) => (
             <button key={v} role="tab" type="button" aria-selected={groupBy === v} onClick={() => setGroupBy(v)} className={cn('h-8 rounded-lg px-3 text-sm whitespace-nowrap', groupBy === v ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>{label}</button>
           ))}
@@ -148,13 +148,13 @@ export default function PendingDeliveriesPage() {
       {isLoading && <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-muted/40" />)}</div>}
       {isError && <p className="rounded-xl border p-6 text-sm text-destructive">Orders did not load. Refresh to try again.</p>}
       {!isLoading && !isError && shown.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-12 text-center text-sm text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-12 text-center text-sm text-muted-foreground" data-guide="pending.empty">
           <PackageCheck className="size-8 opacity-40" />
           {all.length === 0 ? 'Nothing waiting: every order came in full' : 'Nothing here with these filters.'}
         </div>
       )}
 
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5" data-guide="pending.list">
         {groups.map((g) => (
           <section key={g.key} aria-label={g.title} className="flex flex-col gap-2">
             {g.supplier ? (
@@ -203,7 +203,7 @@ function SupplierHeader({ order: o, items, company }: { order: PurchaseOrder; it
 
 function ChaseButtons({ phone, message, label }: { phone: string | null; message: string; label: string }) {
   return (
-    <span className="flex items-center gap-1.5">
+    <span className="flex items-center gap-1.5" data-guide="pending.chase">
       {phone && (
         <Button asChild size="icon" variant="outline" className="size-8" title={`Call ${phone}`}>
           <a href={`tel:${phone}`} aria-label={`Call ${phone}`}><Phone className="size-3.5" /></a>

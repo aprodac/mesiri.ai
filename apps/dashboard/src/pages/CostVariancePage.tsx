@@ -297,7 +297,7 @@ function ProjectPicker() {
   if ((projects.data ?? []).length === 0)
     return <p className="text-sm text-muted-foreground">No projects yet.</p>;
   return (
-    <ul className="divide-y rounded-lg border">
+    <ul className="divide-y rounded-lg border" data-guide="project.pick">
       {(projects.data ?? []).map((p) => (
         <li key={p.id}>
           <Link
@@ -433,6 +433,7 @@ export default function CostVariancePage() {
         className="flex flex-wrap items-center gap-2"
         role="group"
         aria-label="Period"
+        data-guide="gr.period"
       >
         {PERIODS.map((p) => (
           <button
@@ -463,6 +464,7 @@ export default function CostVariancePage() {
         <>
           {siteView || v.money_hidden ? (
             <StatStrip
+              guide="gr.stats"
               stats={[
                 {
                   label: 'Overall',
@@ -487,6 +489,7 @@ export default function CostVariancePage() {
             />
           ) : (
             <StatStrip
+              guide="gr.stats"
               stats={[
                 {
                   label: 'Overall',
@@ -554,6 +557,7 @@ export default function CostVariancePage() {
             )}
 
           {v.days.length > 1 && (
+            <div data-guide="gr.days">
             <DprSection
               icon={TrafficCone}
               title="Each day"
@@ -565,8 +569,10 @@ export default function CostVariancePage() {
                 picked={periodKey === 'day' ? dateFrom : null}
               />
             </DprSection>
+            </div>
           )}
 
+          <div data-guide="gr.lines">
           <DprSection
             icon={Ruler}
             title="BOQ lines, worst first"
@@ -606,6 +612,7 @@ export default function CostVariancePage() {
                 : "Green: the work measured earned at least the labour it cost. Amber: within 10%. Red: less, or labour with no work measured. Earned is the work done × the line's labour rate in the BOQ."}
             </p>
           </DprSection>
+          </div>
 
           {v.materials && (
             <Callout tone="muted" icon={Package}>

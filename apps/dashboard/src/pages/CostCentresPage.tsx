@@ -132,10 +132,10 @@ export default function CostCentresPage() {
         crumb="Cost control"
         title="Cost centres"
         date={scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'site' ? `${scope.projectName} · ${scope.siteName}` : scope.projectName}
-        action={<PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />}
+        action={<span data-guide="centres.period"><PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} /></span>}
       />
 
-      <section aria-label="Total" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+      <section aria-label="Total" className="flex flex-col gap-3 rounded-xl border bg-card p-4" data-guide="centres.total">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Spent in this period</p>
@@ -167,6 +167,7 @@ export default function CostCentresPage() {
         </Callout>
       )}
 
+      <div data-guide="centres.list">
       <DprSection icon={Gauge} title="Where the money went">
         {data.isLoading ? (
           <Skeleton className="h-48 rounded-lg" />
@@ -205,6 +206,9 @@ export default function CostCentresPage() {
         )}
       </DprSection>
 
+      </div>
+
+      <div data-guide="centres.categories">
       <DprSection icon={Tags} title="Expense categories and their cost centre" meta={unset.length ? `${unset.length} not set` : undefined}>
         <p className="mb-2 text-sm text-muted-foreground">
           Deliveries, attendance and machines go to their centre by themselves. An expense counts in the centre of its category; a subcontract
@@ -220,6 +224,7 @@ export default function CostCentresPage() {
           </ul>
         )}
       </DprSection>
+      </div>
     </div>
   )
 }

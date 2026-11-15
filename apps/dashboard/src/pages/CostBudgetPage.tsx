@@ -122,7 +122,7 @@ function ProjectPicker() {
   if (projects.isLoading) return <Skeleton className="h-32 rounded-lg" />
   if ((projects.data ?? []).length === 0) return <p className="text-sm text-muted-foreground">No projects yet.</p>
   return (
-    <ul className="divide-y rounded-lg border">
+    <ul className="divide-y rounded-lg border" data-guide="project.pick">
       {(projects.data ?? []).map((p) => (
         <li key={p.id}>
           <Link to={`/cost/budget?project=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
@@ -192,7 +192,7 @@ export default function CostBudgetPage() {
       {q.isLoading || !b ? (
         <Skeleton className="h-48 rounded-lg" />
       ) : lines.length === 0 ? (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6">
+        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6" data-guide="budget.empty">
           <p className="font-medium">This project has no BOQ yet.</p>
           <Link to={`/projects/${projectId}/boq`} className="text-sm font-medium underline underline-offset-2">
             Open the BOQ
@@ -212,7 +212,7 @@ export default function CostBudgetPage() {
               </Link>
             </Callout>
           )}
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-3" data-guide="budget.kinds">
             {b.kinds.map((k) => (
               <KindCard key={k.kind} k={k} />
             ))}
@@ -237,7 +237,7 @@ export default function CostBudgetPage() {
           )}
 
           <DprSection icon={Calculator} title="BOQ lines" meta={lines.length}>
-            <div className="overflow-x-auto rounded-lg border [contain:inline-size]">
+            <div className="overflow-x-auto rounded-lg border [contain:inline-size]" data-guide="budget.lines">
               <table className="w-full min-w-[980px] text-sm">
                 <thead className="bg-muted/50 text-xs text-muted-foreground">
                   <tr>
@@ -287,7 +287,7 @@ export default function CostBudgetPage() {
             </div>
           </DprSection>
 
-          <div id="labour-to-lines" className="scroll-mt-20">
+          <div id="labour-to-lines" className="scroll-mt-20" data-guide="budget.labour">
             <DprSection icon={HardHat} title="Labour to check" meta={labour.data?.groups.length || undefined}>
               {labour.isLoading ? (
                 <Skeleton className="h-24 rounded-lg" />

@@ -119,10 +119,10 @@ export default function QuotationsPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
         <ModuleTitle icon={Scale} title="Quotations" />
-        {office && !readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)}><Plus className="size-4" strokeWidth={2.6} /> Ask for quotes</Button>}
+        {office && !readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)} data-guide="quotes.add"><Plus className="size-4" strokeWidth={2.6} /> Ask for quotes</Button>}
       </header>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-guide="quotes.tiles">
         {tiles.map((t) => {
           const on = tile === t.value
           return (
@@ -145,7 +145,7 @@ export default function QuotationsPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="quotes.tabs">
           {TABS.map((t) => {
             const on = !tile && tab === t.value
             const n = filtered.filter((r) => inTab(r, t.value)).length
@@ -169,7 +169,7 @@ export default function QuotationsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Quotations" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]">
+        <section aria-label="Quotations" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide="quotes.list">
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Quotations did not load. Refresh to try again.</p>}
           {!isLoading && !isError && list.length === 0 && (
@@ -182,7 +182,7 @@ export default function QuotationsPage() {
           {list.map((r) => <RfqRow key={r.id} rfq={r} selected={current?.id === r.id} onPick={() => setSelected(r.id)} />)}
         </section>
         {!isMobile && current && (
-          <aside aria-label="RFQ detail" className="sticky top-4 w-full min-w-0 flex-[1.6] overflow-hidden rounded-xl border"><RfqDetail key={current.id} rfq={current} /></aside>
+          <aside aria-label="RFQ detail" data-guide="quotes.detail" className="sticky top-4 w-full min-w-0 flex-[1.6] overflow-hidden rounded-xl border"><RfqDetail key={current.id} rfq={current} /></aside>
         )}
       </div>
 
@@ -195,7 +195,7 @@ export default function QuotationsPage() {
         </Sheet>
       )}
       {office && !readOnly && (
-        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setCreating(true)}><Plus className="size-5" strokeWidth={2.6} /> Quotes</Button>
+        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setCreating(true)} data-guide="quotes.add"><Plus className="size-5" strokeWidth={2.6} /> Quotes</Button>
       )}
       <NewRfqDialog open={creating} onOpenChange={setCreating} scope={scope} onCreated={(r) => setSelected(r.id)} />
     </div>
