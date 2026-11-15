@@ -913,3 +913,13 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--neutral-900); 
   .announcements-grid { grid-template-columns: minmax(0, 1fr) !important; }
   .announcements-grid .card { grid-template-columns: minmax(0, 1fr) !important; }
 }
+
+/* SA-38: What works -- the list on the left, the WhatsApp conversation on the right (below it on a phone). */
+.ww-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: var(--space-5); align-items: start; }
+.ww-side { position: sticky; top: var(--space-4); min-width: 0; }
+.ww-chat { max-height: calc(100vh - 190px); min-height: 220px; }
+@media (max-width: 1024px) {
+  .ww-grid { grid-template-columns: minmax(0, 1fr); }
+  .ww-side { position: static; }
+  .ww-chat { max-height: 70vh; }
+}

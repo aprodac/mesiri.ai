@@ -213,6 +213,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Logs router not loaded: %s", exc)
 
+    # SA-38: what works, by kind of message (platform-admin only)
+    try:
+        from admin.message_map_router import router as message_map_router
+
+        app.include_router(message_map_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Message map router not loaded: %s", exc)
+
     # Durable ingress queue / worker health (platform-admin only)
     try:
         from admin.queue_router import router as queue_router
