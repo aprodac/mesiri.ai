@@ -17,6 +17,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.organizations.companies_overview import CompanyOverview, list_companies
@@ -41,6 +42,22 @@ def _reached(company: CompanyOverview) -> dict[str, bool]:
     }
 
 
+#: SS-35 (guided onboarding): how each trial's owner chose to start ("How would you like to start?",
+#: users.start_mode); None: not answered. The first admin of the company is its owner.
+START_MODE_LABELS = {
+    "guided": "Step by step",
+    "bring_data": "Bring my data",
+    "switching": "Used other software",
+    "free": "Find my own way",
+    None: "Not answered",
+}
+
+_OWNER_START_MODES = sa.text(
+    "SELECT DISTINCT ON (organization_id) organization_id, start_mode FROM users "
+    "WHERE organization_id = ANY(:ids) AND role = 'ADMIN' ORDER BY organization_id, created_at"
+)
+
+
 def _hours(start: dt.datetime | None, end: dt.datetime | None) -> float | None:
     if start is None or end is None:
         return None
@@ -48,10 +65,14 @@ def _hours(start: dt.datetime | None, end: dt.datetime | None) -> float | None:
 
 
 def build_funnel(
-    trials: list[CompanyOverview], costs: dict[Any, dict[str, Any]]
+    trials: list[CompanyOverview],
+    costs: dict[Any, dict[str, Any]],
+    start_modes: dict[Any, str | None] | None = None,
 ) -> dict[str, Any]:
-    """The funnel from trials already chosen and their costs. Pure, so it is
-    testable without a database."""
+    """The funnel from trials already chosen, their costs and (SS-35) each owner's
+    start mode. Pure, so it is testable without a database."""
+    start_modes = start_modes or {}
+    by_mode: dict[str | None, dict[str, int]] = {}
     counts = {key: 0 for key, _ in STEPS}
     rows = []
     total = Decimal("0")
@@ -60,6 +81,11 @@ def build_funnel(
         reached = _reached(company)
         for key, done in reached.items():
             counts[key] += int(done)
+        mode = start_modes.get(company.id)
+        mode = mode if mode in START_MODE_LABELS else None
+        mode_counts = by_mode.setdefault(mode, {key: 0 for key, _ in STEPS})
+        for key, done in reached.items():
+            mode_counts[key] += int(done)
         cost = costs.get(company.id) or {}
         cost_inr = Decimal(str(cost.get("total_cost_inr") or 0))
         total += cost_inr
@@ -79,6 +105,7 @@ def build_funnel(
                     company.trial_started_at, company.setup.first_update_at
                 ),
                 "reached": [key for key, _ in STEPS if reached[key]],
+                "start_mode": mode,
                 "ai_calls": int(cost.get("ai_calls") or 0),
                 "whatsapp_messages": int(cost.get("whatsapp_messages") or 0),
                 "cost_inr": str(cost_inr),
@@ -107,6 +134,22 @@ def build_funnel(
             "unpriced": unpriced,
         },
         "trials": rows,
+        # SS-35: the same steps for each answer to "How would you like to start?", most trials first.
+        "by_start_mode": [
+            {
+                "start_mode": mode,
+                "label": START_MODE_LABELS[mode],
+                "steps": [
+                    {
+                        "key": key,
+                        "count": mode_counts[key],
+                        "percent": round(100 * mode_counts[key] / mode_counts["started"]) if mode_counts["started"] else None,
+                    }
+                    for key, _ in STEPS
+                ],
+            }
+            for mode, mode_counts in sorted(by_mode.items(), key=lambda item: -item[1]["started"])
+        ],
     }
 
 
@@ -121,4 +164,8 @@ async def trials_funnel(
     ]
     trials.sort(key=lambda c: c.trial_started_at, reverse=True)
     costs = await PostgresUsageCostRepository(conn).trial_costs([c.id for c in trials])
-    return build_funnel(trials, costs)
+    start_modes: dict[Any, str | None] = {}
+    if trials:
+        result = await conn.execute(_OWNER_START_MODES, {"ids": [c.id for c in trials]})
+        start_modes = {row.organization_id: row.start_mode for row in result}
+    return build_funnel(trials, costs, start_modes)
