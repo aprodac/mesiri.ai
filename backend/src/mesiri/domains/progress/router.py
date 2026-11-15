@@ -541,11 +541,16 @@ async def create_issue(
         raise HTTPException(status_code=403, detail="Not authorized for target project or site")
 
     repo = PostgresProgressReadRepository(conn)
+    from mesiri.domains.schedule.store import place_issue
+
+    # BOQ-03: on the schedule activity it holds up, when its words make that clear (else on its site).
+    section = await place_issue(conn, auth_context.organization_id, payload.project_id, payload.site_id,
+                                payload.narrative)
     try:
         item = await repo.create_issue(
             organization_id=auth_context.organization_id,
             user_id=auth_context.user_id,
-            payload=payload.model_dump(),
+            payload={**payload.model_dump(), "work_package_id": section},
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

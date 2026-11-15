@@ -140,3 +140,34 @@ async def test_boq02_a_days_labour_follows_the_work_linked_that_day(conn):
     other_day = {**group, "work_date": day - dt.timedelta(days=1)}
     assert await _allocations(conn, PostgresBoqRepository(conn), org, project, day - dt.timedelta(days=1), day,
                               [other_day]) == []
+
+
+async def test_boq03_an_issue_is_placed_on_the_activity_it_holds_up_and_listed_there(conn):
+    from mesiri.domains.schedule import store
+
+    org, project, site, finishes = await _project(conn)
+    slab = uuid.uuid4()
+    await conn.execute(text("INSERT INTO work_packages (id, organization_id, project_id, name) "
+                            "VALUES (:id, :o, :p, 'First floor slab')"), {"id": slab, "o": org, "p": project})
+    await _line(conn, org, slab, "Shuttering for slab", await _unit(conn, "sqft"))
+    await _line(conn, org, finishes, "Internal plastering", await _unit(conn, "sqft"))
+
+    placed = await store.place_issue(conn, org, project, site, "Shuttering material not came, slab delayed")
+    assert placed == slab
+    assert await store.place_issue(conn, org, project, site, "rain, work stopped") is None
+
+    from mesiri.infrastructure.postgres.repositories.progress import PostgresProgressReadRepository
+
+    user = uuid.uuid4()
+    await conn.execute(text("INSERT INTO users (id, organization_id, full_name, role, status, hashed_password) "
+                            "VALUES (:id, :o, 'Ravi', 'SITE_SUPERVISOR', 'active', 'x')"), {"id": user, "o": org})
+    await PostgresProgressReadRepository(conn).create_issue(org, user, {
+        "project_id": project, "site_id": site, "issue_type": "MATERIAL_SHORTAGE", "severity": "HIGH",
+        "narrative": "Shuttering material not came, slab delayed", "work_package_id": placed})
+
+    sched = await store.load(conn, org, project, dt.date(2026, 11, 15))
+    by_name = {a["name"]: a for a in sched["activities"]}
+    assert by_name["First floor slab"]["open_issues"] == 1
+    assert by_name["First floor slab"]["issues"][0]["what"] == "Shuttering material not came, slab delayed"
+    assert by_name["Finishes"]["open_issues"] == 0
+    assert sched["summary"]["open_issues"] == 1 and sched["summary"]["issues_on_no_activity"] == 0

@@ -325,3 +325,38 @@ def conflicts(activities: Iterable[Mapping[str, Any]], links: Iterable[Mapping[s
         if s["start"] < allowed:
             out.append({"predecessor": p["id"], "successor": s["id"], "days": (allowed - s["start"]).days})
     return out
+
+
+# -- BOQ-03: the activity an issue holds up ---------------------------------------------------------------------------
+
+#: Words in every issue that say nothing about which work it holds up.
+_NOT_WORK = {"work", "site", "delay", "delayed", "stopped", "today", "not", "came", "come", "the", "and", "for", "due",
+             "because", "waiting", "issue", "problem", "late", "done", "start", "started", "material", "materials"}
+
+
+def _issue_words(value: str | None) -> set[str]:
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in (value or "").lower())
+    return {w.removesuffix("s") for w in cleaned.split() if len(w) > 2} - _NOT_WORK
+
+
+def activity_for_issue(narrative: str | None, site_id: Any, activities: Iterable[Mapping[str, Any]]) -> Any | None:
+    """The schedule activity an issue holds up, from its words: the one whose name or BOQ lines share the most words
+    with the issue ("shuttering not ready, slab can't be cast" -> Slab). Only activities on the issue's site or on no
+    site, not done ones; None when nothing shares a word or two tie (never a guess: it then counts on its site).
+
+    ``activities``: id, site_id, done, and ``words``: the activity's name and its lines' work, as one text.
+    """
+    said = _issue_words(narrative)
+    if not said:
+        return None
+    scored = []
+    for a in activities:
+        if a.get("done") or (a.get("site_id") is not None and a["site_id"] != site_id):
+            continue
+        shared = len(said & _issue_words(a.get("words")))
+        if shared:
+            scored.append((shared, a["id"]))
+    scored.sort(key=lambda s: s[0], reverse=True)
+    if not scored or (len(scored) > 1 and scored[0][0] == scored[1][0]):
+        return None
+    return scored[0][1]
