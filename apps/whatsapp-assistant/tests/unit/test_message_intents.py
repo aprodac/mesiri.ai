@@ -38,6 +38,7 @@ from admin.intents import (
     build_intents,
     capability_name,
 )
+from admin.intents_playbook import best_case, playbook
 from admin.intents_summary import fix_first, plain_reason, summarise
 from admin.message_map_router import router
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
@@ -340,6 +341,87 @@ def test_an_intent_carries_its_first_words_and_who_sent_them():
     assert (intent["text"], intent["sender_name"], intent["sender_role"]) == ("20 bag cement vannu", "Ravi", "SITE_ENGINEER")
 
 
+# ── how a request is linked (phase 3 additions) ─────────────────────────────
+
+
+def test_an_answer_to_a_question_asked_in_words_continues_the_request():
+    """Production: '10 bag cement arrived' -> a reply that ends in a question (no `asked` in the trace) -> 'ys'."""
+    intent = one((msg(1, "10 bag cement arrived", reply="Already saved at 9:50. Save it again?", minutes_ago=60),
+                  {"calls": [call("record_receipt", error="Already saved at 09:50: 10 bags Cement.")]}),
+                 (msg(2, "ys", minutes_ago=59), {"calls": [call("record_receipt", **READY)]}),
+                 (msg(3, "Save", kind="interactive", minutes_ago=58), saved("record_receipt")))
+    assert (intent["ending"], len(intent["messages"])) == (FINISHED_AFTER_QUESTION, 3)
+    assert ASKED_ANSWERED in intent["journeys"] and ONE_THING not in intent["journeys"]
+
+
+def test_a_question_in_words_beside_a_card_does_not_swallow_the_next_request():
+    steps = ((msg(1, minutes_ago=60, reply="Ready. Anything else?"), {"calls": [call("record_receipt", **READY)]}),
+             (msg(2, "how many workers?", minutes_ago=59), {"calls": [call("labour_attendance", status=200)]}))
+    assert [i["capability"] for i in intents_of(*steps)] == ["record_receipt", "labour_attendance"]
+
+
+def test_one_thing_means_the_first_message_put_it_on_the_card():
+    later = one((msg(1, "hi", reply="Hello", minutes_ago=60), {"calls": []}),
+                (msg(2, "Save", kind="interactive", minutes_ago=59), saved("record_receipt")))
+    assert ONE_THING not in later["journeys"]
+
+
+def test_a_card_change_sent_after_save_marks_the_saved_request_as_corrected_later():
+    """Production 7 Nov: Save, then 'alla, 6 mason aanu' that only tried change_ready_entry (refused)."""
+    intent = one((msg(1, "8 mason vannu", minutes_ago=60), {"calls": [call("record_attendance", **READY)]}),
+                 (msg(2, "Save", kind="interactive", minutes_ago=59), saved("record_attendance")),
+                 (msg(3, "alla, 6 mason aanu", minutes_ago=58),
+                  {"calls": [call("change_ready_entry", error="Nothing is waiting: that record is already saved.")]}))
+    assert intent["corrected_later"] is True
+    assert CHANGED_BEFORE_SAVE not in intent["journeys"]
+
+
+# ── the Playbook: the best real request per journey ─────────────────────────
+
+
+def _receipt(n: int, minutes_ago: int, *, extra: list[dict[str, Any]] | None = None, reply_s: float = 5.0):
+    ready = msg(n, minutes_ago=minutes_ago)
+    ready["processed_at"] = ready["received_at"] + timedelta(seconds=reply_s)
+    tap = msg(n + 1, "Save", kind="interactive", minutes_ago=minutes_ago - 1)
+    return [(ready, {"calls": [*(extra or []), call("record_receipt", **READY)]}), (tap, saved("record_receipt"))]
+
+
+def test_the_best_case_is_the_cleanest_real_request_and_the_rate_is_beside_it():
+    refused_first = [call("record_receipt", error="'TMT' is not in the company's material list.")]
+    steps = (*_receipt(1, 400, extra=refused_first), *_receipt(3, 300, reply_s=20.0), *_receipt(5, 200, reply_s=4.0),
+             (msg(7, minutes_ago=100), {"calls": [call("record_receipt", **READY)]}))  # never saved
+    intents = intents_of(*steps)
+    best = best_case(intents, ONE_THING)
+    assert best is not None and best["messages"][0] == msg(5)["id"]  # no refusal, the fastest reply
+    (module,) = playbook(intents)
+    (receipt,) = module["capabilities"]
+    one_thing = next(j for j in receipt["journeys"] if j["key"] == ONE_THING)
+    assert (one_thing["count"], one_thing["same_end"], one_thing["best"]) == (3, 3, best["id"])
+
+
+def test_a_journey_with_no_clean_request_says_so():
+    corrected = (*_receipt(1, 300), (msg(3, "alla, 30 aanu", minutes_ago=298),
+                                     {"calls": [call("correct_saved_entry", **READY)]}))
+    (module,) = [m for m in playbook(intents_of(*corrected)) if m["key"] == "materials"]
+    one_thing = next(j for j in module["capabilities"][0]["journeys"] if j["key"] == ONE_THING)
+    assert one_thing["best"] is None and module["missing"] >= 1
+
+
+def test_a_cancelled_best_case_holds_its_own_cancel():
+    shared = ((msg(1, "20 bag cement", minutes_ago=60), {"calls": [call("record_receipt", **READY)]}),
+              (msg(2, "10 bag sand", minutes_ago=59), {"calls": [call("record_receipt", **READY)]}),
+              (msg(3, "Cancel", kind="interactive", minutes_ago=58), {"calls": [], "cancelled": [{"tool": "x"}]}))
+    best = best_case(intents_of(*shared), "cancelled")
+    assert best is not None and msg(3)["id"] in best["messages"]
+
+
+def test_the_playbook_leaves_out_talk_failures_and_team_feedback():
+    tell = {"tool": "tell_the_team", "args": {"kind": "idea"}, "result": {"status": "Passed to the team."}}
+    steps = ((msg(1, "hi", minutes_ago=300), {"calls": []}), (msg(2, "idea", minutes_ago=200), {"calls": [tell]}),
+             (msg(3, status="failed", reply=None, error_code="AI_UNAVAILABLE", minutes_ago=100), None))
+    assert playbook(intents_of(*steps)) == []
+
+
 # ── the route ───────────────────────────────────────────────────────────────
 
 
@@ -405,4 +487,5 @@ async def test_the_intents_route_splits_this_window_from_the_one_before():
     assert intent["ending"] == FINISHED and intent["messages"] == [rows[0]["id"], rows[1]["id"]]
     assert intent["text"] == "20 bag cement vannu" and "sender" not in intent  # never the phone number
     assert body["fix_first"] == []
+    assert body["playbook"][0]["capabilities"][0]["journeys"][0]["best"] == intent["id"]
     assert logger.asked["since"] < now - timedelta(days=13) and logger.asked["limit"] == 10001

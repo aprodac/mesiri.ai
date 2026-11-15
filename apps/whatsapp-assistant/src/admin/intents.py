@@ -16,8 +16,8 @@ How a message is linked (first rule that fits):
    The card is shared: one Save ends every intent waiting on it (a save line is matched to the intent that
    prepared that tool; the rest of the waiting intents end with the Save as a whole).
 2. A button tap continues the latest intent with a card or a question waiting, else the latest intent.
-3. A message just after Mesiri asked a question continues that intent when it calls no tool, or calls a tool
-   the intent already called (the answer).
+3. A message just after Mesiri asked a question (the trace says so, or the reply ends in "?" with no card
+   waiting) continues that intent when it calls no tool, or calls a tool the intent already called (the answer).
 4. A message with no trace right after another with no trace continues it (sign-up, classic, taps the code
    answers: one intent, not ten).
 5. Anything else starts an intent.
@@ -169,7 +169,8 @@ def _new_intent(n: int, message: dict[str, Any], conversation: str) -> dict[str,
         "waiting": False, "question": False, "had_question": False, "changed": False, "memory": False,
         "saved": False, "save_failed": None, "cancelled": False, "complained": None, "failed": None,
         "answered": False, "corrected": False, "corrected_later": False, "first_outcome": None, "_first": None,
-        "_first_turn": {}, "_first_message": {},
+        "_first_turn": {}, "_first_message": {}, "refusals": 0, "slowest_reply_s": 0.0,
+        "first_ready_lines": 0, "own_close": False, "asked_in_words": False,
     }
 
 
@@ -177,6 +178,9 @@ def _apply(intent: dict[str, Any], message: dict[str, Any], turn: dict[str, Any]
            filed: dict[str, Any] | None, *, continues: bool) -> None:
     """One message's effect on the intent it belongs to."""
     intent["messages"].append(str(message["id"]))
+    if message.get("processed_at") and message.get("received_at"):
+        took = (message["processed_at"] - message["received_at"]).total_seconds()
+        intent["slowest_reply_s"] = max(intent["slowest_reply_s"], took)
     if filed is None:
         return
     outcome = filed["outcome"]
@@ -186,21 +190,31 @@ def _apply(intent: dict[str, Any], message: dict[str, Any], turn: dict[str, Any]
         intent["_first_turn"] = turn or {}
         intent["_first_message"] = message
     calls = _real_calls(turn) if turn else []
+    asked_before = intent["question"] or intent["asked_in_words"]
+    if continues and intent["asked_in_words"]:
+        intent["had_question"] = True  # the reply before asked in words, and this message answered it
     if continues and str(message.get("message_type")) != "interactive" and (
-            intent["question"] or (calls and all(c["tool"] in CARD_TOOLS for c in calls))):
+            asked_before or (calls and all(c["tool"] in CARD_TOOLS for c in calls))):
         intent["memory"] = True  # typed or spoken words that change the card or answer the question: they lean on it
     for c in calls:
         tool = c["tool"]
         if tool not in intent["tools"] and tool != FEEDBACK:
             intent["tools"].append(tool)
         verdict, said = _call_verdict(c)
+        if verdict == "refused":
+            intent["refusals"] += 1
         if tool in CARD_TOOLS:
-            intent["changed"] = True
+            if intent["waiting"]:
+                intent["changed"] = True
+            elif intent["saved"]:
+                intent["corrected_later"] = True  # a change sent after Save: the person tried to correct it
         elif _is_correction(tool) and verdict not in ("refused",):
             intent["corrected"] = True
         if verdict == "ready" and tool not in CARD_TOOLS:
             intent["waiting"] = True
             intent["ready_lines"] += 1
+            if not intent["messages"][1:]:
+                intent["first_ready_lines"] += 1  # put on the card by the message that started it
             if tool not in intent["ready_tools"]:
                 intent["ready_tools"].append(tool)
         elif verdict == "asked":
@@ -218,6 +232,9 @@ def _apply(intent: dict[str, Any], message: dict[str, Any], turn: dict[str, Any]
         intent["failed"] = filed["reason"] or OUTCOMES[outcome][1]
     elif intent["answered"] or intent["waiting"]:
         intent["failed"] = None  # recovered in a later step
+    # A reply that ends in a question with no card waiting: the next message may be its answer (rule 3).
+    intent["asked_in_words"] = (str(message.get("assistant_reply") or "").rstrip().endswith("?")
+                                and not intent["waiting"])
 
 
 def _close_with(intents: list[dict[str, Any]], turn: dict[str, Any]) -> None:
@@ -266,10 +283,11 @@ def _journeys(intent: dict[str, Any]) -> list[str]:
         out.append(CHANGED_BEFORE_SAVE)
     if intent["had_question"]:
         out.append(ASKED_ANSWERED)
-    if intent["ready_lines"] >= 2:
+    # "One message": what the message that started it put on the card, not lines added later.
+    if intent["first_ready_lines"] >= 2:
         out.append(SEVERAL_THINGS)
-    elif intent["ready_lines"] == 1 and intent["saved"] and not (intent["changed"] or intent["had_question"]
-                                                                  or intent["corrected"]):
+    elif (intent["first_ready_lines"] == 1 and intent["ready_lines"] == 1 and intent["saved"]
+          and not (intent["changed"] or intent["had_question"] or intent["corrected"])):
         out.append(ONE_THING)
     if intent["memory"]:
         out.append(MEMORY)
@@ -400,7 +418,7 @@ def build_intents(messages: list[dict[str, Any]], turns: dict[str, dict[str, Any
                     links["shared_card"] += 1
             elif tap:
                 target = next((i for i in reversed(mine) if i["waiting"] or i["question"]), latest)
-            elif latest is not None and latest["question"] and turn is not None:
+            elif latest is not None and (latest["question"] or latest["asked_in_words"]) and turn is not None:
                 calls = [c["tool"] for c in _real_calls(turn)]
                 if not calls or any(t in latest["tools"] for t in calls):
                     target = latest
@@ -417,6 +435,7 @@ def build_intents(messages: list[dict[str, Any]], turns: dict[str, dict[str, Any
                 links["continued"] += 1
                 _apply(target, m, turn, filed, continues=True)
             if turn is not None and _closes_card(turn):
+                target["own_close"] = True  # the Save or Cancel is one of its own messages
                 _close_with(mine, turn)
             if turn is not None and any(_is_correction(c["tool"]) for c in _real_calls(turn)):
                 earlier = [i for i in mine if i is not target and i["saved"]]
@@ -437,6 +456,9 @@ def build_intents(messages: list[dict[str, Any]], turns: dict[str, dict[str, Any
                 "tools": intent["tools"], "ending": ending, "reason": _reason(intent, ending),
                 "journeys": _journeys(intent), "reached_card": bool(intent["ready_tools"]),
                 "called_tool": bool(intent["tools"]), "corrected_later": intent["corrected_later"],
+                "had_question": intent["had_question"], "refusals": intent["refusals"],
+                "own_close": intent["own_close"],
+                "slowest_reply_s": round(intent["slowest_reply_s"], 1),
             })
     return {"intents": intents, "links": dict(links)}
 
