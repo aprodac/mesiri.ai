@@ -561,6 +561,27 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "⏳ {count} सेव होना बाकी है (ऊपर की सूची)। दर्ज करने के लिए *Save* दबाइए।",
         "hinglish": "⏳ {count} save hona baaki hai (upar ki list). Record karne ke liye *Save* dabaiye.",
     },
+    "api.boq_on": {
+        "english": "📐 On the BOQ: {lines}",
+        "manglish": "📐 BOQ-il cherthu: {lines}",
+        "malayalam": "📐 BOQ-യിൽ ചേർത്തു: {lines}",
+        "hindi": "📐 BOQ में जोड़ा: {lines}",
+        "hinglish": "📐 BOQ mein joda: {lines}",
+    },
+    "api.boq_which": {
+        "english": "📐 Which BOQ line is *{work}* on? Choose it below; if none fits, the office puts it on a line.",
+        "manglish": "📐 *{work}* ethu BOQ line-il aanu? Thaazhe ninnu thiranjedukkuka; onnum sheri allenkil office cherkkum.",
+        "malayalam": "📐 *{work}* ഏത് BOQ ലൈനിൽ ആണ്? താഴെ നിന്ന് തിരഞ്ഞെടുക്കുക; ഒന്നും ശരിയല്ലെങ്കിൽ ഓഫീസ് ചേർക്കും.",
+        "hindi": "📐 *{work}* किस BOQ लाइन पर है? नीचे से चुनिए; कोई सही न हो तो ऑफिस जोड़ देगा।",
+        "hinglish": "📐 *{work}* kis BOQ line par hai? Neeche se chuniye; koi sahi na ho to office jod dega.",
+    },
+    "api.boq_put": {
+        "english": "✅ Put on the BOQ line *{work}*.",
+        "manglish": "✅ BOQ line *{work}*-il cherthu.",
+        "malayalam": "✅ BOQ ലൈൻ *{work}*-ൽ ചേർത്തു.",
+        "hindi": "✅ BOQ लाइन *{work}* पर जोड़ा।",
+        "hinglish": "✅ BOQ line *{work}* par joda.",
+    },
     "api.extra_ask": {
         "english": "If it is extra, tap *Save* and it is recorded anyway; if not, tap *Cancel*.",
         "manglish": "Ithu extra aanenkil *Save* amarthuka, record aakum; allenkil *Cancel* amarthuka.",

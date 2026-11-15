@@ -132,3 +132,42 @@ def test_no_suggestion_across_units_or_on_a_tie_or_no_shared_word():
 def test_the_activitys_own_section_breaks_a_tie():
     lines = [_boq_line("gf", "Plastering", _SQFT, "ground"), _boq_line("ff", "Plastering", _SQFT, "first")]
     assert suggest_line("plastering", _SQFT, "first", lines) == "ff"
+
+
+# -- BOQ-01: the lines offered for one tap when no line is clear ------------------------------------------------------
+
+from mesiri.domains.progress.boq import line_choices  # noqa: E402
+
+
+def test_choices_on_a_tie_are_the_tied_lines_own_section_first():
+    lines = [
+        _boq_line("a", "Plastering ceiling", _SQFT, "s1"),
+        _boq_line("b", "Plastering walls", _SQFT, "s2"),
+        _boq_line("d", "Plastering beams", _SQFT, "s2"),
+        _boq_line("c", "M20 concrete", _CUM, "s2"),
+    ]
+    assert suggest_line("plastering", _SQFT, "s2", lines) is None  # b and d tie in the section: no guess
+    assert line_choices("plastering", _SQFT, "s2", lines) == ["b", "d", "a"]
+
+
+def test_choices_never_cross_units_and_most_words_come_first():
+    lines = [
+        _boq_line("w", "Plastering walls internal", _SQFT, "s1"),
+        _boq_line("c", "Plastering ceiling", _SQFT, "s1"),
+        _boq_line("x", "Plastering walls internal", _CUM, "s1"),
+    ]
+    assert line_choices("internal walls plastering", _SQFT, "s1", lines)[0] == "w"
+    assert "x" not in line_choices("internal walls plastering", _SQFT, "s1", lines)
+
+
+def test_no_shared_word_offers_a_short_boq_whole_but_never_a_long_list():
+    short = [_boq_line("a", "Brickwork", _SQFT, "s1"), _boq_line("b", "Tiling", _SQFT, "s1")]
+    assert sorted(line_choices("finishing", _SQFT, "s1", short)) == ["a", "b"]
+    long = [_boq_line(str(i), f"Item {i}", _SQFT, "s1") for i in range(5)]
+    assert line_choices("finishing", _SQFT, "s1", long) == []
+    assert line_choices("anything", _CUM, "s1", short) == []  # nothing in the unit: nothing offered
+
+
+def test_choices_stop_at_three():
+    lines = [_boq_line(str(i), f"Plastering {i}", _SQFT, "s1") for i in range(6)]
+    assert len(line_choices("plastering", _SQFT, "s1", lines)) == 3

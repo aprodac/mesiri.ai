@@ -43,6 +43,8 @@ export interface Activity {
   last_update: string | null
   updates: number
   open_issues: number
+  /** BOQ-03: the newest open issues holding this activity up (at most 3; `open_issues` counts them all). */
+  issues?: { id: string; what: string; severity: string; since: string | null }[]
   work_orders: { id: string; ref: string; vendor: string }[]
   lines: ScheduleLine[]
   sort_order: number

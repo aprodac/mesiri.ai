@@ -195,12 +195,51 @@ async def record_activity(
                                                               ExecutionStatus.ALREADY_EXECUTED):
         await _mark_finished(database, repo, auth_context, result.material_row_id, key, body)
     response = execution_response(result)
-    if place_label and response.status_code in (200, 201):
+    boq: list[dict] = []
+    if result.status == ExecutionStatus.SUCCEEDED and result.material_row_id and body.quantities:
+        # BOQ-01: the work goes on its BOQ line by itself when the line is clear; else the lines to tap from.
+        from mesiri.domains.progress.boq_router import place_new_work
+
+        boq = await place_new_work(conn, auth_context.organization_id, uuid.UUID(result.material_row_id))
+    if (place_label or boq) and response.status_code in (200, 201):
         payload = json.loads(response.body)
-        payload["place"] = place_label
-        payload["finished"] = body.finished
+        if place_label:
+            payload["place"] = place_label
+            payload["finished"] = body.finished
+        if boq:
+            payload["boq"] = boq
         return JSONResponse(status_code=response.status_code, content=payload)
     return response
+
+
+class WorkBoqLine(BaseModel):
+    line_id: uuid.UUID | None = Field(description="The BOQ line this work is on (from the save's `boq` choices); "
+                                                  "null takes it off")
+
+
+@router.put("/activities/{activity_id}/quantities/{quantity_id}/boq-line")
+async def put_own_work_on_line(
+    activity_id: uuid.UUID,
+    quantity_id: uuid.UUID,
+    body: WorkBoqLine,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """BOQ-01: the person who can correct this work puts it on a BOQ line (the WhatsApp tap on "Which BOQ line?").
+    The same check as the BOQ page (``set_work_line_checked``: this project, same unit, not on a work order);
+    the same reach as correcting the work (``_authorized_activity_or_404``). Returns the line's name, no rates."""
+    from mesiri.domains.progress.boq_router import set_work_line_checked
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+
+    item = await _authorized_activity_or_404(PostgresProgressReadRepository(conn), auth_context, activity_id)
+    repo = PostgresBoqRepository(conn)
+    if not any(str(w["id"]) == str(quantity_id) for w in await repo.activity_work(auth_context.organization_id,
+                                                                                    activity_id)):
+        raise HTTPException(status_code=404, detail="Work update not found")
+    line = await set_work_line_checked(repo, auth_context.organization_id, item["project_id"], quantity_id,
+                                       body.line_id)
+    return {"quantity_id": str(quantity_id), "line": {"id": str(line["id"]), "work": line["work_type"]} if line
+            else None}
 
 
 async def _place_for(conn: AsyncConnection, org: uuid.UUID,
@@ -502,11 +541,16 @@ async def create_issue(
         raise HTTPException(status_code=403, detail="Not authorized for target project or site")
 
     repo = PostgresProgressReadRepository(conn)
+    from mesiri.domains.schedule.store import place_issue
+
+    # BOQ-03: on the schedule activity it holds up, when its words make that clear (else on its site).
+    section = await place_issue(conn, auth_context.organization_id, payload.project_id, payload.site_id,
+                                payload.narrative)
     try:
         item = await repo.create_issue(
             organization_id=auth_context.organization_id,
             user_id=auth_context.user_id,
-            payload=payload.model_dump(),
+            payload={**payload.model_dump(), "work_package_id": section},
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

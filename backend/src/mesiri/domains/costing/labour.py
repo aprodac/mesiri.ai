@@ -107,3 +107,80 @@ def labour_by_line(
         else:
             left["cost"] += rest["cost"]
     return {"lines": lines, "not_on_a_line": left, "total": total}
+
+
+# -- BOQ-02: a day's labour put on the lines its site's work went to, when nobody split it -------------------------
+
+#: The work each trade does, as BOQ lines name it: a mason's day goes to the brickwork and plastering lines, not the
+#: steel. A trade not here (helpers, unskilled) is shared over every line the site worked on that day.
+TRADE_WORK: dict[str, tuple[str, ...]] = {
+    "mason": ("brick", "brickwork", "block", "blockwork", "masonry", "plaster", "plastering", "stone", "rubble",
+              "laterite", "concrete", "pcc", "rcc", "screed", "flooring", "tile", "tiling"),
+    "carpenter": ("shuttering", "formwork", "centering", "centring", "door", "doors", "window", "windows", "wood",
+                  "woodwork", "joinery", "frame", "frames"),
+    "bender": ("steel", "reinforcement", "rebar", "bar", "bars", "bending", "tmt"),
+    "steel": ("steel", "reinforcement", "rebar", "bar", "bars", "bending", "tmt"),
+    "fitter": ("steel", "reinforcement", "rebar", "bar", "bars", "fabrication"),
+    "electrician": ("electrical", "wiring", "conduit", "conduits", "earthing", "light", "lighting", "switch"),
+    "plumber": ("plumbing", "pipe", "pipes", "piping", "sanitary", "drainage", "water", "tank"),
+    "painter": ("painting", "paint", "putty", "primer", "emulsion", "texture", "polish"),
+    "tiler": ("tile", "tiles", "tiling", "flooring", "granite", "marble", "cladding"),
+    "welder": ("welding", "fabrication", "grill", "grills", "railing", "truss", "steel"),
+}
+
+
+def _words(value: str | None) -> set[str]:
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in (value or "").lower())
+    return {w for w in cleaned.split() if len(w) > 2}
+
+
+def _trade_words(trade_key: str | None) -> set[str]:
+    out: set[str] = set()
+    for word in _words((trade_key or "").replace("_", " ")):
+        out |= set(TRADE_WORK.get(word.removesuffix("s"), ()))
+    return out
+
+
+def auto_split(
+    groups: Iterable[Mapping[str, Any]],
+    allocations: Iterable[Mapping[str, Any]],
+    worked: Mapping[tuple, Mapping[Any, str]],
+) -> list[dict[str, Any]]:
+    """BOQ-02: the man-days of each site-day-trade nobody put on a line, put on the lines that site's work went to
+    that day (approved 15 Nov 2026: "split by work done"; D-CC2 had left them on no line).
+
+    ``worked``: per (site_id, work_date) as ``group_key`` writes them, the BOQ lines work was counted on that day
+    -> each line's name. One line: all of the day on it. Several: the lines the trade does (``TRADE_WORK``, and
+    the words attendance gave for the day), else every line, the man-days shared evenly. No work on a line that
+    day: nothing (the day stays "not on a BOQ line", never guessed). A group a person split is never touched.
+    Returns allocation rows like the stored ones (site_id, work_date, trade_key, planned_item_id, man_days) with
+    ``auto`` True; they are worked out each time, so a corrected attendance or work update moves them too.
+    """
+    split_by_hand = {group_key(a["site_id"], a["work_date"], a["trade_key"]) for a in allocations}
+    out: list[dict[str, Any]] = []
+    for g in groups:
+        key = group_key(g["site_id"], g["work_date"], g["trade_key"])
+        man_days = Decimal(g["man_days"])
+        lines = worked.get(key[:2]) or {}
+        if key in split_by_hand or man_days <= 0 or not lines:
+            continue
+        targets = list(lines)
+        if len(targets) > 1:
+            said = _trade_words(g.get("trade_key")) | _words(" ".join(g.get("activities") or []))
+            fits = [ln for ln, name in lines.items() if said & _words(name)]
+            targets = fits or targets
+        each = (man_days / len(targets)).quantize(_CENT, rounding=ROUND_HALF_UP)
+        for i, line_id in enumerate(targets):
+            md = man_days - each * (len(targets) - 1) if i == len(targets) - 1 else each
+            out.append({"site_id": g["site_id"], "work_date": g["work_date"], "trade_key": g["trade_key"],
+                        "planned_item_id": line_id, "man_days": md, "auto": True})
+    return out
+
+
+def worked_lines(work: Iterable[Mapping[str, Any]], names: Mapping[Any, str]) -> dict[tuple, dict[Any, str]]:
+    """Per (site, day), the BOQ lines work was counted on (``boq_router.counted_work`` rows), for ``auto_split``."""
+    out: dict[tuple, dict[Any, str]] = {}
+    for w in work:
+        if w["line_id"] in names:
+            out.setdefault(group_key(w["site_id"], w["work_date"], None)[:2], {})[w["line_id"]] = names[w["line_id"]]
+    return out

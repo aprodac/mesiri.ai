@@ -146,3 +146,26 @@ def suggest_line(
     if len(scored) > 1 and scored[0][:2] == scored[1][:2]:
         return None
     return scored[0][2]
+
+
+def line_choices(
+    work: str | None, unit_id: Any, section_id: Any, lines: Iterable[Mapping[str, Any]], *, limit: int = 3
+) -> list[Any]:
+    """The BOQ lines to offer when ``suggest_line`` can't pick one: the person taps the right one.
+
+    Same unit only (never another unit). Lines sharing words with the work come first, most words and the
+    activity's own section first; when no line shares a word, every line in the unit is offered if there are
+    no more than ``limit`` of them (a short BOQ). Empty when there is nothing sensible to offer: the work then
+    waits for the office on the BOQ page, never a long list on a phone.
+    """
+    said = _words(work)
+    same = [ln for ln in lines if ln["unit_id"] == unit_id]
+    scored = [(len(said & _words(ln["work_type"])), ln["work_package_id"] == section_id, i, ln["id"])
+              for i, ln in enumerate(same)]
+    sharing = [s for s in scored if s[0]]
+    if sharing:
+        sharing.sort(key=lambda s: (-s[0], not s[1], s[2]))
+        return [s[3] for s in sharing[:limit]]
+    if len(same) <= limit:
+        return [ln["id"] for ln in sorted(same, key=lambda ln: ln["work_package_id"] != section_id)]
+    return []
