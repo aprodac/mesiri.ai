@@ -116,31 +116,39 @@ Equipment, Settings: each = its pages' tours back to back (sidebar order).
 
 ### 5.4 Page tours: all hand-written (D-L2), in build order (Planning first, D-L4)
 
-Built (42): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
+Built (69, every built page): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
 sites, Team; **Planning (SS-44, 15 Nov)**: Project start, Schedule, Material plan, Live plans, Places, Drawing check,
 Documents; **Procurement and Cost control (SS-45, 15 Nov)**: Requests, Purchase orders, Goods received, Pending
 deliveries, Rates, Quotations, Suppliers, Returns; Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost
 centres; **Accounts (SS-46, 15 Nov)**: Accounts home, Profit & loss, Balance sheet, Cash & bank, Projects, Ledgers,
 Receivables, Day book, Tally export, GST, TDS, Trial balance, Chart of accounts, Months (their shared tab row, period
 bar and Excel button are marked once in `components/accounts/books.tsx`: `books.tabs`, `books.period`,
-`books.excel`). A page that shows a project list first marks it `project.pick` (was `planning.pick`); the Cost pages' three
+`books.excel`); **the rest (SS-47, 15 Nov)**: Weekly & monthly, Site log, Analytics; Tasks; Stock count, Stock value;
+Wages, Advances; Subcontractors, Work orders, Bills & checks; Expenses, Money, Finance settings; Clients, RA bills,
+Client view; Machines, Daily log, Hire check, Vehicles, Shuttering & tools; Settings, Company, WhatsApp, Bring your
+data, Activity log. A list that can be empty marks itself `<page>.list` or `<page>.empty` by its state (Tasks, Stock
+count, Stock value, Machines, Hire check), so the tour says "nothing yet" over an empty box, not "every item"; an
+`EmptyState` is wrapped in a marked `div` rather than giving the shared component a prop. Pages with `whatsappNone`
+(Tasks, Clients, Client view, the Settings pages) end without the `app.whatsapp` step: the top-bar WhatsApp button is
+not shown there. An element that sits off screen until something happens (the Daily log's Save bar on a phone) is
+marked only while it is on screen. A page that shows a project list first marks it `project.pick` (was `planning.pick`); the Cost pages' three
 own pickers carry it too (they are three copies of one list: worth merging into `ProjectPickList` some day).
 
-| Order | Module | Pages to write (61; 27 left) | Count |
+| Order | Module | Pages to write (61; all done) | Count |
 |---|---|---|---|
 | 1 | Planning | Project start, Schedule, Material plan, Live plans, Places, Drawing check, Documents | 7 (**done**) |
 | 2 | Procurement | Requests, Purchase orders, Goods received (GRN), Pending deliveries, Rates, Quotations, Suppliers, Returns | 8 (**done**) |
 | 3 | Cost control | Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost centres | 5 (**done**) |
 | 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 (**done**) |
-| 5 | Site | Weekly & monthly, Site log, Analytics | 3 |
-| 6 | Tasks | Tasks (all 4 views share one tour) | 1 |
-| 7 | Materials | Stock count, Stock value | 2 |
-| 8 | Labour | Wages, Advances | 2 |
-| 9 | Subcontract | Subcontractors, Work orders, Bills & checks | 3 |
-| 10 | Finance | Expenses, Money, Finance settings | 3 |
-| 11 | Client billing | Clients, RA bills, Client view | 3 |
-| 12 | Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 5 |
-| 13 | Settings | Settings, Company, WhatsApp, Bring your data, Activity log | 5 |
+| 5 | Site | Weekly & monthly, Site log, Analytics | 3 (**done**) |
+| 6 | Tasks | Tasks (all 4 views share one tour) | 1 (**done**) |
+| 7 | Materials | Stock count, Stock value | 2 (**done**) |
+| 8 | Labour | Wages, Advances | 2 (**done**) |
+| 9 | Subcontract | Subcontractors, Work orders, Bills & checks | 3 (**done**) |
+| 10 | Finance | Expenses, Money, Finance settings | 3 (**done**) |
+| 11 | Client billing | Clients, RA bills, Client view | 3 (**done**) |
+| 12 | Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 5 (**done**) |
+| 13 | Settings | Settings, Company, WhatsApp, Bring your data, Activity log | 5 (**done**) |
 
 SS-51 (15 Nov) added the open record's buttons to the Procurement tours (order, quotes, send, Material came, chase,
 cheaper elsewhere, compare, debit note); they show where the record opens beside the list, and are skipped on a phone.
