@@ -4,7 +4,7 @@ layer on top (BOQ with rates, norms, work and labour put on BOQ lines, cost cent
   python3 seed.py <database>      the local API must be on :8000 against <database>
 
 Writes ``admin.token`` and ``engineer.token`` beside this file (not committed). The site records are the Demo
-reset's own (apps/whatsapp-assistant/src/admin/demo.py ``seed``), so the video shows the story the demo company
+reset's own (``mesiri.application.organizations.sample_story.seed``, SS-65), so the video shows the story the demo company
 tells; the cost layer is added the way a project manager would on the dashboard.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 HERE = os.path.dirname(os.path.abspath(__file__))
 API = "http://localhost:8000"
 
-# BOQ per demo work type (the Demo reset's DEMO_WORK): unit, planned quantity, client, labour, material rate.
+# BOQ per demo work type (the shared sample story's DEMO_WORK): unit, planned quantity, client, labour, material rate.
 # Labour rates are set so the story has green, amber and red lines; real projects bring their own estimate.
 BOQ = {
     "Green Villa": {
@@ -87,7 +87,9 @@ class Client:
 
 
 async def main(database: str) -> None:
-    from admin import demo
+    from mesiri.application.organizations import (
+        sample_story as demo,  # SS-65: the shared sample story
+    )
     from mesiri.application.organizations.create_company import NewCompany, create_company
     from mesiri.bootstrap.settings import Settings
     from mesiri.domains.identity.auth_service import create_access_token

@@ -76,6 +76,8 @@ async def test_the_demo_comes_back_with_its_people_settings_and_fresh_records(wo
     assert result.seeded.get("project") == 1 and result.seeded.get("site") == 2 and result.seeded.get("member") == 2
     assert result.seeded.get("attendance") == 48 and result.seeded.get("work done") == 48 and result.seeded.get("expense") == 48
     assert result.seeded.get("site conditions") == 48 and result.seeded.get("worker") == 15 and result.seeded.get("vendor") == 7
+    # SS-65: a subcontractor for the guided demo's subcontract chapter.
+    assert result.seeded.get("subcontractor") == 1
     assert result.seeded.get("material received", 0) >= 40 and result.seeded.get("material used", 0) >= 150
     assert result.seeded.get("transfer") == 1 and result.seeded.get("issue") == 6 and result.seeded.get("issue resolved") == 3
     # WEB-85: what Live's stories need: minimums, orders, a supplier's bill, advances, wage sheets, an estimate with
