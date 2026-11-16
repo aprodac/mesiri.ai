@@ -32,6 +32,8 @@ export interface Tour {
   steps: TourStep[]
   /** The page's own `about` from module-map.ts goes first, as the Spark's hello. */
   introFromPage?: boolean
+  /** SS-64: what the narrator says for that hello, written for listening (the screen keeps the page's `about`). */
+  introSay?: string
   /**
    * Start by itself only once one of these markers is on screen: the page's real content, not a project picker or a
    * loading skeleton. Until then the tour waits (and is not marked seen). Replay from Help shows it whatever is there.
@@ -132,13 +134,14 @@ export const PAGE_TOURS: Record<string, Tour> = {
     key: '/tour/boq',
     version: 1,
     introFromPage: true,
+    introSay: 'This is the B O Q, your bill of quantities. Every piece of work in the project: how much of it, what the client pays for it, and what it should cost you.',
     startWhen: ['boq.empty', 'boq.lines'],
     steps: [
       { target: 'project.pick', title: 'Pick a project', text: 'This page works on one project at a time. Pick it here, or in the bar at the top.' },
-      { target: 'boq.empty', title: 'Start here', text: 'Upload the estimate Excel you already have; I read its items, units and quantities. Or start one section by hand.' },
-      { target: 'boq.import', title: 'From your Excel', text: 'Bring the BOQ in from the Excel you already have.' },
-      { target: 'boq.lines', title: 'Every line', text: 'Each work item with its quantity and rates. Work the site sends on WhatsApp counts on its line by itself, with the budget it earned.', mood: 'think' },
-      { target: 'boq.schedule', title: 'Its schedule', text: 'The same sections become the project schedule.', mood: 'happy' },
+      { target: 'boq.empty', title: 'Start here', text: 'Upload the estimate Excel you already have; I read its items, units and quantities. Or start one section by hand.', say: 'To start, upload the estimate you already have in Excel. Mesiri reads the items, units and quantities for you. Or, if you prefer, start a section by hand.' },
+      { target: 'boq.import', title: 'From your Excel', text: 'Bring the BOQ in from the Excel you already have.', say: 'Have more in Excel? Bring it in here. Nothing gets typed twice.' },
+      { target: 'boq.lines', title: 'Every line', text: 'Each work item with its quantity and rates. Work the site sends on WhatsApp counts on its line by itself, with the budget it earned.', mood: 'think', say: 'Every line is one piece of work, with its quantity and its rates. Here\'s the useful part: when the site reports work on WhatsApp, it counts against the right line by itself, and you see how much of the budget that work has earned.' },
+      { target: 'boq.schedule', title: 'Its schedule', text: 'The same sections become the project schedule.', mood: 'happy', say: 'And the same sections become your project schedule, so your plan and your costs always line up.' },
     ],
   },
   '/projects': {

@@ -57,7 +57,7 @@ function pageReady(tour: Tour): boolean {
 /** The tour's steps that can be shown now: the page's hello first, then each step whose element is on screen. */
 function resolve(tour: Tour, intro?: { title: string; about: string }): TourStep[] {
   const steps = tour.steps.filter((s) => !s.target || findTarget(s.target))
-  return tour.introFromPage && intro ? [{ title: intro.title, text: intro.about, mood: 'hello' }, ...steps] : steps
+  return tour.introFromPage && intro ? [{ title: intro.title, text: intro.about, mood: 'hello', say: tour.introSay }, ...steps] : steps
 }
 
 export function useRect(target: string | undefined, index: number): DOMRect | null {

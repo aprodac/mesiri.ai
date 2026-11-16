@@ -204,20 +204,20 @@ export const WORKFLOWS: Walkthrough[] = [
       {
         page: '/today',
         title: 'Your day, from one message',
-        text: 'At the end of the day the site engineer sends one WhatsApp message. Mesiri turns it into attendance, work done and issues, and they show here.',
+        text: 'At the end of the day the site engineer sends one WhatsApp message. Mesiri turns it into attendance, work done and issues, and they show here.', say: 'Here\'s how a day on site reaches you. Every evening, Ravi, your site engineer at Green Villa, sends Mesiri one WhatsApp message, just the way he\'d text you. Mesiri reads it and fills this page: who came, what got done, and anything that went wrong.',
         mood: 'hello',
       },
       {
         page: '/today',
         title: 'Try it: send the day',
-        text: 'Send this to Mesiri. A card comes back with the people, the work and the issue it found. This is practice: look at the card, then tap Cancel, so nothing is saved.',
+        text: 'Send this to Mesiri. A card comes back with the people, the work and the issue it found. This is practice: look at the card, then tap Cancel, so nothing is saved.', say: 'Let\'s try it. Send this message to Mesiri. In a moment a card comes back, showing what Mesiri understood: the workers, the work, and the problem. It\'s only practice, so look at the card, then tap Cancel.',
         mood: 'send',
         try: { kind: 'whatsapp', say: '6 masons, 4 helpers. First-floor slab shuttering done. Cement ran out.', tools: ['record_attendance', 'record_work', 'report_issue'], save: false },
       },
       {
         page: '/today',
         title: 'On a real day, tap Save',
-        text: "Then the site's day here shows it at once. A voice note or a photo of the work works the same way.",
+        text: "Then the site's day here shows it at once. A voice note or a photo of the work works the same way.", say: 'On a real day, Ravi taps Save, and it shows up here straight away. He doesn\'t even need to type. A voice note, or a photo of the work, does the same job.',
         mood: 'happy',
       },
     ],
@@ -231,11 +231,11 @@ export const WORKFLOWS: Walkthrough[] = [
     about: "Each site's day, everything it sent, and the report that goes out.",
     minutes: 2,
     steps: [
-      { page: '/today', target: 'today.sites', title: "Each site's day", text: 'Who came, what was done, what came in, and which sites have not reported yet.' },
-      { page: '/site-log', title: 'Everything the sites sent', text: 'The Site log keeps every update, photo and entry, by day and by site.', mood: 'look' },
-      { page: '/reports', target: 'reports.list', title: 'The daily report', text: 'Every evening each site gets its daily report (DPR), and it goes to the owner and the client.', say: 'The daily report. Every evening each site gets its daily report, the D P R, and it goes to the owner and the client.' },
-      { page: '/reports', target: 'reports.pdf', title: 'Exactly as they got it', text: 'Open the PDF the owner and the client received.', mood: 'look' },
-      { page: '/today', target: 'today.send', title: 'Or send it now', text: "When the day looks right, send it yourself. On WhatsApp: \"Send today's report\".", mood: 'send' },
+      { page: '/today', target: 'today.sites', title: "Each site's day", text: 'Who came, what was done, what came in, and which sites have not reported yet.', say: 'This is each site\'s day at a glance. Who turned up, what was done, what material came in. And if a site hasn\'t reported yet, you see that here, before you have to call anyone.' },
+      { page: '/site-log', title: 'Everything the sites sent', text: 'The Site log keeps every update, photo and entry, by day and by site.', mood: 'look', say: 'Nothing gets lost. The site log keeps every message, photo and entry, by day and by site, so you can always go back and check.' },
+      { page: '/reports', target: 'reports.list', title: 'The daily report', text: 'Every evening each site gets its daily report (DPR), and it goes to the owner and the client.', say: 'Every evening, each site\'s daily progress report is made for you, and sent to you and to your client. Nobody has to sit and type it up.' },
+      { page: '/reports', target: 'reports.pdf', title: 'Exactly as they got it', text: 'Open the PDF the owner and the client received.', mood: 'look', say: 'And this is the report exactly as your client received it. What they saw is what you see.' },
+      { page: '/today', target: 'today.send', title: 'Or send it now', text: "When the day looks right, send it yourself. On WhatsApp: \"Send today's report\".", mood: 'send', say: 'If the day looks right and you don\'t want to wait for the evening, send it now. Ravi can do it from WhatsApp too. He just says: send today\'s report.' },
     ],
   },
   // W2's first part: the site asks for material.
@@ -584,7 +584,7 @@ const tourPath = (page: ModulePage) => page.url.split('?')[0]
 function pageSteps(page: ModulePage): WalkStep[] {
   const tour = PAGE_TOURS[tourPath(page)]
   if (!tour) return []
-  const intro: WalkStep[] = tour.introFromPage ? [{ title: page.title, text: page.about, mood: 'hello' }] : []
+  const intro: WalkStep[] = tour.introFromPage ? [{ title: page.title, text: page.about, mood: 'hello', say: tour.introSay }] : []
   const steps: WalkStep[] = [...intro, ...tour.steps].map((s) => ({ ...s, page: page.url, optional: true }))
   // A page that shows a picker first (a project to choose): the first step waits for its content.
   if (tour.startWhen?.length && steps[0]) steps[0] = { ...steps[0], waitFor: tour.startWhen }

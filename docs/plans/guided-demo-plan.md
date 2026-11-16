@@ -1,6 +1,6 @@
 # A project from start to finish: the guided demo in a sample company
 
-> **Status: plan, waiting for Ilan's approval (16 Nov 2026).** Asked in session: "a walkthrough … very advanced … BOQ to
+> **Status: approved by Ilan 16 Nov 2026 in session ("Approve the plan"; D-GD1..D-GD6 at the recommended answers). Being built a part at a time: SS-64 started (narration for W1 and the BOQ page).** Asked in session: "a walkthrough … very advanced … BOQ to
 > data entry to closing a project … mock data gets entered automatically to show how it will be when data is there,
 > and then it removes the data by itself … when each data is entered, it focuses there, highlights there … very easy
 > to go through every workflow. The dialogues said by the voice … very mid."
