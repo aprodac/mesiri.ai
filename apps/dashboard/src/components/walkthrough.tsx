@@ -285,17 +285,12 @@ export function WalkthroughRunner() {
   const navigateRef = React.useRef(navigate)
   navigateRef.current = navigate
   // The project picked (on a picker step or in the top bar) goes with every page the walkthrough opens, or each
-  // project page would ask for it again (SS-52). Kept through a page whose address carries no ?project= (the BOQ's
-  // own address, /projects/<id>/boq). A ref: picking one must not start the step over.
+  // project page would ask for it again (SS-52). The top bar knows the project on a project's own pages too
+  // (/projects/<id>/boq, lib/ScopeContext.tsx). A ref: picking one must not start the step over.
   const { scope } = useScope()
   scopeNow.current = scope
   const scopeRef = React.useRef(scope)
   if (scope.mode !== 'portfolio') scopeRef.current = scope
-  else {
-    // A project's own page (/projects/<id>/boq) names it in the path, not in ?project=; the top bar doesn't pick it up.
-    const own = /^\/projects\/([^/]+)\/./.exec(pathname)?.[1]
-    if (own) scopeRef.current = { mode: 'project', projectId: own, projectName: '' }
-  }
   /** The page that last lit up a step's element, and since when: its later steps don't wait the full WAIT_MS. */
   const drawnPage = React.useRef<{ page: string; since: number } | null>(null)
   // Is the page still fetching its data? When nothing is, a missing element is really missing (SS-52).
