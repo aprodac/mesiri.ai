@@ -16,7 +16,7 @@ from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.approvals import inbox
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.projects.router import get_auth_context
-from mesiri.domains.shared.modules import read_enabled_modules
+from mesiri.domains.shared import modules as shared_modules
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -39,7 +39,8 @@ async def waiting(
     kinds = inbox.KINDS
     if kind:
         kinds = tuple(k for k in (w.strip() for w in kind.split(",")) if k in inbox.KINDS) or inbox.KINDS
-    stored = await read_enabled_modules(request, auth.organization_id)
+    # Looked up when called, not bound at import (INF-33): a test that swaps it for a while can't leave its copy here.
+    stored = await shared_modules.read_enabled_modules(request, auth.organization_id)
     result = await inbox.waiting(conn, auth, lambda m: org_settings.module_enabled(m, stored), kinds)
     result["items"] = result["items"][:limit]
     return result

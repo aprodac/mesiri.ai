@@ -42,7 +42,7 @@ def _app(test_engine: AsyncEngine, monkeypatch, modules: list[str] | None):
         async def enabled(request, organization_id):
             return modules
 
-        monkeypatch.setattr("mesiri.domains.approvals.router.read_enabled_modules", enabled)
+        monkeypatch.setattr("mesiri.domains.shared.modules.read_enabled_modules", enabled)
     app = create_app()
 
     async def override_get_db_conn():

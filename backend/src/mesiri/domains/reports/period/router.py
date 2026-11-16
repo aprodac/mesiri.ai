@@ -34,7 +34,7 @@ from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.reports.period import engine, periods
-from mesiri.domains.shared.modules import read_enabled_modules
+from mesiri.domains.shared import modules as shared_modules
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 
@@ -42,7 +42,8 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 async def _enabled(request: Request, auth: AuthorizationContext):
-    stored = await read_enabled_modules(request, auth.organization_id)
+    # Looked up when called, not bound at import (INF-33): a test that swaps it for a while can't leave its copy here.
+    stored = await shared_modules.read_enabled_modules(request, auth.organization_id)
     return lambda m: org_settings.module_enabled(m, stored)
 
 
