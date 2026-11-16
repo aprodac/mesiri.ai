@@ -220,7 +220,18 @@ normal modules (3 Nov). No change to Payroll or Workforce code.
 | SS-70 | Chapters 6–10 (material, labour, subcontract, money, billing) with narration | L |
 | SS-71 | Chapters 11–13 (cost, month end, handover and closing) with narration | M |
 
-SS-64 can start at once (no approval needed). SS-65 next. SS-66 waits for D-GD1.
+**Who is doing what: the tracker rows are the claims.** Before starting an item, set its row to `in-progress` with your
+session in Owner, pull, and push that one change first; if the row is already claimed, take another. Mark it `done` with
+the commit hash when pushed.
+
+**Can start now, in parallel (no dependency between them):**
+- **SS-64** narration and voice samples: claimed by session_014PnnwM (16 Nov).
+- **SS-65** shared sample story (move the SA-36 generator to the backend).
+- **SS-68** the `play` step in the engine (can be built and tested on the existing walkthroughs with `api` steps against
+  the current company in a test, before the sandbox exists).
+
+**Then:** SS-66 sandbox (after SS-65; D-GD1 approved 16 Nov) → SS-67 switch and banner → SS-72 participation (after
+SS-68) → SS-69, SS-70, SS-71 chapters (after SS-67, SS-68, SS-72; the three chapter items can then run in parallel).
 
 ## 15. Estimate (Claude Opus 5.5 usage, as the learning-centre plan counts it)
 
