@@ -9,8 +9,14 @@ import { api } from './api'
 // is off until asked for (browsers only play sound after a click anyway);
 // presenter mode turns it on, and Mute turns it off. If the voice is not set
 // up or fails, Live stays silent and says so once.
+//
+// The walkthroughs (SS-61) use the same hook with `voice: 'guide'`: the narrator's voice (a male Indian-English voice,
+// set on the server), longer lines (a step's title and text), MP3, a speed (1x to 2x, the pitch kept), pause and
+// resume, and the next step's audio fetched ahead so it starts at once.
 
-const MAX_CHARS = 280
+export type VoiceName = 'live' | 'guide'
+
+const MAX_CHARS: Record<VoiceName, number> = { live: 280, guide: 680 }
 
 export interface Voice {
   on: boolean
@@ -21,15 +27,62 @@ export interface Voice {
   hush: () => void
   /** The voice could not be reached (not set up, or down). */
   unavailable: boolean
+  /** Something is being said now. */
+  playing: boolean
+  /** Pause what is being said; `resume` goes on from there. */
+  pause: () => void
+  resume: () => void
+  /** How fast it speaks (1 = as recorded). */
+  rate: number
+  setRate: (rate: number) => void
+  /** Fetch `line`'s audio now, to say it later without waiting. */
+  prefetch: (line: string | null | undefined) => void
+  /** The words of the line loaded to play (what `resume` goes on with), as sent. */
+  said: string | null
 }
 
-export function useVoice(): Voice {
-  const [on, setOnState] = React.useState(false)
+/** The words as they are sent: a dot between items is a pause, never read out. */
+export function voiceWords(line: string | null | undefined, voice: VoiceName = 'live'): string {
+  return (line ?? '').replace(/\s*[·•|]\s*/g, ', ').replace(/\s+/g, ' ').trim().slice(0, MAX_CHARS[voice])
+}
+
+export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: number } = {}): Voice {
+  const name = options.voice ?? 'live'
+  const [on, setOnState] = React.useState(options.on ?? false)
   const [unavailable, setUnavailable] = React.useState(false)
-  const onRef = React.useRef(false)
+  const [playing, setPlaying] = React.useState(false)
+  const [rate, setRateState] = React.useState(options.rate ?? 1)
+  const [said, setSaid] = React.useState<string | null>(null)
+  const onRef = React.useRef(options.on ?? false)
+  const rateRef = React.useRef(options.rate ?? 1)
   const audio = React.useRef<HTMLAudioElement | null>(null)
-  const clips = React.useRef(new Map<string, string>())
+  const clips = React.useRef(new Map<string, Promise<string>>())
   const turn = React.useRef(0)
+
+  const player = React.useCallback(() => {
+    if (!audio.current) {
+      const a = new Audio()
+      a.addEventListener('play', () => setPlaying(true))
+      a.addEventListener('pause', () => setPlaying(false))
+      a.addEventListener('ended', () => setPlaying(false))
+      audio.current = a
+    }
+    return audio.current
+  }, [])
+
+  const clip = React.useCallback(
+    (words: string): Promise<string> => {
+      let url = clips.current.get(words)
+      if (!url) {
+        const params = name === 'live' ? { text: words } : { text: words, voice: name }
+        url = api.get<Blob>('/dpr/live/voice', { params, responseType: 'blob' }).then((res) => URL.createObjectURL(res.data))
+        url.catch(() => clips.current.delete(words)) // a failed fetch is tried again next time
+        clips.current.set(words, url)
+      }
+      return url
+    },
+    [name],
+  )
 
   const hush = React.useCallback(() => {
     turn.current++
@@ -45,38 +98,57 @@ export function useVoice(): Voice {
     [hush],
   )
 
-  const say = React.useCallback((line: string | null | undefined) => {
-    // "Cement 50 bags in · Malabar Traders": the dot is a pause, never read out.
-    const words = (line ?? '').replace(/\s*[·•|]\s*/g, ', ').replace(/\s+/g, ' ').trim().slice(0, MAX_CHARS)
-    if (!onRef.current || !words) return
-    const mine = ++turn.current
-    audio.current?.pause()
-    void (async () => {
-      try {
-        let url = clips.current.get(words)
-        if (!url) {
-          const res = await api.get<Blob>('/dpr/live/voice', { params: { text: words }, responseType: 'blob' })
-          url = URL.createObjectURL(res.data)
-          clips.current.set(words, url)
+  const setRate = React.useCallback((next: number) => {
+    rateRef.current = next
+    setRateState(next)
+    if (audio.current) audio.current.playbackRate = next
+  }, [])
+
+  const say = React.useCallback(
+    (line: string | null | undefined) => {
+      const words = voiceWords(line, name)
+      if (!onRef.current || !words) return
+      const mine = ++turn.current
+      audio.current?.pause()
+      void (async () => {
+        try {
+          const url = await clip(words)
+          if (mine !== turn.current || !onRef.current) return // a newer line, or muted meanwhile
+          const a = player()
+          a.src = url
+          setSaid(words)
+          a.playbackRate = rateRef.current // a new source resets the speed
+          await a.play()
+          setUnavailable(false)
+        } catch {
+          setUnavailable(true)
         }
-        if (mine !== turn.current || !onRef.current) return // a newer line, or muted meanwhile
-        audio.current ??= new Audio()
-        audio.current.src = url
-        await audio.current.play()
-        setUnavailable(false)
-      } catch {
-        setUnavailable(true)
-      }
-    })()
+      })()
+    },
+    [clip, name, player],
+  )
+
+  const prefetch = React.useCallback(
+    (line: string | null | undefined) => {
+      const words = voiceWords(line, name)
+      if (onRef.current && words) clip(words).catch(() => undefined)
+    },
+    [clip, name],
+  )
+
+  const pause = React.useCallback(() => audio.current?.pause(), [])
+  const resume = React.useCallback(() => {
+    const a = audio.current
+    if (a?.src && onRef.current) void a.play().catch(() => setUnavailable(true))
   }, [])
 
   React.useEffect(
     () => () => {
       audio.current?.pause()
-      for (const url of clips.current.values()) URL.revokeObjectURL(url)
+      for (const url of clips.current.values()) void url.then((u) => URL.revokeObjectURL(u)).catch(() => undefined)
     },
     [],
   )
 
-  return { on, setOn, say, hush, unavailable }
+  return { on, setOn, say, hush, unavailable, playing, pause, resume, rate, setRate, prefetch, said }
 }

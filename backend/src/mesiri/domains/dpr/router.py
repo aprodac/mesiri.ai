@@ -26,7 +26,7 @@ import logging
 import re
 import uuid
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -614,10 +614,12 @@ async def live_feed_stamp(
 
 #: WEB-63: Mesiri's voice on Live. A line is at most this long (a moment's line, never a whole reply).
 VOICE_MAX_CHARS = 300
+#: SS-61: a walkthrough step's words (its title and text) are at most this long.
+GUIDE_VOICE_MAX_CHARS = 700
 #: Lines already spoken, kept in this process: the same line ("Saved", the Meet Mesiri narration) costs nothing again.
 VOICE_CACHE_MAX = 300
-_voice_cache: OrderedDict[tuple[str, str], bytes] = OrderedDict()
-_voice: Any = None
+_voice_cache: OrderedDict[tuple[str, str, str], bytes] = OrderedDict()
+_voices: dict[str, Any] = {}
 _MALAYALAM = re.compile(r"[\u0D00-\u0D7F]")
 _DEVANAGARI = re.compile(r"[\u0900-\u097F]")
 
@@ -632,43 +634,54 @@ def voice_language(text: str) -> str:
     return "en-IN"
 
 
-def _voice_for(settings: Settings) -> Any:
-    global _voice
-    if _voice is None:
+def _voice_for(settings: Settings, who: str = "live") -> Any:
+    """Live's voice, or the walkthroughs' narrator (``guide``, SS-61): the same Sarvam model, another speaker."""
+    if who not in _voices:
         from mesiri_ai.adapters.sarvam.voice import SarvamVoice
 
-        _voice = SarvamVoice(settings.sarvam)
-    return _voice
+        speaker = settings.sarvam.guide_tts_speaker if who == "guide" else None
+        _voices[who] = SarvamVoice(settings.sarvam, speaker=speaker)
+    return _voices[who]
 
 
 @router.get("/live/voice")
 async def live_voice(
-    text: str = Query(min_length=1, max_length=VOICE_MAX_CHARS),
+    text: str = Query(min_length=1, max_length=GUIDE_VOICE_MAX_CHARS),
+    voice_name: Literal["live", "guide"] = Query("live", alias="voice"),
     _auth: AuthorizationContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
 ):
     """One of Live's lines, spoken (WEB-63): WAV audio from Sarvam, in the line's language. Signed-in people only; one
-    short line at a time; a line already spoken comes from the cache (here, and the browser's for a day)."""
+    short line at a time; a line already spoken comes from the cache (here, and the browser's for a day).
+
+    ``voice=guide`` (SS-61): a walkthrough step, read by the walkthroughs' narrator (``guide_tts_speaker``), as MP3; a
+    step's words may be longer (``GUIDE_VOICE_MAX_CHARS``). The words of every step are the same for every company,
+    so the cache serves them to everyone after the first."""
     words = " ".join(text.split())
     if not words:
         raise HTTPException(status_code=422, detail="Nothing to say")
-    key = (voice_language(words), words)
+    guide = voice_name == "guide"
+    voice_name = "guide" if guide else "live"
+    if not guide and len(words) > VOICE_MAX_CHARS:
+        raise HTTPException(status_code=422, detail=f"A line is at most {VOICE_MAX_CHARS} characters")
+    key = (voice_name, voice_language(words), words)
     audio = _voice_cache.get(key)
     if audio is None:
-        voice = _voice_for(settings)
+        voice = _voice_for(settings, voice_name)
         if not voice.configured:
             raise HTTPException(status_code=503, detail="Mesiri's voice is not set up (no Sarvam key)")
         try:
-            audio = await voice.speak(words, key[0])
+            audio = await voice.speak(words, key[1], codec="mp3" if guide else None)
         except Exception as exc:  # noqa: BLE001 -- Live stays silent, never breaks
-            logger.warning("live_voice.failed lang=%s chars=%s", key[0], len(words), exc_info=True)
+            logger.warning("live_voice.failed voice=%s lang=%s chars=%s", voice_name, key[1], len(words), exc_info=True)
             raise HTTPException(status_code=502, detail="Mesiri's voice is not available right now") from exc
         _voice_cache[key] = audio
         while len(_voice_cache) > VOICE_CACHE_MAX:
             _voice_cache.popitem(last=False)
     else:
         _voice_cache.move_to_end(key)
-    return Response(content=audio, media_type="audio/wav", headers={"Cache-Control": "private, max-age=86400"})
+    return Response(content=audio, media_type="audio/mpeg" if guide else "audio/wav",
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 class SiteDayConditionsRequest(BaseModel):

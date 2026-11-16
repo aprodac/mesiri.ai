@@ -121,6 +121,9 @@ class SarvamSettings(_Section):
     # 2026, INF-34); when it does again, set MESIRI_SARVAM__TTS_MODEL / __TTS_SPEAKER on the server, no deploy.
     tts_model: str = "bulbul:v3"
     tts_speaker: str = "priya"
+    # SS-61: the walkthroughs' narrator (Learn Mesiri), chosen by Ilan 16 Nov: Indian English, male. bulbul:v3's own
+    # default voice. MESIRI_SARVAM__GUIDE_TTS_SPEAKER changes it on the server, no deploy.
+    guide_tts_speaker: str = "shubh"
 
 
 class GeminiSettings(_Section):

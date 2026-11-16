@@ -233,7 +233,7 @@ export const WORKFLOWS: Walkthrough[] = [
     steps: [
       { page: '/today', target: 'today.sites', title: "Each site's day", text: 'Who came, what was done, what came in, and which sites have not reported yet.' },
       { page: '/site-log', title: 'Everything the sites sent', text: 'The Site log keeps every update, photo and entry, by day and by site.', mood: 'look' },
-      { page: '/reports', target: 'reports.list', title: 'The daily report', text: 'Every evening each site gets its daily report (DPR), and it goes to the owner and the client.' },
+      { page: '/reports', target: 'reports.list', title: 'The daily report', text: 'Every evening each site gets its daily report (DPR), and it goes to the owner and the client.', say: 'The daily report. Every evening each site gets its daily report, the D P R, and it goes to the owner and the client.' },
       { page: '/reports', target: 'reports.pdf', title: 'Exactly as they got it', text: 'Open the PDF the owner and the client received.', mood: 'look' },
       { page: '/today', target: 'today.send', title: 'Or send it now', text: "When the day looks right, send it yourself. On WhatsApp: \"Send today's report\".", mood: 'send' },
     ],
@@ -715,6 +715,16 @@ export const ROLE_PATHS: Walkthrough[] = [
 ]
 
 export const ALL_WALKS: Walkthrough[] = [...ROLE_PATHS, ...OUTCOME_WALKS, ...FULL_WORKFLOWS, ...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS]
+
+/** SS-61: the walkthroughs that speak each step (English first; decided 16 Nov: W1, W2, W4 and the owner's path).
+ *  Give one its voice by adding its id here; the build fails on an id that doesn't exist. */
+export const VOICED: ReadonlySet<string> = new Set(['site-to-report', 'material', 'labour-to-wages', 'path-owner'])
+
+/** What the narrator says for a step: its own spoken words, or its title and text. */
+export function spokenWords(step: TourStep): string {
+  const words = step.say ?? `${step.title.replace(/[.!?:]$/, '')}. ${step.text}`
+  return words.replace(/[“”"]/g, '').replace(/\s+/g, ' ').trim()
+}
 
 export function findWalkthrough(id: string): Walkthrough | undefined {
   return ALL_WALKS.find((w) => w.id === id)

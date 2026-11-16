@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowRight, Check, ChevronDown, Clock, Footprints, MessageSquareText, Play, RotateCcw } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Clock, Footprints, MessageSquareText, Play, RotateCcw, Volume2 } from 'lucide-react'
 import { Spark } from '@/components/live/spark'
 import { PageHeader, Section, Segmented } from '@/components/page/page-kit'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import { startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import {
-  FULL_WORKFLOWS, MODULE_WALKS, OUTCOME_WALKS, PAGE_WALKS, ROLE_PATHS, WORKFLOWS, learnKey, walkFor, type Walkthrough,
+  FULL_WORKFLOWS, MODULE_WALKS, OUTCOME_WALKS, PAGE_WALKS, ROLE_PATHS, VOICED, WORKFLOWS, learnKey, walkFor, type Walkthrough,
 } from '@/lib/walkthroughs'
 
 // Learn Mesiri (SS-41, learning-centre-plan.md section 3): one page to pick a walkthrough and run it, by role,
@@ -59,6 +59,7 @@ function WalkCard({ walk, done }: { walk: Walkthrough; done: boolean }) {
         <span className="inline-flex items-center gap-1"><Clock className="size-3.5" aria-hidden /> {walk.minutes} min</span>
         <span className="inline-flex items-center gap-1"><Footprints className="size-3.5" aria-hidden /> {walk.steps.length} steps</span>
         {practice && <span className="inline-flex items-center gap-1"><MessageSquareText className="size-3.5" aria-hidden /> You try it</span>}
+        {VOICED.has(walk.id) && <span className="inline-flex items-center gap-1"><Volume2 className="size-3.5" aria-hidden /> With voice</span>}
       </div>
       <Button size="sm" variant={done ? 'outline' : 'default'} className="mt-1 gap-1.5 self-start" onClick={() => startWalkthrough(walk.id)}>
         {done ? <RotateCcw className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />}

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Loader2, Send, Undo2, MessageSquarePlus } from 'lucide-react'
+import { Check, Copy, Loader2, Send, Undo2, MessageSquarePlus, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { Spark } from '@/components/live/spark'
 import { TourOverlay, findTarget, useRect } from '@/components/tour'
@@ -17,8 +17,9 @@ import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
 import {
-  OUTCOME_WALKS, canTakeBack, practiceSaved, findWalkthrough, learnKey, pageOpenFor, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
+  OUTCOME_WALKS, VOICED, canTakeBack, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
+import { useVoice, voiceWords, type Voice } from '@/lib/voice'
 import { waLink } from '@/lib/whatsapp-modal'
 
 // The walkthrough engine (SS-42, learning-centre-plan.md section 4): runs any walkthrough from lib/walkthroughs.ts,
@@ -377,6 +378,31 @@ export function WalkthroughRunner() {
     tryIt?.kind === 'whatsapp' && (tryIt.save === false || (!!run && !canTakeBack(run.walk, run.index, role)))
   const check = useCheck(cardOnly ? undefined : tryIt?.check, shown, tryIt?.kind === 'whatsapp', setNewRecord)
 
+  // A practice that saves, made card-only for this role (they could not take it back): its words said "tap Save", so
+  // they are replaced here; a step written card-only (`save: false`) keeps its own words.
+  const madeCardOnly = cardOnly && tryIt?.kind === 'whatsapp' && tryIt.save !== false
+  const shownStep = step && madeCardOnly
+    ? { ...step, say: undefined, text: 'Send this to Mesiri. A card comes back with what Mesiri understood: look at it, then tap Cancel. It is practice, so nothing is saved.' }
+    : step
+
+  // SS-61: the narrator reads each step of a walkthrough that has a voice; quiet while the person fills a real dialog.
+  const voiced = !!run && VOICED.has(run.walk.id)
+  const voice = useGuideVoice()
+  const words = shownStep ? spokenWords(shownStep) : ''
+  const { say: speak, hush, prefetch } = voice
+  React.useEffect(() => {
+    if (!voiced || !shown || dialogOpen) {
+      hush()
+      return
+    }
+    speak(words)
+    const following = run?.walk.steps[run.index + 1]
+    if (following) prefetch(spokenWords(following))
+  }, [voiced, shown, dialogOpen, words, run, speak, hush, prefetch])
+  React.useEffect(() => {
+    if (!run) hush()
+  }, [run, hush])
+
   // Send it here: while the Tell Mesiri panel is open on a WhatsApp practice, the tour steps aside to its corner Spark
   // and comes back when the panel closes; the save check keeps watching meanwhile.
   React.useEffect(() => {
@@ -482,16 +508,9 @@ export function WalkthroughRunner() {
   if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
   if (tryIt?.kind === 'here' && !note) nextLabel = 'Skip this'
 
-  // A practice that saves, made card-only for this role (they could not take it back): its words said "tap Save", so
-  // they are replaced here; a step written card-only (`save: false`) keeps its own words.
-  const madeCardOnly = cardOnly && tryIt?.kind === 'whatsapp' && tryIt.save !== false
-  const shownStep = madeCardOnly
-    ? { ...step, text: 'Send this to Mesiri. A card comes back with what Mesiri understood: look at it, then tap Cancel. It is practice, so nothing is saved.' }
-    : step
-
   return (
     <TourOverlay
-      step={shownStep}
+      step={shownStep ?? step}
       rect={rect}
       sparkKey={`${run.walk.id}-${run.index}${check.got ? '-got' : ''}`}
       counter={counter}
@@ -504,6 +523,7 @@ export function WalkthroughRunner() {
       passThrough={tryIt?.kind === 'here' || !pageShows}
       nextDisabled={!pageShows}
     >
+      {voiced && <VoicePlayer voice={voice} words={words} />}
       {!pageShows && (
         <p className="m-0 text-xs font-medium" role="status">
           {holding === 'pick' ? "Pick a project on this page first. I'll carry on when it opens." : 'Opening the page…'}
@@ -543,5 +563,96 @@ export function WalkthroughRunner() {
         </div>
       )}
     </TourOverlay>
+  )
+}
+
+
+// SS-61: the narrator's controls, remembered per browser (on or muted, and the speed).
+const VOICE_KEY = 'mesiri_guide_voice'
+const RATES = [1, 1.25, 1.5, 2] as const
+
+function readVoicePrefs(): { on: boolean; rate: number } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VOICE_KEY) ?? 'null') as { on?: boolean; rate?: number } | null
+    return { on: saved?.on !== false, rate: RATES.includes(saved?.rate as (typeof RATES)[number]) ? (saved?.rate as number) : 1 }
+  } catch {
+    return { on: true, rate: 1 }
+  }
+}
+
+function saveVoicePrefs(prefs: { on: boolean; rate: number }): void {
+  try {
+    localStorage.setItem(VOICE_KEY, JSON.stringify(prefs))
+  } catch {
+    // Private window or blocked storage: the choice lasts for this page only.
+  }
+}
+
+/** The guide voice, starting from the person's last choice (on by default, decided 16 Nov) and saving changes. */
+function useGuideVoice(): Voice {
+  const [prefs] = React.useState(readVoicePrefs)
+  const voice = useVoice({ voice: 'guide', on: prefs.on, rate: prefs.rate })
+  const { setOn: turn, setRate: speed, on, rate } = voice
+  const setOn = React.useCallback((next: boolean) => {
+    turn(next)
+    saveVoicePrefs({ on: next, rate })
+  }, [turn, rate])
+  const setRate = React.useCallback((next: number) => {
+    speed(next)
+    saveVoicePrefs({ on, rate: next })
+  }, [speed, on])
+  return React.useMemo(() => ({ ...voice, setOn, setRate }), [voice, setOn, setRate])
+}
+
+function VoicePlayer({ voice, words }: { voice: Voice; words: string }) {
+  const here = voice.said === voiceWords(words, 'guide')
+  const play = () => {
+    if (!voice.on) {
+      voice.setOn(true)
+      voice.say(words)
+    } else if (here) voice.resume()
+    else voice.say(words)
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" aria-label="Voice">
+      {voice.playing ? (
+        <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={voice.pause} aria-label="Pause the voice">
+          <Pause className="size-3.5" aria-hidden /> Pause
+        </Button>
+      ) : (
+        <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={play} aria-label={here ? 'Play the voice' : 'Read this step aloud'}>
+          <Play className="size-3.5" aria-hidden /> {here ? 'Play' : 'Listen'}
+        </Button>
+      )}
+      <div className="flex overflow-hidden rounded-md border" role="group" aria-label="Speed">
+        {RATES.map((r) => (
+          <button
+            key={r}
+            type="button"
+            aria-pressed={voice.rate === r}
+            onClick={() => voice.setRate(r)}
+            className={`px-1.5 py-0.5 text-[11px] tabular-nums ${voice.rate === r ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {r}x
+          </button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-7 px-1.5"
+        onClick={() => {
+          if (voice.on) voice.setOn(false)
+          else play() // turning it back on reads this step
+        }}
+        aria-pressed={!voice.on}
+        aria-label={voice.on ? 'Mute the voice' : 'Turn the voice on'}
+        title={voice.on ? 'Mute' : 'Voice on'}
+      >
+        {voice.on ? <Volume2 className="size-3.5" aria-hidden /> : <VolumeX className="size-3.5" aria-hidden />}
+      </Button>
+      {voice.unavailable && voice.on && <span className="text-[11px] text-muted-foreground">Voice not available right now</span>}
+    </div>
   )
 }
