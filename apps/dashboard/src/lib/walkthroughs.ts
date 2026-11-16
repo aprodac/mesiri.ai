@@ -58,6 +58,11 @@ export interface WalkStep extends TourStep {
   page?: string
   try?: TryWhatsApp | TryHere
   takeBack?: TakeBack
+  /** From a page tour: skipped when its element is not on screen (a button this role doesn't have). A hand-written
+   *  workflow step is shown in the middle instead, so the story still holds on a company with no data yet. */
+  optional?: boolean
+  /** Light up the record the last practice saved (its row's `data-record-id`), else `target`. */
+  showNew?: boolean
   /** Hold here until one of these markers shows (a page that first asks for a project): the page tour's
    *  `startWhen`. Clicks reach the page meanwhile. */
   waitFor?: string[]
@@ -93,7 +98,8 @@ const minutesFor = (steps: number) => Math.max(1, Math.round(steps * 0.4))
 
 const RECORDERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER'] as const
 
-const INFLOWS: WalkCheck = { path: '/materials/inflows', params: { limit: 25 } }
+// Newest first (by day, then saved time), so a delivery saved now is in the first page.
+const INFLOWS: WalkCheck = { path: '/materials/inflows', params: { limit: 100 } }
 /** Who may correct (take back) a stock movement: backend ADJUSTMENT_ROLES. */
 const ADJUSTERS = ['ADMIN', 'PROJECT_MANAGER'] as const
 
@@ -125,11 +131,13 @@ export const WORKFLOWS: Walkthrough[] = [
         title: 'Send it on WhatsApp',
         text: "Send this to Mesiri, like a site engineer would. A card comes back: tap Save. I'll watch for it here.",
         mood: 'send',
-        try: { kind: 'whatsapp', say: '10 bags cement came from Malabar', tools: ['record_receipt'], check: INFLOWS },
+        // No supplier named: a practice must not leave a new supplier behind after it is taken back.
+        try: { kind: 'whatsapp', say: '10 bags cement came', tools: ['record_receipt'], check: INFLOWS },
       },
       {
         page: '/materials?view=movements',
         target: 'materials.list',
+        showNew: true,
         title: 'There it is',
         text: 'The delivery is in Movements, and the stock went up by 10 bags. Your site never opened the dashboard.',
         mood: 'happy',
@@ -232,7 +240,14 @@ export const WORKFLOWS: Walkthrough[] = [
         title: 'Try it: ask for cement',
         text: "Send this. If you have more than one site, Mesiri asks which. A card comes back: tap Save. I'll watch for the request here.",
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'Need 50 bags cement by Friday', tools: ['ask_for_material'], check: { path: '/procurement/requests', params: { limit: 25 } } },
+        try: { kind: 'whatsapp', say: 'Need 50 bags cement by Friday', tools: ['ask_for_material'], check: { path: '/procurement/requests', params: { status: 'open' } } },
+      },
+      {
+        page: '/materials/requests',
+        showNew: true,
+        title: 'There it is',
+        text: 'The request is in the list, waiting for the office. The site can ask on WhatsApp how it is going: "my requests".',
+        mood: 'happy',
       },
       {
         page: '/materials/requests',
@@ -331,7 +346,7 @@ function pageSteps(page: ModulePage): WalkStep[] {
   const tour = PAGE_TOURS[tourPath(page)]
   if (!tour) return []
   const intro: WalkStep[] = tour.introFromPage ? [{ title: page.title, text: page.about, mood: 'hello' }] : []
-  const steps: WalkStep[] = [...intro, ...tour.steps].map((s) => ({ ...s, page: page.url }))
+  const steps: WalkStep[] = [...intro, ...tour.steps].map((s) => ({ ...s, page: page.url, optional: true }))
   // A page that shows a picker first (a project to choose): the first step waits for its content.
   if (tour.startWhen?.length && steps[0]) steps[0] = { ...steps[0], waitFor: tour.startWhen }
   return steps

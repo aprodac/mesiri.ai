@@ -67,8 +67,25 @@ function checkTourMarkers(): Plugin {
   }
 }
 
+// SCP-07: every built page of the module map has its row in lib/scope-levels.ts (how far it narrows to the project
+// or site picked). The page's console error only shows in the screenshot run, and four pages slipped past it, so
+// the build checks it too.
+function checkScopeLevels(): Plugin {
+  return {
+    name: 'mesiri-check-scope-levels',
+    buildStart() {
+      const map = fs.readFileSync(path.join(SRC, 'lib/module-map.ts'), 'utf8')
+      const levels = fs.readFileSync(path.join(SRC, 'lib/scope-levels.ts'), 'utf8')
+      const built = [...map.matchAll(/url: '([^']+)', status: 'built'/g)].map((m) => m[1].split('?')[0])
+      const rows = new Set([...levels.matchAll(/\['(\/[^']*)', '(?:site|project|company)'\]/g)].map((m) => m[1]))
+      const missing = [...new Set(built)].filter((u) => !rows.has(u))
+      if (missing.length) this.error(`Built pages with no row in src/lib/scope-levels.ts: ${missing.join(', ')}`)
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), checkTourMarkers()],
+  plugins: [react(), tailwindcss(), checkTourMarkers(), checkScopeLevels()],
   resolve: {
     alias: {
       '@': SRC,

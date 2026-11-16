@@ -143,11 +143,11 @@ export default function PurchaseOrdersPage() {
         <div className="flex items-center gap-3">
           {openValue > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">Still to come: <strong className="text-foreground tabular-nums">{rupees(openValue)}</strong></span>}
           <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportOrders(list)} title="The orders shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
-          {office && !readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)}><Plus className="size-4" strokeWidth={2.6} /> New order</Button>}
+          {office && !readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)} data-guide="po.add"><Plus className="size-4" strokeWidth={2.6} /> New order</Button>}
         </div>
       </header>
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-4 gap-2 sm:gap-3" data-guide="po.tiles">
         {tiles.map((t) => {
           const on = tile === t.value
           return (
@@ -163,7 +163,7 @@ export default function PurchaseOrdersPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="po.tabs">
           {TABS.map((t) => {
             const on = !tile && tab === t.value
             const n = filtered.filter((o) => inTab(o, t.value)).length
@@ -175,7 +175,7 @@ export default function PurchaseOrdersPage() {
             )
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="po.filters">
           {!siteId && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={options.sites} onChange={setSite} />}
           <FilterPill icon={Store} label="Supplier" allLabel="Every supplier" value={vendor} options={options.vendors} onChange={setVendor} />
           <FilterPill icon={LayoutGrid} label="Category" allLabel="All categories" value={category} options={options.categories} onChange={setCategory} />
@@ -189,7 +189,7 @@ export default function PurchaseOrdersPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Purchase orders" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border">
+        <section aria-label="Purchase orders" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide="po.list">
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Orders did not load. Refresh to try again.</p>}
           {!isLoading && !isError && list.length === 0 && (
@@ -214,7 +214,7 @@ export default function PurchaseOrdersPage() {
         </Sheet>
       )}
       {office && !readOnly && (
-        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setCreating(true)}><Plus className="size-5" strokeWidth={2.6} /> Order</Button>
+        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setCreating(true)} data-guide="po.add"><Plus className="size-5" strokeWidth={2.6} /> Order</Button>
       )}
       <NewOrderDialog open={creating} onOpenChange={setCreating} scope={scope} />
     </div>

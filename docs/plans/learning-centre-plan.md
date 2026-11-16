@@ -2,7 +2,8 @@
 
 > **Status: approved 15 Nov 2026 in session; being built.** Order changed 15 Nov in session: the page tours (phase 2)
 > come first, since each tour is useful the day it ships; SS-41 (Learn page) and SS-42 (engine) were also built 15 Nov
-> in a parallel session (section 9). Done: **SS-41, SS-42, SS-44 Planning**.
+> in a parallel session (section 9). Done: **SS-41, SS-42, SS-43, SS-44 Planning, SS-45 Procurement and Cost control**.
+> **Rules for every later change: [LEARN_AND_TOURS.md](../engineering/LEARN_AND_TOURS.md).**
 > Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
 > [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
 >
@@ -115,15 +116,18 @@ Equipment, Settings: each = its pages' tours back to back (sidebar order).
 
 ### 5.4 Page tours: all hand-written (D-L2), in build order (Planning first, D-L4)
 
-Built (15): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
+Built (28): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
 sites, Team; **Planning (SS-44, 15 Nov)**: Project start, Schedule, Material plan, Live plans, Places, Drawing check,
-Documents.
+Documents; **Procurement and Cost control (SS-45, 15 Nov)**: Requests, Purchase orders, Goods received, Pending
+deliveries, Rates, Quotations, Suppliers, Returns; Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost
+centres. A page that shows a project list first marks it `project.pick` (was `planning.pick`); the Cost pages' three
+own pickers carry it too (they are three copies of one list: worth merging into `ProjectPickList` some day).
 
-| Order | Module | Pages to write (61; 54 left) | Count |
+| Order | Module | Pages to write (61; 41 left) | Count |
 |---|---|---|---|
 | 1 | Planning | Project start, Schedule, Material plan, Live plans, Places, Drawing check, Documents | 7 (**done**) |
-| 2 | Procurement | Requests, Purchase orders, Goods received (GRN), Pending deliveries, Rates, Quotations, Suppliers, Returns | 8 |
-| 3 | Cost control | Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost centres | 5 |
+| 2 | Procurement | Requests, Purchase orders, Goods received (GRN), Pending deliveries, Rates, Quotations, Suppliers, Returns | 8 (**done**) |
+| 3 | Cost control | Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost centres | 5 (**done**) |
 | 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 |
 | 5 | Site | Weekly & monthly, Site log, Analytics | 3 |
 | 6 | Tasks | Tasks (all 4 views share one tour) | 1 |
@@ -220,8 +224,8 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
   check → it in Movements → take back on WhatsApp (`undo_receipt`, the receipts card label "Take back delivery";
   SOP.md has no fixed words, the model maps "take back") → Record delivery here → Correct to take it back → Record
   use. It is W2's second half; SS-43 writes W1, W2 in full and W4 and the first role paths.
-- **Not done here**: lighting up the new record itself on the page ("Got it" reloads the list but does not point at
-  the row); W1's take-back (a site update has no WhatsApp undo, and the Site log has no undo button: work entries
+- **Not done here** (the first two were filled in by SS-50): lighting up the new record itself on the page ("Got it"
+  reloads the list but does not point at the row); W1's take-back (a site update has no WhatsApp undo, and the Site log has no undo button: work entries
   can only be voided from the old Activities page, which now redirects; SS-43 must settle this before writing W1).
 
 ## 10. Built (SS-43, 15 Nov 2026): outcomes, W1 / W2 / W4, role paths
@@ -253,3 +257,17 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
   WhatsApp undo, so their practice is `save: false`: send the message, look at the card, tap **Cancel**. Nothing is
   saved, nothing to take back, and no new undo button was needed on the Site log (the W1 question in section 9).
   Requests take back with `cancel_material_request`; deliveries with `undo_receipt`.
+
+## 11. Gaps filled (SS-50, 15 Nov 2026)
+
+- **The saved record lights up**: list rows carry `data-record-id` (material movements, requests); "Got it" keeps the
+  new id and a step with `showNew` lights that row (`record:<id>`, falling back to the step's target with `a|b`).
+- **A workflow keeps its story on an empty company**: a hand-written step whose element never draws (no sites
+  reported yet, no reports) is told in the middle of the screen; only page-tour steps (`optional`) are skipped. Before,
+  W1 on a new company jumped from the Site log to the end.
+- **Done card**: when a walkthrough ends, the Spark says "Done: ..." and offers the role's next outcome not done yet
+  (Start), or the way back to Learn Mesiri.
+- **Practice leaves nothing behind**: the delivery practice names no supplier ("10 bags cement came"), so taking it
+  back can't leave a new supplier; the requests check reads open requests (the route has no paging); deliveries are
+  read 100 deep, newest first.
+- **Requests**: a "There it is" step lights the new request before it is taken back.

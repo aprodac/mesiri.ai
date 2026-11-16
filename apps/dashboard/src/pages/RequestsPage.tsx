@@ -185,7 +185,7 @@ export default function RequestsPage() {
           <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
         </Button>
         {canAsk && (
-          <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)}>
+          <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)} data-guide="req.add">
             <Plus className="size-4" strokeWidth={2.6} /> New request
             <kbd className="rounded bg-primary-foreground/20 px-1.5 text-[11px]">N</kbd>
           </Button>
@@ -193,7 +193,7 @@ export default function RequestsPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-4 gap-2 sm:gap-3 lg:grid-cols-4" data-guide="req.tiles">
         {tiles.map((t) => {
           const on = tile === t.value
           return (
@@ -220,7 +220,7 @@ export default function RequestsPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="req.tabs">
           {TABS.map((t) => {
             const on = !tile && tab === t.value
             const n = all.filter((r) => passFilters(r) && inTab(r, t.value)).length
@@ -240,7 +240,7 @@ export default function RequestsPage() {
             )
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="req.filters">
           {!siteId && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={options.sites} onChange={setSite} />}
           <FilterPill icon={User} label="Asked by" allLabel="Anyone" value={by} options={options.people} onChange={setBy} />
           <FilterPill icon={LayoutGrid} label="Category" allLabel="All categories" value={category} options={options.categories} onChange={setCategory} />
@@ -255,7 +255,7 @@ export default function RequestsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Requests" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border">
+        <section aria-label="Requests" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide="req.list">
           {isLoading && <div className="flex flex-col">{[0, 1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Requests did not load. Refresh to try again.</p>}
           {!isLoading && !isError && list.length === 0 && (
@@ -286,7 +286,7 @@ export default function RequestsPage() {
       )}
 
       {canAsk && (
-        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setCreating(true)}>
+        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setCreating(true)} data-guide="req.add">
           <Plus className="size-5" strokeWidth={2.6} /> Request
         </Button>
       )}
@@ -303,6 +303,7 @@ function RequestRow({ request: r, selected, onPick }: { request: MaterialRequest
     <button
       type="button"
       onClick={onPick}
+      data-record-id={r.id}
       aria-current={selected || undefined}
       className={cn('flex w-full gap-3 border-b px-3 py-3 text-left transition hover:bg-muted/40 sm:px-4', selected && 'bg-yellow-50 shadow-[inset_0_0_0_2px_theme(colors.yellow.300)] dark:bg-yellow-950/40')}
     >

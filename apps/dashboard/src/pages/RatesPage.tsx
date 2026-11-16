@@ -165,7 +165,7 @@ export default function RatesPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-guide="rates.tiles">
         {tiles.map((t) => {
           const on = tile === t.value
           const clickable = t.value !== 'spend'
@@ -189,14 +189,14 @@ export default function RatesPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Sort" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Sort" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="rates.sort">
           {SORTS.map((s) => (
             <button key={s.value} role="tab" type="button" aria-selected={sort === s.value} onClick={() => setSort(s.value)} className={cn('inline-flex h-8 shrink-0 items-center rounded-lg px-3 text-sm whitespace-nowrap', sort === s.value ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>
               {s.label}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="rates.filters">
           {!siteId && options.sites.length > 1 && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={options.sites} onChange={setSite} />}
           <FilterPill icon={Store} label="Supplier" allLabel="Every supplier" value={vendor} options={options.vendors} onChange={setVendor} />
           <FilterPill icon={LayoutGrid} label="Category" allLabel="All categories" value={category} options={options.categories} onChange={setCategory} />
@@ -217,7 +217,7 @@ export default function RatesPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Items and their rates" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border">
+        <section aria-label="Items and their rates" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide="rates.list">
           {isLoading && <div className="flex flex-col">{[0, 1, 2, 3].map((i) => <div key={i} className="h-[72px] animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && !forbidden && (
             <div className="flex flex-col items-center gap-3 p-6 text-center text-sm">

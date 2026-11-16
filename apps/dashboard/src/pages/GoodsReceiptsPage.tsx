@@ -66,7 +66,7 @@ export default function GoodsReceiptsPage() {
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex h-9 items-center gap-2 rounded-md border px-2.5">
+        <label className="flex h-9 items-center gap-2 rounded-md border px-2.5" data-guide="grn.search">
           <Search className="size-4 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="GRN, PO, supplier, challan, item" className="w-48 bg-transparent text-sm outline-none sm:w-64" />
         </label>
@@ -78,12 +78,12 @@ export default function GoodsReceiptsPage() {
       ) : isError ? (
         <p className="text-sm text-destructive">Goods received could not be loaded.</p>
       ) : list.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border p-10 text-center text-sm text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 rounded-xl border p-10 text-center text-sm text-muted-foreground" data-guide="grn.list">
           <ClipboardCheck className="size-6" />
           {all.length === 0 ? 'Nothing received yet' : 'No goods received match this search.'}
         </div>
       ) : (
-        <ul className="flex flex-col divide-y rounded-xl border">
+        <ul className="flex flex-col divide-y rounded-xl border" data-guide="grn.list">
           {list.map((g) => {
             const rejected = g.lines.some((l) => Number(l.rejected) > 0)
             return (
@@ -114,7 +114,7 @@ export default function GoodsReceiptsPage() {
                   </div>
                 </div>
                 {rejected && mayReturn(me?.role) && (
-                  <Button size="sm" variant="outline" className="shrink-0 gap-1.5 self-start" onClick={() => setReturning(g.id)}>
+                  <Button size="sm" variant="outline" className="shrink-0 gap-1.5 self-start" onClick={() => setReturning(g.id)} data-guide="grn.return">
                     <PackageX className="size-3.5" /> Return rejected
                   </Button>
                 )}

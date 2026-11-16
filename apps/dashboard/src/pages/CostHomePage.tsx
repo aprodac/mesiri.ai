@@ -117,7 +117,7 @@ export default function CostHomePage() {
       {q.isLoading ? (
         <Skeleton className="h-64 rounded-lg" />
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6">
+        <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6" data-guide="cost.empty">
           <p className="font-medium">{scope.mode === 'portfolio' ? 'No project has a BOQ yet.' : `${scope.projectName} has no BOQ yet.`}</p>
           <p className="text-sm text-muted-foreground">
             <Link to="/boq" className="font-medium underline underline-offset-2">
@@ -128,6 +128,7 @@ export default function CostHomePage() {
       ) : (
         <>
           <StatStrip
+            guide="cost.stats"
             stats={[
               { label: 'Budget', value: formatRupees(String(sum((r) => r.budget))), icon: Landmark },
               { label: 'Earned', value: formatRupees(String(sum((r) => r.earned))), hint: 'work done × BOQ rates' },
@@ -144,7 +145,7 @@ export default function CostHomePage() {
             </Callout>
           )}
           <DprSection icon={TrafficCone} title="Projects, worst first" meta={rows.length}>
-            <ul className="divide-y rounded-lg border">
+            <ul className="divide-y rounded-lg border" data-guide="cost.projects">
               {rows.map((p) => (
                 <ProjectRow key={p.project_id} p={p} />
               ))}
@@ -152,7 +153,7 @@ export default function CostHomePage() {
           </DprSection>
         </>
       )}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2" data-guide="cost.pages">
         {PAGES.map((pg) => (
           <Link key={pg.to} to={pg.to} className="flex items-start gap-3 rounded-lg border p-4 hover:bg-muted/60">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">

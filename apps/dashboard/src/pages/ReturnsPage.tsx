@@ -89,7 +89,7 @@ export default function ReturnsPage() {
         <ModuleTitle icon={PackageX} title="Returns" />
       </header>
 
-      <div className={cn('grid gap-2 sm:gap-3', money ? 'grid-cols-3' : 'grid-cols-2')}>
+      <div className={cn('grid gap-2 sm:gap-3', money ? 'grid-cols-3' : 'grid-cols-2')} data-guide="returns.tiles">
         {tiles.map((t) => (
           <button key={t.label} type="button" onClick={() => setTab(t.go)} className="flex flex-col items-start gap-2 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:flex-row sm:items-center sm:gap-3 sm:p-3.5">
             <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', t.tone)}><t.icon className="size-4 sm:size-5" /></span>
@@ -102,7 +102,7 @@ export default function ReturnsPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="returns.tabs">
           {TABS.map((t) => {
             const on = tab === t.value
             const n = filtered.filter((r) => inTab(r, t.value)).length
@@ -126,7 +126,7 @@ export default function ReturnsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Returns" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]">
+        <section aria-label="Returns" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide="returns.list">
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Returns did not load. Refresh to try again.</p>}
           {!isLoading && !isError && list.length === 0 && (

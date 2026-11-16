@@ -41,7 +41,7 @@ export function ProjectPickList({ to, empty }: { to: (id: string) => string; emp
   if (projects.isLoading) return <Skeleton className="h-40 rounded-xl" />
   if (!projects.data?.length) return <p className="text-sm text-muted-foreground">{empty}</p>
   return (
-    <ul className="divide-y overflow-hidden rounded-xl border" data-guide="planning.pick">
+    <ul className="divide-y overflow-hidden rounded-xl border" data-guide="project.pick">
       {projects.data.map((p) => {
         const line = scheduleLine(p)
         return (

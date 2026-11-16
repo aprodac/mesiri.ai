@@ -143,7 +143,7 @@ export default function VendorsPage() {
             <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
           </Button>
           {!readOnly && (
-            <Button className="gap-1.5 font-semibold" onClick={() => setEditing(null)}>
+            <Button className="gap-1.5 font-semibold" onClick={() => setEditing(null)} data-guide="vendors.add">
               <Plus className="size-4" /> <span className="hidden sm:inline">Add supplier</span><span className="sm:hidden">Add</span>
             </Button>
           )}
@@ -156,7 +156,7 @@ export default function VendorsPage() {
         </Callout>
       ) : seesMoney && (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-guide="vendors.tiles">
             {tiles.map((x) => {
               const on = tile === x.value
               return (
@@ -190,7 +190,7 @@ export default function VendorsPage() {
       )}
 
       {seesMoney && (
-        <div role="tablist" aria-label="View" className="flex w-fit gap-0.5 rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="View" className="flex w-fit gap-0.5 rounded-xl bg-muted p-1" data-guide="vendors.view">
           {([['suppliers', 'Suppliers'], ['unbilled', 'Delivered, no bill']] as const).map(([v, l]) => (
             <button key={v} role="tab" type="button" aria-selected={view === v} onClick={() => setView(v)}
               className={cn('inline-flex h-8 items-center rounded-lg px-3 text-sm', view === v ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>
@@ -202,7 +202,7 @@ export default function VendorsPage() {
 
       {seesMoney && view === 'unbilled' ? <UnbilledList projectId={projectId} /> : (<>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-guide="vendors.search">
           <div className="relative">
             <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, phone, GSTIN" aria-label="Search suppliers" className="h-8 w-[200px] pl-8" />
@@ -213,7 +213,7 @@ export default function VendorsPage() {
             options={[{ value: 'active', label: 'Switched on' }, { value: 'inactive', label: 'Switched off' }, { value: 'all', label: 'All' }]} />
         </div>
         {seesMoney && (
-          <div role="tablist" aria-label="Sort" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
+          <div role="tablist" aria-label="Sort" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="vendors.sort">
             {SORTS.map((s) => (
               <button key={s.value} role="tab" type="button" aria-selected={sort === s.value} onClick={() => setSort(s.value)}
                 className={cn('inline-flex h-8 shrink-0 items-center rounded-lg px-3 text-sm whitespace-nowrap', sort === s.value ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>
@@ -231,7 +231,7 @@ export default function VendorsPage() {
       ) : loading ? (
         <div className="flex flex-col gap-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>
       ) : shown.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="vendors.list">
           <Store className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">{all.length ? 'No supplier matches' : 'No suppliers yet'}</p>
           <p className="max-w-sm text-sm text-muted-foreground">
@@ -240,7 +240,7 @@ export default function VendorsPage() {
           {(tile || kind !== 'all' || needle) && all.length > 0 && <Button variant="outline" size="sm" onClick={() => { setTile(''); setKind('all'); setQ('') }}>Clear filters</Button>}
         </div>
       ) : (
-        <ul className="divide-y rounded-xl border bg-card">
+        <ul className="divide-y rounded-xl border bg-card" data-guide="vendors.list">
           {shown.map((v) => {
             const bal = num(v.balance)
             const late = num(v.overdue)
