@@ -639,9 +639,57 @@ def _voice_for(settings: Settings, who: str = "live") -> Any:
     if who not in _voices:
         from mesiri_ai.adapters.sarvam.voice import SarvamVoice
 
-        speaker = settings.sarvam.guide_tts_speaker if who == "guide" else None
-        _voices[who] = SarvamVoice(settings.sarvam, speaker=speaker)
+        if who == "guide":
+            _voices[who] = SarvamVoice(settings.sarvam, speaker=settings.sarvam.guide_tts_speaker,
+                                       model=settings.sarvam.guide_tts_model)
+        elif who in GUIDE_SAMPLES:
+            model, speaker = GUIDE_SAMPLES[who]
+            _voices[who] = SarvamVoice(settings.sarvam, speaker=speaker, model=model)
+        else:
+            _voices[who] = SarvamVoice(settings.sarvam)
     return _voices[who]
+
+
+#: SS-64: the narrator voices to choose from (model, speaker), each reading the same line. A fixed list and a fixed
+#: line, so this can't be used to speak anything else. The chosen one is set on the server (guide_tts_model / speaker).
+GUIDE_SAMPLES: dict[str, tuple[str, str]] = {
+    "shubh": ("bulbul:v3", "shubh"),
+    "shubh_en_narration": ("bulbul:v4-flash", "shubh_en_narration"),
+    "kalpit_en_edtech": ("bulbul:v4-flash", "kalpit_en_edtech"),
+    "sarang_en_narration": ("bulbul:v4-flash", "sarang_en_narration"),
+}
+GUIDE_SAMPLE_LINE = (
+    "Here's how a day on site reaches you. Every evening, Ravi, your site engineer at Green Villa, sends Mesiri one "
+    "WhatsApp message, just the way he'd text you. Mesiri reads it and fills this page: who came, what got done, and "
+    "anything that went wrong."
+)
+
+
+@router.get("/live/voice/sample")
+async def guide_voice_sample(
+    which: str = Query(min_length=1, max_length=40),
+    _auth: AuthorizationContext = Depends(get_auth_context),
+    settings: Settings = Depends(get_settings),
+):
+    """SS-64: one narrator voice reading the sample line, as MP3, to choose the walkthroughs' narrator. Signed-in
+    people only; a fixed list of voices and a fixed line; each made once, then cached."""
+    if which not in GUIDE_SAMPLES:
+        raise HTTPException(status_code=404, detail="No such voice")
+    key = (f"sample:{which}", "en-IN", GUIDE_SAMPLE_LINE)
+    audio = _voice_cache.get(key)
+    if audio is None:
+        voice = _voice_for(settings, which)
+        if not voice.configured:
+            raise HTTPException(status_code=503, detail="Mesiri's voice is not set up (no Sarvam key)")
+        try:
+            audio = await voice.speak(GUIDE_SAMPLE_LINE, "en-IN", codec="mp3")
+        except Exception as exc:  # noqa: BLE001 -- the sample says it failed, nothing else breaks
+            logger.warning("guide_voice_sample.failed which=%s", which, exc_info=True)
+            raise HTTPException(status_code=502, detail="That voice is not available right now") from exc
+        _voice_cache[key] = audio
+        while len(_voice_cache) > VOICE_CACHE_MAX:
+            _voice_cache.popitem(last=False)
+    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.get("/live/voice")

@@ -115,5 +115,20 @@ def test_the_narrator_is_its_own_voice_from_the_settings(monkeypatch):
     monkeypatch.setattr(dpr_router, "_voices", {})
     sarvam = SimpleNamespace(api_key=None, guide_tts_speaker="rahul", tts_speaker="priya", tts_model="bulbul:v3")
     settings = SimpleNamespace(sarvam=sarvam)
+    sarvam.guide_tts_model = "bulbul:v4-flash"
     assert dpr_router._voice_for(settings, "guide")._speaker == "rahul"
+    assert dpr_router._voice_for(settings, "guide")._model == "bulbul:v4-flash"
     assert dpr_router._voice_for(settings, "live")._speaker == "priya"
+
+
+async def test_voice_samples_are_a_fixed_list_reading_a_fixed_line(_fresh, monkeypatch):
+    """SS-64: each narrator voice on offer reads the same line once (MP3, cached); anything else is a 404."""
+    voices = {which: _Voice() for which in dpr_router.GUIDE_SAMPLES}
+    monkeypatch.setattr(dpr_router, "_voices", voices)
+    first = await dpr_router.guide_voice_sample("shubh_en_narration", _auth=ME, settings=None)
+    again = await dpr_router.guide_voice_sample("shubh_en_narration", _auth=ME, settings=None)
+    assert first.media_type == "audio/mpeg" and again.body == first.body
+    assert voices["shubh_en_narration"].said == [("en-IN", dpr_router.GUIDE_SAMPLE_LINE)]
+    with pytest.raises(HTTPException) as exc:
+        await dpr_router.guide_voice_sample("anything_else", _auth=ME, settings=None)
+    assert exc.value.status_code == 404
