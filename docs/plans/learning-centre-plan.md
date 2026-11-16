@@ -351,6 +351,10 @@ Indian English male voice.
 | Player | In the bubble: Play / Pause (Listen), 1x / 1.25x / 1.5x / 2x (pitch kept), mute; kept per browser (`mesiri_guide_voice`). The next step's audio is fetched while this one plays. Quiet while the person fills a real dialog |
 | Browsers | Sound needs a click first: a walkthrough started from the Learn page speaks at once |
 
+**Then the BOQ page (asked 16 Nov):** `page-boq` in `VOICED`: the BOQ walkthrough on Learn and the BOQ page's own tour
+(first visit, Help's "Show me around") speak. The player moved to `components/guide-voice.tsx` (one for both); a sound
+held by the browser (no click yet) shows Play, not an error; site abbreviations are spelled out ("B O Q").
+
 Not verified: the real voice (this session cannot reach Sarvam); checked with a test tone in the browser and a stand-in
 voice in the unit tests.
 

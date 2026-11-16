@@ -86,7 +86,13 @@ step's words in another place.
   abbreviation in brackets, "Ctrl K", a symbol), give the step `say: '...'` with the words to speak.
 - The audio is made by the server the first time a step is heard (`GET /dpr/live/voice?voice=guide`, Sarvam, MP3) and
   kept; changed words are simply new audio. Nothing to regenerate by hand.
-- The player (play / pause, 1x to 2x, mute) lives in the walkthrough's bubble; the choice is kept per browser.
+- The player (play / pause, 1x to 2x, mute) lives in the bubble (`components/guide-voice.tsx`, one player for
+  walkthroughs and page tours); the choice is kept per browser.
+- A page walkthrough's id in `VOICED` (`page-boq`) also gives that page's own tour (first visit, Help's "Show me
+  around") its voice. A tour that opens by itself has no click yet, so the browser holds the sound: the player shows
+  Play, never an error.
+- Site words in capitals (BOQ, DPR, GRN, RA, PO, GST, TDS, PDF, CSV) are spelled out for the voice by `spokenWords`, and
+  "&" is read "and". A new abbreviation goes in its `SPELLED` list.
 
 ## Moving people between pages
 
