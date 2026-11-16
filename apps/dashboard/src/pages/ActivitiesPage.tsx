@@ -394,7 +394,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
       {embedded ? (
         <div className="flex justify-end gap-2 sm:-mt-[52px] sm:self-end">
           <>
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
+            <Button variant="outline" size="sm" className="gap-1.5" data-guide="sitelog.export" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
               <Download className="size-4" /> Export CSV
             </Button>
             <Button variant="ghost" size="icon" className="size-8" onClick={fetchList} disabled={loading} title="Refresh" aria-label="Refresh">
@@ -419,6 +419,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
       )}
 
       <StatStrip
+        guide="sitelog.stats"
         stats={[
           { label: 'Work items', value: stats.totalCount || '—', icon: IcListChecks },
           { label: 'In progress', value: stats.inProgress || '—', tone: stats.inProgress ? 'info' : 'default', icon: IcCirclePlay },
@@ -428,7 +429,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
       />
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-guide="sitelog.filters">
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input
@@ -488,17 +489,19 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
       ) : loading ? (
         <div className="flex flex-col divide-y">{Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)}</div>
       ) : days.length === 0 ? (
-        <EmptyState
-          icon={ActivityIcon}
-          title={hasActiveFilters ? 'Nothing matches these filters' : 'No work reported yet'}
-          about={hasActiveFilters ? 'Try clearing them.' : undefined}
-          whatsapp={hasActiveFilters ? undefined : 'First-floor slab shuttering done, 6 masons, 4 helpers'}
-          action={hasActiveFilters ? <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button> : undefined}
-        />
+        <div data-guide="sitelog.empty">
+          <EmptyState
+            icon={ActivityIcon}
+            title={hasActiveFilters ? 'Nothing matches these filters' : 'No work reported yet'}
+            about={hasActiveFilters ? 'Try clearing them.' : undefined}
+            whatsapp={hasActiveFilters ? undefined : 'First-floor slab shuttering done, 6 masons, 4 helpers'}
+            action={hasActiveFilters ? <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button> : undefined}
+          />
+        </div>
       ) : (
         <>
         {/* Desktop: one ledger table, newest first (WEB-34). */}
-        <div className="hidden overflow-x-auto rounded-lg border sm:block">
+        <div className="hidden overflow-x-auto rounded-lg border sm:block" data-guide="sitelog.list">
           <table className="w-full min-w-[820px] text-sm">
             <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
               <tr className="text-left">
@@ -559,7 +562,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           </table>
         </div>
         {/* Phones: by day, then by site. */}
-        <div className="flex flex-col gap-5 sm:hidden">
+        <div className="flex flex-col gap-5 sm:hidden" data-guide="sitelog.list">
           {days.map(([day, sites]) => (
             <section key={day} className="flex flex-col">
               <h2 className="sticky top-[60px] z-10 -mx-1 flex items-baseline gap-2 bg-background/95 px-1 py-1.5 text-sm font-semibold backdrop-blur">

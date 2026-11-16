@@ -221,14 +221,14 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
       {open && (
         <div className="flex flex-col gap-2 border-t px-5 py-4">
           {/* PRC-26: the order for the supplier, as a document or on WhatsApp; the person sends it. */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2" data-guide="po.send">
             <Button asChild variant="outline" className="h-10 gap-2"><Link to={`/procurement/orders/${order.id}/document`}><FileText className="size-4" /> PO document</Link></Button>
             <Button asChild variant="outline" className="h-10 gap-2 border-green-600/40 text-green-800 dark:text-green-300">
               <a href={whatsappUrl(order.vendor_phone, orderMessage(order, me?.org_name || me?.organization_name))} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send on WhatsApp</a>
             </Button>
           </div>
           {order.may_receive && (
-            <Button className="h-11 gap-2 font-semibold" onClick={() => setDialog('receive')}><Truck className="size-4" /> Material came</Button>
+            <Button className="h-11 gap-2 font-semibold" onClick={() => setDialog('receive')} data-guide="po.receive"><Truck className="size-4" /> Material came</Button>
           )}
           {order.may_edit || order.may_close ? (
             <div className="flex flex-wrap items-center gap-2">

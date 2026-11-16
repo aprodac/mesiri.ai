@@ -102,16 +102,16 @@ export default function WagesPage() {
         )} />
         <div className="flex flex-wrap items-center gap-2">
           {siteSelect}
-          <div className="flex items-center rounded-lg border">
+          <div className="flex items-center rounded-lg border" data-guide="wages.week">
             <Button variant="ghost" size="icon" className="size-9" aria-label="Previous week" onClick={() => setDate(shiftDate(s?.period_from ?? day, -1))}><ChevronLeft className="size-4" /></Button>
             <span className="min-w-28 px-1 text-center text-sm font-medium tabular-nums">{s ? periodLabel(s.period_from, s.period_to) : '…'}</span>
             <Button variant="ghost" size="icon" className="size-9" aria-label="Next week" onClick={() => setDate(shiftDate(s?.period_to ?? day, 1))}><ChevronRight className="size-4" /></Button>
           </div>
           {s && !readOnly && draft && s.rows.length > 0 && (
-            <Button className="gap-1.5 font-semibold" disabled={approve.isPending} onClick={() => approve.mutate(s.id)}><CheckCircle2 className="size-4" /> Approve</Button>
+            <Button className="gap-1.5 font-semibold" data-guide="wages.approve" disabled={approve.isPending} onClick={() => approve.mutate(s.id)}><CheckCircle2 className="size-4" /> Approve</Button>
           )}
           {s && !readOnly && !draft && n(s.totals.due) > 0 && (
-            <Button className="gap-1.5 font-semibold" onClick={() => setPaying({})}><HandCoins className="size-4" /> Pay {inr(s.totals.due)}</Button>
+            <Button className="gap-1.5 font-semibold" data-guide="wages.pay" onClick={() => setPaying({})}><HandCoins className="size-4" /> Pay {inr(s.totals.due)}</Button>
           )}
           {s && !readOnly && !draft && n(s.totals.paid) === 0 && (
             <Button variant="outline" className="gap-1.5" disabled={reopen.isPending} onClick={() => reopen.mutate(s.id)}><RotateCcw className="size-4" /> Reopen</Button>
@@ -137,6 +137,7 @@ export default function WagesPage() {
             <Callout tone="info" icon={TriangleAlert}>{n(s.totals.unpriced_man_days)} man-days have no wage, so they are not in the wages. Add the wage on the worker or in the attendance.</Callout>
           )}
           <StatStrip
+            guide="wages.stats"
             stats={[
               { label: 'Man-days', value: n(s.totals.man_days).toLocaleString('en-IN') },
               { label: 'Wages + overtime', value: inr(n(s.totals.gross) + n(s.totals.overtime_amount)) },
@@ -147,12 +148,14 @@ export default function WagesPage() {
             ]}
           />
           {s.rows.length === 0 ? (
-            <EmptyState icon={Wallet} title="No attendance this week" about="Nothing reported for this site and week"
-              whatsapp="Suresh team: 4 masons, 2 helpers today" />
+            <div data-guide="wages.empty">
+              <EmptyState icon={Wallet} title="No attendance this week" about="Nothing reported for this site and week"
+                whatsapp="Suresh team: 4 masons, 2 helpers today" />
+            </div>
           ) : (
             <>
             {/* Phones: one card per payee, the figures that decide the payment. */}
-            <ul className="flex flex-col gap-2 sm:hidden">
+            <ul className="flex flex-col gap-2 sm:hidden" data-guide="wages.list">
               {s.rows.map((r) => (
                 <li key={r.id}>
                   <button type="button" onClick={() => setOpenRow(r.id)} className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left">
@@ -168,7 +171,7 @@ export default function WagesPage() {
                 </li>
               ))}
             </ul>
-            <div className="hidden overflow-x-auto rounded-xl border sm:block">
+            <div className="hidden overflow-x-auto rounded-xl border sm:block" data-guide="wages.list">
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-muted/50 text-xs text-muted-foreground">
                   <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-right [&>th:first-child]:text-left">

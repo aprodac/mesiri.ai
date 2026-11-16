@@ -684,7 +684,7 @@ function BriefView({ b, linkFor }: { b: Brief; linkFor: (projectId: string) => s
   return (
     <div className="flex flex-col gap-4">
       <Headline h={b.headline} />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" data-guide="period.kpis">
         {b.kpis.map((k, i) => (
           <div key={k.key} className={cn('flex', b.kpis.length % 2 === 1 && i === b.kpis.length - 1 && 'col-span-2 sm:col-span-1')}>
             <KpiTile k={k} onOpen={() => undefined} />
@@ -694,7 +694,7 @@ function BriefView({ b, linkFor }: { b: Brief; linkFor: (projectId: string) => s
       {b.projects.length === 0 ? (
         <Empty>No running projects you can see.</Empty>
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
+        <div className="overflow-x-auto rounded-xl border" data-guide="period.projects">
           <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr className="border-b">
@@ -830,7 +830,7 @@ export default function PeriodReportPage() {
   const fallbackName = `mesiri-${(r?.project.name ?? 'project').replace(/[^A-Za-z0-9]+/g, '-').toLowerCase()}-${r?.period.from ?? ''}`
   const target = projectId ? { scope: 'project' as const, project_id: projectId, site_id: siteId } : { scope: 'portfolio' as const }
   const sendButton = info ? (
-    <Button size="sm" onClick={() => setSending(true)}>
+    <Button size="sm" onClick={() => setSending(true)} data-guide="period.send">
       <Send className="size-3.5" /> Send
     </Button>
   ) : null
@@ -841,13 +841,13 @@ export default function PeriodReportPage() {
       title="Weekly & monthly"
       date={where}
       action={ready && query ? (
-        <div className="flex gap-2">
+        <div className="flex gap-2" data-guide="period.download">
           <DownloadButton q={query} kind="xlsx" fallback={fallbackName} />
           <DownloadButton q={query} kind="pdf" fallback={fallbackName} />
           {sendButton}
         </div>
       ) : briefReady ? (
-        <div className="flex gap-2">
+        <div className="flex gap-2" data-guide="period.download">
           <BriefDownload q={briefQuery} kind="xlsx" />
           <BriefDownload q={briefQuery} kind="pdf" />
           {sendButton}
@@ -867,7 +867,7 @@ export default function PeriodReportPage() {
 
   const controls = (
     <div className="flex flex-wrap items-center gap-2">
-      <Segmented label="Period" value={kind} options={KIND_OPTIONS} onChange={(v) => set({ period: v, date: null, ...(v === 'custom' && info ? { from: info.period.from, to: info.period.to } : { from: null, to: null }) })} />
+      <Segmented label="Period" guide="period.kinds" value={kind} options={KIND_OPTIONS} onChange={(v) => set({ period: v, date: null, ...(v === 'custom' && info ? { from: info.period.from, to: info.period.to } : { from: null, to: null }) })} />
       {kind === 'custom' ? (
         <div className="flex items-center gap-1.5 text-sm">
           <label className="sr-only" htmlFor="report-from">From</label>
@@ -922,7 +922,7 @@ export default function PeriodReportPage() {
             <SentAndScheduled target={target} />
           </div>
         )}
-        <details className="rounded-lg border px-4 py-2">
+        <details className="rounded-lg border px-4 py-2" data-guide="period.open">
           <summary className="cursor-pointer text-sm font-medium">Open one project's report</summary>
           <div className="pt-3"><ProjectPicker /></div>
         </details>
@@ -972,14 +972,14 @@ export default function PeriodReportPage() {
             {r.running && <Pill tone="none">So far: the period is still running</Pill>}
           </div>
           <Headline h={r.headline} />
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" data-guide="period.kpis">
             {r.kpis.map((k, i) => (
               <div key={k.key} className={cn('flex', r.kpis.length % 2 === 1 && i === r.kpis.length - 1 && 'col-span-2 sm:col-span-1')}>
                 <KpiTile k={k} onOpen={open} />
               </div>
             ))}
           </div>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" data-guide="period.needs">
             <NeedsList items={r.needs_you} />
             <Glance areas={r.areas} onOpen={open} />
           </div>
@@ -992,6 +992,7 @@ export default function PeriodReportPage() {
             <div className="mb-3 overflow-x-auto">
               <Segmented
                 label="Section"
+                guide="period.sections"
                 value={active}
                 options={r.order.map((k) => ({ value: k, label: SECTION_META[k].title }))}
                 onChange={(v) => setTab(v)}

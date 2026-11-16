@@ -53,6 +53,7 @@ export default function WhatsAppPage() {
         {isAdmin && (
           <Segmented<View>
             label="View"
+            guide="wa.views"
             value={view}
             onChange={switchTo}
             options={[

@@ -35,7 +35,7 @@ export default function ClientLinksPage() {
         <ModuleTitle icon={Share2} title="Client view" />
       </header>
       {/* UX-13: what the client sees, as chips; the ? help says the rest. */}
-      <ul className="flex flex-wrap gap-1.5 text-xs" aria-label="What the client sees">
+      <ul className="flex flex-wrap gap-1.5 text-xs" aria-label="What the client sees" data-guide="cv.sees">
         {['Progress', 'Milestones', 'Approved photos', 'Bills', 'Payments'].map((t) => (
           <li key={t} className="rounded-full bg-success-soft px-2.5 py-0.5 text-success">✓ {t}</li>
         ))}
@@ -74,6 +74,7 @@ function ProjectLinks({ projectId }: { projectId: string }) {
     <>
       <form
         className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-end"
+        data-guide="cv.make"
         onSubmit={(e) => { e.preventDefault(); create.mutate() }}
       >
         <div className="flex-1">
@@ -143,10 +144,10 @@ function Links({ projectId }: { projectId: string | null }) {
   if (query.isError) return <PageError message="The links did not load." onRetry={() => query.refetch()} back={{ to: '/billing/ra-bills', label: 'RA bills' }} />
   if (!query.data) return <Skeleton className="h-24 w-full" />
   if (query.data.length === 0) {
-    return projectId ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No links for this project yet.</p> : null
+    return projectId ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" data-guide="cv.empty">No links for this project yet.</p> : null
   }
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-guide={projectId ? 'cv.links' : undefined}>
       <h2 className="text-sm font-semibold">{projectId ? 'Links for this project' : 'Links sent'}</h2>
       <ul className="divide-y rounded-lg border">
         {query.data.map((l) => {
@@ -166,7 +167,7 @@ function Links({ projectId }: { projectId: string | null }) {
                 </div>
               </div>
               {!off && (
-                <Button variant="outline" size="sm" className="gap-1.5" disabled={revoke.isPending}
+                <Button variant="outline" size="sm" className="gap-1.5" data-guide="cv.off" disabled={revoke.isPending}
                   onClick={() => { if (window.confirm(`Turn off ${l.label ?? 'this'} link? It stops working now.`)) revoke.mutate(l.id) }}>
                   <Ban className="size-4" /> Turn off
                 </Button>

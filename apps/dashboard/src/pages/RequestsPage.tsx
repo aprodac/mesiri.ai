@@ -255,7 +255,7 @@ export default function RequestsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
-        <section aria-label="Requests" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide="req.list">
+        <section aria-label="Requests" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide={isLoading ? undefined : 'req.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Requests did not load. Refresh to try again.</p>}
           {!isLoading && !isError && list.length === 0 && (

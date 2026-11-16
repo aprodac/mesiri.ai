@@ -29,14 +29,14 @@ export default function CashBankPage() {
   const keep = window.location.search
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Cash & bank" date={d?.scope} />
+      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Cash & bank" />
       <BooksTabs current="/accounts/cash-bank" />
       <PeriodBar state={periodState} />
       {!d ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="cash.stats"
             phoneCols={2}
             stats={[
               { label: 'Opening', value: rupees(d.total.opening), icon: Wallet },
@@ -71,7 +71,7 @@ export default function CashBankPage() {
               <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">No cash box or bank account has moved money in this period{scope.mode !== 'portfolio' ? ` for ${d.scope}` : ''}.</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
+                <table data-guide="cash.list" className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                       <th className="px-3 py-2 text-left font-medium">Account</th>

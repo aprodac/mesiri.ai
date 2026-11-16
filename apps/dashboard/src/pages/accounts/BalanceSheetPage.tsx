@@ -104,7 +104,7 @@ export default function BalanceSheetPage() {
         }
         date={d ? `as on ${formatDay(d.as_of)} · whole company` : undefined}
         action={
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <label data-guide="bs.asof" className="flex items-center gap-2 text-sm text-muted-foreground">
             As on
             <Input
               type="date"
@@ -126,6 +126,7 @@ export default function BalanceSheetPage() {
       ) : (
         <>
           <StatStrip
+            guide="bs.stats"
             phoneCols={2}
             stats={[
               { label: 'What the company owns', value: rupees(d.total_assets), icon: Scale },
@@ -136,7 +137,7 @@ export default function BalanceSheetPage() {
           {!d.liabilities.length && !d.assets.length ? (
             <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">Nothing in the books on this day yet.</p>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div data-guide="bs.sides" className="grid gap-4 lg:grid-cols-2">
               <Side title="Capital and liabilities" groups={d.liabilities} total={d.total_liabilities} />
               <Side title="Assets" groups={d.assets} total={d.total_assets} />
             </div>

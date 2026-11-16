@@ -33,20 +33,20 @@ export default function StockValuePage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <header className="flex items-center justify-between gap-3">
         <ModuleTitle icon={Wallet} title="Stock value" />
-        <Button variant="outline" className="gap-2" disabled={!v?.rows.length} onClick={exportRows}><Download className="size-4" /> <span className="hidden sm:inline">Excel</span></Button>
+        <Button variant="outline" className="gap-2" data-guide="value.export" disabled={!v?.rows.length} onClick={exportRows}><Download className="size-4" /> <span className="hidden sm:inline">Excel</span></Button>
       </header>
       {isError && <p className="text-sm text-destructive">Stock value did not load.</p>}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3" data-guide="value.tiles">
         <Tile icon={IndianRupee} tone="bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" value={isLoading ? '–' : rupees(v?.total)} label={`Stock worth, ${v?.items ?? 0} items`} />
-        <button type="button" onClick={() => setSlowOnly((s) => !s)} className={cn('rounded-xl text-left', slowOnly && 'ring-2 ring-orange-500')}>
+        <button type="button" onClick={() => setSlowOnly((s) => !s)} className={cn('rounded-xl text-left', slowOnly && 'ring-2 ring-orange-500')} data-guide="value.slow">
           <Tile icon={Snail} tone="bg-orange-100 text-orange-900 dark:bg-orange-950 dark:text-orange-100" value={isLoading ? '–' : rupees(v?.slow_moving_value)} label={`${v?.slow_moving ?? 0} not used in 30 days`} />
         </button>
         {!!v?.unpriced && <Tile icon={TriangleAlert} tone="bg-muted text-foreground/80" value={String(v.unpriced)} label="Items with no rate yet (not in the total)" />}
       </div>
 
       {!!v?.by_category.length && (
-        <section className="flex flex-col gap-2 rounded-xl border p-3 sm:p-4">
+        <section className="flex flex-col gap-2 rounded-xl border p-3 sm:p-4" data-guide="value.categories">
           <h2 className="text-sm font-semibold">By category</h2>
           {v.by_category.map((c) => (
             <div key={c.category} className="grid grid-cols-[8rem_1fr_auto] items-center gap-2 text-sm sm:grid-cols-[12rem_1fr_auto]">
@@ -58,7 +58,7 @@ export default function StockValuePage() {
         </section>
       )}
 
-      <section className="overflow-hidden rounded-xl border">
+      <section className="overflow-hidden rounded-xl border" data-guide={isLoading ? undefined : rows.length ? 'value.list' : 'value.empty'}>
         <h2 className="border-b bg-muted/40 px-3 py-2 text-sm font-semibold">{slowOnly ? 'Not used in 30 days' : 'Every item, most valuable first'} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
         {!isLoading && rows.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">Nothing on hand here. Stock value comes from deliveries with a rate.</p>}
         <ul className="divide-y">

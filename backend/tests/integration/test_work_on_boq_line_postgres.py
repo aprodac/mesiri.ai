@@ -13,6 +13,9 @@ from sqlalchemy import text
 from mesiri.domains.progress.boq_router import place_new_work, set_work_line_checked
 from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
 
+# Needs a real Postgres: run with the integration tests, not in the deploy's unit job ("not integration").
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 async def conn():

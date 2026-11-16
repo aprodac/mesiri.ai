@@ -33,11 +33,12 @@ export default function ProfitLossPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" date={d?.scope} />
+      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" />
       <BooksTabs current="/accounts/pl" />
       <div className="flex flex-wrap items-center gap-2">
         <PeriodBar state={periodState} />
         <Segmented<Compare>
+          guide="pl.compare"
           label="Compare with"
           value={compare}
           options={[
@@ -57,6 +58,7 @@ export default function ProfitLossPage() {
       ) : (
         <>
           <StatStrip
+            guide="pl.stats"
             phoneCols={2}
             stats={[
               { label: 'Income', value: rupees(t.income), icon: Receipt },
@@ -71,11 +73,13 @@ export default function ProfitLossPage() {
             </Callout>
           )}
           <DprSection icon={TrendingUp} title="Statement">
+            <div data-guide="pl.statement">
             <PlStatement
               pl={d}
               periodLabel={span(d.date_from, d.date_to)}
               priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined}
             />
+            </div>
             <p className="text-xs text-muted-foreground">
               Income is RA bills sent (before GST); costs are bills and expenses as booked, net of GST the company can claim. Labour reaches the books when wages are paid. Tap a group for its ledgers, a ledger for its entries.
             </p>

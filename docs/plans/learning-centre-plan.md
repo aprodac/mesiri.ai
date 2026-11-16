@@ -2,7 +2,7 @@
 
 > **Status: approved 15 Nov 2026 in session; being built.** Order changed 15 Nov in session: the page tours (phase 2)
 > come first, since each tour is useful the day it ships; SS-41 (Learn page) and SS-42 (engine) were also built 15 Nov
-> in a parallel session (section 9). Done: **SS-41, SS-42, SS-43, SS-44 Planning, SS-45 Procurement and Cost control**.
+> in a parallel session (section 9). Done: **SS-41, SS-42, SS-43, SS-44 Planning, SS-45 Procurement and Cost control, SS-46 Accounts**.
 > **Rules for every later change: [LEARN_AND_TOURS.md](../engineering/LEARN_AND_TOURS.md).**
 > Tracker: **SS-41 to SS-49** in [V1_TRACKER.md](V1_TRACKER.md). Builds on
 > [guided-onboarding-plan.md](guided-onboarding-plan.md) (SS-26..SS-40, built and on `main`).
@@ -116,28 +116,42 @@ Equipment, Settings: each = its pages' tours back to back (sidebar order).
 
 ### 5.4 Page tours: all hand-written (D-L2), in build order (Planning first, D-L4)
 
-Built (28): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
+Built (69, every built page): Today, Daily reports, Issues, Materials (Stock/Movements/Items), Labour (4 views), BOQ & budget, Projects &
 sites, Team; **Planning (SS-44, 15 Nov)**: Project start, Schedule, Material plan, Live plans, Places, Drawing check,
 Documents; **Procurement and Cost control (SS-45, 15 Nov)**: Requests, Purchase orders, Goods received, Pending
 deliveries, Rates, Quotations, Suppliers, Returns; Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost
-centres. A page that shows a project list first marks it `project.pick` (was `planning.pick`); the Cost pages' three
+centres; **Accounts (SS-46, 15 Nov)**: Accounts home, Profit & loss, Balance sheet, Cash & bank, Projects, Ledgers,
+Receivables, Day book, Tally export, GST, TDS, Trial balance, Chart of accounts, Months (their shared tab row, period
+bar and Excel button are marked once in `components/accounts/books.tsx`: `books.tabs`, `books.period`,
+`books.excel`); **the rest (SS-47, 15 Nov)**: Weekly & monthly, Site log, Analytics; Tasks; Stock count, Stock value;
+Wages, Advances; Subcontractors, Work orders, Bills & checks; Expenses, Money, Finance settings; Clients, RA bills,
+Client view; Machines, Daily log, Hire check, Vehicles, Shuttering & tools; Settings, Company, WhatsApp, Bring your
+data, Activity log. A list that can be empty marks itself `<page>.list` or `<page>.empty` by its state (Tasks, Stock
+count, Stock value, Machines, Hire check), so the tour says "nothing yet" over an empty box, not "every item"; an
+`EmptyState` is wrapped in a marked `div` rather than giving the shared component a prop. Pages with `whatsappNone`
+(Tasks, Clients, Client view, the Settings pages) end without the `app.whatsapp` step: the top-bar WhatsApp button is
+not shown there. An element that sits off screen until something happens (the Daily log's Save bar on a phone) is
+marked only while it is on screen. A page that shows a project list first marks it `project.pick` (was `planning.pick`); the Cost pages' three
 own pickers carry it too (they are three copies of one list: worth merging into `ProjectPickList` some day).
 
-| Order | Module | Pages to write (61; 41 left) | Count |
+| Order | Module | Pages to write (61; all done) | Count |
 |---|---|---|---|
 | 1 | Planning | Project start, Schedule, Material plan, Live plans, Places, Drawing check, Documents | 7 (**done**) |
 | 2 | Procurement | Requests, Purchase orders, Goods received (GRN), Pending deliveries, Rates, Quotations, Suppliers, Returns | 8 (**done**) |
 | 3 | Cost control | Overview, Green / red, Budget vs actual, Materials vs BOQ, Cost centres | 5 (**done**) |
-| 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 |
-| 5 | Site | Weekly & monthly, Site log, Analytics | 3 |
-| 6 | Tasks | Tasks (all 4 views share one tour) | 1 |
-| 7 | Materials | Stock count, Stock value | 2 |
-| 8 | Labour | Wages, Advances | 2 |
-| 9 | Subcontract | Subcontractors, Work orders, Bills & checks | 3 |
-| 10 | Finance | Expenses, Money, Finance settings | 3 |
-| 11 | Client billing | Clients, RA bills, Client view | 3 |
-| 12 | Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 5 |
-| 13 | Settings | Settings, Company, WhatsApp, Bring your data, Activity log | 5 |
+| 4 | Accounts | Accounts home, Project P&L, Ledgers, Receivables, Cash & bank book, Day book, Tally export, GST, TDS, Profit & loss, Balance sheet, Trial balance, Chart of accounts, Months | 14 (**done**) |
+| 5 | Site | Weekly & monthly, Site log, Analytics | 3 (**done**) |
+| 6 | Tasks | Tasks (all 4 views share one tour) | 1 (**done**) |
+| 7 | Materials | Stock count, Stock value | 2 (**done**) |
+| 8 | Labour | Wages, Advances | 2 (**done**) |
+| 9 | Subcontract | Subcontractors, Work orders, Bills & checks | 3 (**done**) |
+| 10 | Finance | Expenses, Money, Finance settings | 3 (**done**) |
+| 11 | Client billing | Clients, RA bills, Client view | 3 (**done**) |
+| 12 | Equipment | Machines, Daily log, Hire check, Vehicles, Shuttering & tools | 5 (**done**) |
+| 13 | Settings | Settings, Company, WhatsApp, Bring your data, Activity log | 5 (**done**) |
+
+SS-51 (15 Nov) added the open record's buttons to the Procurement tours (order, quotes, send, Material came, chase,
+cheaper elsewhere, compare, debit note); they show where the record opens beside the list, and are skipped on a phone.
 
 **How to write one page tour** (the recipe, so any session can continue):
 
@@ -271,3 +285,53 @@ session re-reads more each step). On a Claude plan this is usage-limit time, not
   back can't leave a new supplier; the requests check reads open requests (the route has no paging); deliveries are
   read 100 deep, newest first.
 - **Requests**: a "There it is" step lights the new request before it is taken back.
+
+## 12. Built (SS-48, 15 Nov 2026): W3, W5–W11, Project manager and Finance
+
+- **Eight workflows, each whole** (not parts), in `WORKFLOWS` in `lib/walkthroughs.ts`: W3 Supplier bill to payment,
+  W5 Subcontractor, W6 Start a new project, W7 An issue, W8 Billing the client, W9 Cost control, W10 Machines and hire,
+  W11 Month end.
+- **Practice** follows D-L3. Only W3's expense can be taken back on WhatsApp (`record_expense`, then `undo_expense`;
+  the message names no supplier, so taking it back leaves none behind). A work order, a new project, a person added,
+  an issue, a client payment and a machine log have no WhatsApp undo, so they are `save: false`: look at the card,
+  then Cancel. W9 and W11 are questions only ("How is Green Villa doing on cost?", "Send me October's report"), said in
+  the text: a practice must save something (the assistant's test).
+- **Who gets which:** W3, W5, W9 the money roles (owner, admin, finance, project manager); W8, W11 owner, admin and
+  finance; W6 owner, admin and project manager; W10 the roles that record from site; W7 everyone.
+- **Outcomes:** the owner's "Catch a cost overrun", "Start a new project" and "Hear about problems" now run W9, W6
+  and W7 instead of page tours; "Get paid faster by the client" (W8) and "Month end without chasing the accountant"
+  (W11) are added. Project manager (W6, W1, W2, W5, W9) and Finance (W3, wages, W8, W11) have their outcomes and role
+  paths, as in section 5.1. Drafts, for Ilan to edit:
+
+  | Role | Outcome | Runs |
+  |---|---|---|
+  | Project manager | Get a new project going | W6 |
+  | | Review every site's day in minutes | W1 |
+  | | Keep material arriving before it is needed | W2 |
+  | | Pay subcontractors for measured work only | W5 |
+  | | Know which work is losing money | W9 |
+  | Finance | Pay suppliers for what actually came | W3 |
+  | | Pay wages straight from attendance | W4 second half |
+  | | Bill the client and see what they owe | W8 |
+  | | Close the month and hand it to Tally | W11 |
+
+- **Not verified in a browser:** the steps on Expenses, Weekly & monthly, Subcontract bills, Receivables and the two
+  Equipment pages. Those pages crash in the stubbed screenshot mode (the stub answers `[]` where they expect an
+  object; `scripts/screens.mjs` shows the same before this change). The steps there have no marker (the Spark speaks
+  in the middle), so they do not depend on the page's layout. W6, W7 and W9 were clicked through; the Learn page was
+  checked for owner, project manager and finance.
+
+## 13. Walkthrough engine fixes (SS-52, 15 Nov 2026)
+
+Found while checking the Accounts tours (SS-46), fixed in `components/walkthrough.tsx` (the one engine):
+
+| Problem | Root cause | Fix |
+|---|---|---|
+| Blank pauses of 4-9 s between steps | A step whose element was not on screen waited a fixed 4 s, whatever the page's state | Decide as soon as the page is loaded: its tour's `startWhen` content is on screen, or nothing is fetching (react-query idle), or another step of the page has been on screen 1.5 s. Still loading: up to 4 s |
+| The project asked again on each project page (three times in Cost control) | The engine opened pages by their plain address; the project lives in `?project=` | `lib/scope-url.ts` `urlWithScope`, one helper for the sidebar, the engine, Help and Learn links; the engine also keeps the project through `/projects/<id>/boq` |
+| Walkthrough stalled or ended on BOQ & budget | `/boq` redirects to `/projects/<id>/boq`, not seen as the same page | `onPage` asks the module map (`findPage`, `SAME_AS`) |
+| Trapped on a page that loaded without its content | The hold for a project list also held on pages with none (an error, nothing yet) | Hold only while a project list is on screen or data is still coming; the words say which |
+
+Not changed (shared, needs approval): `lib/ScopeContext.tsx` matches `/projects/:id` exactly, so on a project's BOQ
+page the top bar says "All projects".
+

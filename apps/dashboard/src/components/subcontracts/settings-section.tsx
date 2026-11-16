@@ -33,7 +33,7 @@ export function SubcontractSettings({ readOnly }: { readOnly: boolean }) {
     </label>
   )
   return (
-    <section className="flex flex-col gap-3 border-t pt-4">
+    <section className="flex flex-col gap-3 border-t pt-4" data-guide="finset.subcontract">
       <h2 className="flex items-center gap-2 text-[15px] font-semibold"><Handshake className="size-4 text-muted-foreground" aria-hidden="true" /> Subcontractors</h2>
       <Toggle on={!!s.tds_enabled} label="Deduct TDS from subcontract bills (194C)" hint="Each approved bill deducts it; it collects in the “TDS payable (194C)” account until you pay the government (a transfer into it)." onChange={(v) => save.mutate({ tds_enabled: v })} />
       <Toggle on={!!s.partner_access} label="Subcontractors may use Mesiri on WhatsApp" hint="Their contacts (added on the subcontractor’s page) can ask what is pending, send bills and report work. Bills and work wait for your check; they never see anything else." onChange={(v) => save.mutate({ partner_access: v })} />

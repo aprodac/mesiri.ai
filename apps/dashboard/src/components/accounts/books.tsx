@@ -66,7 +66,7 @@ export function usePeriod(fallback: Exclude<PresetKey, 'custom'> = 'fy') {
 
 export function PeriodBar({ state }: { state: ReturnType<typeof usePeriod> }) {
   return (
-    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2" data-guide="books.period">
       <Segmented<PresetKey> label="Period" value={state.range} options={PRESETS.map((p) => ({ value: p, label: PRESET_LABEL[p] }))} onChange={state.setRange} />
       {state.range === 'custom' ? (
         <div className="flex items-center gap-1.5 text-sm">
@@ -108,7 +108,7 @@ export function BooksTabs({ current }: { current: string }) {
   }
   const qs = keep.toString()
   return (
-    <nav aria-label="Accounts" className="-mx-1 flex gap-1 overflow-x-auto px-1">
+    <nav aria-label="Accounts" className="-mx-1 flex gap-1 overflow-x-auto px-1" data-guide="books.tabs">
       {PAGES.map((p) => (
         <Link
           key={p.to}
@@ -141,7 +141,7 @@ export function ExcelButton({ path, params, name }: { path: string; params: obje
     }
   }
   return (
-    <Button size="sm" variant="outline" className="gap-1.5" onClick={run} disabled={busy}>
+    <Button size="sm" variant="outline" className="gap-1.5" onClick={run} disabled={busy} data-guide="books.excel">
       <FileSpreadsheet className="size-3.5" /> {busy ? 'Preparing…' : 'Excel'}
     </Button>
   )

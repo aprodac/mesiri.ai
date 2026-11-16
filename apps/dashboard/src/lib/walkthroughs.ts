@@ -97,6 +97,9 @@ export function learnKey(id: string): string {
 const minutesFor = (steps: number) => Math.max(1, Math.round(steps * 0.4))
 
 const RECORDERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER'] as const
+const MONEY_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE', 'PROJECT_MANAGER'] as const
+const BILLING_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'] as const
+const STARTERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER'] as const
 
 // Newest first (by day, then saved time), so a delivery saved now is in the first page.
 const INFLOWS: WalkCheck = { path: '/materials/inflows', params: { limit: 100 } }
@@ -325,6 +328,226 @@ export const WORKFLOWS: Walkthrough[] = [
       },
     ],
   },
+  // SS-48: W3, W5..W11 (plan section 5.2). A practice WhatsApp can't take back is `save: false` (look at the card,
+  // then Cancel); questions are said in the text, not practised, because a practice must save something.
+  // W3: supplier bill to payment.
+  {
+    id: 'supplier-bill',
+    kind: 'workflow',
+    title: 'Supplier bill to payment',
+    about: "Record a bill, match it to what was delivered, see what you owe, and pay it.",
+    minutes: 3,
+    roles: MONEY_ROLES,
+    steps: [
+      {
+        page: '/finance/expenses',
+        title: 'Every bill and payment',
+        text: 'A bill from a shop, diesel, a hired machine, tea for the site: each is an expense here, with its photo, its project and its category.',
+        mood: 'hello',
+      },
+      {
+        page: '/finance/expenses',
+        title: 'Try it: record an expense',
+        text: "Send this to Mesiri (add a photo of the bill on a real day). If you have more than one site, Mesiri asks which. A card comes back: tap Save. I'll watch for it here.",
+        mood: 'send',
+        // No supplier named: a practice must not leave a new supplier behind after it is taken back.
+        try: { kind: 'whatsapp', say: 'Paid 500 for drinking water', tools: ['record_expense'], check: { path: '/expenses' } },
+      },
+      { page: '/finance/expenses', showNew: true, title: 'There it is', text: 'The expense is in the list, and in the project\'s cost.', mood: 'happy' },
+      {
+        page: '/finance/expenses',
+        title: 'Take it back',
+        text: 'It was practice, so take it back the same way. Mesiri shows a card: tap Save.',
+        takeBack: { say: 'Take back the drinking water expense', tools: ['undo_expense'] },
+      },
+      { page: '/finance/vendors', target: 'vendors.tiles', title: 'What you owe each supplier', text: 'Their bills less what you paid, what is overdue, and what you paid ahead.', mood: 'look' },
+      {
+        page: '/finance/vendors',
+        target: 'vendors.view',
+        title: 'Delivered, no bill',
+        text: 'Material that came with no bill yet. When the bill comes, match it to those deliveries, so nothing is paid twice or for what never came.',
+        mood: 'worry',
+      },
+      {
+        page: '/finance/vendors',
+        target: 'vendors.list',
+        title: 'Pay them',
+        text: 'Open a supplier to pay a bill. On WhatsApp: "Paid Malabar 50,000 by UPI", and "How much do we owe Malabar?".',
+        mood: 'happy',
+      },
+    ],
+  },
+  // W5: a subcontractor, from work order to bill.
+  {
+    id: 'subcontract',
+    kind: 'workflow',
+    title: 'Subcontractor, from work order to bill',
+    about: 'A work order at an agreed rate, the work measured, the bill checked against it, then paid.',
+    minutes: 3,
+    roles: MONEY_ROLES,
+    steps: [
+      {
+        page: '/subcontract/work-orders',
+        title: 'The work order',
+        text: 'What a subcontractor will do, how much, and at what rate. Everything after is checked against it.',
+        mood: 'hello',
+      },
+      {
+        page: '/subcontract/work-orders',
+        title: 'Try it: a work order',
+        text: 'Send this. The card shows the work, the quantity and the rate. This is practice: look at the card, then tap Cancel.',
+        mood: 'send',
+        try: { kind: 'whatsapp', say: 'Work order to Sree tiles: floor tiling 2,400 sq ft at 38', tools: ['create_work_order'], save: false },
+      },
+      {
+        page: '/subcontract/work-orders',
+        title: 'Measure the work',
+        text: 'Each week site says how much was done: "Sree tiles did 600 sq ft this week". That is what the bill is checked against.',
+      },
+      {
+        page: '/subcontract/bills',
+        title: 'Bills & checks',
+        text: 'Their bill against the work measured and the rate agreed, less advances and retention. Approve it, or send it back with why.',
+        mood: 'think',
+      },
+      {
+        page: '/subcontract/bills',
+        title: 'Advances come off by themselves',
+        text: 'Money given ahead ("Gave Sree tiles 20,000 advance") comes off their next bill.',
+        mood: 'happy',
+      },
+    ],
+  },
+  // W6: start a new project.
+  {
+    id: 'new-project',
+    kind: 'workflow',
+    title: 'Start a new project',
+    about: 'The project, its BOQ from your Excel, the schedule, the site team, and the first report.',
+    minutes: 3,
+    roles: STARTERS,
+    steps: [
+      {
+        page: '/planning/setup',
+        title: 'Start a project',
+        text: 'Project start lists every step from "won" to "work starts", and ticks each one as it is done.',
+        mood: 'hello',
+      },
+      {
+        page: '/planning/setup',
+        title: 'Try it: a new project',
+        text: 'Send this. The card shows the project, the client, the place and the start date. This is practice: look at the card, then tap Cancel.',
+        mood: 'send',
+        try: { kind: 'whatsapp', say: 'New project Lake View for Mr Thomas at Kakkanad, starts 1 Dec', tools: ['create_project'], save: false },
+      },
+      { page: '/planning/setup', target: 'setup.steps', title: 'Steps to "work starts"', text: 'Dates, contract, BOQ, schedule, sites, the site team, suppliers.', mood: 'think' },
+      { page: '/boq', target: 'boq.import', title: 'The BOQ from your Excel', text: 'Upload the estimate you already have: its items, units, quantities and rates become the BOQ.' },
+      { page: '/planning/schedule', target: 'schedule.add', title: 'The schedule from the BOQ', text: 'Each BOQ section becomes a bar; Quick plan puts them one after another.' },
+      {
+        page: '/team',
+        target: 'team.add',
+        title: 'The site team',
+        text: 'Add the engineer by their WhatsApp number. On WhatsApp: "Add Ravi 98470 12345 as site engineer on Lake View". This is practice: look at the card, then tap Cancel.',
+        try: { kind: 'whatsapp', say: 'Add Ravi 98470 12345 as site engineer on Lake View', tools: ['add_person'], save: false },
+      },
+      { page: '/reports', target: 'reports.list', title: 'The first report', text: 'From their first message, the daily report goes out every evening.', mood: 'happy' },
+    ],
+  },
+  // W7: an issue, start to finish.
+  {
+    id: 'issue',
+    kind: 'workflow',
+    title: 'An issue, start to finish',
+    about: 'A hold-up reported from site, seen by the office, and closed when it is fixed.',
+    minutes: 2,
+    steps: [
+      { page: '/issues', title: 'Hold-ups from site', text: 'No water, a machine broken, a drawing missing: each stays open here until someone fixes it.', mood: 'hello' },
+      {
+        page: '/issues',
+        title: 'Try it: report one',
+        text: 'Send this. The card shows the problem and the site. This is practice: look at the card, then tap Cancel.',
+        mood: 'send',
+        try: { kind: 'whatsapp', say: 'No water since morning at the compound wall', tools: ['report_issue'], save: false },
+      },
+      { page: '/issues', target: 'issues.list', title: 'Open until fixed', text: 'The oldest first. Open one to say it is seen, then fixed, or that it will not be fixed and why.', mood: 'think' },
+      { page: '/issues', target: 'issues.stats', title: 'At a glance', text: 'How many are open, and how long they have waited.', mood: 'look' },
+      { page: '/issues', title: 'Closing it from site', text: 'When it is sorted, site says "Water is back at the compound wall" and it closes.', mood: 'happy' },
+    ],
+  },
+  // W8: billing the client.
+  {
+    id: 'billing',
+    kind: 'workflow',
+    title: 'Billing the client',
+    about: 'Running bills from the work done, what the client paid, and what they still owe.',
+    minutes: 2,
+    roles: BILLING_ROLES,
+    steps: [
+      { page: '/billing/ra-bills', title: 'Running bills', text: 'Each RA bill is the work done since the last one at the BOQ rates, less retention and advance.', mood: 'hello' },
+      { page: '/accounts/receivables', title: 'What the client owes', text: 'Every bill, what was paid against it, and how old the rest is.', mood: 'look' },
+      {
+        page: '/accounts/receivables',
+        title: 'Try it: the client paid',
+        text: 'Send this. The card shows the payment and the bill it goes against. This is practice: look at the card, then tap Cancel.',
+        mood: 'send',
+        try: { kind: 'whatsapp', say: 'Client paid 5 lakh for RA-03', tools: ['record_client_receipt'], save: false },
+      },
+      { page: '/accounts/receivables', title: 'Ask any time', text: 'On WhatsApp: "What does the client still owe on Green Villa?"', mood: 'happy' },
+    ],
+  },
+  // W9: cost control (questions only, nothing to practise).
+  {
+    id: 'cost-control',
+    kind: 'workflow',
+    title: 'Cost control',
+    about: 'Which work costs more than it earns, labour and material, before the bill comes.',
+    minutes: 2,
+    roles: MONEY_ROLES,
+    steps: [
+      { page: '/boq', target: 'boq.lines', title: 'It starts with the BOQ', text: 'Each line\'s rate is the budget; the work site sends earns against it.', mood: 'hello' },
+      { page: '/cost', target: 'cost.projects', title: 'Every project, worst first', text: 'Its forecast at completion, done against spent, and the last 7 days.', mood: 'look' },
+      { page: '/cost/green-red', target: 'gr.lines', title: 'Labour, line by line', text: 'Green: the work earned its labour. Red: it cost more. Worst first, with why.', mood: 'think' },
+      { page: '/cost/budget', target: 'budget.kinds', title: 'Budget against spent', text: 'For labour, material and subcontract: the budget, what the work earned, and what was spent.' },
+      { page: '/cost/materials', title: 'Material against the BOQ', text: 'What the work needed by the BOQ against what was used, and what is short to finish.', mood: 'worry' },
+      { page: '/cost', title: 'Ask on WhatsApp', text: '"How is Green Villa doing on cost?" or "Which work is over on labour this week?"', mood: 'happy' },
+    ],
+  },
+  // W10: machines and hire.
+  {
+    id: 'machines',
+    kind: 'workflow',
+    title: 'Machines and hire',
+    about: "Each machine's day from site, and the hire bill checked against it.",
+    minutes: 2,
+    roles: RECORDERS,
+    steps: [
+      { page: '/equipment/log', title: "Each machine's day", text: 'Hours worked, idle and broken down, and the diesel, from one message from site.', mood: 'hello' },
+      {
+        page: '/equipment/log',
+        title: 'Try it: log the machines',
+        text: 'Send this. The card shows each machine and its hours. This is practice: look at the card, then tap Cancel.',
+        mood: 'send',
+        try: { kind: 'whatsapp', say: 'Mixer 8 hrs, roller broke down 3 hrs', tools: ['log_machines'], save: false },
+      },
+      { page: '/equipment/hire', title: 'The hire bill, checked', text: 'The hours the owner billed against the hours site logged, so you pay for what was worked.', mood: 'think' },
+      { page: '/equipment/hire', title: 'Ask on WhatsApp', text: '"Does the JCB bill match our hours?"', mood: 'happy' },
+    ],
+  },
+  // W11: month end.
+  {
+    id: 'month-end',
+    kind: 'workflow',
+    title: 'Month end',
+    about: "The month's report, the books, closing the month, and the export for your accountant.",
+    minutes: 2,
+    roles: BILLING_ROLES,
+    steps: [
+      { page: '/reports/period', title: "The month's report", text: 'Work, labour, material and money for the week or the month, per project. On WhatsApp: "Send me October\'s report for Green Villa".', mood: 'hello' },
+      { page: '/accounts', title: 'The books keep themselves', text: 'Every bill, payment, delivery and wage recorded on WhatsApp or here is already in the books.', mood: 'look' },
+      { page: '/accounts/periods', title: 'Close the month', text: 'Once the month is checked, close it: nothing in it can change without opening it again.', mood: 'think' },
+      { page: '/accounts/tally', title: 'For your accountant', text: 'The month for Tally in one file, so nobody types it in again.', mood: 'happy' },
+    ],
+  },
 ]
 
 
@@ -414,7 +637,7 @@ function composed(id: string, title: string, about: string, ids: string[], kind:
   return walk
 }
 
-/** The full workflows (plan section 5.2), made of the parts above. SS-48 adds W3, W5..W11. */
+/** The full workflows (plan section 5.2) made of the parts above. W3, W5..W11 (SS-48) are whole in WORKFLOWS. */
 export const FULL_WORKFLOWS: Walkthrough[] = [
   composed('site-to-report', 'Site update to daily report', "The site's day in one WhatsApp message, then everything it fills, up to the report that goes out.", ['site-update', 'daily-report']),
   composed('material', 'Material, from asking to using', 'The site asks, the office orders, it arrives and is used: every step, and how to take each back.', ['material-request', 'material-order', 'delivery']),
@@ -434,28 +657,45 @@ export interface Outcome {
 
 const OWNERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN'] as const
 const ENGINEERS = ['SITE_ENGINEER'] as const
+const MANAGERS = ['PROJECT_MANAGER'] as const
+const FINANCE = ['FINANCE'] as const
 
 export const OUTCOMES: Outcome[] = [
-  // The owner (SS-43 draft, 15 Nov). SS-48 adds billing the client and month end once W8 and W11 are written.
+  // The owner (SS-43 draft, 15 Nov; SS-48 points cost, start and problems at W9, W6, W7 and adds W8, W11).
   { id: 'know-every-site', roles: OWNERS, title: "Know every site's day without a phone call", why: 'Your engineers send one WhatsApp message; you get the daily report every evening.', walks: ['site-to-report'] },
   { id: 'see-material', roles: OWNERS, title: 'See where every bag of cement goes', why: 'From the site asking to the material being used: nothing bought twice, nothing gone missing.', walks: ['material'] },
   { id: 'wages-right', roles: OWNERS, title: 'Pay wages right, with no arguments', why: 'Attendance from site becomes the wage sheet, and advances come off by themselves.', walks: ['labour-to-wages'] },
-  { id: 'cost-early', roles: OWNERS, title: 'Catch a cost overrun before the bill comes', why: 'Each BOQ line shows what it earned against what it cost, and material is planned before it runs short.', walks: ['page-boq', 'page-planning-materials'] },
-  { id: 'start-project', roles: OWNERS, title: 'Start a new project in an afternoon', why: 'Your estimate Excel becomes the BOQ and the schedule; add the site team and they start sending.', walks: ['page-planning-setup', 'page-planning-schedule', 'page-team'] },
-  { id: 'hear-problems', roles: OWNERS, title: 'Hear about problems the day they happen', why: 'Hold-ups from site wait in one list until someone acts on them.', walks: ['page-issues'] },
+  { id: 'cost-early', roles: OWNERS, title: 'Catch a cost overrun before the bill comes', why: 'Each BOQ line shows what it earned against what it cost, and material is planned before it runs short.', walks: ['cost-control', 'page-planning-materials'] },
+  { id: 'start-project', roles: OWNERS, title: 'Start a new project in an afternoon', why: 'Your estimate Excel becomes the BOQ and the schedule; add the site team and they start sending.', walks: ['new-project'] },
+  { id: 'hear-problems', roles: OWNERS, title: 'Hear about problems the day they happen', why: 'Hold-ups from site wait in one list until someone acts on them.', walks: ['issue'] },
+  { id: 'paid-faster', roles: OWNERS, title: 'Get paid faster by the client', why: 'Running bills from the work site already sent, and what the client still owes, always up to date.', walks: ['billing'] },
+  { id: 'month-end', roles: OWNERS, title: 'Month end without chasing the accountant', why: 'The books keep themselves from what is recorded; the month goes to Tally in one file.', walks: ['month-end'] },
   // The site engineer: mostly WhatsApp (plan 5.1).
   { id: 'day-in-one-message', roles: ENGINEERS, title: "Send the day's update in one message", why: 'Who came, what was done, what is stuck: one message, and the daily report writes itself.', walks: ['site-update'] },
   { id: 'material-on-time', roles: ENGINEERS, title: 'Get material on site on time', why: 'Ask on WhatsApp, then record it when it comes and when it is used.', walks: ['material-request', 'delivery'] },
   { id: 'attendance-one-line', roles: ENGINEERS, title: 'Mark attendance in one line', why: '"Suresh team: 4 masons, 2 helpers", and the muster roll fills itself.', walks: ['attendance'] },
-  { id: 'problem-fixed', roles: ENGINEERS, title: 'Report a problem and get it fixed', why: 'Say what is wrong; it stays open until someone acts on it.', walks: ['page-issues'] },
+  { id: 'problem-fixed', roles: ENGINEERS, title: 'Report a problem and get it fixed', why: 'Say what is wrong; it stays open until someone acts on it.', walks: ['issue'] },
+  // The project manager (SS-48; plan 5.1: W6, W1, W2, W5, W9).
+  { id: 'pm-start', roles: MANAGERS, title: 'Get a new project going', why: 'BOQ, schedule and site team set up, and the first report the same week.', walks: ['new-project'] },
+  { id: 'pm-daily', roles: MANAGERS, title: "Review every site's day in minutes", why: 'One message from each site becomes its day and the daily report.', walks: ['site-to-report'] },
+  { id: 'pm-material', roles: MANAGERS, title: 'Keep material arriving before it is needed', why: 'Requests from site, orders, what is still to come, and what was used.', walks: ['material'] },
+  { id: 'pm-subcontract', roles: MANAGERS, title: 'Pay subcontractors for measured work only', why: 'Work orders at agreed rates, and each bill checked against what was measured.', walks: ['subcontract'] },
+  { id: 'pm-cost', roles: MANAGERS, title: 'Know which work is losing money', why: 'Each BOQ line, green or red, every day.', walks: ['cost-control'] },
+  // Accounts / finance (SS-48; plan 5.1: W3, W4 wages, W8, W11).
+  { id: 'fin-bills', roles: FINANCE, title: 'Pay suppliers for what actually came', why: 'Bills matched to deliveries, and what you owe each supplier, by age.', walks: ['supplier-bill'] },
+  { id: 'fin-wages', roles: FINANCE, title: 'Pay wages straight from attendance', why: 'The wage sheet comes from attendance, less advances.', walks: ['wages'] },
+  { id: 'fin-billing', roles: FINANCE, title: 'Bill the client and see what they owe', why: 'Running bills and client payments in one place.', walks: ['billing'] },
+  { id: 'fin-month', roles: FINANCE, title: 'Close the month and hand it to Tally', why: 'The books are already kept; check, close, export.', walks: ['month-end'] },
 ]
 
 export const OUTCOME_WALKS: Walkthrough[] = OUTCOMES.map((o) => composed(`goal-${o.id}`, o.title, o.why, o.walks, 'outcome', o.roles))
 
-/** Role paths: a role's outcomes in order, as one walkthrough (plan section 5.1). SS-48 adds Project manager, Finance. */
+/** Role paths: a role's outcomes in order, as one walkthrough (plan section 5.1). */
 export const ROLE_PATHS: Walkthrough[] = [
   composed('path-owner', 'Everything an owner gets, in order', 'All of the above, one after another.', OUTCOMES.filter((o) => o.roles === OWNERS).map((o) => `goal-${o.id}`), 'role', OWNERS),
   composed('path-site-engineer', 'Everything a site engineer does, in order', 'All of the above, one after another.', OUTCOMES.filter((o) => o.roles === ENGINEERS).map((o) => `goal-${o.id}`), 'role', ENGINEERS),
+  composed('path-project-manager', 'Everything a project manager does, in order', 'All of the above, one after another.', OUTCOMES.filter((o) => o.roles === MANAGERS).map((o) => `goal-${o.id}`), 'role', MANAGERS),
+  composed('path-finance', 'Everything accounts does, in order', 'All of the above, one after another.', OUTCOMES.filter((o) => o.roles === FINANCE).map((o) => `goal-${o.id}`), 'role', FINANCE),
 ]
 
 export const ALL_WALKS: Walkthrough[] = [...ROLE_PATHS, ...OUTCOME_WALKS, ...FULL_WORKFLOWS, ...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS]

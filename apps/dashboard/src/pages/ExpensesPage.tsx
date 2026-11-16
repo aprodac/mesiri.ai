@@ -248,11 +248,11 @@ export default function ExpensesPage() {
       <header className="flex items-center justify-between gap-3">
         <ModuleTitle icon={Receipt} title="Expenses" />
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" disabled={expenses.length === 0} onClick={() => exportRows(expenses)} title="The expenses shown, as a CSV file (opens in Excel)">
+          <Button variant="outline" className="gap-2" data-guide="exp.export" disabled={expenses.length === 0} onClick={() => exportRows(expenses)} title="The expenses shown, as a CSV file (opens in Excel)">
             <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
           </Button>
           {!readOnly && (
-            <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setRecordOpen(true)}>
+            <Button className="hidden gap-2 font-semibold md:inline-flex" data-guide="exp.add" onClick={() => setRecordOpen(true)}>
               <Plus className="size-4" strokeWidth={2.6} /> Record expense
             </Button>
           )}
@@ -262,7 +262,7 @@ export default function ExpensesPage() {
       <FullCost filters={filters} />
 
       {/* What was spent, and how it was paid (PRC-18). Each payment tile filters the list. */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5" data-guide="exp.tiles">
         <div className="col-span-2 flex items-center gap-3 rounded-xl border bg-card p-3 sm:p-3.5 lg:col-span-1">
           <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">
             <CircleDollarSign className="size-5" />
@@ -309,7 +309,7 @@ export default function ExpensesPage() {
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-guide="exp.filters">
         <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-2.5">
           <Search className="size-4 text-muted-foreground" />
           <span className="sr-only">Search expenses</span>
@@ -321,7 +321,7 @@ export default function ExpensesPage() {
         <FilterPill icon={Wallet} label="Paid" allLabel="However paid" value={via} options={options.vias} onChange={setVia} />
         <FilterPill icon={ImageIcon} label="Bill photo" allLabel="Any bill photo" value={clean(photo)} options={options.photos} onChange={setPhoto} />
         <FilterPill icon={MessageSquare} label="From" allLabel="WhatsApp or web" value={clean(source)} options={options.sources} onChange={setSource} />
-        <div className="ml-auto">
+        <div className="ml-auto" data-guide="exp.period">
           <PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />
         </div>
       </div>
@@ -346,7 +346,7 @@ export default function ExpensesPage() {
           ))}
         </div>
       ) : expenses.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="exp.empty">
           <Receipt className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">{filtered ? 'No expenses match these filters' : 'No expenses in this period'}</p>
           <p className="max-w-sm text-sm text-muted-foreground">{filtered ? '' : 'Send a bill photo or "paid 1500 for tea" on WhatsApp, or record one here.'}</p>
@@ -359,14 +359,14 @@ export default function ExpensesPage() {
       ) : (
         <div className="flex flex-col items-start gap-5 lg:flex-row-reverse">
           {/* Where it went */}
-          <aside aria-label="Where the money went" className="flex w-full shrink-0 flex-col gap-3 lg:sticky lg:top-4 lg:w-[340px]">
+          <aside aria-label="Where the money went" className="flex w-full shrink-0 flex-col gap-3 lg:sticky lg:top-4 lg:w-[340px]" data-guide="exp.breakdown">
             <Breakdown title="By category" total={shownTotal} data={byCategory} active={clean(category)} onPick={(k) => setCategory(clean(category) === k ? '' : k)} colour={() => 'bg-indigo-500'} />
             {new Set(expenses.map((e) => e.site_id ?? `p:${e.project_id}`)).size > 1 && (
               <Breakdown title="By site" total={shownTotal} data={bySite} active={site} onPick={(k) => setSite(site === k ? '' : k)} colour={(k) => k} swatchFor={(k) => swatch(expenses.find((e) => (e.site_id ?? `p:${e.project_id}`) === k)?.project_id ?? k)} />
             )}
           </aside>
 
-          <div className="flex w-full min-w-0 flex-1 flex-col gap-3">
+          <div className="flex w-full min-w-0 flex-1 flex-col gap-3" data-guide="exp.list">
             {filtered && (
               <p className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>
@@ -461,7 +461,7 @@ export default function ExpensesPage() {
       )}
 
       {!readOnly && (
-        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" onClick={() => setRecordOpen(true)}>
+        <Button className="fixed right-4 bottom-5 z-30 h-12 gap-2 rounded-full px-5 font-semibold shadow-lg md:hidden" data-guide="exp.add" onClick={() => setRecordOpen(true)}>
           <Plus className="size-5" strokeWidth={2.6} /> Expense
         </Button>
       )}

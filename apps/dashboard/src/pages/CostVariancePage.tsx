@@ -380,7 +380,7 @@ export default function CostVariancePage() {
       }
       crumb="Cost control"
       title="Green / red"
-      date={title}
+      date={projectId ? undefined : title}
       action={
         projectId && !siteView ? (
           <CostExportButton

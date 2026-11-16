@@ -63,7 +63,7 @@ export default function BringDataPage() {
           title: 'Materials, vendors and opening stock',
           about: 'Items, vendors and stock: one Excel',
           done: p?.has_vendors,
-          action: <Button size="sm" variant="outline" onClick={() => setMaterialsOpen(true)}>Upload the Excel</Button>,
+          action: <Button size="sm" variant="outline" data-guide="bring.materials" onClick={() => setMaterialsOpen(true)}>Upload the Excel</Button>,
         }]
       : []),
     {
@@ -75,7 +75,7 @@ export default function BringDataPage() {
         : 'Add a project first',
       done: p?.has_boq,
       action: project ? (
-        <Button size="sm" variant="outline" onClick={() => setBoqOpen(true)}>Upload the BOQ</Button>
+        <Button size="sm" variant="outline" data-guide="bring.boq" onClick={() => setBoqOpen(true)}>Upload the BOQ</Button>
       ) : (
         <Button asChild size="sm" variant="outline"><Link to={guideLink('/boq')}>BOQ</Link></Button>
       ),
@@ -94,7 +94,7 @@ export default function BringDataPage() {
       <PageHeader title="Bring your data" />
 
       <Section title="In this order">
-        <ol className="divide-y rounded-lg border">
+        <ol className="divide-y rounded-lg border" data-guide={p ? 'bring.steps' : undefined}>
           {rows.map((row, i) => {
             const Icon = row.icon
             return (
@@ -123,7 +123,7 @@ export default function BringDataPage() {
       </Section>
 
       <Section title="Something else?">
-        <p className="m-0 flex items-start gap-2 text-sm text-muted-foreground">
+        <p className="m-0 flex items-start gap-2 text-sm text-muted-foreground" data-guide="bring.else">
           <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
             Send the file on WhatsApp{number ? ` to ${number}` : ''}, with a line saying what it is

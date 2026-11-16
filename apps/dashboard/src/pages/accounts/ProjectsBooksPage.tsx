@@ -93,14 +93,14 @@ export default function ProjectsBooksPage() {
   const losing = (d?.projects ?? []).filter((p) => Number(p.profit) < 0)
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Projects" date="Which site makes money" />
+      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Projects" />
       <BooksTabs current="/accounts/projects" />
       <PeriodBar state={periodState} />
       {!d ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="proj.stats"
             phoneCols={2}
             stats={[
               { label: 'Billed', value: rupees(d.total.billed) },
@@ -119,7 +119,7 @@ export default function ProjectsBooksPage() {
               <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">No project has income or cost in the books in this period.</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
+                <table data-guide="proj.list" className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                       <th className="px-3 py-2 text-left font-medium">Project</th>

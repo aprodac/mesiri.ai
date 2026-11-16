@@ -42,7 +42,6 @@ export default function LedgerStatementPage() {
         crumb="Accounts"
         title={d?.ledger.name ?? 'Ledger'}
         chip={d && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{d.ledger.group_name}{d.ledger.link_kind ? ` · ${LINK_LABEL[d.ledger.link_kind]}` : ''}</span>}
-        date={d?.scope}
         action={
           d && (
             <div className="flex gap-2">

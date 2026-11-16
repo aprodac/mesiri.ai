@@ -135,7 +135,7 @@ export default function ChartOfAccountsPage() {
             <span className="shrink-0 text-xs font-normal text-muted-foreground">{ls.length ? `· ${ls.length}` : ''}</span>
           </button>
           <div className="flex shrink-0 gap-0.5 opacity-70 group-hover:opacity-100">
-            <Button size="icon" variant="ghost" className="size-7" title="Add a ledger here" aria-label={`Add a ledger to ${g.name}`} onClick={() => openLedger(null, g.id)}>
+            <Button data-guide="chart.add" size="icon" variant="ghost" className="size-7" title="Add a ledger here" aria-label={`Add a ledger to ${g.name}`} onClick={() => openLedger(null, g.id)}>
               <Plus className="size-3.5" />
             </Button>
             <Button size="icon" variant="ghost" className="size-7" title="Add a group under it" aria-label={`Add a group under ${g.name}`} onClick={() => openGroup(null, g.id)}>
@@ -214,13 +214,13 @@ export default function ChartOfAccountsPage() {
         <DprSection icon={ListTree} title="Groups and ledgers">
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a ledger" className="h-9 pl-8" aria-label="Find a ledger" />
+            <Input data-guide="chart.search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a ledger" className="h-9 pl-8" aria-label="Find a ledger" />
           </div>
           <div className="flex flex-col gap-4">
             {byNature
               .filter((x) => x.roots.some((g) => !words || hasAny(g.id)))
               .map((x) => (
-                <section key={x.nature} className="overflow-hidden rounded-lg border">
+                <section data-guide="chart.groups" key={x.nature} className="overflow-hidden rounded-lg border">
                   <h3 className="border-b px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{NATURE_LABEL[x.nature]}</h3>
                   <ul className="divide-y">{x.roots.map((g) => renderGroup(g, 0))}</ul>
                 </section>

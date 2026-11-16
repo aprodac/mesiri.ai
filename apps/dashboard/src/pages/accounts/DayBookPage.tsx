@@ -135,18 +135,17 @@ export default function DayBookPage() {
         back={{ to: '/accounts/trial-balance', label: 'Trial balance' }}
         crumb="Accounts"
         title="Day book"
-        date={d?.scope}
         action={
           <div className="flex items-center gap-2">
             <ExcelButton path="/accounts/day-book/export" params={{ ...period, ...sp, voucher_type: type, q: search }} name={`day-book-${period.date_from}-to-${period.date_to}`} />
-            <Button size="sm" className="gap-1.5" onClick={() => setWriting(true)}><Plus className="size-3.5" /> New voucher</Button>
+            <Button data-guide="daybook.new" size="sm" className="gap-1.5" onClick={() => setWriting(true)}><Plus className="size-3.5" /> New voucher</Button>
           </div>
         }
       />
       <BooksTabs current="/accounts/day-book" />
       <PeriodBar state={periodState} />
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented<VoucherType | ''>
+        <Segmented<VoucherType | ''> guide="daybook.types"
           label="Kind of voucher"
           value={type}
           options={TYPES.map((t) => ({ value: t, label: t ? VOUCHER_LABEL[t] : 'All' }))}
@@ -156,7 +155,7 @@ export default function DayBookPage() {
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Party, ledger, words or number" className="h-9 pl-8" aria-label="Search the day book" />
         </div>
-        <Button size="sm" variant={late ? 'default' : 'outline'} className="gap-1.5" onClick={() => setParam('late', late ? null : '1')}>
+        <Button data-guide="daybook.late" size="sm" variant={late ? 'default' : 'outline'} className="gap-1.5" onClick={() => setParam('late', late ? null : '1')}>
           <History className="size-3.5" /> Changed after close
         </Button>
       </div>
@@ -164,7 +163,7 @@ export default function DayBookPage() {
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip
+          <StatStrip guide="daybook.stats"
             stats={[
               { label: 'Vouchers', value: String(d.count), icon: BookOpenText },
               { label: 'Total moved', value: rupees(d.total) },
@@ -183,7 +182,7 @@ export default function DayBookPage() {
             ) : (
               <div className={cn('flex flex-col gap-3', book.isFetching && 'opacity-70')}>
                 {days.map(([day, list]) => (
-                  <section key={day} className="rounded-lg border">
+                  <section data-guide="daybook.list" key={day} className="rounded-lg border">
                     <header className="flex items-baseline justify-between border-b bg-muted/30 px-4 py-2 text-sm">
                       <h3 className="font-medium">{formatDay(day)}</h3>
                       <DayMoney list={list} />

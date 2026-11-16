@@ -236,6 +236,11 @@ async def test_labour_is_put_on_boq_lines_by_man_days_and_set_against_earned(cli
     left = (await client.get(f"/cost/projects/{p}/labour?unallocated=true", headers=h)).json()
     assert [g["trade_key"] for g in left["groups"]] == ["helper"]
     assert left["not_on_a_line"] == {"man_days": "2", "cost": "2000.00"}
+    # BOQ-02: a group nobody split follows that day's work onto its lines. The helpers are said to be on no line
+    # (BOQ-02b remembers it), so the plastering measured below does not take them.
+    r = await client.put(f"/cost/projects/{p}/labour", headers=h, json={
+        "site_id": str(ctx["site"]), "date": day, "trade": "helper", "lines": []})
+    assert r.status_code == 200, r.text
 
     # 600 sq ft plastered earns 600 x 14 = 8,400 of labour against the 3,300 put on the line.
     activity = uuid.uuid4()
@@ -318,11 +323,11 @@ async def test_variance_colours_each_line_and_each_day(client, ctx, test_engine)
     groups = (await client.get(f"/cost/projects/{p}/labour", headers=h)).json()["groups"]
     for g in groups:
         line = plaster if g["trade_key"] == "mason" else brick
-        if g["trade_key"] == "helper" and g["date"] != groups[0]["date"]:
-            continue  # one day of helpers stays off every line
+        # One day of helpers stays off every line: said as no lines (BOQ-02b), else BOQ-02 puts them on that day's work.
+        off = g["trade_key"] == "helper" and g["date"] != groups[0]["date"]
         await client.put(f"/cost/projects/{p}/labour", headers=h, json={
             "site_id": g["site_id"], "date": g["date"], "trade": g["trade_key"],
-            "lines": [{"line_id": line["id"], "man_days": g["man_days"]}]})
+            "lines": [] if off else [{"line_id": line["id"], "man_days": g["man_days"]}]})
 
     body = (await client.get(f"/cost/projects/{p}/variance", headers=h)).json()
     lines = {ln["line_id"]: ln for ln in body["lines"]}

@@ -62,17 +62,21 @@ export default function CompanyDetails() {
       ) : (
         <div className="flex flex-col">
           <DprSection id="details" icon={Building2} title="Company details">
-            <SettingsTab key={company.dataUpdatedAt} company={company.data} />
+            <div data-guide="company.details">
+              <SettingsTab key={company.dataUpdatedAt} company={company.data} />
+            </div>
           </DprSection>
           <DprSection id="letterhead" icon={FileText} title="Letterhead on the DPR">
-            <BrandingTab />
+            <div data-guide="company.letterhead">
+              <BrandingTab />
+            </div>
           </DprSection>
           <DprSection
             icon={MessageSquare}
             title="WhatsApp"
             meta={s ? `${s.wa_mapped_users} of ${s.total_users} people have a number` : undefined}
             action={
-              <Link to="/whatsapp?view=messages" className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline">
+              <Link to="/whatsapp?view=messages" data-guide="company.whatsapp" className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline">
                 All messages →
               </Link>
             }

@@ -1,15 +1,16 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Download, ReceiptText, Scale } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/toast-notification'
 import { HireBillDialog } from '@/components/equipment/actions'
 import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
-import { RATE_WORDS, fetchHireCheck, hrs, iso, type HireCheckRow, inr } from '@/lib/equipment'
+import { RATE_WORDS, deleteHireBill, errorWords, fetchHireCheck, hrs, iso, type HireCheckRow, inr } from '@/lib/equipment'
 import { ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-13: Equipment > Hire check. "The bill says 8 hours a day; how many did it work?" Per hired machine in the period:
@@ -39,6 +40,14 @@ export default function HireCheckPage() {
   const [billFor, setBillFor] = React.useState<HireCheckRow | null>(null)
   const { data, isLoading, isError } = useQuery({ queryKey: ['equipment', 'hire-check', from, to], queryFn: () => fetchHireCheck({ date_from: from, date_to: to }) })
   const items = data?.items ?? []
+  // WEB-52: a bill entered by mistake is removed here too, as on the machine's page.
+  const qc = useQueryClient()
+  const toast = useToast()
+  const dropBill = useMutation({
+    mutationFn: deleteHireBill,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['equipment'] }); toast.success('Bill removed') },
+    onError: (e) => toast.error('Not removed', errorWords(e)),
+  })
 
   const exportIt = () => exportCsv(`hire-check-${from}.csv`,
     ['Machine', 'Hire company', 'Rate', 'Per', 'Min h/day', 'Site', 'Worked (h)', 'Idle (h)', 'Breakdown (h)', 'Days on site', 'Chargeable (h)', 'Comes to', 'Billed', 'Not billed', 'Check'],
@@ -51,7 +60,7 @@ export default function HireCheckPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={Scale} title="Hire check" />
         <div className="flex items-center gap-2">
-          <div role="tablist" aria-label="Month" className="flex gap-0.5 rounded-xl bg-muted p-1">
+          <div role="tablist" aria-label="Month" className="flex gap-0.5 rounded-xl bg-muted p-1" data-guide="hire.month">
             {[-2, -1, 0].map((o) => (
               <button key={o} role="tab" type="button" aria-selected={Number(offset) === o} onClick={() => setOffset(String(o))}
                 className={cn('h-8 rounded-lg px-3 text-sm', Number(offset) === o ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75')}>{monthRange(o)[2]}</button>
@@ -61,7 +70,7 @@ export default function HireCheckPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-guide="hire.tiles">
         {[
           { label: 'Hours recorded come to', value: inr(data?.totals.expected ?? 0), icon: ClipboardList, tone: 'bg-muted' },
           { label: 'Billed', value: inr(data?.totals.billed ?? 0), icon: ReceiptText, tone: 'bg-muted' },
@@ -75,7 +84,7 @@ export default function HireCheckPage() {
         ))}
       </div>
 
-      <section aria-label={`Hired machines, ${label}`} className="overflow-hidden rounded-xl border">
+      <section aria-label={`Hired machines, ${label}`} className="overflow-hidden rounded-xl border" data-guide={!data ? undefined : items.length ? 'hire.list' : 'hire.empty'}>
         {isLoading && <div className="h-32 animate-pulse bg-muted/40" />}
         {isError && <p className="p-6 text-sm text-destructive">The hire check did not load.</p>}
         {data && items.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No hired machine in {label}.</p>}
@@ -99,9 +108,10 @@ export default function HireCheckPage() {
               <div key={b.id} className={cn('rounded-lg px-3 py-2 text-xs', b.check.status === 'over' ? 'bg-red-50 dark:bg-red-950/40' : 'bg-muted/50')}>
                 <span className="font-semibold">{b.bill_ref ?? 'Bill'} {b.period_from} – {b.period_to}: {inr(b.amount)}</span>
                 {b.check.flags.length ? b.check.flags.map((f) => <span key={f} className="block text-muted-foreground">• {f}</span>) : <span className="ml-2 text-emerald-700 dark:text-emerald-300">matches the hours recorded</span>}
+                {!readOnly && <button type="button" className="mt-1 block text-muted-foreground hover:text-destructive" disabled={dropBill.isPending} onClick={() => { if (window.confirm('Remove this bill?')) dropBill.mutate(b.id) }}>Remove</button>}
               </div>
             ))}
-            {!readOnly && <Button size="sm" variant="outline" className="w-fit gap-1.5" onClick={() => setBillFor(r)}><ReceiptText className="size-4" />Enter a bill</Button>}
+            {!readOnly && <Button size="sm" variant="outline" className="w-fit gap-1.5" data-guide="hire.bill" onClick={() => setBillFor(r)}><ReceiptText className="size-4" />Enter a bill</Button>}
           </div>
         ))}
       </section>
