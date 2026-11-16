@@ -82,8 +82,13 @@ step's words in another place.
 - A walkthrough speaks each step when its id is in `VOICED` (`lib/walkthroughs.ts`); the build fails on an id that
   doesn't exist. English only for now, read by the narrator voice (`MESIRI_SARVAM__GUIDE_TTS_SPEAKER`, default `shubh`,
   Indian English male).
-- The narrator says the step's title and text (`spokenWords`). When the screen's words don't read well aloud (an
-  abbreviation in brackets, "Ctrl K", a symbol), give the step `say: '...'` with the words to speak.
+- **Every voiced step has its own narration** (`say`), written for listening, not the screen's words read out
+  (SS-64): one running story (Green Villa, Ravi the site engineer, Malabar the supplier, Suresh's team), spoken to the
+  owner, short sentences, what happened and why it matters. A tour's hello (the page's `about`) gets `introSay`. A
+  step with no `say` falls back to its title and text (`spokenWords`); "Pick a project" is left short on purpose.
+- **The narrator's voice** is a server setting (`MESIRI_SARVAM__GUIDE_TTS_MODEL` and `__GUIDE_TTS_SPEAKER`); the
+  Learn page's "Choose the narrator" (owners and admins) plays the voices on offer (`GUIDE_SAMPLES` in
+  `domains/dpr/router.py`) reading the same line.
 - The audio is made by the server the first time a step is heard (`GET /dpr/live/voice?voice=guide`, Sarvam, MP3) and
   kept; changed words are simply new audio. Nothing to regenerate by hand.
 - The player (play / pause, 1x to 2x, mute) lives in the bubble (`components/guide-voice.tsx`, one player for
