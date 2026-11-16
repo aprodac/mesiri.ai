@@ -338,3 +338,19 @@ shows the project on its BOQ page (it said "All projects"); the walkthrough's ow
 **SS-49 (module walkthroughs) needed no code:** the engine makes them from the page tours. All 13 checked end to end
 on 16 Nov.
 
+## 14. Voice for the walkthroughs (SS-61, 16 Nov 2026)
+
+Asked in session; decided by Ilan: English first; W1, W2, W4 and the owner's path first; on by default with mute;
+Indian English male voice.
+
+| Part | What |
+|---|---|
+| Server | `GET /dpr/live/voice?voice=guide`: Live's voice endpoint (WEB-63) extended, not a second one. The narrator is its own Sarvam speaker (`guide_tts_speaker`, `shubh`), MP3 (`SarvamVoice.speak(codec=...)`, Live unchanged), up to 700 characters, kept in the server's cache and the browser's for a day. Signed-in people only |
+| What is spoken | `spokenWords(step)`: the title and text, or the step's `say`. 62 lines, about 7,200 characters for the four walkthroughs: made once, the first time each is heard |
+| Which | `VOICED` in `walkthroughs.ts`: `site-to-report`, `material`, `labour-to-wages`, `path-owner`. The Learn page marks them "With voice" |
+| Player | In the bubble: Play / Pause (Listen), 1x / 1.25x / 1.5x / 2x (pitch kept), mute; kept per browser (`mesiri_guide_voice`). The next step's audio is fetched while this one plays. Quiet while the person fills a real dialog |
+| Browsers | Sound needs a click first: a walkthrough started from the Learn page speaks at once |
+
+Not verified: the real voice (this session cannot reach Sarvam); checked with a test tone in the browser and a stand-in
+voice in the unit tests.
+

@@ -77,6 +77,17 @@ step's words in another place.
 - The role path ("Everything ..., in order") is made from the role's outcomes by itself.
 - Open: Project manager and Finance outcomes, and the owner's billing and month-end outcomes (SS-48).
 
+## Voice (SS-61)
+
+- A walkthrough speaks each step when its id is in `VOICED` (`lib/walkthroughs.ts`); the build fails on an id that
+  doesn't exist. English only for now, read by the narrator voice (`MESIRI_SARVAM__GUIDE_TTS_SPEAKER`, default `shubh`,
+  Indian English male).
+- The narrator says the step's title and text (`spokenWords`). When the screen's words don't read well aloud (an
+  abbreviation in brackets, "Ctrl K", a symbol), give the step `say: '...'` with the words to speak.
+- The audio is made by the server the first time a step is heard (`GET /dpr/live/voice?voice=guide`, Sarvam, MP3) and
+  kept; changed words are simply new audio. Nothing to regenerate by hand.
+- The player (play / pause, 1x to 2x, mute) lives in the walkthrough's bubble; the choice is kept per browser.
+
 ## Moving people between pages
 
 Any link or navigation inside the app to another page keeps the picked project: `urlWithScope(url, scope)` from
