@@ -80,21 +80,30 @@ def test_every_walkthrough_practice_uses_real_writing_tools(say: str, tools: lis
     assert any(TOOLS[t] != "GET" for t in tools), "a practice saves something, so it must use a tool that writes"
 
 
-# Learn Mesiri (D-L3, review 15 Nov): a practice must never leave a real record the person can't take back. Taking back
-# a delivery, a use or a move is a stock correction, allowed only to backend ADJUSTMENT_ROLES; every take-back with one
-# of those undo tools must name exactly those roles, so the walkthrough turns the practice into card-only for others.
-_STOCK_UNDO = {"undo_receipt", "undo_usage", "undo_transfer"}
-
-
-def test_stock_take_backs_name_the_roles_that_may_correct() -> None:
+# Learn Mesiri (D-L3, reviews 15 and 16 Nov): a practice must never leave a real record the person can't take back.
+# Some undos are limited by role in the backend; a take-back with one of these tools must name, as `roles:`, the list in
+# walkthroughs.ts that equals the backend's, so the walkthrough turns the practice into card-only for everyone else.
+# Found twice: a site engineer's practice delivery (stock correction) and a project manager's practice expense.
+def _role_limited_undos() -> dict[str, tuple[str, frozenset[str]]]:
+    from mesiri.authorization.roles import MONEY_MANAGE_ROLES
     from mesiri.domains.materials.validation import ADJUSTMENT_ROLES
 
+    stock = ("ADJUSTERS", frozenset(ADJUSTMENT_ROLES))
+    return {"undo_receipt": stock, "undo_usage": stock, "undo_transfer": stock,
+            "undo_expense": ("MONEY_MANAGERS", frozenset(MONEY_MANAGE_ROLES))}
+
+
+def test_role_limited_take_backs_name_the_backends_roles() -> None:
     text = WALKS.read_text(encoding="utf-8")
-    adjusters = re.search(r"const ADJUSTERS = \[([^\]]*)\]", text)
-    assert adjusters, "walkthroughs.ts must define ADJUSTERS (who may take back a stock movement)"
-    assert set(re.findall(r"'([A-Z_]+)'", adjusters.group(1))) == set(ADJUSTMENT_ROLES)
+    undos = _role_limited_undos()
+    for const, roles in set(undos.values()):
+        found = re.search(rf"const {const} = \[([^\]]*)\]", text)
+        assert found, f"walkthroughs.ts must define {const}"
+        assert set(re.findall(r"'([A-Z_]+)'", found.group(1))) == set(roles), f"{const} differs from the backend"
     backs = re.findall(r"takeBack: \{([^}]*)\}", text)
     assert backs, "no take-back steps found in walkthroughs.ts: has its format changed?"
     for back in backs:
-        if _STOCK_UNDO & set(re.findall(r"'([a-z_]+)'", back)) or "Correct" in back:
-            assert "roles: ADJUSTERS" in back, f"a stock take-back must say who may do it: {back}"
+        tools = set(re.findall(r"'([a-z_]+)'", back))
+        wanted = {undos[t][0] for t in tools if t in undos} | ({"ADJUSTERS"} if "Correct" in back else set())
+        for const in wanted:
+            assert f"roles: {const}" in back, f"this take-back must say who may do it (roles: {const}): {back}"

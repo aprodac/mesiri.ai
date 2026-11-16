@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
 import {
-  OUTCOME_WALKS, canTakeBack, findWalkthrough, learnKey, pageOpenFor, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
+  OUTCOME_WALKS, canTakeBack, practiceSaved, findWalkthrough, learnKey, pageOpenFor, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
 import { waLink } from '@/lib/whatsapp-modal'
 
@@ -316,7 +316,8 @@ export function WalkthroughRunner() {
     const skipThis =
       (step.page && !pageOpenFor(step.page, role)) ||
       (practiceOff && (step.try || step.takeBack)) ||
-      (cantTakeBack && (!!step.takeBack || step.try?.kind === 'here'))
+      (cantTakeBack && (!!step.takeBack || step.try?.kind === 'here')) ||
+      (step.showNew && !practiceSaved(run.walk, run.index, role))
     if (skipThis) {
       goRef.current(run.dir)
       return
@@ -464,9 +465,16 @@ export function WalkthroughRunner() {
   if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
   if (tryIt?.kind === 'here' && !note) nextLabel = 'Skip this'
 
+  // A practice that saves, made card-only for this role (they could not take it back): its words said "tap Save", so
+  // they are replaced here; a step written card-only (`save: false`) keeps its own words.
+  const madeCardOnly = cardOnly && tryIt?.kind === 'whatsapp' && tryIt.save !== false
+  const shownStep = madeCardOnly
+    ? { ...step, text: 'Send this to Mesiri. A card comes back with what Mesiri understood: look at it, then tap Cancel. It is practice, so nothing is saved.' }
+    : step
+
   return (
     <TourOverlay
-      step={step}
+      step={shownStep}
       rect={rect}
       sparkKey={`${run.walk.id}-${run.index}${check.got ? '-got' : ''}`}
       counter={counter}
@@ -487,7 +495,7 @@ export function WalkthroughRunner() {
       {tryIt?.kind === 'whatsapp' && (
         <div className="flex flex-col gap-1.5">
           <SayThis say={tryIt.say} number={number} />
-          {cardOnly && (
+          {cardOnly && !madeCardOnly && (
             <p className="m-0 text-xs text-muted-foreground">Practice only: tap Cancel on the card, so nothing is saved.</p>
           )}
           {check.watching && (

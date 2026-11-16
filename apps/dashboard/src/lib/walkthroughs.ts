@@ -90,6 +90,19 @@ export function canTakeBack(walk: Walkthrough, index: number, role: string | nul
   return !back?.roles || back.roles.includes((role ?? '').toUpperCase())
 }
 
+/** Whether the practice before a "There it is" step (`showNew`) really saved something for this role: not when it was
+ *  card-only (`save: false`, or a practice this role could not take back). Then "There it is" would point at nothing
+ *  and say something untrue, so the engine skips it (review 16 Nov). */
+export function practiceSaved(walk: Walkthrough, index: number, role: string | null | undefined): boolean {
+  for (let i = index - 1; i >= 0; i--) {
+    const t = walk.steps[i].try
+    if (!t) continue
+    if (t.kind === 'whatsapp' && t.save === false) return false
+    return canTakeBack(walk, i, role)
+  }
+  return true
+}
+
 export function learnKey(id: string): string {
   return `/learn/${id}`
 }
@@ -105,6 +118,9 @@ const STARTERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'PROJECT_MANAGER'] as const
 const INFLOWS: WalkCheck = { path: '/materials/inflows', params: { limit: 100 } }
 /** Who may correct (take back) a stock movement: backend ADJUSTMENT_ROLES. */
 const ADJUSTERS = ['ADMIN', 'PROJECT_MANAGER'] as const
+/** Who may take back an expense: backend authorization/roles.py MONEY_MANAGE_ROLES (not a project manager, who may
+ *  record one). */
+const MONEY_MANAGERS = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE'] as const
 
 /** Workflows: one job from start to finish, across pages, with practice (plan section 5.2). */
 export const WORKFLOWS: Walkthrough[] = [
@@ -358,7 +374,7 @@ export const WORKFLOWS: Walkthrough[] = [
         page: '/finance/expenses',
         title: 'Take it back',
         text: 'It was practice, so take it back the same way. Mesiri shows a card: tap Save.',
-        takeBack: { say: 'Take back the drinking water expense', tools: ['undo_expense'] },
+        takeBack: { roles: MONEY_MANAGERS, say: 'Take back the drinking water expense', tools: ['undo_expense'] },
       },
       { page: '/finance/vendors', target: 'vendors.tiles', title: 'What you owe each supplier', text: 'Their bills less what you paid, what is overdue, and what you paid ahead.', mood: 'look' },
       {
@@ -704,9 +720,12 @@ export function findWalkthrough(id: string): Walkthrough | undefined {
   return ALL_WALKS.find((w) => w.id === id)
 }
 
-/** May this role take it? A step on a page the role can't open is skipped by the engine, not here. */
+/** May this role take it? Its roles allow it, and at least one step is on a page this role can open: the engine
+ *  skips the others, so a walkthrough with none (the Accounts module for a site engineer) would run empty and is
+ *  never offered (review 16 Nov). */
 export function walkFor(walk: Walkthrough, role: string | null | undefined): boolean {
-  return !walk.roles || walk.roles.includes((role ?? '').toUpperCase())
+  if (walk.roles && !walk.roles.includes((role ?? '').toUpperCase())) return false
+  return walk.steps.some((s) => !s.page || pageOpenFor(s.page, role))
 }
 
 /** Can this role open this page (module-map roles)? */

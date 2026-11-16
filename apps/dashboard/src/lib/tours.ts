@@ -287,7 +287,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/subcontract/work-orders': {
     key: '/tour/work-orders',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['wo.list', 'wo.empty'],
     steps: [
@@ -297,7 +297,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
       { target: 'wo.filters', title: 'Find one', text: 'By WO number, the work or the site, or by subcontractor.' },
       { target: 'wo.list', title: 'Each work order', text: 'The team, the work, how much is done and billed. Open one to measure the work and check its bills.' },
       { target: 'wo.empty', title: 'None yet', text: 'Concreting, plastering, wiring: who does it, at what rate.', mood: 'think' },
-      { target: 'wo.add', title: 'A new work order', text: 'The team, the work, the quantity and the rate. Send it to them on WhatsApp as a PDF.' },
+      { target: 'wo.add', title: 'A new work order', text: 'The team, the work, the quantity and the rate. Then send it to the team on WhatsApp, already written: you press send.' },
       { target: 'app.whatsapp', title: 'On WhatsApp', text: '"Work order to Sree tiles: floor tiling 2,400 sq ft at ₹38", then "Sree tiles did 600 sq ft this week".', mood: 'happy' },
     ],
   },

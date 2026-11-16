@@ -53,11 +53,15 @@ step's words in another place.
   may name people, since nothing is saved.
 - **Every practice names its tools** (`tools: [...]`, and `tools` on `takeBack`); the WhatsApp test checks each is a
   real writing tool. Keep `say: '...', tools: [...]` on one line so the test reads it.
-- **Only practise what this person can take back.** Some take-backs are limited by role: correcting a delivery, a use
-  or a move is for `ADMIN` and `PROJECT_MANAGER` only (backend `materials/validation.py` `ADJUSTMENT_ROLES`). Such a
-  `takeBack` names `roles: ADJUSTERS`; for anyone else the engine makes the WhatsApp practice card-only and skips the
-  office practice and its take-back (`canTakeBack`). A new role-limited undo gets its own roles list the same way; the
-  WhatsApp test checks the stock ones.
+- **Only practise what this person can take back.** Some take-backs are limited by role in the backend: correcting a
+  delivery, a use or a move is for `ADMIN` and `PROJECT_MANAGER` (`materials/validation.py` `ADJUSTMENT_ROLES`:
+  `roles: ADJUSTERS`); taking back an expense is for the owner, an admin or finance, not a project manager
+  (`authorization/roles.py` `MONEY_MANAGE_ROLES`: `roles: MONEY_MANAGERS`). For anyone else the engine makes the
+  WhatsApp practice card-only (its words become "look at the card, then tap Cancel"), skips the office practice, its
+  "There it is" step and its take-back (`canTakeBack`, `practiceSaved`). A new role-limited undo gets its own roles
+  list and an entry in the WhatsApp test's `_role_limited_undos`.
+- **A walkthrough is offered only to a role that can open at least one of its pages** (`walkFor`), so nobody gets one
+  that would run empty.
 - **Never practice on a read-only account**: the engine skips practice there; don't work around it.
 
 ## When you add or change an outcome ("What you get")
