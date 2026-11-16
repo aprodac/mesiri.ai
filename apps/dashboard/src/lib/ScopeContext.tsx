@@ -66,8 +66,9 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   const projectId = searchParams.get('project')
   const siteId = searchParams.get('site')
 
-  // Detect project route parameter e.g. /projects/:id
-  const projectRouteMatch = matchPath({ path: '/projects/:id' }, location.pathname)
+  // Detect project route parameter: /projects/:id and the project's own pages under it (/projects/:id/boq), so the
+  // top bar shows that project there too (SS-52; it said "All projects" on a project's BOQ).
+  const projectRouteMatch = matchPath({ path: '/projects/:id', end: false }, location.pathname)
   const routeProjectId = projectRouteMatch?.params.id
 
   // Fetch accessible projects to resolve names and validate access

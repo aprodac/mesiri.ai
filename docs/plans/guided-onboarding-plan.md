@@ -311,6 +311,8 @@ this reason and listed as later work needing its own approval.
 
 ## 14. Later work (not in this plan)
 
+In the tracker as `Later` rows **SS-53 to SS-59** (added 16 Nov, as D-GO8 decided), in this order.
+
 1. Workers and gangs import from Excel (Workforce: needs approval).
 2. Clients, open purchase orders and opening balances import.
 3. Import from other products' exports (Tally masters first; Mesiri already exports to Tally).

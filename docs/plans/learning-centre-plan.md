@@ -332,6 +332,9 @@ Found while checking the Accounts tours (SS-46), fixed in `components/walkthroug
 | Walkthrough stalled or ended on BOQ & budget | `/boq` redirects to `/projects/<id>/boq`, not seen as the same page | `onPage` asks the module map (`findPage`, `SAME_AS`) |
 | Trapped on a page that loaded without its content | The hold for a project list also held on pages with none (an error, nothing yet) | Hold only while a project list is on screen or data is still coming; the words say which |
 
-Not changed (shared, needs approval): `lib/ScopeContext.tsx` matches `/projects/:id` exactly, so on a project's BOQ
-page the top bar says "All projects".
+Then approved by Ilan (16 Nov): `lib/ScopeContext.tsx` matches `/projects/:id` and the pages under it, so the top bar
+shows the project on its BOQ page (it said "All projects"); the walkthrough's own workaround for that page is gone.
+
+**SS-49 (module walkthroughs) needed no code:** the engine makes them from the page tours. All 13 checked end to end
+on 16 Nov.
 
