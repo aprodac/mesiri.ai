@@ -141,7 +141,18 @@ def test_the_sop_sends_a_weeks_progress_report_as_the_pdf() -> None:
 
 # -- live, 15 Nov 15:42 (Aprodac): "orachcha motham progress report" was answered as text with period_report ------
 
-async def test_a_week_nobody_named_sends_the_pdf_even_when_the_model_only_reads() -> None:
+class _OnSunday(dt.datetime):
+    """The clock on SUNDAY (10:00 in India): the engine works out "the last 7 days" from now, so this test must not
+    depend on the day it runs (it failed from 16 Nov, when the week became 10 - 16 Nov)."""
+
+    @classmethod
+    def now(cls, tz=None):  # noqa: ANN001, ANN206
+        at = dt.datetime(SUNDAY.year, SUNDAY.month, SUNDAY.day, 10, tzinfo=ZoneInfo("Asia/Kolkata"))
+        return at.astimezone(tz) if tz else at.replace(tzinfo=None)
+
+
+async def test_a_week_nobody_named_sends_the_pdf_even_when_the_model_only_reads(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(dt, "datetime", _OnSunday)
     read: list = []
     client = ApiClient(ACTOR, app=_app(read))
     sender = _Sender()
