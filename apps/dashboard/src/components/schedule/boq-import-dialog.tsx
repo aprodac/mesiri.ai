@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatRupees } from '@/lib/boq'
 import { downloadBlob } from '@/lib/export'
-import { downloadBoqTemplate, previewBoqImport, runBoqImport, type BoqImportReport } from '@/lib/schedule'
+import { downloadBoqTemplate, plural, previewBoqImport, runBoqImport, type BoqImportReport } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
 
 // ST-03: the estimate Excel becomes the BOQ, the budget and the first schedule. Any sheet with Work / Unit /
@@ -69,6 +69,9 @@ export function BoqImportDialog({
   }
   const report: BoqImportReport | undefined = run.data ?? preview.data
   const problems = report?.rows.filter((r) => r.result === 'problem') ?? []
+  // CC-13: materials per unit from the file's "Materials per unit" sheet.
+  const materialLines = report?.material_lines_set ?? 0
+  const materialsKept = report?.material_lines_kept ?? 0
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o) }}>
@@ -79,7 +82,8 @@ export function BoqImportDialog({
           </DialogTitle>
           <DialogDescription>
             Upload the estimate you already have. Mesiri finds the Description, Unit, Qty and Rate columns; heading rows
-            (like “A. EARTHWORK”) become sections. You see everything before it is saved.
+            (like “A. EARTHWORK”) become sections. A “Materials per unit” sheet (in the template) adds what one unit of each
+            line uses. You see everything before it is saved.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,11 +138,13 @@ export function BoqImportDialog({
             {report.saved ? (
               <div className="flex flex-col gap-3 rounded-xl border border-success/25 bg-success-soft p-4">
                 <p className="flex items-center gap-2 text-base font-semibold text-success">
-                  <CheckCircle2 className="size-5" /> {report.lines_added} BOQ lines are in.
+                  <CheckCircle2 className="size-5" />{' '}
+                  {report.lines_added || !materialLines ? `${report.lines_added} BOQ lines are in.` : `Materials per unit are in for ${plural(materialLines, 'line')}.`}
                 </p>
                 <p className="text-foreground/80">
-                  {report.sections_added} new sections{report.dated_sections ? `, ${report.dated_sections} with dates on the schedule` : ''}.
-                  From tomorrow, every work update the site sends on WhatsApp counts against these lines.
+                  {report.sections_added || report.lines_added ? `${report.sections_added} new sections${report.dated_sections ? `, ${report.dated_sections} with dates on the schedule` : ''}.` : ''}
+                  {materialLines ? ` ${plural(materialLines, 'line')} now ${materialLines === 1 ? 'has its' : 'have their'} materials per unit: the material plan uses them.` : ''}
+                  {' '}From tomorrow, every work update the site sends on WhatsApp counts against these lines.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm" className="gap-1.5"><Link to={`/planning/schedule?project=${projectId}`} onClick={() => onOpenChange(false)}><CalendarRange className="size-4" /> Plan the schedule <ArrowRight className="size-3.5" /></Link></Button>
@@ -149,6 +155,7 @@ export function BoqImportDialog({
               <p className="font-medium">
                 Found in “{report.sheet}”: <span className="text-success">{report.lines_added} lines to add</span>
                 {report.lines_kept ? `, ${report.lines_kept} already in the BOQ` : ''}
+                {report.materials_sheet ? `; materials per unit for ${plural(materialLines, 'line')} from “${report.materials_sheet}”${materialsKept ? ` (${materialsKept} already set)` : ''}` : ''}
                 {report.problems ? <span className="text-destructive">, {report.problems} cannot go in</span> : ''}. Nothing is saved yet.
               </p>
             )}
@@ -190,8 +197,8 @@ export function BoqImportDialog({
                 <p className="bg-destructive/5 px-3 py-1.5 text-xs font-semibold text-destructive">Rows that cannot go in: fix them in Excel and import again</p>
                 <ul className="max-h-48 divide-y overflow-y-auto">
                   {problems.map((r) => (
-                    <li key={`${r.row}-${r.what}`} className="flex gap-3 px-3 py-1.5">
-                      <span className="w-14 shrink-0 text-muted-foreground tabular-nums">Row {r.row}</span>
+                    <li key={`${r.sheet ?? ''}-${r.row}-${r.what}`} className="flex gap-3 px-3 py-1.5">
+                      <span className="shrink-0 text-muted-foreground tabular-nums">{r.sheet ? `${r.sheet}, row ${r.row}` : `Row ${r.row}`}</span>
                       <span className="min-w-0 flex-1"><span className="font-medium">{r.what || '—'}</span> <span className="text-muted-foreground">· {r.message}</span></span>
                     </li>
                   ))}
@@ -202,8 +209,8 @@ export function BoqImportDialog({
             {!report.saved && (
               <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
                 <Button variant="outline" onClick={reset}>Choose another file</Button>
-                <Button disabled={!file || run.isPending || report.lines_added + report.sections_added === 0} onClick={() => file && run.mutate(file)} className="gap-1.5">
-                  <CheckCircle2 className="size-4" /> Import {report.lines_added} lines
+                <Button disabled={!file || run.isPending || report.lines_added + report.sections_added + materialLines === 0} onClick={() => file && run.mutate(file)} className="gap-1.5">
+                  <CheckCircle2 className="size-4" /> {report.lines_added || !materialLines ? `Import ${report.lines_added} lines` : `Import materials for ${plural(materialLines, 'line')}`}
                 </Button>
               </div>
             )}

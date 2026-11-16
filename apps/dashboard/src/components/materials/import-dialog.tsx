@@ -82,7 +82,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">Import from Excel</DialogTitle>
           <DialogDescription>
-            Items, vendors and opening stock. You check every row before it is saved.
+            Items, vendors with what you owed them, and opening stock. You check every row before it is saved.
           </DialogDescription>
         </DialogHeader>
 

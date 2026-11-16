@@ -323,7 +323,30 @@ def _xlsx(rows: list[list]) -> str:
     return base64.b64encode(out.getvalue()).decode()
 
 
+async def _materials(client, ctx, *items: tuple[str, str]) -> dict[str, str]:
+    """Materials in the company's list: (name, stock unit code) -> {name: id}."""
+    got = await client.get("/materials/units-of-measure", headers=_h(ctx["admin"]))
+    units = {u["code"]: u["id"] for u in got.json()["items"]}
+    out = {}
+    for name, unit in items:
+        r = await client.post("/materials", json={"name": name, "default_unit_id": units[unit]},
+                              headers=_h(ctx["admin"]))
+        assert r.status_code == 201, r.text
+        out[name] = r.json()["id"]
+    return out
+
+
+async def _line_materials(client, ctx) -> dict[str, list[tuple[str, str, str]]]:
+    boq = (await client.get(f"/projects/{ctx['project']}/boq", headers=_h(ctx["admin"]))).json()
+    return {line["boq_code"] or line["work"]: sorted((m["material"], m["quantity_per_unit"], m["wastage_pct"])
+                                                    for m in line["materials"])
+            for s in boq["sections"] for line in s["lines"]}
+
+
 async def test_template_previews_then_imports_with_dates_and_links_and_is_safe_to_rerun(client, ctx):
+    # CC-13: the template's "Materials per unit" sheet names materials every new company starts with.
+    await _materials(client, ctx, ("Cement", "bags"), ("M Sand", "cum"), ("Aggregate 40mm", "cum"), ("Steel", "kg"),
+                     ("Bricks", "nos"))
     r = await client.get(f"/projects/{ctx['project']}/boq/import/template", headers=_h(ctx["admin"]))
     assert r.status_code == 200
     file = base64.b64encode(r.content).decode()
@@ -333,6 +356,7 @@ async def test_template_previews_then_imports_with_dates_and_links_and_is_safe_t
     assert preview.status_code == 200, preview.text
     p = preview.json()
     assert p["saved"] is False and p["lines_added"] == 6 and p["sections_added"] == 4 and p["problems"] == 0
+    assert p["materials_sheet"] == "Materials per unit" and p["material_lines_set"] == 3
     boq = await client.get(f"/projects/{ctx['project']}/boq", headers=_h(ctx["admin"]))
     assert boq.json()["sections"] == []
 
@@ -342,8 +366,75 @@ async def test_template_previews_then_imports_with_dates_and_links_and_is_safe_t
     sched = await _schedule(client, ctx)
     found = {a["name"]: a for a in sched["activities"]}
     assert found["Foundation"]["start"] == "2026-12-09" and found["Foundation"]["after"]
+    mats = await _line_materials(client, ctx)
+    assert [m[0] for m in mats["2.1"]] == ["Aggregate 40mm", "Cement", "M Sand"] and mats["4.1"] == []
+    assert ("Steel", "90.0000", "3.00") in mats["2.2"]
     again = (await client.post(url, json={"file_base64": file}, headers=_h(ctx["admin"]))).json()
     assert again["lines_added"] == 0 and again["lines_kept"] == 6 and again["sections_added"] == 0
+    assert again["material_lines_kept"] == 3 and again["material_lines_set"] == 0 and again["problems"] == 0
+
+
+def _two_sheets(boq: list, materials: list) -> str:
+    from openpyxl import Workbook
+
+    book = Workbook()
+    book.active.title = "Estimate"
+    for row in boq:
+        book.active.append(row)
+    sheet = book.create_sheet("Norms")
+    for row in materials:
+        sheet.append(row)
+    out = io.BytesIO()
+    book.save(out)
+    return base64.b64encode(out.getvalue()).decode()
+
+
+async def test_boq_materials_per_unit_go_in_together_and_never_overwrite(client, ctx):
+    """CC-13: a line's materials go in all together or not at all, through the BOQ page's checks; a line that already
+    has other materials keeps them."""
+    ids = await _materials(client, ctx, ("Cement", "bags"), ("M Sand", "cum"), ("Bricks", "nos"))
+    boq = [["Item no.", "Work", "Unit", "Qty"], ["1", "Brickwork 230 mm", "cum", 100], ["2", "Plastering 12 mm", "sqft", 5000],
+           ["3", "PCC 1:4:8", "cum", 20], ["4", "Flooring", "sqft", 900]]
+    url = f"/projects/{ctx['project']}/boq/import"
+    first = (await client.post(url, json={"file_base64": _two_sheets(boq, [["Item no.", "Material", "Qty per unit"]])},
+                               headers=_h(ctx["admin"]))).json()
+    assert first["lines_added"] == 4
+    # Flooring already has its own materials on the BOQ page.
+    lines = {line["boq_code"]: line["id"] for s in (await client.get(f"/projects/{ctx['project']}/boq",
+             headers=_h(ctx["admin"]))).json()["sections"] for line in s["lines"]}
+    r = await client.put(f"/projects/{ctx['project']}/boq/lines/{lines['4']}/norms",
+                         json={"norms": [{"material_id": ids["Cement"], "quantity_per_unit": "0.02"}]},
+                         headers=_h(ctx["admin"]))
+    assert r.status_code == 200, r.text
+    materials = [
+        ["Item no.", "Work", "Material", "Material unit", "Quantity per unit", "Wastage %"],
+        ["1", None, "Bricks", "nos", 500, 5],
+        ["1", None, "Cement", "bags", 1.25, None],
+        [None, "plastering 12 MM", "cement", None, "0.011", 2],   # found by work, any case; material by name
+        ["3", None, "Cement", "kg", 160, None],                    # wrong unit: the whole line is refused
+        ["3", None, "M Sand", "cum", 0.47, None],
+        ["4", None, "Bricks", "nos", 10, None],                    # already has other materials: kept as it is
+        ["9", None, "Cement", "bags", 1, None],                    # no such item
+        ["1", None, "Unobtainium", None, 1, None],                 # not in the list: only that row, line 1 refused
+    ]
+    file = _two_sheets(boq, materials)
+    preview = (await client.post(f"{url}/preview", json={"file_base64": file}, headers=_h(ctx["admin"]))).json()
+    assert preview["materials_sheet"] == "Norms"
+    assert preview["material_lines_set"] == 1  # only plastering
+    msgs = [(x["row"], x["result"], x["message"]) for x in preview["rows"] if x["sheet"] == "Norms"]
+    assert any(m[1] == "problem" and "counted in bags" in m[2] for m in msgs)
+    assert any(m[1] == "problem" and "No BOQ item" in m[2] for m in msgs)
+    assert any(m[1] == "problem" and "Unobtainium" in m[2] for m in msgs)
+    assert any(m[1] == "problem" and "Already has other materials" in m[2] for m in msgs)
+    assert any(m[1] == "problem" and "go in together" in m[2] for m in msgs)
+    assert (await _line_materials(client, ctx))["2"] == []  # the preview kept nothing
+
+    done = (await client.post(url, json={"file_base64": file}, headers=_h(ctx["admin"]))).json()
+    assert done["material_lines_set"] == 1
+    mats = await _line_materials(client, ctx)
+    assert mats["2"] == [("Cement", "0.0110", "2.00")]
+    assert mats["1"] == [] and mats["3"] == []
+    assert mats["4"] == [("Cement", "0.0200", "0.00")]  # never overwritten
 
 
 async def test_a_real_estimate_sheet_with_heading_rows(client, ctx):

@@ -6,7 +6,8 @@ each site holds on day one. Typing them is the work the client said they do toda
 One workbook, four sheets (``template_bytes`` writes it, with a "How to fill" sheet):
 
 - **Items**: Main category, Sub-category, Item, Unit, Item code, Other names
-- **Vendors**: Vendor, Phone, GSTIN, Address
+- **Vendors**: Vendor, Phone, GSTIN, Address, Opening balance, Balance date (CC-13: what was owed on the day the
+  company starts with Mesiri, set through the supplier page's own rules; never overwritten)
 - **Opening stock**: Project, Site, Item, Quantity, Date
 - **Minimum stock** (PRC-47): Project, Site, Item, Minimum, Reorder qty
 
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
 ITEMS, VENDORS, OPENING, MINIMUM = "Items", "Vendors", "Opening stock", "Minimum stock"
 COLUMNS: dict[str, tuple[str, ...]] = {
     ITEMS: ("Main category", "Sub-category", "Item", "Unit", "Item code", "Other names"),
-    VENDORS: ("Vendor", "Phone", "GSTIN", "Address"),
+    VENDORS: ("Vendor", "Phone", "GSTIN", "Address", "Opening balance", "Balance date"),
     OPENING: ("Project", "Site", "Item", "Quantity", "Date"),
     MINIMUM: ("Project", "Site", "Item", "Minimum", "Reorder qty"),
 }
@@ -55,6 +56,9 @@ _HOW_TO = (
     "  Unit: how the item is counted in stock: bags, kg, nos, cft, sqft, litres, rolls, load, ...",
     "  Other names (optional): what site people call it, separated by commas (kambi, chakku).",
     "Vendors: the shops you buy from. Phone, GSTIN (15 characters) and address are optional.",
+    "  Opening balance (optional): what you owed them on the Balance date, before Mesiri (negative: you paid ahead).",
+    "  Bills and payments before that date are inside this figure. Balance date defaults to today.",
+    "  Only the owner, an admin or finance can import opening balances. A supplier that already has one keeps it.",
     "Opening stock: what a site holds before you start with Mesiri. Once per site and item.",
     "  Project can be left empty when the site name is only used once.",
     "  Quantity is in the item's unit. Date (optional) defaults to today.",
@@ -223,6 +227,12 @@ class _RowProblem(Exception):
     """A row that can't go in; the message is for the person."""
 
 
+def _rupees(value: Any) -> str:
+    from mesiri.domains.dpr.effects import rupees
+
+    return rupees(value)
+
+
 def _plain(detail: Any) -> str:
     if isinstance(detail, dict):
         return str(detail.get("message") or detail.get("detail") or detail)
@@ -329,6 +339,7 @@ class _Context:
         from mesiri.infrastructure.postgres.repositories.vendors import PostgresVendorRepository
 
         name = row.text("Vendor")
+        opening = await self._opening_balance(row)
         try:
             details = {
                 key: value
@@ -347,11 +358,53 @@ class _Context:
             self.conn, self.auth.organization_id, name, created_by=self.auth.user_id
         )
         changed = existing is not None and any(getattr(existing, k) != v for k, v in details.items())
-        if details and (existing is None or changed):
+        balance_note = ""
+        if opening is not None:
+            has = await self._current_opening(vendor_id) if existing is not None else None
+            if has is None:
+                details = {**details, **opening}
+                balance_note = f"Opening balance {_rupees(opening['opening_balance'])} on {opening['opening_balance_date']:%d %b %Y}."
+            elif has != (opening["opening_balance"], opening["opening_balance_date"]):
+                raise _RowProblem(
+                    f"Already has an opening balance of {_rupees(has[0])} on {has[1]:%d %b %Y}: change it on the "
+                    "supplier's page. Nothing in this row was changed."
+                )
+        if details and (existing is None or changed or balance_note):
             await repo.update(self.auth.organization_id, vendor_id, updated_by=self.auth.user_id, details=details)
         if existing is None:
-            return "added", ""
-        return ("updated", "Phone / GSTIN / address updated.") if changed else ("existing", "Already in Mesiri.")
+            return "added", balance_note
+        if changed or balance_note:
+            return "updated", " ".join(x for x in ("Phone / GSTIN / address updated." if changed else "", balance_note) if x)
+        return "existing", "Already in Mesiri."
+
+    async def _opening_balance(self, row: SheetRow) -> dict | None:
+        """CC-13: the row's opening balance, checked and cleaned by the supplier page's own code (``_details``: the
+        rounding, the default date, and who may set one); None when the row gives none."""
+        from mesiri.domains.vendors.router import UpdateVendorRequest, _details
+
+        raw, when = row.text("Opening balance"), row.values.get("Balance date")
+        if not raw:
+            if str(when or "").strip():
+                raise _RowProblem("Balance date needs an Opening balance.")
+            return None
+        cleaned = raw.replace(",", "").replace("₹", "").replace("Rs.", "").replace("Rs", "").strip()
+        if cleaned.startswith("(") and cleaned.endswith(")"):
+            cleaned = f"-{cleaned[1:-1]}"
+        try:
+            amount = Decimal(cleaned)
+        except InvalidOperation as exc:
+            raise _RowProblem(f"Opening balance '{raw}' is not a number.") from exc
+        day = await self._date(when)
+        out = _details(UpdateVendorRequest(opening_balance=amount, opening_balance_date=day), self.auth)
+        return {"opening_balance": out["opening_balance"], "opening_balance_date": out["opening_balance_date"]}
+
+    async def _current_opening(self, vendor_id: uuid.UUID) -> tuple[Decimal, datetime.date] | None:
+        from sqlalchemy import text
+
+        got = (await self.conn.execute(text(
+            "SELECT opening_balance, opening_balance_date FROM vendors WHERE id = :id AND organization_id = :org"),
+            {"id": vendor_id, "org": self.auth.organization_id})).first()
+        return (Decimal(got[0]), got[1]) if got and got[0] is not None else None
 
     # -- Opening stock -------------------------------------------------------------------------------------------------
     async def opening(self, row: SheetRow) -> tuple[str, str]:

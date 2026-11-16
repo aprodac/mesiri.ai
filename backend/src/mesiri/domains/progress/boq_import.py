@@ -15,6 +15,12 @@ Real estimates have **heading rows** ("A. EARTHWORK", "Ground floor") with no qu
 for the lines under it, unless a Section column says otherwise. Total and carried-forward rows are skipped. A line
 needs work, unit and quantity; everything else is optional.
 
+**Materials per unit (CC-13, optional).** Another sheet (named like "Materials per unit" or "Norms", or any sheet with
+Material and Quantity per unit columns) says what one unit of each line uses: Item no. or Work (to find the line),
+Material, Quantity per unit (in the material's stock unit), Material unit (optional, checked), Wastage % (optional).
+A line's materials go in together, through the BOQ page's own checks (``_norm_rows``, ``MaterialNormRepository``); a
+line that already has the same materials is left as it is, and one that has different materials is never overwritten.
+
 **What it does.** Each section is found by name or added; each line is added through the same repository as the BOQ
 page's own button, so it refuses what the page refuses. A line already in the section (same work and unit) is left
 as it is, so the import is safe to run again. Start / Finish on a heading or its lines give the section's dates;
@@ -56,6 +62,27 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "finish": ("finish", "end", "enddate", "finishdate", "to", "plannedfinish", "plannedend"),
     "after": ("startsafter", "after", "predecessor", "dependson"),
 }
+#: CC-13: the "Materials per unit" sheet's columns.
+NORM_ALIASES: dict[str, tuple[str, ...]] = {
+    "code": ALIASES["code"],
+    "work": ("work", "description", "particulars", "itemdescription", "boqitem", "workitem", "nameofwork"),
+    "material": ("material", "materialname", "materials"),
+    "per_unit": ("quantityperunit", "qtyperunit", "perunit", "consumption", "consumptionperunit", "coefficient",
+                 "norm", "quantity", "qty"),
+    "material_unit": ("materialunit", "unit", "uom", "stockunit"),
+    "wastage": ("wastage", "wastage%", "wastagepct", "wastagepercent"),
+}
+NORM_SHEET = "Materials per unit"
+NORM_COLUMNS = ("Item no.", "Work", "Material", "Material unit", "Quantity per unit", "Wastage %")
+_NORM_EXAMPLE = (
+    ("2.1", "PCC 1:4:8 below footings", "Cement", "bags", 3.4, 2),
+    ("2.1", "PCC 1:4:8 below footings", "M Sand", "cum", 0.47, 5),
+    ("2.1", "PCC 1:4:8 below footings", "Aggregate 40mm", "cum", 0.94, 5),
+    ("2.2", "RCC M25 in footings including shuttering", "Cement", "bags", 8.2, 2),
+    ("2.2", "RCC M25 in footings including shuttering", "Steel", "kg", 90, 3),
+    ("3.1", "Brickwork in CM 1:6, 230 mm walls", "Bricks", "nos", 500, 5),
+    ("3.1", "Brickwork in CM 1:6, 230 mm walls", "Cement", "bags", 1.25, 2),
+)
 TEMPLATE_COLUMNS = ("Section", "Item no.", "Work", "Unit", "Quantity", "Client rate", "Labour rate", "Material rate",
                     "Subcontract rate", "Start", "Finish", "Starts after")
 _EXAMPLE = (
@@ -83,6 +110,12 @@ _HOW_TO = (
     "  Leave a rate empty if you don't have it yet; it is 'not priced', never zero.",
     "Start / Finish (optional): the section's planned days, for the schedule. Starts after: the section before it.",
     "Rows already in the BOQ (same section, work and unit) are left as they are, so you can import again safely.",
+    "",
+    "Materials per unit (optional sheet): what ONE unit of a BOQ item uses, so Mesiri can plan and check material.",
+    "  Item no. (or Work) finds the BOQ item. Material: a name in your material list (add new ones in Materials first).",
+    "  Quantity per unit is in the material's own unit: cement in bags, sand in cum, steel in kg. Material unit, if",
+    "  you fill it, is checked against that. Wastage % (optional) is added on top.",
+    "  An item that already has its materials keeps them: change them on the BOQ page.",
     "Upload it in Planning > BOQ & budget > Import from Excel, or on the Project start page. You see a preview first.",
 )
 _SKIP = re.compile(r"^(sub\s*-?\s*total|total|grand\s*total|carried\s*(forward|over)|c/?f|b/?f|brought\s*forward)\b",
@@ -123,11 +156,25 @@ class BoqRow:
 
 
 @dataclass
+class NormRow:
+    row: int
+    code: str | None
+    work: str | None
+    material: str | None
+    material_unit: str | None
+    per_unit: Any
+    wastage: Any
+
+
+@dataclass
 class Sheet:
     name: str
     columns: dict[str, str]
     rows: list[BoqRow] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)
+    #: CC-13: the optional "Materials per unit" sheet.
+    norms_sheet: str | None = None
+    norms: list[NormRow] = field(default_factory=list)
 
 
 def _text(value: Any) -> str | None:
@@ -160,8 +207,9 @@ def read_sheet(data: bytes) -> Sheet:
     except Exception as exc:  # noqa: BLE001 -- any unreadable file is the same answer to the person
         raise ImportFileError("This is not an Excel file (.xlsx). Save it as .xlsx, or download the template.") from exc
     names = sorted(book.sheetnames, key=lambda n: 0 if "boq" in _key(n) or "billofquantit" in _key(n) else 1)
+    norms = _find_norms(book)
     for name in names:
-        if _key(name) in ("howtofill",):
+        if _key(name) in ("howtofill",) or (norms and name == norms[0]):
             continue
         rows = list(book[name].iter_rows(values_only=True, max_row=MAX_ROWS + HEADER_SCAN))
         for at, header in enumerate(rows[:HEADER_SCAN]):
@@ -178,6 +226,8 @@ def read_sheet(data: bytes) -> Sheet:
                 sheet.rows = _rows(rows[at + 1:], where, first=at + 2)
                 if not sheet.rows:
                     raise ImportFileError(f"The '{name}' sheet has the headers but no rows under them.")
+                if norms:
+                    sheet.norms_sheet, sheet.norms = norms
                 return sheet
     raise ImportFileError("No BOQ found: the sheet needs a header row with Work (or Description), Unit and Quantity.")
 
@@ -209,6 +259,48 @@ def _rows(cells: list[tuple], where: dict[str, int], first: int) -> list[BoqRow]
     return out
 
 
+def _norm_where(header: tuple) -> dict[str, int] | None:
+    """The column of each canonical name when ``header`` is a "Materials per unit" header row, else None."""
+    where: dict[str, int] = {}
+    for i, h in enumerate(header or ()):
+        k = _key(h)
+        for canon, words in NORM_ALIASES.items():
+            if k in words and canon not in where:
+                where[canon] = i
+                break
+    if "material" in where and "per_unit" in where and ("work" in where or "code" in where):
+        return where
+    return None
+
+
+def _find_norms(book: Any) -> tuple[str, list[NormRow]] | None:
+    """CC-13: the "Materials per unit" sheet and its rows; None when the workbook has none."""
+    names = sorted(book.sheetnames, key=lambda n: 0 if "norm" in _key(n) or "materialsperunit" in _key(n) else 1)
+    for name in names:
+        if _key(name) in ("howtofill",):
+            continue
+        cells = list(book[name].iter_rows(values_only=True, max_row=MAX_ROWS + HEADER_SCAN))
+        for at, header in enumerate(cells[:HEADER_SCAN]):
+            where = _norm_where(header or ())
+            if where is None:
+                continue
+
+            def get(values: tuple, canon: str, where: dict[str, int] = where) -> Any:
+                i = where.get(canon)
+                return values[i] if i is not None and i < len(values) else None
+
+            out = []
+            for number, values in enumerate(cells[at + 1:], start=at + 2):
+                values = values or ()
+                if all(v is None or str(v).strip() == "" for v in values):
+                    continue
+                out.append(NormRow(number, _text(get(values, "code")), _text(get(values, "work")),
+                                   _text(get(values, "material")), _text(get(values, "material_unit")),
+                                   get(values, "per_unit"), get(values, "wastage")))
+            return name, out
+    return None
+
+
 def template_bytes() -> bytes:
     """The sheet to fill, with six example rows and a "How to fill" sheet."""
     from openpyxl import Workbook
@@ -226,6 +318,16 @@ def template_bytes() -> bytes:
     for i, width in enumerate((16, 9, 52, 8, 11, 12, 12, 13, 15, 12, 12, 16)):
         sheet.column_dimensions[chr(ord("A") + i)].width = width
     sheet.freeze_panes = "A2"
+    materials = book.create_sheet(NORM_SHEET)
+    materials.append(list(NORM_COLUMNS))
+    for cell in materials[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="FFE08A")
+    for row in _NORM_EXAMPLE:
+        materials.append(list(row))
+    for i, width in enumerate((9, 44, 20, 14, 18, 11)):
+        materials.column_dimensions[chr(ord("A") + i)].width = width
+    materials.freeze_panes = "A2"
     how = book.create_sheet("How to fill")
     for line in _HOW_TO:
         how.append([line])
@@ -288,14 +390,19 @@ class Report:
     budget_cost: Decimal = Decimal(0)
     dated_sections: int = 0
     links: int = 0
+    #: CC-13: lines whose materials per unit were set / were already the same.
+    material_lines_set: int = 0
+    material_lines_kept: int = 0
     rows: list[dict] = field(default_factory=list)
     sections: list[dict] = field(default_factory=list)
 
-    def note(self, row: int, result: str, what: str, message: str | None = None, section: str | None = None) -> None:
+    def note(self, row: int, result: str, what: str, message: str | None = None, section: str | None = None,
+             sheet: str | None = None) -> None:
         if result == "problem":
             self.problems += 1
         if len(self.rows) < MAX_LISTED:
-            self.rows.append({"row": row, "result": result, "what": what, "section": section, "message": message})
+            self.rows.append({"row": row, "result": result, "what": what, "section": section, "message": message,
+                              "sheet": sheet})
 
 
 async def preview(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, user_id: uuid.UUID,
@@ -321,6 +428,8 @@ def _out(report: Report, sheet: Sheet, *, saved: bool) -> dict[str, Any]:
         "lines_added": report.lines_added, "lines_kept": report.lines_kept, "problems": report.problems,
         "contract_value": str(report.contract_value), "budget_cost": str(report.budget_cost),
         "dated_sections": report.dated_sections, "links": report.links,
+        "materials_sheet": sheet.norms_sheet, "material_lines_set": report.material_lines_set,
+        "material_lines_kept": report.material_lines_kept,
         "sections": report.sections, "rows": report.rows,
     }
 
@@ -452,4 +561,109 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, u
                                 "contract_value": str(entry["value"]),
                                 "start": entry["start"].isoformat() if entry["start"] else None,
                                 "finish": entry["finish"].isoformat() if entry["finish"] else None})
+    if sheet.norms:
+        await _apply_norms(conn, org, project_id, user_id, sheet, report)
     return report
+
+
+async def _apply_norms(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, user_id: uuid.UUID,
+                       sheet: Sheet, report: Report) -> None:
+    """CC-13: each line's materials per unit, all of a line's rows together, through the BOQ page's own checks."""
+    from fastapi import HTTPException
+    from pydantic import ValidationError
+
+    from mesiri.domains.progress.boq_router import NormIn, NormsIn, _norm_rows
+    from mesiri.infrastructure.postgres.repositories.boq import PostgresBoqRepository
+    from mesiri.infrastructure.postgres.repositories.material_norms import MaterialNormRepository
+    from mesiri.infrastructure.postgres.repositories.materials import (
+        PostgresMaterialCatalogRepository,
+        UnitsOfMeasureRepository,
+    )
+
+    where = sheet.norms_sheet
+    lines = await PostgresBoqRepository(conn).list_lines(org, project_id)
+
+    def find_line(r: NormRow) -> dict:
+        if r.code:
+            hits = [line for line in lines if line["boq_code"] and _key(line["boq_code"]) == _key(r.code)]
+            if len(hits) == 1:
+                return hits[0]
+            if len(hits) > 1:
+                raise _RowProblem(f"Item no. '{r.code}' is on several BOQ items: give the Work too")
+        if r.work:
+            hits = [line for line in lines if _key(line["work_type"]) == _key(r.work)]
+            if len(hits) == 1:
+                return hits[0]
+            if len(hits) > 1:
+                raise _RowProblem(f"'{r.work}' is several BOQ items: give the Item no.")
+        raise _RowProblem(f"No BOQ item {r.code or r.work!r} in this project")
+
+    catalog = PostgresMaterialCatalogRepository(conn)
+    units = UnitsOfMeasureRepository(conn)
+    norms = MaterialNormRepository(conn)
+    grouped: dict[Any, dict[str, Any]] = {}
+    for r in sheet.norms:
+        label = f"{r.material or '?'} for " + (f"item {r.code}" if r.code else (r.work or "?"))
+        try:
+            line = find_line(r)
+            if not r.material:
+                raise _RowProblem("No material")
+            material = await catalog.get_by_name(org, r.material) or await catalog.find_by_alias(org, r.material)
+            if material is None:
+                raise _RowProblem(f"'{r.material}' is not in your material list: add it in Materials first")
+            per_unit = _number(r.per_unit, "Quantity per unit", positive=True)
+            if per_unit is None:
+                raise _RowProblem("No quantity per unit")
+            wastage = _number(r.wastage, "Wastage %", positive=False) or Decimal(0)
+            if r.material_unit:
+                said = await units.resolve_alias(r.material_unit)
+                if said is None or str(said["id"]) != str(material["default_unit_id"]):
+                    stock = await units.get_by_id(material["default_unit_id"])
+                    stock_name = (stock or {}).get("code") or (stock or {}).get("name") or "its own unit"
+                    raise _RowProblem(f"{material['name']} is counted in {stock_name}: give the quantity per unit in "
+                                      f"{stock_name}")
+            try:
+                norm = NormIn(material_id=material["id"], quantity_per_unit=per_unit, wastage_pct=wastage)
+            except ValidationError as exc:
+                raise _RowProblem("Quantity per unit can have at most 4 decimals, and Wastage % is 0 to 100") from exc
+            entry = grouped.setdefault(line["id"], {"line": line, "rows": [], "norms": [], "bad": None})
+            entry["rows"].append(r.row)
+            entry["norms"].append(norm)
+        except _RowProblem as exc:
+            try:
+                bad_line = find_line(r)
+            except _RowProblem:
+                bad_line = None
+            if bad_line is not None:
+                entry = grouped.setdefault(bad_line["id"], {"line": bad_line, "rows": [], "norms": [], "bad": None})
+                entry["bad"] = entry["bad"] or r.row
+            report.note(r.row, "problem", label, str(exc), None, where)
+    for entry in grouped.values():
+        line, first = entry["line"], (entry["rows"] or [entry["bad"]])[0]
+        what = f"Materials for {line['work_type']}"
+        if entry["bad"] is not None:
+            report.note(first, "problem", what, f"Not set: fix row {entry['bad']} and import again (a BOQ item's "
+                                                "materials go in together)", None, where)
+            continue
+        try:
+            async with conn.begin_nested():
+                rows = await _norm_rows(conn, org, NormsIn(norms=entry["norms"]))
+                have = await norms.for_line(org, line["id"])
+                mine = {(str(n["material_id"]), Decimal(n["quantity_per_unit"]), Decimal(n["wastage_pct"] or 0))
+                        for n in rows}
+                theirs = {(str(n["material_id"]), Decimal(n["quantity_per_unit"]), Decimal(n["wastage_pct"] or 0))
+                          for n in have}
+                if have and mine == theirs:
+                    report.material_lines_kept += 1
+                    report.note(first, "kept", what, "Already has these materials: left as it is", None, where)
+                    continue
+                if have:
+                    raise _RowProblem("Already has other materials: change them on the BOQ page. Nothing changed")
+                await norms.replace(org, line["id"], rows, user_id)
+            report.material_lines_set += 1
+            report.note(first, "added", what, f"{len(rows)} material{'s' if len(rows) != 1 else ''} per unit", None,
+                        where)
+        except HTTPException as exc:
+            report.note(first, "problem", what, str(exc.detail), None, where)
+        except _RowProblem as exc:
+            report.note(first, "problem", what, str(exc), None, where)
