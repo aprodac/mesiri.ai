@@ -550,6 +550,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-57 | Send the Excel on WhatsApp and Mesiri imports it (materials, BOQ) | M | Later | SS-26 | todo | | After WA-313 (files refused on WhatsApp) and CC-13 (the importer). Guided onboarding later work 5 |
 | SS-58 | Tips, page guides and glossary in Malayalam and Hindi | M | Later | SS-26 | todo | | The dashboard is English today. Guided onboarding later work 6 |
 | SS-59 | Short screen recordings per page, in the page's help | S | Later | SS-26 | todo | | Project-start and sales videos exist (ST-07, ST-13, ST-14). Guided onboarding later work 7 |
+| SS-60 | Review pass of the page tours and workflows (split from the SS-49 claim in `2117d1c`) | S | Must | SS-47, SS-48 | claimed | Claude (session 16 Nov, review + SS-49) | Claimed with SS-49 at the same time SS-49 was finished; SS-49 itself needed no code (see its row). The review is this row |
 
 ---
 
