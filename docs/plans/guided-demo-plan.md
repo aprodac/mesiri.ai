@@ -5,15 +5,19 @@
 > and then it removes the data by itself … when each data is entered, it focuses there, highlights there … very easy
 > to go through every workflow. The dialogues said by the voice … very mid."
 > Decided in session (16 Nov): **a private sandbox company** per person (not their real company, not show-only in the
-> browser); **voice: new narration scripts and voice samples to choose from**; **plan first, then build**.
+> browser); **voice: new narration scripts and voice samples to choose from**; **plan first, then build**. Then (16 Nov):
+> **"it shouldn't be like a video, there should be areas for participation: interactive learning"** (§4b).
 > Builds on [learning-centre-plan.md](learning-centre-plan.md) (tours, walkthroughs, Learn page, voice: SS-40..SS-61).
-> Tracker: **SS-64 to SS-71**.
+> Tracker: **SS-64 to SS-72**.
 
 ## 1. Objective
 
-One guided journey through a whole project, **Green Villa**, from the day it is won to the day it is closed. Mesiri
-enters the data itself in a **private sample company**, so every page is shown full, as it looks in real use: it opens
-the real form, fills it, saves, then lights up the new row and says what happened and why it matters. Nothing touches
+One guided journey through a whole project, **Green Villa**, from the day it is won to the day it is closed, in a
+**private sample company**, so every page is shown full, as it looks in real use. **Not a video: the person does the
+work.** Each chapter is *watch once, then your turn*: Mesiri shows a thing once (opens the real form, fills it, saves,
+lights up the new row and says why it matters), then hands over: "Now you: record today's delivery". The person does it
+on the real page, Mesiri sees it land and lights it up, with a hint if they get stuck and "Show me" if they want it done
+for them. Nothing touches
 the person's own company, and the sample company is removed by itself when they finish. A narrator, written for
 listening, tells the story. Chapters can be jumped to, so each workflow is easy to go through on its own.
 
@@ -82,6 +86,39 @@ play: {
   only where it is the point.
 - Every play step is idempotent in the sandbox (a chapter run twice adds nothing twice) and can be skipped.
 
+## 4b. Participation: your turn, checks, and small questions
+
+The person learns by doing. Every chapter has at least one **Your turn** and most have a **Quick check**.
+
+- **Your turn** (`task` step): a goal in plain words ("Order 200 bags of cement from Malabar for Main block"), the page
+  it happens on, and how Mesiri knows it is done (`check`: a list route and what the new record must have, e.g. a
+  purchase order for cement, 200 bags). The engine lets clicks through, watches for the record (the existing `check` of
+  practice steps, SS-42/SS-50), then says "Done, there it is" and lights the row. Because this is the sample company,
+  **every save is kept** (no take-back): their work becomes the next step's starting point (the order they placed is the
+  one that arrives in the next task).
+  - **Hints** after ~30 s without progress, pointing at the next thing to press (the field or button marker); a second
+    hint later; **"Show me"** plays it for them (the `play` step of §4); **"Skip"** always there.
+  - **Two ways to do it**, as in real life: on the page, or "send it here" as a WhatsApp-style message through Tell
+    Mesiri (the same assistant, inside the sandbox). WhatsApp from their own phone goes to their real company, so it is
+    not used inside the sample company.
+  - **Wrong but saved** (200 bags of sand instead of cement): Mesiri says what it sees and how to fix it on that page
+    (correct the order), so fixing a mistake is learned too.
+- **Quick check** (`ask` step): a question answered on the page itself, not a form: "Which BOQ line is losing money?
+  Tap it" (the answer is a marker or a record); "How many bags of cement are left at Main block?" (choices). Right:
+  a short why; wrong: the light moves to the answer and the narrator explains. No scores to pass; a chapter shows "3 of
+  4 done by you" so people see what they did themselves.
+- **Choices that change the story** (a few): "The supplier sent 150 of 200 bags. Accept the 150, or reject the
+  delivery?" Either path works, and the next steps follow what they chose.
+- **Pace:** the person moves on when they are ready; the narrator never runs ahead of the task. Speed 1x–2x and mute
+  as now.
+- **Learn page:** each chapter shows "Watch" and "Your turns" counts and what they have done; the journey can be
+  resumed where they left off (the sandbox lives up to 24 h; after that, a new one starts at their chapter, with the
+  earlier chapters' records made for them).
+
+Per chapter, the mix is about one watch, two your-turns and one quick check. Chapter 5 (a day on site) for example:
+watch the engineer's evening message turn into Today; **your turn:** send the next day's update through Tell Mesiri;
+**quick check:** "Which site has not reported today? Tap it"; **your turn:** send the daily report.
+
 ## 5. The sandbox company
 
 - **Start:** `POST /learn/sandbox` (signed-in person). The server makes a company "Sample: Green Villa Builders" with a
@@ -124,7 +161,7 @@ play: {
 | API | `POST /learn/sandbox`, `DELETE /learn/sandbox`; sandbox claim in the token; guide voice model setting and the samples route |
 | Backend | Shared generator (moved); sandbox make / remove; nightly cleanup; skips in schedulers and counts |
 | Assistant | Outbound gate for sandbox companies; Tell Mesiri works in a sandbox like any company |
-| Dashboard | Sandbox switch and banner; `play` step in the engine; field markers for `form` steps; chapter list in the bubble; the 14 chapters; narration scripts |
+| Dashboard | Sandbox switch and banner; `play`, `task` and `ask` steps in the engine (hints, Show me, checks, choices); field markers; chapter list in the bubble; progress per chapter on Learn; the 14 chapters; narration scripts |
 | Docs | This plan, the tour rules (`LEARN_AND_TOURS.md`: how to write a play step and a narration line), tracker |
 
 ## 9. Risks
@@ -178,6 +215,7 @@ normal modules (3 Nov). No change to Payroll or Workforce code.
 | SS-66 | Sandbox company: migration, make / remove, token, nightly cleanup, outbound gate, scheduler and count skips | M |
 | SS-67 | Dashboard: sandbox switch and banner; chapter list in the bubble | S |
 | SS-68 | Engine: the `play` step (`api`, `form`, `upload`, `tell`), field markers, build check | M |
+| SS-72 | Engine: participation: `task` (your turn: goal, check, hints, Show me, mistakes explained), `ask` (quick check by tapping the page or a choice), story choices; "done by you" per chapter and resume on Learn | M |
 | SS-69 | Chapters 0–5 (won, BOQ, schedule, team, a day on site) with narration | M |
 | SS-70 | Chapters 6–10 (material, labour, subcontract, money, billing) with narration | L |
 | SS-71 | Chapters 11–13 (cost, month end, handover and closing) with narration | M |
@@ -189,8 +227,8 @@ SS-64 can start at once (no approval needed). SS-65 next. SS-66 waits for D-GD1.
 | Part | Tokens processed | At API prices |
 |---|---|---|
 | SS-64 voice | ~15–25 M | ~$10–15 |
-| SS-65..SS-68 sandbox and engine | ~60–100 M | ~$35–60 |
-| SS-69..SS-71 chapters | ~90–150 M | ~$55–90 |
-| **Total** | **~165–275 M** | **~$100–165** |
+| SS-65..SS-68, SS-72 sandbox and engine | ~80–135 M | ~$45–80 |
+| SS-69..SS-71 chapters (with your-turns and checks) | ~110–180 M | ~$65–110 |
+| **Total** | **~205–340 M** | **~$120–205** |
 
 Sarvam: narration made once, ~₹15–25. No new running costs beyond database rows for sandboxes while they exist.

@@ -560,9 +560,10 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-66 | **Sandbox company** per person: additive migration (`organizations.sandbox_of`, `sandbox_expires_at`), `POST` / `DELETE /learn/sandbox`, a sandbox token, nightly cleanup, outbound WhatsApp gate, scheduler and count skips | M | Must | SS-65 | todo | | [plan](guided-demo-plan.md). **Needs approval (D-GD1: security-sensitive)** |
 | SS-67 | Dashboard: switch into and out of the sandbox, the "Sample company" banner, the chapter list in the bubble | S | Must | SS-66 | todo | | [plan](guided-demo-plan.md).  |
 | SS-68 | Engine: the `play` step (`api`, `form`, `upload`, `tell`): Mesiri enters the data, then lights it up; field markers and build check | M | Must | SS-42 | todo | | [plan](guided-demo-plan.md).  |
-| SS-69 | Chapters 0–5: your sample company, the project is won, the BOQ from Excel, the schedule, the team, a day on site; with narration | M | Must | SS-64, SS-67, SS-68 | todo | | [plan](guided-demo-plan.md).  |
+| SS-69 | Chapters 0–5: your sample company, the project is won, the BOQ from Excel, the schedule, the team, a day on site; with narration, your-turns and quick checks | M | Must | SS-64, SS-67, SS-68, SS-72 | todo | | [plan](guided-demo-plan.md).  |
 | SS-70 | Chapters 6–10: material, labour and wages, a subcontractor, money out, billing the client; with narration | L | Must | SS-69 | todo | | [plan](guided-demo-plan.md).  |
 | SS-71 | Chapters 11–13: is it making money, month end, handover and closing; with narration | M | Must | SS-70 | todo | | [plan](guided-demo-plan.md). The Closeout report chapter is added when that page is built (D-GD5) |
+| SS-72 | Engine: **participation**: your turn (`task`: a goal, Mesiri checks it landed, hints, Show me, mistakes explained), quick checks (`ask`: tap the answer on the page, or a choice), story choices; "done by you" per chapter, resume on Learn | M | Must | SS-68 | todo | | [plan](guided-demo-plan.md) §4b. Asked 16 Nov in session: "it shouldn't be like a video … interactive learning" |
 
 ---
 
