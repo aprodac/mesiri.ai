@@ -79,6 +79,48 @@ def next_question(
     return None
 
 
+#: SS-38: tips in the owner's first week, by how they chose to start (users.start_mode). "Step by step" gets these in
+#: order, "bring my data" its one; "used other software" and "I'll find my way" get none, and "no more tips" (the v3
+#: tool ``set_start_mode`` to ``free``) stops them. Each works whatever modules the company has switched on.
+TIPS: dict[str, tuple[str, ...]] = {
+    "guided": ("voice", "ask", "photo", "contact", "report"),
+    "bring_data": ("bring_data",),
+}
+#: Tips go out on days 1 to TIP_DAYS after the company was made (never the signup day itself).
+TIP_DAYS = 7
+
+
+def next_tip(
+    progress: object, *, start_mode: str | None, today: dt.date, company_created_on: dt.date
+) -> str | None:
+    """SS-38: the tip to send today, or None. At most one a day, never on a day a setup question was asked (one
+    unprompted message a day in all), only in the first week, each tip once."""
+    tips = TIPS.get(start_mode or "")
+    if not tips:
+        return None
+    day = (today - company_created_on).days
+    if not 1 <= day <= TIP_DAYS:
+        return None
+    progress = progress if isinstance(progress, dict) else {}
+    if progress.get("last_asked_on") == today.isoformat():
+        return None
+    sent = progress.get("tips") if isinstance(progress.get("tips"), dict) else {}
+    if sent.get("last_on") == today.isoformat():
+        return None
+    done = set(sent.get("sent") or [])
+    return next((tip for tip in tips if tip not in done), None)
+
+
+def record_tip(progress: object, tip: str, *, today: dt.date) -> dict[str, Any]:
+    """`progress` with `tip` marked sent today."""
+    updated = dict(progress) if isinstance(progress, dict) else {}
+    tips = dict(updated.get("tips") or {}) if isinstance(updated.get("tips"), dict) else {}
+    tips["sent"] = [*list(tips.get("sent") or []), tip]
+    tips["last_on"] = today.isoformat()
+    updated["tips"] = tips
+    return updated
+
+
 def record(progress: object, question: str, state: str, *, today: dt.date) -> dict[str, Any]:
     """`progress` with `question` set to `state` (asked/answered/skipped)."""
     if question not in _RECORDABLE:

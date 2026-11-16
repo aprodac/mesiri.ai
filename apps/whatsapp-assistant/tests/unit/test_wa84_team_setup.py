@@ -82,6 +82,7 @@ def _setup(role: str) -> tuple[SetupQuestions, SimpleNamespace]:
             return _T()
 
     service._db = _Db()
+    service._use_language = AsyncMock()  # SS-63: English, the stand-in has no users row
 
     async def spec(conn, org, question):  # noqa: ANN001, ANN202
         return ReplySpec(

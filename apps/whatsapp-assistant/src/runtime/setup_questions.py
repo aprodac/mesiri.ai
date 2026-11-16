@@ -30,6 +30,7 @@ import datetime as dt
 import logging
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
@@ -37,13 +38,18 @@ from zoneinfo import ZoneInfo
 import sqlalchemy as sa
 
 from channel.replies import ListRow, ReplySpec
-from mesiri.domains.identity.preferences_router import START_MODES, start_mode_for
+from mesiri.domains.identity.preferences_router import (
+    START_MODES,
+    effective_reply_language,
+    start_mode_for,
+)
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.organizations import setup_questions as rules
 from mesiri.infrastructure.postgres.repositories.organization_settings import (
     PostgresOrganizationSettingsRepository,
 )
 from mesiri_contracts.assistant.enums import InputModality
+from runtime.agent.wording import LANGUAGES, LINES, say
 
 if TYPE_CHECKING:
     from backend.ports import ActorIdentity
@@ -77,65 +83,59 @@ _COLLECT_TTL_SECONDS = 30 * 60
 #: from an owner). A finished branding request waits at most this long.
 _IDLE_TTL_SECONDS = 3 * 60 * 60
 
-ASK_BRANDING = (
-    "Want your company name, logo and GSTIN on your daily report? Send a photo of your "
-    "*letterhead or visiting card*, and your *logo* if you have one. Our team will set "
-    "it up for you."
-)
-BRANDING_RECEIVED = (
-    "👍 Got it. Our team will add this to your reports, usually within a day. "
-    "Send more photos now if you have them."
-)
-BRANDING_MORE = "👍 Added."
-BRANDING_SKIPPED = "No problem. You can send your letterhead any time later."
-BRANDING_DONE = (
-    "✅ Your letterhead is set up. Your next daily report will show your company details."
-)
-ASK_REPORT_TIME = "Your daily report goes out by *{current}*. Want it at a different time?"
-REPORT_TIME_SET = "✅ Done. Your daily report will go out by *{time}*."
-REPORT_TIME_KEPT = "👍 Keeping *{time}*."
-ASK_MORE_SITES = "Working on another site too? I can make a report for each site."
-ASK_SITE_PROJECT = "Which project is the new site for?"
-ASK_TIME_SCOPE = "Use *{time}* for which projects?"
-REPORT_TIME_SET_FOR = "✅ Done. *{project}*'s daily report will go out by *{time}*."
-NO_MORE_SITES = "👍 Got it. Tell me any time you start a new site."
-EXPIRED = "That question has expired."
+#: SS-63 (16 Nov 2026): every line below is the owner's own language, from runtime/agent/wording.py LINES (English,
+#: Manglish, Malayalam, Hindi, Hinglish), picked per message from their reply language (users.reply_language, WA-169;
+#: none chosen: Manglish, WA-207). The names below are the English lines, kept for callers and tests.
+_LANG: ContextVar[str] = ContextVar("setup_questions_language", default="english")
+
+
+def _t(key: str, **values: str) -> str:
+    """The line ``key`` in this message's language (``_LANG``)."""
+    return say(key, _LANG.get(), **values)
+
+
+def _en(key: str) -> str:
+    return LINES[key]["english"]
+
+
+ASK_BRANDING = _en("setup.ask_branding")
+BRANDING_RECEIVED = _en("setup.branding_received")
+BRANDING_MORE = _en("setup.branding_more")
+BRANDING_SKIPPED = _en("setup.branding_skipped")
+BRANDING_DONE = _en("setup.branding_done")
+ASK_REPORT_TIME = _en("setup.ask_report_time")
+REPORT_TIME_SET = _en("setup.report_time_set")
+REPORT_TIME_KEPT = _en("setup.report_time_kept")
+ASK_MORE_SITES = _en("setup.ask_more_sites")
+ASK_SITE_PROJECT = _en("setup.ask_site_project")
+ASK_TIME_SCOPE = _en("setup.ask_time_scope")
+REPORT_TIME_SET_FOR = _en("setup.report_time_set_for")
+NO_MORE_SITES = _en("setup.no_more_sites")
+EXPIRED = _en("setup.expired")
 #: WA-84: "report time 7 pm aakku" from someone who may not change it (the dashboard's rule).
-REPORT_TIME_OWNER_ONLY = "Only the company owner can change the daily report time. Ask them, or they can do it from the dashboard."
+REPORT_TIME_OWNER_ONLY = _en("setup.report_time_owner_only")
 #: WA-84: the times a report can go out at, said before the buttons.
-REPORT_TIME_PICK = "Tap *{time}* below to change it."
-REPORT_TIME_CHOICES = "The report can go out at 7 pm, 8 pm or 9 pm."
+REPORT_TIME_PICK = _en("setup.report_time_pick")
+REPORT_TIME_CHOICES = _en("setup.report_time_choices")
 
 _TIME_LABEL = {"19:00": "7 pm", "20:00": "8 pm", "21:00": "9 pm"}
 
 #: SS-34 (guided-onboarding-plan.md 6.1): the dashboard's four answers, in WhatsApp's 24-character titles.
-ASK_START_MODE = (
-    "How would you like to start? It only changes how much Mesiri explains, here and on the dashboard. "
-    "You can change it any time."
-)
-START_MODE_ROWS: tuple[ListRow, ...] = (
-    ListRow(id=f"{MODE_PREFIX}guided", title="Step by step", description="I'm new to tools like this"),
-    ListRow(id=f"{MODE_PREFIX}bring_data", title="Bring my Excel or paper", description="Help me bring my data in"),
-    ListRow(id=f"{MODE_PREFIX}switching", title="Used other software", description="Show me where things are"),
-    ListRow(id=f"{MODE_PREFIX}free", title="I'll find my way", description="No tips"),
-)
+ASK_START_MODE = _en("start.ask")
+
+
+def start_mode_rows(language: str = "english") -> tuple[ListRow, ...]:
+    """The four answers as list rows, in ``language`` (titles at most 24 characters, descriptions 72)."""
+    return tuple(
+        ListRow(id=f"{MODE_PREFIX}{mode}", title=say(f"start.{mode}.title", language),
+                description=say(f"start.{mode}.hint", language))
+        for mode in START_MODES
+    )
+
+
+START_MODE_ROWS: tuple[ListRow, ...] = start_mode_rows()
 #: The reply to each answer: its first tip (nothing for "I'll find my way" beyond the thanks).
-START_MODE_REPLY: dict[str, str] = {
-    "guided": (
-        "👍 Step by step it is. Every day, just tell me what happened at site, the way you'd tell a colleague: "
-        "*6 masons, 4 helpers, slab shuttering done, cement over*. Text, voice note or photo. "
-        "Every evening I make the daily report from it. On the dashboard, each page explains itself the first time."
-    ),
-    "bring_data": (
-        "👍 To bring your lists in, open *Bring your data* on the dashboard: your materials and vendors Excel, "
-        "and your BOQ. Or send me the file here with a line saying what it is."
-    ),
-    "switching": (
-        "👍 On the dashboard, the sidebar follows a project's life: Plan, Site, Buy, Money. Search (Ctrl K) finds "
-        "any page, and the ? at the top says what each page is for. Your site team only needs WhatsApp."
-    ),
-    "free": "👍 Got it, no tips. Message me any time.",
-}
+START_MODE_REPLY: dict[str, str] = {mode: _en(f"start.{mode}.reply") for mode in START_MODES}
 
 
 class _RedisLike(Protocol):
@@ -159,6 +159,7 @@ _users = sa.Table(
     sa.Column("organization_id", sa.UUID(as_uuid=True)),
     sa.Column("start_mode", sa.String),
     sa.Column("created_at", sa.DateTime(timezone=True)),
+    sa.Column("reply_language", sa.String),
 )
 _projects = sa.Table(
     "projects",
@@ -214,6 +215,7 @@ class SetupQuestions:
         ).isoformat():
             return
 
+        await self._use_language(actor)
         org_id = actor.organization_id
         async with self._db.transaction() as conn:
             org = (
@@ -235,29 +237,46 @@ class SetupQuestions:
                     rules.mark_announced(requests, finished["id"]),
                     updated_by=None,
                 )
-                spec: ReplySpec | None = ReplySpec(text=BRANDING_DONE)
+                spec: ReplySpec | None = ReplySpec(text=_t("setup.branding_done"))
                 question = None
             else:
                 today = self._today(org.timezone)
+                created_on = org.created_at.astimezone(_zone(org.timezone)).date()
                 progress = await repo.get(org_id, org_settings.SETUP_PROGRESS)
                 question = rules.next_question(
                     progress,
                     today=today,
-                    company_created_on=org.created_at.astimezone(_zone(org.timezone)).date(),
+                    company_created_on=created_on,
                     ask_start_mode=await self._should_ask_start_mode(conn, actor),
                 )
                 if question is None:
-                    await self._redis.set_json(
-                        self._idle_key(actor.user_id), True, ttl_seconds=_IDLE_TTL_SECONDS
+                    # SS-38: no setup question today, so maybe one of the first week's tips (never both in a day).
+                    tip = rules.next_tip(
+                        progress, start_mode=await self._start_mode(conn, actor), today=today,
+                        company_created_on=created_on,
                     )
-                    return
-                spec = await self._question_spec(conn, org_id, question)
-                await repo.set(
-                    org_id,
-                    org_settings.SETUP_PROGRESS,
-                    rules.record(progress, question, rules.ASKED, today=today),
-                    updated_by=None,
-                )
+                    if tip is None:
+                        await self._redis.set_json(
+                            self._idle_key(actor.user_id), True, ttl_seconds=_IDLE_TTL_SECONDS
+                        )
+                        return
+                    sent = (progress.get("tips") or {}) if isinstance(progress, dict) else {}
+                    first = not (isinstance(sent, dict) and sent.get("sent"))
+                    # The first tip says how to stop them ("no more tips": v3 set_start_mode to free).
+                    spec = ReplySpec(text=_t(f"tip.{tip}") + (f"\n\n{_t('tip.stop')}" if first else ""))
+                    await repo.set(
+                        org_id, org_settings.SETUP_PROGRESS, rules.record_tip(progress, tip, today=today), updated_by=None
+                    )
+                    await self._redis.set_json(self._idle_key(actor.user_id), True, ttl_seconds=_IDLE_TTL_SECONDS)
+                    _log.info("setup_question.tip org=%s tip=%s", org_id, tip)
+                else:
+                    spec = await self._question_spec(conn, org_id, question)
+                    await repo.set(
+                        org_id,
+                        org_settings.SETUP_PROGRESS,
+                        rules.record(progress, question, rules.ASKED, today=today),
+                        updated_by=None,
+                    )
         if question is not None:
             await self._redis.set_json(
                 self._hint_key(actor.user_id),
@@ -278,6 +297,7 @@ class SetupQuestions:
     async def ask(self, actor: ActorIdentity, question: str, send: Callable[..., Any]) -> None:
         """Ask one specific setup question now (the progress card's NEXT box
         points at it). Same record-and-remember steps as after_reply."""
+        await self._use_language(actor)
         async with self._db.transaction() as conn:
             org = (
                 await conn.execute(
@@ -306,17 +326,18 @@ class SetupQuestions:
         """WA-84: "report time 7 pm aakku" asks the report-time question of SS-14 now,
         with its buttons; the tap changes it (``handle_tap``), so nothing changes
         without one. Only the owner, as on the dashboard."""
+        await self._use_language(actor)
         if str(getattr(actor, "role", "") or "").strip().upper() != _OWNER_ROLE:
-            return ReplySpec(text=REPORT_TIME_OWNER_ONLY)
+            return ReplySpec(text=_t("setup.report_time_owner_only"))
         async with self._db.transaction() as conn:
             spec = await self._question_spec(conn, actor.organization_id, rules.REPORT_TIME)
         await self._redis.set_json(
             self._hint_key(actor.user_id), {"question": rules.REPORT_TIME}, ttl_seconds=_ASKED_TTL_SECONDS
         )
         lead = (
-            REPORT_TIME_PICK.format(time=_time_label(wanted))
+            _t("setup.report_time_pick", time=_time_label(wanted))
             if wanted in rules.REPORT_TIMES
-            else REPORT_TIME_CHOICES
+            else _t("setup.report_time_choices")
         )
         return ReplySpec(text=f"{spec.text}\n{lead}", buttons=spec.buttons)
 
@@ -326,6 +347,7 @@ class SetupQuestions:
         tap = str((message.metadata or {}).get("interactive_reply_id") or "")
         if not tap.startswith(TAP_PREFIX):
             return None
+        await self._use_language(actor)
         hint = await self._redis.get_json(self._hint_key(actor.user_id))
         question = hint.get("question") if isinstance(hint, dict) else None
         if tap.startswith(MODE_PREFIX):
@@ -341,7 +363,7 @@ class SetupQuestions:
             elif tap.startswith((TIME_PREFIX, TIME_FOR_PREFIX)):
                 expected = rules.REPORT_TIME
         if expected is None or question != expected:
-            return ReplySpec(text=EXPIRED)
+            return ReplySpec(text=_t("setup.expired"))
         await self._clear_hint(actor.user_id)
 
         if tap.startswith(TIME_FOR_PREFIX):
@@ -351,7 +373,7 @@ class SetupQuestions:
                 (p for p in actor.projects or [] if str(p.id) == tap[len(SITE_IN_PREFIX) :]), None
             )
             if project is None:
-                return ReplySpec(text=EXPIRED)
+                return ReplySpec(text=_t("setup.expired"))
             return await self._start_site_followup(
                 stage="site",
                 project_id=str(project.id),
@@ -361,12 +383,12 @@ class SetupQuestions:
 
         if tap == SKIP_BRANDING:
             await self._record(actor, rules.BRANDING, rules.SKIPPED)
-            return ReplySpec(text=BRANDING_SKIPPED)
+            return ReplySpec(text=_t("setup.branding_skipped"))
 
         if tap.startswith(TIME_PREFIX):
             chosen = tap[len(TIME_PREFIX) :]
             if chosen not in rules.REPORT_TIMES:
-                return ReplySpec(text=EXPIRED)
+                return ReplySpec(text=_t("setup.expired"))
             async with self._db.transaction() as conn:
                 current = await self._current_deadline(conn, actor.organization_id)
             if chosen != current and len(actor.projects or []) > 1:
@@ -385,12 +407,12 @@ class SetupQuestions:
                         .values(dpr_send_deadline=chosen)
                     )
             await self._record(actor, rules.REPORT_TIME, rules.ANSWERED)
-            text = REPORT_TIME_KEPT if chosen == current else REPORT_TIME_SET
-            return ReplySpec(text=text.format(time=_time_label(chosen)))
+            key = "setup.report_time_kept" if chosen == current else "setup.report_time_set"
+            return ReplySpec(text=_t(key, time=_time_label(chosen)))
 
         await self._record(actor, rules.MORE_SITES, rules.ANSWERED)
         if tap == NO_SITE or not actor.projects:
-            return ReplySpec(text=NO_MORE_SITES)
+            return ReplySpec(text=_t("setup.no_more_sites"))
         if len(actor.projects) > 1:
             # SET-08: never the first project by default.
             await self._redis.set_json(
@@ -399,7 +421,7 @@ class SetupQuestions:
                 ttl_seconds=_ASKED_TTL_SECONDS,
             )
             return self._project_picker(
-                ASK_SITE_PROJECT, SITE_IN_PREFIX, list(actor.projects)
+                _t("setup.ask_site_project"), SITE_IN_PREFIX, list(actor.projects)
             )
         return await self._start_site_followup(
             stage="site",
@@ -417,6 +439,7 @@ class SetupQuestions:
         hint = await self._redis.get_json(self._hint_key(actor.user_id))
         if not isinstance(hint, dict) or hint.get("question") != rules.BRANDING:
             return None
+        await self._use_language(actor)
 
         async with self._db.transaction() as conn:
             repo = PostgresOrganizationSettingsRepository(conn)
@@ -439,7 +462,7 @@ class SetupQuestions:
             ttl_seconds=_COLLECT_TTL_SECONDS,
         )
         await self._tell_team(actor, message, first=started)
-        return ReplySpec(text=BRANDING_RECEIVED if started else BRANDING_MORE)
+        return ReplySpec(text=_t("setup.branding_received" if started else "setup.branding_more"))
 
     # -- internals --------------------------------------------------------------
 
@@ -450,25 +473,25 @@ class SetupQuestions:
         ]
         if len(rows) <= 3:
             return ReplySpec(text=text, buttons=tuple(rows))
-        return ReplySpec(text=text, list_button_label="Choose", list_rows=tuple(rows[:10]))
+        return ReplySpec(text=text, list_button_label=_t("setup.choose"), list_rows=tuple(rows[:10]))
 
     def _time_scope_spec(self, actor: ActorIdentity, chosen: str) -> ReplySpec:
         return self._project_picker(
-            ASK_TIME_SCOPE.format(time=_time_label(chosen)),
+            _t("setup.ask_time_scope", time=_time_label(chosen)),
             TIME_FOR_PREFIX,
             list(actor.projects or []),
-            first=ListRow(id=f"{TIME_FOR_PREFIX}{ALL_PROJECTS}", title="All projects"),
+            first=ListRow(id=f"{TIME_FOR_PREFIX}{ALL_PROJECTS}", title=_t("setup.all_projects")),
         )
 
     async def _time_for(self, actor: ActorIdentity, hint: Any, which: str) -> ReplySpec:
         chosen = str(hint.get("time") or "") if isinstance(hint, dict) else ""
         if chosen not in rules.REPORT_TIMES:
-            return ReplySpec(text=EXPIRED)
+            return ReplySpec(text=_t("setup.expired"))
         project = None
         if which != ALL_PROJECTS:
             project = next((p for p in actor.projects or [] if str(p.id) == which), None)
             if project is None:
-                return ReplySpec(text=EXPIRED)
+                return ReplySpec(text=_t("setup.expired"))
         async with self._db.transaction() as conn:
             stmt = _projects.update().where(_projects.c.organization_id == actor.organization_id)
             if project is not None:
@@ -476,8 +499,36 @@ class SetupQuestions:
             await conn.execute(stmt.values(dpr_send_deadline=chosen))
         await self._record(actor, rules.REPORT_TIME, rules.ANSWERED)
         if project is not None:
-            return ReplySpec(text=REPORT_TIME_SET_FOR.format(project=project.name, time=_time_label(chosen)))
-        return ReplySpec(text=REPORT_TIME_SET.format(time=_time_label(chosen)))
+            return ReplySpec(text=_t("setup.report_time_set_for", project=project.name, time=_time_label(chosen)))
+        return ReplySpec(text=_t("setup.report_time_set", time=_time_label(chosen)))
+
+    async def _use_language(self, actor: ActorIdentity) -> None:
+        """SS-63: this message's lines in the owner's reply language (users.reply_language, WA-169): their choice, or
+        Manglish when none is chosen (WA-207); "auto" follows each message, and this is no reply to one: Manglish too.
+        No user row (a stand-in in tests): English."""
+        async with self._db.transaction() as conn:
+            row = (
+                await conn.execute(
+                    sa.select(_users.c.reply_language).where(
+                        _users.c.id == uuid.UUID(str(actor.user_id)),
+                        _users.c.organization_id == actor.organization_id,
+                    )
+                )
+            ).first()
+        language = "english" if row is None else effective_reply_language(getattr(row, "reply_language", None))
+        _LANG.set(language if language in LANGUAGES else "manglish")
+
+    async def _start_mode(self, conn: Any, actor: ActorIdentity) -> str | None:
+        """SS-38: how the owner chose to start (what no answer means for them: ``start_mode_for``); None: no row."""
+        row = (
+            await conn.execute(
+                sa.select(_users.c.start_mode, _users.c.created_at).where(
+                    _users.c.id == uuid.UUID(str(actor.user_id)),
+                    _users.c.organization_id == actor.organization_id,
+                )
+            )
+        ).first()
+        return None if row is None else start_mode_for(row.start_mode, row.created_at, self._now())[0]
 
     async def _should_ask_start_mode(self, conn: Any, actor: ActorIdentity) -> bool:
         """SS-34: the dashboard's rule (``start_mode_for``): asked only of a new person who has not answered."""
@@ -497,7 +548,7 @@ class SetupQuestions:
         """SS-34: the answer to "How would you like to start?", on the owner's own row, as the dashboard saves it.
         A late tap after the question was answered elsewhere still just records the newer answer."""
         if mode not in START_MODES:
-            return ReplySpec(text=EXPIRED)
+            return ReplySpec(text=_t("setup.expired"))
         if question == rules.START_MODE:
             await self._clear_hint(actor.user_id)
         async with self._db.transaction() as conn:
@@ -511,28 +562,28 @@ class SetupQuestions:
             )
         await self._record(actor, rules.START_MODE, rules.ANSWERED)
         _log.info("setup_question.start_mode org=%s mode=%s", actor.organization_id, mode)
-        return ReplySpec(text=START_MODE_REPLY[mode])
+        return ReplySpec(text=_t(f"start.{mode}.reply"))
 
     async def _question_spec(self, conn: Any, org_id: Any, question: str) -> ReplySpec:
         if question == rules.START_MODE:
-            return ReplySpec(text=ASK_START_MODE, list_button_label="Choose", list_rows=START_MODE_ROWS)
+            return ReplySpec(text=_t("start.ask"), list_button_label=_t("setup.choose"), list_rows=start_mode_rows(_LANG.get()))
         if question == rules.BRANDING:
-            return ReplySpec(text=ASK_BRANDING, buttons=[ListRow(id=SKIP_BRANDING, title="Skip")])
+            return ReplySpec(text=_t("setup.ask_branding"), buttons=[ListRow(id=SKIP_BRANDING, title=_t("setup.skip"))])
         if question == rules.REPORT_TIME:
             current = await self._current_deadline(conn, org_id)
             buttons = [
                 ListRow(
                     id=f"{TIME_PREFIX}{t}",
-                    title=f"Keep {_time_label(t)}" if t == current else _time_label(t),
+                    title=_t("setup.keep_time", time=_time_label(t)) if t == current else _time_label(t),
                 )
                 for t in rules.REPORT_TIMES
             ]
             return ReplySpec(
-                text=ASK_REPORT_TIME.format(current=_time_label(current)), buttons=buttons
+                text=_t("setup.ask_report_time", current=_time_label(current)), buttons=buttons
             )
         return ReplySpec(
-            text=ASK_MORE_SITES,
-            buttons=[ListRow(id=ADD_SITE, title="Add a site"), ListRow(id=NO_SITE, title="No")],
+            text=_t("setup.ask_more_sites"),
+            buttons=[ListRow(id=ADD_SITE, title=_t("setup.add_site")), ListRow(id=NO_SITE, title=_t("setup.no"))],
         )
 
     async def _current_deadline(self, conn: Any, org_id: Any) -> str:

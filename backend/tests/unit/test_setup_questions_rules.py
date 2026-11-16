@@ -96,3 +96,40 @@ def test_a_done_request_is_announced_once_and_new_files_start_a_new_one() -> Non
 def test_generic_settings_api_refuses_the_assistant_keys(key) -> None:
     with pytest.raises(ValueError, match="own page"):
         org_settings.validate(key, {})
+
+
+# -- SS-38: a week of tips --------------------------------------------------------------------------------------------
+
+def _tip(progress, day_offset, mode="guided"):
+    return rules.next_tip(progress, start_mode=mode, today=CREATED + dt.timedelta(days=day_offset),
+                          company_created_on=CREATED)
+
+
+def test_tips_come_one_a_day_in_the_first_week_in_order() -> None:
+    progress: dict = {}
+    assert _tip(progress, 0) is None  # never the signup day
+    assert _tip(progress, 1) == "voice"
+    progress = rules.record_tip(progress, "voice", today=CREATED + dt.timedelta(days=1))
+    assert _tip(progress, 1) is None  # one a day
+    assert _tip(progress, 2) == "ask"
+    assert _tip(progress, rules.TIP_DAYS + 1) is None  # only the first week
+
+
+def test_never_on_a_day_a_setup_question_was_asked() -> None:
+    progress = rules.record({}, rules.BRANDING, rules.ASKED, today=CREATED + dt.timedelta(days=2))
+    assert _tip(progress, 2) is None
+    assert _tip(progress, 3) == "voice"
+
+
+@pytest.mark.parametrize(("mode", "first"), [("guided", "voice"), ("bring_data", "bring_data"),
+                                             ("switching", None), ("free", None), (None, None)])
+def test_tips_follow_how_they_chose_to_start(mode, first) -> None:  # noqa: ANN001
+    assert _tip({}, 1, mode) == first
+
+
+def test_each_tip_once_then_none() -> None:
+    progress: dict = {}
+    for day, tip in enumerate(rules.TIPS["bring_data"], start=1):
+        assert _tip(progress, day, "bring_data") == tip
+        progress = rules.record_tip(progress, tip, today=CREATED + dt.timedelta(days=day))
+    assert _tip(progress, 5, "bring_data") is None

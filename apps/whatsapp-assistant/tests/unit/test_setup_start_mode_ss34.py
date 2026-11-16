@@ -57,7 +57,11 @@ def _questions(monkeypatch, row=None):
     async def record(actor, question, state):
         recorded.append((question, state))
 
+    async def english(actor):  # noqa: ANN001, ANN202 -- SS-63: language has its own tests below
+        return None
+
     monkeypatch.setattr(q, "_record", record)
+    monkeypatch.setattr(q, "_use_language", english)
     return SimpleNamespace(q=q, log=log, recorded=recorded)
 
 
@@ -119,3 +123,58 @@ async def test_the_other_questions_taps_are_unchanged(monkeypatch) -> None:
     s = _questions(monkeypatch)
     spec = await s.q.handle_tap(_tap(sq.SKIP_BRANDING), _actor())
     assert spec.text == sq.EXPIRED
+
+
+# -- SS-63: the setup questions and tips in the owner's own language ------------------------------------------------
+
+from runtime.agent.wording import LANGUAGES, LINES  # noqa: E402
+
+_SETUP_KEYS = [k for k in LINES if k.startswith(("setup.", "start.", "tip."))]
+
+
+def test_every_setup_line_has_every_language() -> None:
+    assert len(_SETUP_KEYS) > 40
+    for key in _SETUP_KEYS:
+        assert set(LINES[key]) == set(LANGUAGES), key
+        assert all(LINES[key][lang].strip() for lang in LANGUAGES), key
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_the_answers_fit_whatsapp_in_every_language(language) -> None:  # noqa: ANN001
+    rows = sq.start_mode_rows(language)
+    assert [r.id.removeprefix(sq.MODE_PREFIX) for r in rows] == list(START_MODES)
+    assert all(len(r.title) <= 24 and len(r.description) <= 72 for r in rows), [(r.title, len(r.title)) for r in rows]
+    # Reply buttons (Skip, Add a site, No, Keep 9 pm, All projects) and the list button: WhatsApp's 20 characters.
+    for key in ("setup.skip", "setup.add_site", "setup.no", "setup.all_projects", "setup.choose"):
+        assert len(LINES[key][language]) <= 20, (key, LINES[key][language])
+    assert len(LINES["setup.keep_time"][language].format(time="9 pm")) <= 20
+
+
+@pytest.mark.parametrize(("stored", "expected"), [
+    ("malayalam", "malayalam"), ("hindi", "hindi"), ("english", "english"),
+    (None, "manglish"),   # none chosen: Manglish (WA-207)
+    ("auto", "manglish"),  # "follow each message": this is no reply to one
+])
+async def test_the_language_is_the_owners_reply_language(monkeypatch, stored, expected) -> None:  # noqa: ANN001
+    row = SimpleNamespace(reply_language=stored)
+    q = sq.SetupQuestions(db=SimpleNamespace(transaction=lambda: _Tx([], row)), redis=FakeRedis(), storage=None,
+                          notifier=None, workflow_runtime=None, start_site_followup=None, now=lambda: NOW)
+    await q._use_language(_actor())
+    assert sq._LANG.get() == expected
+    spec = await q._question_spec(None, ORG, rules.START_MODE)
+    assert spec.text == LINES["start.ask"][expected]
+    assert [r.title for r in spec.list_rows] == [LINES[f"start.{m}.title"][expected] for m in START_MODES]
+
+
+async def test_no_user_row_is_english() -> None:
+    q = sq.SetupQuestions(db=SimpleNamespace(transaction=lambda: _Tx([], None)), redis=FakeRedis(), storage=None,
+                          notifier=None, workflow_runtime=None, start_site_followup=None, now=lambda: NOW)
+    await q._use_language(_actor())
+    assert sq._LANG.get() == "english"
+
+
+def test_the_bring_my_data_reply_no_longer_promises_a_whatsapp_import() -> None:
+    # Importing an Excel sent on WhatsApp is not built (BOQ-05, blocked): the reply points at Bring your data only.
+    for language in LANGUAGES:
+        assert "Bring your data" in LINES["start.bring_data.reply"][language]
+    assert "send me the file" not in LINES["start.bring_data.reply"]["english"].lower()

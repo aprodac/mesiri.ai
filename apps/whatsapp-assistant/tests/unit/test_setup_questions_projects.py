@@ -79,6 +79,10 @@ def setup(monkeypatch):
     async def record(actor, question, state):
         return None
 
+    async def english(actor):  # noqa: ANN001, ANN202 -- SS-63: no users row in this stand-in
+        return None
+
+    monkeypatch.setattr(q, "_use_language", english)
     monkeypatch.setattr(q, "_current_deadline", current)
     monkeypatch.setattr(q, "_record", record)
     return SimpleNamespace(q=q, statements=statements, started=started)
