@@ -20,6 +20,9 @@ export interface TourStep {
   title: string
   text: string
   mood?: SparkMood
+  /** SS-61: the words spoken, when the screen's words don't read well aloud ("Ctrl K", "DPR"); else the title and
+   *  text are spoken. */
+  say?: string
 }
 
 export interface Tour {

@@ -60,3 +60,11 @@ async def test_a_language_live_does_not_speak_is_refused():
 
 def test_without_a_key_it_says_so():
     assert SarvamVoice(SimpleNamespace(api_key=None)).configured is False
+
+
+async def test_mp3_is_asked_for_only_when_wanted():
+    """SS-61: the walkthroughs ask for MP3; Live's calls are unchanged (no codec sent)."""
+    voice, tts = _voice()
+    await voice.speak("Six masons today", "en-IN")
+    await voice.speak("Six masons today", "en-IN", codec="mp3")
+    assert "output_audio_codec" not in tts.calls[0] and tts.calls[1]["output_audio_codec"] == "mp3"

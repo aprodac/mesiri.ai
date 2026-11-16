@@ -46,8 +46,11 @@ class SarvamVoice:
             self._client = SarvamAI(api_subscription_key=api_key)
         return self._client
 
-    async def speak(self, text: str, language_code: str, *, correlation_id: str | None = None) -> bytes:
-        """``text`` spoken in ``language_code`` (one of ``LANGUAGES``), as WAV bytes."""
+    async def speak(
+        self, text: str, language_code: str, *, correlation_id: str | None = None, codec: str | None = None
+    ) -> bytes:
+        """``text`` spoken in ``language_code`` (one of ``LANGUAGES``), as WAV bytes; ``codec`` ("mp3") asks Sarvam
+        for that format instead (SS-61: a walkthrough step is ~10 s, a tenth of the size as MP3)."""
         if language_code not in LANGUAGES:
             raise ValueError(f"no voice for {language_code}")
         client = self._get_client()
@@ -56,8 +59,10 @@ class SarvamVoice:
             import asyncio
 
             def _call() -> Any:
+                extra = {"output_audio_codec": codec} if codec else {}
                 return client.text_to_speech.convert(
-                    text=text, language_code=language_code, speaker=self._speaker, model=self._model, pace=1.05
+                    text=text, language_code=language_code, speaker=self._speaker, model=self._model, pace=1.05,
+                    **extra,
                 )
 
             return await asyncio.to_thread(_call)
