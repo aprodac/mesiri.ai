@@ -23,10 +23,14 @@ def test_number_is_returned_as_set(monkeypatch) -> None:
     assert mesiri_whatsapp_number() == "+91 90000 12345"
 
 
-@pytest.mark.parametrize("configured", [None, "", "   "])
-def test_no_number_without_one_set(monkeypatch, configured) -> None:
-    if configured is None:
-        monkeypatch.delenv("MESIRI_WHATSAPP__DISPLAY_NUMBER", raising=False)
-    else:
-        monkeypatch.setenv("MESIRI_WHATSAPP__DISPLAY_NUMBER", configured)
+def test_mesiris_own_number_when_none_is_set(monkeypatch) -> None:
+    # SS-20 (16 Nov): the number people message is Mesiri's own unless the deployment sets another; with the country
+    # code, so the dashboard's wa.me links work.
+    monkeypatch.delenv("MESIRI_WHATSAPP__DISPLAY_NUMBER", raising=False)
+    assert mesiri_whatsapp_number() == "+91 95443 76072"
+
+
+@pytest.mark.parametrize("configured", ["", "   "])
+def test_an_empty_setting_hides_the_number(monkeypatch, configured) -> None:
+    monkeypatch.setenv("MESIRI_WHATSAPP__DISPLAY_NUMBER", configured)
     assert mesiri_whatsapp_number() is None

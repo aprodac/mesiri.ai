@@ -156,9 +156,11 @@ class WhatsAppSettings(_Section):
     app_secret: SecretStr | None = None
     access_token: SecretStr | None = None
     phone_number_id: str | None = None
-    # The number people message ("+91 90000 12345"), shown on the dashboard's
-    # welcome screen so a new owner knows where to send their first update.
-    display_number: str | None = None
+    # The number people message, shown on the dashboard's welcome screen, the
+    # "On WhatsApp" pop-up and the walkthroughs' "Try it on WhatsApp" (wa.me needs
+    # the country code). Mesiri's number by default (SS-20, given 16 Nov 2026);
+    # MESIRI_WHATSAPP__DISPLAY_NUMBER overrides it, and an empty value hides it.
+    display_number: str | None = "+91 95443 76072"
 
 
 class Settings(BaseSettings):
