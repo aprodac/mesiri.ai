@@ -216,7 +216,12 @@ export interface BoqImportReport {
   dated_sections: number
   links: number
   sections: { id: string; name: string; lines: number; contract_value: string; start: string | null; finish: string | null }[]
-  rows: { row: number; result: 'added' | 'kept' | 'section' | 'problem'; what: string; section: string | null; message: string | null }[]
+  /** CC-13: the "Materials per unit" sheet, if the file has one, and the lines whose materials it set / found already set. */
+  materials_sheet?: string | null
+  material_lines_set?: number
+  material_lines_kept?: number
+  /** `sheet` is set on the rows of the materials sheet (their row numbers are that sheet's). */
+  rows: { row: number; result: 'added' | 'kept' | 'section' | 'problem'; what: string; section: string | null; message: string | null; sheet?: string | null }[]
 }
 
 export async function downloadBoqTemplate(projectId: string): Promise<Blob> {

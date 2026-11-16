@@ -2099,6 +2099,8 @@ async def test_the_import_template_has_its_sheets(client, admin_ctx):
     assert resp.headers["content-type"].startswith("application/vnd.openxmlformats")
     book = load_workbook(io.BytesIO(resp.content))
     assert book.sheetnames == ["How to fill", "Items", "Vendors", "Opening stock", "Minimum stock"]
+    assert [c.value for c in book["Vendors"][1]] == ["Vendor", "Phone", "GSTIN", "Address", "Opening balance",
+                                                      "Balance date"]
     assert [c.value for c in book["Items"][1]] == ["Main category", "Sub-category", "Item", "Unit", "Item code",
                                                     "Other names"]
 
@@ -2159,6 +2161,54 @@ async def test_import_preview_saves_nothing_and_the_import_saves_what_it_said(cl
     assert again["counts"]["Vendors"] == {"existing": 1, "problem": 1}
     assert again["counts"]["Opening stock"] == {"problem": 4}  # opening stock goes in once per site and item
     assert again["counts"]["Categories"] == {"added": 0}
+
+
+async def test_import_sets_supplier_opening_balances_once_and_only_for_money_roles(
+    client, test_engine, test_org, admin_ctx
+):
+    """CC-13: Opening balance / Balance date on the Vendors sheet go through the supplier page's own rules: set
+    when the supplier has none, left when the same, refused (and nothing in the row changed) when different, and
+    only the owner, an admin or finance may import them."""
+    token = admin_ctx["token"]
+    file = _workbook(vendors=[
+        ("KMS Agencies", None, None, None, "1,84,000", "01-10-2026"),
+        ("Paid Ahead Traders", None, None, None, "(25000)", None),
+        ("Date Only Co", None, None, None, None, "01-10-2026"),
+        ("No Balance Co", "+91 98470 12345", None, None, None, None),
+    ])
+    preview = (await client.post("/materials/import/preview", json={"file_base64": file},
+                                 headers=_auth(token))).json()
+    rows = _results(preview)
+    assert preview["counts"]["Vendors"] == {"added": 3, "problem": 1}
+    assert rows[("Vendors", 2)] == ("added", "Opening balance ₹1,84,000 on 01 Oct 2026.")
+    assert "-₹25,000" in rows[("Vendors", 3)][1]
+    assert "needs an Opening balance" in rows[("Vendors", 4)][1]
+    done = (await client.post("/materials/import", json={"file_base64": file}, headers=_auth(token))).json()
+    assert done["counts"] == preview["counts"]
+    vendors = {v["name"]: v for v in (await client.get("/finance/vendors", headers=_auth(token))).json()}
+    assert Decimal(vendors["KMS Agencies"]["opening_balance"]) == Decimal("184000")
+    assert vendors["KMS Agencies"]["opening_balance_date"] == "2026-10-01"
+    assert Decimal(vendors["Paid Ahead Traders"]["opening_balance"]) == Decimal("-25000")
+    assert vendors["No Balance Co"]["opening_balance"] is None
+
+    again = (await client.post("/materials/import", json={"file_base64": file}, headers=_auth(token))).json()
+    assert again["counts"]["Vendors"] == {"existing": 3, "problem": 1}
+    changed = _workbook(vendors=[("KMS Agencies", "+91 90000 11111", None, None, "200000", "01-10-2026")])
+    refused = (await client.post("/materials/import", json={"file_base64": changed}, headers=_auth(token))).json()
+    result, message = _results(refused)[("Vendors", 2)]
+    assert result == "problem" and "₹1,84,000" in message and "Nothing in this row was changed" in message
+    kms = next(v for v in (await client.get("/finance/vendors", headers=_auth(token))).json()
+               if v["name"] == "KMS Agencies")
+    assert Decimal(kms["opening_balance"]) == Decimal("184000") and kms["phone"] is None
+
+    manager = await _make_user(test_engine, test_org, "PROJECT_MANAGER")
+    pm = _token(manager, test_org, "PROJECT_MANAGER")
+    by_pm = (await client.post("/materials/import/preview", json={"file_base64": _workbook(vendors=[
+        ("New Shop", None, None, None, "5000", None), ("Plain Shop", None, None, None, None, None)])},
+        headers=_auth(pm))).json()
+    pm_rows = _results(by_pm)
+    assert pm_rows[("Vendors", 2)][0] == "problem" and "opening balance" in pm_rows[("Vendors", 2)][1]
+    assert pm_rows[("Vendors", 3)][0] == "added"
 
 
 async def test_import_is_for_admins_and_reads_only_excel(client, test_engine, test_org, admin_ctx):

@@ -61,7 +61,7 @@ export default function BringDataPage() {
           key: 'materials',
           icon: Package,
           title: 'Materials, vendors and opening stock',
-          about: 'Items, vendors and stock: one Excel',
+          about: 'Items, vendors with what you owe them, and stock: one Excel',
           done: p?.has_vendors,
           action: <Button size="sm" variant="outline" data-guide="bring.materials" onClick={() => setMaterialsOpen(true)}>Upload the Excel</Button>,
         }]
@@ -71,7 +71,7 @@ export default function BringDataPage() {
       icon: Calculator,
       title: 'BOQ or estimate',
       about: project
-        ? `Your estimate Excel for ${project.name}`
+        ? `Your estimate Excel for ${project.name}, and what each line uses`
         : 'Add a project first',
       done: p?.has_boq,
       action: project ? (
