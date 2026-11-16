@@ -12,6 +12,7 @@ import { TrialBanner } from '@/components/trial-banner'
 import { JumpBox } from '@/components/jump-box'
 import { HelpButton } from '@/components/help-button'
 import { WhatsAppPageButton, WhatsAppPreviewModal } from '@/components/whatsapp-page-button'
+import { TellMesiriButton, TellMesiriDock } from '@/components/tell-mesiri/tell-mesiri-dock'
 import { InboxBell } from '@/components/inbox-bell'
 import { PageGuide } from '@/components/page-guide'
 import { GuidedTour } from '@/components/tour'
@@ -83,6 +84,7 @@ function TopBar() {
             )}
           </Link>
           {/* Guided onboarding: what to send Mesiri for this page, as a chat preview. */}
+          <TellMesiriButton />
           <WhatsAppPageButton />
           <HelpButton />
           {/* NXT-08: everything waiting for me, each opening its record. */}
@@ -131,6 +133,8 @@ export function AppLayout() {
       <StartQuestionDialog />
       {/* The current page's WhatsApp preview, opened from the top bar, the ? panel or the page strip. */}
       <WhatsAppPreviewModal />
+      {/* Tell Mesiri on every page (16 Nov). */}
+      <TellMesiriDock />
       {/* The Spark's guided tours (lib/tours.ts). */}
       <GuidedTour />
       {/* SS-42: walkthroughs started from Learn Mesiri (lib/walkthroughs.ts). */}

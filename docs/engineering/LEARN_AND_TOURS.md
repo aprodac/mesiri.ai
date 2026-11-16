@@ -62,6 +62,9 @@ step's words in another place.
   list and an entry in the WhatsApp test's `_role_limited_undos`.
 - **A walkthrough is offered only to a role that can open at least one of its pages** (`walkFor`), so nobody gets one
   that would run empty.
+- **Practice can also be sent from the dashboard**: every WhatsApp practice shows "Send it here", which opens the Tell
+  Mesiri panel (`lib/tell-mesiri-events.ts` `openTellMesiri(say)`, the same assistant). Nothing to add per practice;
+  the engine steps aside while the panel is open and keeps watching for the saved record.
 - **Never practice on a read-only account**: the engine skips practice there; don't work around it.
 
 ## When you add or change an outcome ("What you get")

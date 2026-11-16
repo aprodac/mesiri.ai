@@ -58,6 +58,12 @@ export const APP_TOUR: Tour = {
       title: 'What to send me',
       text: 'This shows what to send me on WhatsApp for the page you are on. Your site team never needs to open the dashboard.',
     },
+    {
+      target: 'app.tell',
+      title: 'Or tell me here',
+      text: 'Type or speak to me from any page, the way you would on WhatsApp. You get the same card to Save or Cancel.',
+      mood: 'listen',
+    },
     { target: 'app.help', title: 'Stuck?', text: 'Help explains the page and its words, and plays this tour again.', mood: 'happy' },
   ],
 }

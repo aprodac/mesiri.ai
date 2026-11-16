@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { MessageSquareText } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { WhatsAppPreview } from '@/components/whatsapp-preview'
+import { TELL_MESIRI_EVENT } from '@/lib/tell-mesiri-events'
 import { WHATSAPP_PREVIEW_EVENT, openWhatsAppPreview, useWhatsAppExamples } from '@/lib/whatsapp-modal'
 
 // Every page that works from WhatsApp says so in the top bar: one tap opens a pop-up with what to send Mesiri and
@@ -15,8 +16,14 @@ export function WhatsAppPreviewModal() {
   const { page, examples } = useWhatsAppExamples()
   React.useEffect(() => {
     const show = () => setOpen(true)
+    const hide = () => setOpen(false)
     window.addEventListener(WHATSAPP_PREVIEW_EVENT, show)
-    return () => window.removeEventListener(WHATSAPP_PREVIEW_EVENT, show)
+    // "Send it here" opens the Tell Mesiri panel: this pop-up makes way for it.
+    window.addEventListener(TELL_MESIRI_EVENT, hide)
+    return () => {
+      window.removeEventListener(WHATSAPP_PREVIEW_EVENT, show)
+      window.removeEventListener(TELL_MESIRI_EVENT, hide)
+    }
   }, [])
   React.useEffect(() => setOpen(false), [pathname])
   if (!page || examples.length === 0) return null

@@ -2,7 +2,8 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Loader2, Send, Undo2 } from 'lucide-react'
+import { Check, Copy, Loader2, Send, Undo2, MessageSquarePlus } from 'lucide-react'
+import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { Spark } from '@/components/live/spark'
 import { TourOverlay, findTarget, useRect } from '@/components/tour'
 import { api } from '@/lib/api'
@@ -141,6 +142,8 @@ function CopyButton({ text }: { text: string }) {
 
 /** A message to send Mesiri: the words, Copy, and Try it on WhatsApp (when Mesiri's number is known). */
 function SayThis({ say, number }: { say: string; number: string | null }) {
+  // "Send it here": the same message through the Tell Mesiri panel (the same assistant), for whoever has no phone at
+  // hand; the engine steps aside while the panel is open and still watches for the saved record.
   return (
     <div className="flex flex-col gap-1.5 rounded-xl bg-[#ece9e1] p-2.5 dark:bg-[#101214]">
       <div className="self-end rounded-xl rounded-tr-sm bg-[#fff3b8] px-3 py-1.5 text-[13px] text-[#1a1d21] dark:bg-[#3a3313] dark:text-[#ecebe6]">
@@ -148,6 +151,13 @@ function SayThis({ say, number }: { say: string; number: string | null }) {
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <CopyButton text={say} />
+        <button
+          type="button"
+          onClick={() => openTellMesiri(say)}
+          className="inline-flex items-center gap-1 rounded-lg border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted"
+        >
+          <MessageSquarePlus className="size-3.5" aria-hidden /> Send it here
+        </button>
         {number && (
           <a
             href={waLink(number, say)}
@@ -367,6 +377,14 @@ export function WalkthroughRunner() {
     tryIt?.kind === 'whatsapp' && (tryIt.save === false || (!!run && !canTakeBack(run.walk, run.index, role)))
   const check = useCheck(cardOnly ? undefined : tryIt?.check, shown, tryIt?.kind === 'whatsapp', setNewRecord)
 
+  // Send it here: while the Tell Mesiri panel is open on a WhatsApp practice, the tour steps aside to its corner Spark
+  // and comes back when the panel closes; the save check keeps watching meanwhile.
+  React.useEffect(() => {
+    if (!shown || tryIt?.kind !== 'whatsapp') return
+    const timer = window.setInterval(() => setDialogOpen(!!document.querySelector('[data-tell-mesiri][data-state="open"]')), 250)
+    return () => window.clearInterval(timer)
+  }, [shown, tryIt])
+
   // Try here: the person opens the real dialog; the tour steps aside, and comes back when the dialog closes.
   React.useEffect(() => {
     if (!shown || tryIt?.kind !== 'here') return
@@ -448,7 +466,11 @@ export function WalkthroughRunner() {
         role="status"
       >
         <Spark mood="look" size={36} quiet />
-        Fill it in and save. I'm waiting.
+        {tryIt?.kind === 'whatsapp'
+          ? cardOnly
+            ? 'Send it, look at the card, then tap Cancel. Close the box when done.'
+            : "Send it, then tap Save on the card. I'm watching for it."
+          : "Fill it in and save. I'm waiting."}
       </div>,
       document.body,
     )

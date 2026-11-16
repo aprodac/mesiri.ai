@@ -1,9 +1,10 @@
 import * as React from 'react'
-import { Check, Copy, Send } from 'lucide-react'
+import { Check, Copy, MessageSquarePlus, Send } from 'lucide-react'
 import type { WhatsAppExample } from '@/lib/module-map'
 import { usePreferences } from '@/lib/start-mode'
 import { cn } from '@/lib/utils'
 import { waLink } from '@/lib/whatsapp-modal'
+import { openTellMesiri } from '@/lib/tell-mesiri-events'
 
 // How a page works from WhatsApp (guided onboarding, asked 15 Nov: "each page has the preview of how to make it work
 // from WhatsApp"): what someone sends Mesiri, and what comes back, drawn as the chat. The words come only from the
@@ -97,6 +98,13 @@ export function WhatsAppPreview({ examples, className }: { examples: WhatsAppExa
         >
           {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
           {copied ? 'Copied' : 'Copy the message'}
+        </button>
+        <button
+          type="button"
+          onClick={() => openTellMesiri(example.say)}
+          className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+        >
+          <MessageSquarePlus className="size-3.5" aria-hidden /> Send it here
         </button>
         {number && (
           <a

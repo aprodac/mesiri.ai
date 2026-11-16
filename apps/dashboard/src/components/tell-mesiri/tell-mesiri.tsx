@@ -150,10 +150,22 @@ function SiteSide({ turn }: { turn: Turn }) {
  * The panel. `compact` (the welcome screen) shows only the latest exchange
  * and no title; the page around it shows the rest.
  */
-export function TellMesiri({ compact = false, className }: { compact?: boolean; className?: string }) {
+export function TellMesiri({
+  compact = false,
+  className,
+  draft,
+}: {
+  compact?: boolean
+  className?: string
+  /** Words to type in (a "Send it here" from the On WhatsApp pop-up or a walkthrough); a new `n` types them again. */
+  draft?: { text: string; n: number }
+}) {
   const queryClient = useQueryClient()
   const [turns, setTurns] = React.useState<Turn[]>([])
   const [text, setText] = React.useState('')
+  React.useEffect(() => {
+    if (draft) setText(draft.text)
+  }, [draft])
   const [recording, setRecording] = React.useState<Recording | null>(null)
   const [levels, setLevels] = React.useState<number[]>(() => Array(BAR_COUNT).fill(0))
   const [elapsed, setElapsed] = React.useState(0)
@@ -171,10 +183,9 @@ export function TellMesiri({ compact = false, className }: { compact?: boolean; 
         t.id === id ? { ...t, pending: false, replies: res.replies, said: keepSaid ? t.said : res.transcript ?? t.said } : t,
       ),
     )
-    // Anything saved shows on Today and the welcome screen straight away.
-    void queryClient.invalidateQueries({
-      predicate: (q) => typeof q.queryKey[0] === 'string' && /site-day|setup-progress/.test(q.queryKey[0] as string),
-    })
+    // Anything saved shows straight away on the page this box is on, whatever page that is (the box is on every
+    // page since 16 Nov): only the queries the open page uses refetch.
+    void queryClient.invalidateQueries()
   }
 
   const add = (turn: Omit<Turn, 'id' | 'at' | 'pending' | 'replies'>): number => {
