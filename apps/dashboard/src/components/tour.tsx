@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { cn } from '@/lib/utils'
 import { useGuideSeen, useStartMode } from '@/lib/start-mode'
-import { APP_TOUR, tourForPage, type Tour, type TourStep } from '@/lib/tours'
+import { APP_TOUR, PAGE_TOURS, tourForPage, type Tour, type TourStep } from '@/lib/tours'
+import { VOICED, spokenWords } from '@/lib/walkthroughs'
+import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
 import { TOUR_EVENT, walkthroughRunning } from '@/lib/tour-events'
 
 // The guided tour, game style (asked 15 Nov): the screen dims, one thing lights up, and the Spark (Mesiri's
@@ -186,6 +188,21 @@ export function GuidedTour() {
     return () => window.removeEventListener('keydown', keys)
   }, [running, go, skip])
 
+  // SS-61: a page whose walkthrough has a voice (`page-<path>` in VOICED) speaks its tour too, with the same player.
+  const voiced = !!running && VOICED.has(pageWalkId(running.tour))
+  const voice = useGuideVoice()
+  const words = step ? spokenWords(step) : ''
+  const { say: speak, hush, prefetch } = voice
+  React.useEffect(() => {
+    if (!voiced || !running) {
+      hush()
+      return
+    }
+    speak(words)
+    const following = running.steps[running.index + 1]
+    if (following) prefetch(spokenWords(following))
+  }, [voiced, running, words, speak, hush, prefetch])
+
   if (!running || !step) return null
   const last = running.index === running.steps.length - 1
   return (
@@ -199,8 +216,16 @@ export function GuidedTour() {
       onNext={() => go(1)}
       nextLabel={last ? (running.then ? 'Next: this page' : 'Done') : 'Next'}
       onSkip={skip}
-    />
+    >
+      {voiced && <VoicePlayer voice={voice} words={words} />}
+    </TourOverlay>
   )
+}
+
+/** The Learn page's id for a page tour's walkthrough (`page-boq` for /boq), as walkthroughs.ts names it. */
+function pageWalkId(tour: Tour): string {
+  const path = Object.entries(PAGE_TOURS).find(([, t]) => t === tour)?.[0]
+  return path ? `page${path.replace(/\//g, '-')}` : ''
 }
 
 export interface TourOverlayProps {

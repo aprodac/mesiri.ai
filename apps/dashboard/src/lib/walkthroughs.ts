@@ -716,14 +716,24 @@ export const ROLE_PATHS: Walkthrough[] = [
 
 export const ALL_WALKS: Walkthrough[] = [...ROLE_PATHS, ...OUTCOME_WALKS, ...FULL_WORKFLOWS, ...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS]
 
-/** SS-61: the walkthroughs that speak each step (English first; decided 16 Nov: W1, W2, W4 and the owner's path).
- *  Give one its voice by adding its id here; the build fails on an id that doesn't exist. */
-export const VOICED: ReadonlySet<string> = new Set(['site-to-report', 'material', 'labour-to-wages', 'path-owner'])
+/** SS-61: the walkthroughs that speak each step (English first; decided 16 Nov: W1, W2, W4 and the owner's path;
+ *  then the BOQ page, asked 16 Nov). A page walkthrough's id (`page-boq`) also gives that page's own tour (first visit,
+ *  Help's "Show me around") its voice. Give one its voice by adding its id here; the build fails on an id that
+ *  doesn't exist. */
+export const VOICED: ReadonlySet<string> = new Set(['site-to-report', 'material', 'labour-to-wages', 'path-owner', 'page-boq'])
+
+/** Site words written in capitals, spelled out so the voice says the letters ("B O Q", never "bok"). */
+const SPELLED = /\b(BOQ|DPR|GRN|RA|PO|GST|TDS|PDF|CSV)s?\b/g
 
 /** What the narrator says for a step: its own spoken words, or its title and text. */
 export function spokenWords(step: TourStep): string {
   const words = step.say ?? `${step.title.replace(/[.!?:]$/, '')}. ${step.text}`
-  return words.replace(/[“”"]/g, '').replace(/\s+/g, ' ').trim()
+  return words
+    .replace(/[“”"]/g, '')
+    .replace(/\s*&\s*/g, ' and ')
+    .replace(SPELLED, (word) => word.split('').join(' '))
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export function findWalkthrough(id: string): Walkthrough | undefined {

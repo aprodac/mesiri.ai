@@ -120,8 +120,10 @@ export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: numb
           a.playbackRate = rateRef.current // a new source resets the speed
           await a.play()
           setUnavailable(false)
-        } catch {
-          setUnavailable(true)
+        } catch (err) {
+          // The browser holds sound until the person clicks (a tour that opened by itself): not a failure; the
+          // player's Play starts it.
+          if ((err as { name?: string } | null)?.name !== 'NotAllowedError') setUnavailable(true)
         }
       })()
     },
