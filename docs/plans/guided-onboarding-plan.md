@@ -27,7 +27,7 @@ coming from other software differently, the way a game asks "have you played bef
 | What every page is for | `apps/dashboard/src/lib/module-map.ts` | 79 built pages, each with `about`, `example`, and for many the WhatsApp message that feeds it |
 | Sidebar by role | `components/app-sidebar.tsx`, `components/home/role-home.tsx` | Sections ordered by role; pages hidden by role and by module |
 | Excel imports | `components/materials/import-dialog.tsx` (items, vendors, opening stock, minimum stock), `components/schedule/boq-import-dialog.tsx` (BOQ, reads the customer's own file) | Template download, upload, preview |
-| Sample data | `apps/whatsapp-assistant/src/admin/demo.py` (SA-30, SA-36) | Two weeks of believable records, only for the Mesiri team's demo company |
+| Sample data | `backend/src/mesiri/application/organizations/sample_story.py` (SA-30, SA-36; shared since SS-65) | Two weeks of believable records, only for the Mesiri team's demo company |
 | Field guides (LRN) | tracker section LRN | Ten guides on how construction works, a glossary planned as guide 09 |
 | Trials funnel (SS-11) | control panel → Trials | Started → first update → first report → converted |
 

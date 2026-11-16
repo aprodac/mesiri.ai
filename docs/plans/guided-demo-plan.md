@@ -29,7 +29,7 @@ listening, tells the story. Chapters can be jumped to, so each workflow is easy 
 | 69 page tours, W1–W11 workflows, outcomes, role paths | `lib/tours.ts`, `lib/walkthroughs.ts` | The chapters reuse their words and markers |
 | Light up a saved record | `data-record-id` on rows, `showNew` (SS-50) | Each entry Mesiri makes is lit up the same way |
 | Voice: narrator, player, speed, mute | `GET /dpr/live/voice?voice=guide`, `components/guide-voice.tsx` (SS-61) | Narration for every step |
-| Demo company generator: two weeks of a believable project (2 projects, 4 sites, 15 workers, deliveries, use, attendance, issues; ~480 records, ~7 s), fixed story, made through the real API as the owner | `apps/whatsapp-assistant/src/admin/demo.py` (SA-30, SA-36, WEB-85) | The sample company's history. **Moved** to a shared place (§6), not copied |
+| Demo company generator: two weeks of a believable project (2 projects, 4 sites, 15 workers, deliveries, use, attendance, issues; ~480 records, ~7 s), fixed story, made through the real API as the owner | `backend/src/mesiri/application/organizations/sample_story.py` (moved there by SS-65; the reset stays in `apps/whatsapp-assistant/src/admin/demo.py`) | The sample company's history |
 | Create a company; delete a whole company cleanly (blocking links read from the catalogue) | `backend/src/mesiri/application/organizations/create_company.py`, `delete_company.py` (SA-30, SA-31) | Make and remove the sandbox |
 | Sign-in token per person and company | `domains/identity/auth_service.py` `create_access_token` | A short-lived token for the sandbox |
 | Project stages won → running → handover → defects → closed | Project start page (ST-05) | The last chapter. The **Closeout report** page is planned, not built |
@@ -140,7 +140,9 @@ watch the engineer's evening message turn into Today; **your turn:** send the ne
 - The SA-36 generator moves from `apps/whatsapp-assistant/src/admin/demo.py` to
   `backend/src/mesiri/application/organizations/sample_story.py`; the demo reset and the sandbox both call it. Its story
   is extended for the chapters (a won project with no BOQ yet, so chapter 2 has something to do; a subcontractor; a
-  client).
+  client). **Done (SS-65):** moved; a subcontractor added (Joy Tiling Works); Green Villa already has no estimate.
+  Lake View already has its client; Green Villa's client is set by chapter 1 itself. Anything else a chapter starts
+  from is added with that chapter (SS-69..SS-71).
 - The chapters' words start from the page tours and workflows; the narration (§7) is written once per step.
 
 ## 7. The voice
@@ -226,7 +228,7 @@ the commit hash when pushed.
 
 **Can start now, in parallel (no dependency between them):**
 - **SS-64** narration and voice samples: claimed by session_014PnnwM (16 Nov).
-- **SS-65** shared sample story (move the SA-36 generator to the backend): claimed by session_016qPwVK (16 Nov).
+- **SS-65** shared sample story: **done** (`fe3d4b18`, session_016qPwVK): `application/organizations/sample_story.py`.
 - **SS-68** the `play` step in the engine (can be built and tested on the existing walkthroughs with `api` steps against
   the current company in a test, before the sandbox exists).
 
