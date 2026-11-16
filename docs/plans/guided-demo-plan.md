@@ -226,7 +226,7 @@ the commit hash when pushed.
 
 **Can start now, in parallel (no dependency between them):**
 - **SS-64** narration and voice samples: claimed by session_014PnnwM (16 Nov).
-- **SS-65** shared sample story (move the SA-36 generator to the backend).
+- **SS-65** shared sample story (move the SA-36 generator to the backend): claimed by session_016qPwVK (16 Nov).
 - **SS-68** the `play` step in the engine (can be built and tested on the existing walkthroughs with `api` steps against
   the current company in a test, before the sandbox exists).
 
