@@ -124,6 +124,9 @@ class SarvamSettings(_Section):
     # SS-61: the walkthroughs' narrator (Learn Mesiri), chosen by Ilan 16 Nov: Indian English, male. bulbul:v3's own
     # default voice. MESIRI_SARVAM__GUIDE_TTS_SPEAKER changes it on the server, no deploy.
     guide_tts_speaker: str = "shubh"
+    # SS-64: the narrator's model; Sarvam's narration voices (e.g. shubh_en_narration) are on bulbul:v4-flash.
+    # MESIRI_SARVAM__GUIDE_TTS_MODEL with __GUIDE_TTS_SPEAKER, no deploy.
+    guide_tts_model: str = "bulbul:v3"
 
 
 class GeminiSettings(_Section):

@@ -6,6 +6,7 @@ import { PageHeader, Section, Segmented } from '@/components/page/page-kit'
 import { Button } from '@/components/ui/button'
 import { WhatsAppPreview } from '@/components/whatsapp-preview'
 import { useAuth } from '@/lib/AuthContext'
+import { api } from '@/lib/api'
 import { useScope } from '@/lib/ScopeContext'
 import { urlWithScope } from '@/lib/scope-url'
 import { MODULE_GROUPS, findPage, type ModulePage } from '@/lib/module-map'
@@ -154,6 +155,7 @@ export default function LearnPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
       <PageHeader title="Learn Mesiri" subtitle="Pick a walkthrough. I show you each thing on the real page, and you try it yourself." />
+      {['ADMIN', 'OWNER', 'SUPER_ADMIN'].includes(String(role ?? '').toUpperCase()) && <NarratorSamples />}
 
       <div className="flex items-center gap-3 rounded-xl border bg-[#facc15]/10 px-4 py-3">
         <Spark mood="hello" size={44} quiet className="shrink-0" />
@@ -211,5 +213,68 @@ export default function LearnPage() {
         </div>
       )}
     </div>
+  )
+}
+
+
+// SS-64: hear the narrator voices on offer, each reading the same line, to choose the walkthroughs' voice. The choice
+// is set on the server (MESIRI_SARVAM__GUIDE_TTS_MODEL / __GUIDE_TTS_SPEAKER), so it is the same for everyone.
+const NARRATORS: { which: string; name: string; about: string }[] = [
+  { which: 'shubh', name: 'Shubh', about: 'The voice now (Sarvam bulbul v3)' },
+  { which: 'shubh_en_narration', name: 'Shubh, narration', about: 'Made for storytelling (bulbul v4)' },
+  { which: 'kalpit_en_edtech', name: 'Kalpit, teaching', about: 'Made for lessons (bulbul v4)' },
+  { which: 'sarang_en_narration', name: 'Sarang, narration', about: 'Made for storytelling (bulbul v4)' },
+]
+
+function NarratorSamples() {
+  const [open, setOpen] = React.useState(false)
+  const [playing, setPlaying] = React.useState<string | null>(null)
+  const [failed, setFailed] = React.useState<string | null>(null)
+  const audio = React.useRef<HTMLAudioElement | null>(null)
+  React.useEffect(() => () => audio.current?.pause(), [])
+  const play = async (which: string) => {
+    audio.current?.pause()
+    if (playing === which) {
+      setPlaying(null)
+      return
+    }
+    setFailed(null)
+    setPlaying(which)
+    try {
+      const res = await api.get<Blob>('/dpr/live/voice/sample', { params: { which }, responseType: 'blob' })
+      const a = (audio.current ??= new Audio())
+      a.src = URL.createObjectURL(res.data)
+      a.onended = () => setPlaying(null)
+      await a.play()
+    } catch {
+      setFailed(which)
+      setPlaying(null)
+    }
+  }
+  return (
+    <section className="rounded-xl border bg-card p-3 text-sm">
+      <button type="button" className="flex w-full items-center justify-between gap-2 text-left font-medium" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="inline-flex items-center gap-2"><Volume2 className="size-4" aria-hidden /> Choose the narrator</span>
+        <ChevronDown className={cn('size-4 transition-transform', open && 'rotate-180')} aria-hidden />
+      </button>
+      {open && (
+        <div className="mt-3 flex flex-col gap-2">
+          <p className="m-0 text-xs text-muted-foreground">The same line in each voice. Tell the Mesiri team which you like; it is set once, for everyone.</p>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {NARRATORS.map((n) => (
+              <li key={n.which} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                <span className="min-w-0">
+                  <span className="block font-medium">{n.name}</span>
+                  <span className="block text-xs text-muted-foreground">{failed === n.which ? 'Not available right now' : n.about}</span>
+                </span>
+                <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={() => void play(n.which)}>
+                  {playing === n.which ? 'Stop' : <><Play className="size-3" aria-hidden /> Listen</>}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   )
 }

@@ -68,3 +68,13 @@ async def test_mp3_is_asked_for_only_when_wanted():
     await voice.speak("Six masons today", "en-IN")
     await voice.speak("Six masons today", "en-IN", codec="mp3")
     assert "output_audio_codec" not in tts.calls[0] and tts.calls[1]["output_audio_codec"] == "mp3"
+
+
+async def test_a_voice_can_have_its_own_model():
+    """SS-64: the narrator may use another model (Sarvam's narration voices are on bulbul:v4-flash)."""
+    settings = SimpleNamespace(api_key=SimpleNamespace(get_secret_value=lambda: "k"), timeout_seconds=5.0, max_retries=0)
+    voice = SarvamVoice(settings, speaker="shubh_en_narration", model="bulbul:v4-flash")
+    tts = _TTS()
+    voice._client = SimpleNamespace(text_to_speech=tts)
+    await voice.speak("Six masons today", "en-IN", codec="mp3")
+    assert tts.calls[0]["model"] == "bulbul:v4-flash" and tts.calls[0]["speaker"] == "shubh_en_narration"

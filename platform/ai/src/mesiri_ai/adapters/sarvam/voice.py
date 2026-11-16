@@ -28,10 +28,10 @@ LANGUAGES = frozenset({"en-IN", "ml-IN", "hi-IN", "ta-IN", "kn-IN", "te-IN"})
 class SarvamVoice:
     provider = "sarvam"
 
-    def __init__(self, settings: Any, *, speaker: str | None = None) -> None:
+    def __init__(self, settings: Any, *, speaker: str | None = None, model: str | None = None) -> None:
         self._settings = settings
         self._speaker = speaker or getattr(settings, "tts_speaker", None) or DEFAULT_SPEAKER
-        self._model = getattr(settings, "tts_model", None) or VOICE_MODEL
+        self._model = model or getattr(settings, "tts_model", None) or VOICE_MODEL
         self._client: Any | None = None
 
     @property
