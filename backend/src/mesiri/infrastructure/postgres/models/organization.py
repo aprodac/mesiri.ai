@@ -19,6 +19,8 @@ class OrganizationStatus(str, enum.Enum):
     # Self-serve trials (SS-02); rules in domains/organizations/lifecycle.py.
     TRIAL = "trial"
     EXPIRED = "expired"
+    # SS-66: a person's learning sandbox (lifecycle.SANDBOX).
+    SANDBOX = "sandbox"
 
     @classmethod
     def _missing_(cls, value: object) -> "OrganizationStatus | None":

@@ -9,6 +9,7 @@ two of them disagreeing about "Active" vs "active").
     active     a paying (or manually activated) customer
     expired    a trial that ended; not operational, data kept for a while
     suspended  switched off by Mesiri; not operational
+    sandbox    a person's learning company (SS-66); usable on the dashboard, not operational
 
 A trial whose `trial_ends_at` has passed is treated as `expired` even while
 its stored status still says `trial`. Nothing has to run at midnight to
@@ -23,12 +24,16 @@ ACTIVE = "active"
 TRIAL = "trial"
 EXPIRED = "expired"
 SUSPENDED = "suspended"
+#: SS-66: a person's private learning company (Learn Mesiri's sample Green Villa). Usable from the dashboard with its
+#: own sandbox token, but never operational: no scheduled job, automatic report, reminder or WhatsApp reaches it,
+#: because every one of them asks `is_operational` / `operational_sql`.
+SANDBOX = "sandbox"
 
-STATUSES: tuple[str, ...] = (ACTIVE, TRIAL, EXPIRED, SUSPENDED)
+STATUSES: tuple[str, ...] = (ACTIVE, TRIAL, EXPIRED, SUSPENDED, SANDBOX)
 OPERATIONAL_STATUSES: frozenset[str] = frozenset({ACTIVE, TRIAL})
 
 # How a company was created, for the trials funnel (SS-11).
-SIGNUP_SOURCES: tuple[str, ...] = ("superadmin", "whatsapp", "web", "api")
+SIGNUP_SOURCES: tuple[str, ...] = ("superadmin", "whatsapp", "web", "api", "sandbox")
 
 
 def normalize(status: object) -> str:

@@ -515,6 +515,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ("mesiri.domains.reports.period.router", "Period report"),  # PRC-19: a week or a month, page, PDF, Excel
         ("mesiri.domains.audit.activity_router", "Activity log"),  # ADM-02: who changed what, when
         ("mesiri.domains.users.handover_router", "Hand over work"),  # ADM-03: a leaving person's open work
+        ("mesiri.domains.learn.sandbox_router", "Learn sandbox"),  # SS-66: a person's private sample company
     ):
         try:
             import importlib

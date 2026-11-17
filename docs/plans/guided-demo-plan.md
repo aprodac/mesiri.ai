@@ -421,7 +421,25 @@ gets 403 (no sandbox inside a sandbox).
 | Lists | `application/organizations/companies_overview.py` (one filter) |
 | Tests | unit (rules, token claims, refusals) + integration on real Postgres (make, seed, the token can't reach the real company, nothing operational sees it, remove leaves nothing) |
 
-### 17.4 SS-67 in the dashboard, as built (17 Nov 2026)
+### 17.4 Built (SS-66a..c, 17 Nov 2026)
+
+- Built as designed above. Run end to end against the full app and a fresh Postgres (all migrations to 0556, and 0556
+  and 0555 down and up again): **the first open takes ~13 s and adds ~1,430 rows** (two projects, four sites, 15 workers,
+  7 suppliers, 2 weeks of attendance, work, deliveries, use, expenses, an estimate with lines counted, an RA bill, issues;
+  none failed); opening again is instant and gives any role's token.
+- Checked by hand on the running app: the sandbox token sees only Green Villa and Lake View; the real company's project
+  and BOQ give **404** to it, reading and writing; `/learn/sandbox` refuses it (**403**); `/auth/me` says
+  `status: "sandbox"`; the real token never sees the sandbox; sandbox people can't log in (**401**); the sandbox is the
+  only company `operational_sql` leaves out; removing it leaves **no rows** except its one audit-log line (kept by design).
+- Tests: `backend/tests/integration/test_learn_sandbox_postgres.py` (6, real Postgres, the seed replaced by a recorder),
+  `backend/tests/unit/test_lifecycle_sandbox_ss66.py`.
+- **Found on the way, not changed here:** a token whose person was deleted still gets `200 []` from `GET /projects`
+  (the assistant's projects router doesn't re-check the person); nothing leaks (the company is gone), but it is the
+  same class as any revoked person's token and worth its own item.
+- **Not covered:** the seed in CI (it needs the whole app; covered by the run above and by the demo reset using the same
+  story); SS-66d (every outbound path checked for a sandbox) is open.
+
+### 17.5 SS-67 in the dashboard, as built (17 Nov 2026)
 
 | Piece | File | What it does |
 |---|---|---|
@@ -435,7 +453,7 @@ gets 403 (no sandbox inside a sandbox).
 
 Checked against a stub API in Playwright (desktop light, phone dark): Learn card → POST with the real token → the app
 reloads inside, banner and chapter 1 shown → jump to Material → Leave → Open again → the sandbox token refused → back on
-Learn in the real company, still signed in, with the note. **Not yet checked against the real routes** (SS-66b not on
-main when this was built): `GET /auth/me` with the sandbox token must return the sandbox company (the sidebar shows its
-name from there).
+Learn in the real company, still signed in, with the note. The client was checked against SS-66's route and models
+(`domains/learn/sandbox_router.py`: path, roles, `expires_at` = the token's) but **not clicked through against the real
+API and database**; that is the live check after deploy.
 

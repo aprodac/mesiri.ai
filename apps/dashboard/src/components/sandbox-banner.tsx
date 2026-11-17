@@ -40,8 +40,8 @@ export function SandboxBanner() {
       <div className="min-w-0 flex-1 text-sm">
         <p className="m-0 font-semibold">Sample company: nothing here is real.</p>
         <p className="m-0 text-info/90">
-          {session.name}, as {sandboxRoleLabel(session.role)}
-          {session.role !== 'ADMIN' && session.user_name ? ` (${session.user_name})` : ''}. Try anything: no one gets a message, and your own company is not touched.
+          {/* The backend names the role's person "Anil (project manager)"; the owner is the person themself. */}
+          {session.name}, as {session.role !== 'ADMIN' && session.user_name ? session.user_name : sandboxRoleLabel(session.role)}. Try anything: no one gets a message, and your own company is not touched.
         </p>
         {error && <p className="m-0 mt-1 text-destructive">{error}</p>}
       </div>
