@@ -8,7 +8,7 @@
 > browser); **voice: new narration scripts and voice samples to choose from**; **plan first, then build**. Then (16 Nov):
 > **"it shouldn't be like a video, there should be areas for participation: interactive learning"** (§4b).
 > Builds on [learning-centre-plan.md](learning-centre-plan.md) (tours, walkthroughs, Learn page, voice: SS-40..SS-61).
-> Tracker: **SS-64 to SS-72**. SS-67 (switch, banner, chapter list) done 17 Nov: §17.4.
+> Tracker: **SS-64 to SS-78** (SS-74 split into SS-74a..e, §18). SS-67 (switch, banner, chapter list) done 17 Nov: §17.4.
 
 ## 1. Objective
 
@@ -293,6 +293,8 @@ catch** the person finds by using Mesiri, because that is what Mesiri is for.
 
 ### 16.3 The game clock: the site's days move forward
 
+> **Superseded in detail by §18** (17 Nov): your own timeline, back and forth, skip ahead, the other roles played by the cast.
+
 The world moves only when the person moves it: **"Next day"** in the playground's banner (and at the end of a mission).
 
 - Each next day the server plays the site's day from the shared story (`sample_story.py`, extended): attendance, work
@@ -482,7 +484,115 @@ blocked, a real one's sent, the mark ends with the request), `test_lifecycle_san
 on the running app: adding a teammate with a number in the sandbox gets the 422; without a number, 200; in the real
 company with a number, 200.
 
-## 18. SS-73: the starter kit, first part (17 Nov 2026)
+## 18. The planned simulation: your own timeline, everyone else plays their part (SS-74, 17 Nov 2026)
+
+> Asked in session (17 Nov): *"each user has their own actually and they can go back and forth in it, and go few days
+> after and all too. And if I am an accountant I should get a simulated data entered when I do each skip to days …
+> every other role is doing their part automatically when we go next day."* Then: *"we need to have simulation
+> planned … then it's good and easy."* Replaces §16.3's line on how time moves (D-PG2's "Next day" stays); builds on
+> §17 (one sandbox per person, any role).
+
+### 18.1 What the person can do with time
+
+| Control (in the sample company's banner) | What happens |
+|---|---|
+| **Next day** | The plan's next day is played: everyone except you does their entries (18.3); yours are waiting for you (18.4) |
+| **Skip ahead** 2 / 3 / 7 days | Several plan days at once, yours done for you too, except on the day you land on. "While you were away" says what happened |
+| **Go back** to an earlier day | The sample company is put back as it was at the start of that day (a save point, 18.5); later days are gone, and Next day plays them again |
+| **Look back** (no change) | Every page's date picker shows an earlier day; nothing is undone |
+
+Each person's timeline is their own (one sample company each, D-PG1).
+
+### 18.2 The plan: the whole simulation, written in advance (D-GC1)
+
+One fixed script, `application/learn/sample_plan.py`, Day 1 (Green Villa won) to about Day 60 (handover). For each day
+it lists **every role's entries**: who (owner, Anil, Ravi, Meera), what (one of a small set of kinds: attendance, work
+done, material used, a request, an order, a delivery, a supplier bill, a payment, a wage sheet, an expense, an issue, a
+BOQ line counted, a running bill …), and its numbers. It is generated once from the story's tables (`sample_story.py`:
+the sites, the work stages, the use a day, the suppliers, the rates) and checked in, so anyone can read it as a table
+and see exactly what happens on day 23.
+
+- **Fixed, so it is easy and the same for everyone**: the same plan for every sample company, no randomness. The two
+  seeded weeks become days −13..0 of the same plan.
+- **A test holds it true**: every entry's kind maps to a real API route; played start to finish against a real
+  database, every entry saves, stock never goes below zero, every order is delivered and billed, every bill is paid.
+- **Following the person** is only where the plan says so (`needs:`): a delivery needs its order, a bill needs its
+  delivery, a payment needs its bill. If the person (playing that role) never did the entry it needs, it waits and is
+  played the day after the need is met; the site is shown short of it meanwhile (cement not ordered: cement runs out,
+  that site's work and use wait). Events with choices (SS-75) are plan days with two branches.
+
+### 18.3 The cast: who does what, played as their own user
+
+Each planned entry is played **as its role's sandbox user** (Anil, Ravi, Meera, the owner), with their token, in
+process, through the same routes the dashboard calls: every record shows who entered it and passes that role's own
+permissions.
+
+| Role | Their entries in the plan |
+|---|---|
+| Site engineer (Ravi) | Attendance; work done; material used; deliveries received against the order; weather and tomorrow's plan; issues; requests when stock is low |
+| Project manager (Anil) | Orders for the requests; work counted on BOQ lines; issues closed; subcontract measurements |
+| Accounts (Meera) | Supplier bills matched to deliveries; payments; expenses; wage sheet and pay day; advances; client payments |
+| Owner | Approvals; the running bill sent at month end |
+
+### 18.4 Your part: the plan's entries for your role are your to-do
+
+On the day you land on, the plan's entries for **your role** are not played: they are your list for the day, exactly
+as written (*"Malabar's bill TB/2611, ₹43,000, for the delivery of the 3rd"*). Each opens the page it is done on, and is
+ticked when a matching record exists (the plan says what matches: the kind and its key numbers). Not doing it is
+allowed: the entries that need it wait (18.2). These are the raw material for the missions (SS-69..SS-71, SS-75).
+
+### 18.5 The sample company's own date (D-GC2) and save points
+
+A sample company has **its own today** (`organizations.sandbox_today`): the plan day's date. One `today()` for the
+backend gives the real date for every real company and that date for a sandbox, in place of the 43 `date.today()`,
+3 SQL `CURRENT_DATE` and 9 assistant reads; `GET /auth/me` returns it and the dashboard's own "today" reads it. So pay
+weeks, months, days late, stock left in days and bill ageing are all true inside the game.
+
+*Found 17 Nov, before any code:* the first idea, moving the sample's dates back a day at a time, breaks everything on
+the calendar: pay weeks end on a fixed weekday (`pay.week_of`), accounting periods are calendar months
+(`accounting_periods`), so a one-day move makes overlapping weeks and months that are not months. Rejected.
+
+**Save points:** at the start of every day the sample company's rows are saved (per table, as JSON, `sandbox_days`;
+a few hundred kB a day). Go back = put those rows back and set the sandbox's date to that day; nothing else changes.
+The last 30 are kept.
+
+### 18.6 API
+
+All with the person's **real** token, like the rest of `/learn/sandbox` (a sandbox token gets 403).
+
+| Route | Does | Returns |
+|---|---|---|
+| `GET /learn/sandbox/clock` | Where am I? | `{ "day", "date", "can_go_back_to": [{ "day", "date" }], "for_you": [{ "id", "what", "page", "done" }] }` |
+| `POST /learn/sandbox/next-day` body `{ "days": 1..7 }` | Plan days played (18.1) | `{ "day", "date", "summary": [{ "who", "what", "count" }], "for_you": [...], "waiting": [...], "failed": [...] }` |
+| `POST /learn/sandbox/go-back` body `{ "day": n }` | Back to that save point | `{ "day", "date" }` |
+
+### 18.7 Decisions
+
+| # | Decision | Taken |
+|---|---|---|
+| D-GC1 | How the simulation is made | **Planned in advance**: one fixed day-by-day plan of every role's entries (asked 17 Nov: "simulation planned") |
+| D-GC2 | How days pass | **The sample company has its own date**; one `today()` that knows it. **Needs Ilan's approval**: a shared component, and two of the reads are in Workforce |
+| D-GC3 | Your role's entries when skipping days | **Done for you on the days skipped, waiting for you on the day you land** (recommended) |
+| D-GC4 | Going back | **A save point a day, the last 30**; days after it are discarded (recommended) |
+| D-GC5 | Skip size | **Up to 7 days at a time** (recommended: one request under ~30 s) |
+
+Security: no new kind of token or permission. The cast's tokens are §17 sandbox tokens, made in process for the
+sandbox's own users and never returned; save points and the clock refuse any company without `sandbox_of`.
+
+### 18.8 Work (replaces SS-74's one row)
+
+| ID | Item | Size | Depends on |
+|---|---|---|---|
+| SS-74a | The sample company's own date: `organizations.sandbox_today` (additive), one `today()` for backend, assistant and dashboard, `GET /auth/me` returns it | M | SS-66; **approval D-GC2** |
+| SS-74b | The plan: `sample_plan.py`, every role's entries day by day to handover, generated from the story and checked in; its test (every entry a real route, stock never negative, everything ordered is delivered, billed, paid) | L | SS-65 |
+| SS-74c | The player: Next day / Skip ahead play the plan as the cast's users; your role's entries become "for you" with their checks; `needs:` waits; `POST next-day`, `GET clock` | M | SS-74a, SS-74b |
+| SS-74d | Save points and Go back: `sandbox_days`, save each day, restore, keep 30; `POST go-back`; real-Postgres test (save, change, go back, identical rows) | M | SS-74a |
+| SS-74e | Dashboard: the clock in the sample company's banner (day n, Next day, Skip ahead, Go back), "While you were away", "For you today" | S | §18.6 (routes stubbed until SS-74c) |
+
+Order: **SS-74b can start now** (no approval needed: the plan is data and a test). SS-74a waits for D-GC2; then
+SS-74c and SS-74d; SS-74e any time against §18.6.
+
+## 19. SS-73: the starter kit (17 Nov 2026)
 
 `scripts/learn_kit/make_kit.py` makes the files into `apps/dashboard/public/learn/kit/` (fixed: the same bytes every
 run), with `kit.json` (what each is, where it goes, what to look for) and one zip. The Learn page's **Starter kit**
@@ -501,7 +611,7 @@ same unit, so its work counts on the BOQ. No phone numbers or GSTINs anywhere.
 Test: `backend/tests/unit/test_learn_kit_ss73.py` (the files are what the script makes, read through Mesiri's own
 importers; every site work has its line; norms name real lines and catalogue materials; the contract says the total).
 
-### 18.1 Second part (17 Nov 2026)
+### 19.1 Second part (17 Nov 2026)
 
 Each catch checked first against what Mesiri does today (three planned catches changed to ones it really shows):
 
