@@ -57,7 +57,7 @@ export function StarterKit() {
         <div className="min-w-0">
           <h2 className="m-0 text-base font-semibold">Starter kit: Green Villa's paperwork</h2>
           <p className="m-0 text-sm text-muted-foreground">
-            The files a real project runs on. Bring them into your sample company yourself; each one hides something Mesiri catches.
+            A real project's files. Each one hides something Mesiri catches.
           </p>
         </div>
         <Button asChild size="sm" variant="outline" className="gap-1.5">

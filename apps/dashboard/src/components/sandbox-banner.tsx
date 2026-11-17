@@ -57,7 +57,7 @@ export function SandboxBanner() {
         <p className="m-0 font-semibold">Sample company: nothing here is real.</p>
         <p className="m-0 text-info/90">
           {/* The backend names the role's person "Anil (project manager)"; the owner is the person themself. */}
-          {session.name}, as {session.role !== 'ADMIN' && session.user_name ? session.user_name : sandboxRoleLabel(session.role)}. Try anything: no one gets a message, and your own company is not touched.
+          {session.name}, as {session.role !== 'ADMIN' && session.user_name ? session.user_name : sandboxRoleLabel(session.role)}. Nothing is sent; your company is untouched.
           {current && <span className="hidden sm:inline"> {current.label} sees: {current.sees.toLowerCase()}.</span>}
         </p>
         {error && <p className="m-0 mt-1 text-destructive">{error}</p>}

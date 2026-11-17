@@ -59,7 +59,7 @@ export function SandboxClock() {
 
   if (!session || clock.isError) return null
   if (clock.data?.old) {
-    return <p className="m-0 text-xs text-info/90">This sample company was made before days could pass: Start over to play the days.</p>
+    return <p className="m-0 text-xs text-info/90">Made before days could pass: Start over to play them.</p>
   }
   const c = clock.data
   const done = !!c && c.day >= c.last_day

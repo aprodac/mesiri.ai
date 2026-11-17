@@ -85,7 +85,7 @@ export function SandboxCard() {
     <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 text-sm" aria-label="Your sample company">
       {ended && (
         <p className="m-0 rounded-lg bg-muted px-3 py-2 text-xs" role="status">
-          Your time in the sample company ended, so you are back in your own company. Open it again to carry on where you left.
+          Your sample session ended. Open it again to carry on.
         </p>
       )}
       <div className="flex items-start gap-3">
@@ -93,8 +93,7 @@ export function SandboxCard() {
         <div className="min-w-0 flex-1">
           <h2 className="m-0 text-base font-semibold">Try it in a sample company</h2>
           <p className="m-0 text-muted-foreground">
-            Green Villa Builders: two projects and two weeks of site work, already recorded, just for you. Do anything:
-            nothing is real, no one gets a message, and your own company is not touched.
+            Green Villa: two projects, two weeks of work. Nothing is sent.
             {exists ? ' Yours is kept until you remove it.' : ' Making it takes about 10 seconds.'}
           </p>
         </div>

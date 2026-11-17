@@ -1,7 +1,14 @@
-import asyncio, datetime as dt, jwt, json
+import asyncio
+import datetime as dt
+import json
+
+import jwt
 from sqlalchemy.ext.asyncio import create_async_engine
+
 from mesiri.application.organizations.create_company import NewCompany, create_company
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
+
+
 async def main():
     e = create_async_engine("postgresql+asyncpg://mesiri:mesiri_local_dev@127.0.0.1:5432/mesiri")
     async with e.begin() as c:

@@ -98,6 +98,8 @@ dev = [
     "mypy>=1.9",
     "fastapi>=0.110",
     "httpx>=0.27",
+    # Test PDFs (drawing check) and the Learn starter kit's PDFs (scripts/learn_kit/make_kit.py, SS-73).
+    "reportlab>=4.0",
 ]
 
 [tool.pytest.ini_options]
