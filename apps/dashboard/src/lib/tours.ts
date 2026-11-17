@@ -985,6 +985,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['pl.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
+      { target: 'pl.view', title: 'Three ways to read it', text: 'Statement: the two columns, as in Tally. Month by month: each month side by side, with the profit or loss of each. List: one column.' },
       { target: 'pl.compare', title: 'Against what', text: 'Set it beside the period before, or the same time last year.' },
       { target: 'pl.stats', title: 'The sum at a glance', text: 'Income less direct costs is gross profit; less indirect costs, plus other income, is net profit. Under each: the change, or its share of income.', mood: 'look' },
       { target: 'pl.statement', title: 'The statement', text: 'Two parts, as in Tally: the trading account down to gross profit, then the profit and loss account down to net profit. Income is RA bills before GST; costs are net of the GST you can claim. Tap a group for its ledgers.', mood: 'think' },

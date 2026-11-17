@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Building2 } from 'lucide-react'
 import { BooksClosed, BooksTabs, PeriodBar, usePeriod } from '@/components/accounts/books'
 import { PlStatement } from '@/components/accounts/pl-statement'
+import { PlMonths } from '@/components/accounts/pl-months'
 import { PlFormulaStrip, PlTwoColumn } from '@/components/accounts/pl-two-column'
 import { Callout, DprHeader, PageError, Segmented } from '@/components/dpr-page'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -14,9 +15,10 @@ import { usePageTitle } from '@/lib/page-title'
 // ACC-06 / ACC-22: profit and loss for a period, the company, a project or a site (scope bar), with a comparison
 // against the period before or the same period last year. Backend: GET /accounts/pl.
 // UX-30: the statement reads in Tally's two columns by default (trading account, then profit and loss account), with
-// the sum above it as a row of figures; "List" keeps the one-column statement.
+// the sum above it as a row of figures; "Month by month" puts each month in a column; "List" keeps the one-column
+// statement.
 
-type View = 'statement' | 'list'
+type View = 'statement' | 'months' | 'list'
 
 export default function ProfitLossPage() {
   usePageTitle('Profit & loss')
@@ -26,7 +28,7 @@ export default function ProfitLossPage() {
   const { period } = periodState
   const [params, setParams] = useSearchParams()
   const compare = (params.get('compare') ?? 'previous') as Compare
-  const view: View = params.get('view') === 'list' ? 'list' : 'statement'
+  const view: View = params.get('view') === 'list' ? 'list' : params.get('view') === 'months' ? 'months' : 'statement'
   const setParam = (k: string, v: string) =>
     setParams((p) => {
       const n = new URLSearchParams(p)
@@ -48,10 +50,12 @@ export default function ProfitLossPage() {
       <BooksTabs current="/accounts/pl" />
       <div className="flex flex-wrap items-center gap-2">
         <Segmented<View>
+          guide="pl.view"
           label="Show as"
           value={view}
           options={[
             { value: 'statement', label: 'Statement' },
+            { value: 'months', label: 'Month by month' },
             { value: 'list', label: 'List' },
           ]}
           onChange={(v) => setParam('view', v)}
@@ -80,7 +84,9 @@ export default function ProfitLossPage() {
             </Callout>
           )}
           <div data-guide="pl.statement">
-            {view === 'statement' ? (
+            {view === 'months' ? (
+              <PlMonths period={period} scope={sp} total={d} />
+            ) : view === 'statement' ? (
               <PlTwoColumn pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
             ) : (
               <PlStatement pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
