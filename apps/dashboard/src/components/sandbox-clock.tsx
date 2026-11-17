@@ -1,12 +1,12 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, ChevronDown, ClipboardList, FastForward, Loader2, SkipForward, X } from 'lucide-react'
+import { CalendarClock, ChevronDown, ClipboardList, FastForward, History, Loader2, SkipForward, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/lib/logo-upload'
-import { catchUp, passDays, sandboxSession, takeDaysPassed, useSandboxClock, type ForYou } from '@/lib/sandbox'
+import { catchUp, goBackTo, passDays, sandboxSession, takeDaysPassed, useSandboxClock, type ForYou } from '@/lib/sandbox'
 import { findPage } from '@/lib/module-map'
 
 // SS-74e (guided-demo-plan.md section 18): the sample company's days, in its banner. Next day and Skip ahead play the
@@ -46,6 +46,7 @@ function byPage(items: ForYou[]): { page: string; items: ForYou[] }[] {
 export function SandboxClock() {
   const session = sandboxSession()
   const clock = useSandboxClock()
+  /** Days passing (1..7), or going back (-1). */
   const [busy, setBusy] = React.useState<number | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [away, setAway] = React.useState(takeDaysPassed)
@@ -74,6 +75,22 @@ export function SandboxClock() {
       setBusy(null)
     }
   }
+
+  const back = async (day: number, date: string) => {
+    const today = c && day === c.day
+    if (!window.confirm(today
+      ? `Try today again? Everything done since this morning (${dayName(date)}) is undone.`
+      : `Go back to day ${day} (${dayName(date)})? Your sample company becomes exactly what it was that morning; the days after it are gone, and Next day plays them again.`)) return
+    setBusy(-1)
+    setError(null)
+    try {
+      await goBackTo(day)
+    } catch (e) {
+      setError(apiErrorMessage(e))
+      setBusy(null)
+    }
+  }
+  const saved = [...(c?.can_go_back_to ?? [])].reverse()
 
   return (
     <div className="flex flex-col gap-2" data-guide="sandbox.clock">
@@ -117,6 +134,27 @@ export function SandboxClock() {
               </DropdownMenuContent>
             </DropdownMenu>
           </>
+        )}
+        {saved.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="gap-1.5 bg-background" disabled={busy !== null} data-guide="sandbox.go-back">
+                {busy === -1 ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <History className="size-3.5" aria-hidden />}
+                {busy === -1 ? 'Going back…' : 'Go back'}
+                <ChevronDown className="size-3.5" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                Back to the morning of a day you were on. Everything after it is undone.
+              </DropdownMenuLabel>
+              {saved.map((p) => (
+                <DropdownMenuItem key={p.day} onSelect={() => void back(p.day, p.date)}>
+                  {c && p.day === c.day ? 'Try today again' : `Day ${p.day} · ${dayName(p.date)}`}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         {c && c.for_you.length > 0 && <ForYouMenu items={c.for_you} late={late} />}
         {c && c.for_you.length === 0 && !done && <span className="text-xs text-info/90">Nothing waiting for you today.</span>}

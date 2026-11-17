@@ -236,6 +236,8 @@ export interface SandboxClock {
   date: string
   last_day: number
   for_you: ForYou[]
+  /** SS-74d: earlier days this sample can go back to (the days the person stood on). */
+  can_go_back_to?: { day: number; date: string }[]
 }
 
 export interface DaysPassed {
@@ -309,3 +311,17 @@ export async function catchUp(date: string): Promise<void> {
   s.setItem(CAUGHT_UP_KEY, date)
   await enterSandbox(session.role, undefined, `${window.location.pathname}${window.location.search}`)
 }
+
+/** SS-74d: back to an earlier day (a save point): the sample company exactly as it was then; the days after it are
+ *  gone. This tab takes the new token (that day's date) and loads the page again. */
+export async function goBackTo(day: number): Promise<void> {
+  const s = store()
+  const session = sandboxSession()
+  if (!s || !session) throw new Error('Open your sample company first.')
+  const res = await api.post<DaysPassed>(`${SANDBOX_PATH}/go-back`, { day, role: session.role })
+  const d = res.data
+  s.setItem(KEY, JSON.stringify({ ...session, token: d.token, expires_at: d.expires_at, today: d.date }))
+  s.removeItem(AWAY_KEY)
+  reload(`${window.location.pathname}${window.location.search}`)
+}
+

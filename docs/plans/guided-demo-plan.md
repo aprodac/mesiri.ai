@@ -751,6 +751,12 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
   approvals under Wages → Next day → day 8, "2 late", and Meera's pay waiting on them; phone width, dark.
 - Found on the way: Today's own "Next day" arrow (looking at a day) and this one (making a day pass) shared a name for
   screen readers; this one is now "Move the sample company on to the next day".
+- **Go back in the banner** (added once SS-74d's API was on main): "Go back" lists `can_go_back_to`, newest first,
+  today's own as **"Try today again"**, and asks first ("the days after it are gone"); the new token (that day's date)
+  is taken and the page loads again. Checked in a browser against the real app: 3 days on, the menu reads "Try today
+  again | Day 2 · Mon, 16 Nov | Day 1 | Day 0", Day 0 → Sat 14 Nov. (A second SS-74d was built in this session at the
+  same time as session_014PnnwR's, from a claim made seconds apart; theirs is on main and kept, this one was dropped
+  before pushing, so there is one save-point system.)
 
 ### 18.13 Second pass on the ask (17 Nov 2026, asked again in session)
 
