@@ -733,7 +733,26 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
   older overdue entry of the same kind and place as well as that day's; the dashboard side (Next day in the banner,
   the new token swapped in, "for you" with links) is SS-74e; save points and Go back are SS-74d.
 
-### 18.12 Second pass on the ask (17 Nov 2026, asked again in session)
+### 18.12 SS-74e as built (17 Nov 2026)
+
+- **In the sample company's banner** (`components/sandbox-clock.tsx`, inside `sandbox-banner.tsx`): "Day 7 of 62 · Sat,
+  21 Nov", **Next day**, **Skip ahead** (2 days, 3 days, a week), **For you (n)** (`· n late` when some are from
+  earlier days): the person's part grouped by the page it is done on, each group a link. After days pass, once:
+  **"Days 1 to 7 passed"**: who did what (Anil: orders placed 10 ...), what waits for something not done yet, and
+  anything that could not be saved. Sunday says "A quiet day: nobody works on Sunday."
+- `lib/sandbox.ts`: `useSandboxClock()`, `passDays(n)` (takes the new token, whose date moved, and loads the page again
+  so every page reads the new day), `catchUp()` (a tab left behind by another opens itself again on the current date,
+  once per date). A sample made before days could pass says to start over.
+- For everyone in a sample company (17 Nov in session: no customers use it yet, so nothing is held back); the near
+  term mission is the guided project up to the BOQ, so the chapters after it (SS-69 part 2 onwards) wait for the other
+  pages' UI/UX upgrade.
+- **Checked in a browser against the real app and a real database** (not a stub): Learn → Just look around → day 0 →
+  a week → day 7, Sat 21 Nov in the top bar and on Today, "Days 1 to 7 passed", For you (2): the owner's two wage
+  approvals under Wages → Next day → day 8, "2 late", and Meera's pay waiting on them; phone width, dark.
+- Found on the way: Today's own "Next day" arrow (looking at a day) and this one (making a day pass) shared a name for
+  screen readers; this one is now "Move the sample company on to the next day".
+
+### 18.13 Second pass on the ask (17 Nov 2026, asked again in session)
 
 The same ask came again (*"each user has their own … go back and forth … if I am an accountant I should get simulated
 data entered when I skip days … every other role is doing their part automatically"*). What is built covers its core
@@ -751,7 +770,7 @@ data entered when I skip days … every other role is doing their part automatic
 Not taken: branching timelines (keeping the days you went back from, to return to them). One line of days is easier to
 understand and to keep; going back says plainly that the later days go.
 
-### 18.13 SS-74d as built (17 Nov 2026)
+### 18.14 SS-74d as built (17 Nov 2026)
 
 - **`application/learn/sandbox_days.py`**: a save point is every row of the sample company, per table, as JSON,
   gzip-compressed, in `sandbox_days` (migration 0560, additive, row-level security, cascades with the company). One a
@@ -774,7 +793,7 @@ understand and to keep; going back says plainly that the later days go.
   refused); `apps/whatsapp-assistant/tests/integration/test_sandbox_days_postgres.py` (4, real Postgres, real seed: back
   to day 2 gives every row exactly as saved, the date and later save points with it; forth again replays to the same
   shape; try today again; back to day 0; one move at a time, two at once from two tabs; a real company refused).
-- **Not covered:** the dashboard's Go back control (SS-74e); storage size measured only on early days (save points
+- **Not covered:** the dashboard's Go back control (SS-74e has Next day and Skip ahead; Go back still to add there); storage size measured only on early days (save points
   grow with the company; 30 kept); `created_at` timestamps are restored as saved, so "since this day began" ticking
   stays true after going back.
 

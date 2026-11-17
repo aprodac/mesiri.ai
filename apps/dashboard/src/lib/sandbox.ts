@@ -218,3 +218,94 @@ export function takeSandboxStart(): string | null {
 export function sandboxRoleLabel(role: string | undefined): string {
   return SANDBOX_ROLES.find((r) => r.value === role)?.label ?? 'Owner'
 }
+
+// --- SS-74e: days pass in the sample company (guided-demo-plan.md section 18) -----------------------------------
+
+/** What the person playing a role has to do (the plan's entries for that role the cast left for them). */
+export interface ForYou {
+  id: string
+  day: number
+  what: string
+  kind: string
+  page: string
+  done: boolean
+}
+
+export interface SandboxClock {
+  day: number
+  date: string
+  last_day: number
+  for_you: ForYou[]
+}
+
+export interface DaysPassed {
+  day: number
+  date: string
+  token: string
+  expires_at: string
+  summary: { who: string; kind: string; count: number }[]
+  for_you: ForYou[]
+  waiting: { id: string; day: number; who: string; what: string }[]
+  failed: { id: string; what: string; error: string }[]
+}
+
+/** Shown once after the page loads again: what happened while days passed. */
+const AWAY_KEY = 'mesiri_sandbox_away'
+/** This tab re-opened itself because another tab moved the days on: once per date, never a loop. */
+const CAUGHT_UP_KEY = 'mesiri_sandbox_caught_up'
+
+/** Where my sample company's days are, for the role this tab plays. Asked with my own token (/learn/sandbox).
+ *  A 409 (a sample made before days could pass) comes back as `old: true`. */
+export function useSandboxClock() {
+  const session = sandboxSession()
+  return useQuery({
+    queryKey: ['learn-sandbox-clock', session?.role, session?.today],
+    enabled: !!session,
+    retry: false,
+    queryFn: async (): Promise<SandboxClock & { old?: boolean }> => {
+      try {
+        return (await api.get<SandboxClock>(`${SANDBOX_PATH}/clock`, { params: { role: session?.role } })).data
+      } catch (error) {
+        if ((error as { response?: { status?: number } }).response?.status === 409) {
+          return { day: 0, date: session?.today ?? '', last_day: 0, for_you: [], old: true }
+        }
+        throw error
+      }
+    },
+  })
+}
+
+/** Days pass (1..7): the cast plays them; this tab takes the new token (its date moved) and loads the page again, so
+ *  every page shows the new day. What happened is kept to say once ("While you were away"). */
+export async function passDays(days: number): Promise<void> {
+  const s = store()
+  const session = sandboxSession()
+  if (!s || !session) throw new Error('Open your sample company first.')
+  const res = await api.post<DaysPassed>(`${SANDBOX_PATH}/next-day`, { days, role: session.role })
+  const d = res.data
+  s.setItem(KEY, JSON.stringify({ ...session, token: d.token, expires_at: d.expires_at, today: d.date }))
+  s.setItem(AWAY_KEY, JSON.stringify({ from: d.day - days, ...d, token: undefined }))
+  reload(`${window.location.pathname}${window.location.search}`)
+}
+
+/** Read once: what happened in the days that just passed. */
+export function takeDaysPassed(): (Omit<DaysPassed, 'token'> & { from: number }) | null {
+  const s = store()
+  const raw = s?.getItem(AWAY_KEY)
+  if (!raw) return null
+  s?.removeItem(AWAY_KEY)
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/** Another tab moved the days on: open the sample again here (its token then carries the current date), once. */
+export async function catchUp(date: string): Promise<void> {
+  const s = store()
+  const session = sandboxSession()
+  if (!s || !session || s.getItem(CAUGHT_UP_KEY) === date) return
+  s.setItem(CAUGHT_UP_KEY, date)
+  await enterSandbox(session.role, undefined, `${window.location.pathname}${window.location.search}`)
+}

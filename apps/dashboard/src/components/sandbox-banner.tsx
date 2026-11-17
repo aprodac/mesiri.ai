@@ -6,6 +6,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { SANDBOX_ROLES, leaveSandbox, resetSandbox, sandboxRoleLabel, sandboxSession, switchSandboxRole, type SandboxRole } from '@/lib/sandbox'
 import { startWalkthrough } from '@/lib/tour-events'
 import { JOURNEY, pageOpenFor, walkFor } from '@/lib/walkthroughs'
+import { SandboxClock } from '@/components/sandbox-clock'
 
 /**
  * "Sample company: nothing here is real" at the top of every page while this tab is in the person's sample company
@@ -60,6 +61,10 @@ export function SandboxBanner() {
           {current && <span className="hidden sm:inline"> {current.label} sees: {current.sees.toLowerCase()}.</span>}
         </p>
         {error && <p className="m-0 mt-1 text-destructive">{error}</p>}
+        {/* SS-74e: the sample company's days: Next day, Skip ahead, and what is the person's to do. */}
+        <div className="mt-2">
+          <SandboxClock />
+        </div>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
         <DropdownMenu>
