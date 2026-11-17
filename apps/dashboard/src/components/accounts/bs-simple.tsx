@@ -104,7 +104,13 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
     )
   }
 
+  // UX-33 (asked: "add percentages too"): each line's share of its side; worth as a share of what you own
+  const base = (b: Bucket) => (b.side === 'owe' ? oweTotal : ownTotal)
+  const pctOf = (v: number, of: number) => (Math.abs(of) < tiny ? null : (v / of) * 100)
+  const pctText = (p: number | null) => (p === null ? '' : `${Math.abs(p) < 1 && p !== 0 ? p.toFixed(1) : Math.round(p)}%`)
+  const shareWords = (b: Bucket) => (b.side === 'owe' ? 'of what you owe' : b.side === 'worth' ? 'of what you own is yours' : 'of what you own')
   const bucketBlock = (b: Bucket) => {
+    const share = pctOf(b.amount, base(b))
     const look = LOOK[b.key]
     const Icon = look.icon
     const isOpen = open.has(b.key)
@@ -118,7 +124,10 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
           <React.Fragment key={l.ledger_id}>
             <button type="button" onClick={() => toggle(id)} aria-expanded={lOpen} className={cn('flex w-full items-center gap-3 border-t border-border/50 py-2 pr-4 text-left text-sm hover:bg-muted/40', indent)}>
               <ChevronRight className={cn('-ml-5 size-3.5 shrink-0 text-muted-foreground transition-transform', lOpen && 'rotate-90')} />
-              <span className="min-w-0 flex-1 truncate">{l.name}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {l.name}
+                <span className="ml-2 rounded bg-muted px-1.5 py-px text-[10px] tabular-nums text-muted-foreground">{pctText(pctOf(l.amount, b.amount))}</span>
+              </span>
               {prior && <Change now={l.amount} before={then(prior, `l:${l.ledger_id}`)} goodWhenUp={goodWhenUp(b)} className="hidden sm:inline-flex" />}
               <span className={cn('w-28 shrink-0 text-right tabular-nums sm:w-32', l.amount < -tiny && 'text-destructive')}>{l.amount < -tiny ? `(${rupees(l.amount)})` : rupees(l.amount)}</span>
             </button>
@@ -149,6 +158,16 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
               <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-90')} />
             </span>
             <span className="block text-xs text-muted-foreground">{b.hint}</span>
+            {share !== null && (
+              <span className="mt-1.5 flex items-center gap-2">
+                <span className="h-1.5 w-full max-w-48 overflow-hidden rounded-full bg-muted">
+                  <span className={cn('block h-full rounded-full', LOOK[b.key].bar)} style={{ width: `${Math.min(100, Math.max(0, share))}%` }} />
+                </span>
+                <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground">
+                  <span className="text-foreground">{pctText(share)}</span> {shareWords(b)}
+                </span>
+              </span>
+            )}
           </span>
           <span className="flex shrink-0 flex-col items-end gap-1">
             <span className={cn('text-base font-semibold tabular-nums', b.amount < -tiny && 'text-destructive')}>{b.amount < -tiny ? `(${rupees(b.amount)})` : rupees(b.amount)}</span>
@@ -167,6 +186,7 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
                   <ChevronRight className={cn('-ml-5 size-3.5 shrink-0 text-muted-foreground transition-transform', lOpen && 'rotate-90')} />
                   <span className="min-w-0 flex-1 truncate font-medium">
                     {line.name} {line.ledgers.length > 0 && <span className="text-[11px] font-normal text-muted-foreground">{line.ledgers.length}</span>}
+                    <span className="ml-2 rounded bg-muted px-1.5 py-px text-[10px] font-normal tabular-nums text-muted-foreground">{pctText(pctOf(line.amount, b.amount))}</span>
                   </span>
                   {prior && <Change now={line.amount} before={then(prior, `s:${line.key}`)} goodWhenUp={goodWhenUp(b)} className="hidden sm:inline-flex" />}
                   <span className={cn('w-28 shrink-0 text-right font-medium tabular-nums sm:w-32', line.amount < -tiny && 'text-destructive')}>{line.amount < -tiny ? `(${rupees(line.amount)})` : rupees(line.amount)}</span>
@@ -248,6 +268,7 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
             {[...own, ...owe, ...all.filter((b) => b.side === 'worth')].map((b) => (
               <button key={b.key} type="button" onClick={() => focus(b.key)} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
                 <span className={cn('size-2 rounded-full', LOOK[b.key].bar)} /> {b.label}
+                <span className="font-medium tabular-nums text-foreground">{pctText(pctOf(b.amount, b.side === 'owe' ? oweTotal + Math.max(0, worth) : ownTotal))}</span>
               </button>
             ))}
           </div>
