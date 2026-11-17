@@ -251,7 +251,9 @@ Sarvam: narration made once, ~₹15–25. No new running costs beyond database r
 > Asked in session (17 Nov): *"a playground company or projects everyone can use and test, in Learn Mesiri … we have to
 > get some materials too, some BOQ or documents or whatever we need for the full simulation … like a role playing game,
 > from one end to the other, they learn by doing."* Builds on §1–§15 (approved 16 Nov); nothing there is replaced.
-> Status: **ideas and plan, decisions D-PG1..D-PG6 open.**
+> Status: **approved by Ilan 17 Nov 2026 in session: D-PG1..D-PG4 at the recommended answers** (one per person, a
+> "Next day" button, the project's own numbers as the score, real roles). D-PG5 and D-PG6 taken at the recommended
+> answers (they upload the kit themselves; team assignments later).
 
 ### 16.1 What §1–§15 already give, and what is new
 
