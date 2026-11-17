@@ -1,14 +1,21 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { KpiStrip, NoAccess } from '@/components/page/page-kit'
+import { ActionButton, KpiStrip, NoAccess } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowRight, Boxes, Calculator, ChevronRight, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Scale,
-  ShoppingCart, TrendingDown, TrendingUp, TriangleAlert,
+  ArrowDown, ArrowDownWideNarrow, ArrowRight, ArrowUpDown, Boxes, Calculator, ChevronRight, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Layers, MapPin, Scale, Search,
+  ShoppingCart, TrendingDown, TrendingUp, TriangleAlert, X,
 } from 'lucide-react'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
+import { Pager } from '@/components/page/pager'
+import { PAGE_SIZES, usePaged } from '@/lib/paging'
+import { FilterPill, type FilterOption } from '@/components/requests/parts'
+import { Button } from '@/components/ui/button'
+import { useUrlState } from '@/lib/url-state'
+import { exportCsv } from '@/lib/export'
+import { appNow } from '@/lib/clock'
 import { CostExportButton } from '@/components/cost/export-button'
 import { LabourGroupRow } from '@/components/cost/labour-to-lines'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -186,6 +193,317 @@ function Progress({ l }: { l: BudgetLine }) {
   )
 }
 
+type Line = BudgetLine & { section: string; sectionId: string }
+
+// UX-36: the BOQ lines can be searched ("/" jumps there), sorted by a column header or the sort menu, exported as
+// shown, and filtered (section, how far done, labour), sorted and paged; all of it is kept
+// in the address, so a link or the back button keeps the view. In BOQ order the lines stay under their section bands.
+const PROGRESS: { value: string; label: string; dot: string; test: (l: Line) => boolean }[] = [
+  { value: 'none', label: 'Not started', dot: 'bg-muted-foreground/40', test: (l) => Number(l.done_quantity) <= 0 },
+  { value: 'going', label: 'In progress', dot: 'bg-info', test: (l) => Number(l.done_quantity) > 0 && Number(l.percent_done ?? 0) < 100 && !l.over_planned },
+  { value: 'done', label: 'Done', dot: 'bg-success', test: (l) => Number(l.percent_done ?? 0) >= 100 && !l.over_planned },
+  { value: 'past', label: 'Past the plan', dot: 'bg-draft', test: (l) => l.over_planned },
+]
+const LABOUR: { value: string; label: string; dot: string; test: (l: Line) => boolean }[] = [
+  { value: 'over', label: 'Labour over', dot: 'bg-destructive', test: (l) => num(l.labour_difference) !== null && num(l.labour_difference)! < 0 },
+  { value: 'under', label: 'Labour under', dot: 'bg-success', test: (l) => num(l.labour_difference) !== null && num(l.labour_difference)! >= 0 },
+  { value: 'nowage', label: 'No wage', dot: 'bg-draft', test: (l) => Number(l.labour_man_days) > 0 && l.labour_cost === null },
+  { value: 'nolabour', label: 'No labour yet', dot: 'bg-muted-foreground/40', test: (l) => Number(l.labour_man_days) <= 0 },
+]
+const SORTS: { value: string; label: string; key?: (l: Line) => number }[] = [
+  { value: '', label: 'BOQ order' },
+  { value: 'budget', label: 'Biggest budget', key: (l) => -(num(l.budget_cost) ?? 0) },
+  { value: 'earned', label: 'Most earned', key: (l) => -(Number(l.done_quantity) > 0 ? num(l.earned) ?? 0 : 0) },
+  { value: 'left', label: 'Most budget left', key: (l) => -((num(l.budget_cost) ?? 0) - (Number(l.done_quantity) > 0 ? num(l.earned) ?? 0 : 0)) },
+  { value: 'done', label: 'Most done', key: (l) => -Number(l.percent_done ?? 0) },
+  { value: 'over', label: 'Labour most over', key: (l) => num(l.labour_difference) ?? Number.POSITIVE_INFINITY },
+]
+
+/** A column header that sorts the table; pressed again, back to BOQ order. */
+function SortHead({ label, value, sort, onSort, right }: { label: string; value: string; sort: string; onSort: (v: string) => void; right?: boolean }) {
+  const on = sort === value
+  return (
+    <button type="button" onClick={() => onSort(on ? '' : value)} className={cn('inline-flex items-center gap-1 rounded hover:text-foreground', right && 'flex-row-reverse', on && 'font-semibold text-foreground')}>
+      {label}
+      {on ? <ArrowDown className="size-3" aria-hidden /> : <ArrowUpDown className="size-3 opacity-40" aria-hidden />}
+    </button>
+  )
+}
+
+function BoqLinesTable({ lines }: { lines: Line[] }) {
+  const [q, setQ] = useUrlState<string>('q', '')
+  const [sec, setSec] = useUrlState<string>('section', '')
+  const [prog, setProg] = useUrlState<string>('done', '')
+  const [lab, setLab] = useUrlState<string>('labour', '')
+  const [sort, setSort] = useUrlState<string>('sort', '')
+  const [pageS, setPage] = useUrlState<string>('page', '1')
+  const [sizeS, setSize] = useUrlState<string>('size', '25')
+  const size = PAGE_SIZES.includes(Number(sizeS) as (typeof PAGE_SIZES)[number]) ? Number(sizeS) : 25
+  // A changed filter starts from the first page.
+  const reset = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v)
+    setPage('1')
+  }
+  const needle = q.trim().toLowerCase()
+  const pass = (l: Line, skip?: string) =>
+    (skip === 'section' || !sec || l.sectionId === sec) &&
+    (skip === 'done' || !prog || !!PROGRESS.find((p) => p.value === prog)?.test(l)) &&
+    (skip === 'labour' || !lab || !!LABOUR.find((x) => x.value === lab)?.test(l)) &&
+    (!needle || `${l.boq_code ?? ''} ${l.work} ${l.section}`.toLowerCase().includes(needle))
+  const filtered = lines.filter((l) => pass(l))
+  const sorter = SORTS.find((x) => x.value === sort)?.key
+  const rows = sorter ? [...filtered].sort((a, b) => sorter(a) - sorter(b)) : filtered
+  const paged = usePaged(rows, Number(pageS) || 1, size)
+  const any = !!(q || sec || prog || lab)
+
+  const sections = [...new Map(lines.map((l) => [l.sectionId, l.section])).entries()]
+  const secOptions: FilterOption[] = sections.map(([id, name]) => ({ value: id, label: name, count: lines.filter((l) => l.sectionId === id && pass(l, 'section')).length }))
+  const progOptions: FilterOption[] = PROGRESS.map((p) => ({ value: p.value, label: p.label, dot: p.dot, count: lines.filter((l) => p.test(l) && pass(l, 'done')).length }))
+  const labOptions: FilterOption[] = LABOUR.map((x) => ({ value: x.value, label: x.label, dot: x.dot, count: lines.filter((l) => x.test(l) && pass(l, 'labour')).length }))
+  const clear = () => {
+    setQ('')
+    setSec('')
+    setProg('')
+    setLab('')
+    setPage('1')
+  }
+  const totalBudget = sumOf(rows.map((l) => num(l.budget_cost)))
+  const totalEarned = sumOf(rows.map((l) => (Number(l.done_quantity) > 0 ? num(l.earned) : null)))
+  const bands = !sorter && sections.length > 1
+  const searchRef = React.useRef<HTMLInputElement>(null)
+  // "/" jumps to the search, as in most tools (never while typing in a field).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const exportShown = () =>
+    exportCsv(
+      `boq-budget-${appNow().toISOString().slice(0, 10)}.csv`,
+      ['Code', 'Work', 'Section', 'Unit', 'Planned', 'Done', '% done', 'Budget', 'Earned', 'Labour man-days', 'Labour spent', 'Labour vs earned'],
+      rows.map((l) => [
+        l.boq_code ?? '', l.work, l.section, l.unit, l.planned_quantity, l.done_quantity, l.percent_done ?? '', l.budget_cost ?? '',
+        Number(l.done_quantity) > 0 ? l.earned ?? '' : '', l.labour_man_days, l.labour_cost ?? '', l.labour_difference ?? '',
+      ]),
+    )
+  const goTo = (p: number) => {
+    setPage(String(p))
+    document.getElementById('boq-lines')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  return (
+    <DprSection icon={Calculator} title="BOQ lines" meta={any ? `${rows.length} of ${lines.length}` : lines.length} id="boq-lines">
+      <div className="flex flex-wrap items-center gap-2" data-guide="budget.filters">
+        <label className="flex h-9 items-center gap-2 rounded-lg border bg-card px-2.5">
+          <Search className="size-4 text-muted-foreground" aria-hidden />
+          <span className="sr-only">Search BOQ lines</span>
+          <input
+            ref={searchRef}
+            value={q}
+            onChange={(e) => reset(setQ)(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && reset(setQ)('')}
+            placeholder="Search work or code"
+            className="w-36 bg-transparent text-sm outline-none sm:w-48"
+          />
+          <kbd className="hidden rounded border bg-muted px-1 text-[10px] text-muted-foreground sm:inline" title="Press / to search">/</kbd>
+        </label>
+        {sections.length > 1 && <FilterPill icon={Layers} label="Section" allLabel="All sections" value={sec} options={secOptions} onChange={reset(setSec)} />}
+        <FilterPill icon={Gauge} label="Done" allLabel="However far" value={prog} options={progOptions} onChange={reset(setProg)} />
+        <FilterPill icon={HardHat} label="Labour" allLabel="Any labour" value={lab} options={labOptions} onChange={reset(setLab)} />
+        {any && (
+          <Button variant="ghost" size="sm" className="h-9 gap-1" onClick={clear}>
+            <X className="size-3.5" aria-hidden /> Clear
+          </Button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+        <ActionButton kind="export-excel" size="default" disabled={rows.length === 0} onClick={exportShown} title="The lines shown, as a CSV file (opens in Excel)">
+          <span className="hidden sm:inline">{any ? 'Export shown' : 'Export lines'}</span>
+        </ActionButton>
+        <label className="flex h-9 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm">
+          <ArrowDownWideNarrow className="size-4 text-muted-foreground" aria-hidden />
+          <span className="sr-only">Sort</span>
+          <select value={sort} onChange={(e) => reset(setSort)(e.target.value)} className="bg-transparent outline-none" aria-label="Sort the lines">
+            {SORTS.map((x) => (
+              <option key={x.value} value={x.value}>
+                {x.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card py-10 text-center">
+          <Search className="size-5 text-muted-foreground" aria-hidden />
+          <p className="text-sm font-medium">No BOQ line matches</p>
+          <Button variant="outline" size="sm" onClick={clear}>
+            Clear filters
+          </Button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border bg-card [contain:inline-size]" data-guide="budget.lines">
+          <table className="w-full text-sm md:min-w-[820px]">
+            <thead className="bg-muted/50 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Work</th>
+                <th className="w-32 px-3 py-2 text-left font-medium md:w-48" aria-sort={sort === 'done' ? 'descending' : undefined}>
+                  <SortHead label="Done" value="done" sort={sort} onSort={reset(setSort)} />
+                </th>
+                <th className="hidden px-3 py-2 text-right font-medium md:table-cell" aria-sort={sort === 'budget' ? 'descending' : undefined}>
+                  <SortHead label="Budget" value="budget" sort={sort} onSort={reset(setSort)} right />
+                </th>
+                <th className="hidden px-3 py-2 text-right font-medium md:table-cell" aria-sort={sort === 'earned' ? 'descending' : undefined}>
+                  <SortHead label="Earned" value="earned" sort={sort} onSort={reset(setSort)} right />
+                </th>
+                <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Labour spent</th>
+                <th className="hidden px-3 py-2 text-right font-medium md:table-cell" aria-sort={sort === 'over' ? 'ascending' : undefined}>
+                  <SortHead label="Labour vs earned" value="over" sort={sort} onSort={reset(setSort)} right />
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {paged.shown.map((l, i) => {
+                const started = Number(l.done_quantity) > 0
+                const newSection = bands && (i === 0 || paged.shown[i - 1].sectionId !== l.sectionId)
+                const inSection = newSection ? rows.filter((x) => x.sectionId === l.sectionId) : []
+                const secBudget = newSection ? sumOf(inSection.map((x) => num(x.budget_cost))) : null
+                const secEarned = newSection ? sumOf(inSection.map((x) => (Number(x.done_quantity) > 0 ? num(x.earned) : null))) : null
+                return (
+                  <React.Fragment key={l.id}>
+                    {newSection && (
+                      <tr className="bg-muted/40">
+                        <th scope="rowgroup" colSpan={2} className="px-3 py-1.5 text-left text-xs font-semibold">
+                          {l.section} <span className="font-normal text-muted-foreground">· {inSection.length}</span>
+                        </th>
+                        <td className="hidden px-3 py-1.5 text-right text-xs font-semibold tabular-nums md:table-cell">{secBudget === null ? '—' : compact(secBudget)}</td>
+                        <td className="hidden px-3 py-1.5 text-right text-xs font-semibold tabular-nums text-info md:table-cell">{secEarned === null ? '—' : compact(secEarned)}</td>
+                        <td colSpan={2} className="hidden md:table-cell" />
+                      </tr>
+                    )}
+                    <tr className="hover:bg-muted/30">
+                      <td className="px-3 py-2">
+                        <span className="flex items-baseline gap-1.5">
+                          {l.boq_code && <span className="shrink-0 rounded bg-muted px-1 text-[11px] font-medium text-muted-foreground tabular-nums">{l.boq_code}</span>}
+                          <span className={cn('font-medium', !started && 'text-muted-foreground')}>{l.work}</span>
+                        </span>
+                        {!bands && sections.length > 1 && <span className="mt-0.5 block text-[11px] text-muted-foreground">{l.section}</span>}
+                        {/* Phones: the money folds under the name (docs/DESIGN.md section 8). */}
+                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums md:hidden">
+                          <span className="text-muted-foreground">
+                            {started && l.earned !== null ? <span className="font-semibold text-info">{compact(Number(l.earned))}</span> : '—'} / {l.budget_cost === null ? '—' : compact(Number(l.budget_cost))}
+                          </span>
+                          {num(l.labour_difference) !== null && <GapPill diff={num(l.labour_difference)} size="xs" />}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Progress l={l} />
+                      </td>
+                      <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{l.budget_cost === null ? <span className="text-muted-foreground">—</span> : formatRupees(l.budget_cost)}</td>
+                      <td className="hidden px-3 py-2 text-right font-medium tabular-nums text-info md:table-cell">
+                        {started && l.earned !== null ? formatRupees(l.earned) : <span className="font-normal text-muted-foreground">—</span>}
+                      </td>
+                      <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">
+                        {Number(l.labour_man_days) > 0 ? (
+                          <>
+                            {l.labour_cost ? formatRupees(l.labour_cost) : <span className="text-draft">no wage</span>}
+                            <span className="block text-[11px] text-muted-foreground">
+                              <HardHat className="mr-0.5 inline size-3 align-[-2px]" aria-hidden />
+                              {formatQuantity(l.labour_man_days)} md
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="hidden px-3 py-2 text-right md:table-cell">
+                        <GapPill diff={num(l.labour_difference)} size="xs" />
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                )
+              })}
+            </tbody>
+            <tfoot className="border-t bg-muted/40 text-xs font-semibold">
+              <tr>
+                <td className="px-3 py-2" colSpan={2}>
+                  {any ? `Total of the ${rows.length} shown` : `Total of ${rows.length} lines`}
+                  <span className="ml-2 font-semibold tabular-nums md:hidden">
+                    <span className="text-info">{totalEarned === null ? '—' : compact(totalEarned)}</span> / {totalBudget === null ? '—' : compact(totalBudget)}
+                  </span>
+                </td>
+                <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{totalBudget === null ? '—' : compact(totalBudget)}</td>
+                <td className="hidden px-3 py-2 text-right tabular-nums text-info md:table-cell">{totalEarned === null ? '—' : compact(totalEarned)}</td>
+                <td colSpan={2} className="hidden md:table-cell" />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      <Pager className="mt-2" {...paged} noun="lines" size={size} onPage={goTo} onSize={(n) => { setSize(String(n)); setPage('1') }} />
+    </DprSection>
+  )
+}
+
+/** Labour to check, ten to a page (UX-36). */
+function LabourList({ groups, lines, saving, onSave }: { groups: LabourGroup[]; lines: Line[]; saving: boolean; onSave: (g: LabourGroup, next: { line_id: string; man_days: string }[]) => void }) {
+  const [pageS, setPage] = useUrlState<string>('lpage', '1')
+  const [site, setSite] = useUrlState<string>('lsite', '')
+  const [trade, setTrade] = useUrlState<string>('ltrade', '')
+  const pass = (g: LabourGroup, skip?: string) => (skip === 'site' || !site || (g.site_id ?? '') === site) && (skip === 'trade' || !trade || g.trade_key === trade)
+  const shownGroups = groups.filter((g) => pass(g))
+  const paged = usePaged(shownGroups, Number(pageS) || 1, 10)
+  const uniq = (key: (g: LabourGroup) => string, label: (g: LabourGroup) => string, skip: string): FilterOption[] =>
+    [...new Map(groups.map((g) => [key(g), label(g)])).entries()].map(([value, l]) => ({ value, label: l, count: groups.filter((g) => key(g) === value && pass(g, skip)).length }))
+  const sites = uniq((g) => g.site_id ?? '', (g) => g.site_name ?? 'No site', 'site')
+  const trades = uniq((g) => g.trade_key, (g) => (g.trade ? g.trade[0].toUpperCase() + g.trade.slice(1) : 'No trade said'), 'trade')
+  const pick = (set: (v: string) => void) => (v: string) => {
+    set(v)
+    setPage('1')
+  }
+  return (
+    <>
+      {(sites.length > 1 || trades.length > 1) && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {sites.length > 1 && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={sites} onChange={pick(setSite)} />}
+          {trades.length > 1 && <FilterPill icon={HardHat} label="Trade" allLabel="Every trade" value={trade} options={trades} onChange={pick(setTrade)} />}
+          {(site || trade) && (
+            <Button variant="ghost" size="sm" className="h-9 gap-1" onClick={() => { setSite(''); setTrade(''); setPage('1') }}>
+              <X className="size-3.5" aria-hidden /> Clear
+            </Button>
+          )}
+        </div>
+      )}
+      <ul className="divide-y rounded-xl border bg-card text-sm">
+        {paged.shown.map((g) => (
+          <LabourGroupRow
+            key={`${g.site_id}|${g.date}|${g.trade_key}|${g.not_on_a_line.man_days}|${g.suggested_line_id}`}
+            group={g}
+            lines={lines}
+            readOnly={false}
+            saving={saving}
+            onSave={(next) => onSave(g, next)}
+          />
+        ))}
+      </ul>
+      <Pager
+        className="mt-2"
+        {...paged}
+        noun={site || trade ? `of ${groups.length} days of labour` : 'days of labour'}
+        onPage={(p) => {
+          setPage(String(p))
+          document.getElementById('labour-to-lines')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+      />
+    </>
+  )
+}
+
 function ProjectPicker() {
   const projects = useQuery({ queryKey: ['scope-projects'], queryFn: fetchProjects })
   if (projects.isLoading) return <Skeleton className="h-32 rounded-lg" />
@@ -253,7 +571,7 @@ export default function CostBudgetPage() {
   }
   if (q.isError) return <PageError message="Budget vs actual could not be loaded." onRetry={() => q.refetch()} back={{ to: '/today', label: 'Today' }} />
   const b = q.data
-  const lines = b ? b.boq.sections.flatMap((s) => s.lines) : []
+  const lines: Line[] = b ? b.boq.sections.flatMap((s) => s.lines.map((l) => ({ ...l, section: s.name, sectionId: s.id }))) : []
   const kinds = b?.kinds ?? []
   const budget = sumOf(kinds.map((k) => num(k.budget)))
   const earned = sumOf(kinds.map((k) => num(k.earned)))
@@ -343,105 +661,26 @@ export default function CostBudgetPage() {
             </div>
           )}
 
-          <DprSection icon={Calculator} title="BOQ lines" meta={lines.length}>
-            <div className="overflow-x-auto rounded-xl border bg-card [contain:inline-size]" data-guide="budget.lines">
-              <table className="w-full text-sm md:min-w-[820px]">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">Work</th>
-                    <th className="w-32 px-3 py-2 text-left font-medium md:w-48">Done</th>
-                    <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Budget</th>
-                    <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Earned</th>
-                    <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Labour spent</th>
-                    <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Labour vs earned</th>
-                  </tr>
-                </thead>
-                {b.boq.sections.filter((sec) => sec.lines.length > 0).map((sec) => {
-                  const secBudget = sumOf(sec.lines.map((l) => num(l.budget_cost)))
-                  const secEarned = sumOf(sec.lines.map((l) => (Number(l.done_quantity) > 0 ? num(l.earned) : null)))
-                  return (
-                    <tbody key={sec.id} className="divide-y border-t">
-                      {b.boq.sections.filter((x) => x.lines.length > 0).length > 1 && (
-                        <tr className="bg-muted/40">
-                          <th scope="rowgroup" colSpan={2} className="px-3 py-1.5 text-left text-xs font-semibold">
-                            {sec.name} <span className="font-normal text-muted-foreground">· {sec.lines.length}</span>
-                          </th>
-                          <td className="hidden px-3 py-1.5 text-right text-xs font-semibold tabular-nums md:table-cell">{secBudget === null ? '—' : compact(secBudget)}</td>
-                          <td className="hidden px-3 py-1.5 text-right text-xs font-semibold tabular-nums text-info md:table-cell">{secEarned === null ? '—' : compact(secEarned)}</td>
-                          <td colSpan={2} className="hidden md:table-cell" />
-                        </tr>
-                      )}
-                      {sec.lines.map((l) => {
-                        const started = Number(l.done_quantity) > 0
-                        return (
-                          <tr key={l.id} className="hover:bg-muted/30">
-                            <td className="px-3 py-2">
-                              <span className="flex items-baseline gap-1.5">
-                                {l.boq_code && <span className="shrink-0 rounded bg-muted px-1 text-[11px] font-medium text-muted-foreground tabular-nums">{l.boq_code}</span>}
-                                <span className={cn('font-medium', !started && 'text-muted-foreground')}>{l.work}</span>
-                              </span>
-                              {/* Phones: the money folds under the name (docs/DESIGN.md section 8). */}
-                              <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums md:hidden">
-                                <span className="text-muted-foreground">
-                                  {started && l.earned !== null ? <span className="font-semibold text-info">{compact(Number(l.earned))}</span> : '—'} / {l.budget_cost === null ? '—' : compact(Number(l.budget_cost))}
-                                </span>
-                                {num(l.labour_difference) !== null && <GapPill diff={num(l.labour_difference)} size="xs" />}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <Progress l={l} />
-                            </td>
-                            <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{l.budget_cost === null ? <span className="text-muted-foreground">—</span> : formatRupees(l.budget_cost)}</td>
-                            <td className="hidden px-3 py-2 text-right font-medium tabular-nums text-info md:table-cell">{started && l.earned !== null ? formatRupees(l.earned) : <span className="font-normal text-muted-foreground">—</span>}</td>
-                            <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">
-                              {Number(l.labour_man_days) > 0 ? (
-                                <>
-                                  {l.labour_cost ? formatRupees(l.labour_cost) : <span className="text-draft">no wage</span>}
-                                  <span className="block text-[11px] text-muted-foreground">
-                                    <HardHat className="mr-0.5 inline size-3 align-[-2px]" aria-hidden />
-                                    {formatQuantity(l.labour_man_days)} md
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </td>
-                            <td className="hidden px-3 py-2 text-right md:table-cell">
-                              <GapPill diff={num(l.labour_difference)} size="xs" />
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  )
-                })}
-              </table>
-            </div>
-          </DprSection>
+          <BoqLinesTable lines={lines} />
 
           <div id="labour-to-lines" className="scroll-mt-20" data-guide="budget.labour">
             <DprSection icon={HardHat} title="Labour to check" meta={labour.data?.groups.length || undefined}>
               {labour.isLoading ? (
                 <Skeleton className="h-24 rounded-lg" />
               ) : labour.isError ? (
-                <p className="text-sm text-muted-foreground">The labour list could not be loaded.</p>
+                <div className="flex items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-sm">
+                  <TriangleAlert className="size-4 text-draft" aria-hidden />
+                  <span className="flex-1">The labour list could not be loaded.</span>
+                  <Button variant="outline" size="sm" onClick={() => labour.refetch()}>
+                    Try again
+                  </Button>
+                </div>
               ) : (labour.data?.groups.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">All labour is on its BOQ lines.</p>
+                <p className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm">
+                  <CircleCheck className="size-4 text-success" aria-hidden /> All labour is on its BOQ lines.
+                </p>
               ) : (
-                <>
-                  <ul className="divide-y rounded-xl border bg-card text-sm">
-                    {labour.data!.groups.map((g) => (
-                      <LabourGroupRow
-                        key={`${g.site_id}|${g.date}|${g.trade_key}|${g.not_on_a_line.man_days}|${g.suggested_line_id}`}
-                        group={g}
-                        lines={lines}
-                        readOnly={false}
-                        saving={putLabour.isPending}
-                        onSave={(next) => putLabour.mutate({ group: g, lines: next })}
-                      />
-                    ))}
-                  </ul>
-                </>
+                <LabourList groups={labour.data!.groups} lines={lines} saving={putLabour.isPending} onSave={(g, next) => putLabour.mutate({ group: g, lines: next })} />
               )}
             </DprSection>
           </div>
