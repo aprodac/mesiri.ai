@@ -9,7 +9,7 @@ import { Combobox } from '@/components/ui/combobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast-notification'
 import { fetchProjects, fetchSites } from '@/lib/projects'
-import { fetchMaterialCategories, categoryPaths, fetchMaterials, fetchStockCheck } from '@/lib/materials'
+import { fetchMaterialCategories, categoryPaths, fetchAllMaterials, fetchStockCheck } from '@/lib/materials'
 import { asDuplicateConflict, createRequest, qty, updateRequest, type DuplicateConflict, type MaterialRequest } from '@/lib/requests'
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
@@ -82,7 +82,7 @@ export function NewRequestDialog({ open, onOpenChange, scope, editing, prefill }
   React.useEffect(() => {
     if (open && !siteId && sites.length === 1) setSiteId(sites[0].id)
   }, [open, siteId, sites])
-  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchMaterials({ is_active: true, limit: 200 }), enabled: open, staleTime: 60_000 })
+  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchAllMaterials({ is_active: true }), enabled: open, staleTime: 60_000 })
   const { data: categories } = useQuery({ queryKey: ['materials', 'categories'], queryFn: fetchMaterialCategories, enabled: open, staleTime: 60_000 })
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
   const materials = React.useMemo(() => catalog?.items ?? [], [catalog])

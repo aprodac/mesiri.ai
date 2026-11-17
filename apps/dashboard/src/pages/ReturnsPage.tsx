@@ -13,6 +13,8 @@ import { RETURN_LOOK, fetchReturns, type MaterialReturn, type ReturnStatus } fro
 import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/components/requests/parts'
 import { ReturnDetail } from '@/components/returns/return-detail'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // PRC-46: Procurement › Returns, in the Requests / Purchase orders design: tiles (waiting for pickup, what suppliers
 // owe back, returns this month), status tabs, a list beside the chosen return (a sheet on a phone). A return is
@@ -66,6 +68,8 @@ export default function ReturnsPage() {
   }, [site, vendor, search])
   const filtered = React.useMemo(() => all.filter((r) => pass(r)), [all, pass])
   const list = React.useMemo(() => filtered.filter((r) => inTab(r, tab)).sort((a, b) => ORDER[a.status] - ORDER[b.status] || b.returned_on.localeCompare(a.returned_on) || b.number - a.number), [filtered, tab])
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
   const current = all.find((r) => r.id === selected) ?? (isMobile ? undefined : list[0])
   const options = React.useMemo(() => {
     const count = (skip: string, test: (r: MaterialReturn) => boolean) => all.filter((r) => pass(r, skip) && test(r)).length
@@ -126,6 +130,7 @@ export default function ReturnsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
+        <>
         <section aria-label="Returns" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide={isLoading ? undefined : 'returns.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Returns did not load. Refresh to try again.</p>}
@@ -137,8 +142,10 @@ export default function ReturnsPage() {
               ) : 'No returns here with these filters.'}
             </div>
           )}
-          {list.map((r) => <ReturnRow key={r.id} ret={r} money={money} selected={current?.id === r.id} onPick={() => setSelected(r.id)} />)}
+          {pagedList.shown.map((r) => <ReturnRow key={r.id} ret={r} money={money} selected={current?.id === r.id} onPick={() => setSelected(r.id)} />)}
         </section>
+          <Pager {...pagedList.pager} noun="returns" className="mt-2" />
+        </>
         {!isMobile && current && (
           <aside aria-label="Return detail" className="sticky top-4 w-full min-w-0 flex-[1.4] overflow-hidden rounded-xl border"><ReturnDetail key={current.id} ret={current} /></aside>
         )}

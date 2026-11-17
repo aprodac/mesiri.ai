@@ -11,7 +11,7 @@ import { dayBand } from '@/lib/cues'
 import {
   fetchInventory,
   fetchLedgerRows,
-  fetchMaterials,
+  fetchAllMaterials,
   fetchTransfers,
   formatMoney,
   REASON_WORDS,
@@ -28,6 +28,8 @@ import { MovementDetailsSheet } from './movement-details-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // WEB-30: one ledger of everything that came in and went out -- deliveries,
 // use, moves between sites, corrections -- as a table: In in green, Out in
@@ -59,7 +61,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
   const { from: rangeFrom, to: rangeTo } = periodRange(period, from, to)
   const range = React.useMemo(() => ({ from: rangeFrom, to: rangeTo }), [rangeFrom, rangeTo])
 
-  const catalogue = useQuery({ queryKey: ['materials', 'catalog', 'manage'], queryFn: () => fetchMaterials({ limit: 200 }), staleTime: 60_000 })
+  const catalogue = useQuery({ queryKey: ['materials', 'catalog', 'manage'], queryFn: () => fetchAllMaterials(), staleTime: 60_000 })
   // With one material, load its whole history so "stock after" is right
   // whatever the dates; the dates then only choose which lines show.
   const scopeFilters = { project_id: projectId ?? undefined, site_id: siteId ?? undefined }
@@ -108,6 +110,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
     for (const r of lines) if (!m.has(r.occurred_date)) m.set(r.occurred_date, m.size)
     return m
   }, [lines])
+  // UX-37: numbered pages, kept in the address.
+  const pagedLines = usePagedUrl(lines)
   const unit = material ? catalogue.data?.items.find((m) => m.id === material)?.default_unit ?? lines[0]?.unit ?? '' : ''
   const materialName = material ? catalogue.data?.items.find((m) => m.id === material)?.name ?? 'Material' : null
   const totalIn = lines.filter((r) => r.direction === 'IN').reduce((s, r) => s + Number(r.quantity), 0)
@@ -291,8 +295,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
         <>
         {/* Phones: one line per entry, the quantity in green or red on the right. */}
         <ul className="divide-y rounded-lg border sm:hidden" data-guide="materials.list">
-          {lines.map((r, i) => {
-            const newDay = i === 0 || lines[i - 1].occurred_date !== r.occurred_date
+          {pagedLines.shown.map((r, i) => {
+            const newDay = i === 0 || pagedLines.shown[i - 1].occurred_date !== r.occurred_date
             const site = r.site_id ? siteNames.get(r.site_id) : undefined
             const after = balanceAfter.get(r.id)
             return (
@@ -336,8 +340,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
               </tr>
             </thead>
             <tbody className="tabular-nums">
-              {lines.map((r, i) => {
-                const newDay = i === 0 || lines[i - 1].occurred_date !== r.occurred_date
+              {pagedLines.shown.map((r, i) => {
+                const newDay = i === 0 || pagedLines.shown[i - 1].occurred_date !== r.occurred_date
                 const site = r.site_id ? siteNames.get(r.site_id) : undefined
                 const correction = Boolean(r.reverses_movement_id) || (r.direction === 'IN' && Boolean(r.is_reversed))
                 const after = balanceAfter.get(r.id)
@@ -427,6 +431,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
             )}
           </table>
         </div>
+        <Pager {...pagedLines.pager} noun="entries" className="mt-2" />
         </>
       )}
 

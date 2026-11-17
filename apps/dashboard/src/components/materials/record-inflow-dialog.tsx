@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import {
-  fetchMaterials,
+  fetchAllMaterials,
   createInflow,
   fetchLastPurchase,
   formatMoney,
@@ -156,7 +156,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: Recor
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', ''],
-    queryFn: () => fetchMaterials({ is_active: true, limit: 200 }),
+    queryFn: () => fetchAllMaterials({ is_active: true }),
     enabled: open,
     staleTime: 60_000,
   })

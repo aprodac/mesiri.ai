@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 import {
   ChevronLeft,
   ChevronRight,
@@ -82,17 +84,15 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
   const projectId = scope.mode !== 'portfolio' ? scope.projectId : undefined
   const siteId = scope.mode === 'site' ? scope.siteId : undefined
 
-  const query = useInfiniteQuery({
-    queryKey: ['gallery', projectId, siteId],
-    queryFn: ({ pageParam }) => fetchSiteGalleryApi({ projectId, siteId, limit: PAGE, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
-      return loaded < last.total ? loaded : undefined
-    },
+  // UX-37: numbered pages, the server sends one page at a time.
+  const server = useServerPage({ size: PAGE, resetOn: JSON.stringify(['gallery', projectId, siteId]) })
+  const query = useQuery({
+    queryKey: [...['gallery', projectId, siteId], server.offset],
+    queryFn: () => fetchSiteGalleryApi({ projectId, siteId, limit: server.limit, offset: server.offset }),
+    placeholderData: keepPreviousData,
   })
-  const total = query.data?.pages[0]?.total ?? 0
-  const items = React.useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
+  const total = query.data?.total ?? 0
+  const items = React.useMemo(() => query.data?.items ?? [], [query.data])
 
   const shown = React.useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -188,11 +188,7 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
               ))}
             </section>
           ))}
-          {query.hasNextPage && (
-            <Button variant="outline" className="self-center" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>
-              {query.isFetchingNextPage ? 'Loading…' : `Load more (${total - items.length} left)`}
-            </Button>
-          )}
+          <Pager {...server.pager(total, items.length)} noun="photos" className={cn(query.isPlaceholderData && 'opacity-60')} />
         </div>
       )}
 

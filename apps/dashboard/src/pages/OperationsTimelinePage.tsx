@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 import {
   Camera,
   ChevronRight,
@@ -117,18 +119,16 @@ export default function OperationsTimelinePage({ embedded = false }: { embedded?
     return undefined
   }, [range])
 
-  const query = useInfiniteQuery({
-    queryKey: ['timeline', projectId, siteId, dateFrom],
-    queryFn: ({ pageParam }) => fetchTimelineEntriesApi({ projectId, siteId, dateFrom, limit: PAGE, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
-      return loaded < last.total ? loaded : undefined
-    },
+  // UX-37: numbered pages, the server sends one page at a time.
+  const server = useServerPage({ size: PAGE, resetOn: JSON.stringify(['timeline', projectId, siteId, dateFrom]) })
+  const query = useQuery({
+    queryKey: [...['timeline', projectId, siteId, dateFrom], server.offset],
+    queryFn: () => fetchTimelineEntriesApi({ projectId, siteId, dateFrom, limit: server.limit, offset: server.offset }),
+    placeholderData: keepPreviousData,
     refetchInterval: 60_000,
   })
-  const total = query.data?.pages[0]?.total ?? 0
-  const entries = React.useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
+  const total = query.data?.total ?? 0
+  const entries = React.useMemo(() => query.data?.items ?? [], [query.data])
 
   const counts = React.useMemo(() => {
     const c = new Map<Kind, number>()
@@ -293,11 +293,7 @@ export default function OperationsTimelinePage({ embedded = false }: { embedded?
               </ol>
             </section>
           ))}
-          {query.hasNextPage && (
-            <Button variant="outline" className="self-center" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>
-              {query.isFetchingNextPage ? 'Loading…' : `Load more (${total - entries.length} left)`}
-            </Button>
-          )}
+          <Pager {...server.pager(total, entries.length)} noun="entries" className={cn(query.isPlaceholderData && 'opacity-60')} />
         </div>
       )}
     </div>

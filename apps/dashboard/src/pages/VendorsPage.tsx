@@ -29,6 +29,8 @@ import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { paperStatusWords, usePapersAttention } from '@/lib/vendor-documents'
 import { ActionIcon } from '@/components/page/action-button'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
@@ -117,6 +119,8 @@ export default function VendorsPage() {
     if (sort === 'score') return scoreOf(b) - scoreOf(a) || a.name.localeCompare(b.name)
     return a.name.localeCompare(b.name)
   })
+  // UX-37: numbered pages, kept in the address.
+  const pagedShown = usePagedUrl(shown)
   const t = payables.data?.totals
   const count = (x: Tile) => base.filter((v) => inTile(v, x)).length
   // UX-15: page kit figures. Overdue is red and shows its share of what we owe; delivered-not-billed is amber.
@@ -234,8 +238,9 @@ export default function VendorsPage() {
           {(tile || kind !== 'all' || needle) && all.length > 0 && <Button variant="outline" size="sm" onClick={() => { setTile(''); setKind('all'); setQ('') }}>Clear filters</Button>}
         </div>
       ) : (
+        <>
         <ul className="divide-y rounded-xl border bg-card" data-guide="vendors.list">
-          {shown.map((v) => {
+          {pagedShown.shown.map((v) => {
             const bal = num(v.balance)
             const late = num(v.overdue)
             return (
@@ -299,6 +304,8 @@ export default function VendorsPage() {
             )
           })}
         </ul>
+          <Pager {...pagedShown.pager} noun="suppliers" className="mt-2" />
+        </>
       )}
       {shown.length > 0 && <p className="text-xs text-muted-foreground">{shown.length} of {all.length} suppliers{payables.data ? ` · as of ${day(payables.data.as_of)}` : ''}</p>}
       </>)}

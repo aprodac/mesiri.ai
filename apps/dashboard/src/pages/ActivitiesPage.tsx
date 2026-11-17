@@ -43,6 +43,8 @@ import { cn, toLocalISODate } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
 import { DatePicker } from '@/components/ui/date-picker'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 
 // --- Status ---
 // The backend's activity statuses are PLANNED, IN_PROGRESS, STOPPED and
@@ -264,11 +266,13 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
 
   const handleDatePresetChange = (val: string) => setDatePreset(val)
 
+  // UX-37: numbered pages, the server sends 50 at a time (it used to stop at the first 100).
+  const server = useServerPage({ size: 50, resetOn: JSON.stringify([scope, statusFilter, dateFrom, dateTo]) })
   const fetchList = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const params: Parameters<typeof fetchActivitiesApi>[0] = { limit: 100, offset: 0 }
+      const params: Parameters<typeof fetchActivitiesApi>[0] = { limit: server.limit, offset: server.offset }
       if (scope.mode === 'project' && scope.projectId) {
         params.project_id = scope.projectId
       } else if (scope.mode === 'site') {
@@ -286,7 +290,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
     } finally {
       setLoading(false)
     }
-  }, [scope, statusFilter, dateFrom, dateTo])
+  }, [scope, statusFilter, dateFrom, dateTo, server.limit, server.offset])
 
   React.useEffect(() => { fetchList() }, [fetchList])
 
@@ -463,7 +467,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           </Button>
         )}
         <span className="ml-auto text-sm text-muted-foreground">
-          {filteredActivities.length === total ? plural(total, 'work item') : `${filteredActivities.length} of ${total}`}
+          {plural(total, 'work item')}
         </span>
       </div>
 
@@ -604,6 +608,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
             </section>
           ))}
         </div>
+        <Pager {...server.pager(total, activities.length)} noun="work items" className="mt-2" />
         </>
       )}
 

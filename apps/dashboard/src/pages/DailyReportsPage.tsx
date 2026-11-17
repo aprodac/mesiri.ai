@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 import { Building2, ChevronRight, CircleCheck, CircleDashed, FileText, RefreshCw, TriangleAlert, X } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import { fetchDailyReportPdfApi, fetchDprHistoryApi, type DprHistoryItem } from '@/lib/api'
@@ -191,18 +193,16 @@ export default function DailyReportsPage() {
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
   }
-  const query = useInfiniteQuery({
-    queryKey: ['dpr-history', filters],
-    queryFn: ({ pageParam }) => fetchDprHistoryApi({ ...filters, limit: PAGE_SIZE, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
-      return loaded < last.total ? loaded : undefined
-    },
+  // UX-37: numbered pages, the server sends one page at a time.
+  const server = useServerPage({ size: PAGE_SIZE, resetOn: JSON.stringify(filters) })
+  const query = useQuery({
+    queryKey: ['dpr-history', filters, server.offset],
+    queryFn: () => fetchDprHistoryApi({ ...filters, limit: server.limit, offset: server.offset }),
+    placeholderData: keepPreviousData,
   })
 
-  const items = React.useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
-  const total = query.data?.pages[0]?.total ?? 0
+  const items = React.useMemo(() => query.data?.items ?? [], [query.data])
+  const total = query.data?.total ?? 0
   // Day -> project -> its project DPR and its sites' DPRs.
   const byDate = React.useMemo(() => {
     const days = new Map<string, Map<string, { name: string; project?: DprHistoryItem; sites: DprHistoryItem[] }>>()
@@ -354,11 +354,7 @@ export default function DailyReportsPage() {
               </div>
             </section>
           ))}
-          {query.hasNextPage && (
-            <Button variant="outline" className="self-center" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>
-              {query.isFetchingNextPage ? 'Loading…' : `Show older reports (${total - items.length} left)`}
-            </Button>
-          )}
+          <Pager {...server.pager(total, items.length)} noun="reports" className={cn(query.isPlaceholderData && 'opacity-60')} />
         </div>
       )}
     </div>

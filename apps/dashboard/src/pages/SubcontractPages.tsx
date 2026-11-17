@@ -22,6 +22,8 @@ import {
   type WoBill,
 } from '@/lib/subcontracts'
 import { ActionIcon } from '@/components/page/action-button'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // NXT-06/07, NXT-17 (8 Nov 2026): the other subcontract pages. Bills & checks (every bill waiting for a person, with why,
 // approve / reject); Subcontractors (each team: work orders, done, billed, payable, retention, advance; their statement);
@@ -40,6 +42,8 @@ export function BillsChecksPage() {
   const list = (waiting.data ?? []).filter(
     (b) => scope.mode === 'portfolio' || (b.project_id === scope.projectId && (scope.mode !== 'site' || b.site_id === scope.siteId)),
   )
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center gap-3">
@@ -51,8 +55,9 @@ export function BillsChecksPage() {
         : !list.length ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm" data-guide="bills.empty"><Check className="size-6 text-success" /><span className="font-medium">Nothing waiting</span></div>
         ) : (
+          <>
           <ul className="grid gap-2" data-guide="bills.list">
-            {list.map((b) => (
+            {pagedList.shown.map((b) => (
               <li key={b.id} className="rounded-xl border bg-card p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <VendorTile id={b.vendor_id} name={b.vendor_name ?? ''} />
@@ -73,6 +78,8 @@ export function BillsChecksPage() {
               </li>
             ))}
           </ul>
+            <Pager {...pagedList.pager} noun="bills" className="mt-2" />
+          </>
         )}
       {deciding && <DecideDialog bill={deciding.bill} decision={deciding.decision} onOpenChange={(o) => !o && setDeciding(null)} />}
     </div>
@@ -104,6 +111,8 @@ export function SubcontractorsPage() {
     for (const v of pay.data?.vendors ?? []) if (v.kind === 'subcontractor' && !by.has(v.id)) by.set(v.id, { id: v.id, name: v.name, open: 0, value: 0, done: 0, billed: 0, payable: 0, held: 0, advance: 0, check: 0, sites: new Set() })
     return [...by.values()].sort((a, b) => b.open - a.open || b.value - a.value)
   }, [wos.data, pay.data])
+  // UX-37: numbered pages, kept in the address.
+  const pagedTeams = usePagedUrl(teams)
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <header className="flex items-center justify-between gap-3">
@@ -115,8 +124,9 @@ export function SubcontractorsPage() {
       {wos.isLoading ? <Skeleton className="h-48 rounded-xl" /> : !teams.length ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground" data-guide="subs.empty"><Handshake className="size-6" />No subcontractor yet: a work order adds one.</div>
       ) : (
+        <>
         <ul className="grid gap-2 md:grid-cols-2" data-guide="subs.list">
-          {teams.map((t) => (
+          {pagedTeams.shown.map((t) => (
             <li key={t.id} className="rounded-xl border bg-card p-3">
               <div className="flex items-center gap-3">
                 <VendorTile id={t.id} name={t.name} />
@@ -143,6 +153,8 @@ export function SubcontractorsPage() {
             </li>
           ))}
         </ul>
+          <Pager {...pagedTeams.pager} noun="subcontractors" className="mt-2" />
+        </>
       )}
     </div>
   )

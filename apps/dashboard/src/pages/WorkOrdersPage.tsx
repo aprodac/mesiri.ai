@@ -21,6 +21,8 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { WO_LOOK, fetchWorkOrders, mayGiveWork, n, woUrl, type WorkOrder } from '@/lib/subcontracts'
 import { ActionIcon, type KpiItem, KpiStrip, ModuleTitle } from '@/components/page/page-kit'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // NXT-05 (8 Nov 2026): Subcontract › Work orders. Every work given out: who, where, how much is done, billed and
 // payable; tiles that filter (open, bills to check, over the agreed / measured, retention held), status tabs, search,
@@ -59,6 +61,8 @@ export default function WorkOrdersPage() {
     .filter((w) => vendor === 'all' || w.vendor_id === vendor)
     .filter((w) => tile === '' || (tile === 'check' ? w.totals.to_check > 0 : w.flags > 0))
     .filter((w) => !needle || [w.ref, w.title, w.vendor_name, w.site_name, w.project_name, ...w.lines.map((l) => l.description)].join(' ').toLowerCase().includes(needle))
+  // UX-37: numbered pages, kept in the address.
+  const pagedShown = usePagedUrl(shown)
   const vendors = [...new Map(all.map((w) => [w.vendor_id, w.vendor_name])).entries()].sort((a, b) => a[1].localeCompare(b[1]))
   const s = list.data?.summary
   // UX-15: page kit figures. Bills to check amber, lines over measured red; the first three filter the list.
@@ -123,8 +127,9 @@ export default function WorkOrdersPage() {
           {office && !all.length && <Button size="sm" className="mt-1 gap-1.5" onClick={() => setCreating(true)}><Plus className="size-4" /> New work order</Button>}
         </div>
       ) : (
+        <>
         <ul className="grid gap-2" data-guide="wo.list">
-          {shown.map((w) => (
+          {pagedShown.shown.map((w) => (
             <li key={w.id}>
               <button type="button" onClick={() => navigate(woUrl(w.id))} className="flex w-full flex-col gap-2 rounded-xl border bg-card p-3 text-left transition hover:bg-muted/30 sm:flex-row sm:items-center sm:gap-4">
                 <span className="flex min-w-0 flex-1 items-center gap-3">
@@ -152,6 +157,8 @@ export default function WorkOrdersPage() {
             </li>
           ))}
         </ul>
+          <Pager {...pagedShown.pager} noun="work orders" className="mt-2" />
+        </>
       )}
       <WorkOrderDialog open={creating} onOpenChange={setCreating} preset={{ project_id: projectId, site_id: scope.mode === 'site' ? scope.siteId : undefined }} onSaved={(wo) => navigate(woUrl(wo.id))} />
     </div>

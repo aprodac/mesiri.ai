@@ -21,6 +21,8 @@ import { STATE_LOOK, fetchMachines, hrs, type Kind, type Machine, type MachineSt
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // NXT-11 / NXT-15: Equipment > Machines (and Vehicles, the same page for kind=vehicle), in the Purchase orders page's
 // visual language: tiles for what needs attention today, tabs, filter pills, the list beside the chosen machine (a
@@ -101,6 +103,8 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
   const filtered = React.useMemo(() => all.filter((m) => pass(m)), [all, pass])
   const list = React.useMemo(() => filtered.filter((m) => (tile ? inTile(m, tile) : inTab(m, tab)))
     .sort((a, b) => ORDER[a.state] - ORDER[b.state] || (a.site_name ?? '').localeCompare(b.site_name ?? '') || a.name.localeCompare(b.name)), [filtered, tab, tile])
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
   const current = all.find((m) => m.id === selected) ?? (isMobile ? undefined : list[0])
 
   const options = React.useMemo(() => {
@@ -180,6 +184,7 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
+        <>
         <section aria-label={vehicles ? 'Vehicles' : 'Machines'} className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide={isLoading || isError ? undefined : all.length ? 'equip.list' : 'equip.empty'}>
           <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-1.5 sm:px-4"><Legend /><span className="text-[11px] text-muted-foreground">last 14 days</span></div>
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse border-b bg-muted/40" />)}</div>}
@@ -196,8 +201,10 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
               ) : tile ? 'None right now.' : 'None here with these filters.'}
             </div>
           )}
-          {list.map((m) => <MachineRow key={m.id} machine={m} selected={current?.id === m.id} onPick={() => setSelected(m.id)} seesMoney={seesMoney} />)}
+          {pagedList.shown.map((m) => <MachineRow key={m.id} machine={m} selected={current?.id === m.id} onPick={() => setSelected(m.id)} seesMoney={seesMoney} />)}
         </section>
+          <Pager {...pagedList.pager} noun="machines" className="mt-2" />
+        </>
         {!isMobile && current && (
           <aside aria-label="Machine" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[440px]" data-guide="equip.detail"><MachinePanel key={current.id} machine={current} /></aside>
         )}

@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PAGE_SIZES } from '@/lib/paging'
@@ -45,9 +46,16 @@ export function Pager({
   onSize?: (size: number) => void
   className?: string
 }) {
+  const ref = React.useRef<HTMLElement>(null)
   if (total === 0) return null
+  // Turning a page brings the list's top back into view when it has scrolled away.
+  const go = (p: number) => {
+    onPage(p)
+    const list = ref.current?.parentElement
+    if (list && list.getBoundingClientRect().top < 0) list.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   return (
-    <nav aria-label="Pages" className={cn('flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground', className)}>
+    <nav ref={ref} aria-label="Pages" className={cn('flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground', className)}>
       <span className="tabular-nums">
         <span className="font-semibold text-foreground">
           {from}–{to}
@@ -74,10 +82,10 @@ export function Pager({
         )}
         {pages > 1 && (
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" className="hidden size-8 bg-card sm:inline-flex" disabled={page <= 1} onClick={() => onPage(1)} aria-label="First page">
+            <Button variant="outline" size="icon" className="hidden size-8 bg-card sm:inline-flex" disabled={page <= 1} onClick={() => go(1)} aria-label="First page">
               <ChevronsLeft className="size-3.5" />
             </Button>
-            <Button variant="outline" size="icon" className="size-8 bg-card" disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Previous page">
+            <Button variant="outline" size="icon" className="size-8 bg-card" disabled={page <= 1} onClick={() => go(page - 1)} aria-label="Previous page">
               <ChevronLeft className="size-3.5" />
             </Button>
             {pageList(page, pages).map((p, i) =>
@@ -93,16 +101,16 @@ export function Pager({
                   className={cn('size-8 tabular-nums', p !== page && 'bg-card')}
                   aria-current={p === page ? 'page' : undefined}
                   aria-label={`Page ${p}`}
-                  onClick={() => onPage(p)}
+                  onClick={() => go(p)}
                 >
                   {p}
                 </Button>
               ),
             )}
-            <Button variant="outline" size="icon" className="size-8 bg-card" disabled={page >= pages} onClick={() => onPage(page + 1)} aria-label="Next page">
+            <Button variant="outline" size="icon" className="size-8 bg-card" disabled={page >= pages} onClick={() => go(page + 1)} aria-label="Next page">
               <ChevronRight className="size-3.5" />
             </Button>
-            <Button variant="outline" size="icon" className="hidden size-8 bg-card sm:inline-flex" disabled={page >= pages} onClick={() => onPage(pages)} aria-label="Last page">
+            <Button variant="outline" size="icon" className="hidden size-8 bg-card sm:inline-flex" disabled={page >= pages} onClick={() => go(pages)} aria-label="Last page">
               <ChevronsRight className="size-3.5" />
             </Button>
           </div>

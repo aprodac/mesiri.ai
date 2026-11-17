@@ -12,7 +12,7 @@ import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { fetchVendorsApi } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
-import { categoryPaths, fetchMaterialCategories, fetchMaterials } from '@/lib/materials'
+import { categoryPaths, fetchMaterialCategories, fetchAllMaterials } from '@/lib/materials'
 import { createRfq, type Rfq } from '@/lib/rfqs'
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
@@ -93,7 +93,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
     if (open && projectId && !siteId && sites.length === 1) setSiteId(sites[0].id)
   }, [open, projectId, siteId, sites])
   const { data: vendors = [] } = useQuery({ queryKey: ['finance', 'vendors', 'names'], queryFn: fetchVendorsApi, enabled: open, retry: false, staleTime: 60_000 })
-  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchMaterials({ is_active: true, limit: 200 }), enabled: open, staleTime: 60_000 })
+  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchAllMaterials({ is_active: true }), enabled: open, staleTime: 60_000 })
   const { data: categories } = useQuery({ queryKey: ['materials', 'categories'], queryFn: fetchMaterialCategories, enabled: open, staleTime: 60_000 })
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
   const materials = React.useMemo(() => catalog?.items ?? [], [catalog])

@@ -9,7 +9,7 @@ import {
   answerSizeRequest,
   deleteUnitSize,
   dismissSizeRequest,
-  fetchMaterials,
+  fetchAllMaterials,
   fetchSizeRequests,
   fetchUnitSizes,
   fetchUnitsOfMeasure,
@@ -78,7 +78,7 @@ export function SizesView() {
   const { data: requests } = useQuery({ queryKey: ['materials', 'sizes', 'requests'], queryFn: fetchSizeRequests })
   const { data: sizes } = useQuery({ queryKey: ['materials', 'sizes', 'set'], queryFn: fetchUnitSizes })
   const { data: catalog } = useQuery({
-    queryKey: ['materials', 'catalog', 'manage'], queryFn: () => fetchMaterials({ limit: 200 }), staleTime: 30_000,
+    queryKey: ['materials', 'catalog', 'manage'], queryFn: () => fetchAllMaterials(), staleTime: 30_000,
   })
   const { data: units } = useQuery({ queryKey: ['materials', 'units-of-measure'], queryFn: fetchUnitsOfMeasure, staleTime: 300_000 })
 

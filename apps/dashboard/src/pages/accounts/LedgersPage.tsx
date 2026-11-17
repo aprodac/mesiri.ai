@@ -11,6 +11,8 @@ import { useAuth } from '@/lib/AuthContext'
 import { LINK_LABEL, drCr, fetchChart, formatDay, mayReadBooks, rupees, type Ledger } from '@/lib/accounts'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // ACC-05: every ledger with its balance today, by kind (suppliers, clients, bank and cash, expenses, the rest), and a
 // search. A module page links here with ?link=vendor:<id> and lands on that party's ledger. Backend: GET /accounts/chart.
@@ -53,14 +55,17 @@ export default function LedgersPage() {
     if (found) navigate(`/accounts/ledgers/${found.id}`, { replace: true })
   }, [link, chart.data, navigate])
 
-  if (!allowed) return <BooksClosed />
-  if (chart.isError) return <PageError message="The ledgers could not be loaded." onRetry={() => chart.refetch()} back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} />
   const d = chart.data
   const groups = new Map((d?.groups ?? []).map((g) => [g.id, g.name]))
   const words = q.trim().toLowerCase()
   const list = (d?.ledgers ?? [])
     .filter((l) => (kind === 'all' || kindOf(l) === kind) && (!used || l.lines > 0 || words) && (!words || l.name.toLowerCase().includes(words)))
     .sort((a, b) => Math.abs(Number(b.balance)) - Math.abs(Number(a.balance)) || a.name.localeCompare(b.name))
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list, { resetOn: `${kind}|${q}|${used}` })
+
+  if (!allowed) return <BooksClosed />
+  if (chart.isError) return <PageError message="The ledgers could not be loaded." onRetry={() => chart.refetch()} back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} />
   const top = Math.max(0, ...list.map((l) => Math.abs(Number(l.balance))))
   const count = (k: Kind) => (d?.ledgers ?? []).filter((l) => (k === 'all' || kindOf(l) === k) && l.lines > 0).length
   const sum = (k: Kind) => (d?.ledgers ?? []).filter((l) => kindOf(l) === k).reduce((s, l) => s + Number(l.balance), 0)
@@ -106,8 +111,9 @@ export default function LedgersPage() {
                 {words ? 'No ledger by that name.' : 'No ledger of this kind has entries yet.'}
               </p>
             ) : (
+              <>
               <ul data-guide="ledgers.list" className="divide-y rounded-lg border">
-                {list.map((l) => (
+                {pagedList.shown.map((l) => (
                   <li key={l.id}>
                     <Link to={`/accounts/ledgers/${l.id}`} className="flex flex-col gap-0.5 px-4 py-2.5 text-sm hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4">
                       <span className="min-w-0 flex-1">
@@ -128,6 +134,8 @@ export default function LedgersPage() {
                   </li>
                 ))}
               </ul>
+                <Pager {...pagedList.pager} noun="ledgers" className="mt-2" />
+              </>
             )}
           </DprSection>
         </>

@@ -12,6 +12,8 @@ import { useScope } from '@/lib/ScopeContext'
 import { LINK_LABEL, cell, drCr, fetchStatement, formatDay, linkedRecord, mayReadBooks, rupees, scopeParams } from '@/lib/accounts'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // ACC-05: one ledger (a supplier, a client, a bank, an expense head ...): opening, every entry with what it was
 // against and the running balance, closing; for the company, a project or a site. Each line opens its voucher.
@@ -28,6 +30,9 @@ export default function LedgerStatementPage() {
   const st = useQuery({ queryKey: ['accounts', 'statement', id, period, sp], queryFn: () => fetchStatement(id, period, sp), enabled: allowed && !!id })
   const [openId, setOpenId] = React.useState<string | null>(null)
   usePageTitle(st.data?.ledger.name ?? 'Ledger')
+  // UX-37: 100 lines to a page; a later page starts with the balance brought forward.
+  const pagedLines = usePagedUrl(st.data?.lines ?? [], { size: 100, resetOn: JSON.stringify([period, sp]) })
+  const before = pagedLines.from > 1 ? st.data?.lines[pagedLines.from - 2] : undefined
 
   if (!allowed) return <BooksClosed />
   if (st.isError) return <PageError message="This ledger could not be loaded." onRetry={() => st.refetch()} back={{ to: '/accounts/ledgers', label: 'Ledgers' }} />
@@ -99,13 +104,13 @@ export default function LedgerStatementPage() {
                   </thead>
                   <tbody className="divide-y">
                     <tr className="text-muted-foreground">
-                      <td className="px-3 py-2 whitespace-nowrap">{formatDay(d.date_from)}</td>
-                      <td className="px-3 py-2">Opening balance{d.year_start ? ' (from the start of the year)' : ''}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDay(before ? before.date : d.date_from)}</td>
+                      <td className="px-3 py-2">{before ? 'Brought forward' : `Opening balance${d.year_start ? ' (from the start of the year)' : ''}`}</td>
                       <td className="hidden sm:table-cell" />
                       <td className="hidden sm:table-cell" />
-                      <td className="px-3 py-2 text-right tabular-nums">{drCr(d.opening)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{drCr(before ? before.balance : d.opening)}</td>
                     </tr>
-                    {d.lines.map((l) => (
+                    {pagedLines.shown.map((l) => (
                       <tr key={l.line_id} className={cn('cursor-pointer align-top hover:bg-muted/40', l.after_close && 'bg-draft-soft/30')} onClick={() => setOpenId(l.entry_id)}>
                         <td className="px-3 py-2 whitespace-nowrap">{formatDay(l.date)}</td>
                         <td className="px-3 py-2">
@@ -142,6 +147,7 @@ export default function LedgerStatementPage() {
                 </table>
               </div>
             )}
+            <Pager {...pagedLines.pager} noun="lines" className="mt-2" />
           </DprSection>
         </>
       )}

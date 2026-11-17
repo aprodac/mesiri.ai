@@ -20,6 +20,8 @@ import { NewOrderDialog } from '@/components/orders/new-order-dialog'
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // PRC-10: Procurement > Purchase orders, in the Requests page's visual language (approved 7 Nov): tiles for what
 // needs attention, status tabs, filter dropdowns with the row cues, a list beside the chosen order (a sheet on a
@@ -110,6 +112,8 @@ export default function PurchaseOrdersPage() {
       .sort((a, b) => ORDER[a.urgency] - ORDER[b.urgency] || (a.expected_date ?? '9999').localeCompare(b.expected_date ?? '9999') || b.number - a.number),
     [filtered, tab, tile],
   )
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
   // The one being worked on stays open when acting on it moves it to another tab (ordered, received); a tab change or
   // a pick of another row lets it go.
   const [kept, setKept] = React.useState('')
@@ -191,6 +195,7 @@ export default function PurchaseOrdersPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
+        <>
         <section aria-label="Purchase orders" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide={isLoading ? undefined : 'po.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Orders did not load. Refresh to try again.</p>}
@@ -200,8 +205,10 @@ export default function PurchaseOrdersPage() {
               {all.length === 0 ? 'No orders yet' : tab === 'open' ? 'Nothing still to come.' : 'No orders here with these filters.'}
             </div>
           )}
-          {list.map((o) => <OrderRow key={o.id} order={o} selected={current?.id === o.id} onPick={() => setSelected(o.id)} />)}
+          {pagedList.shown.map((o) => <OrderRow key={o.id} order={o} selected={current?.id === o.id} onPick={() => setSelected(o.id)} />)}
         </section>
+          <Pager {...pagedList.pager} noun="orders" className="mt-2" />
+        </>
         {!isMobile && current && (
           <aside aria-label="Order detail" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[420px]"><OrderDetail order={current} /></aside>
         )}

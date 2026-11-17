@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { VOUCHER_LABEL, fetchDayBook, formatDay, mayReadBooks, rupees, scopeParams, type Entry, type VoucherType } from '@/lib/accounts'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
@@ -20,7 +22,7 @@ import { cn } from '@/lib/utils'
 // move, Enter to open. Backend: GET /accounts/day-book.
 
 const TYPES: (VoucherType | '')[] = ['', 'purchase', 'payment', 'receipt', 'sales', 'contra', 'journal']
-const PAGE = 200
+const PAGE = 100
 
 function useDebounced<T>(value: T, ms = 300): T {
   const [v, setV] = React.useState(value)
@@ -72,13 +74,14 @@ export default function DayBookPage() {
   const late = params.get('late') === '1'
   const [q, setQ] = React.useState(params.get('q') ?? '')
   const search = useDebounced(q)
-  const [limit, setLimit] = React.useState(PAGE)
   const [openId, setOpenId] = React.useState<string | null>(null)
   const [cursor, setCursor] = React.useState(-1)
   const [writing, setWriting] = React.useState(false)  // ACC-12
   const sp = scopeParams(scope)
   const allowed = mayReadBooks(me?.role)
-  const filter = { ...period, ...sp, voucher_type: type, q: search, after_close: late, limit }
+  // UX-37: numbered pages, the server sends one page at a time.
+  const server = useServerPage({ size: PAGE, resetOn: JSON.stringify([period, sp, type, search, late]) })
+  const filter = { ...period, ...sp, voucher_type: type, q: search, after_close: late, limit: server.limit, offset: server.offset }
   const book = useQuery({ queryKey: ['accounts', 'day-book', filter], queryFn: () => fetchDayBook(filter), enabled: allowed, placeholderData: keepPreviousData })
 
   const setParam = (k: string, v: string | null) =>
@@ -223,11 +226,7 @@ export default function DayBookPage() {
                     </ul>
                   </section>
                 ))}
-                {d.count > entries.length && (
-                  <Button variant="outline" className="self-center" onClick={() => setLimit((l) => Math.min(1000, l + PAGE))} disabled={limit >= 1000}>
-                    {limit >= 1000 ? `Showing ${entries.length} of ${d.count}: narrow the period or search` : `Show more (${entries.length} of ${d.count})`}
-                  </Button>
-                )}
+                <Pager {...server.pager(d.count, entries.length)} noun="vouchers" className={cn(book.isPlaceholderData && 'opacity-60')} />
                 <p className="hidden text-xs text-muted-foreground sm:block">↑ ↓ to move, Enter to open a voucher.</p>
               </div>
             )}

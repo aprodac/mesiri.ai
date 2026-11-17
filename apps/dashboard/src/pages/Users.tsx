@@ -22,6 +22,8 @@ import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { initials, projectAccessText, useMemberships } from '@/lib/team'
 import { ActionIcon } from '@/components/page/action-button'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // WEB-28: the team as rows that say, for each person, what matters for
 // Mesiri to work -- the projects they reach and whether they have a
@@ -89,6 +91,8 @@ export default function Users() {
       return !q || [u.full_name, u.email, u.whatsapp_number].some((v) => v?.toLowerCase().includes(q))
     })
     .sort((a, b) => a.full_name.localeCompare(b.full_name))
+  // UX-37: numbered pages, kept in the address.
+  const pagedVisible = usePagedUrl(visible)
 
   if (query.isError) {
     return <PageError message="The team could not be loaded." onRetry={() => query.refetch()} back={{ to: '/today', label: 'Back to Today' }} />
@@ -159,8 +163,9 @@ export default function Users() {
           <p className="text-sm font-medium">{users.length === 0 ? 'No one on the team yet' : 'No one matches'}</p>
         </div>
       ) : (
+        <>
         <ul className="flex flex-col divide-y rounded-xl border" data-guide="team.list">
-          {visible.map((user) => {
+          {pagedVisible.shown.map((user) => {
             const access = memberships.loading
               ? { text: '…', none: false }
               : projectAccessText(user, memberships.byUser.get(user.id) ?? [], memberships.names)
@@ -224,6 +229,8 @@ export default function Users() {
             )
           })}
         </ul>
+          <Pager {...pagedVisible.pager} noun="people" className="mt-2" />
+        </>
       )}
 
       <Dialog open={dialog?.kind === 'status' || dialog?.kind === 'delete'} onOpenChange={(open) => !open && setDialog(null)}>

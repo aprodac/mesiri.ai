@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import {
-  fetchMaterials,
+  fetchAllMaterials,
   fetchStockCheck,
   createTransfer,
   asOverStockConflict,
@@ -111,7 +111,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope, prefill }: Rec
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', ''],
-    queryFn: () => fetchMaterials({ is_active: true, limit: 200 }),
+    queryFn: () => fetchAllMaterials({ is_active: true }),
     enabled: open,
     staleTime: 60_000,
   })

@@ -20,6 +20,8 @@ import { useAuth } from '@/lib/AuthContext'
 import { mayReturn, seesMoney } from '@/lib/returns'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // PRC-29: Procurement > GRN. Every goods received note: what came against which order, what was accepted into stock
 // and what was turned away (and why), the challan number and photo, who received it. A GRN is made by "Material
@@ -54,6 +56,8 @@ export default function GoodsReceiptsPage() {
   const list = q
     ? all.filter((g) => [g.ref, g.order_ref, g.vendor_name, g.challan_no ?? '', g.site_name, ...g.lines.map((l) => l.material)].some((x) => x.toLowerCase().includes(q)))
     : all
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
   const rejectedCount = all.filter((g) => g.lines.some((l) => Number(l.rejected) > 0)).length
   // PRC-46: what was turned away at the gate goes back to the supplier with a debit note.
   const { me } = useAuth()
@@ -85,8 +89,9 @@ export default function GoodsReceiptsPage() {
           {all.length === 0 ? 'Nothing received yet' : 'No goods received match this search.'}
         </div>
       ) : (
+        <>
         <ul className="flex flex-col divide-y rounded-xl border" data-guide="grn.list">
-          {list.map((g) => {
+          {pagedList.shown.map((g) => {
             const rejected = g.lines.some((l) => Number(l.rejected) > 0)
             return (
               <li key={g.id} className={cn('flex flex-col gap-2 p-3 sm:flex-row sm:items-start sm:gap-4 sm:p-4', rejected && 'bg-destructive/5')}>
@@ -129,6 +134,8 @@ export default function GoodsReceiptsPage() {
             )
           })}
         </ul>
+          <Pager {...pagedList.pager} noun="receipts" className="mt-2" />
+        </>
       )}
       <NewReturnDialog open={!!returning} onOpenChange={(o) => !o && setReturning(null)} from={returning ? { grn_id: returning } : null} money={seesMoney(me?.role)} onCreated={(r) => navigate(`/procurement/returns?id=${r.id}`)} />
     </div>
