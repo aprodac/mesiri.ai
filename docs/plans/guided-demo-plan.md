@@ -732,3 +732,23 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
 - **Not covered:** ticking counts records since the entry's day began, so one record late in a week could tick an
   older overdue entry of the same kind and place as well as that day's; the dashboard side (Next day in the banner,
   the new token swapped in, "for you" with links) is SS-74e; save points and Go back are SS-74d.
+
+### 18.12 SS-74e as built (17 Nov 2026)
+
+- **In the sample company's banner** (`components/sandbox-clock.tsx`, inside `sandbox-banner.tsx`): "Day 7 of 62 · Sat,
+  21 Nov", **Next day**, **Skip ahead** (2 days, 3 days, a week), **For you (n)** (`· n late` when some are from
+  earlier days): the person's part grouped by the page it is done on, each group a link. After days pass, once:
+  **"Days 1 to 7 passed"**: who did what (Anil: orders placed 10 ...), what waits for something not done yet, and
+  anything that could not be saved. Sunday says "A quiet day: nobody works on Sunday."
+- `lib/sandbox.ts`: `useSandboxClock()`, `passDays(n)` (takes the new token, whose date moved, and loads the page again
+  so every page reads the new day), `catchUp()` (a tab left behind by another opens itself again on the current date,
+  once per date). A sample made before days could pass says to start over.
+- For everyone in a sample company (17 Nov in session: no customers use it yet, so nothing is held back); the near
+  term mission is the guided project up to the BOQ, so the chapters after it (SS-69 part 2 onwards) wait for the other
+  pages' UI/UX upgrade.
+- **Checked in a browser against the real app and a real database** (not a stub): Learn → Just look around → day 0 →
+  a week → day 7, Sat 21 Nov in the top bar and on Today, "Days 1 to 7 passed", For you (2): the owner's two wage
+  approvals under Wages → Next day → day 8, "2 late", and Meera's pay waiting on them; phone width, dark.
+- Found on the way: Today's own "Next day" arrow (looking at a day) and this one (making a day pass) shared a name for
+  screen readers; this one is now "Move the sample company on to the next day".
+
