@@ -3,7 +3,7 @@ import { MONEY_PEOPLE } from '@/lib/permissions'
 import { ActionButton, ActionIcon, ActionMenuItem, NoAccess } from '@/components/page/page-kit'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Calculator, ClipboardCheck, ChevronRight, MoreHorizontal, Package, Plus } from 'lucide-react'
+import { ArrowRight, Calculator, ClipboardCheck, ChevronRight, MoreHorizontal, Package, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,6 +27,7 @@ import {
   fetchBoqWork,
   formatQuantity,
   formatRupees,
+  formatRupeesShort,
   maySeeBoq,
   putLineNorms,
   putWorkOnLine,
@@ -52,9 +53,25 @@ import { cn } from '@/lib/utils'
 
 const NUM = 'text-right tabular-nums'
 
-function marginClass(value: string | null): string {
+/** Margin as a share of the contract value, whole percent (null when either is missing). */
+function marginPct(margin: string | null, contract: string | null): number | null {
+  if (margin === null || !Number(contract)) return null
+  return Math.round((Number(margin) / Number(contract)) * 100)
+}
+
+// Colour marks only a problem (UX-19): a loss is red, a thin margin (under 5%) amber, a healthy one plain ink.
+// Green on every line said nothing.
+const THIN_MARGIN = 5
+function marginClass(value: string | null, contract?: string | null): string {
   if (value === null) return 'text-muted-foreground'
-  return Number(value) < 0 ? 'text-destructive font-semibold' : 'text-success font-semibold'
+  if (Number(value) < 0) return 'text-destructive font-semibold'
+  const pct = marginPct(value, contract ?? null)
+  return pct !== null && pct < THIN_MARGIN ? 'text-draft font-semibold' : 'font-medium'
+}
+
+/** A money cell: short (₹21.4 L), the full figure on hover. */
+function Money({ value, title }: { value: string | null; title?: string }) {
+  return <span title={[formatRupees(value), title].filter(Boolean).join(' · ')}>{formatRupeesShort(value)}</span>
 }
 
 function TotalsStrip({ totals }: { totals: BoqTotals }) {
@@ -71,7 +88,7 @@ function TotalsStrip({ totals }: { totals: BoqTotals }) {
       label: 'Budget cost', value: formatRupees(totals.budget_cost), kind: 'bill',
       share: contract && budget !== null ? budget / contract : undefined, hint: contract && budget !== null ? `${Math.round((budget / contract) * 100)}% of contract` : undefined,
     },
-    { label: 'Margin', value: formatRupees(totals.margin), kind: 'margin', tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good' },
+    { label: 'Margin', value: formatRupees(totals.margin), kind: 'margin', tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good', hint: marginPct(totals.margin, totals.contract_value) !== null ? `${marginPct(totals.margin, totals.contract_value)}% of contract` : undefined },
     ...(totals.earned !== undefined
       ? [{
           label: 'Earned so far', value: formatRupees(totals.earned), kind: 'progress' as const,
@@ -255,83 +272,92 @@ function SectionTable({
       </p>
     )
   }
+  // A section whose lines carry no BOQ codes gives the No. column nothing to show: it is left out.
+  const hasCodes = section.lines.some((l) => l.boq_code)
   return (
     <div className="overflow-x-auto rounded-lg border [contain:inline-size]" data-guide="boq.lines">
-      <table className="w-full min-w-[1040px] text-sm">
+      <table className="w-full min-w-[880px] text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 text-left font-medium">No.</th>
+            {hasCodes && <th className="px-3 py-2 text-left font-medium">No.</th>}
             <th className="px-3 py-2 text-left font-medium">Work</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Quantity</th>
             <th className="px-3 py-2 text-left font-medium">Done</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)}>Client rate</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)}>Budget rate</th>
+            <th className={cn('px-3 py-2 font-medium', NUM)} title="What the client pays per unit, and what it should cost you">Rate · cost</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Contract value</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)}>Budget cost</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)}>Earned</th>
+            <th className={cn('px-3 py-2 font-medium', NUM)} title="The budget the work done so far has earned">Earned</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Margin</th>
             {!readOnly && <th className="w-10" aria-label="Actions" />}
           </tr>
         </thead>
         <tbody className="divide-y">
-          {section.lines.map((line) => (
-            <tr key={line.id}>
-              <td className="px-3 py-2 text-muted-foreground">{line.boq_code ?? ''}</td>
-              <td className="px-3 py-2">
-                <span className="font-medium">{line.work}</span>
-                {line.revision_no > 1 && <span className="ml-2 text-xs text-muted-foreground">rev {line.revision_no}</span>}
-                <MaterialsNote line={line} readOnly={readOnly} onNorms={() => onNorms(line)} />
-              </td>
-              <td className={cn('px-3 py-2', NUM)}>
-                {formatQuantity(line.planned_quantity)} <span className="text-muted-foreground">{line.unit}</span>
-              </td>
-              <td className="px-3 py-2">
-                <DoneCell line={line} />
-              </td>
-              <td className={cn('px-3 py-2', NUM)}>{formatRupees(line.client_rate)}</td>
-              <td className={cn('px-3 py-2', NUM)} title={[line.labour_rate && `Labour ₹${line.labour_rate}`, line.material_rate && `Material ₹${line.material_rate}`, line.subcontract_rate && `Subcontract ₹${line.subcontract_rate}`].filter(Boolean).join(' + ')}>
-                {formatRupees(line.budget_rate)}
-              </td>
-              <td className={cn('px-3 py-2', NUM)}>{formatRupees(line.contract_value)}</td>
-              <td className={cn('px-3 py-2', NUM)}>{formatRupees(line.budget_cost)}</td>
-              <td
-                className={cn('px-3 py-2', NUM)}
-                title={[line.earned_labour && `Labour ₹${line.earned_labour}`, line.earned_material && `Material ₹${line.earned_material}`, line.earned_subcontract && `Subcontract ₹${line.earned_subcontract}`].filter(Boolean).join(' + ')}
-              >
-                {Number(line.done_quantity) > 0 ? formatRupees(line.earned) : '—'}
-              </td>
-              <td className={cn('px-3 py-2', NUM, marginClass(line.margin))}>{formatRupees(line.margin)}</td>
-              {!readOnly && (
-                <td className="px-1 py-1">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${line.work}`}>
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <ActionMenuItem kind="edit" onClick={() => onEdit(line)} />
-                      <DropdownMenuItem onClick={() => onNorms(line)}>
-                        <Package className="mr-2 size-3.5" /> Materials per {line.unit}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <ActionMenuItem kind="delete" onClick={() => onDelete(line)} />
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+          {section.lines.map((line) => {
+            const pct = marginPct(line.margin, line.contract_value)
+            return (
+              <tr key={line.id}>
+                {hasCodes && <td className="px-3 py-2.5 align-top text-muted-foreground tabular-nums">{line.boq_code ?? ''}</td>}
+                <td className="px-3 py-2.5">
+                  <span className="font-medium">{line.work}</span>
+                  {line.revision_no > 1 && <span className="ml-2 text-xs text-muted-foreground">rev {line.revision_no}</span>}
+                  <MaterialsNote line={line} readOnly={readOnly} onNorms={() => onNorms(line)} />
                 </td>
-              )}
-            </tr>
-          ))}
+                <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}>
+                  {formatQuantity(line.planned_quantity)} <span className="text-muted-foreground">{line.unit}</span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <DoneCell line={line} />
+                </td>
+                <td
+                  className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}
+                  title={[line.labour_rate && `Labour ₹${line.labour_rate}`, line.material_rate && `Material ₹${line.material_rate}`, line.subcontract_rate && `Subcontract ₹${line.subcontract_rate}`].filter(Boolean).join(' + ')}
+                >
+                  <div>{formatRupees(line.client_rate)}</div>
+                  <div className="text-xs text-muted-foreground">cost {formatRupees(line.budget_rate)}</div>
+                </td>
+                <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}>
+                  <Money value={line.contract_value} title={line.budget_cost ? `budget cost ${formatRupees(line.budget_cost)}` : undefined} />
+                </td>
+                <td
+                  className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}
+                  title={[line.earned_labour && `Labour ₹${line.earned_labour}`, line.earned_material && `Material ₹${line.earned_material}`, line.earned_subcontract && `Subcontract ₹${line.earned_subcontract}`].filter(Boolean).join(' + ')}
+                >
+                  {Number(line.done_quantity) > 0 ? formatRupeesShort(line.earned) : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM, marginClass(line.margin, line.contract_value))}>
+                  <Money value={line.margin} />
+                  {pct !== null && <div className="text-xs font-normal opacity-80">{pct < 0 ? `−${-pct}` : pct}%</div>}
+                </td>
+                {!readOnly && (
+                  <td className="px-1 py-1">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${line.work}`}>
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <ActionMenuItem kind="edit" onClick={() => onEdit(line)} />
+                        <DropdownMenuItem onClick={() => onNorms(line)}>
+                          <Package className="mr-2 size-3.5" /> Materials per {line.unit}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <ActionMenuItem kind="delete" onClick={() => onDelete(line)} />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                )}
+              </tr>
+            )
+          })}
         </tbody>
         <tfoot className="border-t bg-muted/30 text-sm">
           <tr>
-            <td className="px-3 py-2" colSpan={6}>
+            <td className="px-3 py-2" colSpan={hasCodes ? 5 : 4}>
               <span className="font-medium">Section total</span>
             </td>
-            <td className={cn('px-3 py-2 font-semibold', NUM)}>{formatRupees(section.totals.contract_value)}</td>
-            <td className={cn('px-3 py-2 font-semibold', NUM)}>{formatRupees(section.totals.budget_cost)}</td>
-            <td className={cn('px-3 py-2 font-semibold', NUM)}>{formatRupees(section.totals.earned)}</td>
-            <td className={cn('px-3 py-2', NUM, marginClass(section.totals.margin))}>{formatRupees(section.totals.margin)}</td>
+            <td className={cn('px-3 py-2 font-semibold whitespace-nowrap', NUM)}><Money value={section.totals.contract_value} /></td>
+            <td className={cn('px-3 py-2 font-semibold whitespace-nowrap', NUM)}><Money value={section.totals.earned ?? null} /></td>
+            <td className={cn('px-3 py-2 whitespace-nowrap', NUM, marginClass(section.totals.margin, section.totals.contract_value))}><Money value={section.totals.margin} /></td>
             {!readOnly && <td />}
           </tr>
         </tfoot>
@@ -340,19 +366,54 @@ function SectionTable({
   )
 }
 
+/** A section's header line: its size, how far its work is, and its margin, so a closed section still reads. */
+function SectionSummary({ section }: { section: BoqSection }) {
+  const t = section.totals
+  const n = section.lines.length
+  if (!n) return null
+  const done = Number(t.budget_cost) ? Math.round((Number(t.earned ?? 0) / Number(t.budget_cost)) * 100) : null
+  const pct = marginPct(t.margin, t.contract_value)
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+      <span>{n} line{n > 1 ? 's' : ''}</span>
+      <span aria-hidden>·</span>
+      <Money value={t.contract_value} />
+      {done !== null && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="inline-flex items-center gap-1.5" title="Budget earned by the work done">
+            <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" aria-hidden>
+              <span className="block h-full rounded-full bg-info" style={{ width: `${Math.min(done, 100)}%` }} />
+            </span>
+            {done}% done
+          </span>
+        </>
+      )}
+      {pct !== null && (
+        <>
+          <span aria-hidden>·</span>
+          <span className={marginClass(t.margin, t.contract_value)}>margin {pct < 0 ? `−${-pct}` : pct}%</span>
+        </>
+      )}
+    </span>
+  )
+}
+
 /** MP-01: the line's materials per unit, under its name ("Cement 8 bags · M-sand 15 cft per cum"). */
 function MaterialsNote({ line, readOnly, onNorms }: { line: BoqLine; readOnly: boolean; onNorms: () => void }) {
   if (line.materials.length === 0) {
     return readOnly ? null : (
-      <button type="button" className="block text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={onNorms}>
-        + materials per {line.unit}
+      // Missing materials is something to do: it reads as a link, not as one more grey line.
+      <button type="button" className="mt-0.5 flex items-center gap-1 text-xs font-medium text-info hover:underline" onClick={onNorms}>
+        <Plus className="size-3" aria-hidden /> Add materials
       </button>
     )
   }
   const text = line.materials.map((m) => `${m.material} ${formatQuantity(m.quantity_per_unit)} ${m.unit}`).join(' · ')
   return (
-    <button type="button" disabled={readOnly} className="block text-left text-xs text-muted-foreground enabled:hover:underline" onClick={onNorms}>
-      {text} <span className="whitespace-nowrap">per {line.unit}</span>
+    <button type="button" disabled={readOnly} className="mt-0.5 flex items-start gap-1 text-left text-xs text-muted-foreground enabled:hover:text-foreground" onClick={onNorms} title="Materials per unit of this work">
+      <Package className="mt-px size-3 shrink-0" aria-hidden />
+      <span>{text} <span className="whitespace-nowrap">per {line.unit}</span></span>
     </button>
   )
 }
@@ -386,16 +447,22 @@ function DoneCell({ line }: { line: BoqLine }) {
   const pct = Math.min(Number(line.percent_done ?? 0), 100)
   return (
     <div className="flex min-w-[120px] flex-col gap-1">
-      <span className="tabular-nums">
-        {done > 0 ? formatQuantity(line.done_quantity) : <span className="text-muted-foreground">Nothing yet</span>}
-        {done > 0 && <span className="text-muted-foreground"> · {line.percent_done}%</span>}
+      <span className="tabular-nums whitespace-nowrap">
+        {done > 0 ? (
+          <>
+            {formatQuantity(line.done_quantity)} <span className="text-muted-foreground">of {formatQuantity(line.planned_quantity)} {line.unit} · </span>
+            <span className="font-medium">{Math.round(Number(line.percent_done ?? 0))}%</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">Not started</span>
+        )}
       </span>
       {done > 0 && (
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
-          <div className={cn('h-full rounded-full', line.over_planned ? 'bg-amber-500' : 'bg-primary')} style={{ width: `${pct}%` }} />
+          <div className={cn('h-full rounded-full', line.over_planned ? 'bg-draft' : 'bg-info')} style={{ width: `${pct}%` }} />
         </div>
       )}
-      {line.over_planned && <span className="text-xs text-amber-700 dark:text-amber-400">More than planned</span>}
+      {line.over_planned && <span className="text-xs font-medium text-draft">More than planned</span>}
       {line.done_in_other_unit > 0 && (
         <span className="text-xs text-muted-foreground">{line.done_in_other_unit} in another unit, not added</span>
       )}
@@ -408,7 +475,16 @@ function formatDay(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
-/** One recorded work quantity not yet on a BOQ line: pick the line (the suggestion is preselected) and confirm. */
+/** The share of a line done after adding a quantity to it, whole percent. */
+function percentAfter(line: BoqLine, add: string): { from: number; to: number } | null {
+  const planned = Number(line.planned_quantity)
+  if (!planned) return null
+  const done = Number(line.done_quantity)
+  return { from: Math.round((done / planned) * 100), to: Math.round(((done + Number(add)) / planned) * 100) }
+}
+
+/** A recorded work quantity the site sent that is not on a BOQ line yet (UX-19). With a suggestion, the row shows
+ * it as the answer, with what adding it does to the line; "Change" opens the list of lines in the same unit. */
 function WorkRow({
   work,
   lines,
@@ -423,45 +499,65 @@ function WorkRow({
   onPut: (lineId: string) => void
 }) {
   const sameUnit = lines.filter((l) => l.unit === work.unit)
-  const [lineId, setLineId] = React.useState(work.suggested_line_id ?? '')
+  const suggested = sameUnit.some((l) => l.id === work.suggested_line_id) ? work.suggested_line_id : null
+  const [lineId, setLineId] = React.useState(suggested ?? '')
+  const [picking, setPicking] = React.useState(!suggested)
+  const target = sameUnit.find((l) => l.id === lineId)
+  const move = target ? percentAfter(target, work.quantity) : null
   return (
-    <li className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
-      <div className="min-w-0 flex-1">
+    <li className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-4">
+      <div className="min-w-0 sm:w-[38%] sm:shrink-0">
         <p className="truncate font-medium">{work.work || 'Work update'}</p>
         <p className="text-xs text-muted-foreground">
-          {formatDay(work.date)}
-          {work.site_name ? ` · ${work.site_name}` : ''} ·{' '}
-          <span className="tabular-nums">
+          <span className="font-medium text-foreground tabular-nums">
             {formatQuantity(work.quantity)} {work.unit}
           </span>
+          {' · '}
+          {formatDay(work.date)}
+          {work.site_name ? ` · ${work.site_name}` : ''}
         </p>
       </div>
       {work.on_work_order ? (
         <span className="text-xs text-muted-foreground">On a work order: change it there</span>
       ) : sameUnit.length === 0 ? (
-        <span className="text-xs text-muted-foreground">No BOQ line in {work.unit}</span>
-      ) : (
-        !readOnly && (
-          <div className="flex items-center gap-2">
-            <Select value={lineId} onValueChange={setLineId}>
-              <SelectTrigger className="h-9 w-full sm:w-[260px]" aria-label={`BOQ line for ${work.work ?? 'this work'}`}>
-                <SelectValue placeholder="Pick the BOQ line" />
-              </SelectTrigger>
-              <SelectContent>
-                {sameUnit.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.boq_code ? `${l.boq_code} · ` : ''}
-                    {l.work}
-                    {l.id === work.suggested_line_id ? ' (suggested)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" disabled={!lineId || saving} onClick={() => onPut(lineId)}>
-              Count
-            </Button>
+        <span className="text-xs text-muted-foreground">No BOQ line in {work.unit} yet: add one, then match this</span>
+      ) : readOnly ? null : (
+        <>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ArrowRight className="hidden size-4 shrink-0 text-muted-foreground sm:block" aria-hidden />
+            {picking ? (
+              <Select value={lineId} onValueChange={setLineId}>
+                <SelectTrigger className="h-9 w-full sm:max-w-[280px]" aria-label={`BOQ line for ${work.work ?? 'this work'}`}>
+                  <SelectValue placeholder="Pick the BOQ line" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sameUnit.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.boq_code ? `${l.boq_code} · ` : ''}
+                      {l.work}
+                      {l.id === suggested ? ' (suggested)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="min-w-0">
+                <p className="truncate font-medium">{target?.work}</p>
+                <button type="button" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground" onClick={() => setPicking(true)}>
+                  Change line
+                </button>
+              </div>
+            )}
+            {move && (
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums" title="How much of the line is done, before and after">
+                {move.from}% → <span className="font-semibold text-info">{move.to}%</span>
+              </span>
+            )}
           </div>
-        )
+          <Button size="sm" variant="outline" className="shrink-0" disabled={!lineId || saving} onClick={() => onPut(lineId)}>
+            Add to line
+          </Button>
+        </>
       )}
     </li>
   )
@@ -572,11 +668,38 @@ export default function ProjectBoqPage() {
   const putWork = useMutation({
     mutationFn: ({ work, lineId }: { work: BoqWork; lineId: string }) => putWorkOnLine(id, work.id, lineId),
     onSuccess: () => {
-      toast.success('Counted on the BOQ line')
+      toast.success('Added to the BOQ line')
       refresh()
     },
-    onError: fail('Could not count the work'),
+    onError: fail('Could not add the work to the line'),
   })
+
+  // UX-19: every row with a suggested line, in one go (one call per row; the API has no batch).
+  const suggestedWork = (boqQuery.data && workQuery.data
+    ? workQuery.data.filter((w) => !w.on_work_order && w.suggested_line_id && boqQuery.data.sections.some((s) => s.lines.some((l) => l.id === w.suggested_line_id && l.unit === w.unit)))
+    : [])
+  const putAll = useMutation({
+    mutationFn: async (rows: BoqWork[]) => {
+      for (const w of rows) await putWorkOnLine(id, w.id, w.suggested_line_id as string)
+      return rows.length
+    },
+    onSuccess: (n) => {
+      toast.success(`${n} added to their BOQ lines`)
+      refresh()
+    },
+    onError: (e) => {
+      refresh()
+      fail('Could not add all of them')(e)
+    },
+  })
+  const [closed, setClosed] = React.useState<Set<string>>(() => new Set())
+  const toggle = (sectionId: string) =>
+    setClosed((prev) => {
+      const next = new Set(prev)
+      if (next.has(sectionId)) next.delete(sectionId)
+      else next.add(sectionId)
+      return next
+    })
 
   const project = projectQuery.data
   const back = { to: `/projects/${id}`, label: project?.name ?? 'Project' }
@@ -622,8 +745,9 @@ export default function ProjectBoqPage() {
           <div className="flex flex-wrap items-center gap-2">
             {!readOnly && <ActionButton kind="import-excel" onClick={() => setImporting(true)} data-guide="boq.import" />}
             {!readOnly && (
-              // One yellow button per page: while the BOQ is empty, the upload below is it.
-              <ActionButton kind="add" primary={boq.sections.length > 0} onClick={() => setSectionDialog({ open: true, section: null })}>
+              // One yellow button per page: while the BOQ is empty, the upload below is it; while site work waits
+              // with suggested lines, "Add all" is.
+              <ActionButton kind="add" primary={boq.sections.length > 0 && (readOnly || suggestedWork.length === 0)} onClick={() => setSectionDialog({ open: true, section: null })}>
                 Add section
               </ActionButton>
             )}
@@ -645,15 +769,27 @@ export default function ProjectBoqPage() {
         <>
           <TotalsStrip totals={boq.totals} />
           {(workQuery.data?.length ?? 0) > 0 && (
-            <DprSection icon={ClipboardCheck} title="Work done, not on a BOQ line yet" meta={workQuery.data?.length}>
-              <ul className="divide-y rounded-lg border text-sm">
+            <DprSection
+              icon={ClipboardCheck}
+              iconClass="bg-draft-soft text-draft"
+              title="Site work to add to the BOQ"
+              meta={<span className="rounded-full bg-draft-soft px-2 py-0.5 text-xs font-medium text-draft">{workQuery.data?.length} waiting</span>}
+              action={
+                !readOnly && suggestedWork.length > 0 && (
+                  <ActionButton kind="add" primary disabled={putAll.isPending || putWork.isPending} onClick={() => putAll.mutate(suggestedWork)}>
+                    {putAll.isPending ? 'Adding…' : suggestedWork.length > 1 ? `Add all ${suggestedWork.length} suggested` : 'Add the suggested one'}
+                  </ActionButton>
+                )
+              }
+            >
+              <ul className="divide-y rounded-lg border border-draft/30 text-sm">
                 {workQuery.data?.map((w) => (
                   <WorkRow
                     key={w.id}
                     work={w}
                     lines={boq.sections.flatMap((s) => s.lines)}
                     readOnly={readOnly}
-                    saving={putWork.isPending}
+                    saving={putWork.isPending || putAll.isPending}
                     onPut={(lineId) => putWork.mutate({ work: w, lineId })}
                   />
                 ))}
@@ -666,7 +802,9 @@ export default function ProjectBoqPage() {
                 key={section.id}
                 icon={Calculator}
                 title={section.code ? `${section.code}. ${section.name}` : section.name}
-                meta={section.lines.length || undefined}
+                meta={<SectionSummary section={section} />}
+                open={!closed.has(section.id)}
+                onToggle={section.lines.length ? () => toggle(section.id) : undefined}
                 action={
                   !readOnly && (
                     <div className="flex items-center gap-1">

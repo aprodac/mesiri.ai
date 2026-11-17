@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ArrowLeft, Check, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { findPage } from '@/lib/module-map'
@@ -21,9 +21,14 @@ export function DprSection({
   className,
   id,
   iconClass,
+  open,
+  onToggle,
 }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
+  /** Collapsible: with onToggle the title opens and closes the section, and `open` false hides its body. */
+  open?: boolean
+  onToggle?: () => void
   /** The icon tile's colours (WEB-41), e.g. 'bg-info-soft text-info'. */
   iconClass?: string
   /** An anchor, for links to one section (?tab=…). */
@@ -38,15 +43,24 @@ export function DprSection({
       {/* The action drops under the title when the row is too narrow. */}
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-md', iconClass ?? 'bg-muted text-foreground/70')}>
-            <Icon className="size-3.5" />
-          </span>
-          <h2 className="text-[15px] font-semibold">{title}</h2>
+          {onToggle ? (
+            <button type="button" onClick={onToggle} aria-expanded={open !== false} className="-ml-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-muted">
+              <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open === false && '-rotate-90')} aria-hidden />
+              <h2 className="text-[15px] font-semibold">{title}</h2>
+            </button>
+          ) : (
+            <>
+              <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-md', iconClass ?? 'bg-muted text-foreground/70')}>
+                <Icon className="size-3.5" />
+              </span>
+              <h2 className="text-[15px] font-semibold">{title}</h2>
+            </>
+          )}
           {meta && <span className="text-sm text-muted-foreground">{meta}</span>}
         </div>
         {action}
       </header>
-      {children}
+      {open !== false && children}
     </section>
   )
 }

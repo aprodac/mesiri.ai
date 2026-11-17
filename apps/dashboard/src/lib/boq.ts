@@ -169,6 +169,20 @@ export function formatQuantity(value: string): string {
 }
 
 /** ₹ amount, or a dash where the rate was never given (not priced is not zero). */
+/** A table cell's money: ₹21.4 L, ₹1.85 Cr (how owners read it); under a lakh the full figure. Put the full
+ *  amount (formatRupees) in the cell's title. */
+export function formatRupeesShort(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = Number(value)
+  if (Number.isNaN(n)) return '—'
+  const a = Math.abs(n)
+  const sign = n < 0 ? '−' : ''
+  const trim = (x: number, d: number) => Number(x.toFixed(d)).toLocaleString('en-IN', { maximumFractionDigits: d })
+  if (a >= 1e7) return `${sign}₹${trim(a / 1e7, 2)} Cr`
+  if (a >= 1e5) return `${sign}₹${trim(a / 1e5, 1)} L`
+  return formatRupees(value)
+}
+
 export function formatRupees(value: string | null | undefined): string {
   if (value === null || value === undefined || value === '') return '—'
   const n = Number(value)
