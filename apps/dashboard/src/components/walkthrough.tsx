@@ -2,11 +2,12 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, ListOrdered, Loader2, Send, Undo2, MessageSquarePlus } from 'lucide-react'
+import { Check, Copy, Download, ListOrdered, Loader2, MessageSquarePlus, Send, Undo2 } from 'lucide-react'
 import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { Spark } from '@/components/live/spark'
 import { TourOverlay, findTarget, useRect } from '@/components/tour'
 import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { ALL_PAGES, findPage } from '@/lib/module-map'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
@@ -36,6 +37,8 @@ const SETTLED_MS = 1500
 /** On a page that has fetched everything, how long a step waits for its target to draw (React draws after the data). */
 const IDLE_MS = 600
 const POLL_MS = 4000
+/** The longest a walkthrough waits for the person's preferences (its words) before starting in the plain words. */
+const WORDS_WAIT_MS = 4000
 
 interface Run {
   walk: Walkthrough
@@ -58,11 +61,48 @@ function onPage(url: string, pathname: string, search: string): boolean {
   return first === url
 }
 
-/** The ids in an existing list route's answer ({ items: [...] } or a bare list). */
-async function readIds(check: WalkCheck): Promise<Set<string>> {
-  const data = (await api.get(check.path, { params: check.params })).data as unknown
-  const rows = Array.isArray(data) ? data : ((data as { items?: unknown[] })?.items ?? [])
-  return new Set(rows.map((r) => String((r as { id?: unknown })?.id ?? '')).filter(Boolean))
+/** The check's route with the picked project in place of `{project}`; null when one is needed and none is picked. */
+function checkPath(check: WalkCheck, project: string | null): string | null {
+  if (!check.path.includes('{project}')) return check.path
+  return project ? check.path.replaceAll('{project}', project) : null
+}
+
+/** SS-72: a dotted path into an answer. In a list, a part names a row by its `key` or `id`; `length` counts rows. */
+function pick(value: unknown, path: string): unknown {
+  let at: unknown = value
+  for (const part of path.split('.')) {
+    if (at == null) return undefined
+    if (Array.isArray(at)) {
+      at = part === 'length' ? at.length : at.find((r) => r && typeof r === 'object' && ((r as Record<string, unknown>).key === part || String((r as Record<string, unknown>).id) === part))
+    } else if (typeof at === 'object') {
+      at = (at as Record<string, unknown>)[part]
+    } else {
+      return undefined
+    }
+  }
+  return at
+}
+
+/** SS-72: whether the answer says what `has` asks. */
+function meets(data: unknown, has: NonNullable<WalkCheck['has']>): boolean {
+  return Object.entries(has).every(([path, want]) => {
+    const got = pick(data, path)
+    if (want && typeof want === 'object') {
+      const n = Number(got)
+      return Number.isFinite(n) && (want.lte === undefined || n <= want.lte) && (want.gte === undefined || n >= want.gte)
+    }
+    return got === want
+  })
+}
+
+/** What a check reads: the ids in its rows (a list, `{ items }`, or `rows`), and whether `has` is met. */
+async function readState(check: WalkCheck, project: string | null): Promise<{ ids: Set<string>; met: boolean } | null> {
+  const path = checkPath(check, project)
+  if (!path) return null
+  const data = (await api.get(path, { params: check.params })).data as unknown
+  const list = Array.isArray(data) ? data : ((data as Record<string, unknown[]>)?.[check.rows ?? 'items'] ?? [])
+  const ids = new Set((Array.isArray(list) ? list : []).map((r) => String((r as { id?: unknown })?.id ?? '')).filter(Boolean))
+  return { ids, met: check.has ? meets(data, check.has) : false }
 }
 
 /** A dialog or sheet of the page is open (not the tour's own bubble). */
@@ -70,20 +110,27 @@ function pageDialogOpen(): boolean {
   return !!document.querySelector('[role="dialog"][data-state="open"]:not([data-tour])')
 }
 
-/** Watches a list for a new record: `got` turns true when one appears that was not there at the start. */
-function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean, onFresh: (id: string) => void) {
+/** Watches a list for a new record: `got` turns true when one appears that was not there at the start, or (SS-72,
+ *  `has`) when the answer says the thing is done. `project`: the picked project, for `{project}` in the path. */
+function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean, onFresh: (id: string) => void, project: string | null) {
   const qc = useQueryClient()
   const [got, setGot] = React.useState(false)
   const before = React.useRef<Set<string> | null>(null)
   const lookNow = React.useCallback(async (): Promise<boolean> => {
-    if (!check || !before.current) return false
+    if (!check) return false
     try {
-      const now = await readIds(check)
-      const added = [...now].find((id) => !before.current!.has(id))
-      const fresh = !!added
-      if (added) {
+      const now = await readState(check, project)
+      if (!now) return false
+      if (!before.current) {
+        // Opened before the project was picked: this read is the starting point.
+        before.current = now.ids
+        if (!now.met) return false
+      }
+      const added = check.has ? undefined : [...now.ids].find((id) => !before.current!.has(id))
+      const fresh = check.has ? now.met : !!added
+      if (fresh) {
         setGot(true)
-        onFresh(added)
+        if (added) onFresh(added)
         // The page under the tour read its lists before the record existed: read them again, so the next step
         // ("There it is") shows it.
         void qc.invalidateQueries()
@@ -92,16 +139,19 @@ function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean, 
     } catch {
       return false
     }
-  }, [check, qc, onFresh])
+  }, [check, qc, onFresh, project])
 
   React.useEffect(() => {
     setGot(false)
     before.current = null
     if (!check || !active) return
     let stopped = false
-    readIds(check)
-      .then((ids) => {
-        if (!stopped) before.current = ids
+    readState(check, project)
+      .then((now) => {
+        if (stopped || !now) return
+        before.current = now.ids
+        // Already done when the step opens (done earlier, or on another page): passed at once.
+        if (now.met) setGot(true)
       })
       .catch(() => {
         // The list could not be read: the practice still works, just without "Got it".
@@ -109,7 +159,7 @@ function useCheck(check: WalkCheck | undefined, active: boolean, poll: boolean, 
     return () => {
       stopped = true
     }
-  }, [check, active])
+  }, [check, active, project])
 
   React.useEffect(() => {
     if (!check || !active || !poll || got) return
@@ -260,9 +310,14 @@ export function WalkthroughRunner() {
   /** Just finished: "Done", and the next one to do. */
   const [finished, setFinished] = React.useState<{ walk: Walkthrough; next?: Walkthrough } | null>(null)
   const guide = useStartMode()
-  // UX-22: the steps in this person's words, fixed when the walkthrough starts.
+  // UX-22: the steps in this person's words, fixed when the walkthrough starts. A walkthrough asked for before the
+  // person's preferences have loaded (the guided project, right after the sample company opens) waits for them,
+  // or the steps would be fixed in the plain words (SS-69, found 17 Nov); at most WORDS_WAIT_MS.
   const wordsRef = React.useRef(guide.rules.words)
   wordsRef.current = guide.rules.words
+  const readyRef = React.useRef(guide.ready)
+  readyRef.current = guide.ready
+  const pendingStart = React.useRef<string | null>(null)
   const next = React.useRef<HTMLButtonElement>(null)
   /** The top bar's scope as it is now; a walkthrough starts from it. */
   const scopeNow = React.useRef<ReturnType<typeof useScope>['scope']>({ mode: 'portfolio' })
@@ -274,10 +329,24 @@ export function WalkthroughRunner() {
     setWalkthroughRunning(false)
   }, [])
 
+  // The person's preferences have come: a walkthrough waiting for its words starts now.
+  React.useEffect(() => {
+    if (guide.ready && pendingStart.current) startWalkthrough(pendingStart.current)
+  }, [guide.ready])
+
   // Start from the Learn page (or anywhere): lib/tour-events.ts startWalkthrough(id).
   React.useEffect(() => {
     const begin = (e: Event) => {
-      const found = findWalkthrough((e as CustomEvent<string>).detail)
+      const id = (e as CustomEvent<string>).detail
+      if (!readyRef.current && pendingStart.current !== id) {
+        pendingStart.current = id
+        window.setTimeout(() => {
+          if (pendingStart.current === id) startWalkthrough(id)
+        }, WORDS_WAIT_MS)
+        return
+      }
+      pendingStart.current = null
+      const found = findWalkthrough(id)
       // The guided project keeps what the person saves (no take-back): only ever inside their sample company.
       if (!found || (found.sandbox && !inSandbox())) return
       const walk = { ...found, steps: found.steps.map((s) => stepFor(s, wordsRef.current)).filter((s): s is WalkStep => !!s) }
@@ -412,7 +481,16 @@ export function WalkthroughRunner() {
   // Card-only practice (nothing to save, or nothing this person could take back): no waiting for a saved record.
   const cardOnly =
     tryIt?.kind === 'whatsapp' && (tryIt.save === false || (!!run && !canTakeBack(run.walk, run.index, role)))
-  const check = useCheck(cardOnly ? undefined : tryIt?.check, shown, tryIt?.kind === 'whatsapp', setNewRecord)
+  // SS-72: `{project}` in a check is the project picked now (the top bar, or the page the walkthrough opened).
+  const pickedProject = scope.mode !== 'portfolio' ? scope.projectId : null
+  const check = useCheck(cardOnly ? undefined : tryIt?.check, shown,
+    tryIt?.kind === 'whatsapp' || (tryIt?.kind === 'here' && !!tryIt.poll), setNewRecord, pickedProject)
+  // SS-72: a your-turn that opens no dialog (a form on the page, a button that saves at once) moves on by itself.
+  React.useEffect(() => {
+    if (!shown || tryIt?.kind !== 'here' || !tryIt.poll || !check.got) return
+    const timer = window.setTimeout(() => goRef.current(1), 1200)
+    return () => window.clearTimeout(timer)
+  }, [shown, tryIt, check.got])
 
   // A practice that saves, made card-only for this role (they could not take it back): its words said "tap Save", so
   // they are replaced here; a step written card-only (`save: false`) keeps its own words.
@@ -457,7 +535,9 @@ export function WalkthroughRunner() {
       if (open) wasOpen = true
       else if (wasOpen) {
         wasOpen = false
-        if (!tryIt.check) goRef.current(1)
+        // SS-72: a polled step moves on from its check alone (never twice).
+        if (tryIt.poll) void check.lookNow()
+        else if (!tryIt.check) goRef.current(1)
         else
           void check.lookNow().then((saved) => {
             if (saved) goRef.current(1)
@@ -468,10 +548,29 @@ export function WalkthroughRunner() {
     return () => window.clearInterval(timer)
   }, [shown, tryIt, check])
 
-  // "There it is": the row of what the practice just saved, else the step's own target.
-  const target = step?.showNew && newRecord ? [`record:${newRecord}`, step.target].filter(Boolean).join('|') : step?.target
-  const rect = useRect(shown && !dialogOpen ? target : undefined, run?.index ?? -1)
+  // SS-72: a quick check: the person taps the answer on the page. Clicks are caught before the page acts on them.
+  const ask = step?.ask
+  const [answered, setAnswered] = React.useState<'right' | 'wrong' | null>(null)
+  React.useEffect(() => setAnswered(null), [run?.index, run?.walk.id])
+  React.useEffect(() => {
+    if (!shown || !ask || answered === 'right') return
+    const tap = (e: MouseEvent) => {
+      const el = e.target as Element | null
+      if (!el || el.closest('[data-tour]')) return // the bubble's own buttons
+      e.preventDefault()
+      e.stopPropagation()
+      const hit = ask.answer.split('|').some((id) => [...document.querySelectorAll(`[data-guide="${id}"]`)].some((a) => a.contains(el)))
+      setAnswered(hit ? 'right' : 'wrong')
+    }
+    document.addEventListener('click', tap, true)
+    return () => document.removeEventListener('click', tap, true)
+  }, [shown, ask, answered])
 
+  // "There it is": the row of what the practice just saved, else the step's own target. A quick check lights the
+  // answer once it is given (or after a wrong tap).
+  const target = ask
+    ? (answered ? ask.answer : undefined)
+    : step?.showNew && newRecord ? [`record:${newRecord}`, step.target].filter(Boolean).join('|') : step?.target
   // A step that waits for its page's content (a project to pick first): watch for it while the person picks.
   const [holding, setHolding] = React.useState<'pick' | 'loading' | null>(null)
   const pageShows = holding === null
@@ -493,6 +592,8 @@ export function WalkthroughRunner() {
     const timer = window.setInterval(look, 500)
     return () => window.clearInterval(timer)
   }, [shown, step])
+  // SS-69: while it waits for a pick, the list to pick from is lit, so the bubble sits beside it, never on it.
+  const rect = useRect(shown && !dialogOpen ? (holding === 'pick' ? 'project.pick' : target) : undefined, run?.index ?? -1)
 
   React.useEffect(() => {
     if (!run || !shown || dialogOpen) return
@@ -545,7 +646,8 @@ export function WalkthroughRunner() {
     : `${run.walk.title} · ${run.index + 1} of ${run.walk.steps.length}`
   let nextLabel = last ? 'Done' : 'Next'
   if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
-  if (tryIt?.kind === 'here' && !note) nextLabel = 'Skip this'
+  if (tryIt?.kind === 'here' && !note) nextLabel = check.got ? nextLabel : 'Skip this'
+  if (ask && answered !== 'right') nextLabel = answered ? 'Next' : 'Skip this'
 
   return (
     <TourOverlay
@@ -559,7 +661,8 @@ export function WalkthroughRunner() {
       nextLabel={nextLabel}
       onSkip={stop}
       skipLabel="Stop"
-      passThrough={tryIt?.kind === 'here' || !pageShows}
+      passThrough={tryIt?.kind === 'here' || (!!ask && answered !== 'right') || !pageShows}
+      dock={!!ask && !answered}
       nextDisabled={!pageShows}
     >
       {voiced && <VoicePlayer voice={voice} words={words} />}
@@ -575,7 +678,7 @@ export function WalkthroughRunner() {
       )}
       {!pageShows && (
         <p className="m-0 text-xs font-medium" role="status">
-          {holding === 'pick' ? "Pick a project on this page first. I'll carry on when it opens." : 'Opening the page…'}
+          {holding === 'pick' ? (step.pick ? `Open ${step.pick} from the list. I'll carry on when it opens.` : "Pick a project on this page first. I'll carry on when it opens.") : 'Opening the page…'}
         </p>
       )}
       {tryIt?.kind === 'whatsapp' && (
@@ -602,6 +705,25 @@ export function WalkthroughRunner() {
         </div>
       )}
       {tryIt?.kind === 'here' && note && <p className="m-0 text-xs text-muted-foreground" role="status">{note}</p>}
+      {tryIt?.kind === 'here' && tryIt.poll && (
+        <p className="m-0 flex items-center gap-1.5 text-xs" role="status">
+          {check.got ? (
+            <span className="font-medium text-success"><Check className="mr-1 inline size-3.5" aria-hidden />Done. That's it.</span>
+          ) : (
+            <span className="text-muted-foreground"><Loader2 className="mr-1 inline size-3.5 animate-spin" aria-hidden />Your turn: I'll see it when it's saved.</span>
+          )}
+        </p>
+      )}
+      {step.file && (
+        <a href={`/learn/kit/${encodeURIComponent(step.file)}`} download className="flex items-center gap-2 self-start rounded-lg border bg-card px-2.5 py-1.5 text-xs font-medium hover:bg-muted/60">
+          <Download className="size-3.5" aria-hidden /> {step.file}
+        </a>
+      )}
+      {ask && (
+        <p className={cn('m-0 rounded-lg px-2.5 py-1.5 text-xs', answered === 'right' ? 'bg-success-soft text-success' : answered === 'wrong' ? 'bg-draft-soft text-draft' : 'bg-muted text-muted-foreground')} role="status">
+          {answered === 'right' ? ask.right : answered === 'wrong' ? ask.wrong : 'Tap your answer on the page.'}
+        </p>
+      )}
       {step.takeBack && (
         <div className="flex flex-col gap-1.5 rounded-xl border border-dashed p-2.5">
           <p className="m-0 flex items-center gap-1.5 text-xs font-semibold">

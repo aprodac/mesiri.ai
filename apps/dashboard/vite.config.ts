@@ -29,7 +29,7 @@ function checkTourMarkers(): Plugin {
       const files = ['lib/tours.ts', 'lib/walkthroughs.ts', 'lib/page-help.ts']
       const guides = files.map((f) => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n')
       const wanted = [
-        ...[...guides.matchAll(/(?:target|find): '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
+        ...[...guides.matchAll(/(?:target|find|answer): '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
         // A tour's startWhen markers (the page's content it waits for) must exist too.
         ...[...guides.matchAll(/startWhen: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/'([A-Za-z0-9._-]+)'/g)].map((x) => x[1])),
       ]

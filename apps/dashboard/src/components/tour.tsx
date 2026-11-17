@@ -12,7 +12,8 @@ import type { GuideWords } from '@/lib/start-mode'
 import { SPOT_EVENT, openHelp, type Spot } from '@/lib/tour-events'
 import { VOICED, spokenWords } from '@/lib/walkthroughs'
 import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
-import { TOUR_EVENT, walkthroughRunning } from '@/lib/tour-events'
+import { TOUR_EVENT, WALKTHROUGH_EVENT, walkthroughRunning } from '@/lib/tour-events'
+import { inSandbox } from '@/lib/sandbox'
 
 // The guided tour, game style (asked 15 Nov): the screen dims, one thing lights up, and the Spark (Mesiri's
 // character from Live) says what it is; Next, Back, Skip. Content and rules: lib/tours.ts. One component in the
@@ -128,7 +129,9 @@ export function GuidedTour() {
   startRef.current = start
   React.useEffect(() => {
     setRunning(null)
-    if (!guide.ready || guide.ask || guide.rules.tours === 'none') return
+    // SS-69: inside the sample company the guided project does the showing; a page's own tour opening by itself
+    // there would land on top of it (its people have seen no tour). Help's "Show me around" still plays it.
+    if (!guide.ready || guide.ask || guide.rules.tours === 'none' || inSandbox()) return
     const timer = window.setTimeout(() => startRef.current(false), 900)
     return () => window.clearTimeout(timer)
   }, [pathname, guide.ready, guide.ask, guide.rules.tours])
@@ -136,7 +139,7 @@ export function GuidedTour() {
   // A page whose tour waits for its content (a project to be picked, the data to load): start it when that shows.
   // The address can change without a new page (picking a project adds ?project=), so this watches the screen.
   React.useEffect(() => {
-    if (running || !guide.ready || guide.ask || guide.rules.tours !== 'all') return
+    if (running || !guide.ready || guide.ask || guide.rules.tours !== 'all' || inSandbox()) return
     const page = tourForPage(pathname, search)
     if (!page?.tour.startWhen || !unseen(page.tour)) return
     const timer = window.setInterval(() => {
@@ -144,6 +147,13 @@ export function GuidedTour() {
     }, 1000)
     return () => window.clearInterval(timer)
   }, [running, pathname, search, guide.ready, guide.ask, guide.rules.tours, unseen])
+
+  // A walkthrough starting (Learn, the guided project) closes any tour that is open: one bubble at a time.
+  React.useEffect(() => {
+    const close = () => setRunning(null)
+    window.addEventListener(WALKTHROUGH_EVENT, close)
+    return () => window.removeEventListener(WALKTHROUGH_EVENT, close)
+  }, [])
 
   // "Show me around this page" from Help.
   React.useEffect(() => {
@@ -269,6 +279,8 @@ export interface TourOverlayProps {
   nextDisabled?: boolean
   onSkip: () => void
   skipLabel?: string
+  /** SS-72: the bubble in the corner and nothing dimmed (a quick check: the person looks over the whole page). */
+  dock?: boolean
   /** Let clicks reach the page (a "try it here" step: the person clicks the lit button). */
   passThrough?: boolean
   /** More in the bubble, under the text (a WhatsApp practice, a take-back). */
@@ -278,17 +290,35 @@ export interface TourOverlayProps {
 /** The dimmed screen, the lit window and the Spark's bubble: one look for the page tours and the walkthroughs
  *  (components/walkthrough.tsx). */
 export function TourOverlay({
-  step, rect, sparkKey, counter, nextRef, onBack, onNext, nextLabel, nextDisabled, onSkip, skipLabel = 'Skip tour', passThrough, children,
+  step, rect, sparkKey, counter, nextRef, onBack, onNext, nextLabel, nextDisabled, onSkip, skipLabel = 'Skip tour', passThrough, dock, children,
 }: TourOverlayProps) {
   const phone = window.innerWidth < 640
   const spot = rect
     ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
     : null
-  const bubbleH = children ? BUBBLE_H + 110 : BUBBLE_H
+  // The bubble's real height once drawn (a voice player, the chapter list, a file and a status line make it much
+  // taller than its text alone), so it is always placed fully on screen with its buttons in reach (SS-69, found 17 Nov).
+  const box = React.useRef<HTMLDivElement>(null)
+  const [measured, setMeasured] = React.useState<number | null>(null)
+  React.useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    const read = () => setMeasured(el.offsetHeight)
+    read()
+    const watch = new ResizeObserver(read)
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
+  const bubbleH = measured ?? (children ? BUBBLE_H + 110 : BUBBLE_H)
 
   // Where the bubble goes: under the lit thing if there is room, else above it; on a phone, docked at the bottom.
   let bubble: React.CSSProperties
-  if (phone || !spot) {
+  if (dock && !spot) {
+    // SS-72: a question about the whole page: nothing dimmed, the bubble out of the way in the corner.
+    bubble = phone
+      ? { left: 12, right: 12, bottom: `calc(12px + env(safe-area-inset-bottom, 0px))` }
+      : { right: 16, bottom: 16, width: BUBBLE_W }
+  } else if (phone || !spot) {
     bubble = phone
       ? { left: 12, right: 12, bottom: `calc(12px + env(safe-area-inset-bottom, 0px))` }
       : { left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: BUBBLE_W + 40 }
@@ -318,7 +348,7 @@ export function TourOverlay({
           className="pointer-events-none fixed rounded-xl outline-2 outline-[#facc15] transition-all duration-300 ease-out motion-reduce:transition-none"
           style={{ ...spot, boxShadow: '0 0 0 9999px rgba(15, 17, 20, 0.58)' }}
         />
-      ) : (
+      ) : dock ? null : (
         <div aria-hidden className={cn('fixed inset-0 bg-[rgba(15,17,20,0.58)]', passThrough && 'pointer-events-none')} />
       )}
 
@@ -329,7 +359,8 @@ export function TourOverlay({
         aria-describedby="tour-text"
         data-tour=""
         className="pointer-events-auto fixed flex gap-3 rounded-2xl border bg-background p-4 text-foreground shadow-xl"
-        style={bubble}
+        ref={box}
+        style={{ ...bubble, maxHeight: 'calc(100vh - 24px)', overflowY: 'auto' }}
       >
         <Spark key={sparkKey} mood={step.mood ?? 'idle'} size={phone ? 52 : 64} className="shrink-0 self-start" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">

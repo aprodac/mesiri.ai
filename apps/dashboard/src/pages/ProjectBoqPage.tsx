@@ -319,7 +319,7 @@ function SectionTable({
             const value = Number(line.contract_value ?? 0)
             return (
               // UX-22: every row carries the guide markers; a guide lights the first one on screen.
-              <tr key={line.id} data-guide="boq.line">
+              <tr key={line.id} data-guide={Number(line.margin ?? 0) < 0 ? 'boq.loss' : 'boq.line'}>
                 {hasCodes && <td className="px-3 py-3 align-top text-muted-foreground tabular-nums">{line.boq_code ?? ''}</td>}
                 <td className="px-3 py-3" data-guide="boq.work">
                   <span className="font-medium">{line.work}</span>
@@ -402,7 +402,7 @@ function LineMenu({ line, onEdit, onNorms, onDelete }: { line: BoqLine } & LineA
 /** One BOQ line on a phone: name and margin on top, progress, then rate and value in one muted line. */
 function LineCard({ line, readOnly, ...actions }: { line: BoqLine; readOnly: boolean } & LineActions) {
   return (
-    <li className="flex flex-col gap-2 px-3 py-3 text-sm" data-guide="boq.line">
+    <li className="flex flex-col gap-2 px-3 py-3 text-sm" data-guide={Number(line.margin ?? 0) < 0 ? 'boq.loss' : 'boq.line'}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0" data-guide="boq.work">
           {line.boq_code && <span className="mr-1.5 text-muted-foreground tabular-nums">{line.boq_code}</span>}
@@ -615,7 +615,8 @@ function WorkRow({
   const target = sameUnit.find((l) => l.id === lineId)
   const move = target ? percentAfter(target, work.quantity) : null
   return (
-    <li className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-4">
+    // SS-69: work with no suggested line (it could be several) is what the guided project asks the person to place.
+    <li data-guide={suggested ? undefined : 'boq.pick'} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-4">
       <div className="min-w-0 sm:w-[38%] sm:shrink-0">
         <p className="truncate font-medium">{work.work || 'Work update'}</p>
         <p className="text-xs text-muted-foreground">
@@ -887,7 +888,7 @@ export default function ProjectBoqPage() {
               meta={<span className="rounded-full bg-draft-soft px-2 py-0.5 text-xs font-medium text-draft">{workQuery.data?.length} waiting</span>}
               action={
                 !readOnly && suggestedWork.length > 0 && (
-                  <ActionButton kind="add" primary disabled={putAll.isPending || putWork.isPending} onClick={() => putAll.mutate(suggestedWork)}>
+                  <ActionButton kind="add" primary data-guide="boq.addall" disabled={putAll.isPending || putWork.isPending} onClick={() => putAll.mutate(suggestedWork)}>
                     {putAll.isPending ? 'Adding…' : suggestedWork.length > 1 ? `Add all ${suggestedWork.length} suggested` : 'Add the suggested one'}
                   </ActionButton>
                 )

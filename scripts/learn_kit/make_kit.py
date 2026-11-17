@@ -129,12 +129,14 @@ MINIMUM = (("Green Villa", "Main block", "Cement", 100, 200), ("Green Villa", "A
 CONTRACT_TERMS = (
     ("Client", "Dr. Anand Krishnan"),
     ("Site", "Green Villa, Puthur Road, Thrissur"),
-    ("Contract no.", "GV/2026/007"),
+    ("Agreement no.", "GV/2026/007"),
+    ("Signed on", "20 October 2026"),
     ("Contract value", "{value}, GST extra at 18% (the estimate's total)"),
-    ("Start", "1 December 2026"),
-    ("Handover", "31 August 2027 (9 months)"),
-    ("Mobilisation advance", "10% on signing, recovered from each RA bill in equal parts"),
-    ("Retention", "5% of each RA bill, released 12 months after handover"),
+    ("Work starts", "2 November 2026"),
+    ("Handover", "31 July 2027 (9 months)"),
+    ("Mobilisation advance", "{advance} (10% of the contract value), paid on signing"),
+    ("Advance recovery", "10% of each RA bill, until the advance is back"),
+    ("Retention", "5% of each RA bill, released after the defects period"),
     ("Defects period", "12 months from handover"),
     ("Billing", "Monthly RA bills on measured work at the BOQ rates; paid within 15 days"),
     ("Delay", "Rs 25,000 per week of delay beyond handover, at most 5% of the contract value"),
@@ -283,8 +285,9 @@ def contract_bytes() -> bytes:
     doc = SimpleDocTemplate(buffer, pagesize=A4, title="Green Villa: contract summary", author="Mesiri sample",
                             leftMargin=56, rightMargin=56, topMargin=56, bottomMargin=56, invariant=1)
     styles = getSampleStyleSheet()
-    value = _rupees(sum(qty * rate for _, lines in SECTIONS for _, _, _, qty, rate, _, _ in lines))
-    table = Table([[k, v.format(value=value)] for k, v in CONTRACT_TERMS], colWidths=[140, 330])
+    total = sum(qty * rate for _, lines in SECTIONS for _, _, _, qty, rate, _, _ in lines)
+    value, advance = _rupees(total), _rupees(round(total / 10))
+    table = Table([[k, v.format(value=value, advance=advance)] for k, v in CONTRACT_TERMS], colWidths=[140, 330])
     table.setStyle(TableStyle([
         ("FONT", (0, 0), (0, -1), "Helvetica-Bold", 10), ("FONT", (1, 0), (1, -1), "Helvetica", 10),
         ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#e7e1d6")),
@@ -294,7 +297,7 @@ def contract_bytes() -> bytes:
         Paragraph("Green Villa: contract summary", styles["Title"]),
         Paragraph("Sample paperwork for learning Mesiri. The people and the project are made up.", styles["Italic"]),
         Spacer(1, 16), table, Spacer(1, 18),
-        Paragraph("Signed for the contractor and the client on 20 November 2026.", styles["Normal"]),
+        Paragraph("Signed for the contractor and the client on 20 October 2026.", styles["Normal"]),
     ])
     return buffer.getvalue()
 
