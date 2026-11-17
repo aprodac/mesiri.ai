@@ -1,3 +1,4 @@
+import { inSandbox } from '@/lib/sandbox'
 import * as React from 'react'
 import { useLocation } from 'react-router-dom'
 import { MessageSquareText } from 'lucide-react'
@@ -45,7 +46,7 @@ export function WhatsAppPreviewModal() {
 /** The top-bar button. */
 export function WhatsAppPageButton() {
   const { page, examples } = useWhatsAppExamples()
-  if (!page || examples.length === 0) return null
+  if (!page || examples.length === 0 || inSandbox()) return null
   return (
     <button
       type="button"

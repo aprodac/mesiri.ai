@@ -1,3 +1,4 @@
+import { inSandbox } from '@/lib/sandbox'
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Sparkles, ShieldAlert } from 'lucide-react'
@@ -147,7 +148,7 @@ export function AddEditUserDialog({
       return
     }
     if (!isEdit && !login && !whatsapp.trim()) {
-      setError('Add their WhatsApp number: it is how they send updates.')
+      setError(inSandbox() ? 'In the sample company, turn on the dashboard login and add an email.' : 'Add their WhatsApp number: it is how they send updates.')
       return
     }
     if (!isEdit && login) {
@@ -272,7 +273,7 @@ export function AddEditUserDialog({
             />
           </div>
 
-          <div className="grid gap-1.5">
+          {!inSandbox() && <div className="grid gap-1.5">
             <Label htmlFor="whatsapp">WhatsApp number</Label>
             <Input
               id="whatsapp"
@@ -284,7 +285,7 @@ export function AddEditUserDialog({
               required={!isEdit && !login}
             />
             <p className="text-xs text-muted-foreground">They send site updates to Mesiri from this number.</p>
-          </div>
+          </div>}
 
           <div className="grid gap-1.5">
             <Label htmlFor="role">Role</Label>

@@ -1,3 +1,4 @@
+import { inSandbox } from '@/lib/sandbox'
 import * as React from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -109,7 +110,7 @@ export default function UserDetails() {
         }
       />
 
-      {!user.whatsapp_number ? (
+      {inSandbox() ? null : !user.whatsapp_number ? (
         <Callout
           tone="draft"
           icon={MessageSquareOff}
@@ -205,7 +206,7 @@ export default function UserDetails() {
                 <span className={cn('tabular-nums', !user.whatsapp_number && 'text-draft')}>
                   {user.whatsapp_number ? `+${user.whatsapp_number.replace(/^\+/, '')}` : 'Not added'}
                 </span>
-                {!readOnly && (
+                {!readOnly && !inSandbox() && (
                   <button type="button" className="text-sm text-muted-foreground hover:text-foreground hover:underline" onClick={() => setDialog('whatsapp')}>
                     Change
                   </button>

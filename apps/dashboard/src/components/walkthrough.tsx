@@ -192,6 +192,12 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+/** The practice a "There it is" or take-back step follows: the nearest earlier step's `try`. */
+function lastTry(walk: Walkthrough, index: number): WalkStep['try'] | undefined {
+  for (let i = index - 1; i >= 0; i--) if (walk.steps[i].try) return walk.steps[i].try
+  return undefined
+}
+
 /** A message to send Mesiri: the words, Copy, and Try it on WhatsApp (when Mesiri's number is known). */
 function SayThis({ say, number }: { say: string; number: string | null }) {
   // "Send it here": the same message through the Tell Mesiri panel (the same assistant), for whoever has no phone at
@@ -424,7 +430,13 @@ export function WalkthroughRunner() {
     // A practice this person could not take back: the take-back step and a practice here are skipped (a WhatsApp
     // practice becomes card-only, below), so no real record is left that they can't remove.
     const cantTakeBack = !canTakeBack(run.walk, run.index, role)
+    // Inside the sample company nobody has a WhatsApp number (SS-66d), so a WhatsApp practice, its "There it is" and
+    // its take-back can't happen there: skipped, never shown as something to do (17 Nov: "telling to use WhatsApp is
+    // not needed" in the sample company).
+    const whatsappPractice = inSandbox() && (step.try?.kind === 'whatsapp' ||
+      ((step.takeBack || step.showNew) && lastTry(run.walk, run.index)?.kind === 'whatsapp'))
     const skipThis =
+      whatsappPractice ||
       (step.page && !pageOpenFor(step.page, role)) ||
       (practiceOff && (step.try || step.takeBack)) ||
       (cantTakeBack && (!!step.takeBack || step.try?.kind === 'here')) ||

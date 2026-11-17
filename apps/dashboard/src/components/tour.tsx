@@ -68,6 +68,15 @@ function resolve(tour: Tour, words: GuideWords | null, intro?: { title: string; 
   return stepsFor(tour, words, intro).filter((s) => !s.target || findTarget(s.target))
 }
 
+/** The nearest scrolling box around an element (the page's main area, or the window's). */
+function scrollParent(el: HTMLElement): HTMLElement | null {
+  for (let n = el.parentElement; n; n = n.parentElement) {
+    const y = getComputedStyle(n).overflowY
+    if ((y === 'auto' || y === 'scroll') && n.scrollHeight > n.clientHeight) return n
+  }
+  return document.scrollingElement as HTMLElement | null
+}
+
 export function useRect(target: string | undefined, index: number): DOMRect | null {
   const [rect, setRect] = React.useState<DOMRect | null>(null)
   React.useEffect(() => {
@@ -311,6 +320,27 @@ export function TourOverlay({
   }, [])
   const bubbleH = measured ?? (children ? BUBBLE_H + 110 : BUBBLE_H)
 
+  // Found 17 Nov (a full-width BOQ row lit in the middle of the screen): with no room above, below or beside it, the
+  // bubble went to the middle of the screen, on top of the very control the step asks for. The bubble never covers
+  // the lit thing: first the page moves so the lit thing sits near the top and the bubble fits under it (once a step);
+  // if it still can't, the bubble takes the roomier side and scrolls inside (the last branch below).
+  const moved = React.useRef<string | null>(null)
+  const stepKey = `${sparkKey}:${step.target ?? ''}`
+  React.useEffect(() => {
+    if (!spot || phone || dock || moved.current === stepKey || measured === null) return
+    const W = window.innerWidth
+    const H = window.innerHeight
+    const below = H - (spot.top + spot.height + GAP)
+    const fits = below >= bubbleH + 12 || spot.top - GAP >= bubbleH + 12 ||
+      W - (spot.left + spot.width + GAP) >= BUBBLE_W + 12 || spot.left - GAP >= BUBBLE_W + 12
+    if (fits || spot.height + GAP + bubbleH + 96 > H) return
+    moved.current = stepKey
+    const el = step.target ? findTarget(step.target) : null
+    const scroller = el ? scrollParent(el) : null
+    const by = spot.top - 72
+    if (scroller) scroller.scrollBy({ top: by, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+  }, [spot, phone, dock, stepKey, measured, bubbleH, step.target])
+
   // Where the bubble goes: under the lit thing if there is room, else above it; on a phone, docked at the bottom.
   let bubble: React.CSSProperties
   if (dock && !spot) {
@@ -333,7 +363,14 @@ export function TourOverlay({
     else if (spot.top - GAP >= bubbleH + 12) bubble = { left, top: spot.top - GAP - bubbleH, width: BUBBLE_W }
     else if (W - (spot.left + spot.width + GAP) >= BUBBLE_W + 12) bubble = { left: spot.left + spot.width + GAP, top: top(spot.top), width: BUBBLE_W }
     else if (spot.left - GAP >= BUBBLE_W + 12) bubble = { left: spot.left - GAP - BUBBLE_W, top: top(spot.top), width: BUBBLE_W }
-    else bubble = { left: '50%', top: top(H / 2 - bubbleH / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+    else {
+      // No side has room for all of it: the roomier side, as tall as fits there, scrolling inside. Never over the lit thing.
+      const room = Math.max(below - 12, spot.top - GAP - 12)
+      bubble = spot.top - GAP > below
+        ? { left, top: Math.max(12, spot.top - GAP - Math.min(bubbleH, room)), width: BUBBLE_W, maxHeight: room }
+        : { left, top: below, width: BUBBLE_W, maxHeight: room }
+      if (room < 160) bubble = { left: '50%', top: top(H / 2 - bubbleH / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+    }
   }
 
   return createPortal(
@@ -360,7 +397,7 @@ export function TourOverlay({
         data-tour=""
         className="pointer-events-auto fixed flex gap-3 rounded-2xl border bg-background p-4 text-foreground shadow-xl"
         ref={box}
-        style={{ ...bubble, maxHeight: 'calc(100vh - 24px)', overflowY: 'auto' }}
+        style={{ maxHeight: 'calc(100vh - 24px)', ...bubble, overflowY: 'auto' }}
       >
         <Spark key={sparkKey} mood={step.mood ?? 'idle'} size={phone ? 52 : 64} className="shrink-0 self-start" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">

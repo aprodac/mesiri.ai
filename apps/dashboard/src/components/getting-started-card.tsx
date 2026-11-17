@@ -1,3 +1,4 @@
+import { inSandbox } from '@/lib/sandbox'
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -223,6 +224,12 @@ function items(
  * ticks anything by hand. Company admins only; gone once everything is done.
  */
 export function GettingStartedCard() {
+  // The sample company is set up already, and its steps (invite people by WhatsApp) can't be done there.
+  if (inSandbox()) return null
+  return <GettingStartedCardInner />
+}
+
+function GettingStartedCardInner() {
   const queryClient = useQueryClient()
   const progress = useSetupProgress()
   const { isCompanyAdmin } = progress

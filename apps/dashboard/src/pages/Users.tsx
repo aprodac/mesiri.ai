@@ -1,3 +1,4 @@
+import { inSandbox } from '@/lib/sandbox'
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -200,9 +201,11 @@ export default function Users() {
                       <DropdownMenuItem onClick={() => setDialog({ kind: 'access', user })}>
                         <FolderLock className="mr-2 size-3.5" /> Projects and sites
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setDialog({ kind: 'whatsapp', user })}>
-                        <ActionIcon kind="whatsapp" className="mr-2 size-3.5" /> WhatsApp number
-                      </DropdownMenuItem>
+                      {!inSandbox() && (
+                        <DropdownMenuItem onClick={() => setDialog({ kind: 'whatsapp', user })}>
+                          <ActionIcon kind="whatsapp" className="mr-2 size-3.5" /> WhatsApp number
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => setDialog({ kind: 'status', user })}>
                         {user.status === 'active' ? <UserX className="mr-2 size-3.5" /> : <UserCheck className="mr-2 size-3.5" />}

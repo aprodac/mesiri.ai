@@ -1,3 +1,4 @@
+import { inSandbox } from '@/lib/sandbox'
 import * as React from 'react'
 import { MessageSquarePlus, X } from 'lucide-react'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
@@ -64,6 +65,8 @@ export function TellMesiriDock() {
 
 /** The top-bar button. */
 export function TellMesiriButton() {
+  // Tell Mesiri knows a person by their WhatsApp number; nobody in the sample company has one (SS-66d).
+  if (inSandbox()) return null
   return (
     <button
       type="button"
