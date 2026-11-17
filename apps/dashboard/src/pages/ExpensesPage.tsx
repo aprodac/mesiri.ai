@@ -8,6 +8,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Callout } from '@/components/dpr-page'
@@ -35,9 +36,11 @@ import { ActionButton, ActionMenuItem, KpiStrip, ModuleTitle, SayOnWhatsApp } fr
 // petty cash, direct, owed back to the person who paid, unpaid (decision D3: by the account it was paid from) --
 // and each one filters the list. "Where it went" shows the categories and sites the money went to (a bar filters).
 // Filters are pills kept in the address; only the chosen period is loaded. A row opens the expense's panel; its menu
-// shows the bill or takes the expense back. /finance/expenses/:id opens that expense here.
+// shows the bill or takes the expense back. /finance/expenses/:id opens that expense here. UX-29 (17 Nov): the list is
+// a white table (date, expense, site, paid, amount) and the figures sit on white like it.
 
 const PAGE = 50
+const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', weekday: 'short' })
 const dayLabel = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -214,15 +217,7 @@ export default function ExpensesPage() {
       ]),
     )
 
-  const days = React.useMemo(() => {
-    const out: { date: string; rows: Expense[] }[] = []
-    for (const e of expenses.slice(0, shownCount)) {
-      const last = out[out.length - 1]
-      if (last?.date === e.date) last.rows.push(e)
-      else out.push({ date: e.date, rows: [e] })
-    }
-    return out
-  }, [expenses, shownCount])
+  const shown = React.useMemo(() => expenses.slice(0, shownCount), [expenses, shownCount])
 
   const clearFilters = () =>
     setParams((prev) => {
@@ -262,7 +257,7 @@ export default function ExpensesPage() {
         phoneCols={2}
         stats={[
           {
-            label: 'Spent', kind: 'money', loading: list.isLoading, value: compact(total),
+            label: 'Spent', kind: 'money', loading: list.isLoading, value: compact(total), className: 'bg-card',
             hint: `${base.length} ${base.length === 1 ? 'expense' : 'expenses'}${gstTotal > 0 ? ` · incl. ${rupees(gstTotal)} GST` : ''}`,
           },
           ...tiles.map((t) => ({
@@ -273,6 +268,8 @@ export default function ExpensesPage() {
             loading: list.isLoading,
             value: compact(t.amount),
             tone: (t.value === 'unpaid' || t.value === 'own_pocket') && t.amount > 0 ? ('attention' as const) : ('default' as const),
+            // UX-29: white cells like the table; a figure that needs attention keeps its amber bar on top.
+            className: 'bg-card',
             share: total > 0 ? t.amount / total : 0,
             hint: t.hint ?? `${t.n} · ${total > 0 ? Math.round((t.amount / total) * 100) : 0}%`,
             pressed: via === t.value,
@@ -329,7 +326,7 @@ export default function ExpensesPage() {
           )}
         </div>
       ) : (
-        <div className="flex flex-col items-start gap-5 lg:flex-row-reverse">
+        <div className="flex flex-col-reverse items-start gap-5 lg:flex-row-reverse">
           {/* Where it went */}
           <aside aria-label="Where the money went" className="flex w-full shrink-0 flex-col gap-3 lg:sticky lg:top-4 lg:w-[340px]" data-guide="exp.breakdown">
             <Breakdown title="By category" total={shownTotal} data={byCategory} active={clean(category)} onPick={(k) => setCategory(clean(category) === k ? '' : k)} colour={() => 'bg-indigo-500'} />
@@ -349,80 +346,123 @@ export default function ExpensesPage() {
                 </button>
               </p>
             )}
-            {days.map((day) => (
-              <section key={day.date} className="flex flex-col gap-1">
-                <h3 className="flex items-baseline justify-between text-xs font-semibold text-muted-foreground">
-                  <span>{dayLabel(day.date)}</span>
-                  <span className="tabular-nums">{rupees(sum(day.rows))}</span>
-                </h3>
-                <ul className="divide-y overflow-hidden rounded-xl border">
-                  {day.rows.map((e) => (
-                    <li key={e.id} className="relative flex items-start gap-3 px-3 py-2.5 hover:bg-muted/30">
-                      <span className={cn('mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-lg', PAID_VIA[e.paid_via].chip)} aria-hidden="true">
-                        {React.createElement(VIA_ICON[e.paid_via], { className: 'size-4' })}
-                      </span>
-                      <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left after:absolute after:inset-0" onClick={() => open(e)}>
-                        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="font-medium">{e.vendor || e.category}</span>
-                          {e.vendor && <span className="text-xs text-muted-foreground">{e.category}</span>}
-                        </span>
-                        <span className="line-clamp-1 text-xs text-muted-foreground">
-                          {[e.number, e.site ?? e.project, e.description, e.source === 'whatsapp' ? 'WhatsApp' : null].filter(Boolean).join(' · ')}
-                        </span>
-                        <span className={cn(CHIP, 'mt-0.5 w-fit', PAID_VIA[e.paid_via].chip)}>{paidWords(e)}</span>
-                      </button>
-                      <span className="flex shrink-0 items-center gap-1">
-                        {photos.data?.[e.id] && <ImageIcon className="size-3.5 text-muted-foreground" aria-label="Has a bill photo" />}
-                        <span className="font-semibold tabular-nums">{rupees(e.amount)}</span>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="ghost" size="icon" className="relative z-10 size-8" aria-label={`More for ${e.number ?? e.category}`}>
-                              <MoreHorizontal className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <ActionMenuItem kind="view" onClick={() => open(e)}>Open</ActionMenuItem>
-                            {canPay && (e.paid_via === 'unpaid' || e.paid_via === 'own_pocket' || e.payment === 'partially_paid') && (
-                              <ActionMenuItem
-                                kind="pay"
-                                onClick={() => {
-                                  setPayNow(true)
-                                  open(e)
-                                }}
-                              >
-                                {e.paid_via === 'own_pocket' ? `Repay ${(e.recorded_by ?? '').split(' ')[0] || 'who paid'}` : 'Mark paid'}
-                              </ActionMenuItem>
-                            )}
-                            {photos.data?.[e.id] ? (
-                              <ActionMenuItem
-                                kind="bill"
-                                onClick={() => {
-                                  const url = photos.data![e.id]
-                                  if (/\.pdf(\?|$)/i.test(url)) window.open(url, '_blank', 'noreferrer')
-                                  else setPhotoUrl(url)
-                                }}
-                              >
-                                Bill
-                              </ActionMenuItem>
-                            ) : (
-                              !readOnly && <ActionMenuItem kind="photo" onClick={() => open(e)}>Add bill</ActionMenuItem>
-                            )}
-                            {e.vendor_id && <ActionMenuItem kind="filter" onClick={() => setVendor(e.vendor_id!)}>Only {e.vendor}</ActionMenuItem>}
-                            {e.vendor_id && <ActionMenuItem kind="next" onClick={() => navigate(vendorUrl(e.vendor_id!))}>{e.vendor}'s account</ActionMenuItem>}
-                            {canPay && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <ActionMenuItem kind="undo" onClick={() => setTaking(e)} />
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
+            {/* UX-29: the expenses as one white table, newest first; a row opens its panel. On a phone the site, the
+                payment and the date fold into a line under the name (docs/DESIGN.md section 8). */}
+            <div className="overflow-hidden rounded-xl border bg-card">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="hidden w-28 pl-4 text-xs text-muted-foreground sm:table-cell">Date</TableHead>
+                    <TableHead className="pl-4 text-xs text-muted-foreground sm:pl-2">Expense</TableHead>
+                    <TableHead className="hidden text-xs text-muted-foreground lg:table-cell">Site</TableHead>
+                    <TableHead className="hidden text-xs text-muted-foreground md:table-cell">Paid</TableHead>
+                    <TableHead className="text-right text-xs text-muted-foreground">Amount</TableHead>
+                    <TableHead className="w-10 pr-2"><span className="sr-only">Actions</span></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {shown.map((e, i) => {
+                    const newDay = i === 0 || shown[i - 1].date !== e.date
+                    const where = e.site ?? e.project
+                    return (
+                      <TableRow key={e.id} className="cursor-pointer hover:bg-muted/30" onClick={() => open(e)}>
+                        <TableCell className="hidden pl-4 align-top text-xs whitespace-nowrap text-muted-foreground tabular-nums sm:table-cell">
+                          {newDay ? <span className="font-medium text-foreground">{shortDay(e.date)}</span> : <span className="sr-only">{shortDay(e.date)}</span>}
+                        </TableCell>
+                        <TableCell className="w-full max-w-0 py-2.5 pl-4 align-top whitespace-normal sm:pl-2">
+                          <div className="flex min-w-0 items-start gap-2.5">
+                            <span className={cn('mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-lg', PAID_VIA[e.paid_via].chip)} aria-hidden="true">
+                              {React.createElement(VIA_ICON[e.paid_via], { className: 'size-3.5' })}
+                            </span>
+                            <span className="flex min-w-0 flex-col gap-0.5">
+                              <button type="button" className="truncate text-left font-medium hover:underline" onClick={(ev) => { ev.stopPropagation(); open(e) }}>
+                                {e.vendor || e.category}
+                              </button>
+                              <span className="truncate text-xs text-muted-foreground">
+                                {[e.vendor ? e.category : null, e.number, e.description, e.source === 'whatsapp' ? 'WhatsApp' : null].filter(Boolean).join(' · ')}
+                              </span>
+                              <span className="truncate text-xs text-muted-foreground sm:hidden">{[shortDay(e.date), where].filter(Boolean).join(' · ')}</span>
+                              <span className="truncate text-xs text-muted-foreground max-sm:hidden lg:hidden">{where}</span>
+                              <span className={cn(CHIP, 'mt-0.5 w-fit md:hidden', PAID_VIA[e.paid_via].chip)}>{paidWords(e)}</span>
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden max-w-48 align-top text-sm whitespace-normal text-muted-foreground lg:table-cell">
+                          <span className="line-clamp-2">{where ?? '—'}</span>
+                        </TableCell>
+                        <TableCell className="hidden align-top md:table-cell">
+                          <span className={cn(CHIP, PAID_VIA[e.paid_via].chip)}>{paidWords(e)}</span>
+                        </TableCell>
+                        <TableCell className="py-2.5 text-right align-top whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5">
+                            {photos.data?.[e.id] && <ImageIcon className="size-3.5 text-muted-foreground" aria-label="Has a bill photo" />}
+                            <span className="font-semibold tabular-nums">{rupees(e.amount)}</span>
+                          </span>
+                          {!!e.tax_amount && <span className="block text-[11px] text-muted-foreground tabular-nums">incl. {rupees(e.tax_amount)} GST</span>}
+                        </TableCell>
+                        <TableCell className="py-1.5 pr-2 align-top" onClick={(ev) => ev.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`More for ${e.number ?? e.category}`}>
+                                <MoreHorizontal className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <ActionMenuItem kind="view" onClick={() => open(e)}>Open</ActionMenuItem>
+                              {canPay && (e.paid_via === 'unpaid' || e.paid_via === 'own_pocket' || e.payment === 'partially_paid') && (
+                                <ActionMenuItem
+                                  kind="pay"
+                                  onClick={() => {
+                                    setPayNow(true)
+                                    open(e)
+                                  }}
+                                >
+                                  {e.paid_via === 'own_pocket' ? `Repay ${(e.recorded_by ?? '').split(' ')[0] || 'who paid'}` : 'Mark paid'}
+                                </ActionMenuItem>
+                              )}
+                              {photos.data?.[e.id] ? (
+                                <ActionMenuItem
+                                  kind="bill"
+                                  onClick={() => {
+                                    const url = photos.data![e.id]
+                                    if (/\.pdf(\?|$)/i.test(url)) window.open(url, '_blank', 'noreferrer')
+                                    else setPhotoUrl(url)
+                                  }}
+                                >
+                                  Bill
+                                </ActionMenuItem>
+                              ) : (
+                                !readOnly && <ActionMenuItem kind="photo" onClick={() => open(e)}>Add bill</ActionMenuItem>
+                              )}
+                              {e.vendor_id && <ActionMenuItem kind="filter" onClick={() => setVendor(e.vendor_id!)}>Only {e.vendor}</ActionMenuItem>}
+                              {e.vendor_id && <ActionMenuItem kind="next" onClick={() => navigate(vendorUrl(e.vendor_id!))}>{e.vendor}'s account</ActionMenuItem>}
+                              {canPay && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <ActionMenuItem kind="undo" onClick={() => setTaking(e)} />
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+                <TableFooter className="bg-muted/40">
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="hidden pl-4 sm:table-cell" />
+                    <TableCell className="pl-4 text-xs font-medium text-muted-foreground sm:pl-2">
+                      {expenses.length > shown.length ? `${shown.length} of ${expenses.length} shown · total of all` : `${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'}`}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell" />
+                    <TableCell className="hidden md:table-cell" />
+                    <TableCell className="text-right font-semibold tabular-nums">{rupees(shownTotal)}</TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
             {expenses.length > shownCount && (
               <Button variant="outline" className="self-center" onClick={() => setShownCount((n) => n + PAGE)}>
                 Load more ({expenses.length - shownCount} left)
