@@ -898,13 +898,14 @@ export const PAGE_TOURS: Record<string, Tour> = {
   // Cost control (SS-45): was the money spent matched by the work done?
   '/cost': {
     key: '/tour/cost',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['cost.stats', 'cost.empty'],
     steps: [
       { target: 'cost.empty', title: 'Start with a BOQ', text: 'Cost control sets the money spent against the BOQ. Add one first.', mood: 'think' },
       { target: 'cost.stats', title: 'At a glance', text: 'The budget, what the work done earned at BOQ rates, what was spent, what is ordered but not yet in, and how many projects are heading over.', mood: 'look' },
-      { target: 'cost.projects', title: 'Worst first', text: 'Each project green or red by where it will finish. Tap one for its BOQ lines.' },
+      { target: 'cost.health', title: 'Green, amber, red', text: 'Every project by where it will finish. Tap a colour to see only those.', mood: 'look' },
+      { target: 'cost.projects', title: 'Worst first', text: 'Blue is work done, green or red is money spent. Tap a project for its BOQ lines.' },
       { target: 'cost.pages', title: 'Look closer', text: 'Green / red by day, budget against actual, materials against the BOQ, and where the money went.' },
       { target: 'app.whatsapp', title: 'Ask on WhatsApp', text: '"How is Green Villa doing on cost?"', mood: 'happy' },
     ],
