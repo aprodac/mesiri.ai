@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { TRIAL_EXPIRED_CODE, markTrialExpired } from './trial'
+import { activeToken, sandboxEnded } from './sandbox'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const TOKEN_KEY = 'mesiri_dashboard_token'
@@ -19,10 +20,13 @@ export function clearToken(): void {
 }
 
 api.interceptors.request.use((config) => {
-  const token = getToken()
+  // SS-67: inside the sample company (lib/sandbox.ts) calls go with its token, except /learn/sandbox itself.
+  const token = activeToken(config.url)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  // Remembered on the request, so its answer is read against the token it went with, not the one in use by then.
+  ;(config as { sandbox?: boolean }).sandbox = !!token && token !== getToken()
   return config
 })
 
@@ -47,6 +51,13 @@ api.interceptors.response.use(
     // A 401 from a login or signup call is a wrong password or code, not a
     // stale session: the page shows it, nothing to clear.
     const publicAuthCall = /^\/auth\/(login|code\/|signup)/.test(error.config?.url ?? '')
+    // SS-67: the sample company's token refused (expired, or the sample removed): back to the person's own company,
+    // still signed in; their own token was not the one refused.
+    // Several calls can be refused together: only the first switches back, and none of them signs the person out.
+    if (error.response?.status === 401 && (error.config as { sandbox?: boolean } | undefined)?.sandbox) {
+      sandboxEnded()
+      return Promise.reject(error)
+    }
     if (error.response?.status === 401 && !publicAuthCall) {
       clearToken()
       if (window.location.pathname !== '/login') {

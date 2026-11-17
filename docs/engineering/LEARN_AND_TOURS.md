@@ -84,6 +84,17 @@ step's words in another place.
 - The role path ("Everything ..., in order") is made from the role's outcomes by itself.
 - Open: Project manager and Finance outcomes, and the owner's billing and month-end outcomes (SS-48).
 
+## The guided project and the sample company (SS-67)
+
+- The guided project (`JOURNEY` in `walkthroughs.ts`, id `guided-project`) is **one walkthrough made of chapters**
+  (`JOURNEY_CHAPTERS`: a title and the walkthroughs it runs). Writing a chapter's own steps (SS-69..SS-71) means
+  writing a walkthrough and putting its id in that chapter's `walks`; the build checks the ids. Never set a step's
+  `chapter` by hand: `journey()` does it, and the bubble's chapter list reads it.
+- A walkthrough with `sandbox: true` runs **only inside the person's sample company** (`lib/sandbox.ts`): what is saved
+  there stays, so it needs no take-back. Never mark one that saves into the real company.
+- Inside the sample company every API call goes with its token; code never reads or sends a token itself, it uses
+  `api` from `lib/api.ts` (which picks the token). The `/learn/sandbox` routes always go with the person's own token.
+
 ## Voice (SS-61)
 
 - A walkthrough speaks each step when its id is in `VOICED` (`lib/walkthroughs.ts`); the build fails on an id that
