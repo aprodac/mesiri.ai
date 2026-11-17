@@ -249,6 +249,12 @@ async def open_sandbox(engine: Any, app: Any, person: RealPerson, *, role: str =
             raise SandboxError("The sample company was removed; open it again.", 409)
         await conn.execute(sa.text("UPDATE organizations SET sandbox_expires_at = :e WHERE id = :o"),
                            {"e": now + KEEP_UNOPENED, "o": row["id"]})
+        # Everyone in the sample company is explained to the way this person chose (UX-22 start mode), and nobody
+        # there asks "How would you like to start?" again: it is the same person playing each role. Copied on every
+        # open, so a change made in their own company follows them in.
+        await conn.execute(sa.text(
+            "UPDATE users SET start_mode = COALESCE((SELECT start_mode FROM users WHERE id = :me), 'guided') "
+            "WHERE organization_id = :o"), {"me": person.user_id, "o": row["id"]})
         user = (await conn.execute(sa.text(
             "SELECT id, full_name FROM users WHERE organization_id = :o AND upper(role) = :r "
             "ORDER BY created_at LIMIT 1"), {"o": row["id"], "r": role})).mappings().first()

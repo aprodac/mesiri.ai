@@ -658,3 +658,18 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
 - **Not covered here:** playing it against a real database (SS-74c: every entry through the API as its role's user,
   and that each role may make its entries). Payloads are names and numbers; the player finds each sample's ids.
 
+
+## 20. SS-76: play the roles, part 1 (17 Nov 2026)
+
+- **"Be: …" in the sample company's banner** (`components/sandbox-banner.tsx`, `lib/sandbox.ts` `switchSandboxRole`):
+  Owner (you), Project manager (Anil), Site engineer (Ravi), Accounts (Meera), each with one line on what they see. It
+  opens the sample company again as that person (`POST /learn/sandbox` with the role) and stays on the page when that
+  role may open it, else Today (Ravi on BOQ lands on Today: a site engineer sees no rupees).
+- **Found while testing on the real app:** going into the sample company asked "How would you like to start?" again,
+  because its people are new users with no answer. Now every person in the sample company takes the person's own
+  answer each time it is opened (`open_sandbox`), so the help explains things their way and nobody is asked twice; a
+  change in their own company follows them in. Test: `test_learn_sandbox_postgres.py` (+1).
+- Checked in a browser against the real app and a real database (not a stub): Learn → "Just look around" → the
+  sample company as Owner → BOQ → Be: Site engineer → Ravi, on Today.
+- **Not built (17 Nov decision, a mobile app is coming):** the WhatsApp-style phone for the site engineer. The mission
+  switching the role by itself is SS-76b (needs the simulation script, SS-74).

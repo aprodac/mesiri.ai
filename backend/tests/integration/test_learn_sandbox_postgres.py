@@ -192,3 +192,20 @@ async def test_a_sandbox_notification_is_never_picked_up_to_send(engine, person)
         ids = {r["id"] for r in await repo.list_pending(limit=10_000)}
         await conn.execute(text("DELETE FROM notifications WHERE rule_key = 'ss66d'"))
     assert mine not in ids and real in ids
+
+
+async def test_the_sample_company_explains_the_way_the_person_chose_and_never_asks_again(engine, person):
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE users SET start_mode = 'new_to_construction' WHERE id = :u"), {"u": person.user_id})
+    out = await sandbox.open_sandbox(engine, None, person, now=NOW)
+    async with engine.connect() as conn:
+        modes = {r[0] for r in (await conn.execute(text("SELECT start_mode FROM users WHERE organization_id = :o"),
+                                                   {"o": out.organization_id})).all()}
+    assert modes == {"new_to_construction"}  # all four people: not NULL, so never asked
+    async with engine.begin() as conn:  # changed in their own company: follows them in on the next open
+        await conn.execute(text("UPDATE users SET start_mode = 'switching' WHERE id = :u"), {"u": person.user_id})
+    await sandbox.open_sandbox(engine, None, person, role="SITE_ENGINEER", now=NOW)
+    async with engine.connect() as conn:
+        modes = {r[0] for r in (await conn.execute(text("SELECT start_mode FROM users WHERE organization_id = :o"),
+                                                   {"o": out.organization_id})).all()}
+    assert modes == {"switching"}
