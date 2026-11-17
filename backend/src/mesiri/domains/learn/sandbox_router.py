@@ -105,3 +105,68 @@ async def delete_sandbox(request: Request, payload: dict = Depends(get_current_u
     except sandbox.SandboxError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     return Response(status_code=204)
+
+
+# --- SS-74c: days pass (docs/plans/guided-demo-plan.md section 18) ----------------------------------------------
+
+
+class ForYouOut(BaseModel):
+    id: str
+    day: int
+    what: str
+    kind: str
+    page: str
+    done: bool
+
+
+class ClockOut(BaseModel):
+    day: int
+    date: dt.date
+    last_day: int
+    for_you: list[ForYouOut] = []
+
+
+class NextDayIn(BaseModel):
+    days: int = 1
+    #: The role the person is playing: theirs is left for them on the day they land on.
+    role: str = sandbox.OWNER
+
+
+class MovedOut(BaseModel):
+    day: int
+    date: dt.date
+    #: A new sandbox token: the sample's date moved, and the token carries it.
+    token: str
+    expires_at: dt.datetime
+    summary: list[dict[str, Any]] = []
+    for_you: list[ForYouOut] = []
+    waiting: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+
+
+@router.get("/clock", response_model=ClockOut)
+async def get_clock(request: Request, role: str = sandbox.OWNER, payload: dict = Depends(get_current_user)) -> ClockOut:
+    from mesiri.application.learn import sandbox_player
+
+    person = await _person(request, payload)
+    try:
+        out = await sandbox_player.clock(_engine(request), person, role.upper())
+    except sandbox.SandboxError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return ClockOut(day=out.day, date=out.date, last_day=out.last_day, for_you=[ForYouOut(**f.__dict__) for f in out.for_you])
+
+
+@router.post("/next-day", response_model=MovedOut)
+async def post_next_day(request: Request, body: NextDayIn | None = None,
+                        payload: dict = Depends(get_current_user)) -> MovedOut:
+    from mesiri.application.learn import sandbox_player
+
+    body = body or NextDayIn()
+    person = await _person(request, payload)
+    if body.role.upper() not in sandbox.PLAYABLE_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of {list(sandbox.PLAYABLE_ROLES)}")
+    try:
+        out = await sandbox_player.next_day(_engine(request), request.app, person, role=body.role, days=body.days)
+    except sandbox.SandboxError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return MovedOut(**{**out.__dict__, "for_you": [ForYouOut(**f.__dict__) for f in out.for_you]})

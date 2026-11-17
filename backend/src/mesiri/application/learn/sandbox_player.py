@@ -1,0 +1,658 @@
+"""SS-74c: the player: days pass in a learning sample company (docs/plans/guided-demo-plan.md section 18).
+
+``next_day`` plays the planned simulation (``sample_plan.plan()``) forward one or more days. Each entry is made as its
+role's sandbox user (Anil, Ravi, Meera, the owner), with that user's token dated to the game's day, through the same
+routes the dashboard calls, in process. The entries of the role the person plays are left for them on the day they
+land on ("for you", section 18.4); on days skipped over, theirs are made for them too (D-GC3).
+
+**Following what happened, not a script of ids.** An entry finds what it needs in the sample company as it is: a
+delivery comes against an open order line for that site and material, a bill takes that supplier's unbilled
+deliveries, a payment that supplier's unpaid bills, a client receipt the bill that was sent. So whatever the person
+did (ordered more, from someone else, or nothing) is what the day follows; when what an entry needs is not there, it
+waits and is tried again the next day (cement nobody ordered: no lorry, and the site's use and work that need it
+wait too, as the plan made them only from what was on site).
+
+``clock`` says where the sample is and what is waiting for the person; a "for you" entry is ticked when a record of
+its kind was saved by the person's user since that day began (``_DONE``). Nothing here moves a real company: every
+step refuses a company that is not a sample (``sandbox_of``), and the date only lives in the sample's token.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextvars
+import datetime as dt
+import logging
+import uuid
+from dataclasses import dataclass, field
+from typing import Any
+
+import sqlalchemy as sa
+
+from mesiri.application.learn import sample_plan as sp
+from mesiri.application.learn.sandbox import (
+    OWNER,
+    RealPerson,
+    SandboxError,
+    _InProcessApi,
+    find,
+    sandbox_token,
+)
+from mesiri.domains.shared import clock as app_clock
+
+_log = logging.getLogger(__name__)
+
+#: Most days at once (D-GC5).
+MAX_DAYS = 7
+#: The company's bank account in the sample, opened the first time days pass, with enough in it for the project.
+BANK_ACCOUNT = "Federal Bank current account"
+OPENING_BALANCE = 2500000
+
+# --- Where the sample is -----------------------------------------------------------------------------------------
+
+
+@dataclass
+class ForYou:
+    id: str
+    day: int
+    what: str
+    kind: str
+    page: str
+    done: bool
+
+
+@dataclass
+class Clock:
+    day: int
+    date: dt.date
+    last_day: int
+    for_you: list[ForYou] = field(default_factory=list)
+
+
+@dataclass
+class Moved:
+    day: int
+    date: dt.date
+    token: str
+    expires_at: dt.datetime
+    summary: list[dict[str, Any]] = field(default_factory=list)
+    for_you: list[ForYou] = field(default_factory=list)
+    waiting: list[dict[str, Any]] = field(default_factory=list)
+    failed: list[dict[str, Any]] = field(default_factory=list)
+
+
+#: Where each kind of entry is done on the dashboard (a "for you" item opens it).
+PAGE = {
+    "conditions": "/today", "attendance": "/labour", "work": "/today", "use": "/materials?view=movements",
+    "expense": "/finance/expenses", "issue": "/issues", "request": "/materials/requests", "delivery": "/procurement/grn",
+    "order": "/procurement/orders", "boq_count": "/boq", "issue_resolve": "/issues", "work_order": "/subcontract/work-orders",
+    "measurement": "/subcontract/work-orders", "supplier_bill": "/finance/vendors", "supplier_payment": "/finance/vendors",
+    "sub_bill": "/subcontract/bills", "sub_payment": "/subcontract/bills", "advance": "/labour/advances",
+    "wage_pay": "/labour/wages", "client_receipt": "/accounts/receivables", "wage_approve": "/labour/wages",
+    "ra_bill": "/billing/ra-bills", "stage": "/planning/setup",
+}
+
+#: How a "for you" entry is known to be done: records of its kind saved by the person's user since that day began, at
+#: the entry's place (its site, project or supplier). (table, who saved it, when, what one counts as, where.) Entries of
+#: one kind at one place on one day are ticked in plan order, one per record counted.
+_DONE: dict[str, tuple[str, str, str, str, tuple[str, str] | None]] = {
+    "attendance": ("labour_attendance_reports", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "work": ("activities", "reported_by_user_id", "created_at", "count(*)", ("site", "site_id")),
+    "use": ("material_usage", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "expense": ("expenses", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "issue": ("site_issues", "reported_by_user_id", "created_at", "count(*)", ("site", "site_id")),
+    "request": ("material_requests", "requested_by", "created_at", "count(*)", ("site", "site_id")),
+    "delivery": ("material_receipts", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "order": ("purchase_orders", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "work_order": ("work_orders", "created_by", "created_at", "count(*)", ("vendor", "vendor_id")),
+    "measurement": ("work_order_measurements", "recorded_by", "created_at", "count(*)", None),
+    "supplier_bill": ("expenses", "created_by", "created_at", "count(*)", ("vendor", "vendor_id")),
+    "sub_bill": ("expenses", "created_by", "created_at", "count(*)", ("vendor", "vendor_id")),
+    "supplier_payment": ("expense_payments", "created_by", "created_at", "count(DISTINCT vendor_id)", ("vendor", "vendor_id")),
+    "sub_payment": ("expense_payments", "created_by", "created_at", "count(DISTINCT expense_id)", ("vendor", "vendor_id")),
+    "advance": ("labour_advances", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "wage_pay": ("wage_payments", "created_by", "created_at", "count(DISTINCT sheet_id)",
+                 ("project", "(SELECT ws.project_id FROM wage_sheets ws WHERE ws.id = sheet_id)")),
+    "client_receipt": ("client_receipts", "created_by", "created_at", "count(*)", ("project", "project_id")),
+    "wage_approve": ("wage_sheets", "approved_by", "approved_at", "count(*)", ("project", "project_id")),
+    "ra_bill": ("ra_bills", "submitted_by", "submitted_at", "count(*)", ("project", "project_id")),
+}
+
+
+async def _outcome_done(conn: Any, org: uuid.UUID, e: sp.Entry, ids: dict[str, dict[str, str]], date: dt.date) -> bool:
+    """The kinds known by what they leave behind rather than by who saved a record."""
+    async def scalar(sql: str, **params: Any) -> Any:
+        return (await conn.execute(sa.text(sql), {"o": org, **params})).scalar()
+
+    if e.kind == "stage":
+        return await scalar("SELECT stage FROM projects WHERE organization_id = :o AND id = :p",
+                            p=ids["project"].get(e.project or "")) == e.data["stage"]
+    if e.kind == "issue_resolve":
+        return bool(await scalar("SELECT count(*) FROM site_issues WHERE organization_id = :o AND narrative = :n "
+                                 "AND status = 'RESOLVED'", n=e.data["narrative"]))
+    if e.kind == "conditions":
+        return bool(await scalar("SELECT count(*) FROM daily_reports WHERE organization_id = :o AND site_id = :s "
+                                 "AND report_date = :d AND (weather IS NOT NULL OR tomorrow_plan IS NOT NULL)",
+                                 s=ids["site"].get(e.site or ""), d=date))
+    if e.kind == "boq_count":  # nothing of that work left off its BOQ line
+        return not await scalar(
+            "SELECT count(*) FROM activities a JOIN activity_quantities q ON q.activity_id = a.id "
+            "WHERE a.organization_id = :o AND a.site_id = :s AND a.work_type = :w AND a.activity_date <= :d "
+            "AND a.deleted_at IS NULL AND q.planned_item_id IS NULL", s=ids["site"].get(e.site or ""), w=e.data["work"], d=date)
+    return False
+
+
+# --- The sample as it is -----------------------------------------------------------------------------------------
+
+
+class _World:
+    """The sample company's ids, read once per play: sites, materials, suppliers, workers, the money account, and a
+    client per role. Writes go through the API (``call``); reads of what is there come straight from the database,
+    always for this sample company only."""
+
+    def __init__(self, engine: Any, app: Any, org: uuid.UUID, real_org: uuid.UUID) -> None:
+        self.engine, self.app, self.org, self.real_org = engine, app, org, real_org
+        self.sites: dict[str, tuple[str, str]] = {}      # site key -> (project id, site id)
+        self.projects: dict[str, str] = {}               # project key -> id
+        self.materials: dict[str, tuple[str, str]] = {}  # name -> (material id, unit id)
+        self.vendors: dict[str, str] = {}
+        self.workers: dict[str, str] = {}
+        self.users: dict[str, tuple[uuid.UUID, str]] = {}  # role -> (user id, name)
+        self.account: str | None = None
+        self.day: int = 0
+        self.date: dt.date = app_clock.today()  # set by at() before any call
+        self._clients: dict[str, _InProcessApi] = {}
+
+    async def load(self) -> None:
+        async with self.engine.connect() as conn:
+            async def rows(sql: str) -> list[Any]:
+                return list((await conn.execute(sa.text(sql), {"o": self.org})).mappings())
+
+            names = {story_name: key for key, _p, story_name in sp.SITES}
+            for r in await rows("SELECT s.id, s.project_id, s.name, p.name AS project FROM sites s "
+                                "JOIN projects p ON p.id = s.project_id WHERE s.organization_id = :o"):
+                if r["name"] in names:
+                    self.sites[names[r["name"]]] = (str(r["project_id"]), str(r["id"]))
+            for key, name in sp.PROJECT_NAME.items():
+                hit = await rows(f"SELECT id FROM projects WHERE organization_id = :o AND name = '{name}'")  # noqa: S608
+                if hit:
+                    self.projects[key] = str(hit[0]["id"])
+            for r in await rows("SELECT id, name FROM vendors WHERE organization_id = :o"):
+                self.vendors[r["name"]] = str(r["id"])
+            for r in await rows("SELECT id, name FROM workforce_workers WHERE organization_id = :o"):
+                self.workers[r["name"]] = str(r["id"])
+            for r in await rows("SELECT id, full_name, upper(role) AS role FROM users WHERE organization_id = :o "
+                                "ORDER BY created_at"):
+                self.users.setdefault(r["role"], (r["id"], r["full_name"]))
+            acc = await rows("SELECT id FROM money_accounts WHERE organization_id = :o AND status = 'active' "
+                             "ORDER BY (account_type = 'bank') DESC, created_at LIMIT 1")
+            self.account = str(acc[0]["id"]) if acc else None
+        if self.account is None:
+            # The company's bank account, the first time days pass: suppliers, wages and the client go through it.
+            made = await self.call(OWNER, "POST", "/finance/accounts", json={
+                "name": BANK_ACCOUNT, "account_type": "bank", "bank_name": "Federal Bank",
+                "opening_balance": OPENING_BALANCE})
+            if made.ok and isinstance(made.body, dict) and made.body.get("id"):
+                self.account = str(made.body["id"])
+            else:
+                _log.warning("learn_sandbox.no_account org=%s %s", self.org, str(made.body)[:200])
+        listed = await self.call(OWNER, "GET", "/materials", params={"limit": 200, "is_active": True})
+        for m in (listed.body or {}).get("items") or [] if listed.ok else []:
+            if m.get("default_unit_id"):
+                self.materials[str(m.get("name") or "").lower()] = (str(m["id"]), str(m["default_unit_id"]))
+
+    async def at(self, day: int, day0: dt.date) -> None:
+        """Every call from here is made on that game day (a new token per role, carrying its date)."""
+        self.day, self.date = day, day0 + dt.timedelta(days=day)
+        await self.close()
+
+    def client(self, role: str) -> _InProcessApi:
+        if role not in self._clients:
+            user_id, name = self.users[role]
+            token, _ = sandbox_token(user_id=user_id, org_id=self.org, role=role, name=name, real_org=self.real_org,
+                                     now=dt.datetime.now(dt.UTC), today=self.date)
+            self._clients[role] = _InProcessApi(self.app, token)
+        return self._clients[role]
+
+    async def call(self, role: str, method: str, path: str, *, json: Any = None, params: dict | None = None) -> Any:
+        return await self.client(role).call(method, path, json=json, params=params,
+                                            idempotency_key=f"plan-{uuid.uuid4()}")
+
+    async def one(self, sql: str, **params: Any) -> Any:
+        async with self.engine.connect() as conn:
+            row = (await conn.execute(sa.text(sql), {"o": self.org, **params})).mappings().first()
+        return dict(row) if row else None
+
+    async def all(self, sql: str, **params: Any) -> list[dict[str, Any]]:
+        async with self.engine.connect() as conn:
+            return [dict(r) for r in (await conn.execute(sa.text(sql), {"o": self.org, **params})).mappings()]
+
+    async def close(self) -> None:
+        for client in self._clients.values():
+            await client.close()
+        self._clients = {}
+
+
+class _Wait(Exception):
+    """What this entry needs is not in the sample company yet: it waits for a later day."""
+
+
+class _Failed(Exception):
+    pass
+
+
+def _ok(res: Any, what: str) -> dict[str, Any]:
+    if not res.ok:
+        raise _Failed(f"{what}: HTTP {res.status} {str(res.body)[:200]}")
+    return res.body if isinstance(res.body, dict) else {}
+
+
+# --- Making each kind of entry -----------------------------------------------------------------------------------
+
+
+async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915 -- one branch per kind
+    d, iso, role = e.data, w.date.isoformat(), e.role
+    project, site = w.sites.get(e.site or "", (w.projects.get(e.project or "", ""), None))
+    if e.project and not e.site:
+        project = w.projects.get(e.project, "")
+
+    def material(name: str) -> tuple[str, str]:
+        found = w.materials.get(name)
+        if not found:
+            raise _Failed(f"no material {name}")
+        return found
+
+    if e.kind == "conditions":
+        body = {"weather": d["weather"], "tomorrow_plan": d["tomorrow_plan"]}
+        if d.get("hours_lost"):
+            body["hours_lost"] = d["hours_lost"]
+        return _ok(await w.call(role, "PATCH", f"/dpr/site-days/{site}/conditions", json=body, params={"date": iso}), e.kind)
+    if e.kind == "attendance":
+        lines = [{"worker_name": c["name"], "trade": c["trade"], "headcount": 1, "daily_wage": c["daily_wage"],
+                  "attendance_status": c["status"], **({"worker_id": w.workers[c["name"]]} if c["name"] in w.workers else {})}
+                 for c in d["workers"]]
+        g = d["gang"]
+        lines.append({"trade": g["trade"], "headcount": g["headcount"], "contractor": g["contractor"], "daily_wage": g["daily_wage"]})
+        return _ok(await w.call(role, "POST", "/labour/attendance", json={
+            "project_id": project, "site_id": site, "occurred_date": iso, "recorded_via": "whatsapp_text", "lines": lines}), e.kind)
+    if e.kind == "work":
+        return _ok(await w.call(role, "POST", "/progress/activities", json={
+            "project_id": project, "site_id": site, "activity_date": iso, "source": "whatsapp_text", "work_type": d["work"],
+            "narrative": d["narrative"] + (f" ({d['by']})" if d.get("by") else ""),
+            "quantities": [{"quantity": d["quantity"], "unit": d["unit"], "work_type": d["work"]}]}), e.kind)
+    if e.kind == "use":
+        mid, uid = material(d["material"])
+        have = await w.one("SELECT COALESCE(SUM(CASE WHEN movement_type IN ('RECEIPT', 'TRANSFER_IN', 'ADJUSTMENT_IN') "
+                           "THEN quantity ELSE -quantity END), 0) AS q FROM material_movements "
+                           "WHERE organization_id = :o AND site_id = :s AND material_id = :m", s=site, m=mid)
+        if have is not None and float(have["q"] or 0) < float(d["quantity"]) - 1e-6:
+            raise _Wait(f"not enough {d['material']} on site")
+        return _ok(await w.call(role, "POST", "/materials/outflows", json={
+            "project_id": project, "site_id": site, "material_id": mid, "unit_id": uid, "quantity": d["quantity"],
+            "occurred_date": iso, "work_item": d["work"]}), e.kind)
+    if e.kind == "expense":
+        return _ok(await w.call(role, "POST", "/expenses", json={
+            "project_id": project, "site_id": site, "amount": d["amount"], "occurred_date": iso, "vendor_text": d["vendor"],
+            "category_text": d["category"], "description": d["description"], "source": "whatsapp"}), e.kind)
+    if e.kind == "issue":
+        return _ok(await w.call(role, "POST", "/progress/issues", json={
+            "project_id": project, "site_id": site, "issue_type": d["issue_type"], "severity": d["severity"],
+            "narrative": d["narrative"]}), e.kind)
+    if e.kind == "issue_resolve":
+        hit = await w.one("SELECT id FROM site_issues WHERE organization_id = :o AND narrative = :n "
+                          "AND status IN ('OPEN', 'ACKNOWLEDGED') ORDER BY created_at LIMIT 1",
+                          n=d["narrative"])
+        if not hit:
+            raise _Wait("the issue is not reported yet")
+        return _ok(await w.call(role, "POST", f"/progress/issues/{hit['id']}/resolve",
+                                json={"resolution_notes": d["resolution_notes"]}), e.kind)
+    if e.kind == "request":
+        mid, uid = material(d["material"])
+        return _ok(await w.call(role, "POST", "/procurement/requests", json={
+            "project_id": project, "site_id": site, "material_id": mid, "unit_id": uid, "quantity": d["quantity"],
+            "needed_by": (w.date + dt.timedelta(days=d["needed_by_days"])).isoformat(), "purpose": d["purpose"],
+            "source": "whatsapp", "confirm_duplicate": True}), e.kind)
+    if e.kind == "order":
+        mid, uid = material(d["material"])
+        req = await w.one("SELECT r.id FROM material_requests r JOIN material_request_lines l ON l.request_id = r.id "
+                          "WHERE r.organization_id = :o AND r.site_id = :s AND l.material_id = :m "
+                          "AND NOT EXISTS (SELECT 1 FROM purchase_order_lines pl WHERE pl.request_line_id = l.id) "
+                          "AND r.status = 'waiting' ORDER BY r.created_at LIMIT 1",
+                          s=site, m=mid)
+        if not req:
+            raise _Wait("no request to order")
+        body = {"project_id": project, "site_id": site, "vendor_id": w.vendors.get(d["vendor"]), "supplier": d["vendor"],
+                "confirm_duplicate": True,  # the office has looked: a second order for the same material is meant
+                "request_id": str(req["id"]), "expected_date": (w.date + dt.timedelta(days=d["expected_in_days"])).isoformat(),
+                # The item comes from the request; the plan's quantity is ordered (a site keeps a little in hand),
+                # not only what the request still has to buy over today's stock.
+                "quantity": d["quantity"], "rate": d["rate"]}
+        return _ok(await w.call(role, "POST", "/procurement/orders", json=body), e.kind)
+    if e.kind == "delivery":
+        mid, uid = material(d["material"])
+        line = await w.one(
+            "SELECT pl.id, pl.quantity - COALESCE((SELECT SUM(r.quantity) FROM material_receipts r "
+            "WHERE r.purchase_order_line_id = pl.id AND r.reverses_movement_id IS NULL), 0) AS left "
+            "FROM purchase_order_lines pl JOIN purchase_orders po ON po.id = pl.purchase_order_id "
+            "WHERE pl.organization_id = :o AND po.site_id = :s AND pl.material_id = :m "
+            "AND po.status = 'open' "
+            "AND pl.quantity > COALESCE((SELECT SUM(r.quantity) FROM material_receipts r "
+            "WHERE r.purchase_order_line_id = pl.id AND r.reverses_movement_id IS NULL), 0) "
+            "ORDER BY po.created_at LIMIT 1", s=site, m=mid)
+        if not line:
+            raise _Wait(f"no {d['material']} on order for {sp.SITE_NAME[e.site]}")
+        qty = min(float(d["quantity"]), float(line["left"]))
+        return _ok(await w.call(role, "POST", "/materials/inflows", json={
+            "project_id": project, "site_id": site, "material_id": mid, "unit_id": uid, "quantity": qty,
+            "occurred_date": iso, "supplier": d["vendor"], "vendor_id": w.vendors.get(d["vendor"]),
+            "unit_cost": d["rate"], "total_cost": round(qty * d["rate"], 2), "purchase_order_line_id": str(line["id"])}), e.kind)
+    if e.kind == "supplier_bill":
+        vid = w.vendors.get(d["vendor"])
+        mine = await w.all("SELECT id, total_cost FROM material_receipts WHERE organization_id = :o AND vendor_id = :v "
+                           "AND site_id = :s AND invoice_id IS NULL AND reverses_movement_id IS NULL AND quantity > 0 "
+                           "ORDER BY occurred_date, created_at LIMIT 1", v=vid, s=site)
+        if not mine:
+            raise _Wait("no delivery to bill")
+        return _ok(await w.call(role, "POST", f"/finance/vendors/{vid}/bills", json={
+            "receipt_ids": [str(r["id"]) for r in mine], "bill_number": d["bill_number"], "bill_date": iso}), e.kind)
+    if e.kind in ("supplier_payment", "sub_payment"):
+        vid = w.vendors.get(d["vendor"])
+        bills = await w.all("SELECT e.id, e.amount - COALESCE((SELECT SUM(p.amount) FROM expense_payments p "
+                            "WHERE p.expense_id = e.id AND p.status <> 'reversed'), 0) AS due FROM expenses e "
+                            "WHERE e.organization_id = :o AND e.vendor_id = :v AND e.occurred_date <= :d "
+                            "AND e.amount > COALESCE((SELECT SUM(p.amount) FROM expense_payments p "
+                            "WHERE p.expense_id = e.id AND p.status <> 'reversed'), 0) ORDER BY e.occurred_date",
+                            v=vid, d=w.date - dt.timedelta(days=sp.CREDIT_DAYS if e.kind == "supplier_payment" else 0))
+        if not bills:
+            raise _Wait("no bill to pay")
+        if not w.account:
+            raise _Failed("no money account")
+        if e.kind == "sub_payment":
+            # What can be paid now: checked, less the retention held (the route's own rule).
+            from mesiri.domains.subcontracts.store import payable_caps
+
+            async with w.engine.connect() as conn:
+                caps = await payable_caps(conn, w.org, [b["id"] for b in bills])
+            for b in bills:
+                amount = min(float(b["due"]), float(caps.get(b["id"], b["due"]) or 0))
+                if amount > 0:
+                    return _ok(await w.call(role, "POST", f"/expenses/{b['id']}/payments",
+                                            json={"account_id": w.account, "paid_date": iso, "amount": round(amount, 2)}), e.kind)
+            raise _Wait("nothing payable now (retention held)")
+        total = round(sum(float(b["due"]) for b in bills), 2)
+        return _ok(await w.call(role, "POST", f"/finance/vendors/{vid}/payments", json={
+            "account_id": w.account, "amount": total, "paid_date": iso, "bill_ids": [str(b["id"]) for b in bills]}), e.kind)
+    if e.kind == "boq_count":
+        pid = w.sites[e.site][0]
+        work = await w.call(role, "GET", f"/projects/{pid}/boq/work", params={"limit": 500})
+        mine = [i for i in ((work.body or {}).get("work") or [] if work.ok else [])
+                if str(i.get("site_id")) == w.sites[e.site][1] and str(i.get("work") or "") == d["work"]]
+        if not mine:
+            raise _Wait("no work to count")
+        # New work goes on its line by itself when saved (BOQ-01): only what is left is counted by hand.
+        items = [i for i in mine if not i.get("line_id")]
+        if not items:
+            return {"counted": 0, "already_on_line": len(mine)}
+        boq = await w.call(role, "GET", f"/projects/{pid}/boq")
+        line = _boq_line(boq.body if boq.ok else None, d["work"], sp.SITE_NAME[e.site])
+        if not line:
+            raise _Failed(f"no BOQ line for {d['work']} at {sp.SITE_NAME[e.site]}")
+        for item in items:
+            _ok(await w.call(role, "PUT", f"/projects/{pid}/boq/work/{item['id']}", json={"line_id": line}), e.kind)
+        return {"counted": len(items)}
+    if e.kind == "work_order":
+        return _ok(await w.call(role, "POST", "/subcontracts/work-orders", json={
+            "vendor_id": w.vendors.get(d["vendor"]), "project_id": project, "site_id": site, "name": d["work"],
+            "start_date": iso, "retention_pct": d["retention_pct"], "issue": True,
+            "lines": [{"description": d["work"], "unit": d["unit"], "quantity": d["quantity"], "rate": d["rate"]}]}), e.kind)
+    if e.kind in ("measurement", "sub_bill"):
+        wo = await w.one("SELECT o.id, l.id AS line_id FROM work_orders o JOIN work_order_lines l ON l.work_order_id = o.id "
+                         "WHERE o.organization_id = :o AND o.vendor_id = :v ORDER BY o.created_at DESC LIMIT 1",
+                         v=w.vendors.get(d["vendor"] if "vendor" in d else "Joy Tiling Works"))
+        if not wo:
+            raise _Wait("no work order yet")
+        if e.kind == "measurement":
+            return _ok(await w.call(role, "POST", f"/subcontracts/work-orders/{wo['id']}/measurements", json={
+                "line_id": str(wo["line_id"]), "quantity": d["quantity"], "measured_on": iso}), e.kind)
+        return _ok(await w.call(role, "POST", f"/subcontracts/work-orders/{wo['id']}/bills", json={
+            "lines": [{"line_id": str(wo["line_id"]), "quantity": d["quantity"]}], "bill_date": iso,
+            "their_bill_no": f"JTW/{w.day:02d}"}), e.kind)
+    if e.kind == "advance":
+        return _ok(await w.call(role, "POST", "/labour/advances", json={
+            "project_id": project, "site_id": site, "worker_id": w.workers.get(d["worker"]), "amount": d["amount"],
+            "given_on": iso, "note": "Advance against wages", "source": "web",
+            **({"account_id": w.account} if w.account else {})}), e.kind)
+    if e.kind == "wage_approve":
+        week_to = w.date - dt.timedelta(days=w.day - d["week_to_day"])
+        sheet = _ok(await w.call(role, "GET", "/labour/wage-sheets/open",
+                                 params={"project_id": project, "date": week_to.isoformat()}), "wage sheet")
+        if not sheet.get("id"):
+            raise _Failed("no wage sheet")
+        if str(sheet.get("status") or "") in ("approved", "paid"):
+            return {"id": sheet["id"]}
+        return _ok(await w.call(role, "POST", f"/labour/wage-sheets/{sheet['id']}/approve", json={}), e.kind) | {"id": sheet["id"]}
+    if e.kind == "wage_pay":
+        week_to = w.date - dt.timedelta(days=w.day - d["week_to_day"])
+        sheet = await w.one("SELECT id FROM wage_sheets WHERE organization_id = :o AND project_id = :p AND period_to = :t "
+                            "AND status = 'approved' LIMIT 1", p=project, t=week_to)
+        if not sheet:
+            raise _Wait("the wage sheet is not approved yet")
+        return _ok(await w.call(role, "POST", f"/labour/wage-sheets/{sheet['id']}/pay", json={
+            "paid_on": iso, **({"account_id": w.account} if w.account else {})}), e.kind)
+    if e.kind == "ra_bill":
+        bill = _ok(await w.call(role, "POST", f"/projects/{project}/ra-bills",
+                                json={"bill_date": iso, "period_to": iso}), e.kind)
+        _ok(await w.call(role, "POST", f"/billing/ra-bills/{bill['id']}/submit", json={}), "submit the bill")
+        return bill
+    if e.kind == "client_receipt":
+        bill = await w.one("SELECT b.id, b.net - COALESCE((SELECT SUM(r.amount) FROM client_receipts r "
+                           "WHERE r.ra_bill_id = b.id AND r.status <> 'cancelled'), 0) AS due FROM ra_bills b "
+                           "WHERE b.organization_id = :o AND b.project_id = :p AND b.status IN ('submitted', 'certified') "
+                           "ORDER BY b.bill_date LIMIT 1", p=project)
+        if not bill or float(bill["due"] or 0) <= 0:
+            raise _Wait("no running bill sent")
+        if not w.account:
+            raise _Failed("no money account")
+        return _ok(await w.call(role, "POST", "/billing/receipts", json={
+            "ra_bill_id": str(bill["id"]), "kind": "bill", "amount": float(bill["due"]), "received_on": iso,
+            "account_id": w.account, "method": "bank"}), e.kind)
+    if e.kind == "stage":
+        return _ok(await w.call(role, "PATCH", f"/projects/{project}/start", json={"stage": d["stage"]}), e.kind)
+    raise _Failed(f"unknown kind {e.kind}")
+
+
+def _boq_line(boq: Any, work: str, site_name: str) -> str | None:
+    """The BOQ line for this work in this site's section (the seed names sections "Structure · <site>")."""
+    if not isinstance(boq, dict):
+        return None
+    for section in boq.get("sections") or []:
+        if site_name not in str(section.get("name") or ""):
+            continue
+        for line in section.get("lines") or []:
+            if str(line.get("work") or line.get("description") or "") == work:
+                return str(line["id"])
+    return None
+
+
+# --- Playing days ------------------------------------------------------------------------------------------------
+
+
+async def _sample(conn: Any, person: RealPerson) -> dict[str, Any]:
+    row = await find(conn, person)
+    if row is None:
+        raise SandboxError("Open your sample company first.", 404)
+    extra = (await conn.execute(sa.text("SELECT sandbox_day0, sandbox_of FROM organizations WHERE id = :o"),
+                                {"o": row["id"]})).mappings().one()
+    if extra["sandbox_of"] is None:
+        raise SandboxError("Not a sample company.", 409)
+    if extra["sandbox_day0"] is None:
+        raise SandboxError("This sample company was made before days could pass: start over to play the days.", 409)
+    return {**row, "day0": extra["sandbox_day0"]}
+
+
+async def _played(conn: Any, org: uuid.UUID) -> dict[str, str]:
+    rows = (await conn.execute(sa.text("SELECT entry_id, status FROM sandbox_played WHERE organization_id = :o"),
+                               {"o": org})).all()
+    return {r[0]: r[1] for r in rows}
+
+
+async def _record(engine: Any, org: uuid.UUID, e: sp.Entry | None, status: str, *, entry_id: str | None = None,
+                  day: int | None = None, role: str | None = None, record: Any = None, error: str | None = None) -> None:
+    import json
+
+    async with engine.begin() as conn:
+        await conn.execute(sa.text(
+            "INSERT INTO sandbox_played (organization_id, entry_id, day, status, by_role, record, error) "
+            "VALUES (:o, :e, :d, :s, :r, CAST(:rec AS jsonb), :err) ON CONFLICT (organization_id, entry_id) DO UPDATE "
+            "SET status = EXCLUDED.status, record = EXCLUDED.record, error = EXCLUDED.error, at = now()"),
+            {"o": org, "e": entry_id or e.id, "d": day if day is not None else e.day, "s": status,
+             "r": role or (e.role if e else None), "rec": json.dumps(record, default=str) if record is not None else None,
+             "err": error})
+
+
+def _day_mark(day: int) -> str:
+    return f"day:{day:03d}"
+
+
+async def _ids(conn: Any, org: uuid.UUID) -> dict[str, dict[str, str]]:
+    """The sample's sites, projects and suppliers by the plan's keys and names."""
+    names = {name: key for key, _p, name in sp.SITES}
+    sites = {names[r[1]]: str(r[0]) for r in (await conn.execute(sa.text(
+        "SELECT id, name FROM sites WHERE organization_id = :o"), {"o": org})).all() if r[1] in names}
+    projects = {key: str(r[0]) for key, name in sp.PROJECT_NAME.items() for r in (await conn.execute(sa.text(
+        "SELECT id FROM projects WHERE organization_id = :o AND name = :n"), {"o": org, "n": name})).all()}
+    vendors = {r[1]: str(r[0]) for r in (await conn.execute(sa.text(
+        "SELECT id, name FROM vendors WHERE organization_id = :o"), {"o": org})).all()}
+    return {"site": sites, "project": projects, "vendor": vendors}
+
+
+async def _tick(engine: Any, org: uuid.UUID, role: str, user_id: uuid.UUID, upto: int, day0: dt.date) -> list[ForYou]:
+    """The person's entries up to day ``upto`` the cast did not play. Each is done when what it asks for is there
+    (``_DONE``, ``_outcome_done``); ticked ones are kept as ``done`` and drop off the list."""
+    p = sp.plan()
+    async with engine.connect() as conn:
+        played = await _played(conn, org)
+        began = {int(r[0][4:]): r[1] for r in (await conn.execute(sa.text(
+            "SELECT entry_id, at FROM sandbox_played WHERE organization_id = :o AND entry_id LIKE 'day:%'"),
+            {"o": org})).all()}
+        ids = await _ids(conn, org)
+        mine = [e for e in p.entries if e.role == role and e.day <= upto and e.id not in played]
+        out: list[ForYou] = []
+        counted: dict[tuple[Any, ...], int] = {}
+        used: dict[tuple[Any, ...], int] = {}
+        for e in mine:
+            date = day0 + dt.timedelta(days=e.day)
+            rule = _DONE.get(e.kind)
+            start = began.get(e.day)
+            if rule is None:
+                done = await _outcome_done(conn, org, e, ids, date)
+            elif start is None:
+                done = False
+            else:
+                table, who, when, count, where = rule
+                place = None
+                if where:
+                    kind, _col = where
+                    key_name = {"site": e.site, "project": e.project, "vendor": e.data.get("vendor")}[kind]
+                    place = ids[kind].get(key_name or "")
+                group = (e.kind, e.day, place)
+                if group not in counted:
+                    sql = f"SELECT {count} FROM {table} WHERE organization_id = :o AND {who} = :u AND {when} >= :t"  # noqa: S608
+                    params: dict[str, Any] = {"o": org, "u": user_id, "t": start}
+                    if where:
+                        sql += f" AND {where[1]} = :place"
+                        params["place"] = place
+                    counted[group] = int((await conn.execute(sa.text(sql), params)).scalar() or 0)
+                done = used.get(group, 0) < counted[group]
+                if done:
+                    used[group] = used.get(group, 0) + 1
+            out.append(ForYou(id=e.id, day=e.day, what=e.what, kind=e.kind, page=PAGE.get(e.kind, "/today"), done=done))
+    for item in out:
+        if item.done:
+            await _record(engine, org, None, "done", entry_id=item.id, day=item.day, role=role)
+    return [i for i in out if not i.done]
+
+
+async def clock(engine: Any, person: RealPerson, role: str) -> Clock:
+    """Where my sample company is, and what is waiting for me in this role."""
+    async with engine.connect() as conn:
+        row = await _sample(conn, person)
+        today = (await conn.execute(sa.text("SELECT sandbox_today FROM organizations WHERE id = :o"),
+                                    {"o": row["id"]})).scalar_one()
+        user = (await conn.execute(sa.text("SELECT id FROM users WHERE organization_id = :o AND upper(role) = :r "
+                                           "ORDER BY created_at LIMIT 1"), {"o": row["id"], "r": role})).scalar()
+    day = (today - row["day0"]).days
+    for_you = await _tick(engine, row["id"], role, user, day, row["day0"]) if user else []
+    return Clock(day=day, date=today, last_day=sp.plan().last_day, for_you=for_you)
+
+
+async def next_day(engine: Any, app: Any, person: RealPerson, *, role: str = OWNER, days: int = 1) -> Moved:
+    """Days pass in my sample company: the cast plays the plan (section 18.1)."""
+    role = (role or OWNER).upper()
+    if not 1 <= days <= MAX_DAYS:
+        raise SandboxError(f"days must be 1 to {MAX_DAYS}", 422)
+    async with engine.connect() as conn:
+        row = await _sample(conn, person)
+        today = (await conn.execute(sa.text("SELECT sandbox_today FROM organizations WHERE id = :o"),
+                                    {"o": row["id"]})).scalar_one()
+    org, day0 = row["id"], row["day0"]
+    p = sp.plan()
+    start = (today - day0).days
+    if start >= p.last_day:
+        raise SandboxError("The project is handed over: start over to play it again.", 409)
+    target = min(start + days, p.last_day)
+    # A play runs as its own task with no request state carried in (no tenant, no date), like the seed.
+    return await asyncio.create_task(_next(engine, app, person, org, day0, start, target, role),
+                                     context=contextvars.Context())
+
+
+async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0: dt.date, start: int, target: int,
+                role: str) -> Moved:
+    p = sp.plan()
+    w = _World(engine, app, org, person.organization_id)
+    await w.load()
+    # What the person left undone today stays theirs; what they did is ticked first.
+    me = w.users.get(role, (None, ""))[0]
+    if me:
+        await _tick(engine, org, role, me, start, day0)
+    summary: dict[tuple[str, str], int] = {}
+    failed: list[dict[str, Any]] = []
+    try:
+        for day in range(start + 1, target + 1):
+            await w.at(day, day0)
+            await _record(engine, org, None, "played", entry_id=_day_mark(day), day=day, role=None)
+            async with engine.connect() as conn:
+                played = await _played(conn, org)
+            yours_today = day == target
+            due = [e for e in p.entries if e.day <= day and e.id not in played
+                   and not (e.role == role and (yours_today or e.day < start + 1))]
+            for e in due:
+                try:
+                    record = await _play(w, e)
+                except _Wait:
+                    continue
+                except _Failed as exc:
+                    await _record(engine, org, e, "failed", error=str(exc))
+                    failed.append({"id": e.id, "what": e.what, "error": str(exc)})
+                    _log.warning("learn_sandbox.play_failed org=%s entry=%s %s", org, e.id, exc)
+                    continue
+                await _record(engine, org, e, "played", record=record)
+                key = (sp.WHO[e.role], e.kind)
+                summary[key] = summary.get(key, 0) + 1
+        async with engine.begin() as conn:
+            await conn.execute(sa.text("UPDATE organizations SET sandbox_today = :d WHERE id = :o AND sandbox_of IS NOT NULL"),
+                               {"d": day0 + dt.timedelta(days=target), "o": org})
+    finally:
+        await w.close()
+    async with engine.connect() as conn:
+        played = await _played(conn, org)
+    waiting = [{"id": e.id, "day": e.day, "who": sp.WHO[e.role], "what": e.what}
+               for e in p.entries if e.day <= target and e.id not in played and e.role != role]
+    for_you = await _tick(engine, org, role, me, target, day0) if me else []
+    user_id, name = w.users[role]
+    date = day0 + dt.timedelta(days=target)
+    token, expires = sandbox_token(user_id=user_id, org_id=org, role=role, name=name, real_org=person.organization_id,
+                                   now=dt.datetime.now(dt.UTC), today=date)
+    return Moved(day=target, date=date, token=token, expires_at=expires,
+                 summary=[{"who": who, "kind": kind, "count": n} for (who, kind), n in sorted(summary.items())],
+                 for_you=for_you, waiting=waiting, failed=failed)

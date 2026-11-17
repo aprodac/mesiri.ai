@@ -131,7 +131,7 @@ async def _make(engine: Any, person: RealPerson, now: dt.datetime) -> dict[str, 
         org_id = created.organization_id
         await conn.execute(sa.text(
             "UPDATE organizations SET status = :s, sandbox_of = :real, sandbox_user_id = :u, sandbox_expires_at = :e, "
-            "sandbox_today = :d, trial_started_at = NULL, trial_ends_at = NULL WHERE id = :o"),
+            "sandbox_today = :d, sandbox_day0 = :d, trial_started_at = NULL, trial_ends_at = NULL WHERE id = :o"),
             {"s": lifecycle.SANDBOX, "real": person.organization_id, "u": person.user_id, "e": now + KEEP_UNOPENED,
              "d": day_zero(now.date()), "o": org_id})
         others = []

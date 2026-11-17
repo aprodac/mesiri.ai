@@ -699,3 +699,36 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
   sample company as Owner → BOQ → Be: Site engineer → Ravi, on Today.
 - **Not built (17 Nov decision, a mobile app is coming):** the WhatsApp-style phone for the site engineer. The mission
   switching the role by itself is SS-76b (needs the simulation script, SS-74).
+
+### 18.11 SS-74c as built (17 Nov 2026)
+
+- **`application/learn/sandbox_player.py`**: `next_day(days 1..7, role)` plays the plan forward as each role's sandbox
+  user (a token per role, dated to the game day), through the app's own routes in process; `clock(role)` says the day
+  and what is waiting for the person. Routes (the person's real token; a sandbox token gets 403):
+  `GET /learn/sandbox/clock?role=`, `POST /learn/sandbox/next-day {days, role}` → the new day, a **new sandbox token**
+  (its date moved), the summary (who did what), "for you", what is waiting, what failed.
+- **It follows the company, not a script of ids:** an order takes the site's open request, a lorry an open order line
+  for that site and material, a bill that supplier's unbilled deliveries, a payment its unpaid bills (a week old; a
+  subcontract bill only what may be paid now, the route's own `payable_caps`), the client's receipt the bill that was
+  sent. Not there → the entry waits and is tried again each day. So what the person did (or didn't) is what happens.
+- **Your entries:** on the day you land on, your role's entries are left for you; on days skipped over they are made
+  for you (D-GC3). One is ticked when what it asks for is there: records of its kind saved by your user since that
+  day began, at its place (site, project or supplier), counted as the kind needs (a wage payment per sheet); four by
+  their outcome (handed over, issue closed, the day's weather and plan, no work left off its BOQ line). Left undone,
+  it stays yours (overdue) and what needs it waits.
+- **Found while playing it on a real database, fixed in the player:** an order from a request takes its items from
+  the request (send the request and the plan's quantity, not lines); the duplicate-order check (confirmed, as an office
+  would); new work goes on its BOQ line by itself (BOQ-01), so Anil counts only what is left; the sample had no money
+  account (the owner opens "Federal Bank current account" the first time days pass); retention on Joy's bills.
+- **New table** `sandbox_played` (migration 0559, additive; row-level security; cascades with the company):
+  what became of each entry, and when each day began. `organizations.sandbox_day0`: the plan's day 0 for that sample
+  (a sample made before it must start over to play days).
+- **Checked, real database, the whole app in process** (`tests/integration/test_sandbox_player_postgres.py`, 3, ~100 s):
+  all 62 days played to handover, **nothing failed, nothing left waiting**, 1,476 entries by the cast and the
+  owner's handover left for the person; as Accounts, Saturday leaves her wages and bills, paying Green Villa's
+  wages ticks only that one; as the site engineer, his missing requests hold Anil's orders. Over HTTP: open, clock,
+  next-day, the new token's date in `/auth/me`, a sandbox token refused (403), an unknown role (422). Unit: every kind
+  has a page and a way to be ticked.
+- **Not covered:** ticking counts records since the entry's day began, so one record late in a week could tick an
+  older overdue entry of the same kind and place as well as that day's; the dashboard side (Next day in the banner,
+  the new token swapped in, "for you" with links) is SS-74e; save points and Go back are SS-74d.
