@@ -207,13 +207,25 @@ function SectionRows({ item, comparing, priorLabel, keep, open, toggle }: { item
   const look = LOOK[item.kind]
   const Icon = look.icon
   const up = !item.cost
+  // One group: the section's own row opens to its ledgers (the group's row would repeat the same figure).
+  const single = item.groups.length === 1
+  const headId = `${item.key}/__head`
+  const headOpen = single && open.has(headId)
   return (
     <>
-      <tr>
+      <tr onClick={single ? () => toggle(headId) : undefined} aria-expanded={single ? headOpen : undefined} className={cn(single && 'cursor-pointer hover:bg-muted/50')}>
         <td className={cn(cell, 'pb-1.5 pt-3.5')}>
-          <span className={cn('inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1.5 pr-3 text-xs font-semibold', look.pill)}>
-            <Icon className="size-3.5" aria-hidden="true" />
-            {item.label}
+          <span className="flex items-center gap-1.5">
+            <span className={cn('inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1.5 pr-3 text-xs font-semibold', look.pill)}>
+              <Icon className="size-3.5" aria-hidden="true" />
+              {item.label}
+            </span>
+            {single && (
+              <>
+                <span className="text-xs text-muted-foreground">{item.groups[0].name}</span>
+                <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', headOpen && 'rotate-90')} />
+              </>
+            )}
           </span>
         </td>
         <td className={cn(cell, num, 'pb-1.5 pt-3.5 font-semibold')}>
@@ -228,7 +240,7 @@ function SectionRows({ item, comparing, priorLabel, keep, open, toggle }: { item
           </td>
         </tr>
       )}
-      {item.groups.map((g) => {
+      {(single ? [] : item.groups).map((g) => {
         const id = `${item.key}/${g.group_id ?? g.name}`
         const isOpen = open.has(id)
         const before = comparing ? n(g.prior) : null
@@ -266,6 +278,21 @@ function SectionRows({ item, comparing, priorLabel, keep, open, toggle }: { item
           </React.Fragment>
         )
       })}
+      {headOpen &&
+        item.groups[0].ledgers.map((l) => (
+          <tr key={l.ledger_id} className="border-b border-border/60 text-muted-foreground hover:bg-muted/40">
+            <td className={cn(cell, 'py-1.5 pl-10')}>
+              <Link to={`/accounts/ledgers/${l.ledger_id}${keep}`} className="hover:text-foreground hover:underline">
+                {l.name}
+              </Link>
+              {l.is_overheads && <span className="ml-2 rounded bg-muted px-1.5 py-px text-[10px]">head-office share</span>}
+            </td>
+            <td className={cn(cell, num, 'py-1.5')}>
+              <Money v={n(l.amount)} />
+              {comparing && <Sub now={n(l.amount)} before={n(l.prior)} goodWhenUp={up} priorLabel={priorLabel} />}
+            </td>
+          </tr>
+        ))}
     </>
   )
 }

@@ -2,23 +2,43 @@ import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Building2 } from 'lucide-react'
 import { BooksClosed, BooksTabs, PeriodBar, usePeriod } from '@/components/accounts/books'
-import { PlStatement } from '@/components/accounts/pl-statement'
+import { PlOwnerHero, PlSimple } from '@/components/accounts/pl-simple'
 import { PlMonths } from '@/components/accounts/pl-months'
 import { PlFormulaStrip, PlTwoColumn } from '@/components/accounts/pl-two-column'
 import { Callout, DprHeader, PageError, Segmented } from '@/components/dpr-page'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { fetchPl, formatDay, mayReadBooks, rupees, scopeParams, type Compare } from '@/lib/accounts'
 import { usePageTitle } from '@/lib/page-title'
+import { useStartMode, type StartMode } from '@/lib/start-mode'
 
 // ACC-06 / ACC-22: profit and loss for a period, the company, a project or a site (scope bar), with a comparison
 // against the period before or the same period last year. Backend: GET /accounts/pl.
-// UX-30: the statement reads in Tally's two columns by default (trading account, then profit and loss account), with
-// the sum above it as a row of figures; "Month by month" puts each month in a column; "List" keeps the one-column
-// statement.
+// UX-30 / UX-31: the same numbers, three ways to read them. "Simple" (the owner's): the result in a sentence, where
+// each ₹100 went, and the statement top to bottom in plain words. "Tally": the trading account and the profit and
+// loss account in two columns, with the sum as a row of figures. "Month by month": each month in a column.
+// Which one opens: the person's last pick (this browser) -> on a phone, Simple -> Tally for finance people and for
+// those who came from other accounting software (start mode "switching") -> Simple.
 
-type View = 'statement' | 'months' | 'list'
+type View = 'simple' | 'statement' | 'months'
+const VIEW_KEY = 'mesiri.pl.view'
+const asView = (v: string | null): View | null => (v === 'simple' || v === 'list' ? 'simple' : v === 'statement' || v === 'months' ? v : null)
+
+function savedView(): View | null {
+  try {
+    return asView(localStorage.getItem(VIEW_KEY))
+  } catch {
+    return null
+  }
+}
+
+function defaultView(role: string | null | undefined, mode: StartMode, phone: boolean): View {
+  if (phone) return 'simple'
+  if (String(role ?? '').toUpperCase() === 'FINANCE' || mode === 'switching') return 'statement'
+  return 'simple'
+}
 
 export default function ProfitLossPage() {
   usePageTitle('Profit & loss')
@@ -28,7 +48,17 @@ export default function ProfitLossPage() {
   const { period } = periodState
   const [params, setParams] = useSearchParams()
   const compare = (params.get('compare') ?? 'previous') as Compare
-  const view: View = params.get('view') === 'list' ? 'list' : params.get('view') === 'months' ? 'months' : 'statement'
+  const phone = useIsMobile()
+  const { mode } = useStartMode()
+  const view: View = asView(params.get('view')) ?? savedView() ?? defaultView(me?.role, mode, phone)
+  const pickView = (v: View) => {
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      // A browser without storage still switches; the pick is just not remembered.
+    }
+    setParam('view', v)
+  }
   const setParam = (k: string, v: string) =>
     setParams((p) => {
       const n = new URLSearchParams(p)
@@ -54,11 +84,11 @@ export default function ProfitLossPage() {
           label="Show as"
           value={view}
           options={[
-            { value: 'statement', label: 'Statement' },
+            { value: 'simple', label: 'Simple' },
+            { value: 'statement', label: 'Tally' },
             { value: 'months', label: 'Month by month' },
-            { value: 'list', label: 'List' },
           ]}
-          onChange={(v) => setParam('view', v)}
+          onChange={pickView}
         />
         <PeriodBar state={periodState} />
         <Segmented<Compare>
@@ -77,7 +107,11 @@ export default function ProfitLossPage() {
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <PlFormulaStrip pl={d} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
+          {view === 'simple' ? (
+            <PlOwnerHero pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
+          ) : (
+            <PlFormulaStrip pl={d} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
+          )}
           {Number(d.overheads) !== 0 && scope.mode !== 'portfolio' && (
             <Callout tone="info" icon={Building2}>
               Includes this project's share of head-office costs, {rupees(d.overheads)}. Before it: {rupees(d.net_before_overheads)} {Number(d.net_before_overheads) < 0 ? 'loss' : 'profit'}.
@@ -89,7 +123,7 @@ export default function ProfitLossPage() {
             ) : view === 'statement' ? (
               <PlTwoColumn pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
             ) : (
-              <PlStatement pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
+              <PlSimple pl={d} />
             )}
           </div>
         </>

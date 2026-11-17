@@ -985,10 +985,10 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['pl.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'pl.view', title: 'Three ways to read it', text: 'Statement: the two columns, as in Tally. Month by month: each month side by side, with the profit or loss of each. List: one column.' },
+      { target: 'pl.view', title: 'Three ways to read it', text: 'Simple: the result in plain words, top to bottom. Tally: the two columns your accountant knows. Month by month: each month side by side. The page remembers your pick.' },
       { target: 'pl.compare', title: 'Against what', text: 'Set it beside the period before, or the same time last year.' },
-      { target: 'pl.stats', title: 'The sum at a glance', text: 'Income less direct costs is gross profit; less indirect costs, plus other income, is net profit. Under each: the change, or its share of income.', mood: 'look' },
-      { target: 'pl.statement', title: 'The statement', text: 'Two parts, as in Tally: the trading account down to gross profit, then the profit and loss account down to net profit. Income is RA bills before GST; costs are net of the GST you can claim. Tap a group for its ledgers.', mood: 'think' },
+      { target: 'pl.stats', title: 'The result at a glance', text: 'Profit or loss for the period, what changed, and where each ₹100 earned went. In Tally view: income less direct costs is gross profit; less indirect costs, plus other income, is net profit.', mood: 'look' },
+      { target: 'pl.statement', title: 'The statement', text: 'Income is RA bills before GST; costs are net of the GST you can claim. Tap a line for its ledgers, and a ledger for its entries.', mood: 'think' },
     ],
   },
   '/accounts/balance-sheet': {

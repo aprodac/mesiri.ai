@@ -132,11 +132,21 @@ export function PlMonths({ period, scope, total }: { period: Period; scope: Scop
           <tbody>
             {SECTIONS.map((s, si) => {
               const groups = total.sections[s.key]
+              // One group: the band opens to its ledgers (the group's row would repeat the band's figures).
+              const single = groups.length === 1
+              const headId = `${s.key}/${single ? groupId(groups[0]) : ''}`
+              const headOpen = single && open.has(headId)
               if (!groups.length && !n(total.totals[s.total])) return si === 1 ? <React.Fragment key={s.key}>{resultRow('Gross profit', 'gross_profit')}</React.Fragment> : null
               return (
                 <React.Fragment key={s.key}>
-                  <tr className={cn('border-b', s.band)}>
-                    <td className={cn('sticky left-0 z-[1] px-3 py-2 font-semibold', s.fg, s.band)}>{s.label}</td>
+                  <tr className={cn('border-b', s.band, single && 'cursor-pointer')} onClick={single ? () => toggle(headId) : undefined} aria-expanded={single ? headOpen : undefined}>
+                    <td className={cn('sticky left-0 z-[1] px-3 py-2 font-semibold', s.fg, s.band)}>
+                      <span className="flex items-center gap-1.5">
+                        {single && <ChevronRight className={cn('size-3.5 shrink-0 transition-transform', headOpen && 'rotate-90')} />}
+                        {s.label}
+                        {single && <span className="text-xs font-normal text-muted-foreground">{groups[0].name}</span>}
+                      </span>
+                    </td>
                     {cols.map((c, i) => (
                       <td key={i} className={cn(col, 'font-semibold', s.fg)}>
                         <Amount v={n(c.totals[s.total])} />
@@ -151,7 +161,7 @@ export function PlMonths({ period, scope, total }: { period: Period; scope: Scop
                     const isOpen = open.has(id)
                     return (
                       <React.Fragment key={id}>
-                        <tr onClick={() => toggle(id)} aria-expanded={isOpen} className="cursor-pointer border-b border-border/60 hover:bg-muted/40">
+                        {!single && <tr onClick={() => toggle(id)} aria-expanded={isOpen} className="cursor-pointer border-b border-border/60 hover:bg-muted/40">
                           <td className="sticky left-0 z-[1] bg-card px-3 py-2">
                             <span className="flex items-center gap-1.5">
                               <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-90')} />
@@ -166,7 +176,7 @@ export function PlMonths({ period, scope, total }: { period: Period; scope: Scop
                           <td className={cn(col, totalCol)}>
                             <Amount v={n(g.amount)} />
                           </td>
-                        </tr>
+                        </tr>}
                         {isOpen &&
                           g.ledgers.map((l) => (
                             <tr key={l.ledger_id} className="border-b border-border/60 text-muted-foreground">
