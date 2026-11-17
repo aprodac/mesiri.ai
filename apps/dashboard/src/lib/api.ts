@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import { TRIAL_EXPIRED_CODE, markTrialExpired } from './trial'
 import { activeToken, sandboxEnded } from './sandbox'
 
@@ -19,9 +19,13 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY)
 }
 
+/** Request options for a call about the person themself: their own token, even inside the sample company. */
+export const AS_ME = { asMe: true } as AxiosRequestConfig
+
 api.interceptors.request.use((config) => {
   // SS-67: inside the sample company (lib/sandbox.ts) calls go with its token, except /learn/sandbox itself.
-  const token = activeToken(config.url)
+  // `asMe`: this call is about the person themself, so it goes with their own token even inside the sample company.
+  const token = (config as { asMe?: boolean }).asMe ? getToken() : activeToken(config.url)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }

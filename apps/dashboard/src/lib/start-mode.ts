@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from './api'
+import { AS_ME, api } from './api'
+import { inSandbox } from './sandbox'
 import { useAuth } from './AuthContext'
 
 // Guided onboarding (SS-27..SS-37, docs/plans/guided-onboarding-plan.md): how Mesiri guides this person, from
@@ -197,7 +198,13 @@ function merge(qc: ReturnType<typeof useQueryClient>, patch: Partial<Preferences
 export function useSetStartMode() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (mode: StartMode) => (await api.put<Preferences>('/me/start-mode', { start_mode: mode })).data,
+    mutationFn: async (mode: StartMode) => {
+      const out = (await api.put<Preferences>('/me/start-mode', { start_mode: mode })).data
+      // Inside the sample company the choice is still the person's own: saved on their account too, which every person
+      // in the sample company takes each time it is opened or the role changes (SS-66), so it is never put back.
+      if (inSandbox()) await api.put('/me/start-mode', { start_mode: mode }, AS_ME)
+      return out
+    },
     onSuccess: (out) => merge(qc, { start_mode: out.start_mode, ask_start_mode: false }),
   })
 }

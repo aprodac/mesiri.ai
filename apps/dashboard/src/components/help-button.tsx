@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ArrowLeftRight, BookOpen, ChevronDown, CircleHelp, Crosshair, FileSpreadsheet, Footprints, GraduationCap, Info, Lightbulb, ListOrdered, MessageSquareText, Search, Sparkles, UserRound } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, ChevronDown, CircleHelp, Crosshair, FileSpreadsheet, Footprints, GraduationCap, Info, Lightbulb, ListOrdered, MessageSquareText, Search, Sparkles } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
@@ -11,7 +11,7 @@ import { openJump } from '@/lib/jump'
 import { helpFor, type HelpPart, type HelpTone } from '@/lib/page-help'
 import { cn } from '@/lib/utils'
 import { wordsFor, wordsKey, useResetGuides, useStartMode, type GuideWords } from '@/lib/start-mode'
-import { StartChoices } from '@/components/onboarding/start-question'
+import { ExplainedFor } from '@/components/explained-for'
 import { WithTerms } from '@/components/term'
 import { Spark } from '@/components/live/spark'
 import { stepsFor, tourForPage } from '@/lib/tours'
@@ -100,8 +100,6 @@ export function HelpButton() {
   const guide = useStartMode()
   const words = guide.rules.words
   const resetGuides = useResetGuides()
-  const [changing, setChanging] = React.useState(false)
-  React.useEffect(() => setChanging(false), [open])
   const whatsNew = page?.guideNew
   const help = helpFor(page?.url, pathname)
 
@@ -142,27 +140,9 @@ export function HelpButton() {
             {where && <p className="text-xs font-medium text-muted-foreground">{where}</p>}
             <SheetTitle className="text-xl">{title}</SheetTitle>
             <SheetDescription className="text-sm text-foreground/80"><WithTerms text={about} /></SheetDescription>
-            {guide.ready && (
-              <button
-                type="button"
-                onClick={() => setChanging((c) => !c)}
-                aria-expanded={changing}
-                className="mt-1 inline-flex items-center gap-1.5 self-start rounded-full border border-foreground/15 bg-background/70 px-2.5 py-1 text-xs hover:bg-background"
-              >
-                <UserRound className="size-3.5 text-muted-foreground" aria-hidden />
-                <span className="text-muted-foreground">Explained for</span>
-                <span className="font-medium">{guide.rules.forWho}</span>
-                <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', changing && 'rotate-180')} aria-hidden />
-              </button>
-            )}
+            <ExplainedFor className="mt-1 self-start" guide="help.explained" />
           </SheetHeader>
           <div className="flex flex-col gap-5 px-5 py-4">
-            {changing && (
-              <section className="flex flex-col gap-2">
-                <h3 className="text-xs font-semibold text-muted-foreground">Who should Mesiri explain things for?</h3>
-                <StartChoices current={guide.mode} onChosen={() => setChanging(false)} />
-              </section>
-            )}
             {forYou && forYouKind && ForYouIcon && (
               <section className="flex gap-3 rounded-xl border bg-card px-3.5 py-3">
                 <ForYouIcon className="mt-0.5 size-4 shrink-0 text-primary-ink" />

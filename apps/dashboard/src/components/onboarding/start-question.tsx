@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 // safe default (step by step) and is stored, so it is not asked again. Changeable from the help button.
 
 export const START_QUESTION = 'How would you like to start?'
-const START_NOTE = 'This only changes how much Mesiri explains. You can change it any time from the ? at the top.'
+const START_NOTE = 'This only changes how much Mesiri explains. Change it any time: Help or Learn, "Explained for".'
 
 /** The four answers as buttons. `current` marks the person's answer (in the help sheet). */
 export function StartChoices({

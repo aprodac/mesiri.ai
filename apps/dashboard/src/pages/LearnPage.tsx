@@ -15,6 +15,7 @@ import { MODULE_GROUPS, findPage, type ModulePage } from '@/lib/module-map'
 import { useModuleEnabled } from '@/lib/modules'
 import { usePageTitle } from '@/lib/page-title'
 import { useStartMode } from '@/lib/start-mode'
+import { ExplainedFor } from '@/components/explained-for'
 import { startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
 import { cn } from '@/lib/utils'
@@ -156,7 +157,7 @@ export default function LearnPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
-      <PageHeader title="Learn Mesiri" subtitle="Pick a walkthrough. I show you each thing on the real page, and you try it yourself." />
+      <PageHeader title="Learn Mesiri" subtitle="Pick a walkthrough. I show you each thing on the real page, and you try it yourself." actions={<ExplainedFor guide="learn.explained" />} />
       {['ADMIN', 'OWNER', 'SUPER_ADMIN'].includes(String(role ?? '').toUpperCase()) && <NarratorSamples />}
       {/* SS-67: the private sample company and the guided project in it. */}
       <SandboxCard />

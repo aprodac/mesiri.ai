@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Check, ChevronDown, FlaskConical, Loader2, LogOut, Play, RotateCcw, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ExplainedFor } from '@/components/explained-for'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { SANDBOX_ROLES, leaveSandbox, resetSandbox, sandboxRoleLabel, sandboxSession, switchSandboxRole, type SandboxRole } from '@/lib/sandbox'
@@ -66,7 +67,7 @@ export function SandboxBanner() {
           <SandboxClock />
         </div>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 sm:max-w-md sm:justify-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" variant="outline" className="gap-1.5 bg-background" disabled={!!busy} data-guide="sandbox.role">
@@ -88,6 +89,7 @@ export function SandboxBanner() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        <ExplainedFor guide="sandbox.explained" />
         {walkFor(JOURNEY, session.role) && (
           <Button size="sm" variant="outline" className="gap-1.5 bg-background" disabled={!!busy} onClick={() => startWalkthrough(JOURNEY.id)}>
             <Play className="size-3.5" aria-hidden /> Guided project
