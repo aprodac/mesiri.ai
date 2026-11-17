@@ -38,6 +38,7 @@ import { DprDocument, DprViewToggle, LIVE_REFRESH_MS, type DprView } from '@/com
 import { useUrlState } from '@/lib/url-state'
 import { Callout, DprAside, DprHeader, DprPageSkeleton, DprSection, DprSteps, PageError, StatStrip, type StepState } from '@/components/dpr-page'
 import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
+import { appNow } from '@/lib/clock'
 
 // Project DPR page (WEB-05): one project's day. Every site's day as it stands
 // (opened from here to review and confirm), and the project DPR -- the
@@ -162,7 +163,7 @@ export default function ProjectDayPage() {
       <PageError
         message="This project's day could not be loaded."
         onRetry={() => query.refetch()}
-        back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Back to Today' } : { to: '/reports', label: 'Back to Reports' }}
+        back={date === localIsoDate(appNow()) ? { to: '/today', label: 'Back to Today' } : { to: '/reports', label: 'Back to Reports' }}
       />
     )
   }
@@ -234,7 +235,7 @@ export default function ProjectDayPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
       <div className="flex flex-col gap-3">
         <DprHeader
-          back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Today' } : { to: '/reports', label: 'Reports' }}
+          back={date === localIsoDate(appNow()) ? { to: '/today', label: 'Today' } : { to: '/reports', label: 'Reports' }}
           crumb="Project DPR"
           title={project.project_name}
           chip={<span className={cn(CHIP, state.className)}>{state.label}</span>}

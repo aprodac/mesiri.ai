@@ -4,13 +4,14 @@ import { useScope } from '@/lib/ScopeContext'
 import { localIsoDate } from '@/lib/site-day'
 import { useModuleEnabled } from '@/lib/modules'
 import { fetchTaskSummary, type TaskSummary } from '@/lib/tasks'
+import { appNow } from '@/lib/clock'
 
 /** Today's numbers for the sidebar and top bar badges (WEB-20): drafts still
  * to confirm and open issues, in the current scope (project or site). Same query key as the
  * Today page, so on that page it costs no extra request. */
 export function useNavCounts(): { drafts: number; openIssues: number } {
   const { scope } = useScope()
-  const date = localIsoDate(new Date())
+  const date = localIsoDate(appNow())
   const projectFilter = scope.mode === 'portfolio' ? undefined : scope.projectId
   const { data } = useQuery({
     queryKey: ['site-days', date, projectFilter],

@@ -1,5 +1,6 @@
 import { api } from './api'
 import { swatch } from './requests'
+import { appNow } from '@/lib/clock'
 
 // PRC-14 / PRC-16: what each item cost, from which supplier, over time. Backend: domains/procurement/rates_router.py.
 // Rates are per the item's stock unit, as recorded (with or without GST as entered). Only the roles that see spending.
@@ -114,7 +115,7 @@ export function rate(value: string | number | null | undefined): string {
 /** "3 Nov" (this year) or "3 Nov 25". */
 export function shortDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
-  const sameYear = d.getFullYear() === new Date().getFullYear()
+  const sameYear = d.getFullYear() === appNow().getFullYear()
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: '2-digit' }) })
 }
 
@@ -131,7 +132,7 @@ export const RATE_PERIODS: { value: RatePeriod; label: string }[] = [
 export function ratePeriodRange(period: RatePeriod, from: string, to: string): { date_from?: string; date_to?: string } {
   if (period === 'custom') return { date_from: from || undefined, date_to: to || undefined }
   const days = { '30d': 30, '90d': 90, '180d': 180, '365d': 365 }[period]
-  const d = new Date()
+  const d = appNow()
   d.setDate(d.getDate() - (days - 1))
   return { date_from: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 }

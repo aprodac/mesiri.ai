@@ -19,6 +19,7 @@ import { LinkedStrip } from '@/components/page/page-kit'
 import { orderLinks } from '@/lib/links'
 import { VendorLink } from '@/components/vendors/vendor-parts'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // PRC-06/08: one order, as the office and the site see it: the supplier, what was ordered and what came per line,
 // the deliveries so far, the requests it covers, and the next step (receive, move the date, cancel, close short).
@@ -34,7 +35,7 @@ function when(iso: string): string {
 }
 
 function today(): string {
-  const d = new Date()
+  const d = appNow()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 

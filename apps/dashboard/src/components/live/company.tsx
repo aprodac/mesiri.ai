@@ -76,6 +76,7 @@ import { AnswerMoment, AskedMoment, BillMoment, ChatMoment, EntryCard, LanguageM
 import { useVoice } from '@/lib/voice'
 import { Spark, type SparkMood } from './spark'
 import { RIPPLE_CARD_MS, RIPPLE_END_MS, Ripple } from './ripple'
+import { appNow } from '@/lib/clock'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
 // screen, as it happens, with Mesiri as a character (the Spark) seen
@@ -935,7 +936,7 @@ export function CompanyLive({
   const sampleSite = sites[0]?.site_name ?? 'Villa 3'
   const onScene = React.useCallback(
     (scene: SceneKey) => {
-      const now = new Date().toISOString()
+      const now = appNow().toISOString()
       const add = (MEET_SAMPLES[scene] ?? []).map(
         (x, n): LiveFeedItem => ({
           id: `sample-${scene}-${n}-${now}`,

@@ -28,20 +28,29 @@ def sending_blocked() -> bool:
     return _in_sandbox.get()
 
 
-def is_sandbox_token(authorization: str | None) -> bool:
+def _claims(authorization: str | None) -> dict[str, Any]:
     if not authorization or not authorization.startswith("Bearer "):
-        return False
+        return {}
     try:
-        payload = jwt.decode(authorization[7:], SECRET_KEY, algorithms=[ALGORITHM])
+        return jwt.decode(authorization[7:], SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.PyJWTError:
-        return False
-    return bool(payload.get("sandbox"))
+        return {}
+
+
+def is_sandbox_token(authorization: str | None) -> bool:
+    return bool(_claims(authorization).get("sandbox"))
 
 
 async def sandbox_gate_middleware(request: Any, call_next: Any) -> Any:
-    token = _in_sandbox.set(is_sandbox_token(request.headers.get("authorization")))
+    # SS-74a: the same token gives the sample company's own date (domains/shared/clock.py) to the whole request.
+    from mesiri.domains.shared import clock
+
+    claims = _claims(request.headers.get("authorization"))
+    token = _in_sandbox.set(bool(claims.get("sandbox")))
     try:
-        return await call_next(request)
+        with clock.scope(None):
+            clock.bind_from_token(claims)
+            return await call_next(request)
     finally:
         _in_sandbox.reset(token)
 

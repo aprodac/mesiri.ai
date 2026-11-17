@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn, toLocalISODate } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // Analytics (WEB-24): how the sites are doing over a date range. Every figure
 // comes from GET /dpr/analytics, aggregated in SQL over the whole range with
@@ -169,7 +170,7 @@ export default function OperationsAnalyticsPage() {
 
   const projectId = scope.mode !== 'portfolio' ? scope.projectId : undefined
   const siteId = scope.mode === 'site' ? scope.siteId : undefined
-  const dateTo = toLocalISODate(new Date())
+  const dateTo = toLocalISODate(appNow())
   const dateFrom = toLocalISODate(new Date(Date.now() - (Number(range) - 1) * 86_400_000))
 
   const query = useQuery({

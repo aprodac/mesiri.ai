@@ -24,6 +24,7 @@ import { useUrlState } from '@/lib/url-state'
 import { roleLabel } from '@/lib/permissions'
 import { initials } from '@/lib/team'
 import { fetchConversations, fetchConversationMessages, type Conversation, type CompanyMessage } from '@/lib/api'
+import { appNow } from '@/lib/clock'
 
 // WEB-35: the chat screen redone. A list of people and their thread, like
 // WhatsApp itself: the person's messages on the left, Mesiri's replies on
@@ -70,8 +71,8 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour
 
 function dayLabel(iso: string): string {
   const d = new Date(iso)
-  const today = new Date()
-  const yesterday = new Date()
+  const today = appNow()
+  const yesterday = appNow()
   yesterday.setDate(today.getDate() - 1)
   if (d.toDateString() === today.toDateString()) return 'Today'
   if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'

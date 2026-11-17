@@ -16,6 +16,7 @@ import {
 } from '@/lib/documents'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // DOC-01: Planning › Documents. One place for a project's papers: drawings with their revision, permits with their
 // expiry, the contract and estimate (office only, D-DOC1). Drop files in: number, title, revision and folder are read
@@ -56,7 +57,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
       <PageHeader title="Documents" />
       {data && data.expiring.length > 0 && (
         <Callout tone="draft" icon={CalendarClock}>
-          {data.expiring.map((e) => `${e.title}: ${new Date(`${e.valid_until}T00:00:00`) < new Date() ? 'expired' : 'expires'} ${dayLabel(e.valid_until)}`).join(' · ')}
+          {data.expiring.map((e) => `${e.title}: ${new Date(`${e.valid_until}T00:00:00`) < appNow() ? 'expired' : 'expires'} ${dayLabel(e.valid_until)}`).join(' · ')}
         </Callout>
       )}
       <Dropzone projectId={projectId} folder={folder} />

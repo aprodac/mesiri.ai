@@ -33,13 +33,14 @@ import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // LW-04 / LW-05 (plan docs/plans/wages-and-labour-plan.md): a site's pay week. Days come from attendance, never
 // typed; the payer sets advance recovery and deductions, approves, then pays from a money account and sends each
 // person or contractor their slip.
 
 const today = () => {
-  const d = new Date()
+  const d = appNow()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 

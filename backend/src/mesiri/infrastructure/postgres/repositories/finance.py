@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.domains.finance.entities import MoneyAccount, MoneyTransaction
+from mesiri.domains.shared import clock
 
 _money_accounts = sa.Table(
     "money_accounts",
@@ -345,7 +346,7 @@ class PostgresMoneyTransactionRepository:
             organization_id=organization_id,
             transaction_type="reversal",
             amount=original.amount,
-            occurred_date=datetime.date.today(),
+            occurred_date=clock.today(),
             created_by=created_by,
             from_account_id=original.to_account_id,
             to_account_id=original.from_account_id,

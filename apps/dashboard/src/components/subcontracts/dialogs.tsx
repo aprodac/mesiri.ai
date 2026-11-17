@@ -19,12 +19,13 @@ import {
   type BillCheck, type LineIn, type WoBill, type WorkOrder,
 } from '@/lib/subcontracts'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // NXT-05/06/07: the subcontract dialogs. A work order (subcontractor, where, lines from the BOQ or typed, retention,
 // advance, TDS, terms); a measurement; a bill with its check and deductions shown live before it is saved; approve or
 // reject a flagged bill with a reason; an advance; releasing retention.
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => appNow().toISOString().slice(0, 10)
 const UNITS = ['cum', 'sqm', 'sqft', 'rmt', 'rft', 'nos', 'kg', 'MT', 'LS', 'day']
 
 function Field({ label, htmlFor, hint, children, className }: { label: string; htmlFor?: string; hint?: string; children: React.ReactNode; className?: string }) {
@@ -432,7 +433,7 @@ export function ReleaseDialog({ open, onOpenChange, wo }: { open: boolean; onOpe
   const [note, setNote] = React.useState('')
   React.useEffect(() => { if (open) { setAmount(String(held)); setNote('') } }, [open, held])
   const dueOn = wo.completed_on ? new Date(new Date(`${wo.completed_on}T00:00:00`).getTime() + wo.defect_days * 86400000) : null
-  const early = dueOn && dueOn > new Date()
+  const early = dueOn && dueOn > appNow()
   const save = useMutation({
     mutationFn: () => releaseRetention(wo.id, { amount, note: note || undefined }),
     onSuccess: () => { done(); toast.success(`${rupees(Number(amount))} retention released`, 'It can be paid now (Pay on the subcontractor).'); onOpenChange(false) },

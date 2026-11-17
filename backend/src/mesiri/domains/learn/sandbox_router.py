@@ -31,6 +31,8 @@ class SandboxState(BaseModel):
     name: str | None = None
     created_at: dt.datetime | None = None
     expires_at: dt.datetime | None = None
+    #: The sample company's own date (SS-74a).
+    today: dt.date | None = None
 
 
 class OpenIn(BaseModel):
@@ -45,6 +47,8 @@ class Opened(BaseModel):
     role: str
     user_name: str
     created: bool
+    #: The sample company's own date (SS-74a): the dashboard's "today" while in it.
+    today: dt.date | None = None
     seeded: dict[str, int] = {}
     failed: list[str] = []
 
@@ -79,7 +83,7 @@ async def get_sandbox(request: Request, payload: dict = Depends(get_current_user
     if row is None:
         return SandboxState(exists=False)
     return SandboxState(exists=True, organization_id=row["id"], name=row["name"], created_at=row["created_at"],
-                        expires_at=row["sandbox_expires_at"])
+                        expires_at=row["sandbox_expires_at"], today=row["sandbox_today"])
 
 
 @router.post("", response_model=Opened)

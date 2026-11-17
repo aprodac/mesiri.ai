@@ -11,6 +11,7 @@ import { fetchProjects } from '@/lib/projects'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { PRIORITY_LABEL, createTask, fetchTaskOptions, type TaskPrefill, type TaskPriority } from '@/lib/tasks'
 import type { AppScope } from '@/lib/scope-types'
+import { appNow } from '@/lib/clock'
 
 // TSK-02/03: give a task. The project and site come from the page's scope when it has one, or from what the task is
 // made from (an issue, a schedule activity: `prefill`). Everything offered comes from the API's own list
@@ -18,7 +19,7 @@ import type { AppScope } from '@/lib/scope-types'
 // from the work site records; nothing here types progress (D-T4).
 
 function inDays(n: number): string {
-  const d = new Date()
+  const d = appNow()
   d.setDate(d.getDate() + n)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

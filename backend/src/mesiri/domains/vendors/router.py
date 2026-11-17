@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_manage_money, may_view_expenses
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.modules import require_module
 from mesiri.domains.vendors import documents as papers
 from mesiri.domains.vendors import ledger
@@ -128,7 +129,7 @@ def _details(body: BaseModel, auth_context: AuthorizationContext | None = None) 
         balance = body.opening_balance
         out["opening_balance"] = balance.quantize(Decimal("0.01")) if balance is not None else None
         when = body.opening_balance_date
-        out["opening_balance_date"] = when or (datetime.date.today() if balance is not None else None)
+        out["opening_balance_date"] = when or (clock.today() if balance is not None else None)
     return out
 
 

@@ -16,10 +16,11 @@ directly by Slice 0's own tests until then.
 
 from __future__ import annotations
 
-import datetime
 import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING
+
+from mesiri.domains.shared import clock
 
 if TYPE_CHECKING:
     from mesiri.domains.finance.entities import MoneyAccount
@@ -66,7 +67,7 @@ class MoneyAccountQueryService:
                 account_type="cash",
                 currency="INR",
                 opening_balance=Decimal("0"),
-                opening_balance_date=datetime.date.today(),
+                opening_balance_date=clock.today(),
                 created_by=uuid.UUID(created_by),
             )
             return [bootstrapped]

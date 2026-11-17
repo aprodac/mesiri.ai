@@ -10,12 +10,13 @@ import { addDraftBoq, addDraftSchedule, type DraftActivity, type DrawingReadWith
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { fetchLifecycle } from '@/lib/schedule'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // DR-05 / DR-06: the drafts the drawing reader makes, edited here and then added to a project. Adding never
 // changes what the project already has: an activity or BOQ line that is already there is skipped and said.
 
 function todayIso(): string {
-  const d = new Date()
+  const d = appNow()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 

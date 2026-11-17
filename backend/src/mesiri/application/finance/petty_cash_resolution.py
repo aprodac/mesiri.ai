@@ -17,13 +17,13 @@ rather than this module guessing who was meant.
 
 from __future__ import annotations
 
-import datetime
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from mesiri.domains.finance.entities import MoneyAccount
+from mesiri.domains.shared import clock
 from mesiri.infrastructure.postgres.repositories.finance import PostgresMoneyAccountRepository
 from mesiri.infrastructure.postgres.repositories.users import PostgresUserRepository
 
@@ -78,7 +78,7 @@ class PostgresPettyCashRecipientResolver(PettyCashRecipientResolver):
             account_type=_ADVANCE_ACCOUNT_TYPE,
             currency="INR",
             opening_balance=Decimal("0"),
-            opening_balance_date=datetime.date.today(),
+            opening_balance_date=clock.today(),
             created_by=created_by,
             owner_user_id=user.id,
         )

@@ -31,6 +31,7 @@ import { useModuleEnabled } from '@/lib/modules'
 import { AnswerSheet, answerTitle, questionChip, type AnswerTarget } from '@/components/live/answer'
 import { Finale } from '@/components/live/finale'
 import { SPOT_MS, Spotlight, type SpotlightFact } from '@/components/live/spotlight'
+import { appNow } from '@/lib/clock'
 
 // The Live report (WEB-37): the day's report writing itself as the site's
 // messages come in, and Mesiri seen reading each one. Left, a message
@@ -490,7 +491,7 @@ function todayAt(hhmm: string | null | undefined): Date | null {
   if (!hhmm) return null
   const [h, m] = hhmm.split(':').map(Number)
   if (Number.isNaN(h) || Number.isNaN(m)) return null
-  const at = new Date()
+  const at = appNow()
   at.setHours(h, m, 0, 0)
   return at
 }
@@ -583,9 +584,9 @@ function DayProgress({
 export default function LivePage() {
   const [params, setParams] = useSearchParams()
   // WEB-64: Live left open past midnight moves to the new day (it read 5 Nov all night, and missed 6 Nov's messages).
-  const [today, setToday] = React.useState(() => localIsoDate(new Date()))
+  const [today, setToday] = React.useState(() => localIsoDate(appNow()))
   React.useEffect(() => {
-    const t = window.setInterval(() => setToday(localIsoDate(new Date())), 60_000)
+    const t = window.setInterval(() => setToday(localIsoDate(appNow())), 60_000)
     return () => window.clearInterval(t)
   }, [])
   const date = params.get('date') || today
@@ -619,7 +620,7 @@ export default function LivePage() {
 function SiteLive({ onClose }: { onClose: () => void }) {
   const { me } = useAuth()
   const [params, setParams] = useSearchParams()
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
   const date = params.get('date') || today
 
   // The scope the dashboard is in (?project=), as everywhere else.

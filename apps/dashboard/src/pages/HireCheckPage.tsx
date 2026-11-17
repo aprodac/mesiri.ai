@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { RATE_WORDS, deleteHireBill, errorWords, fetchHireCheck, hrs, iso, type HireCheckRow, inr } from '@/lib/equipment'
 import { KpiStrip, ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // NXT-13: Equipment > Hire check. "The bill says 8 hours a day; how many did it work?" Per hired machine in the period:
 // the hours recorded on site, what they come to at the agreed rate (with the hire's minimum hours, never the breakdown),
@@ -27,7 +28,7 @@ const STATE: Record<HireCheckRow['state'], { label: string; chip: string }> = {
 }
 
 function monthRange(offset: number): [string, string, string] {
-  const now = new Date()
+  const now = appNow()
   const first = new Date(now.getFullYear(), now.getMonth() + offset, 1)
   const last = offset === 0 ? now : new Date(now.getFullYear(), now.getMonth() + offset + 1, 0)
   return [iso(first), iso(last), first.toLocaleDateString('en-IN', { month: 'long', year: offset ? 'numeric' : undefined })]

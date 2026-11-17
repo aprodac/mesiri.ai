@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn, toLocalISODate } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // Timeline (WEB-24): everything that happened on the sites, newest first,
 // grouped by day. Reads GET /timeline -- timeline_entries, filled every
@@ -109,7 +110,7 @@ export default function OperationsTimelinePage({ embedded = false }: { embedded?
   const projectId = scope.mode !== 'portfolio' ? scope.projectId : undefined
   const siteId = scope.mode === 'site' ? scope.siteId : undefined
   const dateFrom = React.useMemo(() => {
-    const now = new Date()
+    const now = appNow()
     if (range === 'today') return toLocalISODate(now)
     if (range === 'week') return toLocalISODate(new Date(now.getTime() - 6 * 86_400_000))
     if (range === 'month') return toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1))

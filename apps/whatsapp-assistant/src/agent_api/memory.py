@@ -22,6 +22,7 @@ import uuid
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from mesiri.domains.shared import clock
 from mesiri_ai.models import ChatMessage
 
 from .reply_guard import claims_cannot
@@ -38,7 +39,7 @@ USER, MODEL = "user", "mesiri"
 
 def _days(timezone: str | None, now: dt.datetime | None = None) -> list[dt.date]:
     """Oldest first: the two days before, then today (the site's own time zone)."""
-    today = (now or dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata"))).date()
+    today = (now or clock.at(dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")))).date()
     return [today - dt.timedelta(days=n) for n in range(EARLIER_DAYS, -1, -1)]
 
 

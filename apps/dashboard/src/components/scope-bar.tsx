@@ -12,6 +12,7 @@ import { SCOPE_ICON, SCOPE_TONE, useScopeTree, type Tree } from '@/lib/scope-loo
 import type { AppScope, ProjectItem, SiteItem } from '@/lib/scope-types'
 import { hasUpdates, localIsoDate } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // SCP-01: what the data on every page is for -- all projects, one project, or one site -- and the one place to
 // change it. The top bar shows it as a path (All projects › Villa › Compound wall) whose parts take you up a level;
@@ -133,7 +134,7 @@ function ScopePanel({ tree, onDone, inMenu }: { tree: Tree; onDone: () => void; 
   const { scope, setPortfolioScope, setProjectScope, setSiteScope } = useScope()
   const allowed = useAllowedScopes()
   const [q, setQ] = React.useState('')
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
   // Today's reporting for every site (the Today page's rule, hasUpdates) this person sees: the same request the Today page makes for all projects.
   const days = useQuery({
     queryKey: ['site-days', today, undefined],

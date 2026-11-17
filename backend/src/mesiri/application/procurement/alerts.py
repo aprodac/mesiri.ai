@@ -21,6 +21,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.domains.shared import clock
+
 #: A request still waiting this long is brought up again (default from the plan; open question to Ilan).
 WAITING_AFTER = datetime.timedelta(hours=4)
 #: A held message older than this is dropped rather than sent stale.
@@ -116,7 +118,7 @@ async def _claim(conn: AsyncConnection, organization_id: uuid.UUID, *, rule_key:
 async def tell_office_of_new_request(conn: AsyncConnection, organization_id: uuid.UUID, item: dict[str, Any]) -> int:
     """A request was just raised (dashboard or WhatsApp): each office person hears it once, in their language."""
     sent = 0
-    today = datetime.date.today()
+    today = clock.today()
     for person in await office_people(conn, organization_id, item["project_id"], besides=item["requested_by"]):
         message = words("new", person["language"], ref=item["ref"], who=item["requested_by_name"] or "Someone",
                         site=item["site_name"], what=_what(item), needed_by=item["needed_by"],

@@ -82,13 +82,21 @@ class Opened:
     role: str
     user_name: str
     created: bool
+    #: The sample company's own date (SS-74a): the day its planned simulation is at.
+    today: dt.date | None = None
     seeded: dict[str, int] = field(default_factory=dict)
     failed: list[str] = field(default_factory=list)
 
 
 _SANDBOX_OF = sa.text(
-    "SELECT id, name, created_at, sandbox_expires_at FROM organizations WHERE sandbox_user_id = :u"
+    "SELECT id, name, created_at, sandbox_expires_at, sandbox_today FROM organizations WHERE sandbox_user_id = :u"
 )
+
+
+def day_zero(today: dt.date) -> dt.date:
+    """The date a new sample company starts on (SS-74a): the latest Saturday, so its seeded weeks end on a pay day
+    and its planned simulation's day 0 is a Saturday (application/learn/sample_plan.py ``weekday``)."""
+    return today - dt.timedelta(days=(today.weekday() - 5) % 7)
 
 
 def _email(org_id: uuid.UUID, role: str) -> str:
@@ -123,9 +131,9 @@ async def _make(engine: Any, person: RealPerson, now: dt.datetime) -> dict[str, 
         org_id = created.organization_id
         await conn.execute(sa.text(
             "UPDATE organizations SET status = :s, sandbox_of = :real, sandbox_user_id = :u, sandbox_expires_at = :e, "
-            "trial_started_at = NULL, trial_ends_at = NULL WHERE id = :o"),
+            "sandbox_today = :d, trial_started_at = NULL, trial_ends_at = NULL WHERE id = :o"),
             {"s": lifecycle.SANDBOX, "real": person.organization_id, "u": person.user_id, "e": now + KEEP_UNOPENED,
-             "o": org_id})
+             "d": day_zero(now.date()), "o": org_id})
         others = []
         for role, name in ROLES.items():
             uid = uuid.uuid4()
@@ -143,6 +151,7 @@ async def _make(engine: Any, person: RealPerson, now: dt.datetime) -> dict[str, 
                 "ON CONFLICT (organization_id, key) DO UPDATE SET value = EXCLUDED.value"),
                 {"o": org_id, "k": key, "v": _json(value)})
     return {"organization_id": org_id, "name": SANDBOX_NAME, "owner_id": created.owner_user_id,
+            "today": day_zero(now.date()),
             "owner_name": person.full_name, "project_id": created.project_id,
             "site_ids": [s.site_id for s in created.sites], "others": others}
 
@@ -161,16 +170,17 @@ def _json(value: Any) -> str:
 
 
 def sandbox_token(*, user_id: uuid.UUID, org_id: uuid.UUID, role: str, name: str, real_org: uuid.UUID,
-                  now: dt.datetime) -> tuple[str, dt.datetime]:
+                  now: dt.datetime, today: dt.date) -> tuple[str, dt.datetime]:
     """An access token for a sandbox user; the ``sandbox`` claim marks it (the dashboard shows the banner, and
-    ``/learn/sandbox`` refuses it)."""
+    ``/learn/sandbox`` refuses it), and ``today`` is the sample company's own date (SS-74a, domains/shared/clock.py).
+    When that date moves, the route that moves it gives a new token."""
     import jwt
 
     from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 
     expires = now + TOKEN_LIFETIME
     payload = {"sub": str(user_id), "org": str(org_id), "role": role, "name": name, "org_name": SANDBOX_NAME,
-               "sandbox": str(real_org), "exp": expires}
+               "sandbox": str(real_org), "today": today.isoformat(), "exp": expires}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM), expires
 
 
@@ -206,7 +216,8 @@ class _Response:
 
 async def _seed(app: Any, info: dict[str, Any], real_org: uuid.UUID, today: dt.date) -> tuple[dict[str, int], list[str]]:
     token, _ = sandbox_token(user_id=info["owner_id"], org_id=info["organization_id"], role=OWNER,
-                             name=info["owner_name"], real_org=real_org, now=dt.datetime.now(dt.UTC))
+                             name=info["owner_name"], real_org=real_org, now=dt.datetime.now(dt.UTC),
+                             today=info["today"])
     client = _InProcessApi(app, token)
     try:
         return await seed(client, info, today=today)
@@ -240,24 +251,28 @@ async def open_sandbox(engine: Any, app: Any, person: RealPerson, *, role: str =
                     raise SandboxError("Could not make the sample company; try again.", 409) from exc
         else:
             created = True
-            seeded, failed = await _seed_in_fresh_context(app, info, person.organization_id, now.date())
+            seeded, failed = await _seed_in_fresh_context(app, info, person.organization_id, info["today"])
             if failed:
                 _log.warning("learn_sandbox.seed_failed org=%s failed=%s", info["organization_id"], failed[:10])
     async with engine.begin() as conn:
         row = await find(conn, person)
         if row is None:
             raise SandboxError("The sample company was removed; open it again.", 409)
-        await conn.execute(sa.text("UPDATE organizations SET sandbox_expires_at = :e WHERE id = :o"),
+        # A sample company made before it had its own date (SS-74a) carries on from the day its records run to.
+        await conn.execute(sa.text("UPDATE organizations SET sandbox_expires_at = :e, "
+                                   "sandbox_today = COALESCE(sandbox_today, CAST(created_at AS date)) WHERE id = :o"),
                            {"e": now + KEEP_UNOPENED, "o": row["id"]})
+        today = (await conn.execute(sa.text("SELECT sandbox_today FROM organizations WHERE id = :o"),
+                                    {"o": row["id"]})).scalar_one()
         user = (await conn.execute(sa.text(
             "SELECT id, full_name FROM users WHERE organization_id = :o AND upper(role) = :r "
             "ORDER BY created_at LIMIT 1"), {"o": row["id"], "r": role})).mappings().first()
     if user is None:
         raise SandboxError("That role is not in your sample company; reset it to get every role.", 409)
     token, expires = sandbox_token(user_id=user["id"], org_id=row["id"], role=role, name=user["full_name"],
-                                   real_org=person.organization_id, now=now)
+                                   real_org=person.organization_id, now=now, today=today)
     return Opened(token=token, expires_at=expires, organization_id=row["id"], name=row["name"], role=role,
-                  user_name=user["full_name"], created=created, seeded=seeded, failed=failed)
+                  user_name=user["full_name"], created=created, today=today, seeded=seeded, failed=failed)
 
 
 async def remove_sandbox(engine: Any, person: RealPerson) -> bool:

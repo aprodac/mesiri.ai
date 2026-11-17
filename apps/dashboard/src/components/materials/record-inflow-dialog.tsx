@@ -34,9 +34,10 @@ import { fetchVendorsApi } from '@/lib/api'
 import { Combobox } from '@/components/ui/combobox'
 import { GstField } from '@/components/procurement/gst-field'
 import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
+import { appNow } from '@/lib/clock'
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return appNow().toISOString().slice(0, 10)
 }
 
 interface RecordInflowDialogProps {

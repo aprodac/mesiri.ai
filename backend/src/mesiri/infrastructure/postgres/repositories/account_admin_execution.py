@@ -11,7 +11,6 @@ same reasoning as expense_execution.py's use of PostgresExpensePaymentRepository
 
 from __future__ import annotations
 
-import datetime
 import json
 import uuid
 from decimal import Decimal
@@ -21,6 +20,7 @@ import sqlalchemy as sa
 
 from mesiri.application.finance.commands import ManageMoneyAccountCommand
 from mesiri.application.finance.repository import AccountAdminExecutionRepository
+from mesiri.domains.shared import clock
 from mesiri.infrastructure.postgres.repositories.finance import PostgresMoneyAccountRepository
 from mesiri.infrastructure.postgres.workflow_instance import (
     get_by_id_on_connection,
@@ -88,7 +88,7 @@ class PostgresAccountAdminExecutionRepository(AccountAdminExecutionRepository):
                 account_type=cmd.account_type,
                 currency="INR",
                 opening_balance=Decimal("0"),
-                opening_balance_date=datetime.date.today(),
+                opening_balance_date=clock.today(),
                 created_by=created_by,
             )
             row_id = account.id

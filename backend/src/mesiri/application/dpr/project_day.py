@@ -38,8 +38,14 @@ def local_date_sql(moment_sql: str, organization_sql: str) -> str:
 
 
 async def company_today(conn, organization_id) -> object:  # noqa: ANN001
-    """Today's date in the company's zone (PRC-17: a period that ends "today" ends on the site's today)."""
+    """Today's date in the company's zone (PRC-17: a period that ends "today" ends on the site's today). Inside a
+    learning sample company, its own date (SS-74a, domains/shared/clock.py): no query then."""
     from sqlalchemy import text
+
+    from mesiri.domains.shared import clock
+
+    if clock.override() is not None:
+        return clock.override()
 
     res = await conn.execute(
         text(f"SELECT {local_date_sql('now()', ':org_id')}"), {"org_id": organization_id}

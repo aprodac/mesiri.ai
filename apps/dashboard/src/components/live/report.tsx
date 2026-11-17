@@ -5,6 +5,7 @@ import { longDate } from '@/lib/site-day'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { cn } from '@/lib/utils'
 import { Count } from './meet'
+import { appNow } from '@/lib/clock'
 
 // The company Live's evening (WEB-61): a strip under the header with each
 // project's report time, the time left, and each site's state (ready, or
@@ -23,7 +24,7 @@ const part = (k: string) => PART[k] ?? k.replace(/_/g, ' ')
 function todayAt(hhmm: string | null): Date | null {
   const m = (hhmm ?? '').match(/^(\d{1,2}):(\d{2})/)
   if (!m) return null
-  const d = new Date()
+  const d = appNow()
   d.setHours(Number(m[1]), Number(m[2]), 0, 0)
   return d
 }

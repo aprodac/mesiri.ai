@@ -8,7 +8,6 @@ order) and recovered (applied to its bills).
 
 from __future__ import annotations
 
-import datetime
 import json
 import uuid
 from collections import defaultdict
@@ -18,6 +17,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.domains.shared import clock
 from mesiri.domains.subcontracts import rules
 
 STATUSES = ("draft", "issued", "completed", "closed", "cancelled")
@@ -271,7 +271,7 @@ async def tds_account(conn: AsyncConnection, org: uuid.UUID, user_id: uuid.UUID)
 
     acc = await PostgresMoneyAccountRepository(conn).create(
         organization_id=org, name=TDS_ACCOUNT, account_type="other", currency="INR", opening_balance=Decimal(0),
-        opening_balance_date=datetime.date.today(), created_by=user_id)
+        opening_balance_date=clock.today(), created_by=user_id)
     return acc.id
 
 

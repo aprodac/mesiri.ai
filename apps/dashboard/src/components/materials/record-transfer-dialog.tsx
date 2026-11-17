@@ -23,9 +23,10 @@ import {
 } from '@/lib/materials'
 import type { AppScope } from '@/lib/scope-types'
 import { Combobox } from '@/components/ui/combobox'
+import { appNow } from '@/lib/clock'
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return appNow().toISOString().slice(0, 10)
 }
 
 /** PRC-00: opened from an item at one site, "Move here" from another site that has it. */

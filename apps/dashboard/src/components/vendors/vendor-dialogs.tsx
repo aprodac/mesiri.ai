@@ -31,12 +31,13 @@ import {
   type Vendor,
   type VendorKind,
 } from '@/lib/vendors'
+import { appNow } from '@/lib/clock'
 
 // CC-09 / CC-10: the supplier dialogs. Add or edit a supplier (kind, credit days, contact, opening balance), pay one
 // (oldest bills first, the rest as an advance, with a preview of what it pays), bill deliveries already recorded, put
 // deliveries on a bill typed earlier, merge two records of the same supplier.
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => appNow().toISOString().slice(0, 10)
 
 function Field({ label, htmlFor, hint, children, className }: { label: string; htmlFor?: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (

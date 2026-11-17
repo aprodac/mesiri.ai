@@ -1,4 +1,5 @@
 import { api } from './api'
+import { appNow } from '@/lib/clock'
 
 // ACC-01..05: the company's books (backend domains/accounts). Money comes as exact strings ("1234.50"); a balance is
 // signed: positive is a debit (Dr), negative a credit (Cr). Every read posts what changed first, so it is current.
@@ -354,7 +355,7 @@ export type PresetKey = 'this_month' | 'last_month' | 'this_quarter' | 'fy' | 'l
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-export function presetPeriod(key: Exclude<PresetKey, 'custom'>, today = new Date()): Period {
+export function presetPeriod(key: Exclude<PresetKey, 'custom'>, today = appNow()): Period {
   const y = today.getFullYear()
   const m = today.getMonth()
   const fyStart = m >= 3 ? y : y - 1

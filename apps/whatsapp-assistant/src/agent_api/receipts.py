@@ -18,6 +18,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from channel.receipt.draft_slip import Slip, SlipLine
+from mesiri.domains.shared import clock
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
@@ -144,7 +145,7 @@ def slip_for(entries: list[PendingWrite], ctx: Any, names: tuple[dict, dict], no
         zone = ZoneInfo(str(getattr(ctx, "timezone", None) or "Asia/Kolkata"))
     except (ZoneInfoNotFoundError, ValueError):
         zone = ZoneInfo("Asia/Kolkata")
-    local = (now or dt.datetime.now(dt.UTC)).astimezone(zone)
+    local = (now or clock.at(dt.datetime.now(zone))).astimezone(zone)
     when = f"{local.day} {local:%b}, {local:%I:%M %p}".replace(" 0", " ").replace("AM", "am").replace("PM", "pm")
     return Slip(site=site, when=when, lines=lines)
 

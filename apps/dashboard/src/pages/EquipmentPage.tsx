@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { STATE_LOOK, fetchMachines, hrs, type Kind, type Machine, type MachineState, inr } from '@/lib/equipment'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // NXT-11 / NXT-15: Equipment > Machines (and Vehicles, the same page for kind=vehicle), in the Purchase orders page's
 // visual language: tiles for what needs attention today, tabs, filter pills, the list beside the chosen machine (a
@@ -48,7 +49,7 @@ function inTile(m: Machine, tile: Tile): boolean {
 }
 
 function exportMachines(items: Machine[]): void {
-  exportCsv(`machines-${new Date().toISOString().slice(0, 10)}.csv`,
+  exportCsv(`machines-${appNow().toISOString().slice(0, 10)}.csv`,
     ['Ref', 'Name', 'Type', 'Kind', 'Owned / hired', 'Hire company', 'Rate', 'Per', 'Project', 'Site', 'State', 'Today worked', 'Today idle', 'Today breakdown',
       'Today diesel (L)', 'Month worked', 'Month idle', 'Month breakdown', 'Month diesel (L)', 'Month hire', 'Month diesel cost', 'Operator'],
     items.map((m) => [m.ref, m.name, m.type ?? '', m.kind, m.ownership, m.vendor_name ?? '', m.rate ?? '', m.rate_unit ?? '', m.project_name ?? '', m.site_name ?? '',

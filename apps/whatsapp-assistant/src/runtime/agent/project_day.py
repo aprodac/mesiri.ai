@@ -18,6 +18,7 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 
 from channel.receipt.data import company_zone
+from mesiri.domains.shared import clock
 
 
 def project_zone(name: str | None) -> ZoneInfo:
@@ -38,7 +39,9 @@ def project_now(name: str | None, now: dt.datetime | None = None) -> dt.datetime
     moment = now or dt.datetime.now(dt.UTC)
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=dt.UTC)
-    return moment.astimezone(zone)
+    local = moment.astimezone(zone)
+    # SS-74a: a learning sample company's own date, the real time of day (``now`` given: as given).
+    return local if now is not None else clock.at(local)
 
 
 def project_today(name: str | None, now: dt.datetime | None = None) -> dt.date:

@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 
 from mesiri.application.dpr import fact_review, project_day, site_day
+from mesiri.domains.shared import clock
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
@@ -140,7 +141,7 @@ async def process_late_entries(
 ) -> LateEntryResult:
     """Find entries created after their (frozen) site day's version was built,
     record each once, and reopen or revise that day."""
-    since = (today or dt.date.today()) - dt.timedelta(days=LOOKBACK_DAYS)
+    since = (today or clock.today()) - dt.timedelta(days=LOOKBACK_DAYS)
     found: list[dict[str, Any]] = []
     for table, fact_type, source_sql in _SOURCES:
         rows = (

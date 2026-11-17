@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, getToken } from './api'
+import { SANDBOX_KEY } from './clock'
 
 // SS-67 (docs/plans/guided-demo-plan.md section 17.2): the person's private sample company ("the sandbox"), made and
 // removed by the backend (`GET/POST/DELETE /learn/sandbox`, SS-66b). While the person is in it, every API call goes
@@ -10,7 +11,7 @@ import { api, getToken } from './api'
 // The sandbox token can only reach the sandbox company, and the /learn/sandbox routes refuse it (no sandbox inside a
 // sandbox), so those three calls always go with the person's own token (api.ts's request interceptor).
 
-const KEY = 'mesiri_sandbox'
+const KEY = SANDBOX_KEY
 /** A walkthrough to start once the page has loaded inside the sandbox ("Start the guided project"). */
 const START_KEY = 'mesiri_sandbox_start'
 /** Why the person was brought back to their own company, said once on the Learn page. */
@@ -43,6 +44,8 @@ export interface SandboxOpened {
   role: SandboxRole
   user_name: string
   created: boolean
+  /** The sample company's own date (SS-74a): this tab's "today" while in it (lib/clock.ts). */
+  today?: string | null
   seeded?: Record<string, number>
   failed?: unknown[]
 }
@@ -54,6 +57,8 @@ export interface SandboxSession {
   name: string
   role: SandboxRole
   user_name: string
+  /** The sample company's own date (YYYY-MM-DD), read by lib/clock.ts. */
+  today?: string | null
   /** The person's own token this was opened under: another login in this tab drops the sandbox. */
   real: string
 }
@@ -130,7 +135,8 @@ export async function enterSandbox(role: SandboxRole = 'ADMIN', start?: string, 
   const res = await api.post<SandboxOpened>(SANDBOX_PATH, { role })
   const d = res.data
   const session: SandboxSession = {
-    token: d.token, expires_at: d.expires_at, name: d.name, role: d.role, user_name: d.user_name, real: fingerprint(real),
+    token: d.token, expires_at: d.expires_at, name: d.name, role: d.role, user_name: d.user_name, today: d.today ?? null,
+    real: fingerprint(real),
   }
   const s = store()
   if (!s) throw new Error('This browser blocks storage, so the sample company cannot open here.')

@@ -41,6 +41,7 @@ from mesiri.domains.procurement import requests as request_store
 from mesiri.domains.procurement.router import _one as one_request
 from mesiri.domains.procurement.router import _tell_requester, _visible
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -643,7 +644,7 @@ async def after_delivery(conn: AsyncConnection, auth: AuthorizationContext, line
     order_id = (await conn.execute(text("SELECT purchase_order_id FROM purchase_order_lines WHERE id = :id"),
                                    {"id": line_id})).scalar_one()
     rows = await store.fetch_orders(conn, auth.organization_id, project_ids=None, order_id=order_id)
-    item = store.describe(rows, today=datetime.date.today(), with_money=False, all_orders=[])[0]
+    item = store.describe(rows, today=clock.today(), with_money=False, all_orders=[])[0]
     await requests_follow(conn, auth, _request_ids(item))
     line = next(x for x in item["lines"] if x["id"] == str(line_id))
     return {"id": item["id"], "ref": item["ref"], "vendor_name": item["vendor_name"], "status": item["status"],

@@ -27,6 +27,7 @@ import { RequestDetail } from '@/components/requests/request-detail'
 import { NewRequestDialog } from '@/components/requests/new-request-dialog'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // PRC-22 (design approved by Ilan, 7 Nov 2026): Materials > Requests. What the sites need and what is happening
 // to it. Four tiles say what needs attention; tabs by status; filters as dropdowns with the same cues as the rows;
@@ -68,7 +69,7 @@ function exportRequests(items: MaterialRequest[]): void {
     l.material, l.category ?? '', Number(l.quantity), l.unit, Number(l.at_site), Number(l.on_order), Number(l.to_buy),
     r.orders.filter((o) => o.status !== 'cancelled').map((o) => o.ref).join(' '), r.purpose ?? '', r.decision_note ?? '',
   ]))
-  exportCsv(`material-requests-${new Date().toISOString().slice(0, 10)}.csv`,
+  exportCsv(`material-requests-${appNow().toISOString().slice(0, 10)}.csv`,
     ['Request', 'Status', 'Project', 'Site', 'Asked by', 'Asked on', 'Needed by', 'Item', 'Category', 'Quantity', 'Unit',
       'At site', 'On order', 'To buy', 'Orders', 'Purpose', 'Office note'], rows)
 }

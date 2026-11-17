@@ -32,6 +32,7 @@ import { useAuth } from '@/lib/AuthContext'
 import type { AccountForEdit } from '@/components/accounts/account-dialog'
 import { KpiStrip, ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // WEB-51 (Ilan, 5 Nov): Finance > Money, one page for what used to be Accounts, Petty cash, Transactions and the
 // transfers. Accounts: the company's bank accounts, each site's petty cash and the rest, with what each holds; a row
@@ -609,7 +610,7 @@ export default function MoneyPage() {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function exportTx(rows: any[], account: string | null): void {
   exportCsv(
-    `money-transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+    `money-transactions-${appNow().toISOString().slice(0, 10)}.csv`,
     ['Date', 'Kind', 'From', 'To', 'Description', 'Amount', ...(account ? ['In / out'] : [])],
     rows.map((tx) => [
       tx.occurred_date, TX_LABEL[tx.transaction_type] ?? tx.transaction_type, tx.from_account_name ?? '', tx.to_account_name ?? '', tx.description ?? '', Number(tx.amount) || 0,

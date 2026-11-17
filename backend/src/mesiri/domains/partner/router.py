@@ -27,6 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
+from mesiri.domains.shared import clock
 from mesiri.domains.subcontracts import rules, store
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.tenant import apply_tenant, bind_tenant
@@ -168,7 +169,7 @@ async def _tell_office(conn: AsyncConnection, p: Partner, wo: dict, message: str
     for uid in people:
         async with conn.begin_nested():
             await repo.claim(organization_id=p.organization_id, rule_key="partner_sent", subject_id=f"{subject}:{uid}",
-                             occurred_on=datetime.date.today(), recipient_user_id=uid, project_id=uuid.UUID(wo["project_id"]),
+                             occurred_on=clock.today(), recipient_user_id=uid, project_id=uuid.UUID(wo["project_id"]),
                              site_id=uuid.UUID(wo["site_id"]) if wo["site_id"] else None,
                              payload={"message": message, "hold_until_window": True, "hold_days": 3})
 
@@ -192,7 +193,7 @@ async def report_work(body: WorkDoneIn, p: Partner = Depends(get_partner), conn:
     line = next((x for x in wo["lines"] if x["id"] == str(body.line_id)), None)
     if line is None:
         raise HTTPException(status_code=404, detail="Line not found")
-    when = body.done_on or datetime.date.today()
+    when = body.done_on or clock.today()
     await conn.execute(text(
         "INSERT INTO work_order_measurements (organization_id, work_order_id, line_id, measured_on, quantity, notes, status, "
         "source, recorded_by_name, reported_by_contact) VALUES (:org, :wo, :l, :d, :q, :n, 'proposed', 'partner', :who, :c)"),
@@ -237,7 +238,7 @@ async def send_bill(body: PartnerBillIn, p: Partner = Depends(get_partner), conn
         raise HTTPException(status_code=409, detail="The company has nobody to receive bills yet.")
     number = int((await conn.execute(text("SELECT COALESCE(MAX(number), 0) + 1 FROM work_order_bills WHERE work_order_id = :w"),
                                      {"w": body.work_order_id})).scalar())
-    when = body.bill_date or datetime.date.today()
+    when = body.bill_date or clock.today()
     expense_id = await _bill_expense(conn, p.organization_id, recorder, wo, number, Decimal(result["gross"]), when, bill)
     from mesiri.domains.subcontracts.router import hold_expense
 

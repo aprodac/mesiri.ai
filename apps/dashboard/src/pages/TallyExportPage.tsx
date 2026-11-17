@@ -16,6 +16,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { downloadTallyXml, fetchTallySummary } from '@/lib/tally'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // NXT-12: the books for the CA. A period's confirmed expenses (Journal vouchers) and payments (Payment vouchers),
 // with the ledgers they use, as one XML file Tally imports (Gateway of Tally › Import › Vouchers). One way: nothing
@@ -25,7 +26,7 @@ function iso(d: Date): string {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 }
 function monthOf(offset: number): { date_from: string; date_to: string } {
-  const now = new Date()
+  const now = appNow()
   const start = new Date(now.getFullYear(), now.getMonth() + offset, 1)
   const end = offset === 0 ? now : new Date(now.getFullYear(), now.getMonth() + offset + 1, 0)
   return { date_from: iso(start), date_to: iso(end) }

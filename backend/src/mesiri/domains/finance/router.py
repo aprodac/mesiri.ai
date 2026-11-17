@@ -31,6 +31,7 @@ from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_manage_money, may_transfer_money
 from mesiri.domains.finance.bank_details import BankDetailError, clean_bank_name, clean_ifsc, last4
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.expenses import (
@@ -845,7 +846,7 @@ async def create_account(
         account_type=body.account_type,
         currency=body.currency,
         opening_balance=body.opening_balance,
-        opening_balance_date=body.opening_balance_date or datetime.date.today(),
+        opening_balance_date=body.opening_balance_date or clock.today(),
         created_by=auth_context.user_id,
         project_id=body.project_id,
         site_id=body.site_id,
@@ -1005,7 +1006,7 @@ async def transfer_money(
         from_account_id=str(body.from_account_id),
         to_account_id=str(body.to_account_id),
         amount=body.amount,
-        occurred_date=body.occurred_date or datetime.date.today(),
+        occurred_date=body.occurred_date or clock.today(),
         description=body.description,
         correlation_id=body.correlation_id,
     )

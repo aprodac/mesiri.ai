@@ -20,6 +20,7 @@ import { FilterSelect } from '@/components/filter-select'
 import { EditWorkerSheet } from './edit-worker-sheet'
 import { WorkerStatisticsSheet } from './worker-statistics-sheet'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // WEB-22: the worker register as rows -- trade, type, wage, and what
 // attendance actually shows (days worked, last seen) -- plus the people
@@ -42,7 +43,7 @@ export function WorkersView({ addOpen, setAddOpen, leading }: { addOpen: boolean
   const [history, setHistory] = React.useState<{ id: string; name: string } | null>(null)
   const [retiring, setRetiring] = React.useState<WorkforceWorkerItem | null>(null)
   const [prefill, setPrefill] = React.useState<WorkerStatistics | null>(null)
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
 
   // 200 is the endpoint's maximum; filters below work on what this returns.
   const workers = useQuery({ queryKey: ['labour', 'workers'], queryFn: () => fetchWorkersApi({ limit: 200 }) })

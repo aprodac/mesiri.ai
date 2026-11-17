@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.domains.shared import clock
 from mesiri.domains.workforce import pay
 from mesiri.infrastructure.postgres.repositories.workforce import counted_line_sql
 
@@ -141,7 +142,7 @@ async def void_advance(conn: AsyncConnection, org: uuid.UUID, advance_id: uuid.U
         {"id": advance_id, "org": org, "u": user_id, "why": reason})).mappings().first()
     if row is None:
         return False
-    await _record_money(conn, org, "reversal", Decimal(row["amount"]), datetime.date.today(), user_id,
+    await _record_money(conn, org, "reversal", Decimal(row["amount"]), clock.today(), user_id,
                         row["account_id"], ADVANCE_SOURCE, advance_id, f"Advance to {row['payee_name']} taken back")
     return True
 

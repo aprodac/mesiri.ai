@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { appNow } from '@/lib/clock'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -19,7 +20,7 @@ export function cn(...inputs: ClassValue[]) {
  * value compared against it has to be a local calendar date as well.
  * 'en-CA' is used purely because its short-date format is ISO-shaped.
  */
-export function toLocalISODate(date: Date = new Date()): string {
+export function toLocalISODate(date: Date = appNow()): string {
   return date.toLocaleDateString('en-CA')
 }
 

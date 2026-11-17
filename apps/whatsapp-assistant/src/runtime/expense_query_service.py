@@ -13,6 +13,8 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from mesiri.domains.shared import clock
+
 if TYPE_CHECKING:
     from mesiri.domains.expenses.entities import Expense
     from mesiri.infrastructure.postgres.database import PostgresDatabase
@@ -24,7 +26,7 @@ def resolve_date_range(bucket: str | None) -> tuple[datetime.date, datetime.date
     """Map an extracted `date_range` bucket to a concrete (start, end, label).
     Defaults to "this month" when no time period was mentioned -- matches
     the plan's example queries, which are usually implicitly recent."""
-    today = datetime.date.today()
+    today = clock.today()
     if bucket == "today":
         return today, today, _DATE_RANGE_LABELS["today"]
     if bucket == "this_week":

@@ -75,6 +75,33 @@ function checkTourMarkers(): Plugin {
 // SCP-07: every built page of the module map has its row in lib/scope-levels.ts (how far it narrows to the project
 // or site picked). The page's console error only shows in the screenshot run, and four pages slipped past it, so
 // the build checks it too.
+/**
+ * SS-74a: one "now" (src/lib/clock.ts `appNow()`), so a learning sample company's own date reaches every page. A bare
+ * `new Date()` would show the real date inside the game (a wrong "today", "days late", date field default), so the
+ * build fails on one anywhere else.
+ */
+function checkOneClock(): Plugin {
+  return {
+    name: 'mesiri-check-one-clock',
+    buildStart() {
+      const found: string[] = []
+      const walk = (dir: string) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name)
+          if (entry.isDirectory()) walk(full)
+          else if (/\.tsx?$/.test(entry.name) && !full.endsWith(path.join('lib', 'clock.ts'))) {
+            fs.readFileSync(full, 'utf8').split('\n').forEach((line, i) => {
+              if (/new Date\(\s*\)/.test(line)) found.push(`${path.relative(SRC, full)}:${i + 1}`)
+            })
+          }
+        }
+      }
+      walk(SRC)
+      if (found.length) this.error(`Use appNow() from src/lib/clock.ts, not new Date() (SS-74a): ${found.join(', ')}`)
+    },
+  }
+}
+
 function checkScopeLevels(): Plugin {
   return {
     name: 'mesiri-check-scope-levels',
@@ -90,7 +117,7 @@ function checkScopeLevels(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), checkTourMarkers(), checkScopeLevels()],
+  plugins: [react(), tailwindcss(), checkTourMarkers(), checkScopeLevels(), checkOneClock()],
   resolve: {
     alias: {
       '@': SRC,

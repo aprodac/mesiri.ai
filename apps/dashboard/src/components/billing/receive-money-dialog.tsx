@@ -12,6 +12,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { fetchProjects } from '@/lib/projects'
 import { recordClientReceipt, type OpenBill, type ReceiptKind } from '@/lib/receivables'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // NXT-03: money a client paid. Against a bill (the bill's amount left is offered), on account (settles their oldest
 // bills first), or a mobilisation advance (never put on a bill: each bill recovers it). The API checks the rest.
@@ -19,7 +20,7 @@ import { cn } from '@/lib/utils'
 interface Account { id: string; name: string; account_type: string; status?: string }
 
 function todayIso(): string {
-  const d = new Date()
+  const d = appNow()
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 }
 

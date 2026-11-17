@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { ArrowUpDown, BrickWall, Droplet, Flame, Fuel, Package, PaintRoller, Zap } from 'lucide-react'
 import { api } from './api'
+import { appNow } from '@/lib/clock'
 
 // PRC-22: material requests -- what a site asks for, before anyone orders it. The shapes mirror
 // backend/src/mesiri/domains/procurement (requests.py describes a request; router.py the routes).
@@ -209,7 +210,7 @@ export function initials(name: string | null | undefined): string {
 const DAY = 86_400_000
 
 /** "2 days late", "Tomorrow", "Fri 14 Nov": the needed-by date in words. */
-export function neededWords(r: Pick<MaterialRequest, 'needed_by' | 'urgency' | 'status'>, today = new Date()): string {
+export function neededWords(r: Pick<MaterialRequest, 'needed_by' | 'urgency' | 'status'>, today = appNow()): string {
   if (r.status === 'done') return 'Received'
   if (r.status === 'rejected' || r.status === 'cancelled') return 'Closed'
   if (!r.needed_by) return 'No date'
@@ -222,7 +223,7 @@ export function neededWords(r: Pick<MaterialRequest, 'needed_by' | 'urgency' | '
   return due.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-export function ago(iso: string, now = new Date()): string {
+export function ago(iso: string, now = appNow()): string {
   const mins = Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 60_000))
   if (mins < 1) return 'now'
   if (mins < 60) return `${mins}m`

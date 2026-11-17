@@ -658,3 +658,29 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
 - **Not covered here:** playing it against a real database (SS-74c: every entry through the API as its role's user,
   and that each role may make its entries). Payloads are names and numbers; the player finds each sample's ids.
 
+### 18.10 SS-74a as built (17 Nov 2026)
+
+- **The date lives** on the company (`organizations.sandbox_today`, migration 0558, additive) and **travels** in the
+  sample company's token (`today`, beside `sandbox`). A new sample starts on the latest Saturday (`sandbox.day_zero`:
+  the plan's day 0); one made before 0558 carries on from the day its records were made. Real days passing never move
+  it; SS-74c (Next day) and SS-74d (Go back) move it and return a new token.
+- **One clock, backend and assistant:** `domains/shared/clock.py`. `today()`, `now(zone)`, `at(moment)`, `override()`.
+  Bound per request from the token by the sandbox gate middleware (every request) and by both `get_current_user`s; a
+  real token clears it. With nothing bound it is exactly the old behaviour (`date.today()`), and **nothing is read from
+  the database for a real company**. `company_today()` (146 callers) asks it first. The 45 code-level `date.today()`
+  in 35 files, two SQL `CURRENT_DATE`s (wages' 30 days, documents expiring) and the v3 assistant's "now" (the day it
+  tells the model, memory, receipts, the working day) go through it; classic, WhatsApp groups and scripts don't (a
+  sample company never reaches them).
+- **One clock, dashboard:** `src/lib/clock.ts` `appNow()`: the sample's date with the real time of day while this tab
+  is in one, else `new Date()`. Every bare `new Date()` (98 in 69 files) now calls it. `GET /auth/me` returns `today`
+  for a sample company.
+- **Guards (the class, not the instance):** the dashboard build fails on a bare `new Date()` outside `lib/clock.ts`;
+  `tests/unit/test_one_clock_ss74a.py` fails on a code-level `date.today()` anywhere in the backend or the assistant
+  (scripts excepted).
+- **Checked:** 7 clock tests; the sandbox's real-Postgres tests (9, incl. day 0, the token's date, an old sample);
+  through the real assistant app in-process (real today Tue 17 Nov): the sample opened on Sat 14 Nov with 551 records,
+  none failed; `/auth/me` says `today: 2026-11-14`; opening a wage sheet with no date gives the game's week (8..14 Nov).
+- **Not covered:** two `CURRENT_DATE`s left on purpose (inbound WhatsApp counts, timeline entries since midnight:
+  real-time events a sample company has none of); timestamps (`created_at`) stay real; a second tab opened before a
+  Next day in another keeps its older date until it reloads its token (SS-74e).
+

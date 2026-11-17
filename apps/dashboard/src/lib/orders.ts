@@ -1,5 +1,6 @@
 import { api } from './api'
 import type { Urgency } from './requests'
+import { appNow } from '@/lib/clock'
 
 // PRC-06/07/08: purchase orders. Shapes mirror backend/src/mesiri/domains/procurement/orders.py (what an order
 // shows) and orders_router.py (the routes). Received and still-to-come are read from deliveries, never typed.
@@ -236,7 +237,7 @@ export function rupees(value: string | number | null | undefined): string {
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 }
 
-export function dueWords(o: Pick<PurchaseOrder, 'expected_date' | 'status'>, today = new Date()): string {
+export function dueWords(o: Pick<PurchaseOrder, 'expected_date' | 'status'>, today = appNow()): string {
   if (o.status === 'received') return 'Received'
   if (o.status === 'closed' || o.status === 'cancelled') return 'Closed'
   if (!o.expected_date) return 'No date'

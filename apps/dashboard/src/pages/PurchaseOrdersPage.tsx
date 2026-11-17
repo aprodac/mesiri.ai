@@ -19,6 +19,7 @@ import { OrderDetail, OrderProgress, VendorTile } from '@/components/orders/orde
 import { NewOrderDialog } from '@/components/orders/new-order-dialog'
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // PRC-10: Procurement > Purchase orders, in the Requests page's visual language (approved 7 Nov): tiles for what
 // needs attention, status tabs, filter dropdowns with the row cues, a list beside the chosen order (a sheet on a
@@ -59,7 +60,7 @@ function exportOrders(items: PurchaseOrder[]): void {
     o.expected_date ?? '', l.material, Number(l.quantity), l.unit, l.rate === null ? '' : Number(l.rate), l.amount === null ? '' : Number(l.amount),
     Number(l.received), Number(l.pending), l.request?.ref ?? '', o.notes ?? '', o.status_note ?? '',
   ]))
-  exportCsv(`purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`,
+  exportCsv(`purchase-orders-${appNow().toISOString().slice(0, 10)}.csv`,
     ['Order', 'Their number', 'Status', 'Supplier', 'Project', 'Site', 'Ordered by', 'Ordered on', 'Expected', 'Item', 'Quantity', 'Unit', 'Rate',
       'Amount', 'Received', 'Still to come', 'Request', 'Notes', 'Closed / cancelled because'], rows)
 }

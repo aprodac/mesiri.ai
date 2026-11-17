@@ -31,6 +31,7 @@ from mesiri.domains.materials.router import (
 )
 from mesiri.domains.procurement import requests as store
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.materials import PostgresMaterialReadRepository
@@ -489,7 +490,7 @@ async def _tell_requester(conn: AsyncConnection, auth: AuthorizationContext, ite
             changed_at = item.get("done_at") if status == "done" else item.get("decided_at")
             await PostgresNotificationRepository(conn).claim(
                 organization_id=auth.organization_id, rule_key="material_request_update",
-                subject_id=f"{item['id']}:{status}:{changed_at or ''}", occurred_on=datetime.date.today(),
+                subject_id=f"{item['id']}:{status}:{changed_at or ''}", occurred_on=clock.today(),
                 recipient_user_id=uuid.UUID(item["requested_by"]),
                 project_id=uuid.UUID(item["project_id"]), site_id=uuid.UUID(item["site_id"]),
                 # PRC-25: outside the 24-hour window it waits for their next message (no template needed).

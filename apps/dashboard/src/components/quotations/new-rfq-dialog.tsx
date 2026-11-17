@@ -17,6 +17,7 @@ import { createRfq, type Rfq } from '@/lib/rfqs'
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from '@/components/requests/parts'
+import { appNow } from '@/lib/clock'
 
 // PRC-40: ask suppliers for quotes. From a site's request it opens filled in (its site and what is still to buy, each
 // line linked so the request follows the order the award makes); from Rates with the item. Suppliers are picked as
@@ -40,7 +41,7 @@ function iso(d: Date): string {
 }
 
 function dueDate(due: Due, picked: string): string | null {
-  const d = new Date()
+  const d = appNow()
   if (due === 'today') return iso(d)
   if (due === 'tomorrow') return iso(new Date(d.getTime() + 86_400_000))
   if (due === 'three') return iso(new Date(d.getTime() + 3 * 86_400_000))
@@ -214,7 +215,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
                   {{ today: 'Today', tomorrow: 'Tomorrow', three: 'In 3 days', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {due === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={iso(new Date())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {due === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
             </div>
           </div>
 

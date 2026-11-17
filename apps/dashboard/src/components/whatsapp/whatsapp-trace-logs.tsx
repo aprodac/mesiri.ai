@@ -2,6 +2,7 @@ import * as React from 'react'
 import { CheckCircle2, Search, ArrowDownLeft, ArrowUpRight, Terminal } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { appNow } from '@/lib/clock'
 
 interface TraceLogItem {
   id: string
@@ -83,7 +84,7 @@ export function WhatsAppTraceLogs() {
           if (raw.length > 0) {
             const mapped: TraceLogItem[] = raw.map((m: any, idx: number) => ({
               id: m.id || `tr_${idx}`,
-              timestamp: m.created_at || m.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19),
+              timestamp: m.created_at || m.timestamp || appNow().toISOString().replace('T', ' ').slice(0, 19),
               direction: m.direction === 'outbound' ? 'outbound' : 'inbound',
               sender: m.sender_phone || m.sender || 'WhatsApp User',
               modality: (m.media_type || m.modality || 'TEXT').toUpperCase(),

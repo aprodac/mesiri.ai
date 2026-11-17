@@ -38,6 +38,7 @@ import {
 } from '@/lib/vendors'
 import { ActionIcon } from '@/components/page/action-button'
 import { KpiStrip, type KpiProps } from '@/components/page/page-kit'
+import { appNow } from '@/lib/clock'
 
 // CC-09 / CC-10 (8 Nov 2026): one supplier's page, reached from the Suppliers list and from every place a supplier is
 // named (expenses, orders, receipts, rates, money). Its account as a statement (running balance, a period brings the
@@ -57,7 +58,7 @@ const PERIODS: { value: Period; label: string }[] = [
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 function range(p: Period): { date_from?: string; date_to?: string } {
-  const now = new Date()
+  const now = appNow()
   if (p === 'month') return { date_from: iso(new Date(now.getFullYear(), now.getMonth(), 1)) }
   if (p === 'last') return { date_from: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)), date_to: iso(new Date(now.getFullYear(), now.getMonth(), 0)) }
   if (p === '90d') return { date_from: iso(new Date(now.getTime() - 89 * 86400000)) }

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { useAuth } from './AuthContext'
 import { MONEY_ROLES } from './module-map'
+import { appNow } from '@/lib/clock'
 
 // CC-09 / CC-10: suppliers, what we owe them (the supplier ledger) and paying them. Rules live in the backend
 // (domains/vendors/ledger.py): a priced delivery is owed until its bill comes, then the bill; a payment leaves the
@@ -244,7 +245,7 @@ export const num = (s: string | null | undefined) => Number(s ?? 0) || 0
 export function day(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(`${iso}T00:00:00`)
-  const sameYear = d.getFullYear() === new Date().getFullYear()
+  const sameYear = d.getFullYear() === appNow().getFullYear()
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
 }
 

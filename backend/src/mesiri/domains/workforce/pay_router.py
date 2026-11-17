@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_manage_money, may_view_expenses
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.modules import require_module
 from mesiri.domains.workforce import pay
 from mesiri.domains.workforce import pay_store as store
@@ -175,7 +176,7 @@ async def give_advance(body: AdvanceIn, auth: AuthorizationContext = Depends(get
             raise HTTPException(status_code=403, detail="You can give an advance from your own cash box only")
     advance_id = await store.give_advance(conn, org, {
         "project_id": project_id, "site_id": body.site_id, "worker_id": body.worker_id, "vendor_id": body.vendor_id,
-        "payee_name": name, "amount": pay.money(body.amount), "given_on": body.given_on or datetime.date.today(),
+        "payee_name": name, "amount": pay.money(body.amount), "given_on": body.given_on or clock.today(),
         "account_id": body.account_id, "note": body.note, "source": body.source}, auth.user_id)
     return await store.get_advance(conn, org, advance_id)
 
@@ -247,7 +248,7 @@ async def open_sheet(project_id: uuid.UUID | None = None, site_id: uuid.UUID | N
     if project_id is None:
         raise HTTPException(status_code=422, detail="Pick a project or a site")
     _reach(auth, project_id, site_id)
-    period_from, period_to = pay.week_of(date or datetime.date.today())
+    period_from, period_to = pay.week_of(date or clock.today())
     sheet = await store.open_sheet(conn, org, project_id, site_id, period_from, period_to, auth.user_id)
     return await _detail(conn, org, await store.get_sheet(conn, org, sheet["id"]))
 
@@ -334,7 +335,7 @@ async def pay_sheet(sheet_id: uuid.UUID, body: PayIn, auth: AuthorizationContext
         amount = pay.money(body.amount) if body.amount is not None else due
         if amount > due:
             raise HTTPException(status_code=422, detail=f"Only ₹{due:,.2f} is due to {r['payee_name']}")
-        await store.pay_row(conn, org, sheet, r, amount, body.paid_on or datetime.date.today(), body.account_id,
+        await store.pay_row(conn, org, sheet, r, amount, body.paid_on or clock.today(), body.account_id,
                             body.note, body.source, auth.user_id)
     return await _detail(conn, org, sheet)
 
@@ -395,6 +396,7 @@ async def teams(auth: AuthorizationContext = Depends(get_auth_context), conn: As
         "LEFT JOIN workforce_workers ww ON ww.id = l.worker_id "
         "WHERE r.organization_id = v.organization_id AND (l.vendor_id = v.id OR ww.vendor_id = v.id "
         "OR (l.vendor_id IS NULL AND lower(btrim(l.contractor)) = lower(btrim(v.name)))) "
-        f"AND r.occurred_date >= CURRENT_DATE - 30 AND {counted_line_sql('l', 'r')}) AS man_days_30 "
-        "FROM vendors v WHERE v.organization_id = :org AND v.kind = 'labour' ORDER BY v.name"), {"org": org})).mappings()]
+        f"AND r.occurred_date >= CAST(:today AS date) - 30 AND {counted_line_sql('l', 'r')}) AS man_days_30 "
+        "FROM vendors v WHERE v.organization_id = :org AND v.kind = 'labour' ORDER BY v.name"),
+        {"org": org, "today": clock.today()})).mappings()]
     return {"items": rows}

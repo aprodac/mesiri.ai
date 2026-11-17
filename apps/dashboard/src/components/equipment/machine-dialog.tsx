@@ -14,6 +14,7 @@ import {
   MACHINE_TYPES, VEHICLE_TYPES, createMachine, errorWords, iso, updateMachine, useSiteOptions,
   type Kind, type Machine, type MachineInput, type Ownership, type RateUnit,
 } from '@/lib/equipment'
+import { appNow } from '@/lib/clock'
 
 // NXT-11: add a machine or vehicle, or change one. The few things that decide its cost first (owned or hired, from
 // whom, the rate), the rest folded under "More details". A hire company typed here becomes a vendor of kind hire.
@@ -57,7 +58,7 @@ export function MachineDialog({ open, onOpenChange, editing, defaultKind = 'mach
   const [unit, setUnit] = React.useState<RateUnit>('hour')
   const [minHours, setMinHours] = React.useState('')
   const [siteId, setSiteId] = React.useState('')
-  const [onHireFrom, setOnHireFrom] = React.useState(iso(new Date()))
+  const [onHireFrom, setOnHireFrom] = React.useState(iso(appNow()))
   const [reg, setReg] = React.useState('')
   const [make, setMake] = React.useState('')
   const [operator, setOperator] = React.useState('')
@@ -77,7 +78,7 @@ export function MachineDialog({ open, onOpenChange, editing, defaultKind = 'mach
     setUnit(editing?.rate_unit ?? 'hour')
     setMinHours(editing?.min_hours_per_day ?? '')
     setSiteId(editing ? editing.site_id ?? '' : defaultSiteId ?? '')
-    setOnHireFrom(editing?.on_hire_from ?? iso(new Date()))
+    setOnHireFrom(editing?.on_hire_from ?? iso(appNow()))
     setReg(editing?.registration_no ?? '')
     setMake(editing?.make_model ?? '')
     setOperator(editing?.operator_name ?? '')
@@ -186,7 +187,7 @@ export function MachineDialog({ open, onOpenChange, editing, defaultKind = 'mach
               {ownership === 'hired' && siteId && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="eq-from">On hire from</Label>
-                  <Input id="eq-from" type="date" value={onHireFrom} max={iso(new Date())} onChange={(e) => setOnHireFrom(e.target.value)} />
+                  <Input id="eq-from" type="date" value={onHireFrom} max={iso(appNow())} onChange={(e) => setOnHireFrom(e.target.value)} />
                 </div>
               )}
             </div>

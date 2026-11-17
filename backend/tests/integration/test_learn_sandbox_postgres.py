@@ -100,6 +100,10 @@ async def test_open_makes_a_private_non_operational_company_with_four_people(eng
     assert recorded_seed[0]["real_org"] == person.organization_id
     claims = jwt.decode(out.token, SECRET_KEY, algorithms=[ALGORITHM])
     assert claims["org"] == str(out.organization_id) and claims["sandbox"] == str(person.organization_id)
+    # SS-74a: its own date, the latest Saturday (the plan's day 0); the seed, the token and the answer all say it.
+    zero = sandbox.day_zero(NOW.date())
+    assert org["sandbox_today"] == zero and out.today == zero and claims["today"] == zero.isoformat()
+    assert recorded_seed[0]["info"]["today"] == zero
 
 
 async def test_opening_again_returns_the_same_one_and_any_role(engine, person, recorded_seed):
@@ -107,6 +111,7 @@ async def test_opening_again_returns_the_same_one_and_any_role(engine, person, r
     again = await sandbox.open_sandbox(engine, None, person, role="site_engineer", now=NOW + dt.timedelta(days=10))
     assert again.organization_id == first.organization_id and not again.created and len(recorded_seed) == 1
     assert again.role == "SITE_ENGINEER" and again.user_name.startswith("Ravi")
+    assert again.today == first.today  # SS-74a: real days passing never move the game's date
     async with engine.connect() as conn:
         expires = (await conn.execute(text("SELECT sandbox_expires_at FROM organizations WHERE id = :o"),
                                       {"o": first.organization_id})).scalar()
@@ -192,3 +197,16 @@ async def test_a_sandbox_notification_is_never_picked_up_to_send(engine, person)
         ids = {r["id"] for r in await repo.list_pending(limit=10_000)}
         await conn.execute(text("DELETE FROM notifications WHERE rule_key = 'ss66d'"))
     assert mine not in ids and real in ids
+
+
+async def test_a_sample_made_before_its_own_date_carries_on_from_its_records(engine, person, recorded_seed):
+    """SS-74a: a sandbox made before ``sandbox_today`` existed (NULL) lives on the day its records were made."""
+    first = await sandbox.open_sandbox(engine, None, person, now=NOW)
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE organizations SET sandbox_today = NULL WHERE id = :o"), {"o": first.organization_id})
+    again = await sandbox.open_sandbox(engine, None, person, now=NOW + dt.timedelta(days=3))
+    async with engine.connect() as conn:
+        made = (await conn.execute(text("SELECT CAST(created_at AS date) FROM organizations WHERE id = :o"),
+                                   {"o": first.organization_id})).scalar()
+    assert again.today == made
+

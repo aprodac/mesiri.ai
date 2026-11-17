@@ -13,6 +13,7 @@ import {
   type Machine, type MachineLog,
 } from '@/lib/equipment'
 import { DayBar, MachineAvatar } from './parts'
+import { appNow } from '@/lib/clock'
 
 // NXT-11: the quick actions on a machine. Log the day in a few taps (Full day / Half day / broke down chips fill the
 // hours; one figure is enough), move it to another site, enter the hire company's bill (NXT-13).
@@ -47,7 +48,7 @@ export function LogDayDialog({ machine, open, onOpenChange, date }: { machine: M
   const seesMoney = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE', 'PROJECT_MANAGER'].includes((me?.role || '').toUpperCase())
   const qc = useQueryClient()
   const toast = useToast()
-  const [day, setDay] = React.useState(date ?? iso(new Date()))
+  const [day, setDay] = React.useState(date ?? iso(appNow()))
   const [worked, setWorked] = React.useState('')
   const [idle, setIdle] = React.useState('')
   const [breakdown, setBreakdown] = React.useState('')
@@ -61,8 +62,8 @@ export function LogDayDialog({ machine, open, onOpenChange, date }: { machine: M
 
   React.useEffect(() => {
     if (!open || !machine) return
-    const t = (date ?? iso(new Date())) === iso(new Date()) ? machine.today : null
-    setDay(date ?? iso(new Date()))
+    const t = (date ?? iso(appNow())) === iso(appNow()) ? machine.today : null
+    setDay(date ?? iso(appNow()))
     setWorked(t?.worked_hours ?? '')
     setIdle(t?.idle_hours ?? '')
     setBreakdown(t?.breakdown_hours ?? '')
@@ -103,7 +104,7 @@ export function LogDayDialog({ machine, open, onOpenChange, date }: { machine: M
             <MachineAvatar machine={machine} size="sm" />
             <span className="flex flex-col leading-tight">
               <span>{machine.name}'s day</span>
-              <span className="text-xs font-normal text-muted-foreground">{machine.site_name ?? 'No site'}{today && day === iso(new Date()) ? ' · changes what is saved for today' : ''}</span>
+              <span className="text-xs font-normal text-muted-foreground">{machine.site_name ?? 'No site'}{today && day === iso(appNow()) ? ' · changes what is saved for today' : ''}</span>
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -156,7 +157,7 @@ export function LogDayDialog({ machine, open, onOpenChange, date }: { machine: M
             )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="lg-day">Day</Label>
-              <Input id="lg-day" type="date" value={day} max={iso(new Date())} onChange={(e) => setDay(e.target.value)} />
+              <Input id="lg-day" type="date" value={day} max={iso(appNow())} onChange={(e) => setDay(e.target.value)} />
             </div>
           </div>
           {error && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
@@ -175,9 +176,9 @@ export function MoveDialog({ machine, open, onOpenChange }: { machine: Machine |
   const toast = useToast()
   const sites = useSiteOptions()
   const [siteId, setSiteId] = React.useState('')
-  const [day, setDay] = React.useState(iso(new Date()))
+  const [day, setDay] = React.useState(iso(appNow()))
   const [error, setError] = React.useState('')
-  React.useEffect(() => { if (open) { setSiteId(''); setDay(iso(new Date())); setError('') } }, [open])
+  React.useEffect(() => { if (open) { setSiteId(''); setDay(iso(appNow())); setError('') } }, [open])
   const back = machine?.status === 'off_hire'
   const save = useMutation({
     mutationFn: () => (back ? onHire(machine!.id, { site_id: siteId, date: day }) : moveMachine(machine!.id, { site_id: siteId, date: day })),
@@ -200,7 +201,7 @@ export function MoveDialog({ machine, open, onOpenChange }: { machine: Machine |
             <Combobox options={options} value={siteId} onValueChange={setSiteId} placeholder="Pick a site" searchPlaceholder="Site or project" emptyText="No site with that name" />
           </div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="mv-day">From</Label>
-            <Input id="mv-day" type="date" value={day} max={iso(new Date())} onChange={(e) => setDay(e.target.value)} />
+            <Input id="mv-day" type="date" value={day} max={iso(appNow())} onChange={(e) => setDay(e.target.value)} />
           </div>
           {error && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
         </div>
@@ -216,7 +217,7 @@ export function MoveDialog({ machine, open, onOpenChange }: { machine: Machine |
 export function HireBillDialog({ machine, open, onOpenChange }: { machine: Pick<Machine, 'id' | 'name' | 'vendor_name' | 'rate_unit'> | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient()
   const toast = useToast()
-  const now = new Date()
+  const now = appNow()
   const first = iso(new Date(now.getFullYear(), now.getMonth(), 1))
   const [from, setFrom] = React.useState(first)
   const [to, setTo] = React.useState(iso(now))
@@ -225,7 +226,7 @@ export function HireBillDialog({ machine, open, onOpenChange }: { machine: Pick<
   const [amount, setAmount] = React.useState('')
   const [ref, setRef] = React.useState('')
   const [error, setError] = React.useState('')
-  React.useEffect(() => { if (open) { setFrom(first); setTo(iso(new Date())); setHours(''); setDays(''); setAmount(''); setRef(''); setError('') } }, [open, first])
+  React.useEffect(() => { if (open) { setFrom(first); setTo(iso(appNow())); setHours(''); setDays(''); setAmount(''); setRef(''); setError('') } }, [open, first])
   const save = useMutation({
     mutationFn: () => createHireBill({ equipment_id: machine!.id, period_from: from, period_to: to, billed_hours: hours || null, billed_days: days || null, amount, bill_ref: ref.trim() || null }),
     onSuccess: (b) => {

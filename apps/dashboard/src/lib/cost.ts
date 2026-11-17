@@ -1,5 +1,6 @@
 import { api } from './api'
 import type { Boq, BoqLine, BoqSection } from './boq'
+import { appNow } from '@/lib/clock'
 
 // The Cost control module (`cost`, CC-01 / CC-04). Backend: domains/costing/router.py.
 // Money arrives as exact strings; a figure that cannot be worked out is null, never ₹0.
@@ -293,7 +294,7 @@ export async function downloadCostExcel(
   // dashboard's API host does not expose Content-Disposition to the page.
   const match = /filename="([^"]+)"/.exec(String(res.headers['content-disposition'] ?? ''))
   const slug = (projectName ?? 'project').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project'
-  const day = period?.date_to ?? new Date().toISOString().slice(0, 10)
+  const day = period?.date_to ?? appNow().toISOString().slice(0, 10)
   return { blob: res.data as Blob, filename: match?.[1] ?? `mesiri-cost-${slug}-${day}.xlsx` }
 }
 

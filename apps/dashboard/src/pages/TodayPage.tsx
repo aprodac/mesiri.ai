@@ -44,6 +44,7 @@ import {
   severityChip,
   siteStatus,
 } from '@/lib/site-day'
+import { appNow } from '@/lib/clock'
 
 // Today page (WEB-03): every site's working day, grouped by project, with
 // what is missing and where each project's DPR stands. Data comes from
@@ -188,7 +189,7 @@ export default function TodayPage() {
   const { scope } = useScope()
   const [searchParams, setSearchParams] = useSearchParams()
   // Read the clock once (a lazy initial state), not on every render.
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
   const date = searchParams.get('date') || today
   const projectFilter = scope.mode === 'portfolio' ? undefined : scope.projectId
   const [busySite, setBusySite] = React.useState<string | null>(null)

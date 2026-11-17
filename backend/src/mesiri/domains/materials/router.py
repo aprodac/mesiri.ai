@@ -66,6 +66,7 @@ from mesiri_contracts.common.storage import ObjectStoragePort
 #: Matches the expenses router's TTL — long enough to open the document, short
 #: enough that a copied link stops working.
 _ATTACHMENT_URL_TTL_SECONDS = 600
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.repositories.materials import (
     MaterialMovementsRepository,
@@ -711,7 +712,6 @@ async def _tell_reporters(conn: AsyncConnection, organization_id: uuid.UUID, req
                           outcome: list[dict], size: str) -> None:
     """WA-168: each person whose line waited is told, on WhatsApp, that it is saved now (the notification queue:
     inside their 24-hour window; never more than once per request)."""
-    import datetime as _dt
 
     from mesiri.infrastructure.postgres.repositories.notifications import (
         PostgresNotificationRepository,
@@ -726,7 +726,7 @@ async def _tell_reporters(conn: AsyncConnection, organization_id: uuid.UUID, req
             async with conn.begin_nested():
                 await PostgresNotificationRepository(conn).claim(
                     organization_id=organization_id, rule_key="size_request_saved",
-                    subject_id=f"{request_id}:{user_id}", occurred_on=_dt.date.today(),
+                    subject_id=f"{request_id}:{user_id}", occurred_on=clock.today(),
                     recipient_user_id=uuid.UUID(user_id),
                     payload={"message": f"✅ Saved now: {'; '.join(lines)} ({size}, set for the company)."})
         except Exception:  # noqa: BLE001 -- the lines are saved; the note is a courtesy
@@ -1986,7 +1986,7 @@ async def create_invoice(
     vendor_name, vendor_id = await _delivery_vendor(conn, auth_context, body.supplier_name, body.vendor_id)
 
     invoice_id = uuid.uuid4()
-    occurred_date = body.invoice_date or datetime.date.today()
+    occurred_date = body.invoice_date or clock.today()
     # The name as printed on the bill stays; a picked vendor's name only when the bill gave none.
     supplier_name = (body.supplier_name.strip() if body.supplier_name else None) or vendor_name
 
@@ -2127,7 +2127,7 @@ async def match_invoice(
         vendor_id = (await conn.execute(text(
             "SELECT id FROM vendors WHERE organization_id = :org AND lower(name) = lower(:n) AND status = 'active'"),
             {"org": auth_context.organization_id, "n": supplier.strip()})).scalar()
-    when = body.invoice_date or datetime.date.today()
+    when = body.invoice_date or clock.today()
     candidates = await matching.unbilled_for(conn, auth_context.organization_id, vendor_id=vendor_id, supplier=supplier,
                                              project_id=body.project_id, site_id=body.site_id, bill_date=when)
     found = matching.match_lines(candidates, [(line.material_id, line.quantity) for line in body.lines])
@@ -2287,7 +2287,7 @@ async def _create_invoice_expense(
         supplier_name=body.supplier_name.strip() if body.supplier_name else None,
         amount=amount,
         currency=body.currency,
-        occurred_date=body.invoice_date or datetime.date.today(),
+        occurred_date=body.invoice_date or clock.today(),
         media_object_key=body.media_object_key,
         created_by=auth_context.user_id,
         correlation_id=body.correlation_id,
@@ -2686,7 +2686,7 @@ async def reverse_material_record(
     await _assert_not_already_reversed(repo, organization_id, record_id)
 
     row_id = uuid.uuid4()
-    occurred_date = occurred_date or datetime.date.today()
+    occurred_date = occurred_date or clock.today()
     if kind == "usage":
         return await _reverse_outflow_record(
             conn,

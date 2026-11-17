@@ -47,6 +47,7 @@ from mesiri.domains.dpr import board as live_board
 from mesiri.domains.dpr import effects, live_feed
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.media import signed_media_url
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
@@ -174,7 +175,7 @@ async def get_analytics(
     severity, and each site's reporting (days with updates / days its site
     DPR was confirmed). Scoped exactly like /daily-reports, BE-42 included.
     Defaults to the 30 days ending `date_to` (today); at most a year."""
-    date_to = date_to or datetime.date.today()
+    date_to = date_to or clock.today()
     date_from = date_from or date_to - datetime.timedelta(days=29)
     if date_from > date_to:
         raise HTTPException(status_code=422, detail="The start date is after the end date.")
@@ -1053,7 +1054,7 @@ async def add_report_recipient(
                 organization_id=org_id,
                 project_id=project_id,
                 phone=contact["phone"],
-                today=datetime.date.today(),
+                today=clock.today(),
             )
 
     row = await repo.find_active(organization_id=org_id, project_id=project_id, recipient_id=recipient_id)

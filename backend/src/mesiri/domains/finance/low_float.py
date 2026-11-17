@@ -10,7 +10,6 @@ failure here never stops the payment.
 
 from __future__ import annotations
 
-import datetime
 import uuid
 from decimal import Decimal
 
@@ -18,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.roles import MONEY_MANAGE_ROLES
+from mesiri.domains.shared import clock
 
 RULE_KEY = "petty_cash_low"
 DEFAULT_LINE = Decimal("50000")
@@ -70,7 +70,7 @@ async def notify_if_low(conn: AsyncConnection, organization_id: uuid.UUID, accou
     for user_id in people:
         claimed = await repo.claim(
             organization_id=organization_id, rule_key=RULE_KEY, subject_id=f"{account_id}:{user_id}",
-            occurred_on=datetime.date.today(), recipient_user_id=user_id, project_id=acc["project_id"],
+            occurred_on=clock.today(), recipient_user_id=user_id, project_id=acc["project_id"],
             site_id=acc["site_id"],
             payload={"message": message(acc["name"], balance, line, acc["holder"]), "hold_until_window": True, "hold_days": 2},
         )

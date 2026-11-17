@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { correctVoucher, fetchVoucherLedgers, postVoucher, rupees, type Entry, type ManualType, type VoucherLedger } from '@/lib/accounts'
 import { fetchProjects } from '@/lib/projects'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // ACC-12: a manual voucher, keyboard first, as in Tally. Date, then rows of ledger · Dr · Cr, then the narration.
 // Ledger: type to search, ↑ ↓ to choose, Enter to take it (the difference so far is offered on the side that balances);
@@ -23,7 +24,7 @@ const paise = (v: string) => Math.round((Number(v) || 0) * 100)
 const amount = (p: number) => (p / 100).toFixed(2)
 
 function today(): string {
-  const d = new Date()
+  const d = appNow()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 

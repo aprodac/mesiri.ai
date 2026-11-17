@@ -34,6 +34,7 @@ import { useReadOnly } from '@/lib/trial'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // WEB-28: one project's setup on one page -- its sites, its people, when its
 // DPR goes out and who gets it -- in flat sections instead of seven tabs.
@@ -64,7 +65,7 @@ export default function ProjectDetails() {
   const { me } = useAuth()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
 
   const [projectDialogOpen, setProjectDialogOpen] = React.useState(false)
   const [siteDialogOpen, setSiteDialogOpen] = React.useState(false)

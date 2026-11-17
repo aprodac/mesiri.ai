@@ -100,6 +100,8 @@ export interface Me {
     trial_days_left: number | null
     continue_requested: boolean
   } | null
+  /** SS-74a: a learning sample company's own date (YYYY-MM-DD); null for a real company. */
+  today?: string | null
 }
 
 export async function login(email: string, password: string): Promise<void> {

@@ -14,6 +14,7 @@ from typing import Any
 
 from channel.receipt.data import company_zone
 from channel.replies import ListRow
+from mesiri.domains.shared import clock
 
 from .actions import CLOSE_ISSUES, PendingAction, new_action
 from .entry_base import Say
@@ -55,7 +56,7 @@ def _day(issue: dict[str, Any], zone: str) -> dt.date:
         from zoneinfo import ZoneInfo
 
         return (when.astimezone(ZoneInfo(zone)) if when.tzinfo else when).date()
-    return dt.date.today()
+    return clock.today()
 
 
 def short_day(day: dt.date) -> str:

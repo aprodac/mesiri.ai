@@ -92,6 +92,9 @@ step's words in another place.
   `chapter` by hand: `journey()` does it, and the bubble's chapter list reads it.
 - A walkthrough with `sandbox: true` runs **only inside the person's sample company** (`lib/sandbox.ts`): what is saved
   there stays, so it needs no take-back. Never mark one that saves into the real company.
+- **"Today" comes from one clock** (SS-74a): a sample company lives on its own date. In the dashboard use `appNow()`
+  from `lib/clock.ts`, never a bare `new Date()` (the build fails on one); in the backend and the assistant use
+  `clock.today()` / `clock.at(...)` from `mesiri.domains.shared.clock`, never `date.today()` (a test fails on one).
 - Inside the sample company every API call goes with its token; code never reads or sends a token itself, it uses
   `api` from `lib/api.ts` (which picks the token). The `/learn/sandbox` routes always go with the person's own token.
 

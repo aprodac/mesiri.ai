@@ -30,6 +30,7 @@ import { RecordInflowDialog } from './record-inflow-dialog'
 import { RecordTransferDialog, type TransferPrefill } from './record-transfer-dialog'
 import { StockItemPanel, type OtherSiteStock } from './stock-item-panel'
 import { NO_FLOW, buildFlows, flowKey, lasts, lowWords, type StockFlow } from '@/lib/stock-flow'
+import { appNow } from '@/lib/clock'
 
 // Materials > Stock (PRC-17d, WEB-50, WEB-77). What each site held before the period, what came, what was used and
 // what is left, by main category -- the client's "previous stock, consumption, current balance at a glance" -- now
@@ -97,7 +98,7 @@ function bundles(list: StockSummaryRow[]): Bundle[] {
 function dates(period: Period, from: string, to: string): { date_from?: string; date_to?: string } {
   if (period === 'all') {
     // The API takes at most a year: "All time" is the last 12 months.
-    const start = new Date()
+    const start = appNow()
     start.setFullYear(start.getFullYear() - 1)
     return { date_from: toLocalISODate(start), date_to: toLocalISODate() }
   }
@@ -107,7 +108,7 @@ function dates(period: Period, from: string, to: string): { date_from?: string; 
 
 function daysIn(range: { date_from?: string; date_to?: string }): number {
   if (!range.date_from) return 0
-  const end = range.date_to ? new Date(`${range.date_to}T00:00:00`) : new Date()
+  const end = range.date_to ? new Date(`${range.date_to}T00:00:00`) : appNow()
   return Math.max(1, Math.round((end.getTime() - new Date(`${range.date_from}T00:00:00`).getTime()) / 86_400_000) + 1)
 }
 

@@ -6,6 +6,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 
 from ..identity.auth_service import ALGORITHM, SECRET_KEY
+from . import clock
 
 
 async def get_current_user(authorization: str = Header(None)) -> dict:
@@ -13,9 +14,11 @@ async def get_current_user(authorization: str = Header(None)) -> dict:
         raise HTTPException(status_code=401, detail="Missing or invalid token")
     token = authorization[7:]
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
+    clock.bind_from_token(payload)  # SS-74a: a sample company's own date, else the real one
+    return payload
 
 
 async def require_admin(payload: dict = Depends(get_current_user)) -> dict:

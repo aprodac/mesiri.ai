@@ -19,6 +19,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from mesiri.domains.shared import clock
 from mesiri_contracts.application.commands.progress import (
     ActivityQuantityInput,
     AddProgressUpdateCommand,
@@ -74,7 +75,7 @@ def _activity_date(fields: dict[str, Any]) -> date:
             return date.fromisoformat(str(raw))
         except ValueError:
             pass
-    return date.today()
+    return clock.today()
 
 
 def build_create_activity_command(confirmed: ConfirmedActionV2) -> CreateActivityCommand:

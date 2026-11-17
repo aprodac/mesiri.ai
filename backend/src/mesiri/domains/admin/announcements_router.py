@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.auth import require_platform_admin
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -262,7 +263,7 @@ async def send_announcement(announcement_id: uuid.UUID, body: Audience,
     people = await _people(conn, body)
     if not people:
         raise HTTPException(status_code=422, detail="Nobody to send to: no one with a WhatsApp number matches.")
-    today = dt.date.today()
+    today = clock.today()
     payload = {
         "message": row["message"],
         "images": list(row["image_keys"] or []),

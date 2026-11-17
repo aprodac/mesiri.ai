@@ -14,6 +14,7 @@ from mesiri.domains.expenses.entities import (
     ExpenseCategory,
     ExpensePayment,
 )
+from mesiri.domains.shared import clock
 from mesiri.infrastructure.postgres.repositories.finance import PostgresMoneyTransactionRepository
 
 _expense_categories = sa.Table(
@@ -820,7 +821,7 @@ class PostgresExpensePaymentRepository:
                 organization_id=organization_id,
                 transaction_type="reversal",
                 amount=payment_row["amount"],
-                occurred_date=datetime.date.today(),
+                occurred_date=clock.today(),
                 created_by=created_by,
                 to_account_id=payment_row["account_id"],
                 source_type="expense_payment",

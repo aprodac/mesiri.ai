@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { qty, swatch } from '@/lib/requests'
 import { fetchOrders, rupees, whatsappUrl, type PurchaseOrder } from '@/lib/orders'
 import { chaseMessage, lateWords, pendingLines, type Bucket, type GroupBy, type PendingLine } from '@/lib/pending'
+import { appNow } from '@/lib/clock'
 
 type Tile = '' | Bucket
 import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/components/requests/parts'
@@ -35,7 +36,7 @@ const BUCKETS: { value: Bucket; label: string; hint: string; tone: string; dot: 
 ]
 
 function exportPending(items: PendingLine[]): void {
-  exportCsv(`pending-deliveries-${new Date().toISOString().slice(0, 10)}.csv`,
+  exportCsv(`pending-deliveries-${appNow().toISOString().slice(0, 10)}.csv`,
     ['Order', 'Their number', 'Supplier', 'Supplier phone', 'Project', 'Site', 'Item', 'Ordered', 'Came', 'Still to come', 'Unit', 'Expected', 'Days late', 'Value still to come'],
     items.map((p) => [p.order.ref, p.order.their_ref ?? '', p.order.vendor_name, p.order.vendor_phone ?? '', p.order.project_name, p.order.site_name, p.line.material,
       Number(p.line.quantity), Number(p.line.received), p.pending, p.line.unit, p.order.expected_date ?? '', p.days !== null && p.days < 0 ? -p.days : '', p.value ?? '']))

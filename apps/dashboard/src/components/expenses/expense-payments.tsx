@@ -10,12 +10,13 @@ import { fetchExpensePayments, payExpense, rupees, undoExpensePayment } from '@/
 import { cn } from '@/lib/utils'
 import { applyAdvance } from '@/lib/vendors'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // PRC-35: an expense's payments, and paying what is left (or repaying who paid it from their pocket) from one of the
 // company's accounts -- in full or in part, on a date -- with undo for a payment made by mistake. Only shown to the
 // owner, admins and finance (the API refuses the rest).
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => appNow().toISOString().slice(0, 10)
 
 export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expenseId: string; owedTo?: string | null; canPay: boolean; startOpen?: boolean }) {
   const queryClient = useQueryClient()

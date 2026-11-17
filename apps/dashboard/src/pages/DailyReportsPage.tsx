@@ -17,6 +17,7 @@ import { ROW_ACCENT } from '@/lib/cues'
 import { useUrlState } from '@/lib/url-state'
 import { FilterSelect } from '@/components/filter-select'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // Daily Reports history (WEB-06): every site and project DPR, newest day
 // first, with the figures from the version that was confirmed or sent. Each
@@ -166,7 +167,7 @@ export default function DailyReportsPage() {
   const [customTo, setCustomTo] = useUrlState<string>('to', '')
   const [level, setLevel] = useUrlState<'' | 'site' | 'project'>('level', '')
   const [status, setStatus] = useUrlState<string>('status', '')
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
   const [dateFrom, dateTo] =
     range === 'custom'
       ? [customFrom, customTo]

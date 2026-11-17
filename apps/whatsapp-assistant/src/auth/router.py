@@ -115,6 +115,9 @@ class Me(BaseModel):
     # The company's trial status (SS-15), so every page can show the "trial
     # ended, read-only" banner. None for a platform admin, or if unreadable.
     company: CompanyStatus | None = None
+    # SS-74a: a learning sample company's own date (from its token, domains/shared/clock.py), so the dashboard's
+    # "today" is that day while in it. None for a real company: its today is the real date.
+    today: str | None = None
 
 
 class ChangePassword(BaseModel):
@@ -214,7 +217,15 @@ async def me(authorization: str = Header(None)) -> Me:
         is_platform_admin=role == "ADMIN" and not org,
         enabled_modules=await _enabled_modules_for(org),
         company=await _company_status_for(org),
+        today=_sandbox_today(),
     )
+
+
+def _sandbox_today() -> str | None:
+    from mesiri.domains.shared import clock
+
+    day = clock.override()
+    return day.isoformat() if day else None
 
 
 async def _company_status_for(org: str) -> CompanyStatus | None:

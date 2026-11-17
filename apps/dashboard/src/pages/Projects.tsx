@@ -23,6 +23,7 @@ import { useReadOnly } from '@/lib/trial'
 import { fetchLifecycle } from '@/lib/schedule'
 import { StageChip, scheduleLine } from '@/components/schedule/project-picker'
 import { cn, formatClock } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // WEB-28: Projects & Sites as rows that say what each project is set up
 // with -- its sites, its people, when its DPR goes out -- instead of
@@ -54,7 +55,7 @@ export default function Projects() {
   const query = useQuery<Project[]>({ queryKey: ['projects-list'], queryFn: fetchProjectsFull })
   // WEB-37: today at a glance on each project -- sites reported and open
   // issues -- from the same reads Today uses (cached between the pages).
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
   const days = useQuery({ queryKey: ['site-days', today, undefined], queryFn: () => fetchSiteDaysApi(today) })
   const openIssues = useQuery({ queryKey: ['today-open-issues', undefined], queryFn: () => fetchAllOpenIssues(undefined) })
   const todayFor = (projectId: string): ProjectToday | undefined => {

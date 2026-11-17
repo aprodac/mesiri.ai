@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { activityUrl, fetchActivity, type ActivityFilters, type ActivityItem } from '@/lib/admin'
 import { usePageTitle } from '@/lib/page-title'
 import { toLocalISODate } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // ADM-02: Settings › Activity log. Who changed what, when: every save, edit, delete and approval, on the web and
 // on WhatsApp, newest first, by day. Read only, for the owner and admins. Written by one recorder at the API
@@ -21,7 +22,7 @@ type Range = 'today' | 'week' | 'month' | 'all'
 type Source = 'all' | 'web' | 'whatsapp'
 
 function since(range: Range): string | undefined {
-  const now = new Date()
+  const now = appNow()
   if (range === 'today') return toLocalISODate(now)
   if (range === 'week') return toLocalISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6))
   if (range === 'month') return toLocalISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29))
@@ -147,7 +148,7 @@ function groupByDay(items: ActivityItem[]): [string, ActivityItem[]][] {
 }
 
 function dayLabel(day: string): string {
-  const today = toLocalISODate(new Date())
+  const today = toLocalISODate(appNow())
   const yesterday = toLocalISODate(new Date(Date.now() - 86_400_000))
   if (day === today) return 'Today'
   if (day === yesterday) return 'Yesterday'

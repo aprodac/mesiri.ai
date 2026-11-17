@@ -14,6 +14,7 @@ import { createLabourTeam, fetchLabourTeams, fetchMuster, n } from '@/lib/labour
 import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // LW-02: the muster roll, a site's month as the grid every site keeps: people down, days across, P / ½ / A or how
 // many came, from attendance (never typed again). LW-01: labour teams (a contractor's team is a vendor of kind
@@ -29,7 +30,7 @@ function monthShift(month: string, by: number): string {
 
 export function MusterView({ siteId: scopedSite, leading }: { siteId: string | null; leading?: React.ReactNode }) {
   const sites = useSiteOptions()
-  const now = new Date()
+  const now = appNow()
   const [month, setMonth] = useUrlState<string>('month', `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
   const [picked, setPicked] = useUrlState<string>('at', '')
   const siteId = scopedSite || picked || sites.data?.[0]?.id || ''

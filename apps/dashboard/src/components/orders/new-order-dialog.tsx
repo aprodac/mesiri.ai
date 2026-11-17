@@ -23,6 +23,7 @@ import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { GstField } from '@/components/procurement/gst-field'
 import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
+import { appNow } from '@/lib/clock'
 
 // PRC-06/07: place an order with a supplier. From a request (PRC-22) it opens filled in: the request's site and
 // what is still to buy, each line linked to the request so the request follows the order. The duplicate check
@@ -48,7 +49,7 @@ function iso(d: Date): string {
 }
 
 function dateFor(when: When, picked: string): string | null {
-  const d = new Date()
+  const d = appNow()
   if (when === 'today') return iso(d)
   if (when === 'tomorrow') return iso(new Date(d.getTime() + 86_400_000))
   if (when === 'week') return iso(new Date(d.getTime() + ((5 - d.getDay() + 7) % 7 || 7) * 86_400_000))
@@ -289,7 +290,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
                   {{ today: 'Today', tomorrow: 'Tomorrow', week: 'This week', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.expected_date && editing?.expected_date < iso(new Date()) ? editing?.expected_date : iso(new Date())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.expected_date && editing?.expected_date < iso(appNow()) ? editing?.expected_date : iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
             </div>
           </div>
 

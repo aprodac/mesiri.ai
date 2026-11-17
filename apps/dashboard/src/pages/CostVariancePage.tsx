@@ -32,6 +32,7 @@ import { fetchProjects } from '@/lib/projects';
 import { useScope } from '@/lib/ScopeContext';
 import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours';
 import { cn } from '@/lib/utils';
+import { appNow } from '@/lib/clock'
 
 // CC-07: green / amber / red per BOQ line. For a period, each line's labour budget earned by the work measured
 // (done x labour rate) against the labour put on the line (CC-05): green when it earned at least what it cost,
@@ -50,7 +51,7 @@ function isoDay(d: Date): string {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
 }
 function daysAgo(n: number): string {
-  const d = new Date();
+  const d = appNow();
   d.setDate(d.getDate() - n);
   return isoDay(d);
 }

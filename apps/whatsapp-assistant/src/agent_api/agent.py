@@ -28,6 +28,7 @@ from agent_api.feedback import specs as feedback_specs
 from agent_api.links import IN_CHAT, WEB_LINK, build_link, in_chat_note
 from agent_api.links import spec as web_link_spec
 from mesiri.domains.materials.names import alias_key
+from mesiri.domains.shared import clock
 from mesiri_ai.models import ChatMessage, ToolCallRecord, ToolOutcome, ToolRunResult, ToolSpec
 from runtime.agent.reply_text import asks_to_tap_save, says_save
 from runtime.ai_outage import is_budget_error
@@ -804,7 +805,7 @@ class ApiAgent:
         from mesiri.domains.organizations.settings import WORKING_DAY_STARTS_DEFAULT, working_day
 
         # Fix 2: the working day, not the calendar day ("innu 4 mason" at 00:05 is about the day that just ended).
-        today = working_day(dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")),
+        today = working_day(clock.at(dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata"))),
                             day_starts_at or WORKING_DAY_STARTS_DEFAULT)
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
         new: list[PendingWrite] = []
@@ -2112,7 +2113,7 @@ async def report_gone_today(client: ApiClient, path: str, tz: Any) -> str:
     found = _SEND_PATH.match(path or "")
     if found is None:
         return ""
-    day = dt.datetime.now(tz).date().isoformat()
+    day = clock.at(dt.datetime.now(tz)).date().isoformat()
     try:
         response = await client.call("GET", f"/dpr/projects/{found.group(1)}/day", params={"date": day})
     except Exception:  # noqa: BLE001 -- unreadable: the API's own check decides at Save
@@ -2885,7 +2886,7 @@ async def saved_with_old_size(client: ApiClient, material_id: str, from_unit_id:
     try:
         check = await client.call("GET", f"/materials/{material_id}/unit-check", params={"unit_id": from_unit_id})
         unit = str(check.body.get("unit_name") or "") if check.ok and isinstance(check.body, dict) else ""
-        since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+        since = (clock.today() - dt.timedelta(days=days)).isoformat()
         found = await client.call("GET", "/materials/inflows",
                                   params={"material_id": material_id, "date_from": since, "limit": 100})
     except Exception:  # noqa: BLE001 -- nothing named; the size itself is unchanged

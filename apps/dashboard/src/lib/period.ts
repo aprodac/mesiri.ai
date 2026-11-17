@@ -1,4 +1,5 @@
 import { localIsoDate } from './site-day'
+import { appNow } from '@/lib/clock'
 
 // The period filter shared by list pages (Materials ledger, Labour): a few
 // presets plus a custom range, resolved against the browser's local date.
@@ -15,7 +16,7 @@ export const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 
 /** The dates a period covers; `undefined` for an open end. */
 export function periodRange(period: Period, from: string, to: string): { from?: string; to?: string } {
-  const today = new Date()
+  const today = appNow()
   const back = (days: number) => localIsoDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - days))
   if (period === '7d') return { from: back(6) }
   if (period === '30d') return { from: back(29) }

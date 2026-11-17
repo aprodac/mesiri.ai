@@ -24,6 +24,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from mesiri.domains.shared import clock
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 
 from .commands import RecordExpenseCommand
@@ -64,7 +65,7 @@ def _occurred_date(fields: dict) -> date:
             return date.fromisoformat(str(raw))
         except ValueError:
             pass
-    return date.today()
+    return clock.today()
 
 
 def build_command(confirmed: ConfirmedActionV2) -> RecordExpenseCommand:

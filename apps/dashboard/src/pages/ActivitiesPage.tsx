@@ -41,6 +41,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, toLocalISODate } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // --- Status ---
 // The backend's activity statuses are PLANNED, IN_PROGRESS, STOPPED and
@@ -113,7 +114,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
   const [customFrom, setDateFrom] = useUrlState<string>('from', '')
   const [customTo, setDateTo] = useUrlState<string>('to', '')
   const [dateFrom, dateTo] = React.useMemo(() => {
-    const now = new Date()
+    const now = appNow()
     if (datePreset === 'TODAY') return [toLocalISODate(now), toLocalISODate(now)]
     if (datePreset === 'THIS_WEEK') return [toLocalISODate(new Date(now.getTime() - 6 * 86_400_000)), toLocalISODate(now)]
     if (datePreset === 'THIS_MONTH') return [toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1)), toLocalISODate(now)]
@@ -368,7 +369,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
       a.source,
     ])
     downloadTextFile(
-      `activities-${toLocalISODate(new Date())}.csv`,
+      `activities-${toLocalISODate(appNow())}.csv`,
       toCsv(['Date', 'Project', 'Site', 'Work', 'Description', 'Contractor', 'Status', 'Started', 'Source'], rows),
     )
   }

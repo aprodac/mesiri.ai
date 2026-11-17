@@ -23,6 +23,7 @@ import { StartQuestionInline } from '@/components/onboarding/start-question'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
+import { appNow } from '@/lib/clock'
 
 // The welcome screen (SS-18): where web signup lands. The owner sends their
 // first update to Mesiri on WhatsApp; this page waits for it and, the moment
@@ -176,7 +177,7 @@ function Waiting({ gaveUp }: { gaveUp: boolean }) {
 export default function WelcomePage() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const [today] = React.useState(() => localIsoDate(new Date()))
+  const [today] = React.useState(() => localIsoDate(appNow()))
   const [gaveUp, setGaveUp] = React.useState(false)
   React.useEffect(() => {
     const timer = window.setTimeout(() => setGaveUp(true), WAIT_MS)

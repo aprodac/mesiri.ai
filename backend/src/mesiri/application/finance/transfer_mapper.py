@@ -9,9 +9,9 @@ date, same reasoning as application/expenses/mapper.py.
 
 from __future__ import annotations
 
-from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from mesiri.domains.shared import clock
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 
 from .transfer_commands import TransferMoneyCommand
@@ -35,7 +35,7 @@ def build_command(confirmed: ConfirmedActionV2) -> TransferMoneyCommand:
         from_account_id=str(fields.get("from_account_id", "")),
         to_account_id=str(fields.get("to_account_id", "")),
         amount=_decimal(fields.get("amount")),
-        occurred_date=date.today(),
+        occurred_date=clock.today(),
         description=fields.get("description"),
         correlation_id=confirmed.correlation_id,
     )

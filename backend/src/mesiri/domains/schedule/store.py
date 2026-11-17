@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.domains.progress.boq import line_amounts
 from mesiri.domains.schedule import logic
+from mesiri.domains.shared import clock
 
 STAGES = ("tender", "won", "running", "handover", "defects", "closed")
 
@@ -145,7 +146,7 @@ async def place_issue(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UU
     names: dict[Any, list[str]] = defaultdict(list)
     for line in await _lines(conn, org, project_id):
         names[line["work_package_id"]].append(line["work_type"])
-    return logic.activity_for_issue(narrative, site_id, _issue_targets(sections, names), datetime.date.today())
+    return logic.activity_for_issue(narrative, site_id, _issue_targets(sections, names), clock.today())
 
 
 def _issue_targets(sections: list[dict], names: dict[Any, list[str]]) -> list[dict]:

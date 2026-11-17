@@ -59,6 +59,7 @@ import {
 } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // Site DPR page (WEB-04): one site's working day. The engineer checks what
 // was sent on WhatsApp (saved as drafts, WA-01), confirms or removes each
@@ -643,7 +644,7 @@ export default function SiteDayPage() {
       <PageError
         message="This site's day could not be loaded."
         onRetry={() => query.refetch()}
-        back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Back to Today' } : { to: '/reports', label: 'Back to Reports' }}
+        back={date === localIsoDate(appNow()) ? { to: '/today', label: 'Back to Today' } : { to: '/reports', label: 'Back to Reports' }}
       />
     )
   }
@@ -712,7 +713,7 @@ export default function SiteDayPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
       <div className="flex flex-col gap-3">
         <DprHeader
-          back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Today' } : { to: '/reports', label: 'Reports' }}
+          back={date === localIsoDate(appNow()) ? { to: '/today', label: 'Today' } : { to: '/reports', label: 'Reports' }}
           crumb={`Site DPR${day?.project_name ? ` · ${day.project_name}` : ''}`}
           title={day?.site_name ?? 'Site'}
           chip={status && <span className={cn(CHIP, status.className)}>{status.label}</span>}

@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { deleteHireBill, deleteMachine, errorWords, fetchMachine, hrs, iso, pct, rateWords, updateMachine, voidLog, type MachineDetail, type MachineLog, inr } from '@/lib/equipment'
 import { ActionIcon } from '@/components/page/action-button'
 import { KpiStrip } from '@/components/page/page-kit'
+import { appNow } from '@/lib/clock'
 
 // NXT-11 / NXT-13 / NXT-15: one machine. Its period in figures (30 days by default), a day-by-day chart, the logbook,
 // what happened to it (moves, on / off hire, service), breakdowns and hire bills with their check.
@@ -68,7 +69,7 @@ export default function MachinePage() {
   const qc = useQueryClient()
   const [days, setDays] = React.useState(30)
   const [dialog, setDialog] = React.useState<'' | 'log' | 'move' | 'edit' | 'bill'>('')
-  const today = iso(new Date())
+  const today = iso(appNow())
   const from = iso(new Date(Date.now() - (days - 1) * 86_400_000))
   const { data: m, isLoading, isError } = useQuery({ queryKey: ['equipment', 'machine', id, days], queryFn: () => fetchMachine(id, { date_from: from, date_to: today }) })
   usePageTitle(m?.name ?? 'Machine')

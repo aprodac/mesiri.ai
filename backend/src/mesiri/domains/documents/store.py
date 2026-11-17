@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.domains.documents.naming import RESTRICTED_FOLDERS
+from mesiri.domains.shared import clock
 
 _COLS = ("id", "project_id", "site_id", "folder", "discipline", "number", "title", "revision", "revision_date",
          "status", "supersedes_id", "valid_until", "restricted", "object_key", "file_name", "content_type",
@@ -77,8 +78,9 @@ async def expiring(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID,
     rows = (await conn.execute(text(
         f"SELECT d.id, d.title, d.folder, d.valid_until FROM project_documents d WHERE d.organization_id = :org "
         f"AND d.project_id = :p AND d.status = 'current' AND d.valid_until IS NOT NULL "
-        f"AND d.valid_until <= CURRENT_DATE + CAST(:days AS integer){_visible(see_restricted)} ORDER BY d.valid_until"),
-        {"org": org, "p": project_id, "days": within_days})).mappings().all()
+        f"AND d.valid_until <= CAST(:today AS date) + CAST(:days AS integer){_visible(see_restricted)} "
+        "ORDER BY d.valid_until"),
+        {"org": org, "p": project_id, "days": within_days, "today": today()})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -176,4 +178,4 @@ async def current_drawing_facts(conn: AsyncConnection, org: uuid.UUID, project_i
 
 
 def today() -> datetime.date:
-    return datetime.date.today()
+    return clock.today()

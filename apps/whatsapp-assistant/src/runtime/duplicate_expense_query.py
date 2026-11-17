@@ -10,10 +10,11 @@ Module Slice 8. Never opens a write transaction, never mutates state.
 
 from __future__ import annotations
 
-import datetime
 import uuid
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
+
+from mesiri.domains.shared import clock
 
 if TYPE_CHECKING:
     from mesiri.infrastructure.postgres.database import PostgresDatabase
@@ -74,7 +75,7 @@ class DuplicateExpenseQueryService:
             duplicate = await PostgresExpenseRepository(conn).find_potential_duplicate(
                 org_id,
                 amount=amount_decimal,
-                occurred_date=datetime.date.today(),
+                occurred_date=clock.today(),
                 project_id=uuid.UUID(project_id) if project_id else None,
                 vendor_id=vendor_id,
                 category_id=category_id,

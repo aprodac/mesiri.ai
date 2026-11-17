@@ -45,6 +45,8 @@ import datetime
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from mesiri.domains.shared import clock
+
 #: Recorded on the command so a reader can tell a real answer from a fallback.
 SOURCE_STATED = "stated_by_user"
 SOURCE_INFERRED = "inferred_at_confirmation"
@@ -79,12 +81,14 @@ def today_for(timezone_name: str | None) -> datetime.date:
     without the tz database installed (Windows without `tzdata`), ZoneInfo
     raises ZoneInfoNotFoundError — also treated as "just use the host clock".
     """
+    if clock.override() is not None:  # SS-74a: a learning sample company lives on its own date
+        return clock.override()
     if timezone_name:
         try:
             return datetime.datetime.now(ZoneInfo(timezone_name)).date()
         except (ZoneInfoNotFoundError, ValueError, KeyError):
             pass
-    return datetime.date.today()
+    return clock.today()
 
 
 def parse_stated_date(value: object, *, today: datetime.date) -> datetime.date | None:

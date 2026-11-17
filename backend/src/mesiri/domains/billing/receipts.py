@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.domains.billing import bills as bill_store
 from mesiri.domains.billing import receivables
+from mesiri.domains.shared import clock
 
 _SELECT = (
     "SELECT r.id, r.project_id, p.name AS project, r.client_id, cl.name AS client, r.ra_bill_id, b.number AS bill_number, "
@@ -106,7 +107,7 @@ async def cancel(conn: AsyncConnection, receipt_id: uuid.UUID, user_id: uuid.UUI
     if moved:
         await PostgresMoneyTransactionRepository(conn).record(
             organization_id=row["organization_id"], transaction_type="reversal", amount=Decimal(row["amount"]),
-            occurred_date=datetime.date.today(), created_by=user_id, from_account_id=row["account_id"],
+            occurred_date=clock.today(), created_by=user_id, from_account_id=row["account_id"],
             source_type=MONEY_SOURCE, source_id=receipt_id, description="Client receipt cancelled")
 
 

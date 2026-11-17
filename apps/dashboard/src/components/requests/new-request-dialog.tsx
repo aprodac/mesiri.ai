@@ -14,6 +14,7 @@ import { asDuplicateConflict, createRequest, qty, updateRequest, type DuplicateC
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from './parts'
+import { appNow } from '@/lib/clock'
 
 // PRC-22: ask for material. Built for speed: the site is the scope's, several items in one request, each line says
 // what the site already holds, and a request that repeats an open one is shown before it is saved.
@@ -26,7 +27,7 @@ function iso(d: Date): string {
 }
 
 function dateFor(when: When, picked: string): string | null {
-  const d = new Date()
+  const d = appNow()
   if (when === 'today') return iso(d)
   if (when === 'tomorrow') return iso(new Date(d.getTime() + 86_400_000))
   if (when === 'week') return iso(new Date(d.getTime() + ((5 - d.getDay() + 7) % 7 || 7) * 86_400_000))
@@ -216,7 +217,7 @@ export function NewRequestDialog({ open, onOpenChange, scope, editing, prefill }
                   {{ today: 'Today', tomorrow: 'Tomorrow', week: 'This week', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.needed_by && editing?.needed_by < iso(new Date()) ? editing?.needed_by : iso(new Date())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.needed_by && editing?.needed_by < iso(appNow()) ? editing?.needed_by : iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
             </div>
           </div>
 

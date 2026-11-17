@@ -24,6 +24,7 @@ import { findPage } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
 import { routeTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // Top bar (WEB-20): stays put while the page scrolls; a thin site-colour
 // stripe on top, the scope picker, today's date and the open-issues count.
@@ -53,7 +54,7 @@ function Breadcrumb() {
 function TopBar() {
   const { drafts, openIssues } = useNavCounts()
   const [showPlanned, setShowPlanned] = usePlannedPreview()
-  const today = new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
+  const today = appNow().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
   return (
     <header className="sticky top-0 z-20 shrink-0 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
       <div aria-hidden className="h-[3px] bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />

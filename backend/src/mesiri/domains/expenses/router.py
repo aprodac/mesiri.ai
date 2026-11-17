@@ -44,6 +44,7 @@ from mesiri.domains.expenses.bill_file import bill_key, decode_bill
 from mesiri.domains.expenses.paid_via import paid_via
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared import clock
 from mesiri.domains.shared.media import assert_downloadable_url
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
@@ -995,7 +996,7 @@ async def pay_expense(
     try:
         payment = await payments.record_payment(
             organization_id=auth_context.organization_id, expense_id=expense_id, account_id=body.account_id,
-            amount=amount, paid_date=body.paid_date or datetime.date.today(), created_by=auth_context.user_id,
+            amount=amount, paid_date=body.paid_date or clock.today(), created_by=auth_context.user_id,
             payment_method=body.method, reference_number=body.reference,
         )
     except ValueError as exc:

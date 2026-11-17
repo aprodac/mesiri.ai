@@ -7,6 +7,8 @@ from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.domains.shared import clock
+
 _expense_categories = sa.Table(
     "expense_categories",
     sa.MetaData(),
@@ -147,7 +149,7 @@ class AdminFinanceSeedingService:
         include_demo_transactions: bool = True,
     ) -> dict[str, int]:
         now = dt.datetime.now(dt.UTC)
-        today = dt.date.today()
+        today = clock.today()
 
         categories_created = 0
         accounts_created = 0

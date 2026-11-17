@@ -16,6 +16,7 @@ import { CREATE_ROLES, dueWords, fetchTasks, PRIORITY_LABEL, type Task } from '@
 import { useReadOnly } from '@/lib/trial'
 import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // TSK-02: the Tasks module. Four views by ?view= (the sidebar links to each): given to me, all open, overdue, done.
 // A list on the left (late first, then by due day), the chosen task on the right (a sheet on a phone). The API
@@ -59,7 +60,7 @@ export default function TasksPage() {
     refetchInterval: 60_000,
   })
   const all = React.useMemo(() => data?.items ?? [], [data])
-  const today = data?.today ?? new Date().toISOString().slice(0, 10)
+  const today = data?.today ?? appNow().toISOString().slice(0, 10)
 
   const list = React.useMemo(() => all.filter((t) => {
     if (site && t.site_id !== site) return false

@@ -6,6 +6,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { canRecord, MAX_SECONDS, startRecording, type Recording } from '@/lib/voice-recorder'
 import { Conversation, Exchange, Label, WordsIn } from '@/components/onboarding/conversation'
 import { cn } from '@/lib/utils'
+import { appNow } from '@/lib/clock'
 
 // Tell Mesiri from the dashboard (WEB-36): speak or type an update and Mesiri
 // handles it exactly as a WhatsApp message (same handler, same workflows,
@@ -190,7 +191,7 @@ export function TellMesiri({
 
   const add = (turn: Omit<Turn, 'id' | 'at' | 'pending' | 'replies'>): number => {
     const id = nextId.current++
-    setTurns((all) => [...all, { id, at: new Date(), pending: true, replies: [], ...turn }])
+    setTurns((all) => [...all, { id, at: appNow(), pending: true, replies: [], ...turn }])
     return id
   }
 

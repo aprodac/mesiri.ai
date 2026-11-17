@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { fetchProjects, fetchSites } from './projects'
 import { rupees } from './orders'
+import { appNow } from '@/lib/clock'
 
 // NXT-11 / NXT-13 / NXT-14 / NXT-15: machines and vehicles. Shapes mirror backend/src/mesiri/domains/equipment/router.py.
 // Hours, idle, breakdown and diesel are for everyone who sees the site; rates, costs and bills only for the roles
@@ -382,7 +383,7 @@ export function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function dayWords(date: string, today = iso(new Date())): string {
+export function dayWords(date: string, today = iso(appNow())): string {
   if (date === today) return 'Today'
   const d = new Date(`${date}T00:00:00`)
   const t = new Date(`${today}T00:00:00`)

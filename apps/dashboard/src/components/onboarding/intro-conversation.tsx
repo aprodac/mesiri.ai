@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { progress, useScenes } from '@/lib/timeline'
 import { Exchange, ExchangeHeads, Fact, Label, Reveal, Rule, Waveform, Words } from './conversation'
 import { SceneStage, SceneSteps, type SceneStep } from './scenes'
+import { appNow } from '@/lib/clock'
 
 // The signup intro (SS-18): an example site's evening as six scenes that
 // change by themselves, in one frame. A Malayalam voice note comes in on the
@@ -290,7 +291,7 @@ export function IntroConversation({
   belowForm?: boolean
 }) {
   const scenes = useScenes(DURATIONS, (i) => (i + 1) % STEPS.length)
-  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+  const today = appNow().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
 
   return (
     <div className="@container">

@@ -1,4 +1,5 @@
 import { type OrderLine, type PurchaseOrder } from './orders'
+import { appNow } from '@/lib/clock'
 
 // PRC-45: what is still to come on open orders, line by line, and the message that chases a supplier for it.
 // Read from the same order list as Procurement › Purchase orders (what came is read from deliveries).
@@ -19,7 +20,7 @@ export interface PendingLine {
 }
 
 export function startOfToday(): Date {
-  const t = new Date()
+  const t = appNow()
   return new Date(t.getFullYear(), t.getMonth(), t.getDate())
 }
 

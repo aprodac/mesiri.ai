@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { errorWords, fetchReturnables, setReturnable } from '@/lib/equipment'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // NXT-14: Equipment > Shuttering & tools. Plates, props, scaffold pipes and tools are materials in a returnable
 // category (no second stock system): this page shows how many each site holds, what went out lost or damaged, and
@@ -38,7 +39,7 @@ export default function ReturnablesPage() {
   const items = data?.items ?? []
   const sites = data?.sites ?? []
   const anyReturnable = (data?.categories ?? []).some((c) => c.returnable || c.via_parent)
-  const exportIt = () => exportCsv(`shuttering-and-tools-${new Date().toISOString().slice(0, 10)}.csv`,
+  const exportIt = () => exportCsv(`shuttering-and-tools-${appNow().toISOString().slice(0, 10)}.csv`,
     ['Item', 'Category', 'Unit', ...sites.map((s) => s.site_name ?? ''), 'Total held', 'Lost / damaged'],
     items.map((it) => [it.name, it.category ?? '', it.unit, ...sites.map((s) => it.sites.find((x) => x.site_id === s.site_id)?.held ?? ''), it.total, it.lost]))
 

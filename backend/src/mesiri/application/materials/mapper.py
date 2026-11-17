@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from mesiri.domains.shared import clock
 from mesiri_contracts.application.commands.material import (
     RecordMaterialReceiptCommand,
     RecordMaterialTransferCommand,
@@ -52,7 +53,7 @@ def _occurred_date(fields: dict) -> date:
             return date.fromisoformat(str(raw))
         except ValueError:
             pass
-    return date.today()
+    return clock.today()
 
 
 def build_command(

@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { dayWords, errorWords, fetchLogs, hrs, iso, saveLogs, voidLog, type LogLineInput } from '@/lib/equipment'
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // NXT-11: Equipment > Daily log. One date, every machine at the sites in view on one screen, typed in place: the
 // fewest taps for whoever fills it in the evening. Machines already logged (on WhatsApp or here) show their figures;
@@ -47,7 +48,7 @@ export default function EquipmentLogPage() {
   const readOnly = useReadOnly()
   const toast = useToast()
   const qc = useQueryClient()
-  const today = iso(new Date())
+  const today = iso(appNow())
   const [date, setDate] = useUrlState<string>('date', today)
   const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
   const siteId = scope.mode === 'site' ? scope.siteId : null

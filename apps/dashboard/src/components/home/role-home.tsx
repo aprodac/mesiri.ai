@@ -14,6 +14,7 @@ import { fetchMachines } from '@/lib/equipment'
 import { fetchPaySummary } from '@/lib/labour-pay'
 import { Section, Tile, TileGrid } from '@/components/page/page-kit'
 import { localIsoDate, plural } from '@/lib/site-day'
+import { appNow } from '@/lib/clock'
 
 // A home for each role (UX-11, docs/plans/ui-story-plan.md section 4b). Today opens with the role's own
 // questions, each a tile that opens the page that answers it in full; the site-by-site day stays below. Every
@@ -40,7 +41,7 @@ export function RoleHome() {
   const role: Role = (['ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const).find((r) => r === rawRole) ?? 'ADMIN'
   const projectId = scope.mode === 'portfolio' ? undefined : scope.projectId
   const siteId = scope.mode === 'site' ? scope.siteId : undefined
-  const today = React.useMemo(() => localIsoDate(new Date()), [])
+  const today = React.useMemo(() => localIsoDate(appNow()), [])
 
   const books = mayReadBooks(rawRole) && isModuleEnabled('finance')
   const accountsOn = books && isModuleEnabled('accounts')

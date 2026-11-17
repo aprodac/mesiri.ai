@@ -19,6 +19,7 @@ import { NewReturnDialog } from '@/components/returns/new-return-dialog'
 import { useAuth } from '@/lib/AuthContext'
 import { mayReturn, seesMoney } from '@/lib/returns'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // PRC-29: Procurement > GRN. Every goods received note: what came against which order, what was accepted into stock
 // and what was turned away (and why), the challan number and photo, who received it. A GRN is made by "Material
@@ -33,7 +34,7 @@ function exportGrns(items: GoodsReceipt[]): void {
     g.ref, g.received_on, g.order_ref, g.vendor_name, g.project_name, g.site_name, l.material, Number(l.accepted),
     Number(l.rejected), l.unit, l.rejected_reason ?? '', g.challan_no ?? '', g.received_by_name ?? '', g.created_by_name ?? '',
   ]))
-  exportCsv(`goods-received-${new Date().toISOString().slice(0, 10)}.csv`,
+  exportCsv(`goods-received-${appNow().toISOString().slice(0, 10)}.csv`,
     ['GRN', 'Date', 'Order', 'Supplier', 'Project', 'Site', 'Item', 'Accepted', 'Rejected', 'Unit', 'Why rejected',
       'Challan no.', 'Received by', 'Recorded by'], rows)
 }

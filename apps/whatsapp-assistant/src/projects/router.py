@@ -337,6 +337,9 @@ def _decode(authorization: str | None) -> dict:
 async def get_current_user(authorization: str = Header(None)) -> dict:
     payload = _decode(authorization)
     bind_tenant(payload.get("org"))  # BE-03
+    from mesiri.domains.shared import clock
+
+    clock.bind_from_token(payload)  # SS-74a: a sample company's own date, else the real one
     return payload
 
 

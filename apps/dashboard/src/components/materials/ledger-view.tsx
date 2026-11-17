@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { MovementDetailsSheet } from './movement-details-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // WEB-30: one ledger of everything that came in and went out -- deliveries,
 // use, moves between sites, corrections -- as a table: In in green, Out in
@@ -51,7 +52,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
   const [dir, setDir] = useUrlState<Dir>('dir', 'all')
   const [openRow, setOpenRow] = React.useState<LedgerRow | null>(null)
   const [invoiceId, setInvoiceId] = React.useState<string | null>(null)
-  const [today] = React.useState(() => new Date())
+  const [today] = React.useState(() => appNow())
 
   const siteId = scopeSiteId ?? (pickedSite === 'all' ? null : pickedSite)
   const material = materialId === 'all' ? null : materialId

@@ -24,6 +24,8 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from mesiri.domains.shared import clock
+
 if TYPE_CHECKING:
     from mesiri.infrastructure.postgres.database import PostgresDatabase
 
@@ -52,7 +54,7 @@ def resolve_date_range(
     """
     from runtime.agent.project_day import period_for
 
-    today = today or datetime.date.today()
+    today = today or clock.today()
     return period_for(bucket, today) or (today, today, _DATE_RANGE_LABELS["today"])
 
 

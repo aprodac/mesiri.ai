@@ -33,6 +33,7 @@ from zoneinfo import ZoneInfo
 
 from agent_api.feedback import TELL_THE_TEAM
 from channel.replies import ListRow, ReplySpec
+from mesiri.domains.shared import clock as app_clock
 from mesiri_ai.greeting_classifier import is_greeting_trigger
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.enums import InputModality
@@ -790,21 +791,21 @@ class ApiWhatsApp:
                         documents.REPORT_TOOL,
                         lambda arguments: documents.send_report(
                             client, send_file, wa, arguments,
-                            today=dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date())),
+                            today=app_clock.at(dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata"))).date())),
                     # WA-311: "innathe report pdf ayakk": the day's DPR document, printed by the same renderer.
                     documents.SEND_DAY_REPORT: (
                         documents.DAY_REPORT_TOOL,
                         lambda arguments: documents.send_day_report(
                             client, send_file, _day_pdf, wa, ctx,
-                            dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date(),
+                            app_clock.at(dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata"))).date(),
                             arguments)),
                 }
             renderer = getattr(self._receipts, "renderer", None)
             if renderer is not None and self._send_image is not None:
                 # [304]: stock of several materials as pictures, drawn by the code from the stock records. Needs only
                 # the image sender, never the document one.
-                image_out, wa_to, day = self._send_image, message.sender.wa_id, dt.datetime.now(
-                    ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date()
+                image_out, wa_to, day = self._send_image, message.sender.wa_id, app_clock.at(dt.datetime.now(
+                    ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata"))).date()
                 run.setdefault("actions", {})[stock_images.SEND_STOCK_LIST] = (
                     stock_images.TOOL,
                     lambda arguments: stock_images.send(client, renderer.render_png, image_out, wa_to, ctx, day,
@@ -1359,7 +1360,7 @@ class ApiWhatsApp:
         from mesiri.domains.organizations.settings import working_day
 
         zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
-        now = dt.datetime.now(zone)
+        now = app_clock.at(dt.datetime.now(zone))
         starts_at = await self._day_starts(ctx)
         work_day = working_day(now, starts_at)
         day = work_day.isoformat()  # fix 2: today's records are the working day's
@@ -1398,7 +1399,7 @@ class ApiWhatsApp:
 
         zone = ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")
         starts_at = await self._day_starts(ctx)
-        work_day = working_day(dt.datetime.now(zone), starts_at)
+        work_day = working_day(app_clock.at(dt.datetime.now(zone)), starts_at)
         hour, _, minute = starts_at.partition(":")
         began = dt.datetime.combine(work_day, dt.time(int(hour or 0), int(minute or 0)), zone).timestamp()
         first, before = work_day - dt.timedelta(days=EARLIER_DAYS), work_day - dt.timedelta(days=1)
@@ -2061,7 +2062,7 @@ def _turn_language(text: str, state: dict) -> str | None:
 def _today(ctx: Any, day_starts_at: str | None = None) -> str:
     """The company's date now; with ``day_starts_at`` its working day (before the day's start it is still the day
     before), the same day the agent dates entries by."""
-    now = dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata"))
+    now = app_clock.at(dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")))
     if day_starts_at is None:
         return now.date().isoformat()
     from mesiri.domains.organizations.settings import working_day

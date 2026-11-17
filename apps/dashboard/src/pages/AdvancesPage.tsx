@@ -18,6 +18,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
+import { appNow } from '@/lib/clock'
 
 // LW-03 (plan docs/plans/wages-and-labour-plan.md): money given ahead of wages, to a worker or a labour team, out of
 // a money account; taken back on the next wage sheet. "Gave Ravi 500 advance" on WhatsApp lands here too.
@@ -124,7 +125,7 @@ function GiveDialog({ onClose, onGiven, defaultSite }: { onClose: () => void; on
   const [site, setSite] = React.useState(defaultSite ?? '')
   const [amount, setAmount] = React.useState('')
   const [account, setAccount] = React.useState('')
-  const [on, setOn] = React.useState(iso(new Date()))
+  const [on, setOn] = React.useState(iso(appNow()))
   const [note, setNote] = React.useState('')
   const usable = (accounts.data ?? []).filter((a) => (a.status ?? 'active') === 'active')
   const siteValue = site || sites.data?.[0]?.id || ''
