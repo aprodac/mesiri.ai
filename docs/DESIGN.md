@@ -54,7 +54,7 @@ follows the home. The planned-modules preview is for platform admins only.
 ## Page kit (UX-05)
 
 Import page parts from `components/page/page-kit.tsx`: `PageHeader`, `Section`, `IconSection`, `StatStrip`,
-`Callout`, `PageError`, `Segmented` (the DPR pages' parts, re-exported), plus `EmptyState` (what the page is for,
+`Callout`, `PageError`, `Segmented` (the DPR pages' parts, re-exported), `Legend` (what a list's colours mean, as dots), plus `EmptyState` (what the page is for,
 the first thing to do, the WhatsApp sentence that fills it), `Tile` / `TileGrid` (one question each on Home, the
 whole tile links to its page) and `LinkedStrip` (a record's step before and after in its chain, §4c of the plan).
 A page does not draw its own header, empty box or tile.
@@ -102,6 +102,13 @@ A page does not draw its own header, empty box or tile.
   - **Not for this role:** `NoAccess` (lock, "Not open to your role", the roles that can as chips;
     `MONEY_PEOPLE` / `BOOKS_PEOPLE` in `lib/permissions.ts`), never two sentences about it.
   - **Legends are swatches,** not sentences (the period report's day key, the muster's P / ½ / A).
+  - **Nothing said twice, and a check that keeps it so (UX-14, asked 17 Nov 2026).** The project or site picked
+    is named once, in the top bar: the header's back line names the kind of place ("← Project"), a subtitle that
+    repeats the pick is dropped (`DprHeader`, `useScopeNames`), and the scope line is silent when the page shows
+    exactly the pick. `node scripts/words.mjs --check` (part of `pnpm lint`, so CI runs it) fails any page or
+    component with an on-page text over 12 words; dialogs, sheets, Help, tours and Learn are exempt. A text that
+    fails goes to `lib/page-help.ts`, becomes a `Legend` (page kit: coloured dots with two or three words each),
+    a chip, or goes.
   - **Plain words only:** never "soft-deleted", "audit trail", "liquidity", "float", "dry-run", tool or database names.
 
 ## What the pages show: all projects, a project, a site (SCP-01..04, asked 9 Nov 2026)
@@ -118,9 +125,9 @@ the page: the same "₹61k owed" means the company, one project or one site.
   appears past six rows. Phones get it as a bottom sheet.
 - **One choice, no switcher.** The pill is a plain label when there is nothing to switch to (a site engineer with
   one site), and then names the site's project beside it.
-- **Each page says what it shows** (`components/scope-note.tsx`, one line above the page when a project or site is
-  picked): "Showing Compound wall (Villa Kakkanad) only", or, in amber, "Showing all of Villa Kakkanad. This page
-  doesn't split by site", or "Company-wide. This page shows every project". Nothing is said with All projects picked.
+- **A page wider than the pick says so** (`components/scope-note.tsx`, one amber chip above the page): "Whole
+  project: not split by site" or "Company-wide: every project". A page that shows exactly the pick says nothing
+  (UX-14): the top bar names it. Nothing is said with All projects picked.
 - **The table** `lib/scope-levels.ts` gives each route its level (`site`, `project`, `company`). A new page adds its
   row; a page that starts following the site moves its row. Record pages (one bill, one machine) have none.
 - **Roles land where they work** (`lib/ScopeContext.tsx`), at every login: owner and finance on All projects; a
@@ -131,7 +138,7 @@ the page: the same "₹61k owed" means the company, one project or one site.
   person on the same computer, or the owner next week, never starts on yesterday's site. Recent picks and the start
   project are kept per person.
 - **A change the person did not make is announced.** A link (WhatsApp, a notification, a record on another project)
-  or Back that changes the view adds a blue line: "Now showing Villa Kakkanad on every page… Back to all projects".
+  or Back that changes the view adds a blue chip: "Switched to Villa Kakkanad · Back to all projects".
 - **Tiles wider than the pick say so** with a small amber tag on the tile: "Company" or "Whole project"
   (`Tile tag`). Home's heading names the project or site picked.
 - **No page without a level:** a built page with no row in the table logs a console error in dev, which fails the
@@ -217,7 +224,7 @@ If a screen makes the reader hunt for any of those, it is wrong.
 ### Page header (every detail page)
 
 ```
-← Today / Site DPR · Green Villa                         (muted, small)
+← Today                                                  (muted, small; where Back goes, nothing else)
 Tower 1  [Collecting]  Sat, Oct 24, 2026      [Primary action]
 ( ✓ Updates from site ── ② Engineer confirms ── 3 Sent to owner )   one slim bar
 ```
