@@ -66,6 +66,9 @@ export interface WalkStep extends TourStep {
   /** Hold here until one of these markers shows (a page that first asks for a project): the page tour's
    *  `startWhen`. Clicks reach the page meanwhile. */
   waitFor?: string[]
+  /** The guided project (SS-67): the chapter this step belongs to, for the chapter list in the bubble. Set by
+   *  `journey(...)`, never by hand. */
+  chapter?: string
 }
 
 export interface Walkthrough {
@@ -80,6 +83,8 @@ export interface Walkthrough {
   version?: number
   /** A piece of a workflow (W2's first half): used by workflows and outcomes, not listed on its own. */
   part?: boolean
+  /** Runs only inside the person's sample company (SS-67, lib/sandbox.ts); the engine refuses it anywhere else. */
+  sandbox?: boolean
   steps: WalkStep[]
 }
 
@@ -716,13 +721,72 @@ export const ROLE_PATHS: Walkthrough[] = [
   composed('path-finance', 'Everything accounts does, in order', 'All of the above, one after another.', OUTCOMES.filter((o) => o.roles === FINANCE).map((o) => `goal-${o.id}`), 'role', FINANCE),
 ]
 
-export const ALL_WALKS: Walkthrough[] = [...ROLE_PATHS, ...OUTCOME_WALKS, ...FULL_WORKFLOWS, ...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS]
+/** The guided project, Green Villa from won to closed, in the person's sample company (guided-demo-plan.md section 3).
+ *  Each chapter names the walkthroughs it runs; the bubble lists the chapters and jumps between them. Until the
+ *  chapters' own walkthroughs are written (SS-69..SS-71) a chapter runs the workflow that already covers it, so the
+ *  journey works end to end from day one; a chapter with nothing to run yet (handover and closing) is left out. */
+export const JOURNEY_CHAPTERS: { title: string; walks: string[] }[] = [
+  { title: 'Your sample company', walks: [] },
+  { title: 'Won: BOQ, schedule and team', walks: ['new-project'] },
+  { title: 'A day on site', walks: ['site-to-report'] },
+  { title: 'Material', walks: ['material'] },
+  { title: 'Labour and wages', walks: ['labour-to-wages'] },
+  { title: 'A subcontractor', walks: ['subcontract'] },
+  { title: 'Money out', walks: ['supplier-bill'] },
+  { title: 'Billing the client', walks: ['billing'] },
+  { title: 'Is it making money?', walks: ['cost-control'] },
+  { title: 'Month end', walks: ['month-end'] },
+]
+
+/** Chapter 0: where the person is, said before anything else (the plan's "Your sample company"). */
+const JOURNEY_HELLO: WalkStep[] = [
+  {
+    page: '/today',
+    mood: 'hello',
+    title: 'Welcome to Green Villa Builders',
+    text: 'This is your own sample company: two projects and two weeks of site work, already recorded. Nothing here is real and nobody gets a message, so try anything.',
+    say: 'Welcome to Green Villa Builders. This is your own sample company, with two projects and two weeks of site work already recorded. Nothing here is real, and nobody gets a message. So go ahead and try anything.',
+  },
+  {
+    page: '/today',
+    mood: 'look',
+    title: 'One project, start to finish',
+    text: 'We follow Green Villa from the day it is won to the day it is billed. Jump to any chapter from the list in this box.',
+    say: 'We will follow Green Villa from the day it is won to the day it is billed. You can jump to any chapter from the list in this box.',
+  },
+]
+
+function journey(id: string, title: string, about: string, chapters: { title: string; walks: string[] }[]): Walkthrough {
+  const steps = chapters.flatMap((c, i) => {
+    const own = i === 0 ? JOURNEY_HELLO : c.walks.flatMap((x) => made.find((w) => w.id === x)?.steps ?? [])
+    return own.map((s) => ({ ...s, chapter: c.title }))
+  })
+  return { id, kind: 'workflow', title, about, roles: STARTERS, sandbox: true, minutes: minutesFor(steps.length), steps }
+}
+
+export const JOURNEY: Walkthrough = journey(
+  'guided-project',
+  'A project from start to finish',
+  'Green Villa, from won to billed, in your own sample company: watch each thing once, then do it yourself.',
+  JOURNEY_CHAPTERS,
+)
+
+/** Where each chapter starts in these steps (the steps as the runner has them, after words per kind of person). */
+export function chapterStarts(steps: WalkStep[]): { title: string; step: number }[] {
+  const starts: { title: string; step: number }[] = []
+  steps.forEach((s, i) => {
+    if (s.chapter && s.chapter !== steps[i - 1]?.chapter) starts.push({ title: s.chapter, step: i })
+  })
+  return starts
+}
+
+export const ALL_WALKS: Walkthrough[] = [...ROLE_PATHS, ...OUTCOME_WALKS, ...FULL_WORKFLOWS, ...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS, JOURNEY]
 
 /** SS-61: the walkthroughs that speak each step (English first; decided 16 Nov: W1, W2, W4 and the owner's path;
  *  then the BOQ page, asked 16 Nov). A page walkthrough's id (`page-boq`) also gives that page's own tour (first visit,
  *  Help's "Show me around") its voice. Give one its voice by adding its id here; the build fails on an id that
  *  doesn't exist. */
-export const VOICED: ReadonlySet<string> = new Set(['site-to-report', 'material', 'labour-to-wages', 'path-owner', 'page-boq'])
+export const VOICED: ReadonlySet<string> = new Set(['site-to-report', 'material', 'labour-to-wages', 'path-owner', 'page-boq', 'guided-project'])
 
 /** Site words written in capitals, spelled out so the voice says the letters ("B O Q", never "bok"). */
 const SPELLED = /\b(BOQ|DPR|GRN|RA|PO|GST|TDS|PDF|CSV)s?\b/g

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Loader2, Send, Undo2, MessageSquarePlus } from 'lucide-react'
+import { Check, Copy, ListOrdered, Loader2, Send, Undo2, MessageSquarePlus } from 'lucide-react'
 import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { Spark } from '@/components/live/spark'
 import { TourOverlay, findTarget, useRect } from '@/components/tour'
@@ -16,8 +16,9 @@ import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
 import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
+import { inSandbox, takeSandboxStart } from '@/lib/sandbox'
 import {
-  OUTCOME_WALKS, VOICED, canTakeBack, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
+  OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
 import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
 import { waLink } from '@/lib/whatsapp-modal'
@@ -182,6 +183,31 @@ function nextWalk(walk: Walkthrough, role: string | undefined, seen: Record<stri
   return [...mine.slice(at + 1), ...mine.slice(0, Math.max(at, 0))].find((w) => !done(w))
 }
 
+/** The guided project's chapters (SS-67): where you are, and a jump to any other. */
+function ChapterList({ chapters, current, onJump }: {
+  chapters: { title: string; step: number }[]
+  current: string | undefined
+  onJump: (index: number) => void
+}) {
+  const at = chapters.findIndex((c) => c.title === current)
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      <ListOrdered className="size-3.5 shrink-0" aria-hidden />
+      <span className="shrink-0">Chapter {at + 1} of {chapters.length}</span>
+      <select
+        className="min-w-0 flex-1 truncate rounded-md border bg-background px-1.5 py-1 text-xs text-foreground"
+        aria-label="Go to a chapter"
+        value={at}
+        onChange={(e) => onJump(chapters[Number(e.target.value)].step)}
+      >
+        {chapters.map((c, i) => (
+          <option key={c.title} value={i}>{i + 1}. {c.title}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 /** "Done": the Spark says so, and offers the next thing worth learning. */
 function Finished({ walk, next, onClose }: { walk: Walkthrough; next?: Walkthrough; onClose: () => void }) {
   return createPortal(
@@ -252,7 +278,8 @@ export function WalkthroughRunner() {
   React.useEffect(() => {
     const begin = (e: Event) => {
       const found = findWalkthrough((e as CustomEvent<string>).detail)
-      if (!found) return
+      // The guided project keeps what the person saves (no take-back): only ever inside their sample company.
+      if (!found || (found.sandbox && !inSandbox())) return
       const walk = { ...found, steps: found.steps.map((s) => stepFor(s, wordsRef.current)).filter((s): s is WalkStep => !!s) }
       setWalkthroughRunning(true)
       drawnPage.current = null
@@ -266,6 +293,11 @@ export function WalkthroughRunner() {
     return () => window.removeEventListener(WALKTHROUGH_EVENT, begin)
   }, [])
   React.useEffect(() => () => setWalkthroughRunning(false), [])
+  // "Start the guided project" from outside the sandbox loads the app inside it, then starts here (SS-67).
+  React.useEffect(() => {
+    const id = takeSandboxStart()
+    if (id) startWalkthrough(id)
+  }, [])
 
   const step: WalkStep | undefined = run?.walk.steps[run.index]
   const stepKey = run ? `${run.walk.id}:${run.index}` : null
@@ -507,7 +539,10 @@ export function WalkthroughRunner() {
   }
 
   const last = run.index === run.walk.steps.length - 1
-  const counter = `${run.walk.title} · ${run.index + 1} of ${run.walk.steps.length}`
+  const chapters = chapterStarts(run.walk.steps)
+  const counter = step.chapter
+    ? `${step.chapter} · ${run.index + 1} of ${run.walk.steps.length}`
+    : `${run.walk.title} · ${run.index + 1} of ${run.walk.steps.length}`
   let nextLabel = last ? 'Done' : 'Next'
   if (tryIt?.kind === 'whatsapp' && !check.got) nextLabel = cardOnly ? 'I tapped Cancel' : "I've sent it"
   if (tryIt?.kind === 'here' && !note) nextLabel = 'Skip this'
@@ -528,6 +563,16 @@ export function WalkthroughRunner() {
       nextDisabled={!pageShows}
     >
       {voiced && <VoicePlayer voice={voice} words={words} />}
+      {chapters.length > 1 && (
+        <ChapterList
+          chapters={chapters}
+          current={step.chapter}
+          onJump={(index) => {
+            setNewRecord(null)
+            setRun({ ...run, index, dir: 1 })
+          }}
+        />
+      )}
       {!pageShows && (
         <p className="m-0 text-xs font-medium" role="status">
           {holding === 'pick' ? "Pick a project on this page first. I'll carry on when it opens." : 'Opening the page…'}

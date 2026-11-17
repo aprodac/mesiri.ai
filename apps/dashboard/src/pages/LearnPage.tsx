@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowRight, Check, ChevronDown, Clock, Footprints, MessageSquareText, Play, RotateCcw, Volume2 } from 'lucide-react'
 import { Spark } from '@/components/live/spark'
+import { SandboxCard } from '@/components/learn/sandbox-card'
 import { PageHeader, Section, Segmented } from '@/components/page/page-kit'
 import { Button } from '@/components/ui/button'
 import { WhatsAppPreview } from '@/components/whatsapp-preview'
@@ -156,6 +157,8 @@ export default function LearnPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
       <PageHeader title="Learn Mesiri" subtitle="Pick a walkthrough. I show you each thing on the real page, and you try it yourself." />
       {['ADMIN', 'OWNER', 'SUPER_ADMIN'].includes(String(role ?? '').toUpperCase()) && <NarratorSamples />}
+      {/* SS-67: the private sample company and the guided project in it. */}
+      <SandboxCard />
 
       <div className="flex items-center gap-3 rounded-xl border bg-[#facc15]/10 px-4 py-3">
         <Spark mood="hello" size={44} quiet className="shrink-0" />

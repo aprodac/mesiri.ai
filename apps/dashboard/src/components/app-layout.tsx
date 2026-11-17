@@ -9,6 +9,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
+import { SandboxBanner } from '@/components/sandbox-banner'
 import { JumpBox } from '@/components/jump-box'
 import { HelpButton } from '@/components/help-button'
 import { WhatsAppPageButton, WhatsAppPreviewModal } from '@/components/whatsapp-page-button'
@@ -145,6 +146,7 @@ export function AppLayout() {
         <SidebarInset>
           <TopBar />
           <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 p-4 outline-none">
+            <SandboxBanner />
             <TrialBanner />
             <ScopeNote />
             {/* SS-29: the page explains itself once, for the start modes that want it. */}

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { Navigate } from 'react-router-dom'
 import { fetchMe, getToken, type Me } from './api'
 import { ScopeProvider } from './ScopeContext'
+import { sandboxLeaving } from './sandbox'
 
 interface AuthState {
   me: Me | null
@@ -30,7 +31,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     }
     fetchMe()
       .then((me) => setState({ me, loading: false }))
-      .catch(() => setState({ me: null, loading: false }))
+      // The sample company's token was refused: the app is loading again in the person's own company (SS-67), so
+      // keep "Checking session…" rather than flash the login page.
+      .catch(() => {
+        if (!sandboxLeaving()) setState({ me: null, loading: false })
+      })
   }, [])
 
   if (state.loading) {

@@ -8,7 +8,7 @@
 > browser); **voice: new narration scripts and voice samples to choose from**; **plan first, then build**. Then (16 Nov):
 > **"it shouldn't be like a video, there should be areas for participation: interactive learning"** (§4b).
 > Builds on [learning-centre-plan.md](learning-centre-plan.md) (tours, walkthroughs, Learn page, voice: SS-40..SS-61).
-> Tracker: **SS-64 to SS-72**.
+> Tracker: **SS-64 to SS-72**. SS-67 (switch, banner, chapter list) done 17 Nov: §17.4.
 
 ## 1. Objective
 
@@ -420,3 +420,22 @@ gets 403 (no sandbox inside a sandbox).
 | Routes | `domains/learn/sandbox_router.py`, mounted in `apps/whatsapp-assistant/src/runtime/lifecycle.py` |
 | Lists | `application/organizations/companies_overview.py` (one filter) |
 | Tests | unit (rules, token claims, refusals) + integration on real Postgres (make, seed, the token can't reach the real company, nothing operational sees it, remove leaves nothing) |
+
+### 17.4 SS-67 in the dashboard, as built (17 Nov 2026)
+
+| Piece | File | What it does |
+|---|---|---|
+| Sandbox state | `apps/dashboard/src/lib/sandbox.ts` | The sandbox token, its expiry, name and role, in **sessionStorage** (one tab is in the sample, any other tab is the real company); tied to the person's own token, so another login in the tab drops it. `enterSandbox(role, start?)`, `leaveSandbox()`, `removeSandbox()`, `resetSandbox()`, `useSandboxInfo()` |
+| API client | `lib/api.ts` | Every call goes with the sandbox token while in the sample, except `/learn/sandbox*` (always the person's own token). A 401 on a call sent with the sandbox token switches back to the person's own company and never signs them out (several refused together: one switch) |
+| Switching | `lib/sandbox.ts` | Entering, leaving and starting over load the app fresh (`location.assign`), so no page data, project pick or sign-in from one company shows under the other. The project pick is remembered per token, so it is not carried across either |
+| Banner | `components/sandbox-banner.tsx` (in `app-layout.tsx`, every page) | "Sample company: nothing here is real", the company and role, **Guided project · Start over · Leave** |
+| Learn | `components/learn/sandbox-card.tsx` | Go in as Owner / Project manager (Anil) / Site engineer (Ravi) / Accounts (Meera); **Start the guided project** (owner), **Just look around** / **Open my sample company**, **Remove it**; says why when a session ended by itself. Hidden for platform admins and until the server has the routes (404/405) |
+| Guided project | `lib/walkthroughs.ts` `JOURNEY_CHAPTERS`, `JOURNEY` (`guided-project`, `sandbox: true`, voiced) | Chapter 0 (two hello steps) then one chapter per §3 row, each running the workflow that covers it **until SS-69..SS-71 write the chapter's own steps** (replace that chapter's `walks`). Chapters 1-4 are one chapter for now (`new-project`); 13 (handover) is left out until it has steps. The engine refuses a `sandbox` walkthrough outside the sample |
+| Chapter list | `components/walkthrough.tsx` `ChapterList` | "Chapter n of N" and a picker in the bubble; jumping goes to that chapter's first step. Chapters come from each step's `chapter` (set by `journey()`), so steps left out for a kind of person (UX-22) never break it |
+
+Checked against a stub API in Playwright (desktop light, phone dark): Learn card → POST with the real token → the app
+reloads inside, banner and chapter 1 shown → jump to Material → Leave → Open again → the sandbox token refused → back on
+Learn in the real company, still signed in, with the note. **Not yet checked against the real routes** (SS-66b not on
+main when this was built): `GET /auth/me` with the sandbox token must return the sandbox company (the sidebar shows its
+name from there).
+
