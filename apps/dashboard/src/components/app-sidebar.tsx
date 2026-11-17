@@ -15,7 +15,6 @@ import {
   Moon,
   Clock,
   AlertCircle,
-  Palette,
   ListChecks,
   Map as MapIcon,
   Radio,
@@ -49,15 +48,13 @@ import { useTrial } from '@/lib/trial'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
-import { SIDEBAR_THEME_NAMES, useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
+import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
 import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useNavCounts, useTaskCounts } from '@/lib/nav-counts'
@@ -153,132 +150,39 @@ function roleLabel(role: string | undefined): string {
     .join(' ')
 }
 
-// Visual tokens per sidebar theme. Taupe is the default (UX-16); Light follows the
-// app's shadcn tokens (so it also darkens correctly in dark mode). `aside` also
-// re-points the --sidebar-* variables, so the shadcn sidebar parts' own hover,
-// active and focus styles match the theme without changing ui/sidebar.tsx.
+// Visual tokens for the sidebar. `aside` also re-points the --sidebar-* variables, so the shadcn sidebar parts' own
+// hover, active and focus styles match without changing ui/sidebar.tsx.
 const SIDEBAR_THEMES = {
-  light: {
-    aside:
-      'bg-[#EEF1F6] text-foreground dark:bg-card [--sidebar:#EEF1F6] dark:[--sidebar:var(--card)] [--sidebar-foreground:var(--foreground)] [--sidebar-accent:#FFFFFF] dark:[--sidebar-accent:var(--muted)] [--sidebar-accent-foreground:var(--foreground)] [--sidebar-border:rgba(0,0,0,0.06)] dark:[--sidebar-border:var(--border)] [--sidebar-ring:var(--ring)]',
-    edge: 'border-black/[0.06] dark:border-border',
-    ring: 'focus-visible:ring-ring',
-    rowIdle: 'text-foreground/70 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-muted',
-    rowActive: 'bg-white text-foreground font-semibold shadow-xs dark:bg-muted',
-    hoverBg: 'hover:bg-black/[0.04] dark:hover:bg-muted',
-    label: 'text-muted-foreground',
-    icon: 'text-muted-foreground group-hover/row:text-foreground',
-    iconActive: 'text-foreground',
-    iconBtn: 'text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-background',
-    divider: 'border-black/[0.06] dark:border-border',
-    guide: 'border-black/[0.08] dark:border-border',
-    chevron: 'text-muted-foreground',
-    groupIdle: 'text-foreground/70 hover:text-foreground',
-    groupActive: 'text-foreground font-semibold',
-    card: 'border-black/[0.06] bg-white dark:border-border dark:bg-background',
-    soon: 'bg-black/[0.06] text-foreground/60 dark:bg-muted dark:text-muted-foreground',
-    headerBg: '[--sidebar-header:#FFFFFF] dark:[--sidebar-header:var(--background)]',
-    headerText: 'text-foreground',
-    headerBtn: 'text-muted-foreground hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-muted',
-    avatar: 'bg-white text-foreground border border-black/[0.06] dark:bg-background dark:border-border',
-    danger: 'hover:text-destructive',
-    name: 'text-foreground',
-    role: 'text-muted-foreground',
-    scrollbar: 'sidebar-scrollbar-light',
-    bar: '#FACC15',
-    swatch: '#EEF1F6',
-  },
-  // UX-16 (17 Nov 2026): warm taupe, the default. Text is a near-white solid (not white at an opacity) so rows and
-  // labels keep 4.5:1 on #6E665B.
-  taupe: {
-    aside:
-      'bg-[#6E665B] text-[#F2EFEA] [--sidebar:#6E665B] [--sidebar-foreground:#F2EFEA] [--sidebar-accent:rgba(255,255,255,0.12)] [--sidebar-accent-foreground:#FFFFFF] [--sidebar-border:rgba(255,255,255,0.12)] [--sidebar-ring:rgba(255,255,255,0.40)]',
-    edge: 'border-white/[0.08]',
-    ring: 'focus-visible:ring-white/40',
-    rowIdle: 'text-[#F2EFEA] hover:bg-white/[0.10] hover:text-white',
-    rowActive: 'bg-white/[0.16] text-white font-semibold',
-    hoverBg: 'hover:bg-white/[0.10]',
-    label: 'text-[#EAE5DD]',
-    icon: 'text-white/70 group-hover/row:text-white',
-    iconActive: 'text-white',
-    iconBtn: 'text-white/75 hover:text-white hover:bg-white/10',
-    divider: 'border-white/[0.14]',
-    guide: 'border-white/20',
-    chevron: 'text-white/70',
-    groupIdle: 'text-[#F2EFEA] hover:text-white',
-    groupActive: 'text-white font-semibold',
-    card: 'border-white/15 bg-white/[0.08]',
-    soon: 'bg-white/15 text-white/80',
-    headerBg: '[--sidebar-header:#F3EFE8]',
-    headerText: 'text-[#4A443C]',
-    headerBtn: 'text-[#4A443C]/70 hover:text-[#4A443C] hover:bg-black/[0.06]',
-    avatar: 'bg-white/15 text-white',
-    danger: 'hover:text-[#FFD0C7]',
-    name: 'text-white',
-    role: 'text-[#EAE5DD]',
-    scrollbar: 'sidebar-scrollbar',
-    bar: '#FACC15',
-    swatch: '#6E665B',
-  },
+  // UX-16 (17 Nov 2026): one sidebar, two versions picked by the app's own light/dark switch (the moon button):
+  // warm sand in light mode, the app's dark card colours in dark mode. The other colours were dropped on request.
   sand: {
     aside:
-      'bg-[#F7F3EA] text-[#45403A] [--sidebar:#F7F3EA] [--sidebar-foreground:#45403A] [--sidebar-accent:#EFE8DA] [--sidebar-accent-foreground:#1C1A17] [--sidebar-border:#E3DBCB] [--sidebar-ring:#6E665B]',
-    edge: 'border-[#E3DBCB]',
-    ring: 'focus-visible:ring-[#6E665B]',
-    rowIdle: 'text-[#45403A] hover:bg-[#EFE8DA] hover:text-[#1C1A17]',
-    rowActive: 'bg-[#E8DCC2] text-[#1C1A17] font-semibold',
-    hoverBg: 'hover:bg-[#EFE8DA]',
-    label: 'text-[#6E665B]',
-    icon: 'text-[#6E665B] group-hover/row:text-[#1C1A17]',
-    iconActive: 'text-[#1C1A17]',
-    iconBtn: 'text-[#6E665B] hover:text-[#1C1A17] hover:bg-[#EFE8DA]',
-    divider: 'border-[#E3DBCB]',
-    guide: 'border-[#DDD3BF]',
-    chevron: 'text-[#6E665B]',
-    groupIdle: 'text-[#45403A] hover:text-[#1C1A17]',
-    groupActive: 'text-[#1C1A17] font-semibold',
-    card: 'border-[#E3DBCB] bg-white',
-    soon: 'bg-[#EFE8DA] text-[#6E665B]',
-    headerBg: '[--sidebar-header:#3E3C3D]',
-    headerText: 'text-white',
-    headerBtn: 'text-white/70 hover:text-white hover:bg-white/10',
-    avatar: 'bg-white text-[#1C1A17] border border-[#E3DBCB]',
+      'bg-[#F7F3EA] text-[#45403A] dark:bg-card dark:text-foreground [--sidebar:#F7F3EA] dark:[--sidebar:var(--card)] [--sidebar-foreground:#45403A] dark:[--sidebar-foreground:var(--foreground)] [--sidebar-accent:#EFE8DA] dark:[--sidebar-accent:var(--muted)] [--sidebar-accent-foreground:#1C1A17] dark:[--sidebar-accent-foreground:var(--foreground)] [--sidebar-border:#E3DBCB] dark:[--sidebar-border:var(--border)] [--sidebar-ring:#6E665B] dark:[--sidebar-ring:var(--ring)]',
+    edge: 'border-[#E3DBCB] dark:border-border',
+    ring: 'focus-visible:ring-[#6E665B] dark:focus-visible:ring-ring',
+    rowIdle: 'text-[#45403A] hover:bg-[#EFE8DA] hover:text-[#1C1A17] dark:text-foreground/70 dark:hover:bg-muted dark:hover:text-foreground',
+    rowActive: 'bg-[#E8DCC2] text-[#1C1A17] font-semibold dark:bg-muted dark:text-foreground',
+    hoverBg: 'hover:bg-[#EFE8DA] dark:hover:bg-muted',
+    label: 'text-[#6E665B] dark:text-muted-foreground',
+    icon: 'text-[#6E665B] group-hover/row:text-[#1C1A17] dark:text-muted-foreground dark:group-hover/row:text-foreground',
+    iconActive: 'text-[#1C1A17] dark:text-foreground',
+    iconBtn: 'text-[#6E665B] hover:text-[#1C1A17] hover:bg-[#EFE8DA] dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-background',
+    divider: 'border-[#E3DBCB] dark:border-border',
+    guide: 'border-[#DDD3BF] dark:border-border',
+    chevron: 'text-[#6E665B] dark:text-muted-foreground',
+    groupIdle: 'text-[#45403A] hover:text-[#1C1A17] dark:text-foreground/70 dark:hover:text-foreground',
+    groupActive: 'text-[#1C1A17] font-semibold dark:text-foreground',
+    card: 'border-[#E3DBCB] bg-white dark:border-border dark:bg-background',
+    soon: 'bg-[#EFE8DA] text-[#6E665B] dark:bg-muted dark:text-muted-foreground',
+    headerBg: '[--sidebar-header:#FFFDF8] dark:[--sidebar-header:var(--background)]',
+    headerText: 'text-[#1C1A17] dark:text-foreground',
+    headerBtn: 'text-[#6E665B] hover:text-[#1C1A17] hover:bg-black/[0.04] dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-muted',
+    avatar: 'bg-white text-[#1C1A17] border border-[#E3DBCB] dark:bg-background dark:text-foreground dark:border-border',
     danger: 'hover:text-destructive',
-    name: 'text-[#1C1A17]',
-    role: 'text-[#6E665B]',
+    name: 'text-[#1C1A17] dark:text-foreground',
+    role: 'text-[#6E665B] dark:text-muted-foreground',
     scrollbar: 'sidebar-scrollbar-light',
     bar: '#FACC15',
-    swatch: '#F7F3EA',
-  },
-  green: {
-    aside:
-      'bg-[#14342B] text-[#EAF2EE] [--sidebar:#14342B] [--sidebar-foreground:#EAF2EE] [--sidebar-accent:rgba(255,255,255,0.10)] [--sidebar-accent-foreground:#FFFFFF] [--sidebar-border:rgba(255,255,255,0.08)] [--sidebar-ring:rgba(255,255,255,0.35)]',
-    edge: 'border-white/[0.06]',
-    ring: 'focus-visible:ring-white/35',
-    rowIdle: 'text-white/75 hover:bg-white/[0.07] hover:text-white',
-    rowActive: 'bg-white/[0.12] text-white font-semibold',
-    hoverBg: 'hover:bg-white/[0.07]',
-    label: 'text-white/55',
-    icon: 'text-white/50 group-hover/row:text-white/85',
-    iconActive: 'text-white',
-    iconBtn: 'text-white/50 hover:text-white hover:bg-white/10',
-    divider: 'border-white/[0.08]',
-    guide: 'border-white/10',
-    chevron: 'text-white/45',
-    groupIdle: 'text-white/75 hover:text-white',
-    groupActive: 'text-white font-semibold',
-    card: 'border-white/10 bg-white/[0.06]',
-    soon: 'bg-white/10 text-white/60',
-    headerBg: '[--sidebar-header:#E8F0EC]',
-    headerText: 'text-[#14342B]',
-    headerBtn: 'text-[#14342B]/60 hover:text-[#14342B] hover:bg-black/[0.06]',
-    avatar: 'bg-white/10 text-white',
-    danger: 'hover:text-[#FF9A8B]',
-    name: 'text-white',
-    role: 'text-white/55',
-    scrollbar: 'sidebar-scrollbar',
-    bar: '#FACC15',
-    swatch: '#14342B',
   },
 } as const
 
@@ -504,7 +408,7 @@ export function AppSidebar() {
   const allowed = useAllowedScopes()
   const { scope } = useScope()
   const location = useLocation()
-  const [sidebarTheme, setSidebarTheme] = useSidebarTheme(me?.user_id || me?.org_id)
+  const [sidebarTheme] = useSidebarTheme(me?.user_id || me?.org_id)
   const S = SIDEBAR_THEMES[sidebarTheme]
 
   const [isDark, setIsDark] = useState(() => {
@@ -910,33 +814,6 @@ export function AppSidebar() {
                 <LogOut className="size-4 shrink-0" />
                 <span>Log out</span>
               </SidebarMenuButton>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    title="Sidebar colour"
-                    aria-label={`Sidebar colour: ${SIDEBAR_THEME_NAMES[sidebarTheme]}`}
-                    className={cn('size-8 p-0 flex items-center justify-center rounded-lg shrink-0 outline-hidden focus-visible:ring-2', S.iconBtn, S.ring)}
-                  >
-                    <Palette className="size-4 shrink-0" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="end" className="min-w-48">
-                  <DropdownMenuLabel className="text-xs text-muted-foreground">Sidebar colour</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup value={sidebarTheme} onValueChange={(v) => setSidebarTheme(v as SidebarTheme)}>
-                    {(Object.keys(SIDEBAR_THEME_NAMES) as SidebarTheme[]).map((key) => (
-                      <DropdownMenuRadioItem key={key} value={key} className="gap-2.5">
-                        <span
-                          aria-hidden
-                          className="size-5 shrink-0 rounded-full border border-black/15"
-                          style={{ background: `linear-gradient(135deg, ${SIDEBAR_THEMES[key].swatch} 0 58%, ${SIDEBAR_THEMES[key].bar} 58% 100%)` }}
-                        />
-                        {SIDEBAR_THEME_NAMES[key]}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
               <SidebarMenuButton
                 onClick={toggleTheme}
                 tooltip={isDark ? 'Switch to light mode' : 'Switch to dark mode'}

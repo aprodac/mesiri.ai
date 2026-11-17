@@ -1,21 +1,18 @@
 import { useCallback, useState } from 'react'
 
 /**
- * Sidebar look, picked per user and remembered in this browser.
- * Taupe is the default (UX-16, 17 Nov 2026: #6E665B chosen after customer demos; Charcoal and Midnight dropped the same
- * day, and a saved Charcoal choice now opens as Taupe). Light follows the app's tokens (so it also darkens in dark mode).
- * Separate from the app's light/dark switch.
+ * Sidebar look. One look since UX-16 (17 Nov 2026): Sand, which follows the app's light/dark switch (cream in light
+ * mode, dark in dark mode). The colour menu and the other looks (Charcoal, Light, Taupe, Midnight, Site green) were
+ * dropped on request; any saved choice now opens as Sand. Kept as a per-user setting so a look can come back without
+ * touching the sidebar.
  */
 export const SIDEBAR_THEME_NAMES = {
-  taupe: 'Taupe',
-  light: 'Light',
   sand: 'Sand',
-  green: 'Site green',
 } as const
 
 export type SidebarTheme = keyof typeof SIDEBAR_THEME_NAMES
 
-export const DEFAULT_SIDEBAR_THEME: SidebarTheme = 'taupe'
+export const DEFAULT_SIDEBAR_THEME: SidebarTheme = 'sand'
 
 const STORAGE_PREFIX = 'mesiri.sidebar-theme'
 
