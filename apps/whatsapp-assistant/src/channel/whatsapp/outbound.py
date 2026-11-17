@@ -488,9 +488,14 @@ class WhatsAppSender:
             logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")
             return None
         # SS-66d: nothing done in a person's learning sandbox reaches a real phone.
-        from mesiri.domains.shared.sandbox_gate import note_blocked, sending_blocked
+        from mesiri.domains.shared.sandbox_gate import (
+            note_blocked,
+            sample_sender_user,
+            sending_blocked,
+        )
 
-        if sending_blocked():
+        # UX-26: a sample company's sender id is never a phone: never sent to, whatever started the send.
+        if sending_blocked() or sample_sender_user(to_wa_id) is not None:
             note_blocked(to_wa_id, str(message_fields.get("type")))
             return None
 

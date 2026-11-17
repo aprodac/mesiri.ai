@@ -12,6 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 import web_assistant.router as web
+from mesiri.infrastructure.redis.client import FakeRedis, RedisClient
 from mesiri_contracts.assistant.enums import InputModality
 from runtime.reply_capture import ReplyCapture
 
@@ -48,17 +49,17 @@ class _Handler:
         return handle
 
 
-class _Redis:
+class _Redis(FakeRedis):
+    """The app's own Redis stand-in (UX-26: a hand-made double with incr/expire hid that the real client had neither,
+    so every Tell Mesiri message answered 500 where Redis is set up), recording each window's expiry."""
+
     def __init__(self) -> None:
-        self.counts: dict[str, int] = {}
+        super().__init__()
         self.expiries: dict[str, int] = {}
 
-    async def incr(self, key: str) -> int:
-        self.counts[key] = self.counts.get(key, 0) + 1
-        return self.counts[key]
-
-    async def expire(self, key: str, seconds: int) -> None:
-        self.expiries[key] = seconds
+    async def count(self, key: str, *, ttl_seconds: int) -> int:
+        self.expiries.setdefault(key, ttl_seconds)
+        return await super().count(key, ttl_seconds=ttl_seconds)
 
 
 def _container(handler: _Handler | None = None, redis: Any = None) -> Any:
@@ -370,3 +371,8 @@ async def test_typing_has_no_transcript(monkeypatch) -> None:
     )
 
     assert response.transcript is None
+
+
+def test_the_rate_limit_uses_what_the_apps_redis_client_has() -> None:
+    """The class guard: the limiter calls only what the real client and its stand-in both offer."""
+    assert callable(getattr(RedisClient, "count", None)) and callable(getattr(FakeRedis, "count", None))

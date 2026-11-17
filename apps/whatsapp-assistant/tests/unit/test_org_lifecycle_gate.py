@@ -21,11 +21,11 @@ def _source(*parts: str) -> str:
 def test_live_identity_gate_uses_lifecycle_rule():
     src = _source("backend", "postgres", "actor.py")
     assert "o.trial_ends_at AS org_trial_ends_at" in src
-    assert "org_active=is_operational(" in src
+    assert "org_active=may_message(" in src  # UX-26: the lifecycle's rule for a message (a sample company too)
     assert "_ORG_ACTIVE_STATUS" not in src
 
 
 def test_context_organization_uses_lifecycle_rule():
     src = _source("context", "main_table_repositories.py")
     assert "SELECT status, trial_ends_at FROM organizations WHERE id = :id" in src
-    assert 'is_operational(row["status"], row["trial_ends_at"]' in src
+    assert 'may_message(row["status"], row["trial_ends_at"]' in src
