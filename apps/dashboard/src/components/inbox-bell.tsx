@@ -82,7 +82,6 @@ function Body({ query, onPick }: { query: { data?: Waiting; isError: boolean; re
         <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
           <CheckCircle2 className="size-8 text-emerald-600" />
           <p className="text-sm font-medium">Nothing is waiting for you</p>
-          <p className="text-xs text-muted-foreground">Reports to confirm, requests, bills and your tasks show here when they need you.</p>
         </div>
       ) : (
         groups.map((g) => (

@@ -183,7 +183,7 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
           />
           {reports.data?.truncated && (
             <Callout tone="muted" icon={TriangleAlert}>
-              Only the newest 1,000 reports are listed. Pick shorter dates to see all of them; the figures above cover the whole period.
+              Newest 1,000 reports listed. Pick shorter dates to see all.
             </Callout>
           )}
 
@@ -242,7 +242,7 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
             ) : (
               <>
                 {lines.data?.truncated && (
-                  <p className="text-sm text-muted-foreground">The ledger shows the newest 400 reports; the figures above cover the whole period.</p>
+                  <p className="text-sm text-muted-foreground">Newest 400 reports listed</p>
                 )}
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full min-w-[760px] text-sm">

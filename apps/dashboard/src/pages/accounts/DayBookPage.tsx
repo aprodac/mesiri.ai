@@ -176,8 +176,8 @@ export default function DayBookPage() {
                 {late
                   ? 'Nothing has changed after its month was closed.'
                   : search || type
-                    ? 'No voucher matches. Try fewer words or another kind.'
-                    : 'Nothing in the books for this period. Expenses, payments, transfers, RA bills and money from clients appear here on their own.'}
+                    ? 'No voucher matches'
+                    : 'Nothing in the books for this period'}
               </p>
             ) : (
               <div className={cn('flex flex-col gap-3', book.isFetching && 'opacity-70')}>

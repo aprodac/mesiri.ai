@@ -384,7 +384,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
 
       {reorderNothing && (
         <Callout tone="draft" icon={Target} action={<Button variant="outline" size="sm" className="bg-background" onClick={endReorder}>OK</Button>}>
-          Nothing at {reorderGroup?.site_name ?? 'this site'} needs ordering now: it is above its minimums, or an order, RFQ or request already covers it.
+          Nothing at {reorderGroup?.site_name ?? 'this site'} needs ordering now.
         </Callout>
       )}
 
@@ -654,7 +654,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
             </section>
           ))}
           {money && shown.some((g) => g.list.some((r) => r.spend_complete === false && Number(r.received) > 0)) && (
-            <p className="text-xs text-muted-foreground">* Some deliveries in this period have no price, so the spend shown is less than paid.</p>
+            <p className="text-xs text-muted-foreground">* Some deliveries have no price: spend is short.</p>
           )}
         </>
       )}

@@ -34,6 +34,16 @@ export function useScope() {
   return context
 }
 
+/**
+ * UX-14: the names the top bar already shows (the project or site picked). A header that would say one of them
+ * again leaves it out. Empty outside the app shell (a public page), where nothing is picked.
+ */
+export function useScopeNames(): string[] {
+  const scope = React.useContext(ScopeContext)?.scope
+  if (!scope || scope.mode === 'portfolio') return []
+  return scope.mode === 'site' ? [scope.projectName, scope.siteName] : [scope.projectName]
+}
+
 export function useAllowedScopes() {
   const { me } = useAuth()
   if (!me) return []

@@ -4,6 +4,7 @@ import { ArrowLeft, Check, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { findPage } from '@/lib/module-map'
+import { useScopeNames } from '@/lib/ScopeContext'
 
 // The building blocks of the site and project DPR pages (WEB-04/05, reworked
 // in WEB-25): one white page in flat sections split by rules, not a stack of
@@ -225,20 +226,24 @@ export function DprHeader({
   const hit = findPage(pathname, search)
   const modulePage = !!hit && hit.page.url.split('?')[0] === pathname
   const up = modulePage && hit && hit.group.key !== 'site' ? { to: hit.group.pages.find((p) => p.status === 'built' && !p.shortcut)?.url ?? back.to, label: hit.group.title } : back
+  // UX-14: nothing said twice. The top bar names the project or site picked, and the h1 names the page: the back
+  // line is only where Back goes (the kind of place, when its name is the one already in the top bar), and a
+  // subtitle that is that name again is left out.
+  const picked = useScopeNames()
+  const upLabel = picked.includes(up.label) ? crumb : up.label
+  const sub = date && !picked.includes(date) ? date : undefined
   return (
     <header className="flex flex-col gap-1">
       <p className={cn('flex items-center gap-1.5 text-sm text-muted-foreground', modulePage && 'md:hidden')}>
         <Link to={up.to} className="inline-flex items-center gap-1 hover:text-foreground">
-          <ArrowLeft className="size-4" /> {up.label}
+          <ArrowLeft className="size-4" /> {upLabel}
         </Link>
-        <span aria-hidden>/</span>
-        <span className="truncate">{modulePage && hit ? hit.page.title : crumb}</span>
       </p>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {chip}
-          {date && <span className="text-sm text-muted-foreground">{date}</span>}
+          {sub && <span className="text-sm text-muted-foreground">{sub}</span>}
         </div>
         {action}
       </div>

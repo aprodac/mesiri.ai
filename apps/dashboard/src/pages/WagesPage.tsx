@@ -130,11 +130,11 @@ export default function WagesPage() {
           {s.changed.length > 0 && (
             <Callout tone="draft" icon={TriangleAlert} action={n(s.totals.paid) === 0 && !readOnly ? <Button size="sm" variant="outline" className="bg-background" onClick={() => reopen.mutate(s.id)}>Reopen and update</Button> : undefined}>
               Attendance changed after this week was approved: {s.changed.map((c) => `${c.payee_name} ${c.difference > 0 ? '+' : '−'}${inr(Math.abs(c.difference))}`).join(', ')}.
-              {n(s.totals.paid) > 0 && " Part of it is paid, so each difference goes on next week's sheet."}
+              {n(s.totals.paid) > 0 && " The difference goes on next week's sheet."}
             </Callout>
           )}
           {n(s.totals.unpriced_man_days) > 0 && (
-            <Callout tone="info" icon={TriangleAlert}>{n(s.totals.unpriced_man_days)} man-days have no wage, so they are not in the wages. Add the wage on the worker or in the attendance.</Callout>
+            <Callout tone="info" icon={TriangleAlert}>{n(s.totals.unpriced_man_days)} man-days have no wage: not counted yet.</Callout>
           )}
           <StatStrip
             guide="wages.stats"

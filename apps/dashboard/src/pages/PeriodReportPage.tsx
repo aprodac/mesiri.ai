@@ -303,7 +303,10 @@ function WorkSection({ w }: { w: NonNullable<Sections['work']> }) {
           )}
         </div>
       )}
-      <p className="text-xs text-muted-foreground">The bar is done to date; the gold mark is where the plan says it should be today.</p>
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full bg-success" aria-hidden /> Done to date</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-0.5 rounded-full bg-ring" aria-hidden /> Planned by today</span>
+      </p>
     </div>
   )
 }
@@ -562,7 +565,7 @@ function DataCheck({ c }: { c: NonNullable<Sections['completeness']> }) {
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
         {c.days_full} of {c.days_total} days with every site report confirmed
-        {c.days_no_attendance.length > 0 && `; ${c.days_no_attendance.length} without attendance`}. A day without its report makes the figures short.
+        {c.days_no_attendance.length > 0 && ` · ${c.days_no_attendance.length} without attendance`}
       </p>
       <ul className="flex flex-wrap gap-1.5">
         {c.days.map((d) => {
@@ -985,7 +988,7 @@ export default function PeriodReportPage() {
           </div>
           {r.unavailable.length > 0 && (
             <p className="rounded-lg border border-draft/30 bg-draft-soft px-3 py-2 text-sm text-draft">
-              Could not be read just now: {r.unavailable.map((k) => SECTION_META[k as keyof Sections]?.title ?? k).join(', ')}. The rest of the report is complete.
+              Could not be read just now: {r.unavailable.map((k) => SECTION_META[k as keyof Sections]?.title ?? k).join(', ')}
             </p>
           )}
           <div ref={sectionsRef} className="scroll-mt-20">

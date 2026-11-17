@@ -141,7 +141,6 @@ export default function CostHomePage() {
             <Callout tone="draft" icon={HardHat}>
               {labourLeft > 0 && <>{formatRupees(String(labourLeft))} of labour is not on a BOQ line. </>}
               {workLeft > 0 && <>{workLeft} pieces of measured work are not on a line. </>}
-              Until they are, no line is coloured by them. Open a project's Budget vs actual to put them on their lines.
             </Callout>
           )}
           <DprSection icon={TrafficCone} title="Projects, worst first" meta={rows.length}>

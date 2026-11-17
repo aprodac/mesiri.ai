@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { NoAccess } from '@/components/page/page-kit'
+import { Legend, NoAccess } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query';
 import {
   ChevronRight,
@@ -550,9 +550,7 @@ export default function CostVariancePage() {
                   </Link>
                 }
               >
-                {formatRupees(v.labour.not_on_a_line.cost)} of labour (
-                {formatQuantity(v.labour.not_on_a_line.man_days)} man-days) in
-                this period is not on a BOQ line, so no line is coloured by it.
+                {formatRupees(v.labour.not_on_a_line.cost)} of labour ({formatQuantity(v.labour.not_on_a_line.man_days)} man-days) is not on a BOQ line.
               </Callout>
             )}
 
@@ -584,13 +582,11 @@ export default function CostVariancePage() {
                   Nothing measured in this period.
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  A line is coloured once the site's work is on its BOQ line and
-                  the day's labour is put on it.{' '}
                   <Link
                     to={`/cost/budget?project=${projectId}#labour-to-lines`}
                     className="font-medium underline underline-offset-2"
                   >
-                    Budget vs actual
+                    Put work and labour on their lines
                   </Link>
                 </p>
               </div>
@@ -606,21 +602,20 @@ export default function CostVariancePage() {
                 ))}
               </ul>
             )}
-            <p className="mt-2 text-xs text-muted-foreground">
-              {siteView
-                ? 'Green: the labour put on the line is within what the BOQ allows for the work measured. Amber: up to 10% more. Red: more, or labour with no work measured.'
-                : "Green: the work measured earned at least the labour it cost. Amber: within 10%. Red: less, or labour with no work measured. Earned is the work done × the line's labour rate in the BOQ."}
-            </p>
+            <Legend
+              className="mt-2"
+              items={[
+                { tone: 'good', label: siteView ? 'Within the BOQ' : 'Earned its labour' },
+                { tone: 'attention', label: 'Up to 10% over' },
+                { tone: 'bad', label: 'Over, or no work measured' },
+              ]}
+            />
           </DprSection>
           </div>
 
           {v.materials && (
             <Callout tone="muted" icon={Package}>
-              Materials: the work done in this period earned{' '}
-              {formatRupees(v.materials.earned)} of material budget;{' '}
-              {formatRupees(v.materials.bought)} of material was bought. Not
-              coloured per line yet: what each line used comes with the material
-              consumption register.
+              Materials: {formatRupees(v.materials.earned)} earned · {formatRupees(v.materials.bought)} bought.
               {v.work_in_other_unit > 0 &&
                 ` ${v.work_in_other_unit} work ${v.work_in_other_unit === 1 ? 'record is' : 'records are'} in another unit than its line and not added.`}
             </Callout>

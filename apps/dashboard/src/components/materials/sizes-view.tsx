@@ -108,10 +108,6 @@ export function SizesView() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold">Sizes set for the company</h2>
-        <p className="text-muted-foreground text-xs">
-          A delivery or use said in one of these units is converted into the material's stock unit. A wrong one can be
-          removed: it is asked again next time; quantities already saved stay as they were.
-        </p>
         {sizes?.items.length ? (
           <ul className="divide-y rounded-lg border">
             {sizes.items.map((s) => (

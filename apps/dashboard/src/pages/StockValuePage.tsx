@@ -65,7 +65,7 @@ export default function StockValuePage() {
           {rows.map((r, i) => <Row key={`${r.site_id}:${r.material_id}`} r={r} rank={!slowOnly && i < 10 ? i + 1 : null} />)}
         </ul>
       </section>
-      {v?.as_of && <p className="text-xs text-muted-foreground">As on {v.as_of}: on hand x the average rate of every delivery with a rate (GST you claim back left out).</p>}
+      {v?.as_of && <p className="text-xs text-muted-foreground">As on {v.as_of} · on hand × average delivery rate</p>}
     </div>
   )
 }

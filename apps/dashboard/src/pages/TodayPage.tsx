@@ -389,7 +389,7 @@ export default function TodayPage() {
           <EmptyState
             icon={Building2}
             title="No sites for you yet"
-            about="Your company admin adds you to a project's sites. Once they do, each day's updates show here."
+            about="Your company admin adds you to a site."
           />
         )
       ) : (

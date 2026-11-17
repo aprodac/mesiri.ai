@@ -80,9 +80,6 @@ export default function ProfitLossPage() {
               priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined}
             />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Income is RA bills sent (before GST); costs are bills and expenses as booked, net of GST the company can claim. Labour reaches the books when wages are paid. Tap a group for its ledgers, a ledger for its entries.
-            </p>
           </DprSection>
         </>
       )}

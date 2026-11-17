@@ -73,7 +73,7 @@ export default function FinanceSettingsPage() {
         ) : categories.isLoading ? (
           <Skeleton className="h-32 rounded-lg" />
         ) : list.length === 0 ? (
-          <p className="text-sm text-muted-foreground" data-guide="finset.empty">No categories yet. An expense whose category is not here is kept under Uncategorized.</p>
+          <p className="text-sm text-muted-foreground" data-guide="finset.empty">No categories yet</p>
         ) : (
           <ul className="divide-y rounded-lg border" data-guide="finset.categories">
             {!readOnly && !canManage && (

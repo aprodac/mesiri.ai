@@ -140,7 +140,7 @@ export function CategoriesPanel({ categories }: { categories: MaterialCategory[]
         </p>
       )}
       {tree.length === 0 ? (
-        <p className="py-4 text-center text-muted-foreground">No categories yet. Start with the standard builder list, or add your own.</p>
+        <p className="py-4 text-center text-muted-foreground">No categories yet</p>
       ) : (
         <ul className="divide-y rounded-md border">
           {tree.map(({ main, subs }) => (

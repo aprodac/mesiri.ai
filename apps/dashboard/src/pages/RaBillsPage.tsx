@@ -189,7 +189,6 @@ function BillView({ billId, onRemoved }: { billId: string; onRemoved: () => void
           <ul className="flex flex-col gap-1">{b.warnings.map((w, i) => <li key={i}>{w.message}</li>)}</ul>
         </Callout>
       )}
-      {draft && <p className="text-xs text-muted-foreground">Quantities are what site measured since the last bill. Change one if the client's engineer measured differently; the measured figure stays shown.</p>}
 
       <div className="overflow-x-auto rounded-lg border [contain:inline-size]">
         <table className="w-full min-w-[760px] text-sm">

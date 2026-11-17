@@ -39,7 +39,6 @@ export function SubcontractorContacts({ vendorId, vendorName, canManage }: { ven
       {q.data && !q.data.partner_access && (
         <p className="rounded-md bg-draft-soft px-3 py-2 text-sm text-draft">Subcontractors on WhatsApp is off for the company: turn it on in <Link to="/finance/settings" className="font-semibold underline">Finance › Settings</Link>.</p>
       )}
-      <p className="text-xs text-muted-foreground">They can ask what is pending, send their bill and report work done. Bills wait for your check and work for the site engineer; they never see anything else of the company.</p>
       {list.length > 0 && (
         <ul className="divide-y rounded-lg border text-sm">
           {list.map((c) => (

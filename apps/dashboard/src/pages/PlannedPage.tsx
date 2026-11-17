@@ -1,5 +1,5 @@
 import { Link, Navigate, useLocation } from 'react-router-dom'
-import { ArrowRight, Construction, Lightbulb, MapPin } from 'lucide-react'
+import { ArrowRight, Construction, MapPin } from 'lucide-react'
 import { DprHeader } from '@/components/dpr-page'
 import { findPage, type ModuleGroup, type ModulePage } from '@/lib/module-map'
 import { usePageTitle } from '@/lib/page-title'
@@ -101,14 +101,7 @@ export default function PlannedPage() {
 
       <div className="flex items-start gap-2.5 rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
         <Construction className="mt-0.5 size-4 shrink-0" />
-        <p>
-          Planned, not built yet. You see this because <span className="font-medium text-foreground">Show planned modules</span> is on in
-          the sidebar; customers don't see planned pages.
-        </p>
-      </div>
-      <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
-        <Lightbulb className="mt-0.5 size-3.5 shrink-0" />
-        <p>The full module map, with every page a construction ERP has, is in the "Construction ERP Map" reference.</p>
+        <p>Planned, not built yet. Customers don't see this page.</p>
       </div>
     </div>
   )

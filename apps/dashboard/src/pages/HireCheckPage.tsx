@@ -115,7 +115,6 @@ export default function HireCheckPage() {
           </div>
         ))}
       </section>
-      <p className="text-xs text-muted-foreground">Per hour: the hours worked, or the hire's minimum hours on a day it stood on site; breakdown hours are never charged. Per day: each day on site. Per month: the rate ÷ 30 for each day on hire. Pay a bill from the hire company's page in Finance › Suppliers.</p>
       <HireBillDialog machine={billFor ? { id: billFor.id, name: billFor.name, vendor_name: billFor.vendor_name, rate_unit: billFor.rate_unit } : null} open={!!billFor} onOpenChange={(o) => !o && setBillFor(null)} />
     </div>
   )

@@ -121,7 +121,7 @@ export function RfqDetail({ rfq: listed, inSheet }: { rfq: Rfq; inSheet?: boolea
       </Section>
 
       {quoted.length > 0 && seesMoney && (
-        <Section title="Compare" icon={Scale} hint="As each costs you: before GST from a supplier with a GSTIN (you claim it back), with GST from one without.">
+        <Section title="Compare" icon={Scale} hint="As each costs you, after GST you claim back">
           <CompareSheet rfq={r} picks={picks} onPick={r.may_award ? (line, rv) => setPicks((p) => ({ ...p, [line]: p[line] === rv ? '' : rv })) : undefined} />
           <WaysToBuy rfq={r} picks={picks} onAward={r.may_award ? setAwarding : undefined} />
         </Section>
@@ -357,7 +357,7 @@ function WaysToBuy({ rfq, picks, onAward }: { rfq: Rfq; picks: Record<string, st
       </div>
       {onAward && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed px-3 py-2 text-sm">
-          <span className="text-muted-foreground">{picked.length ? <>Picked: {picked.map(([line, rv]) => `${rfq.lines.find((l) => l.id === line)?.material} from ${vendorOf(rv).name}`).join('; ')}</> : 'Or tap a rate in the sheet to choose the supplier for that item yourself.'}</span>
+          <span className="text-muted-foreground">{picked.length ? <>Picked: {picked.map(([line, rv]) => `${rfq.lines.find((l) => l.id === line)?.material} from ${vendorOf(rv).name}`).join('; ')}</> : 'Or tap a rate to pick its supplier'}</span>
           {picked.length > 0 && <Button size="sm" className="gap-1.5 font-semibold" onClick={() => onAward({ mode: 'picks', picks: picked.map(([line, rv]) => ({ rfq_line_id: line, vendor_id: vendorOf(rv).vendor_id })) })}><ShoppingCart className="size-3.5" />Order picked ({picked.length})</Button>}
         </div>
       )}

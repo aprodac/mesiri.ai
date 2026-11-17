@@ -101,7 +101,7 @@ export function ProjectReportingTab({ project, readOnly = false }: { project: Pr
           </Select>
           {invalidSaved && (
             <p className="text-xs text-destructive">
-              "{savedZone}" is not a time zone, so reports use UTC. Pick the right one and save.
+              "{savedZone}" is not a time zone: pick one and save.
             </p>
           )}
         </div>
@@ -113,8 +113,8 @@ export function ProjectReportingTab({ project, readOnly = false }: { project: Pr
           <span className="font-medium">Send the DPR automatically</span>
           <span className="block text-muted-foreground">
             {autoDpr
-              ? 'It goes out as soon as every site is confirmed, or at the send time with unconfirmed sites shown as "Not reported".'
-              : 'Off: nothing goes out by itself. Use Send now on the project DPR.'}
+              ? 'When every site is confirmed, or at the send time'
+              : 'Off: use Send now on the project DPR'}
           </span>
         </span>
       </label>

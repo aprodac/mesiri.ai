@@ -132,6 +132,8 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Budget rate', means: 'What it should cost you per unit' },
       { name: 'Margin', means: 'Contract value minus budget cost' },
       { name: 'Earned so far', means: 'Work done × client rate', tone: 'good' },
+      { name: 'Done', means: 'Work the site recorded, counted on its line' },
+      { name: 'Work done, not on a BOQ line yet', means: 'Site work no line counts yet. Mesiri suggests a line, you press Count', tone: 'attention' },
     ],
     steps: ['Upload the estimate Excel (Description, Unit, Qty, Rate).', 'Add budget rates.', 'Add "Materials per unit" on a line to plan materials.'],
     tip: SEE_MONEY,
@@ -208,7 +210,10 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Earned', means: 'Budget for the work done' },
       { name: 'Actual', means: 'Money spent' },
       { name: 'Labour vs earned', means: 'Earned minus spent: under is good', tone: 'good' },
+      { name: 'Forecast', means: 'Spent, plus the work left at the rate so far' },
+      { name: 'Labour not on a line', means: 'Attendance of the last 30 days no BOQ line carries yet', tone: 'attention' },
     ],
+    steps: ['Pick a project.', 'Under Labour not on a line, pick the line they worked on and press Put on line.', "Confirm Mesiri's split where it made one, or split a day by man-days."],
     tip: SEE_MONEY,
   },
   '/cost/materials': {
@@ -217,13 +222,17 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Used beyond the work', means: 'More used than the BOQ norm', tone: 'bad' },
       { name: 'Short to finish', means: 'Still needed beyond stock and orders', tone: 'attention' },
       { name: 'Not judged', means: 'Not enough work done to tell' },
+      { name: 'Needed by the work done', means: "Work measured × the line's materials per unit, with wastage" },
     ],
+    tip: 'When to order is on Planning › Material plan.',
   },
   '/cost/centres': {
     parts: [
       { name: 'Cost centre', means: 'The bucket a cost counts in: materials, labour, fuel' },
       { name: 'Not set', means: 'Spending with no bucket yet', tone: 'attention' },
+      { name: 'Expense categories', means: 'An expense counts in the centre of its category' },
     ],
+    tip: 'Deliveries, attendance and machines find their centre by themselves. A subcontract bill is always Subcontract.',
   },
 
   // ── Materials ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -332,6 +341,7 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Switched off', means: 'No longer offered; records kept' },
       { name: 'Bill', means: 'An expense with this supplier, or their bill for deliveries' },
       { name: 'Opening balance', means: 'What was owed before Mesiri: set it in Edit details' },
+      { name: 'Not billed', means: 'Delivered with a rate, no bill yet: tick them when the bill comes, so nothing counts twice', tone: 'attention' },
     ],
     tip: 'A supplier with records is never deleted: switch it off, or merge a duplicate. Undoing a payment opens its bills again.',
   },
@@ -472,7 +482,8 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     tip: 'One way only. Import each period once, or it makes duplicates.',
   },
   '/accounts/gst': {
-    tip: 'With the company GSTIN set, GST splits into IGST or CGST + SGST by the other party\'s state.',
+    tip: 'The CA files the return: check purchases against GSTR-2B before claiming.',
+    steps: ['Set the company GSTIN: GST then splits into IGST or CGST + SGST.'],
     parts: [
       { name: 'Output GST', means: 'GST on your RA bills' },
       { name: 'Input GST', means: 'GST on purchases you can claim', tone: 'good' },
@@ -487,25 +498,36 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     ],
     steps: ['TDS is deducted when a subcontractor bill is checked.', 'Deposit it with a transfer into "TDS payable" in Finance › Money.', 'Match with Form 26AS / 16A before claiming.'],
   },
-  '/accounts/pl': { parts: [{ name: 'Income', means: 'Billed' }, { name: 'Costs', means: 'Spent' }, { name: 'Gross profit', means: 'Income minus direct costs', tone: 'good' }] },
+  '/accounts/pl': {
+    parts: [{ name: 'Income', means: 'RA bills sent, before GST' }, { name: 'Costs', means: 'Bills and expenses as booked, net of GST you claim' }, { name: 'Gross profit', means: 'Income minus direct costs', tone: 'good' }],
+    steps: ['Tap a group for its ledgers.', 'Tap a ledger for its entries.'],
+    tip: 'Labour reaches the books when wages are paid.',
+  },
   '/accounts/balance-sheet': {
     parts: [{ name: 'Owns', means: 'Bank, cash, what clients owe' }, { name: 'Owes', means: 'Suppliers, staff, capital' }, { name: 'A minus under owed', means: 'A supplier paid ahead (an advance)' }],
     tip: 'A project has no balance sheet of its own: see its position under Projects.',
   },
   '/accounts/trial-balance': {
-    parts: [{ name: 'Debits / Credits', means: 'Must be equal' }, { name: 'Differs from its module', means: 'Often a payment saved with no account, or a record before an opening balance', tone: 'attention' }],
+    steps: ['Tap a ledger for every entry in it.'],
+    tip: "Groups follow Tally's. Income and expense ledgers start each April at nil.",
+    parts: [{ name: 'Debits / Credits', means: 'Must be equal' }, { name: 'Head office and other projects', means: 'What moved between this project and the rest of the company' }, { name: 'Differs from its module', means: 'Often a payment saved with no account, or a record before an opening balance', tone: 'attention' }],
   },
   '/accounts/chart': {
     parts: [{ name: 'Group', means: 'Tally\'s own groups, so your CA reads it as theirs' }],
     tip: 'Each supplier, client, account and category gets its ledger the first time it is needed.',
   },
-  '/accounts/periods': { parts: [{ name: 'Closed', means: 'No more changes to that month', tone: 'good' }, { name: 'Changed after close', means: 'Someone edited a closed month', tone: 'bad' }] },
+  '/accounts/periods': {
+    parts: [{ name: 'Closed', means: 'No more changes to that month', tone: 'good' }, { name: 'Changed after close', means: 'Someone edited a closed month', tone: 'bad' }],
+    steps: ['Close a month once the CA has checked it.'],
+    tip: 'A bill changed after its month closed stops nothing on site: the difference is posted on the first open day.',
+  },
   '/billing/clients': { parts: [{ name: 'Contract value', means: 'What the client agreed to pay' }, { name: 'Retention', means: 'Share kept back until defects end' }] },
   '/billing/ra-bills': {
     parts: [
       { name: 'Draft', means: 'Prints marked DRAFT', tone: 'attention' },
       { name: 'Sent', means: 'Gone to the client', tone: 'info' },
       { name: 'Passed', means: 'Amount the client\'s engineer passed' },
+      { name: 'Quantities', means: "What site measured since the last bill: change one if the client's engineer measured differently" },
     ],
     steps: ['Set the client and contract terms first.', 'New RA bill: it prices the work measured since the last bill.', 'Submit to send.'],
   },
@@ -534,7 +556,8 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Bill is more', means: 'Asking more than logged', tone: 'bad' },
       { name: 'Not billed yet', means: 'Hours with no bill', tone: 'attention' },
     ],
-    tip: 'Minimum hours a day are charged even when it works less.',
+    steps: ["Enter the hire company's bill: it is checked against the hours logged.", "Pay it from the hire company's page in Finance › Suppliers."],
+    tip: 'Minimum hours a day are charged even when it works less. Breakdown hours are never charged.',
   },
   '/equipment/vehicles': { parts: [{ name: 'Trips', means: 'Loads carried today' }, { name: 'Diesel', means: 'Litres filled' }] },
   '/equipment/assets': {

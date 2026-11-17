@@ -182,6 +182,31 @@ const TILE_VALUE: Record<TileTone, string> = {
   info: 'text-info',
 }
 
+const LEGEND_DOT: Record<TileTone, string> = {
+  default: 'bg-muted-foreground/40',
+  attention: 'bg-draft',
+  good: 'bg-success',
+  bad: 'bg-destructive',
+  info: 'bg-info',
+}
+
+/**
+ * UX-14: what the colours on a list mean, as dots with two or three words each, never a sentence
+ * ("Green: the work measured earned at least..."). The longer meaning is in the page's help.
+ */
+export function Legend({ items, className }: { items: { tone: TileTone; label: string }[]; className?: string }) {
+  return (
+    <ul className={cn('flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground', className)} aria-label="What the colours mean">
+      {items.map((i) => (
+        <li key={i.label} className="inline-flex items-center gap-1.5">
+          <span className={cn('size-2 shrink-0 rounded-full', LEGEND_DOT[i.tone])} aria-hidden />
+          {i.label}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /**
  * One question on a home screen (UX-11): a label, a figure or short list, and the page that answers it in full.
  * The whole tile is the link, so every number on Home leads to its page.
