@@ -1,6 +1,8 @@
 """SS-66: Learn Mesiri's sample company, one per person (docs/plans/guided-demo-plan.md section 17.2).
 
     GET    /learn/sandbox   is there one for me?
+    GET    /learn/sandbox/clock, POST /learn/sandbox/next-day   days pass (SS-74c)
+    POST   /learn/sandbox/go-back   back to the start of a day played (SS-74d)
     POST   /learn/sandbox   open mine (made first if there is none) and get a sandbox token, for a role
     DELETE /learn/sandbox   remove mine now (Reset is DELETE then POST)
 
@@ -124,6 +126,8 @@ class ClockOut(BaseModel):
     date: dt.date
     last_day: int
     for_you: list[ForYouOut] = []
+    #: The save points there are to go back to, oldest first (SS-74d): [{"day", "date"}].
+    can_go_back_to: list[dict[str, Any]] = []
 
 
 class NextDayIn(BaseModel):
@@ -153,7 +157,8 @@ async def get_clock(request: Request, role: str = sandbox.OWNER, payload: dict =
         out = await sandbox_player.clock(_engine(request), person, role.upper())
     except sandbox.SandboxError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-    return ClockOut(day=out.day, date=out.date, last_day=out.last_day, for_you=[ForYouOut(**f.__dict__) for f in out.for_you])
+    return ClockOut(day=out.day, date=out.date, last_day=out.last_day, for_you=[ForYouOut(**f.__dict__) for f in out.for_you],
+                    can_go_back_to=out.can_go_back_to)
 
 
 @router.post("/next-day", response_model=MovedOut)
@@ -167,6 +172,27 @@ async def post_next_day(request: Request, body: NextDayIn | None = None,
         raise HTTPException(status_code=422, detail=f"role must be one of {list(sandbox.PLAYABLE_ROLES)}")
     try:
         out = await sandbox_player.next_day(_engine(request), request.app, person, role=body.role, days=body.days)
+    except sandbox.SandboxError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return MovedOut(**{**out.__dict__, "for_you": [ForYouOut(**f.__dict__) for f in out.for_you]})
+
+
+class GoBackIn(BaseModel):
+    #: The plan day to go back to the start of (today's own day = try today again).
+    day: int
+    role: str = sandbox.OWNER
+
+
+@router.post("/go-back", response_model=MovedOut)
+async def post_go_back(request: Request, body: GoBackIn, payload: dict = Depends(get_current_user)) -> MovedOut:
+    """SS-74d: my sample company as it was at the start of that day; the days after it go (plan section 18.5)."""
+    from mesiri.application.learn import sandbox_player
+
+    person = await _person(request, payload)
+    if body.role.upper() not in sandbox.PLAYABLE_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of {list(sandbox.PLAYABLE_ROLES)}")
+    try:
+        out = await sandbox_player.go_back(_engine(request), person, day=body.day, role=body.role)
     except sandbox.SandboxError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     return MovedOut(**{**out.__dict__, "for_you": [ForYouOut(**f.__dict__) for f in out.for_you]})

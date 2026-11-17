@@ -254,6 +254,10 @@ async def open_sandbox(engine: Any, app: Any, person: RealPerson, *, role: str =
             seeded, failed = await _seed_in_fresh_context(app, info, person.organization_id, info["today"])
             if failed:
                 _log.warning("learn_sandbox.seed_failed org=%s failed=%s", info["organization_id"], failed[:10])
+            # The player builds on this module, so it is imported here.
+            from mesiri.application.learn.sandbox_player import save_day_zero
+
+            await save_day_zero(engine, info["organization_id"])  # Go back to day 0 = a fresh start (SS-74d)
     async with engine.begin() as conn:
         row = await find(conn, person)
         if row is None:

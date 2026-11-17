@@ -24,14 +24,17 @@ import contextvars
 import datetime as dt
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
 import sqlalchemy as sa
 
 from mesiri.application.learn import sample_plan as sp
+from mesiri.application.learn import sandbox_days as sd
 from mesiri.application.learn.sandbox import (
     OWNER,
+    PLAYABLE_ROLES,
     RealPerson,
     SandboxError,
     _InProcessApi,
@@ -67,6 +70,8 @@ class Clock:
     date: dt.date
     last_day: int
     for_you: list[ForYou] = field(default_factory=list)
+    #: The save points the person can go back to (SS-74d), oldest first: [{"day", "date"}].
+    can_go_back_to: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -581,9 +586,71 @@ async def clock(engine: Any, person: RealPerson, role: str) -> Clock:
                                     {"o": row["id"]})).scalar_one()
         user = (await conn.execute(sa.text("SELECT id FROM users WHERE organization_id = :o AND upper(role) = :r "
                                            "ORDER BY created_at LIMIT 1"), {"o": row["id"], "r": role})).scalar()
+        saved = await sd.days(conn, row["id"])
     day = (today - row["day0"]).days
     for_you = await _tick(engine, row["id"], role, user, day, row["day0"]) if user else []
-    return Clock(day=day, date=today, last_day=sp.plan().last_day, for_you=for_you)
+    return Clock(day=day, date=today, last_day=sp.plan().last_day, for_you=for_you,
+                 can_go_back_to=[{"day": d, "date": on} for d, on in saved if d <= day])
+
+
+@asynccontextmanager
+async def _one_at_a_time(engine: Any, org: uuid.UUID) -> Any:
+    """Next day and Go back change the whole sample company: one at a time (a second tab, a double click)."""
+    async with engine.connect() as conn:
+        held = await sd.hold(conn, org)
+        await conn.commit()  # the lock is the connection's, not a transaction's
+        if not held:
+            raise SandboxError("Days are already moving in your sample company: wait a moment and look again.", 409)
+        try:
+            yield
+        finally:
+            await sd.release(conn, org)
+            await conn.commit()
+
+
+async def _save(engine: Any, org: uuid.UUID, day: int, day0: dt.date) -> None:
+    async with engine.begin() as conn:
+        size = await sd.save(conn, org, day, day0 + dt.timedelta(days=day))
+    _log.info("learn_sandbox.saved org=%s day=%s bytes=%s", org, day, size)
+
+
+async def save_day_zero(engine: Any, org: uuid.UUID) -> None:
+    """The first save point, right after a new sample company is filled: going back to day 0 is a fresh start."""
+    async with engine.connect() as conn:
+        day0 = (await conn.execute(sa.text("SELECT sandbox_day0 FROM organizations WHERE id = :o AND sandbox_of IS NOT NULL"),
+                                   {"o": org})).scalar()
+    if day0 is not None:
+        await _save(engine, org, 0, day0)
+
+
+async def go_back(engine: Any, person: RealPerson, *, day: int, role: str = OWNER) -> Moved:
+    """My sample company as it was at the start of that day (SS-74d); the days after it go. Today's = try again."""
+    role = (role or OWNER).upper()
+    if role not in PLAYABLE_ROLES:
+        raise SandboxError(f"role must be one of {list(PLAYABLE_ROLES)}", 422)
+    async with engine.connect() as conn:
+        row = await _sample(conn, person)
+        today = (await conn.execute(sa.text("SELECT sandbox_today FROM organizations WHERE id = :o"),
+                                    {"o": row["id"]})).scalar_one()
+    org, day0 = row["id"], row["day0"]
+    if not 0 <= day <= (today - day0).days:
+        raise SandboxError("You can only go back to a day you have played.", 422)
+    async with _one_at_a_time(engine, org):
+        async with engine.begin() as conn:
+            date = await sd.restore(conn, org, day)
+        if date is None:
+            raise SandboxError("That day is too far back: the last 30 days can be gone back to.", 404)
+    async with engine.connect() as conn:
+        user = (await conn.execute(sa.text("SELECT id, full_name FROM users WHERE organization_id = :o "
+                                           "AND upper(role) = :r ORDER BY created_at LIMIT 1"),
+                                   {"o": org, "r": role})).mappings().first()
+    if user is None:
+        raise SandboxError("That role is not in your sample company; reset it to get every role.", 409)
+    for_you = await _tick(engine, org, role, user["id"], day, day0)
+    token, expires = sandbox_token(user_id=user["id"], org_id=org, role=role, name=user["full_name"],
+                                   real_org=person.organization_id, now=dt.datetime.now(dt.UTC), today=date)
+    _log.info("learn_sandbox.went_back org=%s to_day=%s", org, day)
+    return Moved(day=day, date=date, token=token, expires_at=expires, for_you=for_you)
 
 
 async def next_day(engine: Any, app: Any, person: RealPerson, *, role: str = OWNER, days: int = 1) -> Moved:
@@ -602,13 +669,18 @@ async def next_day(engine: Any, app: Any, person: RealPerson, *, role: str = OWN
         raise SandboxError("The project is handed over: start over to play it again.", 409)
     target = min(start + days, p.last_day)
     # A play runs as its own task with no request state carried in (no tenant, no date), like the seed.
-    return await asyncio.create_task(_next(engine, app, person, org, day0, start, target, role),
-                                     context=contextvars.Context())
+    async with _one_at_a_time(engine, org):
+        return await asyncio.create_task(_next(engine, app, person, org, day0, start, target, role),
+                                         context=contextvars.Context())
 
 
 async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0: dt.date, start: int, target: int,
                 role: str) -> Moved:
     p = sp.plan()
+    async with engine.connect() as conn:
+        first = not await sd.has(conn, org, start)
+    if first:  # a sample made before save points: today's is taken now, with what the person did today in it
+        await _save(engine, org, start, day0)
     w = _World(engine, app, org, person.organization_id)
     await w.load()
     # What the person left undone today stays theirs; what they did is ticked first.
@@ -639,6 +711,8 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                 await _record(engine, org, e, "played", record=record)
                 key = (sp.WHO[e.role], e.kind)
                 summary[key] = summary.get(key, 0) + 1
+            # The start of the person's day (the cast has played it): what Go back returns to (SS-74d).
+            await _save(engine, org, day, day0)
         async with engine.begin() as conn:
             await conn.execute(sa.text("UPDATE organizations SET sandbox_today = :d WHERE id = :o AND sandbox_of IS NOT NULL"),
                                {"d": day0 + dt.timedelta(days=target), "o": org})

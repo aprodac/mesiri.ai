@@ -751,6 +751,33 @@ data entered when I skip days … every other role is doing their part automatic
 Not taken: branching timelines (keeping the days you went back from, to return to them). One line of days is easier to
 understand and to keep; going back says plainly that the later days go.
 
+### 18.13 SS-74d as built (17 Nov 2026)
+
+- **`application/learn/sandbox_days.py`**: a save point is every row of the sample company, per table, as JSON,
+  gzip-compressed, in `sandbox_days` (migration 0560, additive, row-level security, cascades with the company). One a
+  day: day 0 right after the sample is filled (going back to it = a fresh start), then each day once the cast has
+  played it (the start of the person's day). The last 30 are kept.
+- **Which rows** are read from the catalogue, never listed by hand: every table with `organization_id`, and every table
+  without one whose rows link to those or to the company's people (`site_members`, `activity_links`,
+  `daily_report_versions` …), 121 tables today. Left alone: the people (`users`), the company row (only its date
+  moves), `admin_audit_log`, the save points.
+- **Putting back passes every database check** (nothing switched off; the app's login couldn't anyway): delete children
+  first, insert parents first, one statement per table (so a table's links to itself hold); the three optional links
+  that loop between tables (receipt ↔ use reversals, report ↔ current version, RFQ line ↔ awarded quote) are emptied
+  first and filled in last. A loop of required links is refused with a clear error rather than guessed.
+- **`POST /learn/sandbox/go-back {day, role}`** → the day, its date, a new sandbox token (the date moved back), "for
+  you" for that day. Only days played (422), only save points kept (404). `GET /learn/sandbox/clock` gains
+  `can_go_back_to`. Today's own day = **try today again**.
+- **One move at a time:** Next day and Go back hold a per-sample lock (Postgres advisory lock); a second click or tab
+  gets 409 "Days are already moving" instead of two plays mixing.
+- **Tests:** `backend/tests/unit/test_sandbox_days_layout_ss74d.py` (3: which tables, the order, loops, a required loop
+  refused); `apps/whatsapp-assistant/tests/integration/test_sandbox_days_postgres.py` (4, real Postgres, real seed: back
+  to day 2 gives every row exactly as saved, the date and later save points with it; forth again replays to the same
+  shape; try today again; back to day 0; one move at a time, two at once from two tabs; a real company refused).
+- **Not covered:** the dashboard's Go back control (SS-74e); storage size measured only on early days (save points
+  grow with the company; 30 kept); `created_at` timestamps are restored as saved, so "since this day began" ticking
+  stays true after going back.
+
 ## 21. Up to the BOQ, playable (SS-69 part 1, SS-72 first pieces, 17 Nov 2026)
 
 Asked 17 Nov: *"our focus right now is till BOQ, the role play thing working."* Chapters 2 and 3 of the guided project
