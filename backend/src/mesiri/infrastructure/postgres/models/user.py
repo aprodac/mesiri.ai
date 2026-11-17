@@ -33,7 +33,7 @@ class UserModel(Base):
     reply_language = Column(String(20), nullable=True)
     # WA-246: show what was heard above a voice note's reply; NULL follows the company's voice_transcript setting.
     voice_transcript = Column(Boolean, nullable=True)
-    # Migration 0553 (SS-27): "How would you like to start?" (guided / bring_data / switching / free); NULL = not asked.
+    # Migration 0553 (SS-27): "How would you like to start?" (guided / bring_data / switching / free; new_to_construction since 0555); NULL = not asked.
     start_mode = Column(String(20), nullable=True)
     # Migration 0553 (SS-27): per dashboard page, the guide version the person closed ({"/today": 1}).
     guide_seen = Column(JSONB, nullable=False, server_default="{}")

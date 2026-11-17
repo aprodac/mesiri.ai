@@ -1055,6 +1055,21 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "आप कैसे शुरू करना चाहेंगे? इससे सिर्फ़ यह बदलता है कि Mesiri कितना समझाए, यहाँ और डैशबोर्ड पर। आप इसे कभी भी बदल सकते हैं।",
         "hinglish": "Aap kaise shuru karna chahoge? Isse sirf yeh badalta hai ki Mesiri kitna samjhaye, yahan aur dashboard par. Kabhi bhi badal sakte ho.",
     },
+    # UX-22: new to construction too (the dashboard explains the site words and the work itself).
+    "start.new_to_construction.title": {
+        "english": "New to construction",
+        "manglish": "Construction puthiyathu",
+        "malayalam": "കൺസ്ട്രക്ഷൻ പുതിയതാണ്",
+        "hindi": "कंस्ट्रक्शन में नया हूँ",
+        "hinglish": "Construction mein naya",
+    },
+    "start.new_to_construction.hint": {
+        "english": "Explain the site words too",
+        "manglish": "Site vaakkukalum explain cheyyu",
+        "malayalam": "സൈറ്റിലെ വാക്കുകളും വിശദീകരിക്കൂ",
+        "hindi": "साइट के शब्द भी समझाइए",
+        "hinglish": "Site ke words bhi samjhao",
+    },
     "start.guided.title": {
         "english": "Step by step",
         "manglish": "Step by step",
@@ -1063,7 +1078,7 @@ LINES: dict[str, dict[str, str]] = {
         "hinglish": "Step by step",
     },
     "start.guided.hint": {
-        "english": "I'm new to tools like this",
+        "english": "I know construction; new to apps",
         "manglish": "Ithupole ullathu aadyamaayi aanu",
         "malayalam": "ഇതുപോലുള്ളത് ആദ്യമായാണ്",
         "hindi": "मैं ऐसे टूल पहली बार इस्तेमाल कर रहा हूँ",
@@ -1110,6 +1125,13 @@ LINES: dict[str, dict[str, str]] = {
         "malayalam": "ടിപ്പുകൾ വേണ്ട",
         "hindi": "टिप्स नहीं चाहिए",
         "hinglish": "Tips nahi chahiye",
+    },
+    "start.new_to_construction.reply": {
+        "english": "👍 I'll explain as we go, site words too. Every day, just tell me what happened at site: *6 masons, 4 helpers, slab shuttering done*. Text, voice note or photo. On the dashboard, each page shows you around and the ? explains every word on it.",
+        "manglish": "👍 Njan oppam explain cheyyaam, site vaakkukalum. Ella divasavum site-il enthu nadannu ennu parayu: *6 mason, 4 helper, slab shuttering kazhinju*. Text, voice note, photo ethum mathi. Dashboard-il oro page-um ningale chuttikkaanikkum, mukalile ? athile oro vaakkum explain cheyyum.",
+        "malayalam": "👍 ഞാൻ കൂടെ വിശദീകരിക്കാം, സൈറ്റിലെ വാക്കുകളും. എല്ലാ ദിവസവും സൈറ്റിൽ എന്ത് നടന്നു എന്ന് പറയൂ: *6 മേസൺ, 4 ഹെൽപ്പർ, സ്ലാബ് ഷട്ടറിംഗ് കഴിഞ്ഞു*. ടെക്സ്റ്റ്, വോയ്സ് നോട്ട്, ഫോട്ടോ ഏതും മതി. ഡാഷ്‌ബോർഡിൽ ഓരോ പേജും നിങ്ങളെ ചുറ്റിക്കാണിക്കും, മുകളിലെ ? അതിലെ ഓരോ വാക്കും വിശദീകരിക്കും.",
+        "hindi": "👍 मैं साथ-साथ समझाऊँगा, साइट के शब्द भी। हर दिन साइट पर क्या हुआ, बस बताइए: *6 मिस्त्री, 4 हेल्पर, स्लैब शटरिंग हो गई*। टेक्स्ट, वॉइस नोट या फोटो, कुछ भी चलेगा। डैशबोर्ड पर हर पेज आपको घुमाकर दिखाएगा, और ऊपर का ? उस पर हर शब्द समझाएगा।",
+        "hinglish": "👍 Main saath-saath samjhaunga, site ke words bhi. Har din site par kya hua, bas batao: *6 mistri, 4 helper, slab shuttering ho gayi*. Text, voice note ya photo, kuch bhi chalega. Dashboard par har page aapko ghuma ke dikhayega, aur upar ka ? us par har word samjhayega.",
     },
     "start.guided.reply": {
         "english": "👍 Step by step it is. Every day, just tell me what happened at site, the way you'd tell a colleague: *6 masons, 4 helpers, slab shuttering done, cement over*. Text, voice note or photo. Every evening I make the daily report from it. On the dashboard, each page explains itself the first time.",

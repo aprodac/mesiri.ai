@@ -38,9 +38,10 @@ FOLLOW_EACH_MESSAGE = "auto"
 
 #: SS-27: the answers to "How would you like to start?" (migration 0553's check holds the same list).
 #: guided: step by step · bring_data: help me bring my Excel in · switching: I've used other construction software ·
-#: free: no tips (docs/plans/guided-onboarding-plan.md section 6.1).
-START_MODES: tuple[str, ...] = ("guided", "bring_data", "switching", "free")
-StartMode = Literal["guided", "bring_data", "switching", "free"]
+#: free: no tips (docs/plans/guided-onboarding-plan.md section 6.1). UX-22 (migration 0555): new_to_construction: new to
+#: construction too: the help and tours explain the site itself (what a BOQ line, a cum, a margin is).
+START_MODES: tuple[str, ...] = ("new_to_construction", "guided", "bring_data", "switching", "free")
+StartMode = Literal["new_to_construction", "guided", "bring_data", "switching", "free"]
 #: Not answered: a new person is guided (a tip can be closed, a missing one can't be found); someone who was
 #: already using Mesiri before this existed is left alone and never asked (D-GO5).
 NEW_PERSON_FOR = dt.timedelta(days=14)

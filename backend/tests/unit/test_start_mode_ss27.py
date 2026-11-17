@@ -104,7 +104,9 @@ def test_the_migration_and_the_code_list_the_same_modes() -> None:
     spec = importlib.util.spec_from_file_location("m0553", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
-    assert module._VALUES == me.START_MODES
+    # 0555 (UX-22) added new_to_construction: 0553's answers all still stand; the newest check matches the code
+    # exactly (test_start_mode_new_to_construction_ux22.py).
+    assert set(module._VALUES) <= set(me.START_MODES)
 
 
 async def test_guide_seen_keeps_the_newest_version_per_page() -> None:

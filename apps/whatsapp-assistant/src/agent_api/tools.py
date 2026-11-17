@@ -537,10 +537,11 @@ ALLOWED: tuple[Allowed, ...] = (
             "once by the code: not a card line, nothing to save."),
     # SS-34 (guided onboarding): how much Mesiri explains to this person (users.start_mode); the dashboard sets it too.
     Allowed("set_start_mode", "PUT", "/me/start-mode",
-            "Set how much Mesiri explains to this person, here and on the dashboard: guided (step by step, tips), "
+            "Set how much Mesiri explains to this person, here and on the dashboard: new_to_construction (new to "
+            "construction too: the site words and work explained), guided (step by step, tips), "
             "bring_data (help bringing their Excel lists in), switching (used other construction software: where "
             "things are), free (no tips). Only when they ask for it (\"no more tips\", \"explain step by step\", "
-            "\"I have my data in Excel\"). Set at once by the code: not a card line, nothing to save."),
+            "\"I have my data in Excel\", \"I don't know construction\"). Set at once by the code: not a card line, nothing to save."),
     Allowed("add_expense_category", "POST", "/expenses/categories", "Prepare a new expense category." + _WRITE),
     Allowed("create_project", "POST", "/projects", "Prepare a new project (name, client, address, dates)." + _WRITE),
     Allowed("update_project", "PUT", "/projects/{project_id}",

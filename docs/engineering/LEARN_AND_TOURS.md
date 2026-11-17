@@ -29,8 +29,15 @@ step's words in another place.
    page path in `PAGE_TOURS`. If the page first asks for a project, give the tour `startWhen` (its content markers).
    It then appears on the Learn page, in its module card, and in every outcome that names `page-<path>`, by itself:
    add nothing else.
-4. **Changed a page enough that people who finished its tour should see it again:** raise the tour's `version`.
-5. **A list that a practice saves into:** give each row `data-record-id={record.id}`, so "There it is" can light up
+4. **Words per kind of person (UX-22).** The start mode gives each person `GuideWords`: `basics` (new to construction:
+   the site itself explained, one idea per step), `steps` (new to tools), `data` (bringing Excel or paper), `expert`
+   (used other software: what is different, in a line). A tour step's `for: { basics: {...}, expert: null }` gives its
+   words per kind (`null` leaves it out), `only: ['basics']` makes a step for some kinds only; the hello gets
+   `introFor`. The page's help (`lib/page-help.ts`) gets `forYou` (one card, two lines at most), `stepsFor`, and per
+   part `for` and `find` (its `data-guide` marker: Help lights it up when tapped; the build checks it). A kind with
+   nothing written falls back (basics → steps → plain), so leave out what the plain words already say well.
+5. **Changed a page enough that people who finished its tour should see it again:** raise the tour's `version`.
+6. **A list that a practice saves into:** give each row `data-record-id={record.id}`, so "There it is" can light up
    the exact row (`showNew: true` on that step).
 
 ## When you write a workflow (W1..W11)

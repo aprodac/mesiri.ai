@@ -45,6 +45,7 @@ def _reached(company: CompanyOverview) -> dict[str, bool]:
 #: SS-35 (guided onboarding): how each trial's owner chose to start ("How would you like to start?",
 #: users.start_mode); None: not answered. The first admin of the company is its owner.
 START_MODE_LABELS = {
+    "new_to_construction": "New to construction",
     "guided": "Step by step",
     "bring_data": "Bring my data",
     "switching": "Used other software",

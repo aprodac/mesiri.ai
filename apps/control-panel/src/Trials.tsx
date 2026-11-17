@@ -46,6 +46,7 @@ interface Funnel {
 
 const START_MODE_LABEL: Record<string, string> = {
   guided: 'Step by step',
+  new_to_construction: 'New to construction',
   bring_data: 'Bring my data',
   switching: 'Used other software',
   free: 'Find my own way',

@@ -94,7 +94,9 @@ experienced user is left alone.
 > 3. **I've used other construction software** — show me where things are.
 > 4. **I'll find my way** — no tips.
 
-Stored as the person's **start mode**: `guided` · `bring_data` · `switching` · `free`.
+Stored as the person's **start mode**: `guided` · `bring_data` · `switching` · `free`, and since UX-22 (17 Nov,
+migration 0555) `new_to_construction` ("I'm new to construction: explain the site words too"), which gets everything
+`guided` gets plus the help and tours written for someone who doesn't know the site (`GuideWords` `basics`).
 
 Rules:
 

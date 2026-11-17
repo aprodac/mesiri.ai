@@ -84,6 +84,8 @@ def next_question(
 #: tool ``set_start_mode`` to ``free``) stops them. Each works whatever modules the company has switched on.
 TIPS: dict[str, tuple[str, ...]] = {
     "guided": ("voice", "ask", "photo", "contact", "report"),
+    # UX-22: new to construction gets the step-by-step tips too.
+    "new_to_construction": ("voice", "ask", "photo", "contact", "report"),
     "bring_data": ("bring_data",),
 }
 #: Tips go out on days 1 to TIP_DAYS after the company was made (never the signup day itself).
