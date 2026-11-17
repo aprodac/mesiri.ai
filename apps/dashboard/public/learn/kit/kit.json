@@ -1,0 +1,33 @@
+{
+  "name": "Green Villa starter kit",
+  "zip": "green-villa-starter-kit.zip",
+  "files": [
+    {
+      "file": "Green Villa - estimate.xlsx",
+      "title": "The estimate",
+      "kind": "excel",
+      "page": "/boq",
+      "what": "Every piece of work with its quantity, the client's rate and your labour and material cost.",
+      "goes": "BOQ and budget: Import from Excel",
+      "catch": "Three lines have no cost yet, one is priced below what it costs, and the site's plastering could be any of three lines: Mesiri shows all three, and asks you which plastering."
+    },
+    {
+      "file": "Green Villa - materials and suppliers.xlsx",
+      "title": "Materials and suppliers",
+      "kind": "excel",
+      "page": "/bring-data",
+      "what": "New items, the shops you buy from, what you owe one of them, opening stock and minimums.",
+      "goes": "Bring your data: Materials, vendors and opening stock",
+      "catch": "Cement, Malabar and Joy Tiling are already in Mesiri: the preview says so and leaves them as they are."
+    },
+    {
+      "file": "Green Villa - contract summary.pdf",
+      "title": "Contract summary",
+      "kind": "pdf",
+      "page": "/planning/setup",
+      "what": "The client, the dates, the advance, retention and the defects period.",
+      "goes": "Project start: the contract step",
+      "catch": "The handover date you type sets the schedule's finish."
+    }
+  ]
+}

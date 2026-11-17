@@ -481,3 +481,26 @@ Tests: `test_learn_sandbox_postgres.py` (+2: the trigger on insert and update wi
 blocked, a real one's sent, the mark ends with the request), `test_lifecycle_sandbox_ss66.py` (the 422 wording). Checked
 on the running app: adding a teammate with a number in the sandbox gets the 422; without a number, 200; in the real
 company with a number, 200.
+
+## 18. SS-73: the starter kit, first part (17 Nov 2026)
+
+`scripts/learn_kit/make_kit.py` makes the files into `apps/dashboard/public/learn/kit/` (fixed: the same bytes every
+run), with `kit.json` (what each is, where it goes, what to look for) and one zip. The Learn page's **Starter kit**
+card (`components/learn/starter-kit.tsx`) reads `kit.json`: download all or one, "Goes into" links to the page, and
+"What to look for" folded (finding it is the point).
+
+| File | Brought in on | What Mesiri shows (checked by importing into a sandbox on Postgres) |
+|---|---|---|
+| Green Villa - estimate.xlsx: 34 lines in 9 sections, materials per unit, ₹82,06,050 | BOQ: Import from Excel | "Lines priced": 3 with no budget (the tiling and granite, for the subcontractor); the staircase in red (a loss); 6 lines with materials; 21 of the 24 site works suggest their line, the 3 Plastering ones ask which (three plastering lines) |
+| Green Villa - materials and suppliers.xlsx: 7 items, 4 suppliers, opening stock, minimums | Bring your data: materials | Cement, Malabar and Joy Tiling "already in Mesiri, left as they are"; no problems |
+| Green Villa - contract summary.pdf: client, value (the estimate's total), dates, 10% advance, 5% retention, 12-month defects | Project start: the contract step | Typed in by the "won" chapter |
+
+Every work the sample site reports for Green Villa (`sample_story.DEMO_WORK`, Main block and Annex) is a line with the
+same unit, so its work counts on the BOQ. No phone numbers or GSTINs anywhere.
+
+Test: `backend/tests/unit/test_learn_kit_ss73.py` (the files are what the script makes, read through Mesiri's own
+importers; every site work has its line; norms name real lines and catalogue materials; the contract says the total).
+
+**Still to make (SS-73, second part):** the three cement quotations, the delivery challan photo, the supplier bill,
+the drawings (with the room labelled bigger than drawn, checked through Drawing check), the site photos and two voice
+notes (English, Malayalam; Sarvam), and the subcontractor's measurement sheet.
