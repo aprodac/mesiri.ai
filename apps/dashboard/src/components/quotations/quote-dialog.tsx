@@ -11,6 +11,7 @@ import { rupees } from '@/lib/orders'
 import { rate } from '@/lib/rates'
 import { recordQuote, type Rfq, type RfqSupplier } from '@/lib/rfqs'
 import { CategoryTile } from '@/components/requests/parts'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-42: one supplier's quote, typed from their message or paper: a rate per item (blank = not quoted), the GST the
 // quote prints (one for all, as most quotes have), and its terms. A revised quote opens with what they said before and
@@ -117,7 +118,7 @@ export function QuoteDialog({ rfq, supplier, open, onOpenChange }: { rfq: Rfq; s
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="flex flex-col gap-1.5"><Label htmlFor="q-delivery">Delivery (days)</Label><Input id="q-delivery" inputMode="numeric" value={delivery} placeholder="2" onChange={(e) => setDelivery(e.target.value.replace(/\D/g, ''))} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="q-payment">Credit (days)</Label><Input id="q-payment" inputMode="numeric" value={payment} placeholder="30" onChange={(e) => setPayment(e.target.value.replace(/\D/g, ''))} /></div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="q-valid">Valid until</Label><Input id="q-valid" type="date" className="dark:[color-scheme:dark]" value={valid} onChange={(e) => setValid(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="q-valid">Valid until</Label><DatePicker id="q-valid" value={valid} onChange={(v) => setValid(v)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="q-ref">Their quote no.</Label><Input id="q-ref" value={theirRef} maxLength={60} onChange={(e) => setTheirRef(e.target.value)} /></div>
           </div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="q-notes">Notes</Label><Input id="q-notes" value={notes} maxLength={500} placeholder="Unloading extra; 50% advance" onChange={(e) => setNotes(e.target.value)} /></div>

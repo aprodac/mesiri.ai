@@ -19,6 +19,7 @@ import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // LW-03 (plan docs/plans/wages-and-labour-plan.md): money given ahead of wages, to a worker or a labour team, out of
 // a money account; taken back on the next wage sheet. "Gave Ravi 500 advance" on WhatsApp lands here too.
@@ -165,7 +166,7 @@ function GiveDialog({ onClose, onGiven, defaultSite }: { onClose: () => void; on
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="on">Given on</Label>
-              <Input id="on" type="date" value={on} onChange={(e) => setOn(e.target.value)} />
+              <DatePicker id="on" value={on} onChange={(v) => setOn(v)} />
             </div>
           </div>
           <div className="grid gap-1.5">

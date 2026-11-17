@@ -61,21 +61,35 @@ export function Hint({
   // Drawn over the page (a portal), placed from the "?" and kept on screen: a box that clips what overflows it (a
   // figures strip, a table) or a "?" at the screen's edge never cuts the explanation off (found 17 Nov on Schedule).
   const [place, setPlace] = React.useState<{ left: number; top: number } | null>(null)
+  // Inside an open dialog the explanation is drawn in the dialog: a modal dialog makes everything outside it
+  // unclickable (found 17 Nov: Listen on the contract's TDS could not be pressed), and a click outside closes it.
+  const [host, setHost] = React.useState<HTMLElement | null>(null)
   React.useLayoutEffect(() => {
     if (!open) {
       setPlace(null)
       return
     }
+    const into = (box.current?.closest('[role="dialog"]') as HTMLElement | null) ?? document.body
+    setHost(into)
     const measure = () => {
       const r = box.current?.getBoundingClientRect()
       if (!r) return
-      const W = window.innerWidth
-      const H = window.innerHeight
-      const w = Math.min(POP_W, W - 16)
+      // Kept inside what it is drawn in (the dialog, or the screen). A dialog is placed with a transform, which makes
+      // "fixed" relative to the dialog, so positions inside it are counted from its corner.
+      const inDialog = into !== document.body
+      const b = inDialog ? into.getBoundingClientRect() : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
+      const w = Math.min(POP_W, b.right - b.left - 16)
       const h = pop.current?.offsetHeight ?? 160
-      const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), W - w - 8)
+      let left = Math.min(Math.max(b.left + 8, r.left + r.width / 2 - w / 2), b.right - w - 8)
       const below = r.bottom + 6
-      const top = side === 'top' || below + h > H - 8 ? Math.max(8, r.top - 6 - h) : below
+      let top = side === 'top' || below + h > b.bottom - 8 ? Math.max(b.top + 8, r.top - 6 - h) : below
+      // Tailwind moves a dialog with `translate` (not `transform`); either makes "fixed" count from the dialog's corner.
+      const cs = getComputedStyle(into)
+      const moved = cs.transform !== 'none' || (cs.translate !== '' && cs.translate !== 'none') || cs.filter !== 'none'
+      if (inDialog && moved) {
+        left -= b.left
+        top -= b.top
+      }
       setPlace({ left, top })
     }
     measure()
@@ -142,14 +156,14 @@ export function Hint({
       >
         <CircleHelp className="size-3.5" aria-hidden />
       </button>
-      {open && place && createPortal(
+      {open && place && host && createPortal(
         <span
           id={id}
           role="tooltip"
           ref={pop}
           onMouseEnter={enter}
           onMouseLeave={leave}
-          style={{ position: 'fixed', left: place.left, top: place.top, width: POP_W }}
+          style={{ position: 'fixed', left: place.left, top: place.top, width: POP_W, pointerEvents: 'auto' }}
           className="z-[70] block max-w-[calc(100vw-16px)] rounded-lg border bg-popover p-3 text-left text-sm font-normal normal-case tracking-normal text-popover-foreground shadow-lg"
         >
           <span className="block font-semibold">{heading}</span>
@@ -172,7 +186,7 @@ export function Hint({
             {speaking ? 'Pause' : 'Listen'}
           </button>
         </span>,
-        document.body,
+        host,
       )}
     </span>
   )

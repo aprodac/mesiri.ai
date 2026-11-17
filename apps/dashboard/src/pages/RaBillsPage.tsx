@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
 import { Hint } from '@/components/hint'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // NXT-02: Client billing › RA bills. A bill is made from the BOQ: work measured on each priced line (the site's own
 // WhatsApp updates) less what earlier bills already billed, at the client rate. The contract's retention, advance
@@ -282,7 +283,7 @@ function CertifyDialog({ bill, open, onOpenChange, onSaved }: { bill: RaBill; op
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1"><Label htmlFor="cert-amt">Certified amount (₹)</Label><Input id="cert-amt" type="number" min={0} step="any" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-          <div className="grid gap-1"><Label htmlFor="cert-on">Certified on</Label><Input id="cert-on" type="date" value={on} onChange={(e) => setOn(e.target.value)} /></div>
+          <div className="grid gap-1"><Label htmlFor="cert-on">Certified on</Label><DatePicker id="cert-on" value={on} onChange={(v) => setOn(v)} /></div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

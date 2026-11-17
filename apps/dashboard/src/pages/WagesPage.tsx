@@ -34,6 +34,7 @@ import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // LW-04 / LW-05 (plan docs/plans/wages-and-labour-plan.md): a site's pay week. Days come from attendance, never
 // typed; the payer sets advance recovery and deductions, approves, then pays from a money account and sends each
@@ -352,7 +353,7 @@ function PayDialog({ sheet, row, onClose, onPaid }: { sheet: WageSheet; row?: Wa
           )}
           <div className="grid gap-1.5">
             <Label htmlFor="on">Paid on</Label>
-            <Input id="on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+            <DatePicker id="on" value={paidOn} onChange={(v) => setPaidOn(v)} />
           </div>
         </div>
         <DialogFooter>

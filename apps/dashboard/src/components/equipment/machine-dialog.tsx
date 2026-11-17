@@ -15,6 +15,7 @@ import {
   type Kind, type Machine, type MachineInput, type Ownership, type RateUnit,
 } from '@/lib/equipment'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // NXT-11: add a machine or vehicle, or change one. The few things that decide its cost first (owned or hired, from
 // whom, the rate), the rest folded under "More details". A hire company typed here becomes a vendor of kind hire.
@@ -187,7 +188,7 @@ export function MachineDialog({ open, onOpenChange, editing, defaultKind = 'mach
               {ownership === 'hired' && siteId && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="eq-from">On hire from</Label>
-                  <Input id="eq-from" type="date" value={onHireFrom} max={iso(appNow())} onChange={(e) => setOnHireFrom(e.target.value)} />
+                  <DatePicker id="eq-from" value={onHireFrom} max={iso(appNow())} onChange={(v) => setOnHireFrom(v)} />
                 </div>
               )}
             </div>

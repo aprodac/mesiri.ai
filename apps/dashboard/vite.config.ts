@@ -102,6 +102,33 @@ function checkOneClock(): Plugin {
   }
 }
 
+/**
+ * One date field (asked 17 Nov: "the date component use a Radix or shadcn everywhere"): src/components/ui/date-picker.tsx.
+ * A native `<input type="date">` looks different in every browser and ignores the sample company's own today, so the
+ * build fails on one.
+ */
+function checkOneDatePicker(): Plugin {
+  return {
+    name: 'mesiri-check-one-date-picker',
+    buildStart() {
+      const found: string[] = []
+      const walk = (dir: string) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name)
+          if (entry.isDirectory()) walk(full)
+          else if (entry.name.endsWith('.tsx') && !full.endsWith(path.join('ui', 'date-picker.tsx'))) {
+            fs.readFileSync(full, 'utf8').split('\n').forEach((line, i) => {
+              if (/type=["{']+date["}']/.test(line)) found.push(`${path.relative(SRC, full)}:${i + 1}`)
+            })
+          }
+        }
+      }
+      walk(SRC)
+      if (found.length) this.error(`Use <DatePicker> from src/components/ui/date-picker.tsx, not <input type="date">: ${found.join(', ')}`)
+    },
+  }
+}
+
 function checkScopeLevels(): Plugin {
   return {
     name: 'mesiri-check-scope-levels',
@@ -117,7 +144,7 @@ function checkScopeLevels(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), checkTourMarkers(), checkScopeLevels(), checkOneClock()],
+  plugins: [react(), tailwindcss(), checkTourMarkers(), checkScopeLevels(), checkOneClock(), checkOneDatePicker()],
   resolve: {
     alias: {
       '@': SRC,

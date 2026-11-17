@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useVoice, voiceWords, type Voice } from '@/lib/voice'
+import { typingIn } from '@/lib/keys'
 
 // SS-61: the narrator of the walkthroughs and the page tours: one voice hook with the person's choice (on or muted,
 // the speed), and one player for the Spark's bubble. lib/voice.ts fetches and plays; the server makes the audio.
@@ -52,6 +53,30 @@ export function VoicePlayer({ voice, words }: { voice: Voice; words: string }) {
     } else if (here) voice.resume()
     else voice.say(words)
   }
+  // Keyboard (asked 17 Nov): K or P play / pause, M mute, [ ] slower / faster. Never while typing.
+  const latest = React.useRef({ play, voice })
+  latest.current = { play, voice }
+  React.useEffect(() => {
+    const keys = (e: KeyboardEvent) => {
+      if (typingIn(e) || e.metaKey || e.ctrlKey || e.altKey) return
+      const { play: go, voice: v } = latest.current
+      const k = e.key.toLowerCase()
+      if (k === 'k' || k === 'p') {
+        e.preventDefault()
+        if (v.playing) v.pause()
+        else go()
+      } else if (k === 'm') {
+        e.preventDefault()
+        v.setOn(!v.on)
+      } else if (e.key === '[' || e.key === ']') {
+        e.preventDefault()
+        const at = RATES.indexOf(v.rate as (typeof RATES)[number])
+        v.setRate(RATES[Math.min(RATES.length - 1, Math.max(0, at + (e.key === ']' ? 1 : -1)))])
+      }
+    }
+    window.addEventListener('keydown', keys)
+    return () => window.removeEventListener('keydown', keys)
+  }, [])
   return (
     <div className="flex flex-wrap items-center gap-1.5" aria-label="Voice">
       {voice.playing ? (

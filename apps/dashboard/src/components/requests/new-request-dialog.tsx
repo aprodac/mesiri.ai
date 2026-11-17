@@ -15,6 +15,7 @@ import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from './parts'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-22: ask for material. Built for speed: the site is the scope's, several items in one request, each line says
 // what the site already holds, and a request that repeats an open one is shown before it is saved.
@@ -217,7 +218,7 @@ export function NewRequestDialog({ open, onOpenChange, scope, editing, prefill }
                   {{ today: 'Today', tomorrow: 'Tomorrow', week: 'This week', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.needed_by && editing?.needed_by < iso(appNow()) ? editing?.needed_by : iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {when === 'pick' && <DatePicker aria-label="Date" className="h-9 w-[150px]" min={editing?.needed_by && editing?.needed_by < iso(appNow()) ? editing?.needed_by : iso(appNow())} value={picked} onChange={(v) => setPicked(v)} />}
             </div>
           </div>
 

@@ -17,6 +17,7 @@ import {
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // DOC-01: Planning › Documents. One place for a project's papers: drawings with their revision, permits with their
 // expiry, the contract and estimate (office only, D-DOC1). Drop files in: number, title, revision and folder are read
@@ -270,7 +271,7 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
                   {FOLDER_ORDER.map((f) => <option key={f} value={f}>{FOLDER_NAMES[f]}</option>)}
                 </select>
               </div>
-              <div className="grid gap-1"><Label htmlFor="d-valid">Valid until</Label><Input id="d-valid" type="date" value={form.valid_until ?? ''} onChange={(e) => setForm((f) => ({ ...f, valid_until: e.target.value }))} /></div>
+              <div className="grid gap-1"><Label htmlFor="d-valid">Valid until</Label><DatePicker id="d-valid" value={form.valid_until ?? ''} onChange={(v) => setForm((f) => ({ ...f, valid_until: v }))} /></div>
               <div className="flex flex-wrap gap-2 sm:col-span-2">
                 <Button type="submit" size="sm" disabled={save.isPending}>Save details</Button>
                 {doc.can_manage && doc.status === 'current' && (

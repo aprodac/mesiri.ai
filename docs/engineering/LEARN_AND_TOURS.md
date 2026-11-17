@@ -130,6 +130,21 @@ step's words in another place.
 - Site words in capitals (BOQ, DPR, GRN, RA, PO, GST, TDS, PDF, CSV) are spelled out for the voice by `spokenWords`, and
   "&" is read "and". A new abbreviation goes in its `SPELLED` list.
 
+## Hints and keys (UX-27, 17 Nov 2026)
+
+- **A hard word or step on a page gets a `<Hint>`** (`components/hint.tsx`): a "?" beside its label; tap or hover to
+  read, Listen to hear it in the guide's voice. A glossary word (`term="retention"`, `lib/glossary.ts`) or the page's
+  own words (`title` + `text`, an `example` when a number helps). Shown to the people who asked for explanations (new
+  to construction, step by step, bringing data). A figure in a strip takes `explain` (`KpiProps`). Its words are not
+  counted by the words check (a person opened them). It is drawn over the page, or inside an open dialog, and kept on
+  screen: never put it inside a button (a filter tile): put it beside it.
+- **Keys in every bubble:** → next, ← back (`TourOverlay`), K or P play / pause, M mute, [ ] speed (`VoicePlayer`), Esc
+  stop. Never while typing in a field or with a modifier held (`lib/keys.ts` `typingIn`). A new bubble control gets a
+  key in the same place and in the key line under the bubble.
+- **Dates are picked, never typed:** `<DatePicker>` (`components/ui/date-picker.tsx`, shadcn: Radix Popover +
+  react-day-picker), "YYYY-MM-DD" in and out, today from `appNow()`. The build fails on `<input type="date">`. A
+  walkthrough step says "pick", and e2e scripts pick (`play_journey.cjs` `pickDate`).
+
 ## Moving people between pages
 
 Any link or navigation inside the app to another page keeps the picked project: `urlWithScope(url, scope)` from

@@ -6,7 +6,6 @@ import {
   Rocket, ScrollText, Store, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { PageError } from '@/components/dpr-page'
@@ -23,6 +22,7 @@ import { fetchProjectStart, fetchSchedule, plural, shortDay, updateProjectStart,
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // ST-05: Planning › Project start. The day a job is won, one page takes it to "work starts": the stage and the
 // contract dates, the BOQ from the estimate Excel, the schedule, sites, the site team on WhatsApp, suppliers and
@@ -243,8 +243,8 @@ function StepCard({
         {step.key === 'dates' ? (
           canEdit ? (
             <form className="flex flex-wrap items-end gap-2" data-guide="setup.dates" onSubmit={(e) => { e.preventDefault(); onDates({ start_date: startDate || undefined, planned_finish: finish || undefined }) }}>
-              <div className="flex flex-col gap-1"><Label htmlFor="ps-start" className="text-xs">Work starts</Label><Input id="ps-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" /></div>
-              <div className="flex flex-col gap-1"><Label htmlFor="ps-finish" className="text-xs">Handover (contract)</Label><Input id="ps-finish" type="date" value={finish} min={startDate || undefined} onChange={(e) => setFinish(e.target.value)} className="w-40" /></div>
+              <div className="flex flex-col gap-1"><Label htmlFor="ps-start" className="text-xs">Work starts</Label><DatePicker id="ps-start" value={startDate} onChange={(v) => setStartDate(v)} className="w-40" /></div>
+              <div className="flex flex-col gap-1"><Label htmlFor="ps-finish" className="text-xs">Handover (contract)</Label><DatePicker id="ps-finish" value={finish} min={startDate || undefined} onChange={(v) => setFinish(v)} className="w-40" /></div>
               <Button size="sm" type="submit" disabled={saving || (!startDate && !finish) || (startDate === (data.project.start_date ?? '') && finish === (data.project.planned_finish ?? ''))}>Save dates</Button>
               {months !== null && months >= 0 && <span className="pb-2 text-xs text-muted-foreground">{plural(months, 'month')}</span>}
             </form>

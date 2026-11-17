@@ -30,7 +30,7 @@ import { cn } from '@/lib/utils'
 // CC-05: each line also shows the labour put on it (a site's day of one trade, from attendance, by man-days) against
 // the labour budget it earned; the last 30 days' labour not on a line is listed to put on its line.
 // Backend: GET / PUT /cost/projects/{id}/labour.
-// UX-32 (17 Nov, "less description, more visual cues"): the page reads by colour and shape, not sentences. One KPI
+// UX-35 (17 Nov, "less description, more visual cues"): the page reads by colour and shape, not sentences. One KPI
 // strip for the project; a card per kind in its cost-centre colour with an under / over pill and two bars (earned,
 // spent); the notes are action chips; the BOQ table is grouped by section with a progress bar per line and coloured
 // over / under pills. Green is under the budget earned, red is over, grey is "not known yet" (never a made-up figure).

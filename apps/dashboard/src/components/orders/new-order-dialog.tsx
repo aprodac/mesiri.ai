@@ -24,6 +24,7 @@ import { useSupplierScores } from '@/lib/supplier-performance'
 import { GstField } from '@/components/procurement/gst-field'
 import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-06/07: place an order with a supplier. From a request (PRC-22) it opens filled in: the request's site and
 // what is still to buy, each line linked to the request so the request follows the order. The duplicate check
@@ -290,7 +291,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
                   {{ today: 'Today', tomorrow: 'Tomorrow', week: 'This week', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.expected_date && editing?.expected_date < iso(appNow()) ? editing?.expected_date : iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {when === 'pick' && <DatePicker aria-label="Date" className="h-9 w-[150px]" min={editing?.expected_date && editing?.expected_date < iso(appNow()) ? editing?.expected_date : iso(appNow())} value={picked} onChange={(v) => setPicked(v)} />}
             </div>
           </div>
 

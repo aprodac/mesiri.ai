@@ -10,6 +10,7 @@ import { correctVoucher, fetchVoucherLedgers, postVoucher, rupees, type Entry, t
 import { fetchProjects } from '@/lib/projects'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // ACC-12: a manual voucher, keyboard first, as in Tally. Date, then rows of ledger · Dr · Cr, then the narration.
 // Ledger: type to search, ↑ ↓ to choose, Enter to take it (the difference so far is offered on the side that balances);
@@ -127,8 +128,8 @@ export function NewVoucherDialog({ open, onClose, correcting, onSaved }: { open:
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="v-date">Date</Label>
-            <Input id="v-date" type="date" value={date} autoFocus onChange={(e) => setDate(e.target.value)} className="w-40 dark:[color-scheme:dark]"
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); focus(rows[0].key, 'ledger') } }} />
+            {/* The date is picked, not typed: picking it moves on to the first row, as Enter did on the typed date. */}
+            <DatePicker id="v-date" value={date} required className="w-44" onChange={(v) => { setDate(v); focus(rows[0].key, 'ledger') }} />
           </div>
           <div role="radiogroup" aria-label="Kind of voucher" className="flex gap-0.5 rounded-lg bg-muted p-1">
             {(['journal', 'contra'] as const).map((t) => (

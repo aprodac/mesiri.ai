@@ -42,6 +42,7 @@ interface RecordVoucherDialogProps {
 
 import { recordVoucherApi } from '@/lib/api'
 import { toLocalISODate } from '@/lib/utils'
+import { DatePicker } from '@/components/ui/date-picker'
 
 export function RecordVoucherDialog({
   open,
@@ -213,13 +214,7 @@ export function RecordVoucherDialog({
                   <Calendar className="size-3.5 text-muted-foreground" />
                   Voucher Date
                 </Label>
-                <Input
-                  id="vch_date"
-                  type="date"
-                  value={voucherDate}
-                  onChange={(e) => setVoucherDate(e.target.value)}
-                  className="h-9 text-xs"
-                />
+                <DatePicker id="vch_date" value={voucherDate} onChange={(v) => setVoucherDate(v)} className="h-9 text-xs" />
               </div>
 
               <div className="space-y-1.5">
