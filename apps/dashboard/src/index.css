@@ -9,7 +9,7 @@
    Every shadcn component reads these, so this block IS the theme. */
 :root {
   --radius: 0.625rem;
-  --background: #ffffff;
+  --background: #f6f3ed;
   --foreground: #1a1d21;
   --card: #ffffff;
   --card-foreground: #1a1d21;
@@ -19,15 +19,15 @@
   --primary-foreground: #1a1d21;
   /* Brand text and links: yellow is unreadable as text on white, so words take a dark gold (WEB-76). */
   --primary-ink: #854d0e;
-  --secondary: #f3f4f6;
+  --secondary: #f2eee6;
   --secondary-foreground: #1a1d21;
-  --muted: #f3f4f6;
-  --muted-foreground: #5b6168;
-  --accent: #f3f4f6;
+  --muted: #efe9de;
+  --muted-foreground: #5f5a52;
+  --accent: #f2eee6;
   --accent-foreground: #1a1d21;
   --destructive: #b42318;
-  --border: #e5e7eb;
-  --input: #d1d5db;
+  --border: #e7e1d6;
+  --input: #d9d1c3;
   --ring: #ca8a04;
   --chart-1: #ca8a04;
   --chart-2: #1e3a8a;

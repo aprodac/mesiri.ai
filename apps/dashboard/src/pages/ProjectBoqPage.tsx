@@ -66,7 +66,7 @@ function marginClass(value: string | null, contract?: string | null): string {
   if (value === null) return 'text-muted-foreground'
   if (Number(value) < 0) return 'text-destructive font-semibold'
   const pct = marginPct(value, contract ?? null)
-  return pct !== null && pct < THIN_MARGIN ? 'text-draft font-semibold' : 'font-medium'
+  return pct !== null && pct < THIN_MARGIN ? 'text-draft font-semibold' : 'text-success font-semibold'
 }
 
 /** A money cell: short (₹21.4 L), the full figure on hover. */
@@ -279,7 +279,7 @@ function SectionTable({
   return (
     <div data-guide="boq.lines">
     {/* UX-20: on a phone each line is a card (nothing scrolls sideways); from md the table. */}
-    <ul className="divide-y rounded-lg border md:hidden">
+    <ul className="divide-y rounded-lg border bg-card md:hidden">
       {section.lines.map((line) => (
         <LineCard key={line.id} line={line} readOnly={readOnly} onEdit={onEdit} onNorms={onNorms} onDelete={onDelete} />
       ))}
@@ -291,7 +291,7 @@ function SectionTable({
         </span>
       </li>
     </ul>
-    <div className="hidden overflow-x-auto rounded-lg border [contain:inline-size] md:block">
+    <div className="hidden overflow-x-auto rounded-lg border bg-card [contain:inline-size] md:block">
       {/* Fixed widths, so every section's columns line up down the page. */}
       <table className="w-full min-w-[820px] table-fixed text-sm">
         <colgroup>
@@ -303,7 +303,7 @@ function SectionTable({
           <col className="w-[12%]" />
           {!readOnly && <col className="w-10" />}
         </colgroup>
-        <thead className="bg-muted/50 text-xs text-muted-foreground">
+        <thead className="bg-muted text-xs text-muted-foreground">
           <tr>
             {hasCodes && <th className="px-3 py-2 text-left font-medium">No.</th>}
             <th className="px-3 py-2 text-left font-medium">Work</th>
@@ -339,7 +339,7 @@ function SectionTable({
                   <Money value={line.contract_value} title={line.budget_cost ? `budget cost ${formatRupees(line.budget_cost)}` : undefined} />
                   {sectionValue > 0 && value > 0 && (
                     <div className="mt-1 ml-auto h-1 w-16 overflow-hidden rounded-full bg-muted" title="Its size against the biggest line in this section" aria-hidden>
-                      <div className="ml-auto h-full rounded-full bg-foreground/25" style={{ width: `${Math.max((value / sectionValue) * 100, 4)}%` }} />
+                      <div className="ml-auto h-full rounded-full bg-chart-1/70" style={{ width: `${Math.max((value / sectionValue) * 100, 4)}%` }} />
                     </div>
                   )}
                 </td>
@@ -448,6 +448,7 @@ function MarginCell({ margin, contract }: { margin: string | null; contract: str
             (loss || thin) && 'rounded-full px-2 py-0.5 text-xs',
             loss && 'bg-destructive/10 text-destructive',
             thin && 'bg-draft-soft text-draft',
+            !loss && !thin && 'text-success',
           )}
           title={loss ? 'This line loses money' : thin ? `Thin margin: under ${THIN_MARGIN}%` : undefined}
         >
@@ -478,8 +479,8 @@ function SectionSummary({ section }: { section: BoqSection }) {
         <>
           <span aria-hidden>·</span>
           <span className="inline-flex items-center gap-1.5" title="Budget earned by the work done">
-            <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <span className="block h-full rounded-full bg-foreground/55" style={{ width: `${Math.min(done, 100)}%` }} />
+            <span className="h-1.5 w-12 overflow-hidden rounded-full bg-card" aria-hidden>
+              <span className="block h-full rounded-full bg-info" style={{ width: `${Math.min(done, 100)}%` }} />
             </span>
             {done}% done
           </span>
@@ -560,7 +561,7 @@ function ProgressCell({ line }: { line: BoqLine }) {
       <div className="h-1.5 w-full max-w-[260px] overflow-hidden rounded-full bg-muted" aria-hidden="true">
         {done > 0 && (
           <div
-            className={cn('h-full rounded-full', line.over_planned ? 'bg-draft' : finished ? 'bg-success' : 'bg-foreground/55')}
+            className={cn('h-full rounded-full', line.over_planned ? 'bg-draft' : finished ? 'bg-success' : 'bg-info')}
             style={{ width: `${Math.min(pct, 100)}%` }}
           />
         )}
@@ -890,7 +891,7 @@ export default function ProjectBoqPage() {
                 )
               }
             >
-              <ul className="divide-y rounded-lg border border-draft/30 text-sm">
+              <ul className="divide-y rounded-lg border border-draft/30 bg-card text-sm">
                 {workQuery.data?.map((w) => (
                   <WorkRow
                     key={w.id}
@@ -908,6 +909,7 @@ export default function ProjectBoqPage() {
             {boq.sections.filter((s) => s.lines.length > 0 || !s.scheduled).map((section) => (
               <DprSection
                 key={section.id}
+                className="[&>header]:rounded-lg [&>header]:bg-muted [&>header]:px-3 [&>header]:py-2"
                 icon={Calculator}
                 title={section.code ? `${section.code}. ${section.name}` : section.name}
                 meta={<SectionSummary section={section} />}

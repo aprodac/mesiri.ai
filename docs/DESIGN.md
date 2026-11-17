@@ -215,8 +215,13 @@ If a screen makes the reader hunt for any of those, it is wrong.
 
 ## 2. The page
 
-- **White ground.** `--background` is `#ffffff`. No beige, no grey page
-  behind white cards.
+- **Warm sand ground, white surfaces** (UX-21, chosen 17 Nov 2026 from three mock-ups; was "white ground").
+  `--background` is `#f6f3ed`, matching the sand sidebar; tables, cards and lists sit on it in `bg-card`
+  (white) so they lift off the page. Greys are warm (`--muted #efe9de`, `--border #e7e1d6`). Dark mode is
+  unchanged. Section headers that group a long list (BOQ sections) may sit in a `bg-muted` band.
+- **Data colour is not status colour.** Bars that show an amount use one data hue: progress in `info` blue
+  (in progress), size in `chart-1` gold. Status colours (§3) stay for state: a healthy margin is `success`
+  text; a thin one an orange pill; a loss a red pill with a warning icon.
 - **One page, not a stack of cards.** A page is a header, then flat
   **sections** separated by a thin rule (`border-t`). Do not wrap every
   section in its own bordered, shadowed card.
