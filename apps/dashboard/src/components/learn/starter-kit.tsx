@@ -18,6 +18,8 @@ interface KitFile {
   what: string
   goes: string
   catch: string
+  /** More files that go with this one (the other quotes, the subcontractor's bill). */
+  also?: string[]
 }
 
 interface Kit {
@@ -27,6 +29,13 @@ interface Kit {
 }
 
 const BASE = '/learn/kit/'
+
+/** A short name for one of several files: "Malabar Cements Agency" from "Quote - Malabar Cements Agency.pdf". */
+function fileLabel(name: string, i: number): string {
+  const base = name.replace(/\.[a-z]+$/i, '')
+  const part = base.includes(' - ') ? base.split(' - ').slice(1).join(' - ') : base
+  return part ? part[0].toUpperCase() + part.slice(1) : `File ${i + 1}`
+}
 
 export function StarterKit() {
   const { scope } = useScope()
@@ -86,11 +95,15 @@ export function StarterKit() {
                   </button>
                 )}
               </div>
-              <Button asChild size="sm" variant="ghost" className="shrink-0 gap-1.5 self-start">
-                <a href={`${BASE}${encodeURIComponent(f.file)}`} download>
-                  <Download className="size-3.5" aria-hidden /> Download
-                </a>
-              </Button>
+              <div className="flex shrink-0 flex-col items-start gap-0.5 sm:items-end">
+                {[f.file, ...(f.also ?? [])].map((name, i) => (
+                  <Button key={name} asChild size="sm" variant="ghost" className="h-7 gap-1.5 px-2">
+                    <a href={`${BASE}${encodeURIComponent(name)}`} download title={name}>
+                      <Download className="size-3.5" aria-hidden /> {f.also?.length ? fileLabel(name, i) : 'Download'}
+                    </a>
+                  </Button>
+                ))}
+              </div>
             </li>
           )
         })}

@@ -25,6 +25,12 @@ OUT = ROOT / "apps" / "dashboard" / "public" / "learn" / "kit"
 ESTIMATE = "Green Villa - estimate.xlsx"
 MATERIALS = "Green Villa - materials and suppliers.xlsx"
 CONTRACT = "Green Villa - contract summary.pdf"
+PLAN = "Green Villa - ground floor plan A-101.pdf"
+QUOTES = ("Quote - Malabar Cements Agency.pdf", "Quote - Kerala Steels.pdf", "Quote - Sri Hardwares.pdf")
+CHALLAN = "Malabar - delivery challan.pdf"
+BILL = "Malabar - bill MCA-INV-2611.pdf"
+MEASURE = "Joy Tiling - measurement sheet.pdf"
+SUB_BILL = "Joy Tiling - bill JTW-014.pdf"
 ZIP = "green-villa-starter-kit.zip"
 
 #: The estimate: sections (heading rows) and their lines: item no., work, unit, quantity, client rate, labour rate,
@@ -134,6 +140,28 @@ CONTRACT_TERMS = (
     ("Delay", "Rs 25,000 per week of delay beyond handover, at most 5% of the contract value"),
 )
 
+#: The ground floor plan, drawn the way Drawing check reads a plan: each room's name, its size in cm under it, and the
+#: area the architect printed. Bedroom 2 is drawn 360 x 360 but labelled 163 sq ft, Bedroom 1's area: the catch.
+#: (label, x cm, y cm, width cm, depth cm, printed sq ft)
+ROOMS = (("LIVING", 0, 0, 520, 430, 241), ("DINING", 520, 0, 400, 360, 155), ("KITCHEN", 920, 0, 330, 300, 107),
+         ("BEDROOM-1", 0, 430, 420, 360, 163), ("BEDROOM-2", 420, 430, 360, 360, 163), ("TOILET", 780, 430, 240, 150, 39),
+         ("SIT OUT", 1020, 430, 300, 240, 78))
+
+#: The quotation request: 300 bags of cement and 2,000 kg of steel for Main block. Malabar is cheapest for cement,
+#: Kerala Steels cheapest in total; buying each item from its cheapest (cement Malabar, steel Kerala) is cheaper
+#: still: the catch Quotations' compare shows (lowest per item, lowest total).
+RFQ_ITEMS = (("Cement (OPC 53)", "bags", 300), ("Steel (TMT Fe 500)", "kg", 2000))
+QUOTE_RATES = {"Malabar Cements Agency": (400, 72), "Kerala Steels": (412, 66), "Sri Hardwares": (408, 70)}
+QUOTE_FROM = {"Malabar Cements Agency": ("Palakkad", "MCA/Q/0412"), "Kerala Steels": ("Industrial Estate, Kalamassery", "KS/Q/2280"),
+              "Sri Hardwares": ("MG Road, Thrissur", "SH/Q/117")}
+#: The delivery: 190 bags against an order for 200 (the catch: 10 still to come on the order).
+ORDERED, DELIVERED = 200, 190
+#: The bill: Rs 410 a bag against the order's Rs 400 (the catch: the bill's rate differs from the delivery's).
+BILL_RATE, CEMENT_GST = 410, 28
+#: Joy Tiling's flooring: measured room by room from the plan (rooms with floor tiles), billed for more.
+TILED = ("LIVING", "DINING", "KITCHEN", "BEDROOM-1", "BEDROOM-2", "SIT OUT")
+TILING_RATE, TILING_BILLED = 320, 92.0
+
 #: What the Learn page shows for each file: what it is, where it goes, what to look for.
 MANIFEST = (
     {"file": ESTIMATE, "title": "The estimate", "kind": "excel", "page": "/boq",
@@ -148,6 +176,28 @@ MANIFEST = (
      "what": "The client, the dates, the advance, retention and the defects period.",
      "goes": "Project start: the contract step",
      "catch": "The handover date you type sets the schedule's finish."},
+    {"file": PLAN, "title": "Ground floor plan (A-101)", "kind": "pdf", "page": "/planning/drawing-check",
+     "what": "The architect's plan: every room with its size and the area printed on it.",
+     "goes": "Drawing check",
+     "catch": "One bedroom is labelled bigger than it is drawn: Mesiri works out the real area and says the label was copied."},
+    {"file": QUOTES[0], "title": "Three quotations: cement and steel", "kind": "pdf", "page": "/procurement/quotations",
+     "also": list(QUOTES[1:]),
+     "what": "Malabar, Kerala Steels and Sri Hardwares quote for 300 bags of cement and 2,000 kg of steel.",
+     "goes": "Quotations: a request to the three, then their rates",
+     "catch": "The cheapest for cement is not the cheapest in total, and splitting the order beats both. The compare shows each."},
+    {"file": CHALLAN, "title": "Delivery challan", "kind": "pdf", "page": "/procurement/orders",
+     "what": "What came on Malabar's lorry for your cement order.",
+     "goes": "Orders: Material came",
+     "catch": "The lorry brought 190 bags against an order for 200: the order keeps 10 still to come."},
+    {"file": BILL, "title": "Malabar's bill", "kind": "pdf", "page": "/finance/vendors",
+     "what": "The supplier's bill for the cement that came.",
+     "goes": "Suppliers: Malabar, match the bill to the delivery",
+     "catch": "The bill's rate is Rs 10 a bag more than the order: Mesiri shows the difference before you pay."},
+    {"file": MEASURE, "title": "Joy Tiling: measurement and bill", "kind": "pdf", "page": "/subcontract/bills",
+     "also": [SUB_BILL],
+     "what": "The flooring measured room by room, and the subcontractor's bill for it.",
+     "goes": "Subcontract: measurement, then the bill",
+     "catch": "The bill asks for more square metres than were measured: Mesiri says how many more."},
 )
 
 
@@ -249,6 +299,150 @@ def contract_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _styles():
+    from reportlab.lib.styles import getSampleStyleSheet
+
+    return getSampleStyleSheet()
+
+
+def _doc(title: str, head: list[tuple[str, str]], table: list[list[str]], foot: list[str], *, note: str | None = None,
+         widths: tuple[float, ...] = (230, 60, 70, 70, 80)) -> bytes:
+    """A one-page business document: a title, the who/what lines, a table, the closing lines. Fixed bytes."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, title=title, author="Mesiri sample", leftMargin=50, rightMargin=50,
+                            topMargin=50, bottomMargin=50, invariant=1)
+    styles = _styles()
+    info = Table([[k, v] for k, v in head], colWidths=[110, 400])
+    info.setStyle(TableStyle([("FONT", (0, 0), (0, -1), "Helvetica-Bold", 9), ("FONT", (1, 0), (1, -1), "Helvetica", 9),
+                              ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("TOPPADDING", (0, 0), (-1, -1), 3)]))
+    body = Table(table, colWidths=list(widths), repeatRows=1)
+    body.setStyle(TableStyle([
+        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9), ("FONT", (0, 1), (-1, -1), "Helvetica", 9),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2eee6")), ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d9d1c3")), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    parts = [Paragraph(title, styles["Title"])]
+    if note:
+        parts.append(Paragraph(note, styles["Italic"]))
+    parts += [Spacer(1, 10), info, Spacer(1, 14), body, Spacer(1, 12)]
+    parts += [Paragraph(line, styles["Normal"]) for line in foot]
+    parts += [Spacer(1, 16), Paragraph("Sample paperwork for learning Mesiri. The people and businesses are made up.",
+                                       styles["Italic"])]
+    doc.build(parts)
+    return buffer.getvalue()
+
+
+def plan_bytes() -> bytes:
+    """A3 sheet, 1:100 in centimetres, with a title block Drawing check reads."""
+    from reportlab.lib.pagesizes import A3, landscape
+    from reportlab.pdfgen import canvas
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=landscape(A3), invariant=1)
+    pdf.setTitle("Green Villa: ground floor plan A-101")
+    width, height = landscape(A3)
+    scale, left0, top0 = 0.6, 70, height - 110  # points per cm; the plan hangs from its top-left corner
+    pdf.setLineWidth(1.2)
+    pdf.rect(30, 30, width - 60, height - 60)  # the sheet's border
+    pdf.setLineWidth(2)
+    for label, x, y, w, d, sqft in ROOMS:
+        left, bottom = left0 + x * scale, top0 - (y + d) * scale
+        pdf.rect(left, bottom, w * scale, d * scale)
+        cx, cy = left + w * scale / 2, bottom + d * scale / 2
+        pdf.setFont("Helvetica-Bold", 9)
+        pdf.drawCentredString(cx, cy + 12, label)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawCentredString(cx, cy, f"{w} x {d}")
+        pdf.drawCentredString(cx, cy - 11, f"{sqft} Sq.ft")
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(left0, height - 75, "GROUND FLOOR PLAN")
+    # The title block, boxed, bottom right, clear of the plan.
+    bx, by, bw, bh = width - 320, 40, 280, 200
+    pdf.setLineWidth(1)
+    pdf.rect(bx, by, bw, bh)
+    pdf.setFont("Helvetica", 9)
+    block = (("PROJECT:", "GREEN VILLA, PUTHUR ROAD, THRISSUR"), ("CLIENT:", "DR. ANAND KRISHNAN"),
+             ("DWG.TITLE:", "GROUND FLOOR PLAN"), ("DWG.NO:", "A-101"), ("REV:", "B"), ("SCALE:", "1:100"),
+             ("DATE:", "09.10.2026"), ("DRAWN BY:", "SK"), ("CHECKED BY:", "AR"))
+    for i, (key, value) in enumerate(block):
+        pdf.drawString(bx + 12, by + bh - 22 - i * 18, f"{key} {value}")
+    pdf.drawString(bx + 12, by + 10, "ALL DIMENSIONS ARE IN CM")
+    pdf.drawString(left0, 45, "Sample drawing for learning Mesiri. Not for construction.")
+    pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()
+
+
+def quote_bytes(vendor: str) -> bytes:
+    place, ref = QUOTE_FROM[vendor]
+    rates = QUOTE_RATES[vendor]
+    rows = [["Item", "Unit", "Qty", "Rate (Rs)", "Amount (Rs)"]]
+    total = 0
+    for (item, unit, qty), rate in zip(RFQ_ITEMS, rates, strict=True):
+        rows.append([item, unit, f"{qty:,}", f"{rate:,}", _rupees(qty * rate)[3:]])
+        total += qty * rate
+    rows.append(["Total, before GST", "", "", "", _rupees(total)[3:]])
+    return _doc(f"Quotation: {vendor}", [("From", f"{vendor}, {place}"), ("Quotation no.", ref), ("To", "Green Villa Builders"),
+                                        ("For", "Green Villa, Main block, Puthur Road, Thrissur"), ("Date", "18 November 2026")],
+                rows, ["Rates include unloading at site. GST extra: cement 28%, steel 18%.", "Valid for 7 days. Delivery in 2 days from the order."])
+
+
+def challan_bytes() -> bytes:
+    rows = [["Item", "Unit", "Ordered", "Sent", ""], ["Cement (OPC 53)", "bags", f"{ORDERED}", f"{DELIVERED}", ""]]
+    return _doc("Delivery challan", [("From", "Malabar Cements Agency, Palakkad"), ("Challan no.", "MCA/DC/2611"),
+                                     ("To", "Green Villa, Main block, Puthur Road, Thrissur"), ("Against", "Your order for cement"),
+                                     ("Date", "20 November 2026"), ("Vehicle", "Lorry (sample)")],
+                rows, [f"{ORDERED - DELIVERED} bags to follow with the next load.", "Received by: ____________   Site seal: ____________"],
+                note="What came on the lorry, signed at the gate.")
+
+
+def bill_bytes() -> bytes:
+    amount = DELIVERED * BILL_RATE
+    gst = amount * CEMENT_GST // 100
+    rows = [["Item", "Unit", "Qty", "Rate (Rs)", "Amount (Rs)"],
+            ["Cement (OPC 53)", "bags", f"{DELIVERED}", f"{BILL_RATE}", _rupees(amount)[3:]],
+            [f"GST {CEMENT_GST}%", "", "", "", _rupees(gst)[3:]], ["Total", "", "", "", _rupees(amount + gst)[3:]]]
+    return _doc("Tax invoice", [("From", "Malabar Cements Agency, Palakkad"), ("Invoice no.", "MCA/INV/2611"),
+                                ("To", "Green Villa Builders"), ("Delivery", "Challan MCA/DC/2611, 20 November 2026"),
+                                ("Date", "22 November 2026")],
+                rows, ["Payment within 15 days. Bank details on request."])
+
+
+def _tiled_rows() -> tuple[list[list[str]], float]:
+    rows = [["Room", "Length (m)", "Width (m)", "Area (sqm)", ""]]
+    total = 0.0
+    for label, _x, _y, w, d, _sqft in ROOMS:
+        if label in TILED:
+            area = round(w * d / 10000, 2)
+            total += area
+            rows.append([label.title(), f"{w / 100:.2f}", f"{d / 100:.2f}", f"{area:.2f}", ""])
+    total = round(total, 2)
+    rows.append(["Total measured", "", "", f"{total:.2f}", ""])
+    return rows, total
+
+
+def measurement_bytes() -> bytes:
+    rows, _total = _tiled_rows()
+    return _doc("Measurement sheet: vitrified tile flooring", [("Work", "Vitrified tile flooring, ground floor"),
+                                                               ("Subcontractor", "Joy Tiling Works, Angamaly"),
+                                                               ("Site", "Green Villa, Main block"), ("Measured", "28 November 2026, by Ravi (site engineer) with Joy")],
+                rows, ["Measured on the finished floor, wall to wall, from drawing A-101 rev B."])
+
+
+def sub_bill_bytes() -> bytes:
+    amount = round(TILING_BILLED * TILING_RATE)
+    rows = [["Work", "Unit", "Qty", "Rate (Rs)", "Amount (Rs)"],
+            ["Vitrified tile flooring, laying", "sqm", f"{TILING_BILLED:.2f}", f"{TILING_RATE}", _rupees(amount)[3:]]]
+    return _doc("Bill: Joy Tiling Works", [("From", "Joy Tiling Works, Angamaly"), ("Bill no.", "JTW-014"),
+                                          ("To", "Green Villa Builders"), ("Work", "Ground floor flooring, Green Villa"),
+                                          ("Date", "29 November 2026")],
+                rows, ["Labour only; tiles and adhesive supplied by the contractor."])
+
+
 def _rupees(amount: float) -> str:
     """Rs 82,06,050: Indian grouping."""
     whole = str(round(amount))
@@ -284,12 +478,14 @@ def _fixed_zip(data: bytes) -> bytes:
 
 
 def build() -> dict[str, bytes]:
-    files = {ESTIMATE: estimate_bytes(), MATERIALS: materials_bytes(), CONTRACT: contract_bytes()}
+    files = {ESTIMATE: estimate_bytes(), MATERIALS: materials_bytes(), CONTRACT: contract_bytes(), PLAN: plan_bytes(),
+             CHALLAN: challan_bytes(), BILL: bill_bytes(), MEASURE: measurement_bytes(), SUB_BILL: sub_bill_bytes()}
+    files.update({name: quote_bytes(vendor) for name, vendor in zip(QUOTES, QUOTE_RATES, strict=True)})
     manifest = {"name": "Green Villa starter kit", "zip": ZIP, "files": list(MANIFEST)}
     files["kit.json"] = (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode()
     bundle = io.BytesIO()
     with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in (ESTIMATE, MATERIALS, CONTRACT):
+        for name in [f for f in files if f != "kit.json"]:
             entry = zipfile.ZipInfo(f"Green Villa starter kit/{name}", date_time=(2026, 11, 17, 0, 0, 0))
             entry.compress_type = zipfile.ZIP_DEFLATED
             z.writestr(entry, files[name])

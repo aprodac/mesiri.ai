@@ -28,6 +28,58 @@
       "what": "The client, the dates, the advance, retention and the defects period.",
       "goes": "Project start: the contract step",
       "catch": "The handover date you type sets the schedule's finish."
+    },
+    {
+      "file": "Green Villa - ground floor plan A-101.pdf",
+      "title": "Ground floor plan (A-101)",
+      "kind": "pdf",
+      "page": "/planning/drawing-check",
+      "what": "The architect's plan: every room with its size and the area printed on it.",
+      "goes": "Drawing check",
+      "catch": "One bedroom is labelled bigger than it is drawn: Mesiri works out the real area and says the label was copied."
+    },
+    {
+      "file": "Quote - Malabar Cements Agency.pdf",
+      "title": "Three quotations: cement and steel",
+      "kind": "pdf",
+      "page": "/procurement/quotations",
+      "also": [
+        "Quote - Kerala Steels.pdf",
+        "Quote - Sri Hardwares.pdf"
+      ],
+      "what": "Malabar, Kerala Steels and Sri Hardwares quote for 300 bags of cement and 2,000 kg of steel.",
+      "goes": "Quotations: a request to the three, then their rates",
+      "catch": "The cheapest for cement is not the cheapest in total, and splitting the order beats both. The compare shows each."
+    },
+    {
+      "file": "Malabar - delivery challan.pdf",
+      "title": "Delivery challan",
+      "kind": "pdf",
+      "page": "/procurement/orders",
+      "what": "What came on Malabar's lorry for your cement order.",
+      "goes": "Orders: Material came",
+      "catch": "The lorry brought 190 bags against an order for 200: the order keeps 10 still to come."
+    },
+    {
+      "file": "Malabar - bill MCA-INV-2611.pdf",
+      "title": "Malabar's bill",
+      "kind": "pdf",
+      "page": "/finance/vendors",
+      "what": "The supplier's bill for the cement that came.",
+      "goes": "Suppliers: Malabar, match the bill to the delivery",
+      "catch": "The bill's rate is Rs 10 a bag more than the order: Mesiri shows the difference before you pay."
+    },
+    {
+      "file": "Joy Tiling - measurement sheet.pdf",
+      "title": "Joy Tiling: measurement and bill",
+      "kind": "pdf",
+      "page": "/subcontract/bills",
+      "also": [
+        "Joy Tiling - bill JTW-014.pdf"
+      ],
+      "what": "The flooring measured room by room, and the subcontractor's bill for it.",
+      "goes": "Subcontract: measurement, then the bill",
+      "catch": "The bill asks for more square metres than were measured: Mesiri says how many more."
     }
   ]
 }

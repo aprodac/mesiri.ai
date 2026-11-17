@@ -32,11 +32,12 @@ def make_kit():
     return module
 
 
-def test_the_checked_in_files_are_what_the_script_makes(make_kit) -> None:
+def test_the_checked_in_kit_is_the_scripts(make_kit) -> None:
+    """The list of files is the script's (bytes can differ by library version, so contents are checked below)."""
     built = make_kit.build()
-    assert built == make_kit.build()  # fixed: no dates, no randomness
-    for name, data in built.items():
-        assert (KIT / name).read_bytes() == data, f"{name} is stale: run python scripts/learn_kit/make_kit.py"
+    assert built["kit.json"] == make_kit.build()["kit.json"]  # fixed: no dates, no randomness
+    assert (KIT / "kit.json").read_bytes() == built["kit.json"], "stale kit: run python scripts/learn_kit/make_kit.py"
+    assert sorted(p.name for p in KIT.iterdir()) == sorted(built)
 
 
 def test_the_estimate_reads_with_its_catches(make_kit) -> None:
@@ -89,6 +90,71 @@ def test_the_manifest_and_the_zip_hold_every_file(make_kit) -> None:
     manifest = json.loads((KIT / "kit.json").read_text())
     files = [f["file"] for f in manifest["files"]]
     assert all((KIT / name).exists() for name in files)
+    files += [extra for f in manifest["files"] for extra in f.get("also", [])]
+    assert all((KIT / name).exists() for name in files)
     with zipfile.ZipFile(KIT / manifest["zip"]) as z:
         assert sorted(pathlib.PurePath(n).name for n in z.namelist()) == sorted(files)
     assert all(f["what"] and f["goes"] and f["catch"] and f["page"].startswith("/") for f in manifest["files"])
+
+
+# SS-73 part 2: each document's catch, through the rule that shows it.
+
+
+def _text(path: pathlib.Path) -> str:
+    from mesiri.domains.drawings.pdf_text import pages
+
+    return " ".join(w["text"] for p in pages(path.read_bytes()) for w in p["words"])
+
+
+def test_drawing_check_finds_the_copied_bedroom_label_and_nothing_else(make_kit) -> None:
+    from mesiri.domains.drawings.read import read_pdf
+
+    out = read_pdf((KIT / make_kit.PLAN).read_bytes())
+    sheet = out["sheets"][0]
+    assert (sheet["title"], sheet["number"], sheet["scale"], sheet["units"]) == ("GROUND FLOOR PLAN", "A-101", "1:100", "cm")
+    assert len(sheet["rooms"]) == len(make_kit.ROOMS)
+    assert [c["message"] for c in out["checks"]] == [
+        "BEDROOM-2 is drawn 360 x 360 cm (13 m², 140 sq ft) but labelled 163 sq ft. "
+        "163 sq ft is BEDROOM-1's area: the label looks copied."]
+
+
+def test_the_quotes_cheapest_cement_is_not_the_cheapest_total(make_kit) -> None:
+    rates = make_kit.QUOTE_RATES
+    qty = [q for _i, _u, q in make_kit.RFQ_ITEMS]
+    totals = {v: sum(q * r for q, r in zip(qty, rs, strict=True)) for v, rs in rates.items()}
+    cheapest_cement = min(rates, key=lambda v: rates[v][0])
+    cheapest_total = min(totals, key=totals.get)
+    split = sum(q * min(rs[i] for rs in rates.values()) for i, q in enumerate(qty))
+    assert (cheapest_cement, cheapest_total) == ("Malabar Cements Agency", "Kerala Steels")
+    assert split < totals[cheapest_total]  # lowest per line beats lowest total
+    for name, vendor in zip(make_kit.QUOTES, rates, strict=True):
+        assert vendor.split()[0] in _text(KIT / name)
+
+
+def test_the_challan_brings_less_than_ordered_and_the_bill_is_dearer(make_kit) -> None:
+    from decimal import Decimal
+
+    from mesiri.domains.vendors.matching import flags
+
+    challan = _text(KIT / make_kit.CHALLAN)
+    assert f"{make_kit.ORDERED}" in challan and f"{make_kit.DELIVERED}" in challan
+    bill = _text(KIT / make_kit.BILL)
+    assert f"{make_kit.BILL_RATE}" in bill
+    order_rate = make_kit.QUOTE_RATES["Malabar Cements Agency"][0]  # the order is placed at Malabar's quote
+    assert flags(Decimal(make_kit.DELIVERED), Decimal(make_kit.DELIVERED), Decimal(order_rate), Decimal(make_kit.BILL_RATE),
+                 "bags") == ["rate ₹410 on the bill, ₹400 on site"]
+
+
+def test_joy_tiling_bills_more_than_was_measured(make_kit) -> None:
+    from decimal import Decimal
+
+    from mesiri.domains.subcontracts.rules import check_bill
+
+    rows, measured = make_kit._tiled_rows()
+    assert measured == 81.94 and f"{measured:.2f}" in _text(KIT / make_kit.MEASURE)
+    assert f"{make_kit.TILING_BILLED:.2f}" in _text(KIT / make_kit.SUB_BILL)
+    line = {"description": "Vitrified tile flooring", "unit": "sqm", "quantity": Decimal(290), "rate": Decimal(make_kit.TILING_RATE)}
+    found = check_bill({"l": line}, {"l": Decimal(str(measured))}, {}, [{"line_id": "l", "quantity": make_kit.TILING_BILLED,
+                                                                        "rate": make_kit.TILING_RATE}],
+                       Decimal(str(make_kit.TILING_BILLED * make_kit.TILING_RATE)))
+    assert [f["code"] for f in found] == ["over_measured"] and "10.06 sqm more than measured" in found[0]["words"]

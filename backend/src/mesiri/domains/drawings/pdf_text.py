@@ -81,6 +81,7 @@ def _words(page: Any, textpage: Any, rotation: int, raw_w: float, raw_h: float) 
     words: list[dict[str, Any]] = []
     cur: dict[str, Any] | None = None
     last: tuple[float, float, float, float] | None = None
+    last_gap: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
     def close() -> None:
         nonlocal cur
@@ -95,20 +96,26 @@ def _words(page: Any, textpage: Any, rotation: int, raw_w: float, raw_h: float) 
             close()
             continue
         x0, x1, y0, y1 = _shown(rotation, raw_w, raw_h, tuple(float(v) for v in textpage.get_charbox(k)))
+        # The gap to the last character is measured between their full widths (the font's advance box), not their
+        # ink: a narrow glyph ("1", "l", "i", ".") sits in a wide box, and its ink alone left a gap that looked like
+        # a word break in Arial-like fonts ("1100 x 450" read as "1" "100", "ROOM-11" as "ROOM-1" "1"; found 17 Nov
+        # while making the playground's drawing, SS-73).
+        gx0, gx1, gy0, gy1 = _shown(rotation, raw_w, raw_h, tuple(float(v) for v in textpage.get_charbox(k, loose=True)))
         # Upright as shown: the character's own angle less the page's rotation.
         upright = abs(math.sin(raw.FPDFText_GetCharAngle(textpage, k) - math.radians(rotation))) < 0.5
         size = float(raw.FPDFText_GetFontSize(textpage, k))
         h = max(y1 - y0, x1 - x0, 1.0)
         if cur is not None and last is not None and cur["upright"] == upright:
             lx0, lx1, ly0, ly1 = last
+            gl0, gl1, gm0, gm1 = last_gap
             # A dot or hyphen has a tiny box: measure the gap against the word's letters, not the mark's.
             h = max(h, (cur["bottom"] - cur["top"]) if upright else (cur["x1"] - cur["x0"]))
             if upright:
                 near = (abs(y1 - ly1) < 0.5 * h or (y0 >= cur["top"] - 0.2 * h and y1 <= cur["bottom"] + 0.2 * h)) \
-                    and -0.5 * h < x0 - lx1 < 0.35 * h
+                    and -0.5 * h < gx0 - gl1 < 0.35 * h
             else:
                 near = (abs(x0 - lx0) < 0.6 * h or (x0 >= cur["x0"] - 0.2 * h and x1 <= cur["x1"] + 0.2 * h)) \
-                    and min(abs(y0 - ly1), abs(ly0 - y1)) < 0.35 * h
+                    and min(abs(gy0 - gm1), abs(gm0 - gy1)) < 0.35 * h
             if not near:
                 close()
         if cur is None:
@@ -118,6 +125,7 @@ def _words(page: Any, textpage: Any, rotation: int, raw_w: float, raw_h: float) 
         cur["top"], cur["bottom"] = min(cur["top"], y0), max(cur["bottom"], y1)
         cur["size"] = max(cur["size"], size)
         last = (x0, x1, y0, y1)
+        last_gap = (gx0, gx1, gy0, gy1)
     close()
     for w in words:
         if not w["upright"]:

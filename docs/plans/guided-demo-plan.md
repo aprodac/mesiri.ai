@@ -501,6 +501,23 @@ same unit, so its work counts on the BOQ. No phone numbers or GSTINs anywhere.
 Test: `backend/tests/unit/test_learn_kit_ss73.py` (the files are what the script makes, read through Mesiri's own
 importers; every site work has its line; norms name real lines and catalogue materials; the contract says the total).
 
-**Still to make (SS-73, second part):** the three cement quotations, the delivery challan photo, the supplier bill,
-the drawings (with the room labelled bigger than drawn, checked through Drawing check), the site photos and two voice
-notes (English, Malayalam; Sarvam), and the subcontractor's measurement sheet.
+### 18.1 Second part (17 Nov 2026)
+
+Each catch checked first against what Mesiri does today (three planned catches changed to ones it really shows):
+
+| File | Brought in on | What Mesiri shows | Checked by |
+|---|---|---|---|
+| Ground floor plan A-101 (A3, 1:100, cm, title block) | Drawing check | Exactly one finding: "BEDROOM-2 is drawn 360 x 360 cm (140 sq ft) but labelled 163 sq ft. 163 sq ft is BEDROOM-1's area: the label looks copied." | `read_pdf` on the file |
+| Three quotes (Malabar, Kerala Steels, Sri Hardwares: 300 bags cement, 2,000 kg steel) | Quotations | Cheapest cement (Malabar) is not cheapest total (Kerala); each item from its cheapest beats both: the compare's lowest per item / lowest total. *Changed from "dearest with transport": Mesiri has no transport cost* | the numbers |
+| Delivery challan (190 of 200 bags) | Orders: Material came | 10 bags still to come on the order | the file's text |
+| Malabar's bill (Rs 410 a bag; ordered at the quote's Rs 400) | Suppliers: match the bill | "rate ₹410 on the bill, ₹400 on site" | `matching.flags` |
+| Joy Tiling measurement sheet (the plan's six tiled rooms, 81.94 sqm) and bill (92 sqm) | Subcontract: measurement, bill | "billed 10.06 sqm more than measured" | `subcontracts.rules.check_bill`. *Changed from "more than the BOQ": the check is bill against measurement* |
+
+**Found and fixed on the way (Drawing check, all drawings):** in Arial-like fonts the PDF reader split words at a narrow
+character, so "1100 x 450" read as "1" "100" and "ROOM-11" as "ROOM-1" "1": a room with a 1 in its size or name was
+misread on real drawings too. The gap between characters is now measured between their full widths, not their ink
+(`domains/drawings/pdf_text.py`); test `test_drawing_narrow_glyphs.py` (four fonts, and two words placed apart stay apart).
+Not checked: real CAD exports beyond the existing tests.
+
+**Held (SS-73b, needs a decision):** the two voice notes (Tell Mesiri records from the microphone but can't take an
+audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look fake: real ones we may use are better).
