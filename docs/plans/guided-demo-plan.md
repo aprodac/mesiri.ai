@@ -774,3 +774,35 @@ their words in the code.
 
 **Next (SS-69 part 2):** the schedule and the team; then "A day on site" in the sample company's own words (today it
 reuses the generic W1, which speaks of practice and Cancel).
+
+## 22. Handover (17 Nov 2026, session_016qPwVK, end of session)
+
+**Goal set by Ilan (17 Nov):** the role-play (guided project in the sample company) working end to end, **up to the BOQ
+first**. Tell Mesiri file/photo input is **not** a focus now. A mobile app is coming (DECISIONS.md): don't build
+WhatsApp-only assumptions.
+
+**Done and on main:** sandbox company per person (SS-66, §17), nothing in it reaches a phone (SS-66d), starter kit
+(SS-73, §19), role switch in the banner (SS-76, §20), chapters "Set up Green Villa" and "The BOQ" playable with the
+your-turn engine pieces (SS-69 part 1, SS-72 first pieces, §21). Another session owns the game clock (SS-74a..e).
+
+**Next, in order (claim the tracker row first):**
+1. **SS-69 part 2, finish "up to the BOQ":** the two remaining Project start steps for Green Villa, *Schedule* (Quick
+   plan from the BOQ's sections) and *Site team* (put Ravi on Green Villa; no phone numbers in a sandbox, migration 0557
+   refuses them, so the step must add an existing sandbox person to the project, not invite a number). Write them as a
+   chapter `gv-schedule-team` after `gv-boq` in `JOURNEY_CHAPTERS`, same pattern as `GV_SETUP` (`try: { kind: 'here',
+   poll: true, check: START_CHECK('schedule') }`, words per kind of person, `say` for the voice).
+2. **"A day on site" for the sample company:** today the chapter reuses the generic W1 (`site-to-report`), which talks
+   about practice and Cancel and is wrong inside a sandbox (nothing needs taking back; nothing is sent: §17.6 says the
+   chapter must say "in the sample company nothing is sent"). Write `gv-day` the same way. Coordinate with SS-74 (the
+   game clock plays the cast's entries).
+3. **Check what was not checked:** chapters 2–3 at phone width and in dark mode; the other kinds of person
+   (guided, bring_data, switching) through the e2e script (`scripts/learn_kit/e2e/`, README there).
+4. **SS-72 rest:** hints after ~30 s without progress, story choices, "done by you" per chapter and resume on Learn.
+   "Show me" needs SS-68 (claimed 16 Nov by session_014PnnwM, no code landed: ask before taking it).
+
+**How to verify a chapter:** `scripts/learn_kit/e2e/README.md` (real app + real Postgres + Playwright). Rules for
+writing steps: `docs/engineering/LEARN_AND_TOURS.md` (the sandbox chapter bullets). Dashboard checks:
+`npx tsc -b --noEmit && npx oxlint src/ && npx vite build` (the build checks every marker a step points at).
+
+**Open questions for Ilan (not blocking the above):** SS-73b voice notes/photos (on hold, not a focus); warm dark mode
+(mock-up first or build); UX-22 per-person Help/tours for the remaining ~40 pages (batches in story order).
