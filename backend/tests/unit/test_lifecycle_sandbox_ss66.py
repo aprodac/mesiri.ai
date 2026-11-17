@@ -28,3 +28,12 @@ def test_router_refuses_a_sandbox_token_and_a_platform_admin(payload) -> None:  
     with pytest.raises(HTTPException) as err:
         asyncio.run(sandbox_router._person(SimpleNamespace(), payload))
     assert err.value.status_code == 403
+
+
+def test_the_database_refusal_becomes_a_plain_reason() -> None:
+    from mesiri.http.db_errors import invalid_value_detail
+
+    message = ('(sqlalchemy.dialects.postgresql.asyncpg.Error) <class \'asyncpg.exceptions.CheckViolationError\'>: '
+               "MESIRI_SANDBOX: People in the sample company can't have a WhatsApp number, so nothing in it reaches a real phone.")
+    assert invalid_value_detail(message) == (
+        "People in the sample company can't have a WhatsApp number, so nothing in it reaches a real phone.")

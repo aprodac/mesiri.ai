@@ -33,8 +33,14 @@ _SYNTAX = re.compile(r'invalid input syntax for type (?P<type>\w+): "(?P<value>[
 _ARGUMENT = re.compile(r"invalid input for query argument \$\d+: '(?P<value>[^']*)' \(invalid (?P<type>\w+)")
 
 
+#: SS-66d: a database rule refusing something in a learning sandbox (migration 0557) says why in its message.
+_SANDBOX = re.compile(r"MESIRI_SANDBOX: (?P<why>[^\n]+)")
+
+
 def invalid_value_detail(message: str) -> str | None:
     """The 422 detail for a bad-value message (Postgres 22P02 or asyncpg's argument check), or None when it is not one we can explain."""
+    if m := _SANDBOX.search(message):
+        return m["why"].strip()
     if m := _ENUM.search(message):
         value, kind = m["value"], m["type"]
         hint = f" Did you mean '{value.upper()}'?" if value != value.upper() else ""

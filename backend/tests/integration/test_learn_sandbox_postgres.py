@@ -148,3 +148,47 @@ async def test_cleanup_removes_unopened_and_orphaned_keeps_fresh(engine, person)
     assert await sandbox.cleanup(engine, now=NOW) == 0
     assert await sandbox.cleanup(engine, now=NOW + dt.timedelta(days=31)) >= 1
     assert await _rows(engine, out.organization_id) == 0
+
+
+# SS-66d: nothing in a sandbox reaches a real phone.
+
+
+async def test_no_whatsapp_number_on_a_sandbox_person_in_any_write(engine, person):
+    out = await sandbox.open_sandbox(engine, None, person, now=NOW)
+    number = "919" + str(uuid.uuid4().int)[:9]
+    from sqlalchemy.exc import DBAPIError
+
+    from mesiri.http.db_errors import invalid_value_detail
+
+    async with engine.connect() as conn:
+        with pytest.raises(DBAPIError) as err:  # a new person with a number
+            async with conn.begin():
+                await conn.execute(text(
+                    "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role, status, whatsapp_number) "
+                    "VALUES (:id, :o, :e, 'x', 'Real colleague', 'SITE_ENGINEER', 'active', :w)"),
+                    {"id": uuid.uuid4(), "o": out.organization_id, "e": f"{uuid.uuid4().hex}@x.test", "w": number})
+        assert "phone" in (invalid_value_detail(str(err.value.orig)) or "")
+        with pytest.raises(DBAPIError):  # a number added to someone already there
+            async with conn.begin():
+                await conn.execute(text("UPDATE users SET whatsapp_number = :w WHERE organization_id = :o"),
+                                   {"w": number, "o": out.organization_id})
+    async with engine.begin() as conn:  # the guard: a real company's person still takes a number
+        await conn.execute(text("UPDATE users SET whatsapp_number = :w WHERE id = :u"), {"w": number, "u": person.user_id})
+        await conn.execute(text("UPDATE users SET whatsapp_number = NULL WHERE id = :u"), {"u": person.user_id})
+
+
+async def test_a_sandbox_notification_is_never_picked_up_to_send(engine, person):
+    from mesiri.infrastructure.postgres.repositories.notifications import (
+        PostgresNotificationRepository,
+    )
+
+    out = await sandbox.open_sandbox(engine, None, person, now=NOW)
+    async with engine.begin() as conn:
+        repo = PostgresNotificationRepository(conn)
+        mine = await repo.claim(organization_id=out.organization_id, rule_key="ss66d", subject_id="x",
+                                occurred_on=NOW.date(), recipient_user_id=None)
+        real = await repo.claim(organization_id=person.organization_id, rule_key="ss66d", subject_id="x",
+                                occurred_on=NOW.date(), recipient_user_id=None)
+        ids = {r["id"] for r in await repo.list_pending(limit=10_000)}
+        await conn.execute(text("DELETE FROM notifications WHERE rule_key = 'ss66d'"))
+    assert mine not in ids and real in ids

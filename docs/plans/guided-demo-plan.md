@@ -437,4 +437,28 @@ gets 403 (no sandbox inside a sandbox).
   (the assistant's projects router doesn't re-check the person); nothing leaks (the company is gone), but it is the
   same class as any revoked person's token and worth its own item.
 - **Not covered:** the seed in CI (it needs the whole app; covered by the run above and by the demo reset using the same
-  story); SS-66d (every outbound path checked for a sandbox) is open.
+  story).
+
+### 17.5 SS-66d: nothing in a sandbox reaches a real phone (17 Nov 2026)
+
+Every way a WhatsApp message can leave, checked:
+
+| Way out | Reaches a sandbox? |
+|---|---|
+| Scheduled and automatic sends (daily reports, reminders, tips, setup questions, stock alerts, notification checks, draft reminders) | **No**: each picks companies with `operational_sql`; `sandbox` is not operational |
+| The notification queue (period report sends, approvals and anything queued for a person) | **No, now**: `list_pending` leaves sandbox companies out (their rows go with the sandbox) |
+| A send started while handling a dashboard request (a material request moving, Tell Mesiri sending a document, an invite) | **No, now**: the request's sandbox token marks it (`domains/shared/sandbox_gate.py`), and the one sender (`WhatsAppSender._send`) drops anything sent under the mark, tasks started from the request included |
+| A reply to an incoming message | **No**: incoming messages find their company by the sender's number, and nobody in a sandbox can have one |
+| A number typed into the sandbox (Team page, any people route, now or later) | **Refused, now**: migration 0557's trigger on `users`; the API answers 422 "People in the sample company can't have a WhatsApp number…" (`http/db_errors.py`, the shared handler) |
+
+Phones on suppliers, clients, workers and report recipients can be typed in a sandbox (the learning needs those forms),
+but nothing sends to them: every way out above is closed for a sandbox.
+
+**For the chapters (SS-69+):** "Send the daily report" in a sandbox queues it and it is never sent; the chapter should
+say so ("in the sample company nothing is sent; in yours it goes to the owner on WhatsApp") rather than wait for it.
+
+Tests: `test_learn_sandbox_postgres.py` (+2: the trigger on insert and update with a real company's guard; the queue),
+`apps/whatsapp-assistant/tests/unit/test_sandbox_send_gate_ss66d.py` (a sandbox request's sends and its task's sends
+blocked, a real one's sent, the mark ends with the request), `test_lifecycle_sandbox_ss66.py` (the 422 wording). Checked
+on the running app: adding a teammate with a number in the sandbox gets the 422; without a number, 200; in the real
+company with a number, 200.

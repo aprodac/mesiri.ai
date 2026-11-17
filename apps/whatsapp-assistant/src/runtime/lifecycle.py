@@ -163,6 +163,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.middleware("http")(trial_guard_middleware)
 
+    # SS-66d: a request made with a learning-sandbox token can't send WhatsApp (the sender checks the mark).
+    from mesiri.domains.shared.sandbox_gate import sandbox_gate_middleware
+
+    app.middleware("http")(sandbox_gate_middleware)
+
     # CORS for Control Plane dashboard
     from fastapi.middleware.cors import CORSMiddleware
 

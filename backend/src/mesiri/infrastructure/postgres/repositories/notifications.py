@@ -117,7 +117,10 @@ class PostgresNotificationRepository:
         notifications/checks.py) before actually sending."""
         from sqlalchemy import text
 
-        where = ["status = 'pending'"]
+        # SS-66d: a learning sandbox's notifications are never sent (removed with the sandbox).
+        where = ["status = 'pending'",
+                 "NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id = notifications.organization_id "
+                 "AND o.sandbox_of IS NOT NULL)"]
         params: dict[str, Any] = {"limit": limit}
         if organization_id is not None:
             where.append("organization_id = :organization_id")
