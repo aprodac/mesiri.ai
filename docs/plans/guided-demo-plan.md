@@ -371,3 +371,52 @@ Estimate on top of §15: ~90–150 M tokens (~$55–90); Sarvam narration for th
 | D-PG4 | Play other roles with their real permissions | **Yes**, playground users per role (security-sensitive, same rules as D-GD1) |
 | D-PG5 | Kit files: they upload them, or Mesiri does | **They do; "Show me" does it for them** |
 | D-PG6 | Owner assigns missions to the team | **Later (SS-78)**, after the careers exist |
+
+## 17. SS-66 design: the sandbox company, as being built (17 Nov 2026)
+
+> Written before the code so others can build against it in parallel. Investigated 17 Nov; where this differs from §5,
+> this section is the current design. Who is doing what: the **tracker rows SS-66a..SS-66d, SS-67** (claim before you start).
+
+### 17.1 Decisions taken while designing (within D-GD1 and D-PG1..D-PG4, approved)
+
+| # | Decision | Why |
+|---|---|---|
+| A | A fifth company status **`sandbox`** (`lifecycle.SANDBOX`), not operational | Every scheduled job, automatic report, reminder, tip, setup question and the WhatsApp sender's company check already ask `is_operational` / `operational_sql`; a non-operational status keeps the sandbox out of all of them in one place, instead of a skip in each. The trial guard only blocks `expired`, so the sandbox can still be written to |
+| B | **No phone numbers anywhere** in a sandbox (people, workers, suppliers, report recipients) | The outbound sender is keyed by phone, not company: no number, nothing can be sent |
+| C | Columns `organizations.sandbox_of`, `sandbox_user_id`, `sandbox_expires_at`, **no foreign keys** (migration 0556) | Deleting a real company or person is never blocked by its sandbox; orphans go at the next cleanup |
+| D | **One per person** (unique index on `sandbox_user_id`), kept until reset, removed after **30 days unopened** (D-PG1; replaces §5's 24 h) | Opening it moves `sandbox_expires_at` on |
+| E | Cleanup **on the next `POST /learn/sandbox`** (a few at a time), not a new nightly job | No new scheduler to run and watch; expired or orphaned sandboxes go through `delete_company` |
+| F | **Everyone** in a company may start one (the ask on 17 Nov: "everyone can use"); not platform admins | A private sandbox costs rows only |
+| G | The **people** in it: the person as owner (`ADMIN`), plus Anil (project manager), Ravi (site engineer), Meera (finance), on both projects, emails `@sandbox.mesiri.invalid`, random passwords (no login) | Real roles for SS-76 (D-PG4) from day one |
+| H | The **history** comes from `sample_story.seed` through the real API, in-process (ASGI), as the sandbox owner, in a fresh context (no request transaction or tenant carried in) | Every record passes the same checks as the dashboard; no copy of business rules |
+| I | Kept out of the control panel's lists, overview, trials funnel and billing by **one filter** in `companies_overview` (`sandbox_of IS NULL`), which all of them read | One place |
+
+### 17.2 The API (for SS-67 and the chapters to build against)
+
+All under the person's **real** token, except where it says sandbox token. A sandbox token calling `/learn/sandbox*`
+gets 403 (no sandbox inside a sandbox).
+
+| Route | Does | Returns |
+|---|---|---|
+| `GET /learn/sandbox` | Is there one for me? | `{ "exists": bool, "organization_id"?, "name"?, "expires_at"?, "created_at"? }` |
+| `POST /learn/sandbox` body `{ "role"?: "ADMIN" \| "PROJECT_MANAGER" \| "SITE_ENGINEER" \| "FINANCE" }` (default `ADMIN`) | Opens mine, making it first if there is none (~7–10 s the first time); moves its expiry on; cleans up a few expired ones | `{ "token", "expires_at", "organization_id", "name", "role", "user_name", "created": bool, "seeded"?: {kind: count}, "failed"?: [..] }` |
+| `DELETE /learn/sandbox` | Removes mine now ("Reset" = DELETE then POST) | 204 |
+
+- **The sandbox token** is a normal access token for the sandbox user (`sub`, `org` = the sandbox, `role`, `name`,
+  `org_name`) plus `"sandbox": "<real company id>"`, valid 8 hours. Every existing route accepts it unchanged and
+  can only reach the sandbox company (the user belongs to it; `resolve_from_jwt` checks that). It can't be refreshed or
+  turned into a real token; the sandbox users can't log in.
+- **The dashboard (SS-67)** keeps the real token, puts the sandbox token in the API client while the person is in the
+  sandbox, shows the banner ("Sample company: nothing here is real · Leave · Reset"), and switches back on Leave.
+  `GET /auth/me` with the sandbox token returns the sandbox company and `status: "sandbox"`.
+
+### 17.3 Files
+
+| Layer | File |
+|---|---|
+| Migration | `backend/migrations/versions/0556_organizations_sandbox.py` |
+| Status | `domains/organizations/lifecycle.py` (`SANDBOX`, `"sandbox"` signup source), `models/organization.py` |
+| Service | `application/learn/sandbox.py`: make, open (token), remove, cleanup, the in-process API client for the seed |
+| Routes | `domains/learn/sandbox_router.py`, mounted in `apps/whatsapp-assistant/src/runtime/lifecycle.py` |
+| Lists | `application/organizations/companies_overview.py` (one filter) |
+| Tests | unit (rules, token claims, refusals) + integration on real Postgres (make, seed, the token can't reach the real company, nothing operational sees it, remove leaves nothing) |
