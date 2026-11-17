@@ -871,8 +871,8 @@ export const PAGE_TOURS: Record<string, Tour> = {
     introFromPage: true,
     startWhen: ['vendors.list'],
     steps: [
-      { target: 'vendors.tiles', title: 'What you owe', text: 'What you owe, what is overdue, what was delivered with no bill yet, and what you paid ahead.', mood: 'look' },
-      { target: 'vendors.age', title: 'How long it waited', text: 'Unpaid bills and unbilled deliveries by how old they are. The red end is what to pay first.', mood: 'worry' },
+      { target: 'vendors.tiles', title: 'What you owe', text: 'What you owe, what is overdue, what was delivered with no bill yet, and what you paid ahead. Tap one to see only those suppliers.', mood: 'look' },
+      { target: 'vendors.age', title: 'How long it waited', text: 'Unpaid bills and unbilled deliveries by how old they are, each with its share. The red end is what to pay first; tap a part to see only those suppliers.', mood: 'worry' },
       { target: 'vendors.view', title: 'Delivered, no bill', text: 'Material that came with no bill yet: chase the bill before you pay.', mood: 'worry' },
       { target: 'vendors.search', title: 'Find a supplier', text: 'By name, phone or GSTIN, or by kind.' },
       { target: 'vendors.sort', title: 'Sort', text: 'Most owed, most overdue, waiting longest, or the best score.' },

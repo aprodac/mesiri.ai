@@ -11,7 +11,8 @@ import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
 import { LinkNamesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
-import { AgeBar } from '@/components/vendors/vendor-parts'
+import { AgeingCard } from '@/components/accounts/money-kit'
+import { AGE_BARS } from '@/components/accounts/money-look'
 import { UnbilledList } from '@/components/vendors/unbilled-list'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
@@ -23,8 +24,8 @@ import { mayManageMoney, rupees } from '@/lib/expenses'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
-import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
-import { KpiStrip, ModuleTitle, type KpiProps } from '@/components/page/page-kit'
+import { BUCKETS, KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type Buckets, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
+import { ModuleTitle, type KpiProps } from '@/components/page/page-kit'
 import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { paperStatusWords, usePapersAttention } from '@/lib/vendor-documents'
@@ -33,6 +34,9 @@ import { ActionIcon } from '@/components/page/action-button'
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
 // the money owed is, and one row per supplier with its balance. A row opens the supplier's page (ledger, bills, pay).
+// UX-34 (Mercon's payables ageing as the reference): what you owe and how long it waited in one card (AgeingCard, as on
+// Receivables), the four figures beside it still filtering, a part of the bar filtering by age; each supplier's own
+// age bar under its balance.
 // Everyone with Finance still sees the directory: a supplier is picked when an expense is recorded.
 
 type Tile = '' | 'owe' | 'overdue' | 'unbilled' | 'ahead'
@@ -65,6 +69,7 @@ export default function VendorsPage() {
   const [status, setStatus] = useUrlState<string>('status', 'active')
   const [kind, setKind] = useUrlState<string>('kind', 'all')
   const [tile, setTile] = useUrlState<Tile>('show', '')
+  const [age, setAge] = useUrlState<string>('age', '')  // UX-34: a part of the age bar picked
   const [sort, setSort] = useUrlState<Sort>('sort', seesMoney ? 'owed' : 'name')
   const scores = useSupplierScores(seesMoney)
   // PRC-52: a supplier whose papers are expired, missing (GST / PAN of a registered one) or expiring soon.
@@ -110,7 +115,7 @@ export default function VendorsPage() {
   const oldest = (v: Row) => v.oldest_unbilled ?? '9999'
   // PRC-50: no score (too few orders) sorts after every scored supplier.
   const scoreOf = (v: Row) => Number(scores.get(v.id)?.score ?? -1)
-  const shown = base.filter((v) => inTile(v, tile)).sort((a, b) => {
+  const shown = base.filter((v) => inTile(v, tile) && (!age || num(v.buckets?.[age as keyof Buckets]) > 0)).sort((a, b) => {
     if (sort === 'owed') return num(b.balance) - num(a.balance) || a.name.localeCompare(b.name)
     if (sort === 'overdue') return num(b.overdue) - num(a.overdue) || num(b.balance) - num(a.balance)
     if (sort === 'oldest') return oldest(a).localeCompare(oldest(b)) || num(b.balance) - num(a.balance)
@@ -158,25 +163,44 @@ export default function VendorsPage() {
         </Callout>
       ) : seesMoney && (
         <>
-          <KpiStrip
-            guide="vendors.tiles"
-            stats={tiles.map(({ value2: x, ...k }) => ({
-              ...k,
-              key: x,
-              loading,
-              pressed: tile === x,
-              onClick: () => (x === 'unbilled' ? setView('unbilled') : setTile(tile === x ? '' : x)),
-            }))}
-          />
-          {payables.data && num(payables.data.totals.payable) + num(payables.data.totals.unbilled) > 0 && (
-            <div className="rounded-xl border bg-card p-3" data-guide="vendors.age">
-              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                <span className="font-medium">How long it has waited</span>
-                <span className="text-xs text-muted-foreground">Unpaid bills and deliveries not billed, by their date{payables.data.partial ? ' · your projects only' : ''}</span>
+          <AgeingCard
+            guide="vendors.age"
+            title="You owe suppliers"
+            total={owe}
+            totalHint={
+              <>
+                {count('owe')} suppliers{payables.data ? ` · as on ${day(payables.data.as_of)}` : ''}{payables.data?.partial ? ' · your projects only' : ''}
+                <span className="block">The bar: unpaid bills and deliveries not billed, by how long they have waited</span>
+              </>
+            }
+            buckets={BUCKETS.map((b, i) => ({ key: b.key, label: b.label, value: num(payables.data?.buckets[b.key]), bar: AGE_BARS[i], late: i >= 2 }))}
+            active={age || null}
+            onPick={(k) => setAge(k ?? '')}
+            aside={
+              <div data-guide="vendors.tiles" className="flex flex-wrap gap-2">
+                {tiles.map(({ value2: x, label, value, hint }) => {
+                  const pressed = tile === x
+                  const tone = x === 'overdue' && num(t?.overdue) > 0 ? 'border-destructive/30 bg-destructive/[0.05] text-destructive' : x === 'unbilled' && num(t?.unbilled) > 0 ? 'border-draft/30 bg-draft-soft/50 text-draft' : x === 'ahead' ? 'border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-400' : 'bg-muted/40'
+                  return (
+                    <button
+                      key={x}
+                      type="button"
+                      aria-pressed={pressed}
+                      onClick={() => (x === 'unbilled' ? setView('unbilled') : setTile(pressed ? '' : x))}
+                      className={cn('min-w-[7.5rem] rounded-lg border px-3 py-1.5 text-left text-xs transition-colors hover:brightness-95', tone, pressed && 'ring-2 ring-ring ring-offset-1 ring-offset-background')}
+                    >
+                      <span className="block text-muted-foreground">{label}</span>
+                      <span className="text-sm font-semibold tabular-nums">
+                        {loading ? '…' : value}
+                        {x === 'overdue' && owe > 0 && num(t?.overdue) > 0 && <span className="ml-1 text-xs font-normal">{Math.round((num(t?.overdue) / owe) * 100)}%</span>}
+                      </span>
+                      <span className="block text-[11px] text-muted-foreground">{hint}</span>
+                    </button>
+                  )
+                })}
               </div>
-              <AgeBar buckets={payables.data.buckets} />
-            </div>
-          )}
+            }
+          />
         </>
       )}
 
@@ -231,7 +255,7 @@ export default function VendorsPage() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="vendors.list">
           <Store className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">{all.length ? 'No supplier matches' : 'No suppliers yet'}</p>
-          {(tile || kind !== 'all' || needle) && all.length > 0 && <Button variant="outline" size="sm" onClick={() => { setTile(''); setKind('all'); setQ('') }}>Clear filters</Button>}
+          {(tile || age || kind !== 'all' || needle) && all.length > 0 && <Button variant="outline" size="sm" onClick={() => { setTile(''); setAge(''); setKind('all'); setQ('') }}>Clear filters</Button>}
         </div>
       ) : (
         <ul className="divide-y rounded-xl border bg-card" data-guide="vendors.list">
@@ -264,6 +288,14 @@ export default function VendorsPage() {
                     <span className={cn('font-semibold tabular-nums', late > 0 ? 'text-destructive' : bal < 0 ? 'text-emerald-700 dark:text-emerald-400' : bal === 0 && 'text-muted-foreground')}>
                       {bal < 0 ? `+${rupees(-bal)}` : rupees(bal)}
                     </span>
+                    {bal > 0 && v.buckets && (() => {
+                      const sum = BUCKETS.reduce((n, x) => n + num(v.buckets![x.key]), 0) || 1
+                      return (
+                        <span className="my-0.5 flex h-1.5 w-24 gap-px overflow-hidden rounded-full bg-muted" title={`${Math.round((bal / (owe || 1)) * 100)}% of all you owe`}>
+                          {BUCKETS.map((x, i) => num(v.buckets![x.key]) > 0 && <span key={x.key} className={cn('h-full', AGE_BARS[i])} style={{ width: `${(num(v.buckets![x.key]) / sum) * 100}%` }} />)}
+                        </span>
+                      )
+                    })()}
                     <span className="max-w-[46vw] truncate text-xs text-muted-foreground sm:max-w-none">
                       {late > 0 ? `${rupees(late)} overdue` : bal < 0 ? 'paid ahead' : (v.unbilled_count ?? 0) > 0 ? `${v.unbilled_count} not billed` : v.bills_open ? `${v.bills_open} ${v.bills_open === 1 ? 'bill' : 'bills'} open` : v.last_payment ? `paid ${day(v.last_payment.date)}` : bal === 0 ? 'settled' : ''}
                     </span>
