@@ -20,6 +20,7 @@ import {
 } from '@/lib/subcontracts'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // NXT-05/06/07: the subcontract dialogs. A work order (subcontractor, where, lines from the BOQ or typed, retention,
 // advance, TDS, terms); a measurement; a bill with its check and deductions shown live before it is saved; approve or
@@ -204,8 +205,8 @@ export function WorkOrderDialog({ open, onOpenChange, editing, preset, onSaved }
           </section>
 
           <div className="grid gap-3 sm:grid-cols-4">
-            <Field label="Start" htmlFor="wo-start"><Input id="wo-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} className="dark:[color-scheme:dark]" /></Field>
-            <Field label="Finish by" htmlFor="wo-end"><Input id="wo-end" type="date" value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)} className="dark:[color-scheme:dark]" /></Field>
+            <Field label="Start" htmlFor="wo-start"><DatePicker id="wo-start" value={start} onChange={(v) => setStart(v)} /></Field>
+            <Field label="Finish by" htmlFor="wo-end"><DatePicker id="wo-end" value={end} min={start || undefined} onChange={(v) => setEnd(v)} /></Field>
             <Field label="Retention %" htmlFor="wo-ret" hint="Held from each bill"><Input id="wo-ret" type="number" min={0} max={50} step="any" value={retention} onChange={(e) => setRetention(e.target.value)} /></Field>
             <Field label="Defect period (days)" htmlFor="wo-def" hint="Retention after this"><Input id="wo-def" type="number" min={0} value={defect} onChange={(e) => setDefect(e.target.value)} placeholder="0" /></Field>
             <Field label="Advance agreed ₹" htmlFor="wo-adv" hint={n(advance) && value ? `Recovered ${(n(advance) / value * 100).toFixed(1)}% from each bill` : 'Recovered from the bills'}><Input id="wo-adv" type="number" min={0} step="any" value={advance} onChange={(e) => setAdvance(e.target.value)} placeholder="0" /></Field>
@@ -253,7 +254,7 @@ export function MeasureDialog({ open, onOpenChange, wo, lineId }: { open: boolea
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={`Quantity (${l?.unit ?? ''})`} htmlFor="m-q"><Input id="m-q" autoFocus type="number" min={0} step="any" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
-            <Field label="Measured on" htmlFor="m-d"><Input id="m-d" type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} className="dark:[color-scheme:dark]" /></Field>
+            <Field label="Measured on" htmlFor="m-d"><DatePicker id="m-d" value={date} max={today()} onChange={(v) => setDate(v)} /></Field>
           </div>
           {l && Number(qty) > 0 && (
             <p className={cn('text-sm', after > n(l.quantity) ? 'text-draft' : 'text-muted-foreground')}>
@@ -322,7 +323,7 @@ export function BillDialog({ open, onOpenChange, wo }: { open: boolean; onOpenCh
           ))}
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label="Their bill no." htmlFor="b-no"><Input id="b-no" value={no} onChange={(e) => setNo(e.target.value)} placeholder="RC/7" /></Field>
-            <Field label="Bill date" htmlFor="b-d"><Input id="b-d" type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} className="dark:[color-scheme:dark]" /></Field>
+            <Field label="Bill date" htmlFor="b-d"><DatePicker id="b-d" value={date} max={today()} onChange={(v) => setDate(v)} /></Field>
             <Field label="Bill total ₹" htmlFor="b-a" hint="Empty: the lines' total"><Input id="b-a" type="number" min={0} step="any" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={check?.gross} /></Field>
           </div>
           {check && (

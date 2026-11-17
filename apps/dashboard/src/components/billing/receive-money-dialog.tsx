@@ -13,6 +13,7 @@ import { fetchProjects } from '@/lib/projects'
 import { recordClientReceipt, type OpenBill, type ReceiptKind } from '@/lib/receivables'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // NXT-03: money a client paid. Against a bill (the bill's amount left is offered), on account (settles their oldest
 // bills first), or a mobilisation advance (never put on a bill: each bill recovers it). The API checks the rest.
@@ -155,7 +156,7 @@ export function ReceiveMoneyDialog({ open, onOpenChange, bills, preselect }: {
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="rcv-date">Received on</Label>
-              <Input id="rcv-date" type="date" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} />
+              <DatePicker id="rcv-date" value={date} max={todayIso()} onChange={(v) => setDate(v)} />
             </div>
           </div>
           {tooMuch && bill && (

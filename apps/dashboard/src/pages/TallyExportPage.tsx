@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, BookOpenCheck, FileCode2, Info } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
@@ -17,6 +16,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { downloadTallyXml, fetchTallySummary } from '@/lib/tally'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // NXT-12: the books for the CA. A period's confirmed expenses (Journal vouchers) and payments (Payment vouchers),
 // with the ledgers they use, as one XML file Tally imports (Gateway of Tally › Import › Vouchers). One way: nothing
@@ -88,11 +88,11 @@ export default function TallyExportPage() {
         <div className="flex flex-1 gap-2">
           <div className="flex flex-1 flex-col gap-1">
             <Label htmlFor="tally-from" className="text-xs">From</Label>
-            <Input id="tally-from" type="date" value={period.date_from} max={period.date_to} onChange={(e) => e.target.value && setPeriod((p) => ({ ...p, date_from: e.target.value }))} />
+            <DatePicker id="tally-from" value={period.date_from} max={period.date_to} onChange={(v) => v && setPeriod((p) => ({ ...p, date_from: v }))} />
           </div>
           <div className="flex flex-1 flex-col gap-1">
             <Label htmlFor="tally-to" className="text-xs">To</Label>
-            <Input id="tally-to" type="date" value={period.date_to} min={period.date_from} onChange={(e) => e.target.value && setPeriod((p) => ({ ...p, date_to: e.target.value }))} />
+            <DatePicker id="tally-to" value={period.date_to} min={period.date_from} onChange={(v) => v && setPeriod((p) => ({ ...p, date_to: v }))} />
           </div>
         </div>
         <Button data-guide="tally.download" className="gap-1.5" onClick={download} disabled={busy || !s || !!empty}>

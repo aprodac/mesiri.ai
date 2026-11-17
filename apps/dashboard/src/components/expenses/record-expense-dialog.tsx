@@ -32,6 +32,7 @@ import {
   type CategoryItem,
   type VendorItem,
 } from '@/lib/api'
+import { DatePicker } from '@/components/ui/date-picker'
 
 interface RecordExpenseDialogProps {
   open: boolean
@@ -347,13 +348,7 @@ export function RecordExpenseDialog({
                   <Calendar className="size-3.5 text-muted-foreground" />
                   Occurred Date
                 </Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={occurredDate}
-                  onChange={(e) => setOccurredDate(e.target.value)}
-                  className="h-9 text-xs"
-                />
+                <DatePicker id="date" value={occurredDate} onChange={(v) => setOccurredDate(v)} className="h-9 text-xs" />
               </div>
             </div>
 

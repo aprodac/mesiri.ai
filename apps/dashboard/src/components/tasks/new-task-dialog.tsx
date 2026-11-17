@@ -12,6 +12,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { PRIORITY_LABEL, createTask, fetchTaskOptions, type TaskPrefill, type TaskPriority } from '@/lib/tasks'
 import type { AppScope } from '@/lib/scope-types'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // TSK-02/03: give a task. The project and site come from the page's scope when it has one, or from what the task is
 // made from (an issue, a schedule activity: `prefill`). Everything offered comes from the API's own list
@@ -145,7 +146,7 @@ export function NewTaskDialog({ open, onOpenChange, scope, prefill }: {
             )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="task-due">Due</Label>
-              <Input id="task-due" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+              <DatePicker id="task-due" value={due} onChange={(v) => setDue(v)} />
               <div className="flex gap-1.5 text-xs">
                 {[['Today', 0], ['Tomorrow', 1], ['In a week', 7]].map(([label, n]) => (
                   <button key={label} type="button" className="rounded-md border px-1.5 py-0.5 hover:bg-muted" onClick={() => setDue(inDays(n as number))}>{label}</button>

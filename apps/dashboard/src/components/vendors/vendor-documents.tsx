@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { documentError as errorText } from '@/lib/documents'
 import { cn } from '@/lib/utils'
 import { addVendorPaper, archiveVendorPaper, fetchVendorPapers, paperLink, paperStatusWords, type Paper, type PaperKindRow, type PaperStatus } from '@/lib/vendor-documents'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-52: Supplier page > Documents -- the supplier's own papers, one card per kind with its status. A new upload of a
 // kind replaces the current one (the old one stays in the history); archive keeps the file. Same upload rules as the
@@ -89,7 +90,7 @@ function KindCard({ vendorId, row, mayAdd, onChanged }: { vendorId: string; row:
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor={`paper-until-${row.kind}`} className="text-xs">Valid until <span className="font-normal text-muted-foreground">(optional)</span></Label>
-            <Input id={`paper-until-${row.kind}`} type="date" value={until} onChange={(e) => setUntil(e.target.value)} className="dark:[color-scheme:dark]" />
+            <DatePicker id={`paper-until-${row.kind}`} value={until} onChange={(v) => setUntil(v)} />
           </div>
           <div className="flex gap-1.5">
             <Button type="submit" size="sm" className="h-9" disabled={!file || save.isPending}>Save</Button>

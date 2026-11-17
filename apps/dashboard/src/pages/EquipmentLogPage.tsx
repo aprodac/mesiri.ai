@@ -16,6 +16,7 @@ import { dayWords, errorWords, fetchLogs, hrs, iso, saveLogs, voidLog, type LogL
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // NXT-11: Equipment > Daily log. One date, every machine at the sites in view on one screen, typed in place: the
 // fewest taps for whoever fills it in the evening. Machines already logged (on WhatsApp or here) show their figures;
@@ -141,7 +142,7 @@ export default function EquipmentLogPage() {
           <Button variant="outline" size="icon" aria-label="Day before" onClick={() => setDate(add(date, -1))}><ChevronLeft className="size-4" /></Button>
           <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold">
             {dayWords(date, today)}
-            <input type="date" value={date} max={today} onChange={(e) => e.target.value && setDate(e.target.value)} className="w-[8.5rem] bg-transparent text-sm font-normal outline-none" aria-label="Date" />
+            <DatePicker value={date} max={today} onChange={(v) => v && setDate(v)} className="w-[8.5rem] bg-transparent text-sm font-normal outline-none" aria-label="Date" />
           </label>
           <Button variant="outline" size="icon" aria-label="Day after" disabled={date >= today} onClick={() => setDate(add(date, 1))}><ChevronRight className="size-4" /></Button>
         </div>

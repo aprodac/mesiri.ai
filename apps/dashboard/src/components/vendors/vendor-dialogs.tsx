@@ -32,6 +32,7 @@ import {
   type VendorKind,
 } from '@/lib/vendors'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // CC-09 / CC-10: the supplier dialogs. Add or edit a supplier (kind, credit days, contact, opening balance), pay one
 // (oldest bills first, the rest as an advance, with a preview of what it pays), bill deliveries already recorded, put
@@ -147,7 +148,7 @@ export function VendorFormDialog({ open, onOpenChange, vendor, canSetOpening, on
                   </SelectContent>
                 </Select>
               </div>
-              <Input type="date" aria-label="As of" value={f.opening_date} max={todayIso()} onChange={set('opening_date')} className="bg-background dark:[color-scheme:dark]" />
+              <DatePicker aria-label="As of" value={f.opening_date} max={todayIso()} onChange={(v) => setF((x) => ({ ...x, opening_date: v }))} />
             </fieldset>
           )}
           <Field label="Notes" htmlFor="v-notes">
@@ -248,7 +249,7 @@ export function PayVendorDialog({ open, onOpenChange, vendor, preselect, project
                 <Input id="pay-amount" type="number" min={0} step="any" inputMode="decimal" required value={amount} onChange={(e) => setAmount(e.target.value)} className="text-lg font-semibold tabular-nums" />
               </Field>
               <Field label="Paid on" htmlFor="pay-date">
-                <Input id="pay-date" type="date" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} className="dark:[color-scheme:dark]" />
+                <DatePicker id="pay-date" value={date} max={todayIso()} onChange={(v) => setDate(v)} />
               </Field>
             </div>
             <Field label="From">
@@ -414,7 +415,7 @@ export function BillDeliveriesDialog({ open, onOpenChange, vendor, deliveries, b
                 </Field>
                 <Field label="GST in it" htmlFor="b-gst"><Input id="b-gst" type="number" min={0} step="any" inputMode="decimal" value={gst} onChange={(e) => setGst(e.target.value)} placeholder="0" /></Field>
                 <Field label="Their bill number" htmlFor="b-no"><Input id="b-no" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="MH/2231" /></Field>
-                <Field label="Bill date" htmlFor="b-date"><Input id="b-date" type="date" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} className="dark:[color-scheme:dark]" /></Field>
+                <Field label="Bill date" htmlFor="b-date"><DatePicker id="b-date" value={date} max={todayIso()} onChange={(v) => setDate(v)} /></Field>
               </div>
               {tooMany && <p className="text-sm text-draft">These are from {projects.size} projects: a bill belongs to one project. Pick one project's deliveries.</p>}
             </>

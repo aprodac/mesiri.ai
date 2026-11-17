@@ -9,7 +9,6 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast-notification'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Callout, PageHeader } from '@/components/dpr-page'
@@ -18,6 +17,7 @@ import { useUrlState } from '@/lib/url-state'
 import { FilterSelect } from '@/components/filter-select'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // Daily Reports history (WEB-06): every site and project DPR, newest day
 // first, with the figures from the version that was confirmed or sent. Each
@@ -275,9 +275,9 @@ export default function DailyReportsPage() {
         </Select>
         {range === 'custom' && (
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Input type="date" aria-label="From" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker aria-label="From" value={customFrom} max={customTo || undefined} onChange={(v) => setCustomFrom(v)} className="h-9 w-[150px]" />
             to
-            <Input type="date" aria-label="To" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker aria-label="To" value={customTo} min={customFrom || undefined} onChange={(v) => setCustomTo(v)} className="h-9 w-[150px]" />
           </div>
         )}
         {/* WEB-40: a dropdown, like the other filters. */}

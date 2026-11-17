@@ -5,12 +5,12 @@ import { BadgeCheck, ChevronRight, CircleAlert, Scale } from 'lucide-react'
 import { BooksClosed, BooksTabs } from '@/components/accounts/books'
 import { NatureDot } from '@/components/accounts/visuals'
 import { DprHeader, PageError, StatStrip } from '@/components/dpr-page'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchBalanceSheet, formatDay, mayReadBooks, rupees, type BsGroup } from '@/lib/accounts'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // ACC-06: what the company owns against what it owes and its capital, on a day; the year's profit and earlier years'
 // in capital. Company-wide (a project has its position: Accounts › Projects). Backend: GET /accounts/balance-sheet.
@@ -106,17 +106,12 @@ export default function BalanceSheetPage() {
         action={
           <label data-guide="bs.asof" className="flex items-center gap-2 text-sm text-muted-foreground">
             As on
-            <Input
-              type="date"
-              value={asOf ?? d?.as_of ?? ''}
-              onChange={(e) => setParams((p) => {
+            <DatePicker value={asOf ?? d?.as_of ?? ''} onChange={(v) => setParams((p) => {
                 const n = new URLSearchParams(p)
-                if (e.target.value) n.set('as_of', e.target.value)
+                if (v) n.set('as_of', v)
                 else n.delete('as_of')
                 return n
-              }, { replace: true })}
-              className="h-8 w-[150px] dark:[color-scheme:dark]"
-            />
+              }, { replace: true })} className="h-8 w-[150px]" />
           </label>
         }
       />

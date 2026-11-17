@@ -42,6 +42,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn, toLocalISODate } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // --- Status ---
 // The backend's activity statuses are PLANNED, IN_PROGRESS, STOPPED and
@@ -451,9 +452,9 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
         </Select>
         {datePreset === 'CUSTOM' && (
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Input type="date" value={customFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker value={customFrom} onChange={(v) => setDateFrom(v)} className="h-9 w-[150px]" />
             to
-            <Input type="date" value={customTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker value={customTo} onChange={(v) => setDateTo(v)} className="h-9 w-[150px]" />
           </div>
         )}
         {hasActiveFilters && (
@@ -855,12 +856,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Activity Date</Label>
-              <Input
-                type="date"
-                value={editForm.activity_date}
-                onChange={(e) => setEditForm((f) => ({ ...f, activity_date: e.target.value }))}
-                className="h-8 text-xs"
-              />
+              <DatePicker value={editForm.activity_date} onChange={(v) => setEditForm((f) => ({ ...f, activity_date: v }))} className="h-8 text-xs" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Reason (optional)</Label>

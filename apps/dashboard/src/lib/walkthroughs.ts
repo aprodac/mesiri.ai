@@ -709,9 +709,9 @@ const GV_SETUP: Walkthrough = {
       page: '/planning/setup', target: 'setup.dates', mood: 'think',
       try: { kind: 'here', poll: true, check: START_CHECK('dates') },
       title: 'Your turn: the dates',
-      text: 'From the contract summary: work starts 2 November 2026, handover 31 July 2027. Type them in and press Save dates.',
-      say: 'Your turn. From the contract summary: work starts on the second of November, and the handover is the thirty first of July, next year. Type them in, and press Save dates.',
-      for: { basics: { text: 'Two dates from the contract summary: work starts 2 November 2026, and the building is handed over 31 July 2027. Type them in and press Save dates. Every "late" Mesiri shows is measured against these.' } },
+      text: 'From the contract summary: work starts 2 November 2026, handover 31 July 2027. Pick them and press Save dates.',
+      say: 'Your turn. From the contract summary: work starts on the second of November, and the handover is the thirty first of July, next year. Pick them, and press Save dates.',
+      for: { basics: { text: 'Two dates from the contract summary: work starts 2 November 2026, and the building is handed over 31 July 2027. Pick them and press Save dates. Every "late" Mesiri shows is measured against these.' } },
     },
     {
       page: '/planning/setup', target: 'setup.contract', mood: 'think', file: KIT_CONTRACT,

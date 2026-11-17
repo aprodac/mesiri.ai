@@ -35,6 +35,7 @@ import {
   type MessageOutcome,
 } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
+import { DatePicker } from '@/components/ui/date-picker'
 
 interface UserWhatsAppMessagesTabProps {
   user: User
@@ -590,24 +591,12 @@ export function UserWhatsAppMessagesTab({
 
             <div className="grid gap-1.5">
               <Label htmlFor="fltDateFrom">Date Range — From</Label>
-              <Input
-                type="date"
-                id="fltDateFrom"
-                value={dateFromFilter}
-                onChange={(e) => setDateFromFilter(e.target.value)}
-                className="h-8 text-xs rounded-sm"
-              />
+              <DatePicker id="fltDateFrom" value={dateFromFilter} onChange={(v) => setDateFromFilter(v)} className="h-8 text-xs rounded-sm" />
             </div>
 
             <div className="grid gap-1.5">
               <Label htmlFor="fltDateTo">Date Range — To</Label>
-              <Input
-                type="date"
-                id="fltDateTo"
-                value={dateToFilter}
-                onChange={(e) => setDateToFilter(e.target.value)}
-                className="h-8 text-xs rounded-sm"
-              />
+              <DatePicker id="fltDateTo" value={dateToFilter} onChange={(v) => setDateToFilter(v)} className="h-8 text-xs rounded-sm" />
             </div>
           </div>
           <div className="flex border-t pt-4 gap-2">

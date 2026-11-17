@@ -29,6 +29,7 @@ import {
 import type { AppScope } from '@/lib/scope-types'
 import { Combobox } from '@/components/ui/combobox'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 function todayIso(): string {
   return appNow().toISOString().slice(0, 10)
@@ -309,13 +310,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="occurredDateOut">Day</Label>
-              <Input
-                id="occurredDateOut"
-                type="date"
-                value={occurredDate}
-                onChange={(e) => setOccurredDate(e.target.value)}
-                required
-              />
+              <DatePicker id="occurredDateOut" value={occurredDate} onChange={(v) => setOccurredDate(v)} required />
             </div>
           </div>
 

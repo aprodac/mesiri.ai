@@ -4,7 +4,6 @@ import {
   AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, Diamond, Flame, Handshake, Link2, MessageSquareText, RotateCcw, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatQuantity } from '@/lib/boq'
 import { addDays, daysBetween, plural, shortDay, STATE_WORDS, type Activity, type ActivityUpdate, type Schedule } from '@/lib/schedule'
@@ -12,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { STATE_BAR } from './gantt'
 import { MakeTaskButton } from '@/components/tasks/make-task-button'
 import { ActionIcon } from '@/components/page/action-button'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // ST-04: one activity, everything about it in one place: where it stands and why, what it pushes, the BOQ lines
 // site measured, who is doing it (work orders), what is stuck (issues), the last site update; and, for those who
@@ -177,12 +177,12 @@ export function ActivityPanel({
           <div className={cn('grid gap-2', milestone ? 'grid-cols-1' : 'grid-cols-2')}>
             <div className="flex flex-col gap-1">
               <Label htmlFor="act-start" className="text-xs">{milestone ? 'Day' : 'Start'}</Label>
-              <Input id="act-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+              <DatePicker id="act-start" value={start} onChange={(v) => setStart(v)} />
             </div>
             {!milestone && (
               <div className="flex flex-col gap-1">
                 <Label htmlFor="act-end" className="text-xs">End</Label>
-                <Input id="act-end" type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
+                <DatePicker id="act-end" value={end} min={start} onChange={(v) => setEnd(v)} />
               </div>
             )}
           </div>

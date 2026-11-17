@@ -28,6 +28,7 @@ import {
   type TaskStatus,
 } from '@/lib/tasks'
 import { ActionIcon } from '@/components/page/action-button'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // TSK-02: one task on the right of the Tasks page (a sheet on a phone): what it is, the buttons for the moves this
 // person may make (the API's own `may`), the details the giver or a manager may change, and its history with photos.
@@ -150,7 +151,7 @@ export function TaskDetail({ task: row, today, inSheet = false }: { task: Task; 
         <dt className="text-muted-foreground">Due</dt>
         <dd>
           {t.may.edit && !readOnly ? (
-            <Input type="date" className="h-8 w-44" value={t.due_date ?? ''} onChange={(e) => change.mutate({ due_date: e.target.value || null })} />
+            <DatePicker className="h-8 w-44" value={t.due_date ?? ''} onChange={(v) => change.mutate({ due_date: v || null })} />
           ) : (t.due_date ? dayWords(t.due_date) : 'No date')}
         </dd>
         <dt className="text-muted-foreground">Priority</dt>

@@ -14,6 +14,7 @@ import {
 } from '@/lib/equipment'
 import { DayBar, MachineAvatar } from './parts'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // NXT-11: the quick actions on a machine. Log the day in a few taps (Full day / Half day / broke down chips fill the
 // hours; one figure is enough), move it to another site, enter the hire company's bill (NXT-13).
@@ -157,7 +158,7 @@ export function LogDayDialog({ machine, open, onOpenChange, date }: { machine: M
             )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="lg-day">Day</Label>
-              <Input id="lg-day" type="date" value={day} max={iso(appNow())} onChange={(e) => setDay(e.target.value)} />
+              <DatePicker id="lg-day" value={day} max={iso(appNow())} onChange={(v) => setDay(v)} />
             </div>
           </div>
           {error && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
@@ -201,7 +202,7 @@ export function MoveDialog({ machine, open, onOpenChange }: { machine: Machine |
             <Combobox options={options} value={siteId} onValueChange={setSiteId} placeholder="Pick a site" searchPlaceholder="Site or project" emptyText="No site with that name" />
           </div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="mv-day">From</Label>
-            <Input id="mv-day" type="date" value={day} max={iso(appNow())} onChange={(e) => setDay(e.target.value)} />
+            <DatePicker id="mv-day" value={day} max={iso(appNow())} onChange={(v) => setDay(v)} />
           </div>
           {error && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
         </div>
@@ -244,8 +245,8 @@ export function HireBillDialog({ machine, open, onOpenChange }: { machine: Pick<
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>{machine.vendor_name ? `${machine.vendor_name}'s bill` : 'Hire bill'} for {machine.name}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5"><Label htmlFor="hb-from">From</Label><Input id="hb-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-          <div className="flex flex-col gap-1.5"><Label htmlFor="hb-to">To</Label><Input id="hb-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+          <div className="flex flex-col gap-1.5"><Label htmlFor="hb-from">From</Label><DatePicker id="hb-from" value={from} onChange={(v) => setFrom(v)} /></div>
+          <div className="flex flex-col gap-1.5"><Label htmlFor="hb-to">To</Label><DatePicker id="hb-to" value={to} onChange={(v) => setTo(v)} /></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="hb-h">Hours on the bill</Label><Input id="hb-h" inputMode="decimal" value={hours} onChange={(e) => setHours(num(e.target.value))} placeholder="186" /></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="hb-d">Days on the bill</Label><Input id="hb-d" inputMode="decimal" value={days} onChange={(e) => setDays(num(e.target.value))} placeholder="24" /></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="hb-a">Amount</Label>
