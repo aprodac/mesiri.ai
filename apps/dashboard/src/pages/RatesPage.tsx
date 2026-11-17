@@ -1,8 +1,7 @@
 import * as React from 'react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { useQuery } from '@tanstack/react-query'
-import { BadgePercent, CalendarDays, Download, IndianRupee, LayoutGrid, MapPin, Search, Store, Tags, TrendingDown, TrendingUp } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { BadgePercent, CalendarDays, LayoutGrid, MapPin, Search, Store, Tags, TrendingDown, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -25,7 +24,8 @@ import { qty } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import { MONEY_ROLES } from '@/lib/module-map'
 import { RATE_PERIODS, fetchRates, rate, ratePeriodRange, shortDate, type RateItem, type RatePeriod, type RatePurchase, vendorColour } from '@/lib/rates'
-import { ModuleTitle, NoAccess, SayOnWhatsApp } from '@/components/page/page-kit'
+import { type KpiProps, KpiStrip, ModuleTitle, NoAccess, SayOnWhatsApp } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-14 / PRC-16: Procurement > Rates. What each item cost, from which supplier, over time: four tiles for what
 // needs a look (rates that went up, went down, cheaper elsewhere, spend), filters, one row per item with its trend
@@ -129,11 +129,14 @@ export default function RatesPage() {
 
   const sum = (xs: RateItem[], f: (i: RateItem) => number) => xs.reduce((n, i) => n + f(i), 0)
   const saving = sum(filtered.filter((i) => Number(i.above_best) > 0), (i) => Number(i.above_best))
-  const tiles: { value: Exclude<Tile, ''> | 'spend'; label: string; value2: string; icon: LucideIcon; tone: string; ring: string; num?: string }[] = [
-    { value: 'up', label: 'Rates went up', value2: String(filtered.filter((i) => i.trend === 'up').length), icon: TrendingUp, tone: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200', ring: 'ring-red-500', num: 'text-red-700 dark:text-red-400' },
-    { value: 'down', label: 'Rates went down', value2: String(filtered.filter((i) => i.trend === 'down').length), icon: TrendingDown, tone: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200', ring: 'ring-green-600' },
-    { value: 'cheaper', label: 'Cheaper elsewhere', value2: saving > 0 ? rupees(Math.round(saving)) : '0', icon: BadgePercent, tone: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100', ring: 'ring-emerald-500' },
-    { value: 'spend', label: `${filtered.length} ${filtered.length === 1 ? 'item' : 'items'} bought`, value2: rupees(Math.round(sum(filtered, (i) => Number(i.spend)))), icon: IndianRupee, tone: 'bg-yellow-100 text-yellow-900 dark:bg-yellow-950 dark:text-yellow-100', ring: 'ring-yellow-500' },
+  // UX-15: page kit figures. Rates up red, down green, money we could have saved amber.
+  const ups = filtered.filter((i) => i.trend === 'up').length
+  const downs = filtered.filter((i) => i.trend === 'down').length
+  const tiles: (KpiProps & { value2: Exclude<Tile, ''> | 'spend' })[] = [
+    { value2: 'up', label: 'Rates went up', value: ups, icon: TrendingUp, tone: ups > 0 ? 'bad' : 'default', of: filtered.length || undefined },
+    { value2: 'down', label: 'Rates went down', value: downs, icon: TrendingDown, tone: downs > 0 ? 'good' : 'default', of: filtered.length || undefined },
+    { value2: 'cheaper', label: 'Cheaper elsewhere', value: saving > 0 ? rupees(Math.round(saving)) : '—', icon: BadgePercent, tone: saving > 0 ? 'attention' : 'default' },
+    { value2: 'spend', label: 'Bought', value: rupees(Math.round(sum(filtered, (i) => Number(i.spend)))), kind: 'money', hint: `${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}` },
   ]
 
   const order = (item: RateItem) => (vendorName: string, lastRate: string, at: RatePurchase | undefined) => {
@@ -160,33 +163,20 @@ export default function RatesPage() {
         <div className="flex items-center gap-3">
           {data && <span className="hidden text-sm text-muted-foreground lg:inline">{shortDate(data.date_from)} – {shortDate(data.date_to)} · {sum(filtered, (i) => i.purchases)} purchases</span>}
           <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => data && exportRates(list, data.date_from, data.date_to)} title="The items shown, as a CSV file (opens in Excel)">
-            <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
+            <ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span>
           </Button>
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-guide="rates.tiles">
-        {tiles.map((t) => {
-          const on = tile === t.value
-          const clickable = t.value !== 'spend'
-          return (
-            <button
-              key={t.value}
-              type="button"
-              aria-pressed={clickable ? on : undefined}
-              disabled={!clickable}
-              onClick={() => clickable && setTile(on ? '' : (t.value as Tile))}
-              className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition sm:p-3.5', clickable && 'hover:-translate-y-px', on && cn('ring-2', t.ring), !clickable && 'cursor-default')}
-            >
-              <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', t.tone)}><t.icon className="size-4 sm:size-5" /></span>
-              <span className="flex min-w-0 flex-col">
-                <span className={cn('truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl', t.value2 !== '0' && t.num)}>{isLoading ? '–' : t.value2}</span>
-                <span className="truncate text-xs text-muted-foreground sm:text-sm sm:text-foreground/80">{t.label}</span>
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <KpiStrip
+        guide="rates.tiles"
+        stats={tiles.map(({ value2: x, ...k }) => ({
+          ...k,
+          key: x,
+          loading: isLoading,
+          ...(x === 'spend' ? {} : { pressed: tile === x, onClick: () => setTile(tile === x ? '' : (x as Tile)) }),
+        }))}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="Sort" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="rates.sort">

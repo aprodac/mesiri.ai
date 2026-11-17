@@ -1,7 +1,7 @@
-import { FileText } from 'lucide-react'
 import type { DprVersion } from '@/lib/api'
 import { dateTime } from '@/lib/site-day'
 import { Button } from '@/components/ui/button'
+import { ActionIcon } from '@/components/page/action-button'
 
 // A DPR's versions, newest first, each with its PDF. Shared by the site DPR
 // page (WEB-04) and the project DPR page (WEB-05); sits in the page's side
@@ -42,7 +42,7 @@ export function DprVersionsCard({
                 </span>
               </div>
               <Button variant="ghost" size="sm" onClick={() => onPdf(v)}>
-                <FileText /> PDF
+                <ActionIcon kind="pdf" /> PDF
               </Button>
             </li>
           ))}

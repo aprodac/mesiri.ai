@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { FolderLock, MessageSquare, MessageSquareOff, MoreHorizontal, Pencil, Plus, Search, Trash2, UserCheck, UserX, Users as UsersIcon } from 'lucide-react'
+import { FolderLock, MessageSquare, MessageSquareOff, MoreHorizontal, Pencil, Plus, Search, UserCheck, UserX, Users as UsersIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -20,6 +20,7 @@ import { FilterSelect } from '@/components/filter-select'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { initials, projectAccessText, useMemberships } from '@/lib/team'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WEB-28: the team as rows that say, for each person, what matters for
 // Mesiri to work -- the projects they reach and whether they have a
@@ -200,7 +201,7 @@ export default function Users() {
                         <FolderLock className="mr-2 size-3.5" /> Projects and sites
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setDialog({ kind: 'whatsapp', user })}>
-                        <MessageSquare className="mr-2 size-3.5" /> WhatsApp number
+                        <ActionIcon kind="whatsapp" className="mr-2 size-3.5" /> WhatsApp number
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => setDialog({ kind: 'status', user })}>
@@ -208,7 +209,7 @@ export default function Users() {
                         {user.status === 'active' ? 'Deactivate' : 'Make active'}
                       </DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDialog({ kind: 'delete', user })}>
-                        <Trash2 className="mr-2 size-3.5" /> Delete
+                        <ActionIcon kind="delete" className="mr-2 size-3.5" /> Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

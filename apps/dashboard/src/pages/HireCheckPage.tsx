@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Download, ReceiptText, Scale } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, ReceiptText, Scale } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 import { HireBillDialog } from '@/components/equipment/actions'
@@ -11,7 +11,8 @@ import { useReadOnly } from '@/lib/trial'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { RATE_WORDS, deleteHireBill, errorWords, fetchHireCheck, hrs, iso, type HireCheckRow, inr } from '@/lib/equipment'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { KpiStrip, ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-13: Equipment > Hire check. "The bill says 8 hours a day; how many did it work?" Per hired machine in the period:
 // the hours recorded on site, what they come to at the agreed rate (with the hire's minimum hours, never the breakdown),
@@ -66,23 +67,20 @@ export default function HireCheckPage() {
                 className={cn('h-8 rounded-lg px-3 text-sm', Number(offset) === o ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75')}>{monthRange(o)[2]}</button>
             ))}
           </div>
-          <Button variant="outline" className="gap-2" disabled={!items.length} onClick={exportIt}><Download className="size-4" /><span className="hidden sm:inline">Export</span></Button>
+          <Button variant="outline" className="gap-2" disabled={!items.length} onClick={exportIt}><ActionIcon kind="export-excel" className="size-4" /><span className="hidden sm:inline">Export</span></Button>
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-guide="hire.tiles">
-        {[
-          { label: 'Hours recorded come to', value: inr(data?.totals.expected ?? 0), icon: ClipboardList, tone: 'bg-muted' },
-          { label: 'Billed', value: inr(data?.totals.billed ?? 0), icon: ReceiptText, tone: 'bg-muted' },
-          { label: 'Earned, not billed yet', value: inr(data?.totals.unbilled ?? 0), icon: CheckCircle2, tone: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100' },
-          { label: 'Bills asking for more', value: String(data?.totals.over ?? 0), icon: AlertTriangle, tone: data?.totals.over ? 'bg-destructive text-white' : 'bg-muted' },
-        ].map((k) => (
-          <div key={k.label} className="flex items-center gap-3 rounded-xl border bg-card p-3">
-            <span className={cn('inline-flex size-10 shrink-0 items-center justify-center rounded-lg', k.tone)}><k.icon className="size-5" /></span>
-            <span className="flex flex-col"><span className="text-xl leading-tight font-semibold tabular-nums">{isLoading ? '–' : k.value}</span><span className="text-xs text-muted-foreground">{k.label}</span></span>
-          </div>
-        ))}
-      </div>
+      {/* UX-15: page kit figures; billed shows its share of what the hours come to. */}
+      <KpiStrip
+        guide="hire.tiles"
+        stats={[
+          { label: 'Hours come to', value: inr(data?.totals.expected ?? 0), icon: ClipboardList, loading: isLoading },
+          { label: 'Billed', value: inr(data?.totals.billed ?? 0), icon: ReceiptText, loading: isLoading, share: Number(data?.totals.expected) > 0 ? Number(data?.totals.billed ?? 0) / Number(data?.totals.expected) : undefined },
+          { label: 'Earned, not billed', value: inr(data?.totals.unbilled ?? 0), icon: CheckCircle2, loading: isLoading, tone: Number(data?.totals.unbilled) > 0 ? 'info' : 'default' },
+          { label: 'Bills asking for more', value: data?.totals.over || '—', icon: AlertTriangle, loading: isLoading, tone: data?.totals.over ? 'bad' : 'good' },
+        ]}
+      />
 
       <section aria-label={`Hired machines, ${label}`} className="overflow-hidden rounded-xl border" data-guide={!data ? undefined : items.length ? 'hire.list' : 'hire.empty'}>
         {isLoading && <div className="h-32 animate-pulse bg-muted/40" />}

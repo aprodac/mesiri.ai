@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, CalendarDays, Star, Camera, Check, ClipboardList, Clock, FileText, MessageCircle, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
+import { Ban, CalendarDays, Star, Camera, Check, ClipboardList, Clock, FileText, PackageCheck, Pencil, Phone, RotateCcw, ShoppingCart, Truck, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import { billFile } from '@/lib/bill-upload'
@@ -18,6 +18,7 @@ import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 import { LinkedStrip } from '@/components/page/page-kit'
 import { orderLinks } from '@/lib/links'
 import { VendorLink } from '@/components/vendors/vendor-parts'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-06/08: one order, as the office and the site see it: the supplier, what was ordered and what came per line,
 // the deliveries so far, the requests it covers, and the next step (receive, move the date, cancel, close short).
@@ -222,8 +223,8 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
           {/* PRC-26: the order for the supplier, as a document or on WhatsApp; the person sends it. */}
           <div className="grid grid-cols-2 gap-2" data-guide="po.send">
             <Button asChild variant="outline" className="h-10 gap-2"><Link to={`/procurement/orders/${order.id}/document`}><FileText className="size-4" /> PO document</Link></Button>
-            <Button asChild variant="outline" className="h-10 gap-2 border-green-600/40 text-green-800 dark:text-green-300">
-              <a href={whatsappUrl(order.vendor_phone, orderMessage(order, me?.org_name || me?.organization_name))} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send on WhatsApp</a>
+            <Button asChild variant="outline" className="h-10 gap-2">
+              <a href={whatsappUrl(order.vendor_phone, orderMessage(order, me?.org_name || me?.organization_name))} target="_blank" rel="noreferrer"><ActionIcon kind="whatsapp" className="size-4" /> Send on WhatsApp</a>
             </Button>
           </div>
           {order.may_receive && (

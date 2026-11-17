@@ -2,7 +2,7 @@ import * as React from 'react'
 import { BooksLink } from '@/components/accounts/books'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftRight, CheckCircle2, ChevronRight, Download, Filter, HandCoins, Landmark, MoreHorizontal, PiggyBank, Plus, TriangleAlert, Undo2, Wallet } from 'lucide-react'
+import { ArrowLeftRight, CheckCircle2, Filter, HandCoins, Landmark, MoreHorizontal, PiggyBank, Plus, TriangleAlert, Wallet } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -27,10 +27,11 @@ import { cn } from '@/lib/utils'
 import { vendorUrl } from '@/lib/vendors'
 import { deleteAccountApi, fetchAccountsApi, fetchFinanceSettingsApi, fetchTransactionsApi, reverseTransferApi } from '@/lib/api'
 import { exportCsv } from '@/lib/export'
-import { compact, fetchExpenses, mayManageMoney, mayMoveMoney } from '@/lib/expenses'
+import { PAID_VIA, compact, fetchExpenses, mayManageMoney, mayMoveMoney } from '@/lib/expenses'
 import { useAuth } from '@/lib/AuthContext'
 import type { AccountForEdit } from '@/components/accounts/account-dialog'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { KpiStrip, ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WEB-51 (Ilan, 5 Nov): Finance > Money, one page for what used to be Accounts, Petty cash, Transactions and the
 // transfers. Accounts: the company's bank accounts, each site's petty cash and the rest, with what each holds; a row
@@ -354,21 +355,21 @@ export default function MoneyPage() {
             <>
               <MoneyTiles
                 tiles={[
-                  { label: 'In the bank', value: compact(banks.reduce((n, a) => n + a.balance, 0)), hint: `${banks.length} ${banks.length === 1 ? 'account' : 'accounts'}`, icon: Landmark, tone: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100' },
+                  { label: 'In the bank', value: compact(banks.reduce((n, a) => n + a.balance, 0)), hint: `${banks.length} ${banks.length === 1 ? 'account' : 'accounts'}`, icon: Landmark, tone: PAID_VIA.direct.chip },
                   {
                     label: 'Petty cash',
                     value: compact(petty.reduce((n, a) => n + a.balance, 0)),
                     hint: petty.some((a) => a.balance < LOW_PETTY) ? `${petty.filter((a) => a.balance < LOW_PETTY).length} running low` : `${petty.length} at sites`,
                     warn: petty.some((a) => a.balance < LOW_PETTY),
                     icon: Wallet,
-                    tone: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100',
+                    tone: PAID_VIA.petty_cash.chip,
                   },
                   {
                     label: 'Owed back to staff',
                     value: compact(owed.reduce((n, e) => n + e.amount, 0)),
                     hint: owed.length ? `${owed.length} paid from their pocket` : 'Nothing owed',
                     icon: HandCoins,
-                    tone: 'bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-100',
+                    tone: PAID_VIA.own_pocket.chip,
                     to: owed.length ? '/finance/expenses?paid=own_pocket&period=all' : undefined,
                   },
                   {
@@ -377,7 +378,7 @@ export default function MoneyPage() {
                     hint: unpaidBills.length ? `${unpaidBills.length} not paid yet` : 'All paid',
                     warn: unpaidBills.length > 0,
                     icon: TriangleAlert,
-                    tone: 'bg-orange-200 text-orange-950 dark:bg-orange-900 dark:text-orange-100',
+                    tone: PAID_VIA.unpaid.chip,
                     to: unpaidBills.length ? '/finance/expenses?paid=unpaid&period=all' : undefined,
                   },
                 ]}
@@ -500,7 +501,7 @@ export default function MoneyPage() {
                                 aria-label="Undo this transfer"
                                 onClick={() => setUndoing(tx)}
                               >
-                                <Undo2 className="size-4" />
+                                <ActionIcon kind="undo" className="size-4" />
                               </Button>
                             )}
                           </span>
@@ -649,13 +650,15 @@ function TxSummary({ rows, account, onExport }: { rows: any[]; account: string |
         {rows.length} {rows.length === 1 ? 'entry' : 'entries'}
       </span>
       <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={onExport}>
-        <Download className="size-3.5" /> Export
+        <ActionIcon kind="export-excel" className="size-3.5" /> Export
       </Button>
     </div>
   )
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+// UX-15: the page kit's KPI strip. Each figure keeps its payment kind's colour (lib/expenses.ts PAID_VIA, the same
+// as the Expenses page) on its icon; "running low" and unpaid turn it amber; a figure with a page opens it.
 function MoneyTiles({
   tiles,
   onOpen,
@@ -664,32 +667,18 @@ function MoneyTiles({
   onOpen: (to: string) => void
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4" data-guide="money.tiles">
-      {tiles.map((t) => {
-        const body = (
-          <>
-            <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', t.tone)}>
-              <t.icon className="size-4 sm:size-5" />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-lg leading-none font-semibold tabular-nums sm:text-2xl">{t.value}</span>
-              <span className="truncate text-xs text-foreground/80 sm:text-sm">{t.label}</span>
-              <span className={cn('truncate text-[11px] text-muted-foreground', t.warn && 'font-semibold text-draft')}>{t.hint}</span>
-            </span>
-            {t.to && <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
-          </>
-        )
-        return t.to ? (
-          <button key={t.label} type="button" onClick={() => onOpen(t.to!)} className="flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:p-3.5">
-            {body}
-          </button>
-        ) : (
-          <div key={t.label} className="flex items-center gap-3 rounded-xl border bg-card p-3 sm:p-3.5">
-            {body}
-          </div>
-        )
-      })}
-    </div>
+    <KpiStrip
+      guide="money.tiles"
+      stats={tiles.map((t) => ({
+        label: t.label,
+        value: t.value,
+        hint: t.hint,
+        icon: t.icon,
+        iconClass: t.tone,
+        tone: t.warn ? 'attention' : 'default',
+        onClick: t.to ? () => onOpen(t.to!) : undefined,
+      }))}
+    />
   )
 }
 

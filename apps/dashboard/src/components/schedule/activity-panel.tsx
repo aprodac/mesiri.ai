@@ -1,8 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, Diamond, Flame, Handshake, Link2, MessageSquareText,
-  RotateCcw, Trash2, X,
+  AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, Diamond, Flame, Handshake, Link2, MessageSquareText, RotateCcw, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +11,7 @@ import { addDays, daysBetween, plural, shortDay, STATE_WORDS, type Activity, typ
 import { cn } from '@/lib/utils'
 import { STATE_BAR } from './gantt'
 import { MakeTaskButton } from '@/components/tasks/make-task-button'
+import { ActionIcon } from '@/components/page/action-button'
 
 // ST-04: one activity, everything about it in one place: where it stands and why, what it pushes, the BOQ lines
 // site measured, who is doing it (work orders), what is stuck (issues), the last site update; and, for those who
@@ -242,7 +242,7 @@ export function ActivityPanel({
               )
             )}
             {a.lines.length === 0 && (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={onDelete} className="ml-auto gap-1.5 text-destructive"><Trash2 className="size-4" /> Remove</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={onDelete} className="ml-auto gap-1.5 text-destructive"><ActionIcon kind="delete" className="size-4" /> Remove</Button>
             )}
           </div>
         </section>

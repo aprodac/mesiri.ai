@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlarmClock, CalendarDays, ClipboardList, Copy, Download, Inbox, LayoutGrid, MapPin, Plus, Search, ShoppingCart, User } from 'lucide-react'
+import { AlarmClock, CalendarDays, ClipboardList, Copy, Inbox, LayoutGrid, MapPin, Plus, Search, ShoppingCart, User } from 'lucide-react'
 import { exportCsv } from '@/lib/export'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import { Avatar, CategoryTile, CoverBar, FilterPill, ProjectDot, StatusChip, Urg
 import { RequestDetail } from '@/components/requests/request-detail'
 import { NewRequestDialog } from '@/components/requests/new-request-dialog'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-22 (design approved by Ilan, 7 Nov 2026): Materials > Requests. What the sites need and what is happening
 // to it. Four tiles say what needs attention; tabs by status; filters as dropdowns with the same cues as the rows;
@@ -182,7 +183,7 @@ export default function RequestsPage() {
         <ModuleTitle icon={ClipboardList} title="Requests" />
         <div className="flex items-center gap-2">
         <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportRequests(list)} title="The requests shown, as a CSV file (opens in Excel)">
-          <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
+          <ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span>
         </Button>
         {canAsk && (
           <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)} data-guide="req.add">

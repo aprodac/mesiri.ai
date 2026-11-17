@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlarmClock, CalendarDays, Download, LayoutGrid, MapPin, PackageOpen, Plus, Search, ShoppingCart, Store, Truck } from 'lucide-react'
+import { AlarmClock, CalendarDays, LayoutGrid, MapPin, PackageOpen, Plus, Search, ShoppingCart, Store, Truck } from 'lucide-react'
 import { exportCsv } from '@/lib/export'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/compo
 import { OrderDetail, OrderProgress, VendorTile } from '@/components/orders/order-detail'
 import { NewOrderDialog } from '@/components/orders/new-order-dialog'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-10: Procurement > Purchase orders, in the Requests page's visual language (approved 7 Nov): tiles for what
 // needs attention, status tabs, filter dropdowns with the row cues, a list beside the chosen order (a sheet on a
@@ -142,7 +143,7 @@ export default function PurchaseOrdersPage() {
         <ModuleTitle icon={ShoppingCart} title="Purchase orders" />
         <div className="flex items-center gap-3">
           {openValue > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">Still to come: <strong className="text-foreground tabular-nums">{rupees(openValue)}</strong></span>}
-          <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportOrders(list)} title="The orders shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
+          <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportOrders(list)} title="The orders shown, as a CSV file (opens in Excel)"><ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
           {office && !readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)} data-guide="po.add"><Plus className="size-4" strokeWidth={2.6} /> New order</Button>}
         </div>
       </header>

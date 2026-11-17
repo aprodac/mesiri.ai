@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, CircleSlash2, FolderPlus, MoreHorizontal, Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react'
+import { CheckCircle2, CircleSlash2, FolderPlus, MoreHorizontal, Pencil, Plus, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,6 +16,7 @@ import {
   updateMaterialCategory,
   type MaterialCategory,
 } from '@/lib/materials'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-01: the company's category tree -- main categories and their sub-categories.
 // Two levels only: a size or type (1-module, 2-way, 20 mm) is a material, not a third level.
@@ -90,7 +91,7 @@ export function CategoriesPanel({ categories }: { categories: MaterialCategory[]
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove.mutate(c)}>
-              <Trash2 className="mr-2 size-3.5" /> Delete
+              <ActionIcon kind="delete" className="mr-2 size-3.5" /> Delete
             </DropdownMenuItem>
           </>
         )}

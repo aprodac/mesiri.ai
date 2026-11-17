@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, Trash2, UserPlus } from 'lucide-react'
+import { Loader2, Plus, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/AuthContext'
@@ -14,6 +14,7 @@ import {
   type ReportRecipient,
 } from '@/lib/projects'
 import { apiErrorMessage as apiError } from '@/lib/logo-upload'
+import { ActionIcon } from '@/components/page/action-button'
 
 // Who gets this project's DPR on WhatsApp (tracker WEB-08, API BE-15).
 // Team members receive it by default; outside contacts (the client, a
@@ -293,7 +294,7 @@ export function ProjectRecipientsTab({ projectId }: { projectId: string }) {
                         disabled={busy}
                         onClick={() => remove.mutate(r.id)}
                       >
-                        <Trash2 className="size-3.5" />
+                        <ActionIcon kind="delete" className="size-3.5" />
                       </Button>
                     </div>
                   )}

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, Check, FileText, Send, X } from 'lucide-react'
+import { CalendarClock, Check, Send, X } from 'lucide-react'
 import { Segmented } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -25,6 +25,7 @@ import {
   type SendResult,
 } from '@/lib/period-report'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-20 / RPT-01: send the report on WhatsApp now, or every week / on the 1st. Each person gets it as their own
 // access shows (the API builds it per person). Nothing says "sent" until WhatsApp took it: the list below shows,
@@ -223,7 +224,7 @@ function CopyRow({ p }: { p: { snapshot_id: string; name: string; delivery: stri
       <span className={cn('text-xs', DELIVERY_TONE[p.delivery] ?? 'text-muted-foreground')}>{p.word}{p.reason ? `: ${p.reason}` : ''}</span>
       <span className="ml-auto flex gap-1">
         <Button size="sm" variant="ghost" onClick={check}>What changed?</Button>
-        <Button size="sm" variant="ghost" onClick={pdf}><FileText className="size-3.5" /> PDF as sent</Button>
+        <Button size="sm" variant="ghost" onClick={pdf}><ActionIcon kind="pdf" className="size-3.5" /> PDF as sent</Button>
       </span>
       {changed !== null && (
         <p className="w-full text-xs text-muted-foreground">

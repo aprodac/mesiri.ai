@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, CircleCheck, CircleDashed, Eye, MapPin, Package, Send, TriangleAlert } from 'lucide-react'
+import { ChevronRight, CircleCheck, CircleDashed, Eye, MapPin, Package, TriangleAlert } from 'lucide-react'
 import { MapPin as IcMapPin, HardHat as IcHardHat, Hammer as IcHammer, IndianRupee as IcIndianRupee } from 'lucide-react'
 import {
   fetchDailyReportPdfApi,
@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button'
 import { DprDocument, DprViewToggle, LIVE_REFRESH_MS, type DprView } from '@/components/dpr-document'
 import { useUrlState } from '@/lib/url-state'
 import { Callout, DprAside, DprHeader, DprPageSkeleton, DprSection, DprSteps, PageError, StatStrip, type StepState } from '@/components/dpr-page'
+import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
 
 // Project DPR page (WEB-05): one project's day. Every site's day as it stands
 // (opened from here to review and confirm), and the project DPR -- the
@@ -243,7 +244,7 @@ export default function ProjectDayPage() {
               <DprViewToggle value={view} onChange={setView} />
               {canSend && (
                 <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={sendNow}>
-                  <Send /> Send now
+                  <WhatsAppIcon /> Send now
                 </Button>
               )}
             </div>

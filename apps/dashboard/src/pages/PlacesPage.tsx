@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, ChevronDown, ChevronRight, Layers, MapPinned, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, Layers, MapPinned, Pencil, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +19,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import { fetchLiveMaps } from '@/lib/live-maps'
+import { ActionIcon } from '@/components/page/action-button'
 
 // LP-01..05: Planning › Places. The project's floors and rooms, coloured by the work site has reported at each one
 // (done / in progress / not started), with the work and photos of a room one tap away. Nothing is typed to fill
@@ -310,7 +311,7 @@ function EditPlaces({ projectId, list }: { projectId: string; list: PlacesList }
             <Input className={cn('h-8 max-w-64', p.depth === 0 && 'font-medium')} value={names[p.id] ?? p.name} aria-label={`Name of ${p.label}`}
               onChange={(e) => setNames((n) => ({ ...n, [p.id]: e.target.value }))}
               onBlur={() => { const v = (names[p.id] ?? p.name).trim(); if (v && v !== p.name) run.mutate(() => renamePlace(projectId, p.id, v)) }} />
-            <Button size="icon" variant="ghost" className="size-8" aria-label={`Remove ${p.label}`} onClick={() => remove(p.id, p.label)}><Trash2 className="size-3.5" /></Button>
+            <Button size="icon" variant="ghost" className="size-8" aria-label={`Remove ${p.label}`} onClick={() => remove(p.id, p.label)}><ActionIcon kind="delete" className="size-3.5" /></Button>
           </div>
           {endsFloor(list.places, p.id) && <AddRow parent={floorOf(list.places, p.id)} placeholder={`Add a room on ${list.places.find((f) => f.id === floorOf(list.places, p.id))?.name}`} />}
         </React.Fragment>

@@ -27,6 +27,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from '@/lib/tasks'
+import { ActionIcon } from '@/components/page/action-button'
 
 // TSK-02: one task on the right of the Tasks page (a sheet on a phone): what it is, the buttons for the moves this
 // person may make (the API's own `may`), the details the giver or a manager may change, and its history with photos.
@@ -204,7 +205,7 @@ export function TaskDetail({ task: row, today, inSheet = false }: { task: Task; 
                 {e.text && <p className="rounded-lg bg-muted/50 px-2.5 py-1.5">{e.text}</p>}
                 {e.photo_url && e.photo_is_pdf && (
                   <a href={e.photo_url} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1.5 hover:bg-muted/40">
-                    <FileText className="size-4 text-muted-foreground" /> Open the PDF
+                    <ActionIcon kind="pdf" className="size-4" /> Open the PDF
                   </a>
                 )}
                 {e.photo_url && !e.photo_is_pdf && (

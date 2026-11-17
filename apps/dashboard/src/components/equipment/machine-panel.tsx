@@ -11,19 +11,10 @@ import { errorWords, hrs, offHire, pct, rateWords, recordService, type Machine, 
 import { DayBar, MachineAvatar, OwnershipChip, ServiceChip, Spark, StateChip } from './parts'
 import { HireBillDialog, LogDayDialog, MoveDialog } from './actions'
 import { MachineDialog } from './machine-dialog'
+import { KpiStrip } from '@/components/page/page-kit'
 
 // NXT-11: one machine beside the list (a sheet on a phone): where it is, today, the last two weeks, this month in
 // figures, service, and the actions -- log today, move, off hire, hire bill, edit.
-
-function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: string }) {
-  return (
-    <div className="rounded-lg bg-muted/50 px-3 py-2">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={cn('text-lg leading-tight font-semibold tabular-nums', tone)}>{value}</div>
-      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
-    </div>
-  )
-}
 
 export function MachinePanel({ machine: m, inSheet }: { machine: Machine; inSheet?: boolean }) {
   const { me } = useAuth()
@@ -107,15 +98,20 @@ export function MachinePanel({ machine: m, inSheet }: { machine: Machine; inShee
         <Spark recent={m.recent} tall />
       </section>
 
-      <section aria-label="This month" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Stat label="Worked this month" value={hrs(m.month.worked)} hint={`${m.month.days_logged} days logged`} />
-        <Stat label="Idle" value={hrs(m.month.idle)} tone={Number(m.month.idle) ? 'text-amber-700 dark:text-amber-300' : undefined} />
-        <Stat label="Breakdown" value={hrs(m.month.breakdown)} tone={Number(m.month.breakdown) ? 'text-red-700 dark:text-red-300' : undefined} />
-        <Stat label="Used (of time on site)" value={pct(m.month.utilisation)} />
-        <Stat label="Diesel" value={Number(m.month.fuel_litres) ? `${Number(m.month.fuel_litres)} L` : '–'} hint={m.month.litres_per_hour ? `${m.month.litres_per_hour} L an hour` : undefined} />
-        {seesMoney ? <Stat label={m.ownership === 'hired' ? 'Hire + diesel' : 'Diesel cost'} value={m.month.cost && Number(m.month.cost) ? inr(m.month.cost) : '–'} hint={m.ownership === 'hired' && m.month.hire_cost ? `hire ${inr(m.month.hire_cost)}` : undefined} />
-          : m.kind === 'vehicle' ? <Stat label="Trips" value={String(m.month.trips)} /> : null}
-      </section>
+      <KpiStrip
+        phoneCols={2}
+        className="sm:grid sm:grid-cols-3"
+        stats={[
+          { label: 'Worked this month', value: hrs(m.month.worked), kind: 'time', hint: `${m.month.days_logged} days logged` },
+          { label: 'Idle', value: hrs(m.month.idle), kind: 'time', tone: Number(m.month.idle) ? 'attention' : 'default' },
+          { label: 'Breakdown', value: hrs(m.month.breakdown), kind: 'issue', tone: Number(m.month.breakdown) ? 'bad' : 'default' },
+          { label: 'Used of time on site', value: pct(m.month.utilisation), kind: 'progress', share: m.month.utilisation ?? undefined },
+          { label: 'Diesel', value: Number(m.month.fuel_litres) ? `${Number(m.month.fuel_litres)} L` : '–', kind: 'materials', hint: m.month.litres_per_hour ? `${m.month.litres_per_hour} L an hour` : undefined },
+          ...(seesMoney
+            ? [{ label: m.ownership === 'hired' ? 'Hire + diesel' : 'Diesel cost', value: m.month.cost && Number(m.month.cost) ? inr(m.month.cost) : '–', kind: 'money' as const, hint: m.ownership === 'hired' && m.month.hire_cost ? `hire ${inr(m.month.hire_cost)}` : undefined }]
+            : m.kind === 'vehicle' ? [{ label: 'Trips', value: String(m.month.trips), kind: 'delivery' as const }] : []),
+        ]}
+      />
 
       {m.service && (
         <section aria-label="Service" className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm">

@@ -3,7 +3,7 @@ import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, Check, CheckCircle2, Clock, Crown, FileText, MessageCircle, MoreHorizontal, PackagePlus, Pencil, Plus, Scale, Send, ShoppingCart, Store, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { Ban, Check, CheckCircle2, Clock, Crown, FileText, MessageCircle, MoreHorizontal, PackagePlus, Pencil, Plus, Scale, ShoppingCart, Store, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,7 @@ import {
 import { CategoryTile, ProjectDot } from '@/components/requests/parts'
 import { VendorTile } from '@/components/orders/order-detail'
 import { QuoteDialog } from '@/components/quotations/quote-dialog'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-41..43: one RFQ. Who was asked and what each answered (send the RFQ on WhatsApp, record or revise a quote,
 // mark a refusal); the comparison sheet: items down, suppliers across, every rate as it costs the company, the
@@ -99,7 +100,7 @@ export function RfqDetail({ rfq: listed, inSheet }: { rfq: Rfq; inSheet?: boolea
                   {s.status !== 'quoted' && (
                     <Button asChild size="sm" variant={s.sent_at ? 'ghost' : 'outline'} className="h-8 gap-1.5">
                       <a href={whatsappUrl(s.phone, rfqMessage(r, company))} target="_blank" rel="noreferrer" onClick={() => !s.sent_at && sent.mutate(s.rfq_vendor_id)}>
-                        {s.sent_at ? <Check className="size-3.5" /> : <Send className="size-3.5" />}{s.sent_at ? 'Send again' : 'Send on WhatsApp'}
+                        {s.sent_at ? <Check className="size-3.5" /> : <ActionIcon kind="whatsapp" className="size-3.5" />}{s.sent_at ? 'Send again' : 'Send on WhatsApp'}
                       </a>
                     </Button>
                   )}

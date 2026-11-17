@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronLeft, ChevronRight, Copy, HandCoins, MessageCircle, Plus, RotateCcw, TriangleAlert, Trash2, Wallet } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Copy, HandCoins, Plus, RotateCcw, TriangleAlert, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,6 +32,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // LW-04 / LW-05 (plan docs/plans/wages-and-labour-plan.md): a site's pay week. Days come from attendance, never
 // typed; the payer sets advance recovery and deductions, approves, then pays from a money account and sends each
@@ -282,7 +283,7 @@ function RowSheet({ sheet, row, onClose, onSaved, readOnly }: { sheet: WageSheet
               <div key={i} className="flex gap-2">
                 <Input aria-label="Reason" placeholder="Reason (damage, late, food)" value={d.reason} disabled={!draft} className="h-9" onChange={(e) => setDeductions(deductions.map((x, j) => (j === i ? { ...x, reason: e.target.value } : x)))} />
                 <Input aria-label="Amount" inputMode="decimal" value={String(d.amount)} disabled={!draft} className="h-9 w-28" onChange={(e) => setDeductions(deductions.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
-                {draft && <Button variant="ghost" size="icon" className="size-9" aria-label="Remove" onClick={() => setDeductions(deductions.filter((_, j) => j !== i))}><Trash2 className="size-4" /></Button>}
+                {draft && <Button variant="ghost" size="icon" className="size-9" aria-label="Remove" onClick={() => setDeductions(deductions.filter((_, j) => j !== i))}><ActionIcon kind="delete" className="size-4" /></Button>}
               </div>
             ))}
             {draft && (
@@ -307,7 +308,7 @@ function RowSheet({ sheet, row, onClose, onSaved, readOnly }: { sheet: WageSheet
             <pre className="whitespace-pre-wrap rounded-lg bg-muted/60 p-3 font-sans text-sm">{row.slip.replace(/\*/g, '')}</pre>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="gap-1.5" onClick={copy}><Copy className="size-4" /> Copy</Button>
-              <Button asChild variant="outline" size="sm" className="gap-1.5"><a href={slipLink(row.slip)} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send on WhatsApp</a></Button>
+              <Button asChild variant="outline" size="sm" className="gap-1.5"><a href={slipLink(row.slip)} target="_blank" rel="noreferrer"><ActionIcon kind="whatsapp" className="size-4" /> Send on WhatsApp</a></Button>
             </div>
           </section>
 

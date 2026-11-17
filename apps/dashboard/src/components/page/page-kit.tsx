@@ -12,7 +12,7 @@ import { KPI_TONE, Kpi, KpiGrid, type KpiProps, type KpiTone } from '@/component
 // that joins a record to the ones before and after it (UX-09).
 
 export { PageHeader, StatStrip, Callout, PageError, Segmented, DprSection as IconSection } from '@/components/dpr-page'
-export { Kpi, KpiStrip, KpiGrid, KpiMeter, type KpiProps, type KpiTone } from '@/components/page/kpi'
+export { Kpi, KpiStrip, KpiGrid, KpiMeter, type KpiItem, type KpiProps, type KpiTone } from '@/components/page/kpi'
 export { ActionButton, ActionIcon, ActionMenuItem } from '@/components/page/action-button'
 
 /**

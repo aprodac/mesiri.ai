@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ImagePlus, Loader2, Trash2 } from 'lucide-react'
+import { ImagePlus, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -14,6 +14,7 @@ import {
 import { LOGO_TYPES, apiErrorMessage as apiError, logoFileProblem, readAsBase64 } from '@/lib/logo-upload'
 import { useReadOnly } from '@/lib/trial'
 import { useToast } from '@/components/ui/toast-notification'
+import { ActionIcon } from '@/components/page/action-button'
 
 // How the company appears on its DPRs (tracker WEB-10, backed by BE-20).
 // Name, address, phone and email are the company record's own fields
@@ -172,7 +173,7 @@ export function BrandingTab() {
                     remove.mutate()
                   }}
                 >
-                  <Trash2 className="size-3.5" /> Remove
+                  <ActionIcon kind="delete" className="size-3.5" /> Remove
                 </Button>
               )}
             </div>

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, FolderLock, KeyRound, MessageSquare, MessageSquareOff, Pencil, Trash2, UserCheck, UserX } from 'lucide-react'
+import { ArrowRightLeft, FolderLock, KeyRound, MessageSquare, MessageSquareOff, Pencil, UserCheck, UserX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WEB-28: one person on one page -- what they can reach, the messages they
 // sent on WhatsApp, their details -- instead of six tabs. The old Activity
@@ -228,7 +229,7 @@ export default function UserDetails() {
                 {active ? 'Deactivate' : 'Make active'}
               </Button>
               <Button variant="ghost" size="sm" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => setDialog('delete')}>
-                <Trash2 className="size-3.5" /> Delete
+                <ActionIcon kind="delete" className="size-3.5" /> Delete
               </Button>
             </section>
           )}

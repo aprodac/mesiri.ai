@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, History, MoreHorizontal, Pencil, Search, TriangleAlert, UserCheck, UserPlus, UserX, Users } from 'lucide-react'
+import { History, MoreHorizontal, Pencil, Search, TriangleAlert, UserCheck, UserPlus, UserX, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -19,6 +19,7 @@ import { AddWorkerDialog } from './add-worker-dialog'
 import { FilterSelect } from '@/components/filter-select'
 import { EditWorkerSheet } from './edit-worker-sheet'
 import { WorkerStatisticsSheet } from './worker-statistics-sheet'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WEB-22: the worker register as rows -- trade, type, wage, and what
 // attendance actually shows (days worked, last seen) -- plus the people
@@ -127,7 +128,7 @@ export function WorkersView({ addOpen, setAddOpen, leading }: { addOpen: boolean
             />
           )}
           <Button variant="outline" size="sm" className="gap-1.5" disabled={visible.length === 0} onClick={exportCsv}>
-            <Download className="size-3.5" /> CSV
+            <ActionIcon kind="export-excel" className="size-3.5" /> CSV
           </Button>
         </div>
       </div>

@@ -1,9 +1,10 @@
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { fetchBranding } from '@/lib/api'
 import { billDay, fetchRaBill, qty, rupees } from '@/lib/billing'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-02: an RA bill as the document the client receives, on the company's letterhead (the purchase order's layout,
 // PRC-26). Print it or save it as a PDF from the browser. A draft prints with "DRAFT" so it is never sent by mistake.
@@ -32,7 +33,7 @@ export default function RaBillDocumentPage() {
       <style>{'@page { size: A4; margin: 14mm }'}</style>
       <div className="mx-auto mb-4 flex max-w-[210mm] flex-wrap items-center justify-between gap-2 px-4 print:hidden">
         <Button asChild variant="ghost" className="gap-2"><Link to={`/billing/ra-bills?project=${b.project_id}&bill=${b.id}`}><ArrowLeft className="size-4" /> {b.ref}</Link></Button>
-        <Button variant="outline" className="gap-2" onClick={() => window.print()}><Printer className="size-4" /> Print / save PDF</Button>
+        <Button variant="outline" className="gap-2" onClick={() => window.print()}><ActionIcon kind="pdf" className="size-4" /> Print / save PDF</Button>
         {draft && <p className="w-full text-xs text-muted-foreground">This is a draft: it prints marked DRAFT. Submit it to send the final bill.</p>}
       </div>
 

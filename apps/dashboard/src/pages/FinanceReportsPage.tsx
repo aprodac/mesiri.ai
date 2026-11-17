@@ -1,21 +1,8 @@
 import * as React from 'react'
 import {
-  FileText,
-  Download,
-  Printer,
-  Calendar,
-  Search,
-  DollarSign,
-  TrendingDown,
-  TrendingUp,
-  PieChart as PieIcon,
-  Store,
-  Wallet,
-  Landmark,
-  RefreshCw,
+  FileText, Download, Printer, Calendar, Search, TrendingDown, TrendingUp, PieChart as PieIcon, Store, Wallet, Landmark, RefreshCw,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast-notification'
-import { KpiCard } from '@/components/ui/kpi-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -40,6 +27,7 @@ import {
   fetchFinanceReportApi,
   type FinanceReportStatementItem,
 } from '@/lib/api'
+import { KpiStrip } from '@/components/page/page-kit'
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
@@ -212,38 +200,21 @@ export default function FinanceReportsPage() {
       </div>
 
       {/* Statement Header KPI Summary Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <KpiCard
-          title="Total operating revenues"
-          value={
-            <span>
-              {formatCurrency(parseFloat(String(statement?.total_inflows || 0)))}
-            </span>
-          }
-          description="Total client payments & inflows"
-          icon={<TrendingUp  />}
-        />
-        <KpiCard
-          title="Total operational disbursements"
-          value={
-            <span>
-              {formatCurrency(parseFloat(String(statement?.total_outflows || 0)))}
-            </span>
-          }
-          description="Total confirmed expenditure"
-          icon={<TrendingDown  />}
-        />
-        <KpiCard
-          title="Net operating margin"
-          value={
-            <span className={parseFloat(String(statement?.net_margin || 0)) >= 0 ? 'text-emerald-600' : 'text-rose-600 dark:text-rose-400'}>
-              {formatCurrency(parseFloat(String(statement?.net_margin || 0)))}
-            </span>
-          }
-          description="Revenues minus total expenses"
-          icon={<DollarSign  />}
-        />
-      </div>
+      {(() => {
+        // UX-15: the page kit's KPI strip; the margin is green or red by its sign.
+        const inflow = parseFloat(String(statement?.total_inflows || 0))
+        const outflow = parseFloat(String(statement?.total_outflows || 0))
+        const net = parseFloat(String(statement?.net_margin || 0))
+        return (
+          <KpiStrip
+            stats={[
+              { label: 'Money in', value: formatCurrency(inflow), icon: TrendingUp, hint: 'client payments and inflows' },
+              { label: 'Money out', value: formatCurrency(outflow), icon: TrendingDown, share: inflow > 0 ? outflow / inflow : undefined, hint: 'confirmed spending' },
+              { label: 'Net margin', value: formatCurrency(net), kind: 'margin', tone: net >= 0 ? 'good' : 'bad', hint: 'in minus out' },
+            ]}
+          />
+        )
+      })()}
 
       {/* Filter & Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-muted/20 p-3 rounded-lg border">

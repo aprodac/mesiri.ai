@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleCheck, Landmark, Undo2, Wallet } from 'lucide-react'
+import { CircleCheck, Landmark, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -9,6 +9,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { fetchExpensePayments, payExpense, rupees, undoExpensePayment } from '@/lib/expenses'
 import { cn } from '@/lib/utils'
 import { applyAdvance } from '@/lib/vendors'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-35: an expense's payments, and paying what is left (or repaying who paid it from their pocket) from one of the
 // company's accounts -- in full or in part, on a date -- with undo for a payment made by mistake. Only shown to the
@@ -87,7 +88,7 @@ export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expe
               <span className="font-semibold tabular-nums">{rupees(Number(p.amount))}</span>
               {canPay && p.status === 'confirmed' && (
                 <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" title="Undo this payment" aria-label="Undo this payment" disabled={undo.isPending} onClick={() => undo.mutate(p.id)}>
-                  <Undo2 className="size-4" />
+                  <ActionIcon kind="undo" className="size-4" />
                 </Button>
               )}
             </li>

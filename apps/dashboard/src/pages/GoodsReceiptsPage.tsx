@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useUrlState } from '@/lib/url-state'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardCheck, Download, Image, PackageX, Search } from 'lucide-react'
+import { ClipboardCheck, Image, PackageX, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useScope } from '@/lib/ScopeContext'
 import { usePageTitle } from '@/lib/page-title'
@@ -18,6 +18,7 @@ import { ModuleTitle } from '@/components/page/page-kit'
 import { NewReturnDialog } from '@/components/returns/new-return-dialog'
 import { useAuth } from '@/lib/AuthContext'
 import { mayReturn, seesMoney } from '@/lib/returns'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-29: Procurement > GRN. Every goods received note: what came against which order, what was accepted into stock
 // and what was turned away (and why), the challan number and photo, who received it. A GRN is made by "Material
@@ -62,7 +63,7 @@ export default function GoodsReceiptsPage() {
     <div className="flex flex-col gap-4 p-4 md:p-6">
       <header className="flex items-center justify-between gap-3">
         <ModuleTitle icon={ClipboardCheck} title="Goods received" />
-        <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportGrns(list)}><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
+        <Button variant="outline" className="gap-2" disabled={!list.length} onClick={() => exportGrns(list)}><ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">

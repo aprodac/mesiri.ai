@@ -47,6 +47,7 @@ import {
 import { fetchProjects } from '@/lib/projects'
 import { useScope } from '@/lib/ScopeContext'
 import { cn } from '@/lib/utils'
+import { Kpi as PageKpi } from '@/components/page/page-kit'
 
 // PRC-19 (reports plan R1): a week or a month of one project in ten seconds. The headline sentence (made by fixed
 // rules from the figures, D-R7), the key figures against plan and the last period, what needs you, one line per
@@ -64,12 +65,6 @@ const TONE_SOFT: Record<Tone, string> = {
   warn: 'bg-draft-soft text-draft',
   bad: 'bg-destructive/10 text-destructive',
   none: 'bg-muted text-muted-foreground',
-}
-const TONE_BAR: Record<Tone, string> = {
-  good: 'before:bg-success',
-  warn: 'before:bg-draft',
-  bad: 'before:bg-destructive',
-  none: '',
 }
 const LEVEL_STRIPE = { bad: 'bg-destructive', warn: 'bg-draft', info: 'bg-info' } as const
 
@@ -120,22 +115,12 @@ function Spark({ values }: { values: string[] }) {
   )
 }
 
+// UX-15: drawn by the page kit's Kpi card (icon for the kind of figure, state by colour), with its eight periods' line.
 function KpiTile({ k, onOpen }: { k: Kpi; onOpen: (section: string) => void }) {
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(k.section)}
-      className={cn(
-        'relative flex min-w-0 flex-1 flex-col rounded-xl border bg-background px-3 py-2.5 text-left hover:bg-muted/40',
-        k.tone !== 'none' && "overflow-hidden before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:content-['']",
-        TONE_BAR[k.tone],
-      )}
-    >
-      <span className="truncate text-xs text-muted-foreground">{k.label}</span>
-      <span className="truncate text-xl font-semibold tabular-nums">{k.value}</span>
-      <span className={cn('truncate text-xs', k.tone === 'none' ? 'text-muted-foreground' : TONE_TEXT[k.tone])}>{k.note || ' '}</span>
+    <PageKpi card label={k.label} value={k.value} hint={k.note || undefined} tone={k.tone === 'none' ? 'default' : k.tone} onClick={() => onOpen(k.section)} className="flex-1">
       {k.trend && <Spark values={k.trend} />}
-    </button>
+    </PageKpi>
   )
 }
 

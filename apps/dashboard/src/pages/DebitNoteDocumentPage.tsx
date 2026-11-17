@@ -1,11 +1,13 @@
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, MessageCircle, Printer } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Letterhead, Signatory } from '@/components/documents/letterhead'
 import { fetchBranding } from '@/lib/api'
 import { rupees, whatsappUrl } from '@/lib/orders'
 import { debitNoteMessage, fetchReturn } from '@/lib/returns'
+import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-46: the debit note for material sent back, on the company's letterhead (as the purchase order, PRC-26). Print it
 // or save it as a PDF from the browser; or send it from your own WhatsApp. Mesiri never claims it was sent.
@@ -35,10 +37,10 @@ export default function DebitNoteDocumentPage() {
       <div className="mx-auto mb-4 flex max-w-[210mm] flex-wrap items-center justify-between gap-2 px-4 print:hidden">
         <Button asChild variant="ghost" className="gap-2"><Link to={`/procurement/returns?id=${r.id}`}><ArrowLeft className="size-4" /> {r.ref}</Link></Button>
         <span className="flex flex-wrap gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => window.print()}><Printer className="size-4" /> Print / save PDF</Button>
+          <Button variant="outline" className="gap-2" onClick={() => window.print()}><ActionIcon kind="pdf" className="size-4" /> Print / save PDF</Button>
           <Button asChild className="gap-2 font-semibold">
             <a href={whatsappUrl(r.vendor_phone, debitNoteMessage(r, company))} target="_blank" rel="noreferrer">
-              <MessageCircle className="size-4" /> Send on WhatsApp
+              <WhatsAppIcon className="size-4" /> Send on WhatsApp
             </a>
           </Button>
         </span>

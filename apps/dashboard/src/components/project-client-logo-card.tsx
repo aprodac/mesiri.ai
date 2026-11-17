@@ -1,10 +1,11 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ImagePlus, Loader2, Trash2 } from 'lucide-react'
+import { ImagePlus, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchClientLogo, removeClientLogo, uploadClientLogo, type ClientLogo } from '@/lib/projects'
 import { LOGO_TYPES, apiErrorMessage, logoFileProblem, readAsBase64 } from '@/lib/logo-upload'
+import { ActionIcon } from '@/components/page/action-button'
 
 // The client's logo, printed on this project's DPRs next to the company's own
 // (tracker WEB-08, API BE-33, PDF BE-19). Company admins change it.
@@ -93,7 +94,7 @@ export function ProjectClientLogoCard({ projectId, clientName }: { projectId: st
                   disabled={busy}
                   onClick={() => remove.mutate()}
                 >
-                  <Trash2 className="size-3.5" /> Remove
+                  <ActionIcon kind="delete" className="size-3.5" /> Remove
                 </Button>
               )}
             </div>

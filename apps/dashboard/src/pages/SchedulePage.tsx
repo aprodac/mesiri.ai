@@ -23,6 +23,7 @@ import {
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // ST-04: Planning › Schedule. The project's Gantt: what should happen when, what site has actually done (measured
 // from the WhatsApp work updates, never typed), what is late and what it pushes, and the forecast handover.
@@ -175,7 +176,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
       <Heading chip={<StageChip stage={s.project.stage} label={s.project.stage_label} />}>
         <div className="flex flex-wrap items-center gap-2" data-guide="schedule.add">
           <Link to={`/planning/setup?project=${projectId}`} className="text-sm text-muted-foreground hover:text-foreground">{s.project.name}</Link>
-          {canEdit && <Button variant="outline" className="gap-2" onClick={() => setImporting(true)}><FileSpreadsheet className="size-4" /><span className="hidden sm:inline">BOQ from Excel</span></Button>}
+          {canEdit && <Button variant="outline" className="gap-2" onClick={() => setImporting(true)}><ActionIcon kind="import-excel" className="size-4" /><span className="hidden sm:inline">BOQ from Excel</span></Button>}
           {canEdit && s.activities.length > 0 && <Button variant="outline" className="gap-2" onClick={() => setQuick(true)}><ListOrdered className="size-4" /><span className="hidden sm:inline">Quick plan</span></Button>}
           {canEdit && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2.6} /> Activity</Button>}
         </div>

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronLeft, ChevronRight, ClipboardPen, Copy, Download, MapPin, Save } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, ClipboardPen, Copy, MapPin, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 import { DayBar, Legend } from '@/components/equipment/parts'
@@ -14,6 +14,7 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { dayWords, errorWords, fetchLogs, hrs, iso, saveLogs, voidLog, type LogLineInput } from '@/lib/equipment'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-11: Equipment > Daily log. One date, every machine at the sites in view on one screen, typed in place: the
 // fewest taps for whoever fills it in the evening. Machines already logged (on WhatsApp or here) show their figures;
@@ -155,7 +156,7 @@ export default function EquipmentLogPage() {
         </div>
         <div className="flex gap-2">
           {!readOnly && empty > 0 && <Button variant="outline" size="sm" className="gap-1.5" data-guide="elog.copy" onClick={copyYesterday} disabled={!yesterday.data?.items.length}><Copy className="size-4" />Copy yesterday</Button>}
-          <Button variant="outline" size="sm" className="gap-1.5" disabled={!rows.some((r) => r.logged)} onClick={exportDay}><Download className="size-4" />Export</Button>
+          <Button variant="outline" size="sm" className="gap-1.5" disabled={!rows.some((r) => r.logged)} onClick={exportDay}><ActionIcon kind="export-excel" className="size-4" />Export</Button>
         </div>
       </div>
 

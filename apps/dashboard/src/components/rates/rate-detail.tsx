@@ -75,8 +75,8 @@ export function RateDetail({
 
         <div className="grid grid-cols-3 gap-2">
           <Stat label="Average" value={rate(item.avg_rate)} />
-          <Stat label="Lowest" value={rate(item.min_rate)} tone="text-green-700 dark:text-green-400" />
-          <Stat label="Highest" value={rate(item.max_rate)} tone="text-red-700 dark:text-red-400" />
+          <Stat label="Lowest" value={rate(item.min_rate)} tone="text-success" />
+          <Stat label="Highest" value={rate(item.max_rate)} tone="text-destructive" />
           <Stat label="Bought" value={`${qty(item.quantity)} ${item.unit}`} />
           <Stat label="Purchases" value={String(item.purchases)} />
           <Stat label="Spent" value={rupees(Math.round(Number(item.spend)))} />

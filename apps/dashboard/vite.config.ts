@@ -36,9 +36,11 @@ function checkTourMarkers(): Plugin {
         .filter((file) => !files.some((f) => file.endsWith(path.join(...f.split('/')))))
         .map((file) => fs.readFileSync(file, 'utf8'))
         .join('\n')
-      // A marker as text (data-guide="x", guide="x") or set by a condition (data-guide={next ? 'x' : undefined}).
+      // A marker as text (data-guide="x", guide="x"), set by a condition (data-guide={next ? 'x' : undefined}), or on
+      // one figure of a KPI strip (UX-15: { label: ..., guide: 'x' }).
       const has = (id: string) =>
-        code.includes(`data-guide="${id}"`) || code.includes(`guide="${id}"`) || new RegExp(`guide=\\{[^}]*'${id.replace(/\./g, '\\.')}'`).test(code)
+        code.includes(`data-guide="${id}"`) || code.includes(`guide="${id}"`) || code.includes(`guide: '${id}'`) ||
+        new RegExp(`guide=\\{[^}]*'${id.replace(/\./g, '\\.')}'`).test(code)
       const missing = wanted.filter((id) => !has(id))
       if (missing.length) {
         this.error(`Tour steps point at markers no element has (src/lib/tours.ts, src/lib/walkthroughs.ts): ${[...new Set(missing)].join(', ')}`)

@@ -279,7 +279,7 @@ function LineCover({ line, showName, open }: { line: RequestLine; showName: bool
       <div className="grid grid-cols-3 gap-2 text-xs">
         <Stat icon={Home} label="At site" value={qty(line.at_site, line.unit)} tone="bg-success-soft text-success" />
         <Stat icon={Truck} label="Coming" value={qty(line.on_order, line.unit)} tone="bg-info-soft text-info" />
-        <Stat icon={ShoppingCart} label="To buy" value={qty(line.to_buy, line.unit)} tone={open && Number(line.to_buy) > 0 ? 'bg-yellow-400 text-stone-950' : 'bg-muted text-muted-foreground'} />
+        <Stat icon={ShoppingCart} label="To buy" value={qty(line.to_buy, line.unit)} tone={open && Number(line.to_buy) > 0 ? 'bg-draft-soft text-draft' : 'bg-muted text-muted-foreground'} />
       </div>
     </div>
   )

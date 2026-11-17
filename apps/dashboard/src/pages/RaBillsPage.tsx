@@ -4,7 +4,7 @@ import { LinkedStrip, NoAccess } from '@/components/page/page-kit'
 import { raBillLinks } from '@/lib/links'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Share2, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, FilePlus2, Printer, ReceiptText, ScrollText, Send, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,7 @@ import {
 } from '@/lib/billing'
 import { cn } from '@/lib/utils'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-02: Client billing › RA bills. A bill is made from the BOQ: work measured on each priced line (the site's own
 // WhatsApp updates) less what earlier bills already billed, at the client rate. The contract's retention, advance
@@ -179,9 +180,9 @@ function BillView({ billId, onRemoved }: { billId: string; onRemoved: () => void
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild className="gap-1.5"><Link to={`/billing/ra-bills/${b.id}/document`}><Printer className="size-4" /> {draft ? 'Preview' : 'Print / PDF'}</Link></Button>
           {draft && <Button size="sm" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate('submit')}><Send className="size-4" /> Submit</Button>}
-          {draft && <Button size="sm" variant="ghost" className="gap-1.5 text-destructive" disabled={remove.isPending} onClick={() => remove.mutate()}><Trash2 className="size-4" /> Remove</Button>}
+          {draft && <Button size="sm" variant="ghost" className="gap-1.5 text-destructive" disabled={remove.isPending} onClick={() => remove.mutate()}><ActionIcon kind="delete" className="size-4" /> Remove</Button>}
           {(b.status === 'submitted' || b.status === 'certified') && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCertifying(true)}><BadgeCheck className="size-4" /> {b.status === 'certified' ? 'Change certified' : 'Certified by client'}</Button>}
-          {b.status === 'submitted' && <Button size="sm" variant="ghost" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate('cancel')}><Undo2 className="size-4" /> Withdraw</Button>}
+          {b.status === 'submitted' && <Button size="sm" variant="ghost" className="gap-1.5" disabled={act.isPending} onClick={() => act.mutate('cancel')}><ActionIcon kind="undo" className="size-4" /> Withdraw</Button>}
         </div>
       </div>
       {!!b.warnings?.length && (

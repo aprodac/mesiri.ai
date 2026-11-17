@@ -2,10 +2,8 @@ import * as React from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlarmClock, ArrowLeft, CircleCheck, Copy, Download, FileText, GitMerge, HandCoins, Link2, MessageCircle, MoreHorizontal, PackageOpen,
-  Pencil, Phone, Printer, Power, Receipt, Trash2, TriangleAlert, Undo2, Wallet,
+  AlarmClock, ArrowLeft, CircleCheck, Copy, FileText, GitMerge, HandCoins, Link2, MoreHorizontal, PackageOpen, Pencil, Phone, Printer, Power, Receipt, TriangleAlert, Wallet,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -38,6 +36,8 @@ import {
   KINDS, LINE_LOOK, applyAdvance, balanceWords, day, deleteVendor, fetchLedger, fetchVendor, num, undoVendorPayment, updateVendor,
   type LedgerLine,
 } from '@/lib/vendors'
+import { ActionIcon } from '@/components/page/action-button'
+import { KpiStrip, type KpiProps } from '@/components/page/page-kit'
 
 // CC-09 / CC-10 (8 Nov 2026): one supplier's page, reached from the Suppliers list and from every place a supplier is
 // named (expenses, orders, receipts, rates, money). Its account as a statement (running balance, a period brings the
@@ -161,11 +161,12 @@ export default function VendorPage() {
     [...(L.brought_forward != null ? [[L.date_from ?? '', 'Brought forward', '', '', '', '', '', '', '', num(L.brought_forward)]] : []),
       ...L.lines.map((x) => [x.date, LINE_LOOK[x.kind].label, x.title, x.detail, x.ref ?? '', x.project ?? '', x.site ?? '', x.owe ? num(x.owe) : '', x.paid ? num(x.paid) : '', num(x.balance)])])
 
-  const tiles: { label: string; value: string; sub?: string; icon: LucideIcon; tone: string; num?: string; go?: Tab }[] = s ? [
-    { label: allBalance >= 0 ? 'We owe' : 'Paid ahead', value: rupees(Math.abs(allBalance)), sub: L?.partial ? 'your projects' : v?.credit_days != null ? `${v.credit_days} days credit` : 'no credit days set', icon: HandCoins, tone: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100', go: 'account' },
-    { label: 'Overdue', value: rupees(num(s.overdue)), sub: ((n) => (n ? `${n} ${n === 1 ? 'bill' : 'bills'} past due` : 'nothing late'))(openBills.filter((b) => b.overdue_days > 0).length), icon: AlarmClock, tone: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200', num: num(s.overdue) > 0 ? 'text-red-700 dark:text-red-400' : undefined, go: 'bills' },
-    { label: 'Delivered, no bill', value: rupees(num(s.unbilled)), sub: s.unbilled_count ? `${s.unbilled_count} deliveries${s.oldest_unbilled ? ` since ${day(s.oldest_unbilled as unknown as string)}` : ''}` : 'all billed', icon: PackageOpen, tone: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100', go: 'unbilled' },
-    { label: 'Advance unused', value: rupees(num(s.advance_left)), sub: s.last_payment ? `last paid ${day(s.last_payment.date)}` : 'no payment yet', icon: Wallet, tone: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100', go: 'payments' },
+  // UX-15: page kit figures (the same four as the Suppliers page): overdue red, delivered-not-billed amber.
+  const tiles: (KpiProps & { go: Tab })[] = s ? [
+    { label: allBalance >= 0 ? 'We owe' : 'Paid ahead', value: rupees(Math.abs(allBalance)), hint: L?.partial ? 'your projects' : v?.credit_days != null ? `${v.credit_days} days credit` : 'no credit days set', kind: 'money', go: 'account' },
+    { label: 'Overdue', value: rupees(num(s.overdue)), hint: ((n) => (n ? `${n} ${n === 1 ? 'bill' : 'bills'} past due` : 'nothing late'))(openBills.filter((b) => b.overdue_days > 0).length), icon: AlarmClock, tone: num(s.overdue) > 0 ? 'bad' : 'default', go: 'bills' },
+    { label: 'Delivered, no bill', value: rupees(num(s.unbilled)), hint: s.unbilled_count ? `${s.unbilled_count} deliveries${s.oldest_unbilled ? ` since ${day(s.oldest_unbilled as unknown as string)}` : ''}` : 'all billed', icon: PackageOpen, tone: num(s.unbilled) > 0 ? 'attention' : 'default', go: 'unbilled' },
+    { label: 'Advance unused', value: rupees(num(s.advance_left)), hint: s.last_payment ? `last paid ${day(s.last_payment.date)}` : 'no payment yet', icon: Wallet, go: 'payments' },
   ] : []
 
   return (
@@ -215,11 +216,11 @@ export default function VendorPage() {
                 {!readOnly && <DropdownMenuItem onClick={() => setEditing(true)}><Pencil className="size-4" /> Edit details</DropdownMenuItem>}
                 {canManage && unbilled.length > 0 && <DropdownMenuItem onClick={() => setBilling(unbilled)}><FileText className="size-4" /> Record their bill</DropdownMenuItem>}
                 {seesMoney && <DropdownMenuItem onClick={() => window.print()}><Printer className="size-4" /> Print statement</DropdownMenuItem>}
-                {seesMoney && <DropdownMenuItem disabled={!L} onClick={exportStatement}><Download className="size-4" /> Export statement</DropdownMenuItem>}
+                {seesMoney && <DropdownMenuItem disabled={!L} onClick={exportStatement}><ActionIcon kind="export-excel" className="size-4" /> Export statement</DropdownMenuItem>}
                 {v.phone && seesMoney && L && (
                   <DropdownMenuItem asChild>
                     <a href={`https://wa.me/${v.phone.replace(/\D/g, '').replace(/^(\d{10})$/, '91$1')}?text=${encodeURIComponent(`Hello ${v.contact_person ?? v.name}, as per our account the balance is ${rupees(Math.abs(allBalance))} ${allBalance >= 0 ? 'payable to you' : 'advance with you'} as of ${day(L.as_of)}.`)}`} target="_blank" rel="noreferrer">
-                      <MessageCircle className="size-4" /> Confirm balance on WhatsApp
+                      <ActionIcon kind="whatsapp" className="size-4" /> Confirm balance on WhatsApp
                     </a>
                   </DropdownMenuItem>
                 )}
@@ -231,7 +232,7 @@ export default function VendorPage() {
                     <DropdownMenuItem onClick={() => toggle.mutate()}><Power className="size-4" /> {v.status === 'active' ? 'Switch off' : 'Switch on'}</DropdownMenuItem>
                     {canManage && (
                       <DropdownMenuItem className="text-destructive" onClick={() => window.confirm(`Delete ${v.name}? Only a supplier added by mistake, with nothing recorded, can be deleted.`) && remove.mutate()}>
-                        <Trash2 className="size-4" /> Delete
+                        <ActionIcon kind="delete" className="size-4" /> Delete
                       </DropdownMenuItem>
                     )}
                   </>
@@ -249,18 +250,13 @@ export default function VendorPage() {
       )}
 
       {seesMoney && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3 print:grid-cols-4">
-          {(tiles.length ? tiles : ([null, null, null, null] as (typeof tiles[number] | null)[])).map((t, i) => t ? (
-            <button key={t.label} type="button" onClick={() => t.go && setTab(t.go)} className="flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:p-3.5">
-              <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl print:hidden', t.tone)}><t.icon className="size-4 sm:size-5" /></span>
-              <span className="flex min-w-0 flex-col">
-                <span className={cn('truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl', t.num)}>{t.value}</span>
-                <span className="truncate text-xs text-foreground/80 sm:text-sm">{t.label}</span>
-                {t.sub && <span className="truncate text-xs text-muted-foreground">{t.sub}</span>}
-              </span>
-            </button>
-          ) : <Skeleton key={i} className="h-[74px] rounded-xl" />)}
-        </div>
+        <KpiStrip
+          stats={
+            tiles.length
+              ? tiles.map(({ go, ...k }) => ({ ...k, onClick: () => setTab(go) }))
+              : ['We owe', 'Overdue', 'Delivered, no bill', 'Advance unused'].map((label) => ({ label, loading: true }))
+          }
+        />
       )}
 
       {seesMoney && v && v.kind !== 'subcontractor' && <div className="print:hidden"><SupplierPerformanceCard vendorId={v.id} /></div>}  {/* PRC-50 */}
@@ -284,7 +280,7 @@ export default function VendorPage() {
             <div className="flex items-center gap-2">
               {L?.partial && <span className="text-xs text-muted-foreground">Your projects only, without the company's opening balance</span>}
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()}><Printer className="size-4" /> Print</Button>
-              <Button variant="outline" size="sm" className="gap-1.5" disabled={!L} onClick={exportStatement}><Download className="size-4" /> Export</Button>
+              <Button variant="outline" size="sm" className="gap-1.5" disabled={!L} onClick={exportStatement}><ActionIcon kind="export-excel" className="size-4" /> Export</Button>
             </div>
           </div>
           {!L ? (
@@ -496,7 +492,7 @@ export default function VendorPage() {
                       {canManage && p.on_account && (
                         <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" title="Undo this payment" aria-label="Undo this payment" disabled={undo.isPending}
                           onClick={() => window.confirm(`Undo the payment of ${rupees(num(p.paid))}? The money goes back to its account and the bills it paid are open again.`) && undo.mutate(p.links.payment_id!)}>
-                          <Undo2 className="size-4" />
+                          <ActionIcon kind="undo" className="size-4" />
                         </Button>
                       )}
                     </span>

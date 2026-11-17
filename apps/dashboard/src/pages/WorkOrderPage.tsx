@@ -2,8 +2,7 @@ import * as React from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, ArrowLeft, Check, CircleCheck, ClipboardCheck, FileText, HandCoins, HardHat, History, Lock, MessageCircle,
-  MoreHorizontal, Pencil, Plus, Ruler, Send, TriangleAlert, Unlock, Wallet, X,
+  AlertTriangle, ArrowLeft, Check, CircleCheck, ClipboardCheck, FileText, HandCoins, HardHat, History, Lock, MoreHorizontal, Pencil, Plus, Ruler, Send, TriangleAlert, Unlock, Wallet, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -27,8 +26,9 @@ import {
   CHECK_LOOK, WO_LOOK, countSiteWork, decideMeasurement, fetchSiteWork, fetchTeamLines, fetchWorkOrder, markTeam, mayGiveWork,
   moveWorkOrder, n, waLink, workOrderText, type WoBill,
 } from '@/lib/subcontracts'
-import { LinkedStrip } from '@/components/page/page-kit'
+import { KpiStrip, LinkedStrip } from '@/components/page/page-kit'
 import { workOrderLinks } from '@/lib/links'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-05/06/07, CC-04 (8 Nov 2026): one work order. What was agreed, done (measured) and billed per line; measurements
 // and the site's work updates to count on a line; bills with their check (approve / reject with a reason) and what was
@@ -122,7 +122,7 @@ export default function WorkOrderPage() {
             <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label="More"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => window.open(`/subcontract/work-orders/${wo.id}/document`, '_blank')}><FileText className="size-4" /> Work order document</DropdownMenuItem>
-              <DropdownMenuItem asChild><a href={waLink(wo.vendor_phone, workOrderText(wo, company))} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send to {wo.vendor_name.split(' ')[0]} on WhatsApp</a></DropdownMenuItem>
+              <DropdownMenuItem asChild><a href={waLink(wo.vendor_phone, workOrderText(wo, company))} target="_blank" rel="noreferrer"><ActionIcon kind="whatsapp" className="size-4" /> Send to {wo.vendor_name.split(' ')[0]} on WhatsApp</a></DropdownMenuItem>
               {office && wo.status !== 'closed' && wo.status !== 'cancelled' && <DropdownMenuItem onClick={() => setDialog('edit')}><Pencil className="size-4" /> Edit</DropdownMenuItem>}
               {pays && (wo.status === 'draft' || wo.status === 'issued') && <DropdownMenuItem onClick={() => setDialog('advance')}><Wallet className="size-4" /> Give advance</DropdownMenuItem>}
               {pays && money && n(t.payable_now) > 0 && <DropdownMenuItem onClick={() => setDialog('pay')}><HandCoins className="size-4" /> Pay {rupees(n(t.payable_now))}</DropdownMenuItem>}
@@ -150,24 +150,19 @@ export default function WorkOrderPage() {
         </Callout>
       )}
 
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {[
-          { label: 'Done', value: `${t.progress_pct}%`, sub: money ? rupees(n(t.measured_value)) : `${wo.lines.length} lines` },
+      {/* UX-15: page kit figures, each with its bar: done, billed of the order, paid of billed, advance left. */}
+      <KpiStrip
+        stats={[
+          { label: 'Done', value: `${t.progress_pct}%`, kind: 'progress', share: Number(t.progress_pct) / 100, hint: money ? rupees(n(t.measured_value)) : `${wo.lines.length} lines` },
           ...(money ? [
-            { label: 'Work order', value: rupees(n(t.value)), sub: `${wo.lines.length} lines` },
-            { label: 'Billed', value: rupees(n(t.billed)), sub: `${t.bills} bills · ${t.billed_pct}%` },
-            { label: 'Paid', value: rupees(n(t.paid)), sub: n(t.payable_now) ? `${rupees(n(t.payable_now))} payable now` : 'nothing payable now', tone: n(t.payable_now) ? 'text-sky-700 dark:text-sky-300' : '' },
-            { label: `Retention ${Number(wo.retention_pct)}%`, value: rupees(n(t.retention_held)), sub: wo.completed_on ? `released after ${day(new Date(new Date(`${wo.completed_on}T00:00:00`).getTime() + wo.defect_days * 86400000).toISOString().slice(0, 10))}` : 'held until the work is done' },
-            { label: 'Advance', value: rupees(n(t.advance_left)), sub: `left of ${rupees(n(t.advance_given))} given` },
+            { label: 'Work order', value: rupees(n(t.value)), kind: 'money' as const, hint: `${wo.lines.length} lines` },
+            { label: 'Billed', value: rupees(n(t.billed)), kind: 'bill' as const, share: Number(t.billed_pct) / 100, hint: `${t.bills} bills · ${t.billed_pct}%` },
+            { label: 'Paid', value: rupees(n(t.paid)), kind: 'cash' as const, share: n(t.billed) ? n(t.paid) / n(t.billed) : undefined, tone: n(t.payable_now) ? ('attention' as const) : ('default' as const), hint: n(t.payable_now) ? `${rupees(n(t.payable_now))} payable now` : 'nothing payable now' },
+            { label: `Retention ${Number(wo.retention_pct)}%`, value: rupees(n(t.retention_held)), icon: Lock, hint: wo.completed_on ? `released after ${day(new Date(new Date(`${wo.completed_on}T00:00:00`).getTime() + wo.defect_days * 86400000).toISOString().slice(0, 10))}` : 'held until the work is done' },
+            { label: 'Advance', value: rupees(n(t.advance_left)), kind: 'cash' as const, share: n(t.advance_given) ? n(t.advance_left) / n(t.advance_given) : undefined, hint: `left of ${rupees(n(t.advance_given))} given` },
           ] : []),
-        ].map((x) => (
-          <div key={x.label} className="rounded-xl border bg-card p-3">
-            <div className="text-xs text-muted-foreground">{x.label}</div>
-            <div className={cn('text-lg font-semibold tabular-nums', 'tone' in x && x.tone)}>{x.value}</div>
-            <div className="truncate text-xs text-muted-foreground">{x.sub}</div>
-          </div>
-        ))}
-      </section>
+        ]}
+      />
 
       <div role="tablist" aria-label="Sections" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1">
         {tabs.filter((x) => !x.hide).map((x) => (

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { BOOKS_PEOPLE } from '@/lib/permissions'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, Copy, ExternalLink, Link2, MessageCircle, Plus, Share2 } from 'lucide-react'
+import { Ban, Copy, ExternalLink, Link2, Plus, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,6 +18,7 @@ import { clientLinkUrl, createClientLink, fetchClientLinks, revokeClientLink, wh
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
 
 // CV-03: Client billing › Client view. The owner, an admin or finance makes a secret link for a project and sends it
 // to the client on WhatsApp; the client opens it with no login (/c/:token) and sees progress, milestones, photos
@@ -120,7 +121,7 @@ function MadeDialog({ made, onClose }: { made: { link: ClientLink; token: string
               <a href={url} target="_blank" rel="noreferrer"><ExternalLink className="size-4" /> Open</a>
             </Button>
             <Button asChild className="gap-1.5">
-              <a href={whatsappShareUrl(made.token, made.link.project_name)} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send on WhatsApp</a>
+              <a href={whatsappShareUrl(made.token, made.link.project_name)} target="_blank" rel="noreferrer"><WhatsAppIcon className="size-4" /> Send on WhatsApp</a>
             </Button>
           </div>
         </DialogFooter>

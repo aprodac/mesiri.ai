@@ -1,8 +1,7 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ClipboardCheck, Download, Handshake, HandCoins, Lock, Plus, Search, TriangleAlert } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { AlertTriangle, ClipboardCheck, Handshake, HandCoins, Lock, Plus, Search, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -21,7 +20,7 @@ import { rupees } from '@/lib/expenses'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { WO_LOOK, fetchWorkOrders, mayGiveWork, n, woUrl, type WorkOrder } from '@/lib/subcontracts'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon, type KpiItem, KpiStrip, ModuleTitle } from '@/components/page/page-kit'
 
 // NXT-05 (8 Nov 2026): Subcontract › Work orders. Every work given out: who, where, how much is done, billed and
 // payable; tiles that filter (open, bills to check, over the agreed / measured, retention held), status tabs, search,
@@ -62,15 +61,16 @@ export default function WorkOrdersPage() {
     .filter((w) => !needle || [w.ref, w.title, w.vendor_name, w.site_name, w.project_name, ...w.lines.map((l) => l.description)].join(' ').toLowerCase().includes(needle))
   const vendors = [...new Map(all.map((w) => [w.vendor_id, w.vendor_name])).entries()].sort((a, b) => a[1].localeCompare(b[1]))
   const s = list.data?.summary
-  const tiles: { key: Tile | 'money' | 'ret'; label: string; value: string; icon: LucideIcon; tone: string; num?: string; click?: () => void }[] = [
-    { key: '', label: `Open · ${s?.drafts ?? 0} drafts`, value: String(s?.open ?? '–'), icon: Handshake, tone: 'bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-100', click: () => { setTab('open'); setTile('') } },
-    { key: 'check', label: 'Bills to check', value: String(s?.to_check ?? '–'), icon: ClipboardCheck, tone: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100', num: s?.to_check ? 'text-draft' : undefined, click: () => { setTab('all'); setTile(tile === 'check' ? '' : 'check') } },
-    { key: 'over', label: 'Lines over measured / agreed', value: String(s?.flagged_lines ?? '–'), icon: AlertTriangle, tone: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200', num: s?.flagged_lines ? 'text-destructive' : undefined, click: () => { setTab('all'); setTile(tile === 'over' ? '' : 'over') } },
+  // UX-15: page kit figures. Bills to check amber, lines over measured red; the first three filter the list.
+  const tiles = (([
+    { key: 'open', label: 'Open', value: s?.open ?? '—', icon: Handshake, hint: `${s?.drafts ?? 0} drafts`, pressed: tab === 'open' && tile === '', onClick: () => { setTab('open'); setTile('') } },
+    { key: 'check', label: 'Bills to check', value: s?.to_check || '—', icon: ClipboardCheck, tone: s?.to_check ? 'attention' : 'default', pressed: tile === 'check', onClick: () => { setTab('all'); setTile(tile === 'check' ? '' : 'check') } },
+    { key: 'over', label: 'Lines over measured', value: s?.flagged_lines || '—', icon: AlertTriangle, tone: s?.flagged_lines ? 'bad' : 'default', pressed: tile === 'over', onClick: () => { setTab('all'); setTile(tile === 'over' ? '' : 'over') } },
     ...(money ? [
-      { key: 'money' as const, label: `Payable now · ${rupees(n(s?.advance_left))} advance out`, value: rupees(n(s?.payable_now)), icon: HandCoins, tone: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100' },
-      { key: 'ret' as const, label: 'Retention held', value: rupees(n(s?.retention_held)), icon: Lock, tone: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100' },
+      { key: 'money', label: 'Payable now', value: rupees(n(s?.payable_now)), icon: HandCoins, hint: `${rupees(n(s?.advance_left))} advance out` },
+      { key: 'ret', label: 'Retention held', value: rupees(n(s?.retention_held)), icon: Lock },
     ] : []),
-  ]
+  ] as KpiItem[]).map((k) => ({ ...k, loading: list.isLoading })))
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
@@ -83,7 +83,7 @@ export default function WorkOrdersPage() {
             ['Work order', 'Status', 'Subcontractor', 'Project', 'Site', 'Work', 'Done %', ...(money ? ['Value', 'Measured', 'Billed', 'Paid', 'Retention held', 'Advance left', 'Payable now'] : [])],
             shown.map((w) => [w.ref, WO_LOOK[w.status].label, w.vendor_name, w.project_name, w.site_name ?? '', w.title ?? w.lines.map((l) => l.description).join('; '), Number(w.totals.progress_pct),
               ...(money ? [n(w.totals.value), n(w.totals.measured_value), n(w.totals.billed), n(w.totals.paid), n(w.totals.retention_held), n(w.totals.advance_left), n(w.totals.payable_now)] : [])]))}>
-            <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
+            <ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span>
           </Button>
           {office && <Button className="gap-1.5 font-semibold" data-guide="wo.add" onClick={() => setCreating(true)}><Plus className="size-4" /> <span className="hidden sm:inline">New work order</span><span className="sm:hidden">New</span></Button>}
         </div>
@@ -91,18 +91,7 @@ export default function WorkOrdersPage() {
 
       {money && <ValueStrip projectId={projectId} />}
 
-      <div className={cn('grid grid-cols-2 gap-2 sm:gap-3', money ? 'sm:grid-cols-5' : 'sm:grid-cols-3')} data-guide="wo.tiles">
-        {tiles.map((t) => (
-          <button key={t.label} type="button" disabled={!t.click} onClick={t.click} aria-pressed={!!t.key && tile === t.key}
-            className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition', t.click && 'hover:-translate-y-px', !!t.key && tile === t.key && 'ring-2 ring-primary', !t.click && 'cursor-default')}>
-            <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10', t.tone)}><t.icon className="size-4 sm:size-5" /></span>
-            <span className="flex min-w-0 flex-col">
-              <span className={cn('truncate text-xl leading-none font-semibold tabular-nums', t.num)}>{list.isLoading ? '–' : t.value}</span>
-              <span className="truncate text-xs text-muted-foreground">{t.label}</span>
-            </span>
-          </button>
-        ))}
-      </div>
+      <KpiStrip guide="wo.tiles" stats={tiles} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="Status" className="flex gap-0.5 rounded-xl bg-muted p-1" data-guide="wo.tabs">

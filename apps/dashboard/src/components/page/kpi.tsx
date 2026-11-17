@@ -63,6 +63,9 @@ export type KpiProps = {
   children?: React.ReactNode
 }
 
+/** One figure in a strip: its props and a key when two share a label. */
+export type KpiItem = KpiProps & { key?: string }
+
 /** "x of y" as segments when y is small, else a bar; a share as a bar. */
 export function KpiMeter({ value, of, share, tone: t }: { value?: number; of?: number; share?: number; tone?: KpiToneIn }) {
   const look = KPI_TONE[tone(t)]
@@ -170,7 +173,7 @@ export function KpiStrip({
   guide,
   className,
 }: {
-  stats: (KpiProps & { key?: string })[]
+  stats: KpiItem[]
   /** Columns on phones when the values are long (e.g. "+365 bags"). */
   phoneCols?: 2
   guide?: string

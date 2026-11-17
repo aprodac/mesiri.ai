@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Ruler, Trash2, X } from 'lucide-react'
+import { Check, Ruler, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,6 +16,7 @@ import {
   setUnitSize,
   type SizeRequest,
 } from '@/lib/materials'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WA-168: Sizes -- "1 load M-sand = 60 bags", set once for the company; every
 // line in that unit converts into the stock unit from then on. Above them, the
@@ -115,7 +116,7 @@ export function SizesView() {
                 <span className="flex-1">1 {s.unit_name} {s.material} = {s.one_unit_equals} {s.stock_unit_name}</span>
                 <Button size="icon" variant="ghost" className="size-8" title="Remove this size"
                   onClick={() => remove.mutate({ m: s.material_id, u: s.from_unit_id })}>
-                  <Trash2 className="size-4" />
+                  <ActionIcon kind="delete" className="size-4" />
                 </Button>
               </li>
             ))}

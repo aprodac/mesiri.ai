@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowLeftRight, ArrowRight, Download, FileText, MapPin, MessageSquare, Package, TriangleAlert, Truck } from 'lucide-react'
+import { ArrowLeftRight, ArrowRight, FileText, MapPin, MessageSquare, Package, TriangleAlert, Truck } from 'lucide-react'
 import { ArrowDownLeft as IcArrowDownLeft, ArrowUpRight as IcArrowUpRight, Warehouse as IcWarehouse, Package as IcPackage, IndianRupee as IcIndianRupee } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,6 +26,7 @@ import { FilterSelect, PeriodSelect } from '@/components/filter-select'
 import { cn } from '@/lib/utils'
 import { MovementDetailsSheet } from './movement-details-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WEB-30: one ledger of everything that came in and went out -- deliveries,
 // use, moves between sites, corrections -- as a table: In in green, Out in
@@ -231,7 +232,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
             </Button>
           )}
           <Button variant="outline" size="sm" className="gap-1.5" disabled={lines.length === 0} onClick={exportCsv}>
-            <Download className="size-3.5" /> CSV
+            <ActionIcon kind="export-excel" className="size-3.5" /> CSV
           </Button>
         </div>
       </div>

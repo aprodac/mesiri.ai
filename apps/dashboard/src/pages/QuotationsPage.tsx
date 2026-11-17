@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlarmClock, Hourglass, MapPin, PackageCheck, Plus, Scale, Search, Sparkles, Store } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useScope } from '@/lib/ScopeContext'
@@ -17,7 +16,7 @@ import { RFQ_LOOK, dueWords, fetchRfqs, type Rfq, type RfqStatus } from '@/lib/r
 import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/components/requests/parts'
 import { RfqDetail } from '@/components/quotations/rfq-detail'
 import { NewRfqDialog } from '@/components/quotations/new-rfq-dialog'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { type KpiProps, KpiStrip, ModuleTitle } from '@/components/page/page-kit'
 
 // PRC-44: Procurement › Quotations, in the Requests / Purchase orders design: tiles for what needs doing (waiting for
 // quotes, ready to compare, quotes overdue, saved by comparing), status tabs, a list beside the chosen RFQ (a sheet
@@ -109,11 +108,17 @@ export default function QuotationsPage() {
   }, [all, pass])
 
   const savedTotal = filtered.reduce((s, r) => s + saved(r), 0)
-  const tiles: { value: Exclude<Tile, ''>; label: string; count: number; icon: LucideIcon; tone: string; ring: string; num?: string }[] = [
-    { value: 'open', label: 'Waiting for quotes', count: filtered.filter((r) => inTile(r, 'open')).length, icon: Hourglass, tone: 'bg-info-soft text-info', ring: 'ring-blue-500' },
-    { value: 'ready', label: 'Ready to compare', count: filtered.filter((r) => inTile(r, 'ready')).length, icon: Scale, tone: 'bg-yellow-200 text-yellow-950 dark:bg-yellow-900 dark:text-yellow-100', ring: 'ring-yellow-500' },
-    { value: 'overdue', label: 'Quotes overdue', count: filtered.filter((r) => inTile(r, 'overdue')).length, icon: AlarmClock, tone: 'bg-destructive text-white', ring: 'ring-destructive', num: 'text-destructive' },
-  ]
+  // UX-15: page kit figures. Ready to compare is the thing to do (amber); overdue is red.
+  const tiles: (KpiProps & { value2: Exclude<Tile, ''> })[] = (
+    [
+      ['open', 'Waiting for quotes', Hourglass, 'default'],
+      ['ready', 'Ready to compare', Scale, 'attention'],
+      ['overdue', 'Quotes overdue', AlarmClock, 'bad'],
+    ] as const
+  ).map(([value2, label, icon, tone]) => {
+    const count = filtered.filter((r) => inTile(r, value2)).length
+    return { value2, label, icon, value: count, tone: count ? tone : 'default' }
+  })
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
@@ -122,27 +127,13 @@ export default function QuotationsPage() {
         {office && !readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setCreating(true)} data-guide="quotes.add"><Plus className="size-4" strokeWidth={2.6} /> Ask for quotes</Button>}
       </header>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-guide="quotes.tiles">
-        {tiles.map((t) => {
-          const on = tile === t.value
-          return (
-            <button key={t.value} type="button" aria-pressed={on} onClick={() => setTile(on ? '' : t.value)} className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:p-3.5', on && cn('ring-2', t.ring))}>
-              <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', t.tone)}><t.icon className="size-4 sm:size-5" /></span>
-              <span className="flex flex-col">
-                <span className={cn('text-2xl leading-none font-semibold tabular-nums sm:text-3xl', t.count ? t.num : undefined)}>{t.count}</span>
-                <span className="text-xs leading-tight text-muted-foreground sm:text-sm sm:text-foreground/80">{t.label}</span>
-              </span>
-            </button>
-          )
-        })}
-        <div className="flex items-center gap-3 rounded-xl border bg-card p-3 sm:p-3.5" title="On the RFQs ordered: the dearest full quote minus what was ordered">
-          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 sm:size-11 sm:rounded-xl dark:bg-emerald-950 dark:text-emerald-200"><Sparkles className="size-4 sm:size-5" /></span>
-          <span className="flex flex-col">
-            <span className="text-2xl leading-none font-semibold tabular-nums text-emerald-700 sm:text-3xl dark:text-emerald-400">{savedTotal ? rupees(savedTotal) : '—'}</span>
-            <span className="text-xs leading-tight text-muted-foreground sm:text-sm sm:text-foreground/80">Saved by comparing</span>
-          </span>
-        </div>
-      </div>
+      <KpiStrip
+        guide="quotes.tiles"
+        stats={[
+          ...tiles.map(({ value2: x, ...k }) => ({ ...k, key: x, pressed: tile === x, onClick: () => setTile(tile === x ? '' : x) })),
+          { label: 'Saved by comparing', value: savedTotal ? rupees(savedTotal) : '—', icon: Sparkles, tone: savedTotal ? 'good' : 'default' },
+        ]}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="Status" className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-muted p-1" data-guide="quotes.tabs">

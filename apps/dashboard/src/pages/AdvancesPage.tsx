@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { HandCoins, Undo2 } from 'lucide-react'
+import { HandCoins } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,6 +17,7 @@ import { useScope } from '@/lib/ScopeContext'
 import { usePageTitle } from '@/lib/page-title'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // LW-03 (plan docs/plans/wages-and-labour-plan.md): money given ahead of wages, to a worker or a labour team, out of
 // a money account; taken back on the next wage sheet. "Gave Ravi 500 advance" on WhatsApp lands here too.
@@ -98,7 +99,7 @@ export default function AdvancesPage() {
                 <span className="font-semibold tabular-nums">{inr(a.amount)}</span>
                 {!a.voided_at && !readOnly && (
                   <Button variant="ghost" size="icon" className="size-8" title="Take back (money returns to its account)" aria-label="Take back" onClick={() => window.confirm(`Take back ${inr(a.amount)} given to ${a.payee_name}?`) && undo.mutate(a.id)}>
-                    <Undo2 className="size-4" />
+                    <ActionIcon kind="undo" className="size-4" />
                   </Button>
                 )}
               </li>

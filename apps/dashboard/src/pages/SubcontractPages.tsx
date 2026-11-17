@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Check, ClipboardCheck, FileText, Handshake, MessageCircle, Printer, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardCheck, FileText, Handshake, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout } from '@/components/dpr-page'
@@ -21,6 +21,7 @@ import {
   CHECK_LOOK, WO_LOOK, fetchBillsWaiting, fetchStatement, fetchWorkOrder, fetchWorkOrders, n, statementText, waLink, woUrl, workOrderText,
   type WoBill,
 } from '@/lib/subcontracts'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-06/07, NXT-17 (8 Nov 2026): the other subcontract pages. Bills & checks (every bill waiting for a person, with why,
 // approve / reject); Subcontractors (each team: work orders, done, billed, payable, retention, advance; their statement);
@@ -164,8 +165,8 @@ export function StatementPage() {
       <div className="mx-auto mb-4 flex max-w-[210mm] flex-wrap items-center justify-between gap-2 px-4 print:hidden">
         <Link to={vendorUrl(s.vendor.id)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> {s.vendor.name}</Link>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-1.5" asChild><a href={waLink(s.vendor.phone, statementText(s, company))} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send on WhatsApp</a></Button>
-          <Button className="gap-1.5" onClick={() => window.print()}><Printer className="size-4" /> Print / PDF</Button>
+          <Button variant="outline" className="gap-1.5" asChild><a href={waLink(s.vendor.phone, statementText(s, company))} target="_blank" rel="noreferrer"><ActionIcon kind="whatsapp" className="size-4" /> Send on WhatsApp</a></Button>
+          <Button className="gap-1.5" onClick={() => window.print()}><ActionIcon kind="pdf" className="size-4" /> Print / PDF</Button>
         </div>
       </div>
       <article className="mx-auto max-w-[210mm] bg-white px-10 py-9 text-[13px] text-neutral-900 shadow-sm print:max-w-none print:px-0 print:py-0 print:shadow-none">
@@ -218,8 +219,8 @@ export function WorkOrderDocumentPage() {
       <div className="mx-auto mb-4 flex max-w-[210mm] flex-wrap items-center justify-between gap-2 px-4 print:hidden">
         <Link to={woUrl(wo.id)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> {wo.ref}</Link>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-1.5" asChild><a href={waLink(wo.vendor_phone, workOrderText(wo, company))} target="_blank" rel="noreferrer"><MessageCircle className="size-4" /> Send on WhatsApp</a></Button>
-          <Button className="gap-1.5" onClick={() => window.print()}><Printer className="size-4" /> Print / PDF</Button>
+          <Button variant="outline" className="gap-1.5" asChild><a href={waLink(wo.vendor_phone, workOrderText(wo, company))} target="_blank" rel="noreferrer"><ActionIcon kind="whatsapp" className="size-4" /> Send on WhatsApp</a></Button>
+          <Button className="gap-1.5" onClick={() => window.print()}><ActionIcon kind="pdf" className="size-4" /> Print / PDF</Button>
         </div>
       </div>
       <article className="mx-auto max-w-[210mm] bg-white px-10 py-9 text-[13px] text-neutral-900 shadow-sm print:max-w-none print:px-0 print:py-0 print:shadow-none">

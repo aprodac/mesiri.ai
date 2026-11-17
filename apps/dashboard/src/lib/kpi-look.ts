@@ -6,8 +6,8 @@ import {
 
 // UX-15 (asked by Ilan 17 Nov 2026): every figure on every page carries an icon that says what kind of figure it
 // is, from this one table, so "workers" look like workers and money looks like money on every page. A page names
-// the kind (`kind: 'money'`) or passes its own icon; when it gives neither, `guessKind` reads the figure (a ₹ is
-// money) and then the label's first matching word below. A new kind is one line here.
+// the kind (`kind: 'money'`) or passes its own icon; when it gives neither, `guessKind` reads the label's first
+// matching word below, then the figure (a ₹ is money). A new kind is one line here.
 
 export type KpiKind =
   | 'money' | 'cash' | 'bill' | 'count' | 'percent' | 'progress' | 'done' | 'sites' | 'workers' | 'people' | 'work'
@@ -41,20 +41,20 @@ export const KPI_ICON: Record<KpiKind, LucideIcon> = {
 
 // First match wins: the more specific words come first ("worker-days" is workers, not days).
 const WORDS: [RegExp, KpiKind][] = [
-  [/issue|critical|stopped|stuck|late|overdue|problem|short/i, 'issue'],
-  [/worker|man-day|labour|mason|helper|attendance|wage/i, 'workers'],
-  [/deliver|came in|received|grn|went out/i, 'delivery'],
+  [/issue|critical|stopped|stuck|late|overdue|problem|short|over budget|at a loss/i, 'issue'],
+  [/worker|man-day|labour|mason|helper|attendance/i, 'workers'],
+  [/deliver|came in|grn|went out/i, 'delivery'],
   [/order|\bpo\b/i, 'order'],
   [/request|asked/i, 'request'],
   [/stock|store|in hand/i, 'stock'],
-  [/material|cement|steel|sand|brick/i, 'materials'],
+  [/material|cement|steel|sand|brick|concrete/i, 'materials'],
   [/machine|equipment|jcb|hire/i, 'machine'],
   [/photo|picture/i, 'photo'],
   [/cash|bank|petty/i, 'cash'],
   [/margin|profit/i, 'margin'],
-  [/bill|invoice|voucher|payment|paid|owe|spent|cost|budget|value|gst|tds|sales|purchase|earned/i, 'money'],
+  [/bill|invoice|voucher|payment|paid|owe|spent|cost|budget|value|gst|tds|sales|purchase|earned|income|revenue|credit|debit|opening|closing|outstanding|given|committed|forecast|moved|deduction|wage|money/i, 'money'],
   [/people|team|staff|supplier|client|vendor|contractor/i, 'people'],
-  [/site|place|floor|level|room/i, 'sites'],
+  [/site|floor|level|room/i, 'sites'],
   [/progress|complete|% done/i, 'progress'],
   [/done|confirm|approved|sent|finished/i, 'done'],
   [/work|task|activit|item|line/i, 'work'],
@@ -62,11 +62,11 @@ const WORDS: [RegExp, KpiKind][] = [
   [/day|week|month|date|yesterday|today/i, 'day'],
 ]
 
-/** The kind of a figure, from its value first (₹ is money, % a share), then its label. */
+/** The kind of a figure, from its label first, then its value (₹ is money, % a share). */
 export function guessKind(label: string, value?: unknown): KpiKind | undefined {
+  for (const [re, kind] of WORDS) if (re.test(label)) return kind
   const v = typeof value === 'string' ? value : typeof value === 'number' ? String(value) : ''
   if (v.includes('₹')) return 'money'
   if (/%\s*$/.test(v)) return 'percent'
-  for (const [re, kind] of WORDS) if (re.test(label)) return kind
   return undefined
 }

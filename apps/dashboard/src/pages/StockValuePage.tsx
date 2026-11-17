@@ -1,14 +1,14 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Download, IndianRupee, Snail, TriangleAlert, Wallet } from 'lucide-react'
+import { Snail, TriangleAlert, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { KpiStrip, ModuleTitle } from '@/components/page/page-kit'
 import { useScope } from '@/lib/ScopeContext'
 import { usePageTitle } from '@/lib/page-title'
 import { exportCsv } from '@/lib/export'
 import { rupees } from '@/lib/orders'
 import { fetchStockValue, type ValueRow } from '@/lib/stock-count'
-import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-49: Materials › Stock value (web only, money roles). What the stock on hand is worth: quantity x the weighted
 // average rate of its deliveries (D-P2-4, GST per D-CC8): the total, a bar per category, the top 10 items, and what
@@ -33,17 +33,23 @@ export default function StockValuePage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <header className="flex items-center justify-between gap-3">
         <ModuleTitle icon={Wallet} title="Stock value" />
-        <Button variant="outline" className="gap-2" data-guide="value.export" disabled={!v?.rows.length} onClick={exportRows}><Download className="size-4" /> <span className="hidden sm:inline">Excel</span></Button>
+        <Button variant="outline" className="gap-2" data-guide="value.export" disabled={!v?.rows.length} onClick={exportRows}><ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Excel</span></Button>
       </header>
       {isError && <p className="text-sm text-destructive">Stock value did not load.</p>}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3" data-guide="value.tiles">
-        <Tile icon={IndianRupee} tone="bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" value={isLoading ? '–' : rupees(v?.total)} label={`Stock worth, ${v?.items ?? 0} items`} />
-        <button type="button" onClick={() => setSlowOnly((s) => !s)} className={cn('rounded-xl text-left', slowOnly && 'ring-2 ring-orange-500')} data-guide="value.slow">
-          <Tile icon={Snail} tone="bg-orange-100 text-orange-900 dark:bg-orange-950 dark:text-orange-100" value={isLoading ? '–' : rupees(v?.slow_moving_value)} label={`${v?.slow_moving ?? 0} not used in 30 days`} />
-        </button>
-        {!!v?.unpriced && <Tile icon={TriangleAlert} tone="bg-muted text-foreground/80" value={String(v.unpriced)} label="Items with no rate yet (not in the total)" />}
-      </div>
+      {/* UX-15: page kit figures; the slow-moving figure filters the list. */}
+      <KpiStrip
+        guide="value.tiles"
+        stats={[
+          { label: 'Stock worth', value: rupees(v?.total), kind: 'stock', loading: isLoading, hint: `${v?.items ?? 0} items` },
+          {
+            label: 'Not used in 30 days', value: rupees(v?.slow_moving_value), icon: Snail, loading: isLoading, guide: 'value.slow',
+            tone: Number(v?.slow_moving_value) > 0 ? 'attention' : 'default', share: Number(v?.total) > 0 ? Number(v?.slow_moving_value) / Number(v?.total) : undefined,
+            hint: `${v?.slow_moving ?? 0} items`, pressed: slowOnly, onClick: () => setSlowOnly((x) => !x),
+          },
+          ...(v?.unpriced ? [{ label: 'No rate yet', value: v.unpriced, icon: TriangleAlert, tone: 'attention' as const, hint: 'not in the total' }] : []),
+        ]}
+      />
 
       {!!v?.by_category.length && (
         <section className="flex flex-col gap-2 rounded-xl border p-3 sm:p-4" data-guide="value.categories">
@@ -66,18 +72,6 @@ export default function StockValuePage() {
         </ul>
       </section>
       {v?.as_of && <p className="text-xs text-muted-foreground">As on {v.as_of} · on hand × average delivery rate</p>}
-    </div>
-  )
-}
-
-function Tile({ icon: Icon, tone, value, label }: { icon: typeof Wallet; tone: string; value: string; label: string }) {
-  return (
-    <div className="flex h-full items-center gap-3 rounded-xl border bg-card p-3 sm:p-3.5">
-      <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11', tone)}><Icon className="size-4 sm:size-5" /></span>
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl">{value}</span>
-        <span className="text-xs leading-tight text-muted-foreground sm:text-sm">{label}</span>
-      </span>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlarmClock, CalendarClock, CalendarDays, Download, LayoutGrid, MapPin, MessageCircle, PackageCheck, Phone, Store, Truck } from 'lucide-react'
+import { AlarmClock, CalendarClock, CalendarDays, LayoutGrid, MapPin, MessageCircle, PackageCheck, Phone, Store, Truck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -19,6 +19,7 @@ type Tile = '' | Bucket
 import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/components/requests/parts'
 import { OrderDetail, VendorTile } from '@/components/orders/order-detail'
 import { ModuleTitle } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-45: Procurement › Pending deliveries. Every order line still to come, as a board grouped by when it is due
 // (Late · Today · This week · Later · No date) or by supplier, so the office chases the right shop in one message.
@@ -111,7 +112,7 @@ export default function PendingDeliveriesPage() {
         <ModuleTitle icon={Truck} title="Pending deliveries" />
         <div className="flex items-center gap-3">
           {value > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">Still to come: <strong className="text-foreground tabular-nums">{rupees(value)}</strong></span>}
-          <Button variant="outline" className="gap-2" disabled={!shown.length} onClick={() => exportPending(shown)} title="The lines shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
+          <Button variant="outline" className="gap-2" disabled={!shown.length} onClick={() => exportPending(shown)} title="The lines shown, as a CSV file (opens in Excel)"><ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
         </div>
       </header>
 

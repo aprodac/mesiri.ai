@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarRange, Calculator, Plus, Trash2 } from 'lucide-react'
+import { CalendarRange, Calculator, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { addDraftBoq, addDraftSchedule, type DraftActivity, type DrawingReadWithDrafts } from '@/lib/drawings'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { fetchLifecycle } from '@/lib/schedule'
+import { ActionIcon } from '@/components/page/action-button'
 
 // DR-05 / DR-06: the drafts the drawing reader makes, edited here and then added to a project. Adding never
 // changes what the project already has: an activity or BOQ line that is already there is skipped and said.
@@ -58,7 +59,7 @@ export function DraftSchedule({ read }: { read: DrawingReadWithDrafts }) {
             <span className="w-6 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
             <Input aria-label="Activity" className="h-8 flex-1" value={r.name} onChange={(e) => setRows((x) => x.map((y, k) => (k === i ? { ...y, name: e.target.value } : y)))} />
             <Input aria-label="Days" type="number" min={0} max={365} className="h-8 w-16 text-right" value={r.days} onChange={(e) => setRows((x) => x.map((y, k) => (k === i ? { ...y, days: Math.max(0, Number(e.target.value) || 0) } : y)))} />
-            <Button variant="ghost" size="icon" className="size-8" aria-label="Remove" onClick={() => setRows((x) => x.filter((_, k) => k !== i))}><Trash2 className="size-3.5" /></Button>
+            <Button variant="ghost" size="icon" className="size-8" aria-label="Remove" onClick={() => setRows((x) => x.filter((_, k) => k !== i))}><ActionIcon kind="delete" className="size-3.5" /></Button>
           </li>
         ))}
       </ol>

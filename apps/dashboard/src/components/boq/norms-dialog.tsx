@@ -1,12 +1,13 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Combobox } from '@/components/ui/combobox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { fetchMaterials, type MaterialCatalog } from '@/lib/materials'
 import { formatQuantity, type BoqLine, type NormInput } from '@/lib/boq'
+import { ActionIcon } from '@/components/page/action-button'
 
 // MP-01: what one unit of a BOQ line uses ("1 m³ of M20: 8 bags cement, 15 cft M-sand"). Each amount is in the
 // material's stock unit, so the material plan (MP-02) compares it with stock without converting anything.
@@ -86,7 +87,7 @@ export function NormsDialog({
                 />
                 <Button variant="ghost" size="icon" className="size-9 sm:order-last" aria-label="Remove this material"
                   onClick={() => setRows((rs) => (rs.length > 1 ? rs.filter((_, k) => k !== i) : [{ material_id: '', quantity_per_unit: '', wastage_pct: '' }]))}>
-                  <Trash2 className="size-4" />
+                  <ActionIcon kind="delete" className="size-4" />
                 </Button>
                 <div className="relative">
                   <Input inputMode="decimal" aria-label="Amount per unit" placeholder="8" value={r.quantity_per_unit}

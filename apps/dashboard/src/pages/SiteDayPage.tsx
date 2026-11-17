@@ -4,20 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { SiteDayMoney } from '@/components/expenses/site-day-money'
 import { SiteDayMachines } from '@/components/equipment/site-day-machines'
 import {
-  Check,
-  CheckCheck,
-  CircleCheck,
-  CircleDashed,
-  HardHat,
-  History,
-  Info,
-  MessageSquareText,
-  Package,
-  Pencil,
-  Trash2,
-  TriangleAlert,
-  Users,
-  Radio,
+  Check, CheckCheck, CircleCheck, CircleDashed, HardHat, History, Info, MessageSquareText, Package, Pencil, TriangleAlert, Users, Radio,
 } from 'lucide-react'
 import { HardHat as IcHardHat, Hammer as IcHammer, Camera as IcCamera, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import {
@@ -71,6 +58,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { ActionIcon } from '@/components/page/action-button'
 
 // Site DPR page (WEB-04): one site's working day. The engineer checks what
 // was sent on WhatsApp (saved as drafts, WA-01), confirms or removes each
@@ -206,7 +194,7 @@ function ItemRow({
               disabled={busy}
               onClick={() => onRemove(item)}
             >
-              <Trash2 />
+              <ActionIcon kind="delete" />
             </Button>
           )}
           {!frozen && draft && (

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRightLeft, Download, Layers, Settings2 } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, Layers, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 import { useScope } from '@/lib/ScopeContext'
@@ -11,6 +11,7 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { errorWords, fetchReturnables, setReturnable } from '@/lib/equipment'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-14: Equipment > Shuttering & tools. Plates, props, scaffold pipes and tools are materials in a returnable
 // category (no second stock system): this page shows how many each site holds, what went out lost or damaged, and
@@ -48,7 +49,7 @@ export default function ReturnablesPage() {
         <ModuleTitle icon={Layers} title="Shuttering & tools" />
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2" data-guide="assets.send" asChild><Link to="/materials?view=movements"><ArrowRightLeft className="size-4" /><span className="hidden sm:inline">Send to a site</span></Link></Button>
-          <Button variant="outline" className="gap-2" disabled={!items.length} onClick={exportIt}><Download className="size-4" /><span className="hidden sm:inline">Export</span></Button>
+          <Button variant="outline" className="gap-2" disabled={!items.length} onClick={exportIt}><ActionIcon kind="export-excel" className="size-4" /><span className="hidden sm:inline">Export</span></Button>
           {office && <Button variant={setup || !anyReturnable ? 'default' : 'outline'} className="gap-2" data-guide="assets.categories" onClick={() => setSetup((s) => !s)}><Settings2 className="size-4" />Categories</Button>}
         </div>
       </header>

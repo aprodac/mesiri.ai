@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpRight, BookOpenCheck, CalendarRange, FileSpreadsheet, History, Lock, PenLine, Undo2 } from 'lucide-react'
+import { ArrowUpRight, BookOpenCheck, CalendarRange, History, Lock, PenLine } from 'lucide-react'
 import { Segmented } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +30,7 @@ import { useModuleEnabled } from '@/lib/modules'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
 import { NewVoucherDialog } from './new-voucher-dialog'
+import { ActionIcon } from '@/components/page/action-button'
 
 // ACC-05: what every Accounts page shares: the period (kept in the address, so a view can be sent to the CA), the
 // row of Accounts pages, a voucher opened in a side sheet from any figure, and the Excel button.
@@ -142,7 +143,7 @@ export function ExcelButton({ path, params, name }: { path: string; params: obje
   }
   return (
     <Button size="sm" variant="outline" className="gap-1.5" onClick={run} disabled={busy} data-guide="books.excel">
-      <FileSpreadsheet className="size-3.5" /> {busy ? 'Preparing…' : 'Excel'}
+      <ActionIcon kind="export-excel" className="size-3.5" /> {busy ? 'Preparing…' : 'Excel'}
     </Button>
   )
 }
@@ -258,7 +259,7 @@ export function VoucherSheet({ entryId, onClose, onOpen }: { entryId: string | n
             </dl>
             {mayChange && !reversing && (
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setReversing(true)}><Undo2 className="size-3.5" /> Reverse</Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setReversing(true)}><ActionIcon kind="undo" className="size-3.5" /> Reverse</Button>
                 {mayReopen(me?.role) && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCorrecting(true)}><PenLine className="size-3.5" /> Correct</Button>}
               </div>
             )}

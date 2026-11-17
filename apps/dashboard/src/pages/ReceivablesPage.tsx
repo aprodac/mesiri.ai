@@ -2,7 +2,7 @@ import * as React from 'react'
 import { BOOKS_PEOPLE } from '@/lib/permissions'
 import { NoAccess } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { HandCoins, Landmark, ReceiptText, Undo2 } from 'lucide-react'
+import { HandCoins, Landmark, ReceiptText } from 'lucide-react'
 import { BooksLink } from '@/components/accounts/books'
 import { ReceiveMoneyDialog } from '@/components/billing/receive-money-dialog'
 import { DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
@@ -16,6 +16,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { BUCKET_LABEL, cancelClientReceipt, fetchClientReceipts, fetchReceivables, type Bucket, type OpenBill } from '@/lib/receivables'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-03: what each client owes, most first, by age; the open bills with what came against them; money received,
 // newest first, with a way to take one back. Owner, admin and finance only (D-N3). Backend: GET /billing/receivables,
@@ -157,7 +158,7 @@ export default function ReceivablesPage() {
                 </div>
                 {r.status === 'confirmed' ? (
                   <Button size="sm" variant="ghost" className="gap-1.5" disabled={takeBack.isPending} onClick={() => takeBack.mutate(r.id)}>
-                    <Undo2 className="size-3.5" /> Take back
+                    <ActionIcon kind="undo" className="size-3.5" /> Take back
                   </Button>
                 ) : (
                   <span className="text-xs">Taken back</span>

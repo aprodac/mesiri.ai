@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CircleCheck, ListPlus, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, CircleCheck, ListPlus, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,7 @@ import {
   addMeasurement, checkBill, createWorkOrder, decideBill, editWorkOrder, giveAdvance, n, recordBill, releaseRetention,
   type BillCheck, type LineIn, type WoBill, type WorkOrder,
 } from '@/lib/subcontracts'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-05/06/07: the subcontract dialogs. A work order (subcontractor, where, lines from the BOQ or typed, retention,
 // advance, TDS, terms); a measurement; a bill with its check and deductions shown live before it is saved; approve or
@@ -195,7 +196,7 @@ export function WorkOrderDialog({ open, onOpenChange, editing, preset, onSaved }
                 <Input aria-label="Quantity" type="number" min={0} step="any" inputMode="decimal" value={l.quantity} onChange={(e) => setLine(l.key, { quantity: e.target.value })} placeholder="400" />
                 <Input aria-label="Agreed rate" type="number" min={0} step="any" inputMode="decimal" value={l.rate} onChange={(e) => setLine(l.key, { rate: e.target.value })} placeholder="380" />
                 <span className="self-center text-right text-sm font-medium tabular-nums">{rupees((Number(l.quantity) || 0) * (Number(l.rate) || 0))}</span>
-                <Button type="button" size="icon" variant="ghost" className="size-8 self-center text-muted-foreground" aria-label="Remove line" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><Trash2 className="size-4" /></Button>
+                <Button type="button" size="icon" variant="ghost" className="size-8 self-center text-muted-foreground" aria-label="Remove line" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><ActionIcon kind="delete" className="size-4" /></Button>
               </div>
             ))}
             <div className="flex justify-end text-sm">Work order value <span className="ml-2 font-semibold tabular-nums">{rupees(value)}</span></div>

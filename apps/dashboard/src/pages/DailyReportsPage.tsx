@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Building2, ChevronRight, CircleCheck, CircleDashed, Download, FileText, RefreshCw, TriangleAlert, X } from 'lucide-react'
+import { Building2, ChevronRight, CircleCheck, CircleDashed, FileText, RefreshCw, TriangleAlert, X } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import { fetchDailyReportPdfApi, fetchDprHistoryApi, type DprHistoryItem } from '@/lib/api'
 import { CHIP, errorDetail, localIsoDate, longDate, plural, projectDayPath, siteDayPath } from '@/lib/site-day'
@@ -16,6 +16,7 @@ import { Callout, PageHeader } from '@/components/dpr-page'
 import { ROW_ACCENT } from '@/lib/cues'
 import { useUrlState } from '@/lib/url-state'
 import { FilterSelect } from '@/components/filter-select'
+import { ActionIcon } from '@/components/page/action-button'
 
 // Daily Reports history (WEB-06): every site and project DPR, newest day
 // first, with the figures from the version that was confirmed or sent. Each
@@ -249,7 +250,7 @@ export default function DailyReportsPage() {
         actions={
           <>
             <Button variant="outline" size="sm" className="gap-1.5" disabled={items.length === 0} onClick={exportRows} data-guide="reports.export">
-              <Download className="size-4" /> Export CSV
+              <ActionIcon kind="export-excel" className="size-4" /> Export CSV
             </Button>
             <Button variant="ghost" size="icon" className="size-8" onClick={() => query.refetch()} disabled={query.isFetching} title="Refresh" aria-label="Refresh">
               <RefreshCw className={cn('size-4', query.isFetching && 'animate-spin')} />

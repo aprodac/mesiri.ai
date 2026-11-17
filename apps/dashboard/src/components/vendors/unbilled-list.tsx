@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { CircleCheck, Download, TriangleAlert } from 'lucide-react'
+import { CircleCheck, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout } from '@/components/dpr-page'
@@ -9,6 +9,7 @@ import { rupees } from '@/lib/expenses'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { day, fetchUnbilled, num, vendorUrl, type UnbilledDelivery } from '@/lib/vendors'
+import { ActionIcon } from '@/components/page/action-button'
 
 // PRC-11: every delivery the site recorded that has no bill yet, oldest first: what the office chases. Chips narrow
 // it to deliveries that came without an order, with no supplier named, or with no rate. A supplier opens its Not billed
@@ -55,7 +56,7 @@ export function UnbilledList({ projectId }: { projectId?: string }) {
         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => exportCsv(`deliveries-not-billed-${q.data.as_of}.csv`,
           ['Date', 'Days', 'Material', 'Quantity', 'Unit', 'Rate', 'Amount', 'Supplier', 'Project', 'Site', 'Order'],
           shown.map((d) => [d.date, d.days, d.material, Number(d.quantity), d.unit, d.rate ? num(d.rate) : '', d.amount ? num(d.amount) : '', d.supplier ?? '', d.project ?? '', d.site ?? '', d.order_ref ?? 'No order']))}>
-          <Download className="size-4" /> Export
+          <ActionIcon kind="export-excel" className="size-4" /> Export
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">{rupees(num(q.data.totals.amount))} at the site's rates{q.data.totals.unpriced ? `, and ${q.data.totals.unpriced} with no rate` : ''}</p>

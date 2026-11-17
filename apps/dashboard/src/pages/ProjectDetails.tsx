@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ProjectHub } from '@/components/home/project-hub'
-import { Archive, Calculator, Clock, FileText, MapPin, MoreHorizontal, Pencil, Plus, Send, Sparkles, Trash2, Users } from 'lucide-react'
+import { Archive, Calculator, Clock, FileText, MapPin, MoreHorizontal, Pencil, Plus, Send, Sparkles, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -33,6 +33,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { useReadOnly } from '@/lib/trial'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WEB-28: one project's setup on one page -- its sites, its people, when its
 // DPR goes out and who gets it -- in flat sections instead of seven tabs.
@@ -295,7 +296,7 @@ export default function ProjectDetails() {
                         title="Remove from project"
                         onClick={() => setConfirm({ kind: 'member', member: m })}
                       >
-                        <Trash2 className="size-4" />
+                        <ActionIcon kind="delete" className="size-4" />
                       </Button>
                     )}
                   </li>

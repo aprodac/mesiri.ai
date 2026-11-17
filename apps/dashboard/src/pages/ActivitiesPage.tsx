@@ -2,24 +2,7 @@ import * as React from 'react'
 import { EmptyState } from '@/components/page/page-kit'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  Activity as ActivityIcon,
-  Search,
-  RefreshCw,
-  Calendar,
-  ChevronRight,
-  Bot,
-  Image as ImageIcon,
-  Download,
-  X,
-  Pencil,
-  Trash2,
-  CircleCheck,
-  CirclePlay,
-  CircleDashed,
-  CirclePause,
-  TriangleAlert,
-  TrendingUp,
-  StickyNote,
+  Activity as ActivityIcon, Search, RefreshCw, Calendar, ChevronRight, Bot, Image as ImageIcon, X, Pencil, Trash2, CircleCheck, CirclePlay, CircleDashed, CirclePause, TriangleAlert, TrendingUp, StickyNote,
 } from 'lucide-react'
 import { ListChecks as IcListChecks, CirclePlay as IcCirclePlay, CircleCheck as IcCircleCheck, CirclePause as IcCirclePause } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
@@ -57,6 +40,7 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, toLocalISODate } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // --- Status ---
 // The backend's activity statuses are PLANNED, IN_PROGRESS, STOPPED and
@@ -395,7 +379,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
         <div className="flex justify-end gap-2 sm:-mt-[52px] sm:self-end">
           <>
             <Button variant="outline" size="sm" className="gap-1.5" data-guide="sitelog.export" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
-              <Download className="size-4" /> Export CSV
+              <ActionIcon kind="export-excel" className="size-4" /> Export CSV
             </Button>
             <Button variant="ghost" size="icon" className="size-8" onClick={fetchList} disabled={loading} title="Refresh" aria-label="Refresh">
               <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
@@ -408,7 +392,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           actions={
             <>
               <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
-                <Download className="size-4" /> Export CSV
+                <ActionIcon kind="export-excel" className="size-4" /> Export CSV
               </Button>
               <Button variant="ghost" size="icon" className="size-8" onClick={fetchList} disabled={loading} title="Refresh" aria-label="Refresh">
                 <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
@@ -669,7 +653,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
                   className="gap-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => { setVoidReason(''); setVoidError(null); setVoidActivityOpen(true) }}
                 >
-                  <Trash2 className="size-3.5" /> Remove
+                  <ActionIcon kind="delete" className="size-3.5" /> Remove
                 </Button>
                 <Button asChild size="sm" variant="ghost" className="ml-auto gap-1 text-primary-ink">
                   <Link to={siteDayPath(detailData.site_id, detailData.activity_date)}>

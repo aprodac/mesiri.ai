@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, ArrowRightLeft, CheckCircle2, ClipboardPen, Download, Fuel, Gauge, MapPin, Pencil, ReceiptText, Trash2, Wrench } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRightLeft, CheckCircle2, ClipboardPen, Fuel, Gauge, MapPin, Pencil, ReceiptText, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 import { Legend, MachineAvatar, OwnershipChip, ServiceChip, StateChip } from '@/components/equipment/parts'
@@ -13,23 +13,13 @@ import { useReadOnly } from '@/lib/trial'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { deleteHireBill, deleteMachine, errorWords, fetchMachine, hrs, iso, pct, rateWords, updateMachine, voidLog, type MachineDetail, type MachineLog, inr } from '@/lib/equipment'
+import { ActionIcon } from '@/components/page/action-button'
+import { KpiStrip } from '@/components/page/page-kit'
 
 // NXT-11 / NXT-13 / NXT-15: one machine. Its period in figures (30 days by default), a day-by-day chart, the logbook,
 // what happened to it (moves, on / off hire, service), breakdowns and hire bills with their check.
 
 const PERIODS = [{ days: 7, label: '7 days' }, { days: 30, label: '30 days' }, { days: 90, label: '90 days' }]
-
-function Kpi({ icon: Icon, label, value, hint, tone }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; hint?: string; tone?: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
-      <span className={cn('inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted', tone)}><Icon className="size-5" /></span>
-      <span className="flex min-w-0 flex-col">
-        <span className="text-xl leading-tight font-semibold tabular-nums">{value}</span>
-        <span className="text-xs text-muted-foreground">{label}{hint ? ` · ${hint}` : ''}</span>
-      </span>
-    </div>
-  )
-}
 
 function Chart({ m, days }: { m: MachineDetail; days: number }) {
   const byDate = new Map(m.logs.map((l) => [l.date, l]))
@@ -131,7 +121,7 @@ export default function MachinePage() {
             {seesMoney && m.ownership === 'hired' && <Button variant="outline" className="gap-1.5" onClick={() => setDialog('bill')}><ReceiptText className="size-4" />Hire bill</Button>}
             {office && <Button variant="ghost" className="gap-1.5" onClick={() => setDialog('edit')}><Pencil className="size-4" />Edit</Button>}
             {office && <Button variant="ghost" className="gap-1.5 text-destructive" disabled={retire.isPending}
-              onClick={() => { if (window.confirm(`Remove ${m.name}? With logs or bills it is retired instead, and keeps its history.`)) retire.mutate() }}><Trash2 className="size-4" /></Button>}
+              onClick={() => { if (window.confirm(`Remove ${m.name}? With logs or bills it is retired instead, and keeps its history.`)) retire.mutate() }}><ActionIcon kind="delete" className="size-4" /></Button>}
           </div>
         )}
       </header>
@@ -143,17 +133,20 @@ export default function MachinePage() {
               className={cn('h-8 rounded-lg px-3 text-sm', days === x.days ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75')}>{x.label}</button>
           ))}
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5" disabled={!m.logs.length} onClick={exportLog}><Download className="size-4" />Logbook</Button>
+        <Button variant="outline" size="sm" className="gap-1.5" disabled={!m.logs.length} onClick={exportLog}><ActionIcon kind="export-excel" className="size-4" />Logbook</Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi icon={Gauge} label="Worked" value={hrs(p.worked)} hint={`${p.days_logged} days logged`} tone="text-emerald-700 dark:text-emerald-300" />
-        <Kpi icon={AlertTriangle} label="Idle · breakdown" value={`${hrs(p.idle)} · ${hrs(p.breakdown)}`} tone="text-amber-700 dark:text-amber-300" />
-        <Kpi icon={Fuel} label="Diesel" value={Number(p.fuel_litres) ? `${Number(p.fuel_litres)} L` : '–'} hint={p.litres_per_hour ? `${p.litres_per_hour} L / h` : undefined} />
-        {seesMoney
-          ? <Kpi icon={ReceiptText} label={m.ownership === 'hired' ? 'Hire + diesel' : 'Diesel cost'} value={inr(Number(p.hire_cost ?? 0) + Number(p.fuel_cost ?? 0))} hint={`used ${pct(p.utilisation)} of the time`} />
-          : <Kpi icon={CheckCircle2} label="Used of the time on site" value={pct(p.utilisation)} />}
-      </div>
+      {/* UX-15: page kit figures; idle and breakdown amber when there were any, use of the time on site as a bar. */}
+      <KpiStrip
+        stats={[
+          { label: 'Worked', value: hrs(p.worked), icon: Gauge, tone: 'good', hint: `${p.days_logged} days logged` },
+          { label: 'Idle · breakdown', value: `${hrs(p.idle)} · ${hrs(p.breakdown)}`, icon: AlertTriangle, tone: Number(p.idle) || Number(p.breakdown) ? 'attention' : 'default' },
+          { label: 'Diesel', value: Number(p.fuel_litres) ? `${Number(p.fuel_litres)} L` : '–', icon: Fuel, hint: p.litres_per_hour ? `${p.litres_per_hour} L / h` : undefined },
+          seesMoney
+            ? { label: m.ownership === 'hired' ? 'Hire + diesel' : 'Diesel cost', value: inr(Number(p.hire_cost ?? 0) + Number(p.fuel_cost ?? 0)), icon: ReceiptText, hint: `used ${pct(p.utilisation)} of the time` }
+            : { label: 'Used of the time on site', value: pct(p.utilisation), icon: CheckCircle2, share: p.utilisation ?? undefined },
+        ]}
+      />
 
       <section className="rounded-xl border p-4"><Chart m={m} days={days} /></section>
 

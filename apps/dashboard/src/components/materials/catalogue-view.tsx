@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, CircleSlash2, FileSpreadsheet, Filter, FolderTree, MoreHorizontal, Pencil, Plus, Ruler, Search, ShieldAlert, Trash2 } from 'lucide-react'
+import { CheckCircle2, CircleSlash2, Filter, FolderTree, MoreHorizontal, Pencil, Plus, Ruler, Search, ShieldAlert } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import {
 import { CategoriesPanel } from './categories-panel'
 import { ImportDialog } from './import-dialog'
 import { CategoryTile } from '@/components/requests/parts'
+import { ActionIcon } from '@/components/page/action-button'
 
 // Radix Select can't hold an empty value; this stands for "no category".
 const NO_CATEGORY = 'none'
@@ -257,7 +258,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleting(m)}>
-            <Trash2 className="mr-2 size-3.5" /> Delete
+            <ActionIcon kind="delete" className="mr-2 size-3.5" /> Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -296,7 +297,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
             </Button>
           )}
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportOpen(true)}>
-            <FileSpreadsheet className="size-3.5" /> Import
+            <ActionIcon kind="import-excel" className="size-3.5" /> Import
           </Button>
           <Button size="sm" variant={panelOpen ? 'secondary' : 'outline'} aria-pressed={panelOpen} className="gap-1.5" onClick={() => setPanelOpen((o) => !o)}>
             <FolderTree className="size-3.5" /> Categories

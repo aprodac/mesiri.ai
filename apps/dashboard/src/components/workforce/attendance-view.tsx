@@ -2,7 +2,7 @@ import * as React from 'react'
 import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { ChevronRight, Download, HardHat, MessageSquare, TriangleAlert } from 'lucide-react'
+import { ChevronRight, HardHat, MessageSquare, TriangleAlert } from 'lucide-react'
 import { Users as IcUsers, TrendingUp as IcTrendingUp, CalendarDays as IcCalendarDays, IndianRupee as IcIndianRupee } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -22,6 +22,7 @@ import { useUrlState } from '@/lib/url-state'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
 import { AttendanceDetailSheet } from './attendance-detail-sheet'
+import { ActionIcon } from '@/components/page/action-button'
 
 // WEB-22: who was on site, from the attendance reports (mostly sent on
 // WhatsApp). One view instead of Overview, Attendance, Analytics and
@@ -123,7 +124,7 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1.5" disabled={!reports.data}>
-              <Download className="size-3.5" /> Export
+              <ActionIcon kind="export-excel" className="size-3.5" /> Export
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">

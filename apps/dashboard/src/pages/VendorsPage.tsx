@@ -1,8 +1,7 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClock, Download, FileWarning, HandCoins, MoreHorizontal, PackageOpen, Plus, Search, Store, TriangleAlert, Wallet } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { AlarmClock, FileWarning, MoreHorizontal, PackageOpen, Plus, Search, Store, TriangleAlert, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -25,10 +24,11 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { KpiStrip, ModuleTitle, type KpiProps } from '@/components/page/page-kit'
 import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { paperStatusWords, usePapersAttention } from '@/lib/vendor-documents'
+import { ActionIcon } from '@/components/page/action-button'
 
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
@@ -119,11 +119,13 @@ export default function VendorsPage() {
   })
   const t = payables.data?.totals
   const count = (x: Tile) => base.filter((v) => inTile(v, x)).length
-  const tiles: { value: Exclude<Tile, ''>; label: string; value2: string; icon: LucideIcon; tone: string; ring: string; num?: string }[] = [
-    { value: 'owe', label: `We owe · ${count('owe')} suppliers`, value2: rupees(num(t?.payable)), icon: HandCoins, tone: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100', ring: 'ring-sky-500' },
-    { value: 'overdue', label: `Overdue · ${count('overdue')}`, value2: rupees(num(t?.overdue)), icon: AlarmClock, tone: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200', ring: 'ring-red-500', num: 'text-red-700 dark:text-red-400' },
-    { value: 'unbilled', label: `Delivered, no bill · ${count('unbilled')}`, value2: rupees(num(t?.unbilled)), icon: PackageOpen, tone: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100', ring: 'ring-amber-500' },
-    { value: 'ahead', label: `Paid ahead · ${count('ahead')}`, value2: rupees(num(t?.advance)), icon: Wallet, tone: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100', ring: 'ring-emerald-500' },
+  // UX-15: page kit figures. Overdue is red and shows its share of what we owe; delivered-not-billed is amber.
+  const owe = num(t?.payable)
+  const tiles: (KpiProps & { value2: Exclude<Tile, ''> })[] = [
+    { value2: 'owe', label: 'We owe', value: rupees(owe), kind: 'money', hint: `${count('owe')} suppliers` },
+    { value2: 'overdue', label: 'Overdue', value: rupees(num(t?.overdue)), icon: AlarmClock, tone: num(t?.overdue) > 0 ? 'bad' : 'default', share: owe > 0 ? num(t?.overdue) / owe : undefined, hint: `${count('overdue')} suppliers` },
+    { value2: 'unbilled', label: 'Delivered, no bill', value: rupees(num(t?.unbilled)), icon: PackageOpen, tone: num(t?.unbilled) > 0 ? 'attention' : 'default', hint: `${count('unbilled')} suppliers` },
+    { value2: 'ahead', label: 'Paid ahead', value: rupees(num(t?.advance)), icon: Wallet, hint: `${count('ahead')} suppliers` },
   ]
 
   const exportRows = () =>
@@ -140,7 +142,7 @@ export default function VendorsPage() {
         <ModuleTitle icon={Store} title="Suppliers" />
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2" disabled={!shown.length} onClick={exportRows} title="The suppliers shown, as a CSV file (opens in Excel)">
-            <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
+            <ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span>
           </Button>
           {!readOnly && (
             <Button className="gap-1.5 font-semibold" onClick={() => setEditing(null)} data-guide="vendors.add">
@@ -156,21 +158,16 @@ export default function VendorsPage() {
         </Callout>
       ) : seesMoney && (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-guide="vendors.tiles">
-            {tiles.map((x) => {
-              const on = tile === x.value
-              return (
-                <button key={x.value} type="button" aria-pressed={on} onClick={() => (x.value === 'unbilled' ? setView('unbilled') : setTile(on ? '' : x.value))}
-                  className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:p-3.5', on && cn('ring-2', x.ring))}>
-                  <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', x.tone)}><x.icon className="size-4 sm:size-5" /></span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className={cn('truncate text-xl leading-none font-semibold tabular-nums sm:text-2xl', x.value2 !== '₹0' && x.num)}>{loading ? '–' : x.value2}</span>
-                    <span className="truncate text-xs text-muted-foreground sm:text-sm sm:text-foreground/80">{x.label}</span>
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+          <KpiStrip
+            guide="vendors.tiles"
+            stats={tiles.map(({ value2: x, ...k }) => ({
+              ...k,
+              key: x,
+              loading,
+              pressed: tile === x,
+              onClick: () => (x === 'unbilled' ? setView('unbilled') : setTile(tile === x ? '' : x)),
+            }))}
+          />
           {payables.data && num(payables.data.totals.payable) + num(payables.data.totals.unbilled) > 0 && (
             <div className="rounded-xl border bg-card p-3" data-guide="vendors.age">
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 text-sm">

@@ -1,9 +1,10 @@
 import * as React from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { Download, FileText, ListChecks, Printer, RefreshCw } from 'lucide-react'
+import { FileText, ListChecks, Printer, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 /** A4 at 96 dpi: the width the PDF's HTML is laid out for. */
 const PAGE_WIDTH = 794
@@ -123,7 +124,7 @@ export function DprDocument({
           </Button>
           {onDownload && (
             <Button size="sm" className="gap-1.5 font-semibold" onClick={onDownload}>
-              <Download className="size-4" /> PDF
+              <ActionIcon kind="pdf" className="size-4" /> PDF
             </Button>
           )}
         </div>

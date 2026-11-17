@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CircleOff, ClipboardPen, Construction, Download, LayoutGrid, MapPin, Plus, Search, Store, Truck, Wrench, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CircleOff, ClipboardPen, Construction, LayoutGrid, MapPin, Plus, Search, Store, Truck, Wrench, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
@@ -19,6 +19,7 @@ import { swatch } from '@/lib/requests'
 import { cn } from '@/lib/utils'
 import { STATE_LOOK, fetchMachines, hrs, type Kind, type Machine, type MachineState, inr } from '@/lib/equipment'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
+import { ActionIcon } from '@/components/page/action-button'
 
 // NXT-11 / NXT-15: Equipment > Machines (and Vehicles, the same page for kind=vehicle), in the Purchase orders page's
 // visual language: tiles for what needs attention today, tabs, filter pills, the list beside the chosen machine (a
@@ -131,7 +132,7 @@ export default function EquipmentPage({ kind = 'machine' }: { kind?: Kind }) {
           <span className="hidden text-sm text-muted-foreground lg:inline">Today: <strong className="text-foreground tabular-nums">{hrs(String(todayHours))}</strong>{todayFuel ? <> · <strong className="text-foreground tabular-nums">{todayFuel} L</strong> diesel</> : null}</span>
           {monthCost > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">This month: <strong className="text-foreground tabular-nums">{inr(monthCost)}</strong></span>}
           <Button variant="outline" className="gap-2" data-guide="equip.log" asChild><Link to="/equipment/log"><ClipboardPen className="size-4" /> <span className="hidden sm:inline">Daily log</span></Link></Button>
-          <Button variant="outline" className="gap-2" data-guide="equip.export" disabled={!list.length} onClick={() => exportMachines(list)} title="The machines shown, as a CSV file (opens in Excel)"><Download className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
+          <Button variant="outline" className="gap-2" data-guide="equip.export" disabled={!list.length} onClick={() => exportMachines(list)} title="The machines shown, as a CSV file (opens in Excel)"><ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
           {!readOnly && <Button className="hidden gap-2 font-semibold md:inline-flex" data-guide="equip.add" onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2.6} /> {vehicles ? 'Vehicle' : 'Machine'}</Button>}
         </div>
       </header>

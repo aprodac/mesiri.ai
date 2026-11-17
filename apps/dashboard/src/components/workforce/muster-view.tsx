@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Download, Plus, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +13,7 @@ import { errorWords, useSiteOptions } from '@/lib/equipment'
 import { createLabourTeam, fetchLabourTeams, fetchMuster, n } from '@/lib/labour-pay'
 import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
+import { ActionIcon } from '@/components/page/action-button'
 
 // LW-02: the muster roll, a site's month as the grid every site keeps: people down, days across, P / ½ / A or how
 // many came, from attendance (never typed again). LW-01: labour teams (a contractor's team is a vendor of kind
@@ -63,7 +64,7 @@ export function MusterView({ siteId: scopedSite, leading }: { siteId: string | n
           <span className="min-w-24 text-center text-sm font-medium">{new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span>
           <Button variant="ghost" size="icon" className="size-9" aria-label="Next month" onClick={() => setMonth(monthShift(month, 1))}><ChevronRight className="size-4" /></Button>
         </div>
-        <Button variant="outline" size="sm" className="ml-auto h-9 gap-1.5" disabled={!m?.rows.length} onClick={exportCsv}><Download className="size-4" /> Excel (CSV)</Button>
+        <Button variant="outline" size="sm" className="ml-auto h-9 gap-1.5" disabled={!m?.rows.length} onClick={exportCsv}><ActionIcon kind="export-excel" className="size-4" /> Excel (CSV)</Button>
       </div>
       {!siteId ? (
         <EmptyState icon={Users} title="No sites yet" />
