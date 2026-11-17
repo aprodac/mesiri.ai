@@ -1,0 +1,724 @@
+"""SS-74b: the planned simulation, every role's entries day by day (docs/plans/guided-demo-plan.md section 18).
+
+The sample company's story after its two seeded weeks (``sample_story.seed``), written in advance: from day 0 (the
+seed's last day, a Saturday) to Green Villa's handover, what each person enters each day. Ravi (site engineer)
+records the sites' days, asks for material and receives it; Anil (project manager) orders, counts work on the BOQ,
+closes issues and runs the tiling subcontract; Meera (accounts) books bills, pays suppliers, wages and advances and
+records the client's payments; the owner approves wages, sends the running bill and hands the villa over.
+
+The player (SS-74c) plays a day's entries as each role's sandbox user through the real API; the entries of the role
+the person plays are their to-do for the day (section 18.4). So the plan is data: who, what kind, which site, the
+numbers, and what an entry needs first (``needs``: a delivery needs its order, a bill its delivery, a payment its
+bills). Fixed, no randomness: every sample company gets the same plan.
+
+How the plan is made: it starts from exactly what the seed leaves (stock per site, what is still to come on the
+seed's orders), worked out by running the seed itself against a recorder (``opening``), never a copy of its rules;
+then each site works through its stages (``STAGES``), using material only while it has it (a short site does less
+work), asking for more when it will run short within the supplier's lead time and a few days, and so on down the
+chain. ``python -m mesiri.application.learn.sample_plan`` writes the readable day-by-day version to
+``docs/plans/sample-plan.md``; a test fails when that file is out of date.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import math
+import sys
+from collections import defaultdict
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+from mesiri.application.organizations import sample_story as story
+
+# --- Who and where ---------------------------------------------------------------------------------------------------
+
+OWNER, PM, ENGINEER, ACCOUNTS = "ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"
+#: The person each role is in the sample company (learn/sandbox.py ROLES; the owner is the person themself).
+WHO = {OWNER: "Owner", PM: "Anil", ENGINEER: "Ravi", ACCOUNTS: "Meera"}
+
+GREEN_VILLA, LAKE_VIEW = "green_villa", "lake_view"
+#: The four sites, in the seed's order (its site index): key, project, name.
+SITES: tuple[tuple[str, str, str], ...] = (
+    ("main", GREEN_VILLA, story.DEMO_SITES[0]), ("annex", GREEN_VILLA, story.DEMO_SITES[1]),
+    ("tower_a", LAKE_VIEW, story.DEMO_SITES_2[0]), ("tower_b", LAKE_VIEW, story.DEMO_SITES_2[1]),
+)
+SITE_NAME = {key: name for key, _p, name in SITES}
+SITE_PROJECT = {key: project for key, project, _n in SITES}
+PROJECT_NAME = {GREEN_VILLA: story.DEMO_PROJECT, LAKE_VIEW: story.DEMO_PROJECT_2}
+
+#: How each material is counted, for the words.
+UNITS = {"cement": "bags", "m sand": "cum", "p sand": "cum", "aggregate 20mm": "cum", "solid blocks": "nos",
+         "steel": "kg", "binding wire": "kg"}
+#: One of it, for a rate ("₹410 a bag").
+PER = {"cement": "bag", "m sand": "cum", "p sand": "cum", "aggregate 20mm": "cum", "solid blocks": "block", "steel": "kg",
+       "binding wire": "kg"}
+#: Working days from the order to the lorry on site.
+LEAD_DAYS = {"cement": 2, "m sand": 1, "p sand": 1, "aggregate 20mm": 1, "solid blocks": 2, "steel": 3,
+             "binding wire": 3}
+#: Ask for more when what is there and on its way would not last the lead time and this many days more.
+COVER_DAYS = 3
+#: A supplier's bill reaches the office this many working days after the delivery.
+BILL_AFTER = 2
+#: Suppliers are paid on a Saturday for bills at least this many days old.
+CREDIT_DAYS = 7
+#: The client pays a running bill this many days after it is sent.
+CLIENT_PAYS_AFTER = 12
+
+# --- What each site does next ----------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Stage:
+    """One piece of work at a site: its quantity a full day, for how many full days, and the material a full day."""
+
+    work: str
+    narrative: str
+    unit: str
+    per_day: float
+    days: int
+    use: tuple[tuple[str, float], ...] = ()
+    #: Helpers from the labour contractor's gang a day (the site's own named workers come every day).
+    gang: int = 4
+    #: Done by a subcontractor (its work is measured and billed, section 18.3).
+    by: str | None = None
+
+
+#: After the seeded weeks: each site carries on from the stage the seed ends on (``DEMO_WORK``'s last) to its end.
+#: Green Villa (Main block, a G+1 villa; the Annex from its plinth) runs to handover; Lake View keeps building.
+STAGES: dict[str, tuple[Stage, ...]] = {
+    "main": (
+        Stage("Electrical conduits", "First floor conduit and box fixing", "nos", 22, 3, (("cement", 4), ("m sand", 0.3)), 2),
+        Stage("Ceiling plastering", "First floor ceiling plastering", "sqm", 35, 6, (("cement", 14), ("m sand", 1.2)), 4),
+        Stage("Plastering", "First floor internal plastering", "sqm", 40, 8, (("cement", 16), ("m sand", 1.5)), 4),
+        Stage("External plastering", "External plastering, all four sides", "sqm", 45, 10, (("cement", 18), ("m sand", 1.8)), 5),
+        Stage("Floor tiling", "Vitrified floor tiles, ground and first floor", "sqm", 30, 8, (("cement", 8), ("m sand", 0.8)), 2,
+              by="Joy Tiling Works"),
+        Stage("Putty and primer", "Wall putty and primer coat, inside", "sqm", 80, 6, (), 3),
+        Stage("Painting", "Two coats of emulsion inside, exterior paint outside", "sqm", 90, 6, (), 3),
+        Stage("Snag list", "Snag list, touch-ups and cleaning for handover", "nos", 12, 2, (), 3),
+    ),
+    "annex": (
+        Stage("Plinth beam", "Plinth beam shuttering, steel and concrete", "rmt", 24, 3,
+              (("cement", 10), ("aggregate 20mm", 1.5), ("m sand", 0.8), ("steel", 120)), 4),
+        Stage("Plinth filling", "Plinth filling and PCC base for the floor", "cum", 6, 3,
+              (("cement", 8), ("aggregate 20mm", 1.2), ("m sand", 1)), 5),
+        Stage("Block work", "Block work, plinth to lintel", "sqm", 18, 8, (("cement", 10), ("solid blocks", 240), ("m sand", 1)), 4),
+        Stage("Slab shuttering", "Roof slab shuttering and steel", "sqm", 40, 4, (("steel", 250), ("binding wire", 4)), 4),
+        Stage("Slab concreting", "Roof slab poured, 12 cum", "cum", 12, 1, (("cement", 96), ("aggregate 20mm", 10), ("m sand", 6)), 8),
+        Stage("Slab curing", "Roof slab curing, ponding", "sqm", 80, 5, (), 1),
+        Stage("Plastering", "Internal and external plastering", "sqm", 35, 8, (("cement", 14), ("m sand", 1.3)), 4),
+        Stage("Flooring", "Floor tiles laid by our masons", "sqm", 25, 4, (("cement", 6), ("m sand", 0.6)), 2),
+        Stage("Painting", "Putty, primer and two coats", "sqm", 70, 5, (), 3),
+    ),
+    "tower_a": tuple(s for floor in ("Fourth", "Fifth", "Sixth") for s in (
+        Stage("Column casting", f"{floor} floor columns cast", "cum", 4, 3,
+              (("cement", 32), ("aggregate 20mm", 3), ("m sand", 1.6), ("steel", 300)), 6),
+        Stage("Slab shuttering", f"{floor} floor slab shuttering", "sqm", 60, 4, (), 5),
+        Stage("Slab reinforcement", f"{floor} floor slab steel tying", "kg", 900, 4, (("steel", 900), ("binding wire", 9)), 5),
+        Stage("Slab concreting", f"{floor} floor slab poured with RMC", "cum", 16, 3, (("cement", 20), ("m sand", 1)), 8),
+    )),
+    "tower_b": (
+        Stage("Retaining wall", "Retaining wall concreting, north side", "sqm", 35, 4,
+              (("cement", 24), ("aggregate 20mm", 2.5), ("steel", 400), ("binding wire", 6)), 6),
+        *(s for floor in ("Basement", "Ground", "First") for s in (
+            Stage("Column casting", f"{floor} columns cast", "cum", 3, 4,
+                  (("cement", 24), ("aggregate 20mm", 2.4), ("m sand", 1.2), ("steel", 260)), 6),
+            Stage("Slab shuttering", f"{floor} slab shuttering", "sqm", 50, 5, (), 5),
+            Stage("Slab reinforcement", f"{floor} slab steel tying", "kg", 1000, 5, (("steel", 1000), ("binding wire", 10)), 5),
+            Stage("Slab concreting", f"{floor} slab poured with RMC", "cum", 15, 3, (("cement", 18), ("m sand", 1)), 8),
+        )),
+    ),
+}
+
+#: Rain: (day, sites) -> half a day's work and use, hours lost.
+RAIN: dict[int, tuple[tuple[str, ...], float]] = {
+    9: (("main", "annex"), 3.0), 10: (("main", "annex", "tower_a", "tower_b"), 4.0), 31: (("tower_a", "tower_b"), 2.5),
+}
+#: Issues seen on site and closed later: (day, site, type, severity, narrative, day closed, how).
+ISSUES = (
+    (3, "tower_a", "INSPECTION_WAITING", "HIGH", "Structural engineer to check fourth floor column steel before casting",
+     4, "Checked and passed by the structural engineer"),
+    (11, "main", "MATERIAL_SHORTAGE", "MEDIUM", "Wall putty brand asked for by the client not in stock at the dealer",
+     16, "Client agreed to the alternative brand"),
+    (17, "tower_b", "EQUIPMENT_BREAKDOWN", "HIGH", "Vibrator needle broke during retaining wall pour", 18,
+     "Spare needle from Sri Hardwares, pour finished"),
+    (24, "annex", "DRAWING_PENDING", "MEDIUM", "Electrical points for the annex not marked on the drawing", 27,
+     "Architect sent the marked drawing on WhatsApp"),
+    (44, "main", "QUALITY", "MEDIUM", "Hollow sound in two floor tiles in the ground floor bedroom", 46,
+     "Joy Tiling Works relaid the two tiles"),
+    (45, "tower_a", "LABOUR_SHORTAGE", "MEDIUM", "Bar benders short this week, slab steel slow", 48,
+     "Two more bar benders from Rahim's crew"),
+)
+#: Advances to workers: (day, worker, amount).
+ADVANCES = ((4, "Suresh", 2000), (13, "Joseph", 1500), (23, "Rajesh", 3000), (30, "Vinod", 1000), (41, "Manoj", 2500))
+#: The tiling subcontract with Joy Tiling Works: the agreed rate a square metre, retention.
+TILING_RATE, TILING_RETENTION = 95, 5
+#: Lake View's running bill to the client, sent by the owner on these days.
+RA_BILL_DAYS = (23, 51)
+
+# --- The plan's entries ----------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Kind:
+    """A kind of entry: who makes it, and the route(s) the player calls for it (method, path)."""
+
+    role: str
+    routes: tuple[tuple[str, str], ...]
+    #: Everyday site records, said in one line per site in the readable plan.
+    routine: bool = False
+
+
+KINDS: dict[str, Kind] = {
+    "conditions": Kind(ENGINEER, (("PATCH", "/dpr/site-days/{site_id}/conditions"),), routine=True),
+    "attendance": Kind(ENGINEER, (("POST", "/labour/attendance"),), routine=True),
+    "work": Kind(ENGINEER, (("POST", "/progress/activities"),), routine=True),
+    "use": Kind(ENGINEER, (("POST", "/materials/outflows"),), routine=True),
+    "expense": Kind(ENGINEER, (("POST", "/expenses"),), routine=True),
+    "issue": Kind(ENGINEER, (("POST", "/progress/issues"),)),
+    "request": Kind(ENGINEER, (("POST", "/procurement/requests"),)),
+    "delivery": Kind(ENGINEER, (("POST", "/materials/inflows"),)),
+    "order": Kind(PM, (("POST", "/procurement/orders"),)),
+    "boq_count": Kind(PM, (("PUT", "/projects/{project_id}/boq/work/{quantity_id}"),)),
+    "issue_resolve": Kind(PM, (("POST", "/progress/issues/{issue_id}/resolve"),)),
+    "work_order": Kind(PM, (("POST", "/subcontracts/work-orders"),)),
+    "measurement": Kind(PM, (("POST", "/subcontracts/work-orders/{wo_id}/measurements"),)),
+    "supplier_bill": Kind(ACCOUNTS, (("POST", "/finance/vendors/{vendor_id}/bills"),)),
+    "supplier_payment": Kind(ACCOUNTS, (("POST", "/finance/vendors/{vendor_id}/payments"),)),
+    "sub_bill": Kind(ACCOUNTS, (("POST", "/subcontracts/work-orders/{wo_id}/bills"),)),
+    "sub_payment": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/payments"),)),
+    "advance": Kind(ACCOUNTS, (("POST", "/labour/advances"),)),
+    "wage_pay": Kind(ACCOUNTS, (("POST", "/labour/wage-sheets/{sheet_id}/pay"),)),
+    "client_receipt": Kind(ACCOUNTS, (("POST", "/billing/receipts"),)),
+    "wage_approve": Kind(OWNER, (("GET", "/labour/wage-sheets/open"), ("POST", "/labour/wage-sheets/{sheet_id}/approve"))),
+    "ra_bill": Kind(OWNER, (("POST", "/projects/{project_id}/ra-bills"), ("POST", "/billing/ra-bills/{bill_id}/submit"))),
+    "stage": Kind(OWNER, (("PATCH", "/projects/{project_id}/start"),)),
+}
+#: Where each route lives, for the test that every route is real (each is mounted as it is, no extra prefix).
+ROUTER_MODULES = (
+    "mesiri.domains.dpr.router", "mesiri.domains.workforce.router", "mesiri.domains.workforce.pay_router",
+    "mesiri.domains.progress.router", "mesiri.domains.progress.boq_router", "mesiri.domains.materials.router",
+    "mesiri.domains.expenses.router", "mesiri.domains.procurement.router", "mesiri.domains.procurement.orders_router",
+    "mesiri.domains.subcontracts.router", "mesiri.domains.vendors.router", "mesiri.domains.billing.router",
+    "mesiri.domains.schedule.router",
+)
+
+
+@dataclass(frozen=True, eq=False)
+class Entry:
+    """One thing one person enters on one day. ``data`` carries the numbers the player needs (names, never ids: the
+    player finds each sample company's own ids); ``needs`` the entries that must be saved before it."""
+
+    id: str
+    day: int
+    kind: str
+    what: str
+    site: str | None = None
+    project: str | None = None
+    data: dict[str, Any] = field(default_factory=dict)
+    needs: tuple[str, ...] = ()
+
+    @property
+    def role(self) -> str:
+        return KINDS[self.kind].role
+
+
+@dataclass
+class Plan:
+    entries: list[Entry]
+    #: Stock per (site, material) when the plan starts: what the seed leaves.
+    opening: dict[tuple[str, str], float]
+    #: What is still to come on the seed's own orders: (site, material) -> quantity.
+    seeded_on_order: dict[tuple[str, str], float]
+    #: The day Green Villa is handed over: the plan's last day.
+    last_day: int
+
+    def day(self, n: int) -> list[Entry]:
+        return [e for e in self.entries if e.day == n]
+
+    def by_id(self) -> dict[str, Entry]:
+        return {e.id: e for e in self.entries}
+
+
+def weekday(day: int) -> int:
+    """Monday 0 .. Sunday 6. Day 0 is a Saturday (the seed's last day is made a Saturday, a pay day)."""
+    return (5 + day) % 7
+
+
+def is_sunday(day: int) -> bool:
+    return weekday(day) == 6
+
+
+def _working_after(day: int, n: int) -> int:
+    while n > 0:
+        day += 1
+        if not is_sunday(day):
+            n -= 1
+    return day
+
+
+def _fmt(qty: float) -> str:
+    return f"{qty:,.0f}" if float(qty).is_integer() or qty >= 100 else f"{qty:,.2f}".rstrip("0").rstrip(".")
+
+
+def _amount(value: float) -> str:
+    return f"₹{value:,.0f}"
+
+
+def _of(name: str) -> str:
+    """Green Villa's, Lake View Apartments'."""
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+
+# --- The opening: what the seed leaves -------------------------------------------------------------------------------
+
+
+class _Recorder:
+    """A stand-in for the API that ``sample_story.seed`` writes through: it answers like the real one and keeps the
+    stock per site and what is still to come on each order."""
+
+    def __init__(self) -> None:
+        self.n = 0
+        self.stock: dict[tuple[str, str], float] = defaultdict(float)
+        self.lines: dict[str, list[Any]] = {}  # order line id -> [site id, material id, quantity left]
+
+    def _id(self, kind: str) -> str:
+        self.n += 1
+        return f"{kind}-{self.n}"
+
+    async def call(self, method: str, path: str, *, json: Any = None, params: dict | None = None,
+                   idempotency_key: str | None = None) -> Any:
+        body = json or {}
+        if method == "GET" and path == "/materials":
+            return _Ok({"items": [{"id": f"m:{name}", "name": name, "default_unit_id": f"u:{name}"} for name in UNITS]})
+        if method == "GET":
+            return _Ok({})
+        if path == "/materials/inflows":
+            self.stock[(body["site_id"], body["material_id"])] += float(body["quantity"])
+            line = body.get("purchase_order_line_id")
+            if line:
+                self.lines[line][2] -= float(body["quantity"])
+        elif path == "/materials/outflows":
+            self.stock[(body["site_id"], body["material_id"])] -= float(body["quantity"])
+        elif path == "/materials/transfers":
+            self.stock[(body["from_site_id"], body["material_id"])] -= float(body["quantity"])
+            self.stock[(body["to_site_id"], body["material_id"])] += float(body["quantity"])
+        elif path == "/procurement/orders":
+            line = body["lines"][0]
+            line_id = self._id("line")
+            self.lines[line_id] = [body["site_id"], line["material_id"], float(line["quantity"])]
+            return _Ok({"id": self._id("order"), "lines": [{"id": line_id}]})
+        return _Ok({"id": self._id(path.strip("/").replace("/", "-"))})
+
+
+@dataclass
+class _Ok:
+    body: Any
+    ok: bool = True
+    status: int = 200
+
+
+def _run(coro: Any) -> Any:
+    """Run a coroutine that never waits on anything (the recorder answers at once), with no event loop: so the plan
+    can be made inside a request as well as in a script."""
+    try:
+        coro.send(None)
+    except StopIteration as done:
+        return done.value
+    coro.close()
+    raise RuntimeError("the seed waited on something real; the plan's recorder must answer everything at once")
+
+
+#: The seed's day 0: any Saturday gives the same story (its days are counted back from it, Sundays off).
+_A_SATURDAY = dt.date(2026, 11, 14)
+
+
+def opening() -> tuple[dict[tuple[str, str], float], dict[tuple[str, str], float]]:
+    """Stock per (site, material) and what is still to come on the seed's orders, as the seed leaves them."""
+    recorder = _Recorder()
+    info = {"project_id": "project-gv", "site_ids": ["site-main", "site-annex"], "others": []}
+    _run(story.seed(recorder, info, today=_A_SATURDAY))
+    site_ids = ["site-main", "site-annex"] + sorted(
+        {sid for (sid, _m) in recorder.stock if sid not in ("site-main", "site-annex")},
+        key=lambda sid: int(sid.rsplit("-", 1)[1]))
+    key_of = {sid: SITES[i][0] for i, sid in enumerate(site_ids[: len(SITES)])}
+    stock = {(key_of[sid], mid[2:]): round(qty, 2) for (sid, mid), qty in recorder.stock.items() if sid in key_of}
+    on_order = {(key_of[sid], mid[2:]): left for sid, mid, left in recorder.lines.values() if left > 0 and sid in key_of}
+    return stock, on_order
+
+
+# --- Making the plan -------------------------------------------------------------------------------------------------
+
+
+class _Builder:
+    def __init__(self) -> None:
+        self.entries: list[Entry] = []
+        self.counts: dict[str, int] = defaultdict(int)
+
+    def add(self, day: int, kind: str, what: str, *, site: str | None = None, project: str | None = None,
+            data: dict | None = None, needs: tuple[str, ...] = ()) -> Entry:
+        key = f"d{day:02d}-{kind}-{site or project or 'company'}"
+        self.counts[key] += 1
+        n = self.counts[key]
+        entry = Entry(id=key if n == 1 else f"{key}-{n}", day=day, kind=kind, what=what, site=site,
+                      project=project or (SITE_PROJECT[site] if site else None), data=data or {}, needs=needs)
+        self.entries.append(entry)
+        return entry
+
+
+def build() -> Plan:
+    stock0, seeded = opening()
+    stock: dict[tuple[str, str], float] = defaultdict(float, stock0)
+    seeded_left = dict(seeded)
+    b = _Builder()
+
+    stage_at = {key: 0 for key, _p, _n in SITES}          # index into STAGES[site]
+    done_days = {key: 0.0 for key, _p, _n in SITES}       # full days of the current stage done
+    finished: dict[str, int] = {}                          # site -> day its last stage ended
+    coming: dict[tuple[str, str], float] = defaultdict(float)   # asked for or ordered, not yet delivered
+    to_order: list[tuple[int, Entry]] = []                 # (order on this day, its request)
+    to_deliver: list[tuple[int, Entry | None, str, str, float]] = []  # (day, order or None for the seed's, site, material, qty)
+    to_bill: list[tuple[int, Entry]] = []                  # (bill on this day, delivery)
+    unpaid: dict[str, list[Entry]] = defaultdict(list)     # vendor -> bills
+    week_work: dict[str, float] = defaultdict(float)       # tiling laid this week, to measure on Saturday
+    tiling: dict[str, Entry] = {}                          # the work order, and the last measurement and bill
+    to_count: list[tuple[int, Entry]] = []                 # Lake View work to count on the BOQ, on this day
+    issues: dict[int, list[Entry]] = defaultdict(list)     # day to close -> issue
+    ra_bills: list[tuple[int, Entry]] = []                 # (client pays on this day, the bill)
+    workers = {at: [(n, t, w) for n, t, w, home in story.DEMO_WORKERS if home == at] for at in range(len(SITES))}
+    worker_site = {n: SITES[home][0] for n, _t, _w, home in story.DEMO_WORKERS}
+    boq_lines = {(SITES[at][0], work) for at in range(2, 4) for work, *_ in story.DEMO_WORK[at]}
+    spend = 0
+
+    def stage(site: str) -> Stage | None:
+        stages = STAGES[site]
+        return stages[stage_at[site]] if stage_at[site] < len(stages) else None
+
+    def daily_use(site: str, material: str, ahead: int) -> float:
+        """What the site will use of a material over the next ``ahead`` working days, stage by stage."""
+        total, at = 0.0, stage_at[site]
+        days = ahead
+        while days > 0 and at < len(STAGES[site]):
+            s = STAGES[site][at]
+            left = s.days - (done_days[site] if at == stage_at[site] else 0)
+            take = min(days, math.ceil(left))
+            total += take * dict(s.use).get(material, 0)
+            days -= take
+            at += 1
+        return total
+
+    day, last_day = 0, None
+    while last_day is None:
+        day += 1
+        if day > 120:
+            raise RuntimeError("the plan never reaches Green Villa's handover")
+        if is_sunday(day):
+            continue
+        saturday = weekday(day) == 5
+        if day == 2:
+            # The seeded weeks' last pay week (to day 0) is still to be approved and paid: the first thing on Monday.
+            for project in (GREEN_VILLA, LAKE_VIEW):
+                approve = b.add(day, "wage_approve", f"Approve {_of(PROJECT_NAME[project])} wage sheet for last week",
+                                project=project, data={"week_from_day": -6, "week_to_day": 0})
+                b.add(day, "wage_pay", f"Pay {_of(PROJECT_NAME[project])} wages for last week", project=project,
+                      data={"week_from_day": -6, "week_to_day": 0}, needs=(approve.id,))
+
+        # Morning: the lorries that are due.
+        for due in [d for d in to_deliver if d[0] == day]:
+            to_deliver.remove(due)
+            _d, order, site, material, qty = due
+            vendor, _size, rate = story.DEMO_SUPPLY[material]
+            delivery = b.add(day, "delivery", f"Received {_fmt(qty)} {UNITS[material]} {material} from {vendor} at {SITE_NAME[site]}"
+                             + ("" if order else " (on the order placed before)"), site=site,
+                             data={"material": material, "quantity": qty, "vendor": vendor, "rate": rate,
+                                   "against": order.id if order else "seeded order"},
+                             needs=(order.id,) if order else ())
+            stock[(site, material)] += qty
+            coming[(site, material)] -= qty
+            to_bill.append((_working_after(day, BILL_AFTER), delivery))
+
+        # The office: orders for yesterday's requests, bills that came, work to count, issues to close.
+        for due in [t for t in to_order if t[0] == day]:
+            to_order.remove(due)
+            request = due[1]
+            material, qty, site = request.data["material"], request.data["quantity"], request.site
+            vendor, _size, rate = story.DEMO_SUPPLY[material]
+            order = b.add(day, "order", f"Order {_fmt(qty)} {UNITS[material]} {material} from {vendor} for {SITE_NAME[site]} "
+                          f"at {_amount(rate)} a {PER[material]}",
+                          site=site, data={"material": material, "quantity": qty, "vendor": vendor, "rate": rate,
+                                           "expected_in_days": LEAD_DAYS[material]}, needs=(request.id,))
+            to_deliver.append((_working_after(day, LEAD_DAYS[material]), order, site, material, qty))
+        for due in [t for t in to_bill if t[0] == day]:
+            to_bill.remove(due)
+            delivery = due[1]
+            d = delivery.data
+            amount = round(d["quantity"] * d["rate"], 2)
+            bill = b.add(day, "supplier_bill", f"Bill from {d['vendor']}: {_fmt(d['quantity'])} {UNITS[d['material']]} "
+                         f"{d['material']} for {SITE_NAME[delivery.site]} on day {delivery.day}, {_amount(amount)}", site=delivery.site,
+                         data={"vendor": d["vendor"], "amount": amount, "deliveries": [delivery.id],
+                               "bill_number": f"{d['vendor'][:2].upper()}/{delivery.day:02d}{len(unpaid[d['vendor']]) + 1}"},
+                         needs=(delivery.id,))
+            unpaid[d["vendor"]].append(bill)
+        for due in [t for t in to_count if t[0] == day]:
+            to_count.remove(due)
+            work = due[1]
+            b.add(day, "boq_count", f"Count {_of(SITE_NAME[work.site])} {work.data['work'].lower()} of day {work.day} on its BOQ line",
+                  site=work.site, data={"work": work.data["work"], "line": f"{work.data['work']} · {SITE_NAME[work.site]}"},
+                  needs=(work.id,))
+        for issue in [i for close_day in sorted(k for k in issues if k <= day) for i in issues.pop(close_day)]:
+            b.add(day, "issue_resolve", f"Close: {issue.data['narrative']}", site=issue.site,
+                  data={"narrative": issue.data["narrative"], "resolution_notes": issue.data["close_note"]}, needs=(issue.id,))
+        for adv_day, worker, amount in ADVANCES:
+            if adv_day == day:
+                b.add(day, "advance", f"Advance of {_amount(amount)} to {worker}", site=worker_site[worker],
+                      data={"worker": worker, "amount": amount})
+
+        # The sites' day.
+        rain_sites, rain_hours = RAIN.get(day, ((), 0.0))
+        for at, (site, _project, _name) in enumerate(SITES):
+            s = stage(site)
+            if s is None:
+                continue
+            rained = site in rain_sites
+            weather = 1.0 if not rained else 0.5
+            # Material: the day's use, as far as the stock goes; the work goes as far as the shortest material lets it.
+            want = {m: q * weather for m, q in s.use}
+            can = min([1.0] + [min(1.0, stock[(site, m)] / q) for m, q in want.items() if q > 0])
+            can = math.floor(can * 20) / 20  # in twentieths, so the numbers stay readable
+            ratio = weather * can
+            for m, q in want.items():
+                used = round(q * can, 2)
+                if used > 0:
+                    stock[(site, m)] = round(stock[(site, m)] - used, 2)
+                    b.add(day, "use", f"Used {_fmt(used)} {UNITS[m]} {m} for {s.work.lower()}", site=site,
+                          data={"material": m, "quantity": used, "work": s.work})
+            # People: the site's own workers (one off now and then) and the gang.
+            crew = [{"name": n, "trade": t, "daily_wage": w,
+                     "status": "absent" if (day + i) % 9 == 0 else "half_day" if rained else "present"}
+                    for i, (n, t, w) in enumerate(workers[at])]
+            gang = max(1, round(s.gang * (0.5 if can < 0.5 else 1)))
+            present = sum(1 for c in crew if c["status"] != "absent") + gang
+            b.add(day, "attendance", f"Attendance: {present} on site", site=site,
+                  data={"workers": crew, "gang": {"contractor": "Bengal crew (Rahim)", "trade": "helper", "headcount": gang,
+                                                  "daily_wage": 700}})
+            if ratio > 0:
+                qty = round(s.per_day * ratio, 2)
+                work = b.add(day, "work", f"{s.work}: {_fmt(qty)} {s.unit}" + (f" (by {s.by})" if s.by else ""), site=site,
+                             data={"work": s.work, "narrative": s.narrative, "quantity": qty, "unit": s.unit, "by": s.by})
+                if (site, s.work) in boq_lines:
+                    to_count.append((_working_after(day, 1), work))
+                if s.by:
+                    week_work[site] += qty
+            vendor, category, amount, what = story.DEMO_SPENDS[spend % len(story.DEMO_SPENDS)]
+            spend += 1
+            b.add(day, "expense", f"{what}, {_amount(amount)} at {vendor}", site=site,
+                  data={"vendor": vendor, "category": category, "amount": amount, "description": what})
+            done_days[site] += ratio
+            if done_days[site] >= s.days - 1e-9:
+                stage_at[site] += 1
+                done_days[site] = 0.0
+                if stage(site) is None:
+                    finished[site] = day
+            nxt = stage(site)
+            short = [m for m, q in want.items() if q > 0 and stock[(site, m)] < q]
+            b.add(day, "conditions", ("Rain, " + _fmt(rain_hours) + " hours lost" if rained else "Clear")
+                  + (f"; short of {', '.join(short)}" if can < 1 else ""), site=site,
+                  data={"weather": "rainy" if rained else "sunny", "hours_lost": rain_hours if rained else None,
+                        "tomorrow_plan": nxt.narrative if nxt else "Handover"})
+            # Ask for what will run short before a lorry could come.
+            for m in sorted({m for st in STAGES[site][stage_at[site]: stage_at[site] + 2] for m, _q in st.use}):
+                need = daily_use(site, m, LEAD_DAYS[m] + COVER_DAYS)
+                have = stock[(site, m)] + coming[(site, m)]
+                if need <= 0 or have >= need:
+                    continue
+                _vendor, size, _rate = story.DEMO_SUPPLY[m]
+                if seeded_left.get((site, m), 0) > 0:
+                    qty = min(seeded_left[(site, m)], size * max(1, math.ceil((need - have) / size)))
+                    seeded_left[(site, m)] -= qty
+                    coming[(site, m)] += qty
+                    to_deliver.append((_working_after(day, 1), None, site, m, qty))
+                    continue
+                qty = size * max(1, math.ceil((need - have) / size))
+                request = b.add(day, "request", f"Ask for {_fmt(qty)} {UNITS[m]} {m} for {SITE_NAME[site]}", site=site,
+                                data={"material": m, "quantity": qty,
+                                      "needed_by_days": LEAD_DAYS[m] + 1, "purpose": nxt.work if nxt else s.work})
+                coming[(site, m)] += qty
+                to_order.append((_working_after(day, 1), request))
+
+        # Issues seen today (closed on their day).
+        for issue_day, site, kind, severity, narrative, close_day, note in ISSUES:
+            if issue_day == day:
+                issue = b.add(day, "issue", narrative, site=site,
+                              data={"issue_type": kind, "severity": severity, "narrative": narrative, "close_note": note})
+                issues[close_day].append(issue)
+
+        # The tiling subcontract: the work order two working days before Joy's crew starts, measured on Saturdays,
+        # billed on the Monday after, paid the Saturday after that.
+        for site in ("main",):
+            upcoming = [st for st in STAGES[site][stage_at[site]:] if st.by]
+            if upcoming and "work_order" not in tiling:
+                st = upcoming[0]
+                ahead = sum(x.days for x in STAGES[site][stage_at[site]: STAGES[site].index(st)]) - done_days[site]
+                if ahead <= 2:
+                    quantity = st.per_day * st.days
+                    tiling["work_order"] = b.add(day, "work_order", f"Work order to {st.by}: {st.work.lower()}, "
+                                                 f"{_fmt(quantity)} {st.unit} at {_amount(TILING_RATE)}", site=site,
+                                                 data={"vendor": st.by, "work": st.work, "unit": st.unit, "quantity": quantity,
+                                                       "rate": TILING_RATE, "retention_pct": TILING_RETENTION})
+            if saturday and week_work[site] > 0 and "work_order" in tiling:
+                qty = round(week_work[site], 2)
+                week_work[site] = 0
+                tiling[f"m{day}"] = b.add(day, "measurement", f"Measure the tiling {st_by(site)} laid this week: {_fmt(qty)} sqm",
+                                          site=site, data={"work": "Floor tiling", "quantity": qty},
+                                          needs=(tiling["work_order"].id,))
+            if weekday(day) == 0:
+                for key in [k for k in tiling if k.startswith("m")]:
+                    measured = tiling.pop(key)
+                    qty = measured.data["quantity"]
+                    amount = round(qty * TILING_RATE, 2)
+                    tiling[f"b{day}"] = b.add(day, "sub_bill", f"Bill from {st_by(site)}: {_fmt(qty)} sqm of tiling, {_amount(amount)}",
+                                              site=site, data={"vendor": "Joy Tiling Works", "work": "Floor tiling",
+                                                               "quantity": qty, "rate": TILING_RATE, "amount": amount},
+                                              needs=(measured.id,))
+
+        # Saturday: suppliers paid for bills a week old, the subcontractor's bills paid, wages approved and paid.
+        if saturday:
+            for vendor in sorted(unpaid):
+                due = [bill for bill in unpaid[vendor] if day - bill.day >= CREDIT_DAYS]
+                if not due:
+                    continue
+                unpaid[vendor] = [bill for bill in unpaid[vendor] if bill not in due]
+                total = round(sum(bill.data["amount"] for bill in due), 2)
+                b.add(day, "supplier_payment", f"Pay {vendor} {_amount(total)} for {len(due)} bill{'s' if len(due) > 1 else ''}",
+                      data={"vendor": vendor, "amount": total, "bills": [bill.id for bill in due]},
+                      needs=tuple(bill.id for bill in due))
+            for key in [k for k in tiling if k.startswith("b") and day - int(k[1:]) >= 5]:
+                bill = tiling.pop(key)
+                b.add(day, "sub_payment", f"Pay Joy Tiling Works for their bill of day {bill.day}", site="main",
+                      data={"vendor": "Joy Tiling Works", "bill": bill.id}, needs=(bill.id,))
+            week = (day - 6, day)
+            for project in (GREEN_VILLA, LAKE_VIEW):
+                if not any(e.kind == "attendance" and e.project == project and week[0] <= e.day <= day for e in b.entries):
+                    continue
+                approve = b.add(day, "wage_approve", f"Approve {_of(PROJECT_NAME[project])} wage sheet for the week", project=project,
+                                data={"week_from_day": week[0], "week_to_day": day})
+                b.add(day, "wage_pay", f"Pay {_of(PROJECT_NAME[project])} wages for the week", project=project,
+                      data={"week_from_day": week[0], "week_to_day": day}, needs=(approve.id,))
+
+        # Lake View's running bill, and the client paying it.
+        if day in RA_BILL_DAYS:
+            bill = b.add(day, "ra_bill", f"Send {_of(PROJECT_NAME[LAKE_VIEW])} running bill to the client, work up to today",
+                         project=LAKE_VIEW, data={"period_to_day": day})
+            ra_bills.append((day + CLIENT_PAYS_AFTER, bill))
+        for due in [t for t in ra_bills if t[0] <= day]:
+            ra_bills.remove(due)
+            b.add(day, "client_receipt", f"{story.DEMO_CLIENT['name']} paid the running bill of day {due[1].day}",
+                  project=LAKE_VIEW, data={"bill": due[1].id, "client": story.DEMO_CLIENT["name"]}, needs=(due[1].id,))
+
+        # Green Villa done: the owner hands it over.
+        if all(site in finished for site, project, _n in SITES if project == GREEN_VILLA):
+            b.add(day, "stage", f"{story.DEMO_PROJECT} handed over to the client", project=GREEN_VILLA,
+                  data={"stage": "handover"})
+            last_day = day
+
+    return Plan(entries=b.entries, opening=dict(stock0), seeded_on_order=dict(seeded), last_day=last_day)
+
+
+def st_by(site: str) -> str:
+    return next((s.by for s in STAGES[site] if s.by), "")
+
+
+@lru_cache(maxsize=1)
+def plan() -> Plan:
+    """The plan, made once per process (it is fixed)."""
+    return build()
+
+
+# --- The readable plan -----------------------------------------------------------------------------------------------
+
+_DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def render(p: Plan | None = None) -> str:
+    """The plan as a page people read: each day, each person's entries; the everyday site records in one line a site."""
+    p = p or plan()
+    out = [
+        "# The sample company's plan, day by day",
+        "",
+        "> Generated by `backend/src/mesiri/application/learn/sample_plan.py` (SS-74b, "
+        "[guided-demo-plan.md section 18](guided-demo-plan.md)); do not edit by hand. Rewrite with "
+        "`python -m mesiri.application.learn.sample_plan` from `backend/` (with `src` on the path); a test fails when "
+        "this page is out of date.",
+        "",
+        f"Day 0 is the last of the two seeded weeks (a Saturday). The plan runs to day {p.last_day}, when "
+        f"{story.DEMO_PROJECT} is handed over: {len(p.entries):,} entries. When the person plays a role, that role's "
+        "entries are their to-do for the day; everyone else's are played for them.",
+        "",
+        "Who: **Ravi** (site engineer), **Anil** (project manager), **Meera** (accounts), **Owner**.",
+        "",
+        "## Where it starts (what the two seeded weeks leave)",
+        "",
+        "| Site | Stock |",
+        "|---|---|",
+    ]
+    for site, _project, name in SITES:
+        held = [f"{m} {_fmt(q)} {UNITS[m]}" for (s, m), q in sorted(p.opening.items()) if s == site and q > 0]
+        out.append(f"| {name} | {', '.join(held) or 'nothing'} |")
+    if p.seeded_on_order:
+        coming = "; ".join(f"{SITE_NAME[s]}: {_fmt(q)} {UNITS[m]} {m}" for (s, m), q in sorted(p.seeded_on_order.items()))
+        out += ["", f"Still to come on the seeded orders: {coming}."]
+    out += ["", "## Each site's work", ""]
+    for site, _project, name in SITES:
+        out.append(f"- **{name}**: " + " → ".join(f"{s.work} ({s.days} d)" for s in STAGES[site]))
+    out += ["", "## The days", ""]
+    for day in range(1, p.last_day + 1):
+        entries = p.day(day)
+        out.append(f"### Day {day} · {_DAY_NAMES[weekday(day)]}")
+        out.append("")
+        if not entries:
+            out += ["Sunday: nobody works.", ""]
+            continue
+        for role in (ENGINEER, PM, ACCOUNTS, OWNER):
+            mine = [e for e in entries if e.role == role]
+            if not mine:
+                continue
+            lines: list[str] = []
+            for site, _project, name in SITES:
+                routine = [e for e in mine if e.site == site and KINDS[e.kind].routine]
+                if routine:
+                    lines.append(f"{name}: {_site_day(routine)}")
+            lines += [e.what for e in mine if not KINDS[e.kind].routine]
+            out.append(f"**{WHO[role]}**")
+            out += [f"- {line}" for line in lines]
+            out.append("")
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _site_day(routine: list[Entry]) -> str:
+    """A site's everyday records in one line: the work, who came, what was used and spent, the weather."""
+    def of(kind: str) -> list[Entry]:
+        return [e for e in routine if e.kind == kind]
+
+    parts = [e.what for e in of("work")] or ["no work done"]
+    parts += [e.what.replace("Attendance: ", "") for e in of("attendance")]
+    used = [f"{e.data['material']} {_fmt(e.data['quantity'])} {UNITS[e.data['material']]}" for e in of("use")]
+    if used:
+        parts.append("used " + ", ".join(used))
+    parts += [f"spent {_amount(e.data['amount'])} ({e.data['description'].lower()})" for e in of("expense")]
+    parts += [e.what.lower() for e in of("conditions")]
+    return "; ".join(parts)
+
+
+DOC = Path(__file__).resolve().parents[5] / "docs" / "plans" / "sample-plan.md"
+
+
+def main(argv: list[str]) -> int:
+    DOC.write_text(render(), encoding="utf-8")
+    print(f"wrote {DOC} ({len(plan().entries)} entries, last day {plan().last_day})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

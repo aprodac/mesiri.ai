@@ -505,7 +505,8 @@ Each person's timeline is their own (one sample company each, D-PG1).
 
 ### 18.2 The plan: the whole simulation, written in advance (D-GC1)
 
-One fixed script, `application/learn/sample_plan.py`, Day 1 (Green Villa won) to about Day 60 (handover). For each day
+One fixed script, `application/learn/sample_plan.py`, from day 0 (the seeded weeks' last day, a Saturday, a pay day)
+to Green Villa's handover (day 62 as built). For each day
 it lists **every role's entries**: who (owner, Anil, Ravi, Meera), what (one of a small set of kinds: attendance, work
 done, material used, a request, an order, a delivery, a supplier bill, a payment, a wage sheet, an expense, an issue, a
 BOQ line counted, a running bill …), and its numbers. It is generated once from the story's tables (`sample_story.py`:
@@ -513,7 +514,9 @@ the sites, the work stages, the use a day, the suppliers, the rates) and checked
 and see exactly what happens on day 23.
 
 - **Fixed, so it is easy and the same for everyone**: the same plan for every sample company, no randomness. The two
-  seeded weeks become days −13..0 of the same plan.
+  seeded weeks are days −13..0; the plan starts from exactly what they leave (stock, the seeded orders still to come),
+  worked out by running the seed itself against a recorder, never a copy of its rules. SS-74a sets the sample's date so
+  that day 0 is a Saturday.
 - **A test holds it true**: every entry's kind maps to a real API route; played start to finish against a real
   database, every entry saves, stock never goes below zero, every order is delivered and billed, every bill is paid.
 - **Following the person** is only where the plan says so (`needs:`): a delivery needs its order, a bill needs its
@@ -631,3 +634,26 @@ Not checked: real CAD exports beyond the existing tests.
 
 **Held (SS-73b, needs a decision):** the two voice notes (Tell Mesiri records from the microphone but can't take an
 audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look fake: real ones we may use are better).
+
+### 18.9 SS-74b as built (17 Nov 2026)
+
+- `backend/src/mesiri/application/learn/sample_plan.py`: `plan()` gives 1,477 entries over 62 days (Green Villa handed
+  over on day 62; Lake View keeps building). Kinds (`KINDS`): the site's day (conditions, attendance, work, use,
+  expense), issue, request, delivery (Ravi); order, BOQ count, issue closed, work order, measurement (Anil); supplier
+  bill, supplier payment, subcontract bill and payment, advance, wage payment, client receipt (Meera); wage approval,
+  running bill, project stage (owner). Each names its route(s) for the player.
+- The site's work: `STAGES` per site (Main block: conduits to snag list; Annex: plinth to painting; Lake View: three
+  floor cycles each). Use is capped at the stock on site, so a short site does less work that day (day 2..4 at Main
+  block: 2.2 bags of cement left by the seed, as the story intends). Requests when stock and what is coming won't last
+  the supplier's lead time and 3 days; orders the next working day; lorries after the lead time; bills 2 working days
+  after; suppliers paid on Saturdays for bills a week old; wages approved and paid each Saturday (and the seeded weeks'
+  last week on day 2); Joy Tiling Works' work order, weekly measurement, bill and payment; Lake View's running bill on
+  days 23 and 51, paid 12 days later.
+- The readable plan: [sample-plan.md](sample-plan.md) (generated; `python -m mesiri.application.learn.sample_plan`).
+- Test: `backend/tests/unit/test_sample_plan_ss74b.py` (14): the same every time; from what the seed leaves; ids and
+  needs; roles; no Sunday work; stock never below zero; asked → ordered → delivered → billed → paid; wages every week;
+  handover; the subcontract; real issue types; the story's names; every kind's route is a real route; the readable
+  copy up to date.
+- **Not covered here:** playing it against a real database (SS-74c: every entry through the API as its role's user,
+  and that each role may make its entries). Payloads are names and numbers; the player finds each sample's ids.
+
