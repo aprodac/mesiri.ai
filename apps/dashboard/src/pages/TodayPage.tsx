@@ -2,8 +2,7 @@ import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAllOpenIssues } from '@/lib/issues'
-import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, Radio, RefreshCw, Send, TriangleAlert } from 'lucide-react'
-import { MapPin as IcMapPin, HardHat as IcHardHat, Hammer as IcHammer, TriangleAlert as IcTriangleAlert } from 'lucide-react'
+import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, Radio, TriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteDaysApi,
@@ -26,7 +25,7 @@ import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
 import { SupplierPapersWaiting, SuppliersWaiting } from '@/components/vendors/vendor-parts'
 import { RoleHome } from '@/components/home/role-home'
-import { EmptyState } from '@/components/page/page-kit'
+import { ActionButton, EmptyState } from '@/components/page/page-kit'
 import { useAuth } from '@/lib/AuthContext'
 import { BillsWaitingLine } from '@/components/subcontracts/parts'
 import { MyTasksCard } from '@/components/tasks/my-tasks-card'
@@ -345,9 +344,7 @@ export default function TodayPage() {
                 <ChevronRight className="size-4" />
               </Button>
             </div>
-            <Button variant="ghost" size="icon" className="size-8" onClick={refresh} disabled={daysQuery.isFetching} title="Refresh" aria-label="Refresh">
-              <RefreshCw className={cn('size-4', daysQuery.isFetching && 'animate-spin')} />
-            </Button>
+            <ActionButton kind="refresh" iconOnly onClick={refresh} disabled={daysQuery.isFetching} className={cn(daysQuery.isFetching && '[&_svg]:animate-spin')} />
           </>
         }
       />
@@ -412,19 +409,15 @@ export default function TodayPage() {
             stats={[
               {
                 label: 'Reported',
-                value: (
-                  <>
-                    {totals.reported}
-                    <span className="text-sm font-normal text-muted-foreground"> of {sites.length}</span>
-                  </>
-                ),
+                value: totals.reported,
+                of: sites.length || undefined,
                 tone: totals.reported < sites.length ? 'warn' : sites.length ? 'good' : 'default',
-                icon: IcMapPin,
+                kind: 'sites',
                 hint: totals.reported < sites.length ? `${sites.length - totals.reported} still to report` : sites.length ? 'All sites in' : undefined,
               },
-              { label: 'Workers', value: totals.workers || '—', icon: IcHardHat },
-              { label: 'Work items', value: totals.workItems || '—', icon: IcHammer },
-              { label: 'Open issues', value: totals.openIssues || '—', tone: totals.openIssues > 0 ? 'warn' : 'good', icon: IcTriangleAlert },
+              { label: 'Workers', value: totals.workers || '—', kind: 'workers' },
+              { label: 'Work items', value: totals.workItems || '—', kind: 'work' },
+              { label: 'Open issues', value: totals.openIssues || '—', tone: totals.openIssues > 0 ? 'warn' : 'good', kind: 'issue' },
             ]}
           />
 
@@ -452,9 +445,9 @@ export default function TodayPage() {
                           </Link>
                         </Button>
                         {canSend && (
-                          <Button variant="outline" size="sm" className="gap-1.5" disabled={busyProject === project.project_id} onClick={() => sendNow(project)} data-guide="today.send">
-                            <Send className="size-3.5" /> Send now
-                          </Button>
+                          <ActionButton kind="whatsapp" disabled={busyProject === project.project_id} onClick={() => sendNow(project)} data-guide="today.send">
+                            Send now
+                          </ActionButton>
                         )}
                       </div>
                     }

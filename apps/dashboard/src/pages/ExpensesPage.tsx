@@ -2,14 +2,14 @@ import * as React from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  CircleDollarSign, Download, HandCoins, Image as ImageIcon, LayoutGrid, MapPin, MessageSquare, MoreHorizontal, Plus, Receipt, Search, Store,
-  TriangleAlert, Undo2, Wallet, Landmark,
+  HandCoins, Image as ImageIcon, LayoutGrid, MapPin, MessageSquare, MoreHorizontal, Plus, Receipt, Search, Store,
+  TriangleAlert, Wallet, Landmark,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Callout } from '@/components/dpr-page'
 import { PeriodSelect } from '@/components/filter-select'
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
@@ -29,7 +29,7 @@ import { vendorUrl } from '@/lib/vendors'
 import { fetchAllExpenseAttachmentsApi, reverseExpenseApi } from '@/lib/api'
 import { PAID_VIA, compact, fetchExpenses, mayManageMoney, paidWords, rupees, type Expense, type PaidVia } from '@/lib/expenses'
 import { useAuth } from '@/lib/AuthContext'
-import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
+import { ActionButton, ActionMenuItem, KpiStrip, ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 
 // WEB-51 (Ilan, 5 Nov) and PRC-18 (7 Nov): Finance > Expenses. Five tiles say what was spent and how it was paid --
 // petty cash, direct, owed back to the person who paid, unpaid (decision D3: by the account it was paid from) --
@@ -42,12 +42,6 @@ const dayLabel = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 
 const VIA_ICON: Record<PaidVia, LucideIcon> = { petty_cash: Wallet, direct: Landmark, own_pocket: HandCoins, unpaid: TriangleAlert }
-const VIA_TONE: Record<PaidVia, { tone: string; ring: string }> = {
-  petty_cash: { tone: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100', ring: 'ring-amber-500' },
-  direct: { tone: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100', ring: 'ring-sky-500' },
-  own_pocket: { tone: 'bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-100', ring: 'ring-violet-500' },
-  unpaid: { tone: 'bg-orange-200 text-orange-950 dark:bg-orange-900 dark:text-orange-100', ring: 'ring-orange-500' },
-}
 
 export default function ExpensesPage() {
   usePageTitle('Expenses')
@@ -248,66 +242,44 @@ export default function ExpensesPage() {
       <header className="flex items-center justify-between gap-3">
         <ModuleTitle icon={Receipt} title="Expenses" />
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" data-guide="exp.export" disabled={expenses.length === 0} onClick={() => exportRows(expenses)} title="The expenses shown, as a CSV file (opens in Excel)">
-            <Download className="size-4" /> <span className="hidden sm:inline">Export</span>
-          </Button>
+          <ActionButton kind="export-excel" size="default" data-guide="exp.export" disabled={expenses.length === 0} onClick={() => exportRows(expenses)} title="The expenses shown, as a CSV file (opens in Excel)">
+            <span className="hidden sm:inline">Export</span>
+          </ActionButton>
           {!readOnly && (
-            <Button className="hidden gap-2 font-semibold md:inline-flex" data-guide="exp.add" onClick={() => setRecordOpen(true)}>
-              <Plus className="size-4" strokeWidth={2.6} /> Record expense
-            </Button>
+            <ActionButton kind="add" primary size="default" className="hidden md:inline-flex" data-guide="exp.add" onClick={() => setRecordOpen(true)}>
+              Record expense
+            </ActionButton>
           )}
         </div>
       </header>
 
       <FullCost filters={filters} />
 
-      {/* What was spent, and how it was paid (PRC-18). Each payment tile filters the list. */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5" data-guide="exp.tiles">
-        <div className="col-span-2 flex items-center gap-3 rounded-xl border bg-card p-3 sm:p-3.5 lg:col-span-1">
-          <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">
-            <CircleDollarSign className="size-5" />
-          </span>
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-2xl leading-none font-semibold tabular-nums">{list.isLoading ? '–' : compact(total)}</span>
-            <span className="truncate text-sm text-foreground/80">
-              Spent · {base.length} {base.length === 1 ? 'expense' : 'expenses'}
-            </span>
-            {gstTotal > 0 && <span className="truncate text-[11px] text-muted-foreground">incl. {rupees(gstTotal)} GST</span>}
-          </span>
-        </div>
-        {tiles.map((t) => {
-          const on = via === t.value
-          const Icon = VIA_ICON[t.value]
-          const pct = total > 0 ? Math.round((t.amount / total) * 100) : 0
-          return (
-            <button
-              key={t.value}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setVia(on ? '' : t.value)}
-              className={cn('flex flex-col gap-2 rounded-xl border bg-card p-3 text-left transition hover:-translate-y-px sm:p-3.5', on && cn('ring-2', VIA_TONE[t.value].ring))}
-            >
-              <span className="flex items-center gap-3">
-                <span className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', VIA_TONE[t.value].tone)}>
-                  <Icon className="size-4 sm:size-5" />
-                </span>
-                <span className="flex min-w-0 flex-col">
-                  <span className={cn('truncate text-lg leading-none font-semibold tabular-nums sm:text-2xl', t.value === 'unpaid' && t.amount > 0 && 'text-orange-700 dark:text-orange-400')}>
-                    {list.isLoading ? '–' : compact(t.amount)}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground sm:text-sm sm:text-foreground/80">{PAID_VIA[t.value].label}</span>
-                </span>
-              </span>
-              <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                  <span className={cn('block h-full rounded-full', PAID_VIA[t.value].dot)} style={{ width: `${pct}%` }} />
-                </span>
-                <span className="shrink-0 tabular-nums">{t.hint ?? `${t.n} · ${pct}%`}</span>
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {/* What was spent, and how it was paid (PRC-18). Each payment figure filters the list (UX-15: page kit KPIs,
+          its share of the spend as a bar; unpaid and owed back turn amber when there is any). */}
+      <KpiStrip
+        guide="exp.tiles"
+        phoneCols={2}
+        stats={[
+          {
+            label: 'Spent', kind: 'money', loading: list.isLoading, value: compact(total),
+            hint: `${base.length} ${base.length === 1 ? 'expense' : 'expenses'}${gstTotal > 0 ? ` · incl. ${rupees(gstTotal)} GST` : ''}`,
+          },
+          ...tiles.map((t) => ({
+            key: t.value,
+            label: PAID_VIA[t.value].label,
+            icon: VIA_ICON[t.value],
+            iconClass: PAID_VIA[t.value].chip,
+            loading: list.isLoading,
+            value: compact(t.amount),
+            tone: (t.value === 'unpaid' || t.value === 'own_pocket') && t.amount > 0 ? ('attention' as const) : ('default' as const),
+            share: total > 0 ? t.amount / total : 0,
+            hint: t.hint ?? `${t.n} · ${total > 0 ? Math.round((t.amount / total) * 100) : 0}%`,
+            pressed: via === t.value,
+            onClick: () => setVia(via === t.value ? '' : t.value),
+          })),
+        ]}
+      />
 
       <div className="flex flex-wrap items-center gap-2" data-guide="exp.filters">
         <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-2.5">
@@ -386,7 +358,7 @@ export default function ExpensesPage() {
                 <ul className="divide-y overflow-hidden rounded-xl border">
                   {day.rows.map((e) => (
                     <li key={e.id} className="relative flex items-start gap-3 px-3 py-2.5 hover:bg-muted/30">
-                      <span className={cn('mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-lg', VIA_TONE[e.paid_via].tone)} aria-hidden="true">
+                      <span className={cn('mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-lg', PAID_VIA[e.paid_via].chip)} aria-hidden="true">
                         {React.createElement(VIA_ICON[e.paid_via], { className: 'size-4' })}
                       </span>
                       <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left after:absolute after:inset-0" onClick={() => open(e)}>
@@ -409,19 +381,21 @@ export default function ExpensesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem onClick={() => open(e)}>Open</DropdownMenuItem>
+                            <ActionMenuItem kind="view" onClick={() => open(e)}>Open</ActionMenuItem>
                             {canPay && (e.paid_via === 'unpaid' || e.paid_via === 'own_pocket' || e.payment === 'partially_paid') && (
-                              <DropdownMenuItem
+                              <ActionMenuItem
+                                kind="pay"
                                 onClick={() => {
                                   setPayNow(true)
                                   open(e)
                                 }}
                               >
                                 {e.paid_via === 'own_pocket' ? `Repay ${(e.recorded_by ?? '').split(' ')[0] || 'who paid'}` : 'Mark paid'}
-                              </DropdownMenuItem>
+                              </ActionMenuItem>
                             )}
                             {photos.data?.[e.id] ? (
-                              <DropdownMenuItem
+                              <ActionMenuItem
+                                kind="bill"
                                 onClick={() => {
                                   const url = photos.data![e.id]
                                   if (/\.pdf(\?|$)/i.test(url)) window.open(url, '_blank', 'noreferrer')
@@ -429,18 +403,16 @@ export default function ExpensesPage() {
                                 }}
                               >
                                 Bill
-                              </DropdownMenuItem>
+                              </ActionMenuItem>
                             ) : (
-                              !readOnly && <DropdownMenuItem onClick={() => open(e)}>Add bill</DropdownMenuItem>
+                              !readOnly && <ActionMenuItem kind="photo" onClick={() => open(e)}>Add bill</ActionMenuItem>
                             )}
-                            {e.vendor_id && <DropdownMenuItem onClick={() => setVendor(e.vendor_id!)}>Only {e.vendor}</DropdownMenuItem>}
-                            {e.vendor_id && <DropdownMenuItem onClick={() => navigate(vendorUrl(e.vendor_id!))}>{e.vendor}'s account</DropdownMenuItem>}
+                            {e.vendor_id && <ActionMenuItem kind="filter" onClick={() => setVendor(e.vendor_id!)}>Only {e.vendor}</ActionMenuItem>}
+                            {e.vendor_id && <ActionMenuItem kind="next" onClick={() => navigate(vendorUrl(e.vendor_id!))}>{e.vendor}'s account</ActionMenuItem>}
                             {canPay && (
                               <>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setTaking(e)}>
-                                  <Undo2 className="mr-2 size-3.5" /> Take back
-                                </DropdownMenuItem>
+                                <ActionMenuItem kind="undo" onClick={() => setTaking(e)} />
                               </>
                             )}
                           </DropdownMenuContent>
@@ -504,9 +476,9 @@ export default function ExpensesPage() {
             <Button variant="outline" onClick={() => setTaking(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" disabled={takeBack.isPending} onClick={() => taking && takeBack.mutate(taking)}>
+            <ActionButton kind="undo" primary size="default" disabled={takeBack.isPending} onClick={() => taking && takeBack.mutate(taking)}>
               {takeBack.isPending ? 'Taking back…' : 'Take back'}
-            </Button>
+            </ActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

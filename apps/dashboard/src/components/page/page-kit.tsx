@@ -1,8 +1,9 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { findPage } from '@/lib/module-map'
-import { ArrowRight, ChevronRight, Lock, MessageSquareText } from 'lucide-react'
+import { ChevronRight, Lock, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { KPI_TONE, Kpi, KpiGrid, type KpiProps, type KpiTone } from '@/components/page/kpi'
 
 // The page kit (UX-05, docs/DESIGN.md "Page kit"): the parts every dashboard page is built from, in one
 // import. The header, stat strip, callout, error and view switch already existed in components/dpr-page.tsx
@@ -11,6 +12,8 @@ import { cn } from '@/lib/utils'
 // that joins a record to the ones before and after it (UX-09).
 
 export { PageHeader, StatStrip, Callout, PageError, Segmented, DprSection as IconSection } from '@/components/dpr-page'
+export { Kpi, KpiStrip, KpiGrid, KpiMeter, type KpiProps, type KpiTone } from '@/components/page/kpi'
+export { ActionButton, ActionIcon, ActionMenuItem } from '@/components/page/action-button'
 
 /**
  * A module page's title (UX-08): one icon tile in the brand colour, the module's name above the title taken from
@@ -163,32 +166,7 @@ export function SayOnWhatsApp({ text, className }: { text: string; className?: s
   )
 }
 
-export type TileTone = 'default' | 'attention' | 'good' | 'bad' | 'info'
-
-// UX-08 (asked 9 Nov: "increase visual cues"): a tile's state reads at a glance: a bar, a tinted ground and the
-// figure in the state's colour. Default tiles stay plain so the coloured ones stand out.
-const TILE_TONE: Record<TileTone, string> = {
-  default: '',
-  attention: 'before:bg-draft bg-draft-soft/50 border-draft/25',
-  good: 'before:bg-success bg-success-soft/40 border-success/20',
-  bad: 'before:bg-destructive bg-destructive/[0.06] border-destructive/25',
-  info: 'before:bg-info bg-info-soft/50 border-info/20',
-}
-const TILE_VALUE: Record<TileTone, string> = {
-  default: '',
-  attention: 'text-draft',
-  good: 'text-success',
-  bad: 'text-destructive',
-  info: 'text-info',
-}
-
-const LEGEND_DOT: Record<TileTone, string> = {
-  default: 'bg-muted-foreground/40',
-  attention: 'bg-draft',
-  good: 'bg-success',
-  bad: 'bg-destructive',
-  info: 'bg-info',
-}
+export type TileTone = KpiTone
 
 /**
  * UX-14: what the colours on a list mean, as dots with two or three words each, never a sentence
@@ -199,7 +177,7 @@ export function Legend({ items, className }: { items: { tone: TileTone; label: s
     <ul className={cn('flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground', className)} aria-label="What the colours mean">
       {items.map((i) => (
         <li key={i.label} className="inline-flex items-center gap-1.5">
-          <span className={cn('size-2 shrink-0 rounded-full', LEGEND_DOT[i.tone])} aria-hidden />
+          <span className={cn('size-2 shrink-0 rounded-full', KPI_TONE[i.tone].dot)} aria-hidden />
           {i.label}
         </li>
       ))}
@@ -209,62 +187,15 @@ export function Legend({ items, className }: { items: { tone: TileTone; label: s
 
 /**
  * One question on a home screen (UX-11): a label, a figure or short list, and the page that answers it in full.
- * The whole tile is the link, so every number on Home leads to its page.
+ * The whole tile is the link, so every number on Home leads to its page. UX-15: drawn by the page kit's `Kpi`
+ * (icon for the kind of figure, state by colour, "x of y" segments), as a card.
  */
-export function Tile({
-  label,
-  value,
-  hint,
-  to,
-  tone = 'default',
-  children,
-  loading,
-  className,
-  tag,
-}: {
-  label: string
-  /** SCP-06: a figure wider than the project or site picked says so: "Company", "Whole project". */
-  tag?: string
-  value?: React.ReactNode
-  hint?: React.ReactNode
-  to: string
-  tone?: TileTone
-  children?: React.ReactNode
-  loading?: boolean
-  className?: string
-}) {
-  return (
-    <Link
-      to={to}
-      className={cn(
-        'group relative flex min-w-0 flex-col gap-1 overflow-hidden rounded-xl border bg-background px-4 py-3 transition-colors hover:border-foreground/25',
-        tone !== 'default' && "before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-['']",
-        TILE_TONE[tone],
-        className,
-      )}
-    >
-      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate">{label}</span>
-          {tag && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">{tag}</span>}
-        </span>
-        <ArrowRight className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
-      </span>
-      {loading ? (
-        <span className="h-7 w-20 animate-pulse rounded bg-muted" aria-label="Loading" />
-      ) : (
-        value !== undefined && <span className={cn('truncate text-xl font-semibold tabular-nums', TILE_VALUE[tone])}>{value}</span>
-      )}
-      {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
-      {children}
-    </Link>
-  )
+export function Tile(props: Omit<KpiProps, 'to'> & { to: string }) {
+  return <Kpi card {...props} />
 }
 
-/** A grid of tiles: one column on a phone, two on a tablet, three or four on a laptop. */
-export function TileGrid({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3', className)}>{children}</div>
-}
+/** A grid of tiles: one column on a phone, two on a tablet, three on a laptop. */
+export const TileGrid = KpiGrid
 
 export type LinkedRecord = {
   /** What it is: "Request", "Order", "Delivery", "Bill", "Payment". */

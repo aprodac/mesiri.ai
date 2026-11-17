@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { findPage } from '@/lib/module-map'
 import { useScopeNames } from '@/lib/ScopeContext'
+import { KpiStrip, type KpiProps, type KpiToneIn } from '@/components/page/kpi'
 
 // The building blocks of the site and project DPR pages (WEB-04/05, reworked
 // in WEB-25): one white page in flat sections split by rules, not a stack of
@@ -50,81 +51,11 @@ export function DprSection({
   )
 }
 
-export type StatTone = 'default' | 'good' | 'info' | 'warn' | 'bad'
-
-export type Stat = {
-  label: string
-  value: React.ReactNode
-  tone?: StatTone
-  /** A small icon beside the label (WEB-37). */
-  icon?: React.ComponentType<{ className?: string }>
-  /** A few words under the number: "of 4 sites", "2 critical". */
-  hint?: React.ReactNode
-}
-
-// WEB-37: what each tone looks like. Colour carries meaning only: green is
-// good, amber needs watching, red is a problem, blue is information.
-const STAT_TONE: Record<StatTone, { value: string; icon: string; bar: string }> = {
-  default: { value: '', icon: 'bg-muted text-muted-foreground', bar: '' },
-  good: { value: 'text-success', icon: 'bg-success-soft text-success', bar: 'before:bg-success' },
-  info: { value: 'text-info', icon: 'bg-info-soft text-info', bar: 'before:bg-info' },
-  warn: { value: 'text-draft', icon: 'bg-draft-soft text-draft', bar: 'before:bg-draft' },
-  bad: { value: 'text-destructive', icon: 'bg-destructive/10 text-destructive', bar: 'before:bg-destructive' },
-}
-
-/** The day's numbers in one bordered strip, split by dividers. A figure
- * that means something good or bad is coloured and gets a bar on top. */
-export function StatStrip({
-  stats,
-  phoneCols,
-  guide,
-}: {
-  stats: Stat[]
-  /** A tour step's marker (lib/tours.ts). */
-  guide?: string
-  /** Columns on phones when the values are long (e.g. "+365 bags"). */
-  phoneCols?: 2
-}) {
-  return (
-    // One row; on phones more than four wrap to rows of three. The 1px gap
-    // over a border-coloured ground draws the rules in either layout.
-    <dl
-      data-guide={guide}
-      className={cn(
-        'grid gap-px overflow-hidden rounded-xl border bg-border sm:flex',
-        stats.length <= 2 || phoneCols === 2 ? 'grid-cols-2' : stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
-      )}
-    >
-      {stats.map((s, i) => {
-        const t = STAT_TONE[s.tone ?? 'default']
-        return (
-          <div
-            key={s.label}
-            className={cn(
-              'relative flex min-w-0 flex-1 flex-col bg-background px-2.5 py-1.5 sm:px-4 sm:py-2.5',
-              s.tone && s.tone !== 'default' && "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:content-['']",
-              t.bar,
-              // In rows of three, the last one fills what is left of its row.
-              i === stats.length - 1 && stats.length > 4 && stats.length % 3 === 2 && 'col-span-2',
-              i === stats.length - 1 && stats.length > 4 && stats.length % 3 === 1 && 'col-span-3',
-            )}
-          >
-            <dt className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground sm:text-xs">
-              {s.icon && (
-                <span className={cn('hidden size-5 shrink-0 items-center justify-center rounded-md sm:flex', t.icon)} aria-hidden="true">
-                  <s.icon className="size-3" />
-                </span>
-              )}
-              <span className="truncate">{s.label}</span>
-            </dt>
-            <dd className={cn('truncate text-base font-semibold tabular-nums sm:text-lg', t.value)}>{s.value}</dd>
-            {s.hint && <dd className="hidden truncate text-[11px] text-muted-foreground sm:block">{s.hint}</dd>}
-          </div>
-        )
-      })}
-    </dl>
-  )
-}
+// UX-15: the stat strip is the page kit's KPI strip (components/page/kpi.tsx): one KPI design on every page.
+// `Stat` keeps its fields (label, value, tone, icon, hint) and gains kind, of, share, to, onClick.
+export type StatTone = KpiToneIn
+export type Stat = KpiProps
+export const StatStrip = KpiStrip
 
 export type StepState = 'done' | 'current' | 'todo'
 

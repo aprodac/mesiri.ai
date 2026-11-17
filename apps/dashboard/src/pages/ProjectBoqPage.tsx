@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { NoAccess } from '@/components/page/page-kit'
+import { ActionButton, ActionMenuItem, NoAccess } from '@/components/page/page-kit'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Calculator, CalendarRange, ClipboardCheck, FileSpreadsheet, MoreHorizontal, Package, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Calculator, ClipboardCheck, MoreHorizontal, Package, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -58,26 +58,32 @@ function marginClass(value: string | null): string {
 }
 
 function TotalsStrip({ totals }: { totals: BoqTotals }) {
-  const missing = [
-    totals.lines_without_client_rate > 0 && `${totals.lines_without_client_rate} without a client rate`,
-    totals.lines_without_budget_rate > 0 && `${totals.lines_without_budget_rate} without a budget rate`,
-  ].filter(Boolean)
+  // UX-15: the figures draw what they mean: margin by colour, the budget's share of the contract and the budget
+  // earned so far as bars, the priced lines as "x of y" (amber while some still have no rate).
+  const num = (v: string | null | undefined) => (v === null || v === undefined ? null : Number(v))
+  const contract = num(totals.contract_value)
+  const budget = num(totals.budget_cost)
+  const earned = num(totals.earned)
+  const priced = totals.line_count - Math.max(totals.lines_without_client_rate, totals.lines_without_budget_rate)
   const stats: Stat[] = [
-    { label: 'Contract value', value: formatRupees(totals.contract_value), hint: 'client pays' },
-    { label: 'Budget cost', value: formatRupees(totals.budget_cost), hint: 'should cost us' },
-    { label: 'Margin', value: formatRupees(totals.margin), tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good' },
-    ...(totals.earned !== undefined ? [{ label: 'Earned so far', value: formatRupees(totals.earned), hint: 'by work done' }] : []),
+    { label: 'Contract value', value: formatRupees(totals.contract_value), kind: 'money', hint: 'client pays' },
+    {
+      label: 'Budget cost', value: formatRupees(totals.budget_cost), kind: 'bill',
+      share: contract && budget !== null ? budget / contract : undefined, hint: contract && budget !== null ? `${Math.round((budget / contract) * 100)}% of contract` : undefined,
+    },
+    { label: 'Margin', value: formatRupees(totals.margin), kind: 'margin', tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good' },
+    ...(totals.earned !== undefined
+      ? [{
+          label: 'Earned so far', value: formatRupees(totals.earned), kind: 'progress' as const,
+          share: budget && earned !== null ? earned / budget : 0, hint: budget && earned !== null ? `${Math.round((earned / budget) * 100)}% of budget` : 'by work done',
+        }]
+      : []),
+    {
+      label: 'Lines priced', value: priced, of: totals.line_count, kind: 'work', tone: priced < totals.line_count ? 'attention' : 'good',
+      hint: [totals.lines_without_client_rate > 0 && `${totals.lines_without_client_rate} no client rate`, totals.lines_without_budget_rate > 0 && `${totals.lines_without_budget_rate} no budget rate`].filter(Boolean).join(' · ') || 'all priced',
+    },
   ]
-  return (
-    <div className="flex flex-col gap-2">
-      <StatStrip stats={stats} phoneCols={2} />
-      {missing.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {totals.line_count} lines · {missing.join(' · ')}
-        </p>
-      )}
-    </div>
-  )
+  return <StatStrip stats={stats} phoneCols={2} guide="boq.totals" />
 }
 
 type LineDialogState = { section: BoqSection; line: BoqLine | null } | null
@@ -304,16 +310,12 @@ function SectionTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuItem onClick={() => onEdit(line)}>
-                        <Pencil className="mr-2 size-3.5" /> Edit
-                      </DropdownMenuItem>
+                      <ActionMenuItem kind="edit" onClick={() => onEdit(line)} />
                       <DropdownMenuItem onClick={() => onNorms(line)}>
                         <Package className="mr-2 size-3.5" /> Materials per {line.unit}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(line)}>
-                        <Trash2 className="mr-2 size-3.5" /> Remove
-                      </DropdownMenuItem>
+                      <ActionMenuItem kind="delete" onClick={() => onDelete(line)} />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </td>
@@ -612,18 +614,13 @@ export default function ProjectBoqPage() {
         date={project?.name}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" className="gap-1.5" asChild>
-              <Link to={`/planning/schedule?project=${id}`} data-guide="boq.schedule"><CalendarRange className="size-3.5" /> Schedule</Link>
-            </Button>
+            <ActionButton kind="schedule" to={`/planning/schedule?project=${id}`} data-guide="boq.schedule">Schedule</ActionButton>
+            {!readOnly && <ActionButton kind="import-excel" onClick={() => setImporting(true)} data-guide="boq.import" />}
             {!readOnly && (
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImporting(true)} data-guide="boq.import">
-                <FileSpreadsheet className="size-3.5" /> Import from Excel
-              </Button>
-            )}
-            {!readOnly && (
-              <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setSectionDialog({ open: true, section: null })}>
-                <Plus className="size-3.5" /> Add section
-              </Button>
+              // One yellow button per page: while the BOQ is empty, the upload below is it.
+              <ActionButton kind="add" primary={boq.sections.length > 0} onClick={() => setSectionDialog({ open: true, section: null })}>
+                Add section
+              </ActionButton>
             )}
           </div>
         }
@@ -634,12 +631,8 @@ export default function ProjectBoqPage() {
           <p className="font-medium">No BOQ yet</p>
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" className="gap-1.5" onClick={() => setImporting(true)}>
-                <FileSpreadsheet className="size-3.5" /> Upload the BOQ Excel
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setSectionDialog({ open: true, section: null })}>
-                <Plus className="size-3.5" /> Add the first section by hand
-              </Button>
+              <ActionButton kind="import-excel" primary onClick={() => setImporting(true)}>Upload the BOQ Excel</ActionButton>
+              <ActionButton kind="add" onClick={() => setSectionDialog({ open: true, section: null })}>Add the first section by hand</ActionButton>
             </div>
           )}
         </div>
@@ -672,9 +665,7 @@ export default function ProjectBoqPage() {
                 action={
                   !readOnly && (
                     <div className="flex items-center gap-1">
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLineDialog({ section, line: null })}>
-                        <Plus className="size-3.5" /> Add line
-                      </Button>
+                      <ActionButton kind="add" onClick={() => setLineDialog({ section, line: null })}>Add line</ActionButton>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${section.name}`}>
@@ -682,13 +673,9 @@ export default function ProjectBoqPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem onClick={() => setSectionDialog({ open: true, section })}>
-                            <Pencil className="mr-2 size-3.5" /> Rename
-                          </DropdownMenuItem>
+                          <ActionMenuItem kind="edit" onClick={() => setSectionDialog({ open: true, section })}>Rename</ActionMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setConfirm({ kind: 'section', section })}>
-                            <Trash2 className="mr-2 size-3.5" /> Remove
-                          </DropdownMenuItem>
+                          <ActionMenuItem kind="delete" onClick={() => setConfirm({ kind: 'section', section })} />
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -730,9 +717,9 @@ export default function ProjectBoqPage() {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
+            <ActionButton kind="delete" primary size="default" disabled={remove.isPending} onClick={() => remove.mutate()}>
               {remove.isPending ? 'Removing…' : 'Remove'}
-            </Button>
+            </ActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
