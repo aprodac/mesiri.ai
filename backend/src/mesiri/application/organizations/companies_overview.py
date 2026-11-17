@@ -159,7 +159,8 @@ async def _retention_days(conn: AsyncConnection) -> int:
         return DEFAULT_RETENTION_DAYS
 
 
-_QUERY = sa.text(_SELECT + "ORDER BY o.created_at DESC NULLS LAST, o.name")
+# SS-66: a person's learning sandbox is not a customer: never in the lists, the overview, the funnel or billing.
+_QUERY = sa.text(_SELECT + "WHERE o.sandbox_of IS NULL ORDER BY o.created_at DESC NULLS LAST, o.name")
 _ONE_QUERY = sa.text(_SELECT + "WHERE o.id = :organization_id")
 
 
