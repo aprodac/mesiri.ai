@@ -733,6 +733,24 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
   older overdue entry of the same kind and place as well as that day's; the dashboard side (Next day in the banner,
   the new token swapped in, "for you" with links) is SS-74e; save points and Go back are SS-74d.
 
+### 18.12 Second pass on the ask (17 Nov 2026, asked again in session)
+
+The same ask came again (*"each user has their own … go back and forth … if I am an accountant I should get simulated
+data entered when I skip days … every other role is doing their part automatically"*). What is built covers its core
+(one sample company each, §17; the cast plays every other role, §18.11). Gaps found reading it as the accountant would:
+
+| # | Idea | How | Item |
+|---|---|---|---|
+| a | **Back and forth on your own timeline.** Go back to the start of any of the last 30 days; going forth again is Next day, which replays the plan from there. The plan is fixed and the cast follows the company, so the days come back the same except where you do differently | Save point per day (§18.5), restored with the company's date and what the plan has played (`sandbox_played`) | SS-74d |
+| b | **Try today again.** Made a mess of Meera's bills? Go back to the start of today (today's save point) and do them again; the cast's entries of today come back as they were | The same save points: today's is the newest | SS-74d |
+| c | **"Let Meera do it."** Any of your entries for today can be handed back to the cast: their user makes it now, as the plan says, and you see the record it made (to learn from, or because you are stuck). Skipping days already does this for the days you skip | `POST /learn/sandbox/hand-over {id}`: plays one entry as its role (the player's `_play`), marks it played | SS-74f |
+| d | **Switching role mid-day.** Your entries are those of the role you play when the day passes. Switch from Accounts to Ravi, press Next day: Meera's entries you left are made by Meera (the cast), Ravi's of the new day wait for you | Built that way in SS-74c (the role is per Next day); say so in the banner when switching ("Meera will do what you left") | SS-74e |
+| e | **What reached your desk.** "While you were away" from your role's side: for Accounts, the deliveries waiting to be billed and the bills due; for the site engineer, what arrived and what is short | The next-day summary grouped by who did it; "for you" already lists your desk | SS-74e |
+| f | **Another tab keeps an old day.** After Next day or Go back in one tab, another tab still carries the old date in its token | The banner asks for the clock on focus and swaps in the new token | SS-74e |
+
+Not taken: branching timelines (keeping the days you went back from, to return to them). One line of days is easier to
+understand and to keep; going back says plainly that the later days go.
+
 ## 21. Up to the BOQ, playable (SS-69 part 1, SS-72 first pieces, 17 Nov 2026)
 
 Asked 17 Nov: *"our focus right now is till BOQ, the role play thing working."* Chapters 2 and 3 of the guided project
