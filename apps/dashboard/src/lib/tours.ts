@@ -1,5 +1,6 @@
 import type { SparkMood } from '@/components/live/spark'
 import { findPage } from './module-map'
+import { WORDS_FALLBACK, type GuideWords } from './start-mode'
 
 // The guided tours (asked 15 Nov: "like in games, everything highlighted and told, one by one", with "that Mesiri
 // character in Live to help"): the Spark from Live walks a new person through the app and each main page, one thing
@@ -23,6 +24,34 @@ export interface TourStep {
   /** SS-61: the words spoken, when the screen's words don't read well aloud ("Ctrl K", "DPR"); else the title and
    *  text are spoken. */
   say?: string
+  /**
+   * UX-22: this step's words for a kind of person (lib/start-mode.ts GuideWords): someone new to construction gets
+   * the site explained, someone from other software gets what is different. `null` leaves the step out for them. A
+   * kind with nothing here gets the plain words above (or the next in WORDS_FALLBACK).
+   */
+  for?: Partial<Record<GuideWords, StepWords | null>>
+  /** UX-22: only for these kinds of person (a step that explains a cubic metre is not for an engineer). */
+  only?: GuideWords[]
+}
+
+/** A step's words for one kind of person. */
+export interface StepWords {
+  title?: string
+  text: string
+  say?: string
+  mood?: SparkMood
+}
+
+/** UX-22: the step as this person sees it, or null when it is not for them. */
+export function stepFor<S extends TourStep>(step: S, words: GuideWords | null): S | null {
+  const chain = words ? WORDS_FALLBACK[words] : []
+  if (step.only && !step.only.some((w) => chain.includes(w))) return null
+  for (const w of chain) {
+    const own = step.for?.[w]
+    if (own === null) return null
+    if (own) return { ...step, title: own.title ?? step.title, text: own.text, say: own.say, mood: own.mood ?? step.mood }
+  }
+  return step
 }
 
 export interface Tour {
@@ -34,6 +63,8 @@ export interface Tour {
   introFromPage?: boolean
   /** SS-64: what the narrator says for that hello, written for listening (the screen keeps the page's `about`). */
   introSay?: string
+  /** UX-22: the hello's words for a kind of person, in place of the page's `about`. */
+  introFor?: Partial<Record<GuideWords, StepWords>>
   /**
    * Start by itself only once one of these markers is on screen: the page's real content, not a project picker or a
    * loading skeleton. Until then the tour waits (and is not marked seen). Replay from Help shows it whatever is there.
@@ -130,18 +161,103 @@ export const PAGE_TOURS: Record<string, Tour> = {
       { target: 'labour.add', title: 'Add a worker', text: 'Add a person with their trade and daily wage. On WhatsApp the site just says who came: "Suresh team: 4 masons, 2 helpers".', mood: 'happy' },
     ],
   },
+  // UX-22: one tour, worded for each kind of person (start-mode.ts GuideWords). Someone new to construction gets the
+  // page as a building priced piece by piece, one idea per step, every site word explained; someone from other
+  // software gets three lines on what is different; someone with an Excel gets the import first.
   '/boq': {
     key: '/tour/boq',
-    version: 1,
+    version: 2,
     introFromPage: true,
     introSay: 'This is the B O Q, your bill of quantities. Every piece of work in the project: how much of it, what the client pays for it, and what it should cost you.',
+    introFor: {
+      basics: {
+        title: 'The price list of the building',
+        text: 'Before a building starts, it is priced piece by piece: so much concrete, so much plastering, each at a price. That list is the BOQ, the bill of quantities. This page is that list, and how far the site has got on each piece.',
+        say: 'Before a building starts, it is priced piece by piece. So much concrete, so much plastering, each at a price. That list is called the B O Q, the bill of quantities. This page is that list, and how far the site has got on each piece.',
+      },
+      data: {
+        text: 'Your estimate, line by line, with what the client pays and what it should cost you. Bring it in from the Excel you already have.',
+      },
+      expert: {
+        text: 'Your BOQ with client and budget rates per line. What is different: progress comes from the site\'s WhatsApp updates, not a measurement sheet.',
+      },
+    },
     startWhen: ['boq.empty', 'boq.lines'],
     steps: [
       { target: 'project.pick', title: 'Pick a project', text: 'This page works on one project at a time. Pick it here, or in the bar at the top.' },
-      { target: 'boq.empty', title: 'Start here', text: 'Upload the estimate Excel you already have; I read its items, units and quantities. Or start one section by hand.', say: 'To start, upload the estimate you already have in Excel. Mesiri reads the items, units and quantities for you. Or, if you prefer, start a section by hand.' },
-      { target: 'boq.import', title: 'From your Excel', text: 'Bring the BOQ in from the Excel you already have.', say: 'Have more in Excel? Bring it in here. Nothing gets typed twice.' },
-      { target: 'boq.lines', title: 'Every line', text: 'Each work item with its quantity and rates. Work the site sends on WhatsApp counts on its line by itself, with the budget it earned.', mood: 'think', say: 'Every line is one piece of work, with its quantity and its rates. Here\'s the useful part: when the site reports work on WhatsApp, it counts against the right line by itself, and you see how much of the budget that work has earned.' },
-      { target: 'boq.schedule', title: 'Its schedule', text: 'The same sections become the project schedule.', mood: 'happy', say: 'And the same sections become your project schedule, so your plan and your costs always line up.' },
+      {
+        target: 'boq.empty', title: 'Start here', text: 'Upload the estimate Excel you already have; I read its items, units and quantities. Or start one section by hand.', say: 'To start, upload the estimate you already have in Excel. Mesiri reads the items, units and quantities for you. Or, if you prefer, start a section by hand.',
+        for: {
+          basics: { title: 'Nothing here yet', text: 'Most projects start from the estimate: an Excel sheet, made before the job was won, that lists every piece of work. Upload it and I fill this page for you.' },
+          data: { title: 'Bring your Excel', text: 'One row per item, with Description, Unit, Qty and Rate. I read the rows and show you what I understood before anything is saved.' },
+          expert: { title: 'Import your BOQ', text: 'From Excel (Description, Unit, Qty, Rate), or build sections by hand.' },
+        },
+      },
+      {
+        target: 'boq.import', title: 'From your Excel', text: 'Bring the BOQ in from the Excel you already have.', say: 'Have more in Excel? Bring it in here. Nothing gets typed twice.',
+        for: { basics: null, expert: null, data: { title: 'More sheets later', text: 'Each upload adds to this BOQ: another floor, another building. Nothing is typed twice.' } },
+      },
+      {
+        target: 'boq.totals', title: 'The project at a glance', text: 'Contract value, budget, margin, and what the work done so far has earned.', mood: 'look',
+        for: {
+          basics: { title: 'The whole project in four numbers', text: 'What the client pays for everything, what it should cost you, the difference you keep (the margin), and what the work done so far is worth.' },
+          data: { title: 'Check what came in', text: '"Lines priced" shows how many lines still have no client rate or no budget rate after the upload. Fill those in to see the margin.' },
+          expert: null,
+        },
+      },
+      {
+        target: 'boq.section', title: 'Work comes in sections', text: 'Like chapters in a book: the structure, the walls, the plastering, or one floor. Tap a section\'s name to fold it away.', only: ['basics'],
+      },
+      {
+        target: 'boq.work', title: 'One line, one piece of work', only: ['basics'],
+        text: 'The lit line is one job, and how much of it there is. Units are site measures: cum is a cubic metre (a box 1 metre each way), sqm a square metre of floor or wall, kg steel by weight.',
+        say: 'The lit line is one job, and how much of it there is. The units are site measures. C U M is a cubic metre, a box one metre each way. S Q M is a square metre of floor or wall. And K G is steel, by weight.',
+      },
+      {
+        target: 'boq.rate', title: 'Two prices for each unit', only: ['basics', 'steps'],
+        text: 'The big number is what the client pays you for one unit. "cost" under it is what that unit should cost you. Point at it to see labour and material.',
+        for: { basics: { title: 'Two prices for each unit', text: 'The big number is what the client pays you for one unit of this work. "cost" under it is what one unit should cost you, in labour and material.' } },
+      },
+      {
+        target: 'boq.value', title: 'What the line is worth', only: ['basics'],
+        text: 'Quantity × the client\'s price. The gold bar shows how big this line is next to the others in its section, so the big money stands out.',
+        say: 'Quantity times the client\'s price. The gold bar shows how big this line is next to the others in its section, so the big money stands out.',
+      },
+      {
+        target: 'boq.lines', title: 'Every line', text: 'Each work item with its quantity and rates. Work the site sends on WhatsApp counts on its line by itself, with the budget it earned.', mood: 'think', say: 'Every line is one piece of work, with its quantity and its rates. Here\'s the useful part: when the site reports work on WhatsApp, it counts against the right line by itself, and you see how much of the budget that work has earned.',
+        for: {
+          basics: null,
+          expert: { title: 'No measurement sheet', text: 'Progress is not typed in here. Work the site reports on WhatsApp is counted on its line, with the budget it earned (earned value).' },
+        },
+      },
+      {
+        target: 'boq.progress', title: 'How far the site has got', text: 'Fills from the site\'s WhatsApp updates. Blue: under way. Green: done. Orange: more than planned.',
+        for: {
+          basics: { text: 'When the site sends "16 cum slab concreting done" on WhatsApp, this bar fills by itself. Blue: under way. Green: finished. Orange: more than was planned.', say: 'When the site sends, sixteen cubic metres of slab concreting done, on WhatsApp, this bar fills by itself. Blue means under way. Green means finished. Orange means more than was planned.' },
+          expert: null,
+        },
+      },
+      {
+        target: 'boq.margin', title: 'What you keep', text: 'Client rate minus budget cost. Green: healthy. Orange: thin, under 5%. Red: this line loses money.', mood: 'think',
+        for: {
+          basics: { text: 'The client\'s price minus your cost: the money this line leaves you. Green is healthy. Orange means very little is left. Red means this line loses money.' },
+          expert: { title: 'Margin per line', text: 'Per line and per section. Orange under 5%, red a loss.' },
+        },
+      },
+      {
+        target: 'boq.waiting', title: 'Work waiting for a line', text: 'Site work no line counts yet. I suggest the line; Add all puts them on, or change one first.', mood: 'worry',
+        for: {
+          basics: { text: 'Work the site reported that isn\'t counted on any line yet, so its progress is missing above. I guess the right line; check it and press Add.' },
+          expert: { title: 'Site work to map', text: 'Like mapping DPR quantities to BOQ items, except I propose the line. Add all accepts them.' },
+        },
+      },
+      {
+        target: 'boq.schedule', title: 'Its schedule', text: 'The same sections become the project schedule.', mood: 'happy', say: 'And the same sections become your project schedule, so your plan and your costs always line up.',
+        for: {
+          basics: { title: 'And the timeline', text: 'The same sections also become the project\'s schedule: what happens when, and what is late.' },
+          expert: { title: 'Schedule from the BOQ', text: 'Sections become schedule activities: no separate WBS to keep in step.' },
+        },
+      },
     ],
   },
   '/projects': {
@@ -1027,6 +1143,12 @@ export function tourForPage(pathname: string, search = ''): { tour: Tour; about:
   if (!hit || hit.page.status !== 'built') return null
   const tour = PAGE_TOURS[hit.page.url.split('?')[0]]
   return tour ? { tour, about: hit.page.about, title: hit.page.title } : null
+}
+
+/** UX-22: a tour's steps as this person sees them: the page's hello first (when the tour has one), in their words. */
+export function stepsFor(tour: Tour, words: GuideWords | null, intro?: { title: string; about: string }): TourStep[] {
+  const hello: TourStep[] = tour.introFromPage && intro ? [{ title: intro.title, text: intro.about, mood: 'hello', say: tour.introSay, for: tour.introFor }] : []
+  return [...hello, ...tour.steps].map((s) => stepFor(s, words)).filter((s): s is TourStep => !!s)
 }
 
 /** Every marker the tours point at (the build checks each is on some element: vite.config.ts). */

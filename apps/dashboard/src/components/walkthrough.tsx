@@ -11,7 +11,7 @@ import { ALL_PAGES, findPage } from '@/lib/module-map'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { urlWithScope } from '@/lib/scope-url'
-import { PAGE_TOURS } from '@/lib/tours'
+import { PAGE_TOURS, stepFor } from '@/lib/tours'
 import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
 import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
@@ -234,6 +234,9 @@ export function WalkthroughRunner() {
   /** Just finished: "Done", and the next one to do. */
   const [finished, setFinished] = React.useState<{ walk: Walkthrough; next?: Walkthrough } | null>(null)
   const guide = useStartMode()
+  // UX-22: the steps in this person's words, fixed when the walkthrough starts.
+  const wordsRef = React.useRef(guide.rules.words)
+  wordsRef.current = guide.rules.words
   const next = React.useRef<HTMLButtonElement>(null)
   /** The top bar's scope as it is now; a walkthrough starts from it. */
   const scopeNow = React.useRef<ReturnType<typeof useScope>['scope']>({ mode: 'portfolio' })
@@ -248,8 +251,9 @@ export function WalkthroughRunner() {
   // Start from the Learn page (or anywhere): lib/tour-events.ts startWalkthrough(id).
   React.useEffect(() => {
     const begin = (e: Event) => {
-      const walk = findWalkthrough((e as CustomEvent<string>).detail)
-      if (!walk) return
+      const found = findWalkthrough((e as CustomEvent<string>).detail)
+      if (!found) return
+      const walk = { ...found, steps: found.steps.map((s) => stepFor(s, wordsRef.current)).filter((s): s is WalkStep => !!s) }
       setWalkthroughRunning(true)
       drawnPage.current = null
       shownPage.current = null

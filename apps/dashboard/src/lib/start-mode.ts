@@ -10,7 +10,38 @@ import { useAuth } from './AuthContext'
 // component asks the table ("does this mode show page strips?"), never "is the mode guided?". Changing what a mode
 // shows, or adding one, is an edit here (and to START_MODES in the backend and migration 0553's check).
 
-export type StartMode = 'guided' | 'bring_data' | 'switching' | 'free'
+export type StartMode = 'new_to_construction' | 'guided' | 'bring_data' | 'switching' | 'free'
+
+/**
+ * UX-22: whose words the help panel and the page tours use. A tour step or a page's help can carry its own words for
+ * each kind of person (lib/tours.ts `for`, lib/page-help.ts `for`); a page that has none for this person falls back
+ * along WORDS_FALLBACK to the plain words, so every page works for everyone before it is written for them.
+ * - basics: new to construction too: what the thing is in real life, the site words explained, one idea per step
+ * - steps: new to tools like this, knows construction: what to do here, one step at a time
+ * - data: has it in Excel or on paper: where their data goes and how it comes in
+ * - expert: used other construction software: what is different here, in a line
+ */
+export type GuideWords = 'basics' | 'steps' | 'data' | 'expert'
+
+/** Where words not written for a kind of person come from: the next in the list, then the plain words. */
+export const WORDS_FALLBACK: Record<GuideWords, GuideWords[]> = {
+  basics: ['basics', 'steps'],
+  steps: ['steps'],
+  data: ['data'],
+  expert: ['expert'],
+}
+
+/** Which of the kinds written for in `own` speaks to this person, or null when none does. */
+export function wordsKey(words: GuideWords | null, own: Partial<Record<GuideWords, unknown>> | undefined): GuideWords | null {
+  if (!words || !own) return null
+  return WORDS_FALLBACK[words].find((w) => own[w] !== undefined) ?? null
+}
+
+/** This person's own words from a set written per kind of person, or `plain` when none is written for them. */
+export function wordsFor<T>(words: GuideWords | null, own: Partial<Record<GuideWords, T>> | undefined, plain: T): T {
+  const key = wordsKey(words, own)
+  return key ? (own![key] as T) : plain
+}
 
 export interface ModeRules {
   /** The answer as the person reads it. */
@@ -35,12 +66,18 @@ export interface ModeRules {
   bringDataInSidebar: boolean
   /** The Spark's guided tours (components/tour.tsx): the app tour and every page's, only the app tour, or none. */
   tours: 'all' | 'app' | 'none'
+  /** UX-22: whose words help and tours use (GuideWords); null: the plain words. */
+  words: GuideWords | null
+  /** UX-22: the short name of this kind of person, as the help panel shows it ("Explained for: New to construction"). */
+  forWho: string
 }
 
 export const MODES: Record<StartMode, ModeRules> = {
-  guided: {
-    label: 'Show me step by step',
-    hint: "I'm new to tools like this.",
+  // UX-22 (asked 17 Nov: "another role, a total beginner who does not even know construction much"): everything step
+  // by step gets, plus the site itself explained (what a BOQ line, a cum, a margin is), in the help and the tours.
+  new_to_construction: {
+    label: "I'm new to construction",
+    hint: 'Explain the site words too.',
     checklist: true,
     whyLines: true,
     dataSteps: false,
@@ -50,6 +87,23 @@ export const MODES: Record<StartMode, ModeRules> = {
     termsUnderlined: true,
     bringDataInSidebar: true,
     tours: 'all',
+    words: 'basics',
+    forWho: 'New to construction',
+  },
+  guided: {
+    label: 'Show me step by step',
+    hint: "I know construction; I'm new to tools like this.",
+    checklist: true,
+    whyLines: true,
+    dataSteps: false,
+    whereThingsAre: false,
+    shortSidebar: true,
+    strips: 'all',
+    termsUnderlined: true,
+    bringDataInSidebar: true,
+    tours: 'all',
+    words: 'steps',
+    forWho: 'New to tools like this',
   },
   bring_data: {
     label: 'I have my data in Excel or on paper',
@@ -63,6 +117,8 @@ export const MODES: Record<StartMode, ModeRules> = {
     termsUnderlined: false,
     bringDataInSidebar: true,
     tours: 'app',
+    words: 'data',
+    forWho: 'Bringing data from Excel',
   },
   switching: {
     label: "I've used other construction software",
@@ -76,6 +132,8 @@ export const MODES: Record<StartMode, ModeRules> = {
     termsUnderlined: false,
     bringDataInSidebar: false,
     tours: 'app',
+    words: 'expert',
+    forWho: 'Used other software',
   },
   free: {
     label: "I'll find my way",
@@ -89,6 +147,8 @@ export const MODES: Record<StartMode, ModeRules> = {
     termsUnderlined: false,
     bringDataInSidebar: false,
     tours: 'none',
+    words: null,
+    forWho: 'Everyone',
   },
 }
 

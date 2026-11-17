@@ -318,24 +318,25 @@ function SectionTable({
           {section.lines.map((line) => {
             const value = Number(line.contract_value ?? 0)
             return (
-              <tr key={line.id}>
+              // UX-22: every row carries the guide markers; a guide lights the first one on screen.
+              <tr key={line.id} data-guide="boq.line">
                 {hasCodes && <td className="px-3 py-3 align-top text-muted-foreground tabular-nums">{line.boq_code ?? ''}</td>}
-                <td className="px-3 py-3">
+                <td className="px-3 py-3" data-guide="boq.work">
                   <span className="font-medium">{line.work}</span>
                   {line.revision_no > 1 && <span className="ml-2 text-xs text-muted-foreground">rev {line.revision_no}</span>}
                   <MaterialsNote line={line} readOnly={readOnly} onNorms={() => onNorms(line)} />
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-3 py-3" data-guide="boq.progress">
                   <ProgressCell line={line} />
                 </td>
-                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)} title={costParts(line)}>
+                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)} title={costParts(line)} data-guide="boq.rate">
                   <div>
                     {formatRupees(line.client_rate)}
                     <span className="text-xs text-muted-foreground"> /{line.unit}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">cost {formatRupees(line.budget_rate)}</div>
                 </td>
-                <td className={cn('border-l px-3 py-3 whitespace-nowrap', NUM)}>
+                <td className={cn('border-l px-3 py-3 whitespace-nowrap', NUM)} data-guide="boq.value">
                   <Money value={line.contract_value} title={line.budget_cost ? `budget cost ${formatRupees(line.budget_cost)}` : undefined} />
                   {sectionValue > 0 && value > 0 && (
                     <div className="mt-1 ml-auto h-1 w-16 overflow-hidden rounded-full bg-muted" title="Its size against the biggest line in this section" aria-hidden>
@@ -343,7 +344,7 @@ function SectionTable({
                     </div>
                   )}
                 </td>
-                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)}>
+                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)} data-guide="boq.margin">
                   <MarginCell margin={line.margin} contract={line.contract_value} />
                 </td>
                 {!readOnly && (
@@ -401,22 +402,22 @@ function LineMenu({ line, onEdit, onNorms, onDelete }: { line: BoqLine } & LineA
 /** One BOQ line on a phone: name and margin on top, progress, then rate and value in one muted line. */
 function LineCard({ line, readOnly, ...actions }: { line: BoqLine; readOnly: boolean } & LineActions) {
   return (
-    <li className="flex flex-col gap-2 px-3 py-3 text-sm">
+    <li className="flex flex-col gap-2 px-3 py-3 text-sm" data-guide="boq.line">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0" data-guide="boq.work">
           {line.boq_code && <span className="mr-1.5 text-muted-foreground tabular-nums">{line.boq_code}</span>}
           <span className="font-medium">{line.work}</span>
           <MaterialsNote line={line} readOnly={readOnly} onNorms={() => actions.onNorms(line)} />
         </div>
         <div className="flex shrink-0 items-start gap-1">
-          <MarginCell margin={line.margin} contract={line.contract_value} />
+          <span data-guide="boq.margin"><MarginCell margin={line.margin} contract={line.contract_value} /></span>
           {!readOnly && <LineMenu line={line} {...actions} />}
         </div>
       </div>
-      <ProgressCell line={line} />
-      <p className="text-xs text-muted-foreground tabular-nums" title={costParts(line)}>
+      <div data-guide="boq.progress"><ProgressCell line={line} /></div>
+      <p className="text-xs text-muted-foreground tabular-nums" title={costParts(line)} data-guide="boq.rate">
         {formatRupees(line.client_rate)} /{line.unit} · cost {formatRupees(line.budget_rate)} · value{' '}
-        <span className="font-medium text-foreground"><Money value={line.contract_value} /></span>
+        <span className="font-medium text-foreground" data-guide="boq.value"><Money value={line.contract_value} /></span>
       </p>
     </li>
   )
@@ -882,6 +883,7 @@ export default function ProjectBoqPage() {
               icon={ClipboardCheck}
               iconClass="bg-draft-soft text-draft"
               title="Site work to add to the BOQ"
+              guide="boq.waiting"
               meta={<span className="rounded-full bg-draft-soft px-2 py-0.5 text-xs font-medium text-draft">{workQuery.data?.length} waiting</span>}
               action={
                 !readOnly && suggestedWork.length > 0 && (
@@ -910,6 +912,7 @@ export default function ProjectBoqPage() {
               <DprSection
                 key={section.id}
                 className="[&>header]:rounded-lg [&>header]:bg-muted [&>header]:px-3 [&>header]:py-2"
+                guide="boq.section"
                 icon={Calculator}
                 title={section.code ? `${section.code}. ${section.name}` : section.name}
                 meta={<SectionSummary section={section} />}

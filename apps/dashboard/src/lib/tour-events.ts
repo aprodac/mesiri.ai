@@ -24,3 +24,24 @@ export function setWalkthroughRunning(on: boolean) {
 export function walkthroughRunning(): boolean {
   return walking
 }
+
+// UX-22: Help's "On this page" lights one thing up on the page, with what it means (components/tour.tsx draws it).
+export const SPOT_EVENT = 'mesiri:spot'
+
+export interface Spot {
+  target: string
+  title: string
+  text: string
+}
+
+/** Light up one marked thing on the page and say what it is. */
+export function spotOnPage(spot: Spot) {
+  window.dispatchEvent(new CustomEvent<Spot>(SPOT_EVENT, { detail: spot }))
+}
+
+// The help panel opens again from the lit thing's "Back to help".
+export const HELP_EVENT = 'mesiri:help'
+
+export function openHelp() {
+  window.dispatchEvent(new Event(HELP_EVENT))
+}

@@ -24,11 +24,12 @@ function checkTourMarkers(): Plugin {
   return {
     name: 'mesiri-check-tour-markers',
     buildStart() {
-      // The page tours and the walkthroughs (SS-42, src/lib/walkthroughs.ts) point at markers the same way.
-      const files = ['lib/tours.ts', 'lib/walkthroughs.ts']
+      // The page tours, the walkthroughs (SS-42, src/lib/walkthroughs.ts) and the help's parts (UX-22, `find:` in
+      // src/lib/page-help.ts) point at markers the same way.
+      const files = ['lib/tours.ts', 'lib/walkthroughs.ts', 'lib/page-help.ts']
       const guides = files.map((f) => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n')
       const wanted = [
-        ...[...guides.matchAll(/target: '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
+        ...[...guides.matchAll(/(?:target|find): '([A-Za-z0-9._-]+)'/g)].map((m) => m[1]),
         // A tour's startWhen markers (the page's content it waits for) must exist too.
         ...[...guides.matchAll(/startWhen: \[([^\]]*)\]/g)].flatMap((m) => [...m[1].matchAll(/'([A-Za-z0-9._-]+)'/g)].map((x) => x[1])),
       ]

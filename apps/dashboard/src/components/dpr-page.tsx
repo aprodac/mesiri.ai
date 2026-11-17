@@ -23,8 +23,11 @@ export function DprSection({
   iconClass,
   open,
   onToggle,
+  guide,
 }: {
   icon: React.ComponentType<{ className?: string }>
+  /** UX-22: a tour / help marker (`data-guide`) on the section's title row, so a guide can light it up. */
+  guide?: string
   title: string
   /** Collapsible: with onToggle the title opens and closes the section, and `open` false hides its body. */
   open?: boolean
@@ -41,7 +44,7 @@ export function DprSection({
   return (
     <section id={id} className={cn('flex scroll-mt-20 flex-col gap-2 border-t py-4 first:border-t-0 first:pt-0', className)}>
       {/* The action drops under the title when the row is too narrow. */}
-      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <header data-guide={guide} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           {onToggle ? (
             <button type="button" onClick={onToggle} aria-expanded={open !== false} className="-ml-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-muted">

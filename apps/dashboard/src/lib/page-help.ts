@@ -5,6 +5,8 @@
 //
 // Keyed by the page's `url` in the module map (with ?view= for a view). Words stay short: one line per thing.
 
+import type { GuideWords } from './start-mode'
+
 export type HelpTone = 'good' | 'attention' | 'bad' | 'info'
 
 export interface HelpPart {
@@ -14,6 +16,10 @@ export interface HelpPart {
   means: string
   /** The colour it carries on the page, so the help shows the same cue. */
   tone?: HelpTone
+  /** UX-22: its `data-guide` marker on the page: the help lights it up when tapped (the build checks it exists). */
+  find?: string
+  /** UX-22: what it means for a kind of person (lib/start-mode.ts GuideWords); `null` leaves it out for them. */
+  for?: Partial<Record<GuideWords, string | null>>
 }
 
 export interface PageHelp {
@@ -23,6 +29,11 @@ export interface PageHelp {
   steps?: string[]
   /** Something people often get wrong, in one line. */
   tip?: string
+  /** UX-22: the first thing this kind of person should hear about the page, in two lines at most: the page in real
+   *  life (basics), where to start (steps), how their data comes in (data), what is different here (expert). */
+  forYou?: Partial<Record<GuideWords, string>>
+  /** UX-22: "How to use it" for a kind of person. */
+  stepsFor?: Partial<Record<GuideWords, string[]>>
 }
 
 const SEE_MONEY = 'Rupees show only to owner, admin, finance and project managers.'
@@ -125,17 +136,31 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     steps: ['Upload the estimate Excel: each section becomes a bar.', 'Use Quick plan to give each bar its days.', 'Site updates fill the bars in.'],
     tip: 'The owner and PM get the schedule on WhatsApp each morning.',
   },
+  // UX-22: in the order they sit on the page, each lit up when tapped, and worded per kind of person.
   '/boq': {
+    forYou: {
+      basics:
+        'Think of the building as a long shopping list: 60 cubic metres of concrete, 900 square metres of shuttering, each with a price. This page is that list: what the client pays, what it costs you, and how much the site has done.',
+      steps: 'Start by uploading the estimate Excel. After that the page keeps itself up to date from what the site sends on WhatsApp.',
+      data: 'Your estimate Excel becomes this page in one upload: Description, Unit, Qty and Rate columns are enough.',
+      expert: 'Your BOQ or cost sheet, with one difference: progress is counted from the site\'s WhatsApp updates, not a measurement sheet.',
+    },
     parts: [
-      { name: 'Section', means: 'A group of lines: "Concrete work", "Plastering", a floor' },
-      { name: 'Client rate', means: 'What the client pays per unit' },
-      { name: 'Budget rate', means: 'What it should cost you per unit' },
-      { name: 'Margin', means: 'Contract value minus budget cost' },
-      { name: 'Earned so far', means: 'Work done × client rate', tone: 'good' },
-      { name: 'Done', means: 'Work the site recorded, counted on its line' },
-      { name: 'Work done, not on a BOQ line yet', means: 'Site work no line counts yet. Mesiri suggests a line, you press Count', tone: 'attention' },
+      { name: 'Top numbers', means: 'Contract value, budget, margin and what the work done has earned', find: 'boq.totals', for: { basics: 'What the client pays, what it should cost you, what you keep, and what is done' } },
+      { name: 'Section', means: 'A group of lines: "Concrete work", "Plastering", a floor', find: 'boq.section', for: { basics: 'A chapter of the work: the structure, the walls, a floor. Tap it to fold it', expert: null } },
+      { name: 'Work', means: 'The work item and its quantity', find: 'boq.work', for: { basics: 'One job and how much of it: cum is a cubic metre, sqm a square metre', expert: null } },
+      { name: 'Progress', means: 'Done so far, from site updates: blue under way, green done, orange over plan', tone: 'info', find: 'boq.progress', for: { basics: 'How much the site has done, filled from its WhatsApp messages' } },
+      { name: 'Rate per unit', means: 'The client rate, with your budget cost under it', find: 'boq.rate', for: { basics: 'What the client pays for one unit; under it, what one unit costs you' } },
+      { name: 'Value', means: 'Quantity × client rate; the gold bar is its size in the section', find: 'boq.value', for: { basics: 'What the whole line is worth to the client', expert: null } },
+      { name: 'Margin', means: 'What the line leaves you: green healthy, orange under 5%, red a loss', tone: 'good', find: 'boq.margin', for: { basics: 'The money this line leaves you. Red means it loses money' } },
+      { name: 'Site work to add', means: 'Work no line counts yet. Mesiri suggests the line; Add puts it on', tone: 'attention', find: 'boq.waiting', for: { basics: 'Work the site reported that no line counts yet. Check the line Mesiri guessed, then Add' } },
     ],
     steps: ['Upload the estimate Excel (Description, Unit, Qty, Rate).', 'Add budget rates.', 'Add "Materials per unit" on a line to plan materials.'],
+    stepsFor: {
+      basics: ['Upload the estimate Excel (ask whoever priced the job for it).', 'Check each line has two prices: the client\'s and your cost.', 'Let the site report work on WhatsApp: the bars fill by themselves.'],
+      data: ['Upload the Excel: one row per item with Description, Unit, Qty and Rate.', 'Check what Mesiri read, then save.', 'Fill in the lines with no budget rate ("Lines priced" shows how many).'],
+      expert: ['Import the BOQ from Excel.', 'Add budget rates per line, or its labour, material and subcontract parts.', 'Add material norms per line to drive the material plan.'],
+    },
     tip: SEE_MONEY,
   },
   '/planning/materials': {

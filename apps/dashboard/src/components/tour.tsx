@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { cn } from '@/lib/utils'
 import { useGuideSeen, useStartMode } from '@/lib/start-mode'
-import { APP_TOUR, PAGE_TOURS, tourForPage, type Tour, type TourStep } from '@/lib/tours'
+import { APP_TOUR, PAGE_TOURS, stepsFor, tourForPage, type Tour, type TourStep } from '@/lib/tours'
+import type { GuideWords } from '@/lib/start-mode'
+import { SPOT_EVENT, openHelp, type Spot } from '@/lib/tour-events'
 import { VOICED, spokenWords } from '@/lib/walkthroughs'
 import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
 import { TOUR_EVENT, walkthroughRunning } from '@/lib/tour-events'
@@ -22,7 +24,12 @@ interface Running {
   index: number
   /** Run this tour next, when this one ends (the page's tour after the app tour). */
   then?: { tour: Tour; steps: TourStep[] }
+  /** UX-22: one thing lit from Help's "On this page": nothing is remembered, and "Back to help" reopens it. */
+  spot?: boolean
 }
+
+/** The stand-in tour for one thing lit from Help (never stored: `spot` runs skip markSeen). */
+const SPOT_TOUR: Tour = { key: '/tour/spot', version: 0, steps: [] }
 
 const PAD = 6
 const GAP = 12
@@ -54,10 +61,10 @@ function pageReady(tour: Tour): boolean {
   return !tour.startWhen || tour.startWhen.some((id) => findTarget(id))
 }
 
-/** The tour's steps that can be shown now: the page's hello first, then each step whose element is on screen. */
-function resolve(tour: Tour, intro?: { title: string; about: string }): TourStep[] {
-  const steps = tour.steps.filter((s) => !s.target || findTarget(s.target))
-  return tour.introFromPage && intro ? [{ title: intro.title, text: intro.about, mood: 'hello', say: tour.introSay }, ...steps] : steps
+/** The tour's steps that can be shown now, in this person's words (UX-22): the page's hello first, then each step
+ *  whose element is on screen. */
+function resolve(tour: Tour, words: GuideWords | null, intro?: { title: string; about: string }): TourStep[] {
+  return stepsFor(tour, words, intro).filter((s) => !s.target || findTarget(s.target))
 }
 
 export function useRect(target: string | undefined, index: number): DOMRect | null {
@@ -104,16 +111,16 @@ export function GuidedTour() {
       if (walkthroughRunning()) return
       const page = tourForPage(pathname, search)
       const pageRun = page && (force || (guide.rules.tours === 'all' && unseen(page.tour) && pageReady(page.tour)))
-        ? { tour: page.tour, steps: resolve(page.tour, page) }
+        ? { tour: page.tour, steps: resolve(page.tour, guide.rules.words, page) }
         : undefined
       if (!force && guide.rules.tours !== 'none' && unseen(APP_TOUR)) {
-        const steps = resolve(APP_TOUR)
+        const steps = resolve(APP_TOUR, guide.rules.words)
         setRunning({ tour: APP_TOUR, steps, index: 0, then: pageRun })
         return
       }
       if (pageRun && pageRun.steps.length > 0) setRunning({ ...pageRun, index: 0 })
     },
-    [pathname, search, guide.rules.tours, unseen],
+    [pathname, search, guide.rules.tours, guide.rules.words, unseen],
   )
 
   // On a page change: start what this person has not seen yet, once the page has drawn. Never over the start question.
@@ -145,11 +152,26 @@ export function GuidedTour() {
     return () => window.removeEventListener(TOUR_EVENT, replay)
   }, [])
 
+  // UX-22: Help's "On this page": light up one thing, with what it means.
+  React.useEffect(() => {
+    const show = (e: Event) => {
+      const { target, title, text } = (e as CustomEvent<Spot>).detail
+      if (walkthroughRunning()) return
+      window.setTimeout(() => setRunning({ tour: SPOT_TOUR, steps: [{ target, title, text, mood: 'look' }], index: 0, spot: true }), 250)
+    }
+    window.addEventListener(SPOT_EVENT, show)
+    return () => window.removeEventListener(SPOT_EVENT, show)
+  }, [])
+
   const step = running?.steps[running.index]
   const rect = useRect(step?.target, running?.index ?? -1)
 
   const finish = React.useCallback(() => {
     if (!running) return
+    if (running.spot) {
+      setRunning(null)
+      return
+    }
     ended.current.add(running.tour.key)
     markSeen.mutate({ page: running.tour.key, version: running.tour.version })
     if (running.then && running.then.steps.length > 0) setRunning({ ...running.then, index: 0 })
@@ -158,6 +180,11 @@ export function GuidedTour() {
 
   const skip = React.useCallback(() => {
     if (!running) return
+    if (running.spot) {
+      setRunning(null)
+      openHelp()
+      return
+    }
     // Skipping the app tour skips this page's tour too, for now; both are remembered as seen.
     ended.current.add(running.tour.key)
     if (running.then) ended.current.add(running.then.tour.key)
@@ -210,12 +237,13 @@ export function GuidedTour() {
       step={step}
       rect={rect}
       sparkKey={`${running.tour.key}-${running.index}`}
-      counter={`${running.index + 1} of ${running.steps.length}`}
+      counter={running.spot ? '' : `${running.index + 1} of ${running.steps.length}`}
       nextRef={next}
       onBack={running.index > 0 ? () => go(-1) : undefined}
       onNext={() => go(1)}
-      nextLabel={last ? (running.then ? 'Next: this page' : 'Done') : 'Next'}
+      nextLabel={running.spot ? 'Got it' : last ? (running.then ? 'Next: this page' : 'Done') : 'Next'}
       onSkip={skip}
+      skipLabel={running.spot ? 'Back to help' : undefined}
     >
       {voiced && <VoicePlayer voice={voice} words={words} />}
     </TourOverlay>

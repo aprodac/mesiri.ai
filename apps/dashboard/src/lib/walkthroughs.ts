@@ -586,7 +586,7 @@ const tourPath = (page: ModulePage) => page.url.split('?')[0]
 function pageSteps(page: ModulePage): WalkStep[] {
   const tour = PAGE_TOURS[tourPath(page)]
   if (!tour) return []
-  const intro: WalkStep[] = tour.introFromPage ? [{ title: page.title, text: page.about, mood: 'hello', say: tour.introSay }] : []
+  const intro: WalkStep[] = tour.introFromPage ? [{ title: page.title, text: page.about, mood: 'hello', say: tour.introSay, for: tour.introFor }] : []
   const steps: WalkStep[] = [...intro, ...tour.steps].map((s) => ({ ...s, page: page.url, optional: true }))
   // A page that shows a picker first (a project to choose): the first step waits for its content.
   if (tour.startWhen?.length && steps[0]) steps[0] = { ...steps[0], waitFor: tour.startWhen }
