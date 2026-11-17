@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { SETTINGS_PATHS, urlWithScope } from '@/lib/scope-url'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -23,6 +24,7 @@ import {
   Upload,
   GraduationCap,
   ChevronsUpDown,
+  Plus,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -47,7 +49,17 @@ import { useTrial } from '@/lib/trial'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
-import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
+import { SIDEBAR_THEME_NAMES, useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
+import { openTellMesiri } from '@/lib/tell-mesiri-events'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useNavCounts, useTaskCounts } from '@/lib/nav-counts'
 import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, sectionOrder, type ModuleGroup, type NavSection } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
@@ -113,6 +125,19 @@ const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
   { title: 'Automations', url: '/whatsapp?view=automations', icon: Clock, module: 'automations', allowedRoles: NON_ADMIN_ROLES },
 ]
 
+// UX-14: "+ New" next to Search. Each line opens Tell Mesiri (the same assistant as WhatsApp) with its first words
+// typed in, so the person finishes the sentence instead of hunting for a form. Only what the role records, and only
+// in switched-on modules.
+const OFFICE = ['ADMIN', 'OWNER', 'SUPER_ADMIN'] as const
+type NewAction = { key: string; label: string; example: string; starter: string; roles: readonly string[]; module?: ModuleKey }
+const NEW_ACTIONS: NewAction[] = [
+  { key: 'update', label: 'Site update', example: '6 masons, slab shuttering done', starter: 'Today at site: ', roles: ['SITE_ENGINEER', 'PROJECT_MANAGER', ...OFFICE], module: 'dpr' },
+  { key: 'request', label: 'Material request', example: 'Need 50 bags cement by Thursday', starter: 'Need ', roles: ['SITE_ENGINEER', 'PROJECT_MANAGER', ...OFFICE], module: 'materials' },
+  { key: 'issue', label: 'Report an issue', example: 'Water tank leaking near block B', starter: 'Problem: ', roles: ['SITE_ENGINEER', 'PROJECT_MANAGER', ...OFFICE] },
+  { key: 'task', label: 'Task', example: 'Ravi: fix the shuttering by Friday', starter: 'Task for ', roles: ['PROJECT_MANAGER', ...OFFICE], module: 'tasks' },
+  { key: 'expense', label: 'Expense', example: 'Paid 2,400 for diesel at Lake View', starter: 'Paid ', roles: ['FINANCE', 'PROJECT_MANAGER', ...OFFICE], module: 'finance' },
+]
+
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return '?'
@@ -128,40 +153,11 @@ function roleLabel(role: string | undefined): string {
     .join(' ')
 }
 
-// Visual tokens per sidebar theme. Charcoal is the default; Light follows the
+// Visual tokens per sidebar theme. Taupe is the default (UX-14); Light follows the
 // app's shadcn tokens (so it also darkens correctly in dark mode). `aside` also
 // re-points the --sidebar-* variables, so the shadcn sidebar parts' own hover,
 // active and focus styles match the theme without changing ui/sidebar.tsx.
 const SIDEBAR_THEMES = {
-  charcoal: {
-    aside:
-      'bg-[#3E3C3D] text-[#EEF1F6] [--sidebar:#3E3C3D] [--sidebar-foreground:#EEF1F6] [--sidebar-accent:rgba(255,255,255,0.10)] [--sidebar-accent-foreground:#FFFFFF] [--sidebar-border:rgba(255,255,255,0.06)] [--sidebar-ring:rgba(255,255,255,0.30)]',
-    edge: 'border-white/[0.06]',
-    ring: 'focus-visible:ring-white/30',
-    rowIdle: 'text-white/65 hover:bg-white/[0.06] hover:text-white',
-    rowActive: 'bg-white/[0.10] text-white font-semibold',
-    hoverBg: 'hover:bg-white/[0.06]',
-    label: 'text-white/40',
-    icon: 'text-white/45 group-hover/row:text-white/80',
-    iconActive: 'text-white',
-    iconBtn: 'text-white/40 hover:text-white hover:bg-white/10',
-    divider: 'border-white/[0.06]',
-    guide: 'border-white/10',
-    chevron: 'text-white/35',
-    groupIdle: 'text-white/65 hover:text-white',
-    groupActive: 'text-white font-semibold',
-    card: 'border-white/10 bg-white/[0.06]',
-    soon: 'bg-white/10 text-white/60',
-    // Header band above the wedge: light band, charcoal ink.
-    headerBg: '[--sidebar-header:#EEF1F6]',
-    headerText: 'text-[#3E3C3D]',
-    headerBtn: 'text-[#3E3C3D]/60 hover:text-[#3E3C3D] hover:bg-black/[0.06]',
-    avatar: 'bg-white/10 text-white',
-    danger: 'hover:text-[#FF9A8B]',
-    name: 'text-white',
-    role: 'text-white/45',
-    scrollbar: 'sidebar-scrollbar',
-  },
   light: {
     aside:
       'bg-[#EEF1F6] text-foreground dark:bg-card [--sidebar:#EEF1F6] dark:[--sidebar:var(--card)] [--sidebar-foreground:var(--foreground)] [--sidebar-accent:#FFFFFF] dark:[--sidebar-accent:var(--muted)] [--sidebar-accent-foreground:var(--foreground)] [--sidebar-border:rgba(0,0,0,0.06)] dark:[--sidebar-border:var(--border)] [--sidebar-ring:var(--ring)]',
@@ -189,6 +185,100 @@ const SIDEBAR_THEMES = {
     name: 'text-foreground',
     role: 'text-muted-foreground',
     scrollbar: 'sidebar-scrollbar-light',
+    bar: '#FACC15',
+    swatch: '#EEF1F6',
+  },
+  // UX-14 (17 Nov 2026): warm taupe, the default. Text is a near-white solid (not white at an opacity) so rows and
+  // labels keep 4.5:1 on #6E665B.
+  taupe: {
+    aside:
+      'bg-[#6E665B] text-[#F2EFEA] [--sidebar:#6E665B] [--sidebar-foreground:#F2EFEA] [--sidebar-accent:rgba(255,255,255,0.12)] [--sidebar-accent-foreground:#FFFFFF] [--sidebar-border:rgba(255,255,255,0.12)] [--sidebar-ring:rgba(255,255,255,0.40)]',
+    edge: 'border-white/[0.08]',
+    ring: 'focus-visible:ring-white/40',
+    rowIdle: 'text-[#F2EFEA] hover:bg-white/[0.10] hover:text-white',
+    rowActive: 'bg-white/[0.16] text-white font-semibold',
+    hoverBg: 'hover:bg-white/[0.10]',
+    label: 'text-[#EAE5DD]',
+    icon: 'text-white/70 group-hover/row:text-white',
+    iconActive: 'text-white',
+    iconBtn: 'text-white/75 hover:text-white hover:bg-white/10',
+    divider: 'border-white/[0.14]',
+    guide: 'border-white/20',
+    chevron: 'text-white/70',
+    groupIdle: 'text-[#F2EFEA] hover:text-white',
+    groupActive: 'text-white font-semibold',
+    card: 'border-white/15 bg-white/[0.08]',
+    soon: 'bg-white/15 text-white/80',
+    headerBg: '[--sidebar-header:#F3EFE8]',
+    headerText: 'text-[#4A443C]',
+    headerBtn: 'text-[#4A443C]/70 hover:text-[#4A443C] hover:bg-black/[0.06]',
+    avatar: 'bg-white/15 text-white',
+    danger: 'hover:text-[#FFD0C7]',
+    name: 'text-white',
+    role: 'text-[#EAE5DD]',
+    scrollbar: 'sidebar-scrollbar',
+    bar: '#FACC15',
+    swatch: '#6E665B',
+  },
+  sand: {
+    aside:
+      'bg-[#F7F3EA] text-[#45403A] [--sidebar:#F7F3EA] [--sidebar-foreground:#45403A] [--sidebar-accent:#EFE8DA] [--sidebar-accent-foreground:#1C1A17] [--sidebar-border:#E3DBCB] [--sidebar-ring:#6E665B]',
+    edge: 'border-[#E3DBCB]',
+    ring: 'focus-visible:ring-[#6E665B]',
+    rowIdle: 'text-[#45403A] hover:bg-[#EFE8DA] hover:text-[#1C1A17]',
+    rowActive: 'bg-[#E8DCC2] text-[#1C1A17] font-semibold',
+    hoverBg: 'hover:bg-[#EFE8DA]',
+    label: 'text-[#6E665B]',
+    icon: 'text-[#6E665B] group-hover/row:text-[#1C1A17]',
+    iconActive: 'text-[#1C1A17]',
+    iconBtn: 'text-[#6E665B] hover:text-[#1C1A17] hover:bg-[#EFE8DA]',
+    divider: 'border-[#E3DBCB]',
+    guide: 'border-[#DDD3BF]',
+    chevron: 'text-[#6E665B]',
+    groupIdle: 'text-[#45403A] hover:text-[#1C1A17]',
+    groupActive: 'text-[#1C1A17] font-semibold',
+    card: 'border-[#E3DBCB] bg-white',
+    soon: 'bg-[#EFE8DA] text-[#6E665B]',
+    headerBg: '[--sidebar-header:#3E3C3D]',
+    headerText: 'text-white',
+    headerBtn: 'text-white/70 hover:text-white hover:bg-white/10',
+    avatar: 'bg-white text-[#1C1A17] border border-[#E3DBCB]',
+    danger: 'hover:text-destructive',
+    name: 'text-[#1C1A17]',
+    role: 'text-[#6E665B]',
+    scrollbar: 'sidebar-scrollbar-light',
+    bar: '#FACC15',
+    swatch: '#F7F3EA',
+  },
+  green: {
+    aside:
+      'bg-[#14342B] text-[#EAF2EE] [--sidebar:#14342B] [--sidebar-foreground:#EAF2EE] [--sidebar-accent:rgba(255,255,255,0.10)] [--sidebar-accent-foreground:#FFFFFF] [--sidebar-border:rgba(255,255,255,0.08)] [--sidebar-ring:rgba(255,255,255,0.35)]',
+    edge: 'border-white/[0.06]',
+    ring: 'focus-visible:ring-white/35',
+    rowIdle: 'text-white/75 hover:bg-white/[0.07] hover:text-white',
+    rowActive: 'bg-white/[0.12] text-white font-semibold',
+    hoverBg: 'hover:bg-white/[0.07]',
+    label: 'text-white/55',
+    icon: 'text-white/50 group-hover/row:text-white/85',
+    iconActive: 'text-white',
+    iconBtn: 'text-white/50 hover:text-white hover:bg-white/10',
+    divider: 'border-white/[0.08]',
+    guide: 'border-white/10',
+    chevron: 'text-white/45',
+    groupIdle: 'text-white/75 hover:text-white',
+    groupActive: 'text-white font-semibold',
+    card: 'border-white/10 bg-white/[0.06]',
+    soon: 'bg-white/10 text-white/60',
+    headerBg: '[--sidebar-header:#E8F0EC]',
+    headerText: 'text-[#14342B]',
+    headerBtn: 'text-[#14342B]/60 hover:text-[#14342B] hover:bg-black/[0.06]',
+    avatar: 'bg-white/10 text-white',
+    danger: 'hover:text-[#FF9A8B]',
+    name: 'text-white',
+    role: 'text-white/55',
+    scrollbar: 'sidebar-scrollbar',
+    bar: '#FACC15',
+    swatch: '#14342B',
   },
 } as const
 
@@ -242,10 +332,39 @@ function CollapsibleNavCategory({
   const isCollapsedMode = state === 'collapsed' && !isMobile
   const isChildActive = category.items.some((item) => isSubItemActive(pathname, search, item.url))
   const [isOpen, setIsOpen] = useState(isChildActive)
+  // UX-14: hover a closed drawer (or any drawer in icon mode) and its pages appear beside it, so a page is one move
+  // away without opening the drawer. Mouse only; a tap or the keyboard still opens the drawer in place.
+  const canHover = useCanHover()
+  const flyAllowed = canHover && !isMobile && (isCollapsedMode || !isOpen)
+  // `at` is the page and drawer state the list opened on: a click, a route change or the drawer opening hides it.
+  const flyAt = `${pathname}${search}|${isOpen}|${state}`
+  const [flyState, setFly] = useState<{ top: number; left: number; at: string } | null>(null)
+  const fly = flyState && flyState.at === flyAt ? flyState : null
+  const flyTimer = useRef<number | undefined>(undefined)
+  const openFly = (e: React.MouseEvent<HTMLElement>) => {
+    if (!flyAllowed) return
+    const r = e.currentTarget.getBoundingClientRect()
+    // Open beside the sidebar's edge, not over it.
+    const edge = e.currentTarget.closest('[data-sidebar="sidebar"]')?.getBoundingClientRect().right ?? r.right
+    window.clearTimeout(flyTimer.current)
+    flyTimer.current = window.setTimeout(() => setFly({ top: r.top, left: edge + 6, at: flyAt }), 120)
+  }
+  const closeFly = () => {
+    window.clearTimeout(flyTimer.current)
+    flyTimer.current = window.setTimeout(() => setFly(null), 160)
+  }
+  const keepFly = () => window.clearTimeout(flyTimer.current)
 
   useEffect(() => {
     if (isChildActive) setIsOpen(true)
   }, [pathname, isChildActive])
+  useEffect(() => () => window.clearTimeout(flyTimer.current), [])
+  useEffect(() => {
+    if (!fly) return
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setFly(null)
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [fly])
 
   if (category.items.length === 0) return null
   const IconComp = category.icon
@@ -255,11 +374,13 @@ function CollapsibleNavCategory({
   const headline = counted.find((c) => c.tone === 'issues') ?? counted[0]
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem onMouseEnter={openFly} onMouseLeave={closeFly}>
       <SidebarMenuButton
         // Icons only: open the module's first page instead of a list nobody can see.
         onClick={() => (isCollapsedMode ? navigate(getUrlWithScope(category.items[0].url)) : setIsOpen((prev) => !prev))}
-        tooltip={allSoon ? `${category.title} · planned` : category.title}
+        // With a mouse the hover list names the module; the tooltip stays for touch.
+        tooltip={canHover ? undefined : allSoon ? `${category.title} · planned` : category.title}
+        aria-haspopup={canHover ? 'menu' : undefined}
         aria-label={category.title}
         aria-expanded={isOpen}
         className={cn(
@@ -301,7 +422,7 @@ function CollapsibleNavCategory({
                   item.soon && !active && 'opacity-75',
                 )}
               >
-                {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full bg-yellow-400" />}
+                {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full" style={{ backgroundColor: S.bar }} />}
                 <span className="truncate">{item.title}</span>
                 {item.soon && <SoonDot className="ml-auto" />}
                 {item.count && item.count.n > 0 && <CountPill count={item.count} className="ml-auto" />}
@@ -310,8 +431,55 @@ function CollapsibleNavCategory({
           })}
         </div>
       )}
+      {fly &&
+        createPortal(
+          <div
+            role="menu"
+            aria-label={category.title}
+            onMouseEnter={keepFly}
+            onMouseLeave={closeFly}
+            style={{
+              position: 'fixed',
+              left: fly.left,
+              // Stay on screen: a drawer near the bottom opens its list upwards.
+              top: Math.max(8, Math.min(fly.top - 6, window.innerHeight - (48 + category.items.length * 34) - 8)),
+              zIndex: 60,
+            }}
+            className="min-w-56 max-w-72 rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-lg animate-in fade-in-0 zoom-in-95"
+          >
+            <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{category.title}</div>
+            {category.items.map((item) => {
+              const active = isSubItemActive(pathname, search, item.url)
+              return (
+                <Link
+                  key={item.url}
+                  role="menuitem"
+                  to={getUrlWithScope(item.url)}
+                  onClick={() => setFly(null)}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none',
+                    active && 'bg-muted font-semibold',
+                    item.soon && !active && 'opacity-70',
+                  )}
+                >
+                  <span className="truncate">{item.title}</span>
+                  {item.soon && <SoonDot className="ml-auto" />}
+                  {item.count && item.count.n > 0 && <CountPill count={item.count} className="ml-auto" />}
+                </Link>
+              )
+            })}
+          </div>,
+          document.body,
+        )}
     </SidebarMenuItem>
   )
+}
+
+/** A mouse or trackpad that can hover (not a phone or tablet), read once. */
+function useCanHover(): boolean {
+  const [can] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches)
+  return can
 }
 
 function CountPill({ count, className }: { count: SubCount; className?: string }) {
@@ -501,6 +669,7 @@ export function AppSidebar() {
       : null
   // SS-41: Learn Mesiri with the everyday pages, for everyone who gets guidance; "I'll find my way" reaches it from Help.
   const learn: NavItem | null = guide.ready && guide.rules.tours !== 'none' ? { title: 'Learn Mesiri', url: '/learn', icon: GraduationCap } : null
+  const newActions = trial.readOnly ? [] : NEW_ACTIONS.filter((a) => a.roles.includes(role) && (!a.module || isModuleEnabled(a.module)))
   const renderCategory = (category: NavCategory) => (
     <CollapsibleNavCategory
       key={category.key}
@@ -581,7 +750,7 @@ export function AppSidebar() {
               <path d="M -10 64 H 290 V 34 L -10 58 Z" fill="var(--sidebar)" />
               <path
                 d="M -10 58 L 290 34"
-                stroke="#FACC15"
+                stroke={S.bar}
                 strokeWidth="2"
                 strokeLinecap="round"
                 opacity="0.85"
@@ -622,17 +791,21 @@ export function AppSidebar() {
           <SidebarGroup className="p-1">
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                <SidebarMenuItem>
+                <SidebarMenuItem className="mb-1 flex items-center gap-1.5 group-data-[collapsible=icon]:flex-col">
                   <SidebarMenuButton
                     onClick={openJump}
                     data-guide="app.search"
                     tooltip="Search (Ctrl K)"
-                    className={cn(NAV_LINK_BASE, 'mb-1 border', S.divider, S.rowIdle, S.ring)}
+                    className={cn(NAV_LINK_BASE, 'min-w-0 flex-1 border', S.divider, S.rowIdle, S.ring)}
                   >
                     <Search className={cn('size-4 shrink-0', S.icon)} />
                     <span className="truncate">Search</span>
-                    <kbd className="ml-auto rounded border border-current/20 px-1 text-[10px] opacity-60 group-data-[collapsible=icon]:hidden">Ctrl K</kbd>
+                    {/* Beside "+ New" there is no room for the key hint; the tooltip and the app tour name it. */}
+                    {newActions.length === 0 && (
+                      <kbd className="ml-auto rounded border border-current/20 px-1 text-[10px] opacity-60 group-data-[collapsible=icon]:hidden">Ctrl K</kbd>
+                    )}
                   </SidebarMenuButton>
+                  {newActions.length > 0 && <NewButton actions={newActions} bar={S.bar} ring={S.ring} />}
                 </SidebarMenuItem>
                 {PRIMARY_ITEMS.map(renderLink)}
                 {bringData && renderLink(bringData)}
@@ -737,14 +910,33 @@ export function AppSidebar() {
                 <LogOut className="size-4 shrink-0" />
                 <span>Log out</span>
               </SidebarMenuButton>
-              <SidebarMenuButton
-                onClick={() => setSidebarTheme(sidebarTheme === 'charcoal' ? 'light' : 'charcoal')}
-                tooltip={sidebarTheme === 'charcoal' ? 'Light sidebar' : 'Charcoal sidebar'}
-                aria-label={sidebarTheme === 'charcoal' ? 'Switch to light sidebar' : 'Switch to charcoal sidebar'}
-                className={cn('size-8 p-0 flex items-center justify-center rounded-lg shrink-0', S.iconBtn, S.ring)}
-              >
-                <Palette className="size-4 shrink-0" />
-              </SidebarMenuButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    title="Sidebar colour"
+                    aria-label={`Sidebar colour: ${SIDEBAR_THEME_NAMES[sidebarTheme]}`}
+                    className={cn('size-8 p-0 flex items-center justify-center rounded-lg shrink-0 outline-hidden focus-visible:ring-2', S.iconBtn, S.ring)}
+                  >
+                    <Palette className="size-4 shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="min-w-48">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Sidebar colour</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value={sidebarTheme} onValueChange={(v) => setSidebarTheme(v as SidebarTheme)}>
+                    {(Object.keys(SIDEBAR_THEME_NAMES) as SidebarTheme[]).map((key) => (
+                      <DropdownMenuRadioItem key={key} value={key} className="gap-2.5">
+                        <span
+                          aria-hidden
+                          className="size-5 shrink-0 rounded-full border border-black/15"
+                          style={{ background: `linear-gradient(135deg, ${SIDEBAR_THEMES[key].swatch} 0 58%, ${SIDEBAR_THEMES[key].bar} 58% 100%)` }}
+                        />
+                        {SIDEBAR_THEME_NAMES[key]}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <SidebarMenuButton
                 onClick={toggleTheme}
                 tooltip={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -758,6 +950,40 @@ export function AppSidebar() {
         </SidebarFooter>
       </div>
     </Sidebar>
+  )
+}
+
+// UX-14: the "+ New" button (see NEW_ACTIONS). A menu of what this role records; each opens Tell Mesiri with the
+// sentence started.
+function NewButton({ actions, bar, ring }: { actions: NewAction[]; bar: string; ring: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          data-guide="app.new"
+          title="New: record something"
+          aria-label="New"
+          style={{ backgroundColor: bar }}
+          className={cn(
+            'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2.5 text-sm font-semibold text-[#2A2829] outline-hidden transition-[filter] hover:brightness-105 focus-visible:ring-2 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0',
+            ring,
+          )}
+        >
+          <Plus className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
+          <span className="group-data-[collapsible=icon]:hidden">New</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="bottom" align="end" className="w-64">
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Tell Mesiri, like on WhatsApp</DropdownMenuLabel>
+        {actions.map((a) => (
+          <DropdownMenuItem key={a.key} onSelect={() => openTellMesiri(a.starter)} className="flex-col items-start gap-0.5">
+            <span className="text-sm font-medium">{a.label}</span>
+            <span className="text-xs text-muted-foreground">{a.example}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

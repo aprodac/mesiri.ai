@@ -56,7 +56,7 @@ export const APP_TOUR: Tour = {
       title: 'Everything is here',
       text: 'Every part of Mesiri, in the order a project runs: Plan, Site, Buy, Money. You start with the everyday pages; "Show all" opens the rest.',
     },
-    { target: 'app.search', title: 'Find anything', text: 'Search finds any page, project or record. Ctrl K opens it from anywhere.', mood: 'look' },
+    { target: 'app.search', title: 'Find anything', text: 'Search finds any page, project or record; Ctrl K opens it from anywhere. New, beside it, starts a record in one sentence.', mood: 'look' },
     { target: 'app.scope', title: 'One project or all', text: 'Pick a project or a site here, and every page shows just that one.' },
     {
       target: 'app.whatsapp',
