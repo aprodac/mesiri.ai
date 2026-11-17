@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { ActionButton, ActionMenuItem, NoAccess } from '@/components/page/page-kit'
+import { ActionButton, ActionIcon, ActionMenuItem, NoAccess } from '@/components/page/page-kit'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Calculator, ClipboardCheck, MoreHorizontal, Package, Plus } from 'lucide-react'
+import { Calculator, ClipboardCheck, ChevronRight, MoreHorizontal, Package, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -612,9 +612,14 @@ export default function ProjectBoqPage() {
         crumb="Project"
         title="BOQ and budget"
         date={project?.name}
+        chip={
+          // The schedule is another page, not something done here: a quiet link by the title, not a button.
+          <Link to={`/planning/schedule?project=${id}`} data-guide="boq.schedule" className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+            <ActionIcon kind="schedule" className="size-3.5" /> Schedule <ChevronRight className="size-3.5" aria-hidden />
+          </Link>
+        }
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <ActionButton kind="schedule" to={`/planning/schedule?project=${id}`} data-guide="boq.schedule">Schedule</ActionButton>
             {!readOnly && <ActionButton kind="import-excel" onClick={() => setImporting(true)} data-guide="boq.import" />}
             {!readOnly && (
               // One yellow button per page: while the BOQ is empty, the upload below is it.

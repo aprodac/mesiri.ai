@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { AlertCircle, CalendarDays, ChevronRight, Map as MapIcon } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ScopeBar } from '@/components/scope-bar'
-import { ScopeNote } from '@/components/scope-note'
+import { ArrivalBack, ScopeNote } from '@/components/scope-note'
 import { StartProjectDialog } from '@/components/start-project-dialog'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
@@ -60,6 +60,7 @@ function TopBar() {
         <SidebarTrigger />
         <Separator orientation="vertical" className="mr-1 h-4" />
         <ScopeBar />
+        <ArrivalBack />
         <Breadcrumb />
         <div className="ml-auto flex items-center gap-1.5">
           {showPlanned && (

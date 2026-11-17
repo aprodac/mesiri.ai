@@ -135,7 +135,6 @@ export function DprAside({ children }: { children: React.ReactNode }) {
  * action, in as few lines as fit. */
 export function DprHeader({
   back,
-  crumb,
   title,
   chip,
   date,
@@ -161,23 +160,25 @@ export function DprHeader({
   // line is only where Back goes (the kind of place, when its name is the one already in the top bar), and a
   // subtitle that is that name again is left out.
   const picked = useScopeNames()
-  const upLabel = picked.includes(up.label) ? crumb : up.label
   const sub = date && !picked.includes(date) ? date : undefined
   return (
-    <header className="flex flex-col gap-1">
-      <p className={cn('flex items-center gap-1.5 text-sm text-muted-foreground', modulePage && 'md:hidden')}>
-        <Link to={up.to} className="inline-flex items-center gap-1 hover:text-foreground">
-          <ArrowLeft className="size-4" /> {upLabel}
+    // One row: Back is an arrow beside the title (named in full for screen readers and on hover), so the header
+    // does not spend a line on it.
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <Link
+          to={up.to}
+          className={cn('-ml-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground', modulePage && 'md:hidden')}
+          title={`Back to ${up.label}`}
+          aria-label={`Back to ${up.label}`}
+        >
+          <ArrowLeft className="size-[18px]" />
         </Link>
-      </p>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          {chip}
-          {sub && <span className="text-sm text-muted-foreground">{sub}</span>}
-        </div>
-        {action}
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        {chip}
+        {sub && <span className="text-sm text-muted-foreground">{sub}</span>}
       </div>
+      {action}
     </header>
   )
 }
