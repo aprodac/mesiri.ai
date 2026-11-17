@@ -264,6 +264,12 @@ async def open_sandbox(engine: Any, app: Any, person: RealPerson, *, role: str =
                            {"e": now + KEEP_UNOPENED, "o": row["id"]})
         today = (await conn.execute(sa.text("SELECT sandbox_today FROM organizations WHERE id = :o"),
                                     {"o": row["id"]})).scalar_one()
+        # Everyone in the sample company is explained to the way this person chose (UX-22 start mode), and nobody
+        # there asks "How would you like to start?" again: it is the same person playing each role. Copied on every
+        # open, so a change made in their own company follows them in.
+        await conn.execute(sa.text(
+            "UPDATE users SET start_mode = COALESCE((SELECT start_mode FROM users WHERE id = :me), 'guided') "
+            "WHERE organization_id = :o"), {"me": person.user_id, "o": row["id"]})
         user = (await conn.execute(sa.text(
             "SELECT id, full_name FROM users WHERE organization_id = :o AND upper(role) = :r "
             "ORDER BY created_at LIMIT 1"), {"o": row["id"], "r": role})).mappings().first()

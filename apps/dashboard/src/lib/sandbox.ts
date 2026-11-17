@@ -21,11 +21,11 @@ export const SANDBOX_PATH = '/learn/sandbox'
 
 export type SandboxRole = 'ADMIN' | 'PROJECT_MANAGER' | 'SITE_ENGINEER' | 'FINANCE'
 
-export const SANDBOX_ROLES: { value: SandboxRole; label: string; who: string }[] = [
-  { value: 'ADMIN', label: 'Owner', who: 'you' },
-  { value: 'PROJECT_MANAGER', label: 'Project manager', who: 'Anil' },
-  { value: 'SITE_ENGINEER', label: 'Site engineer', who: 'Ravi' },
-  { value: 'FINANCE', label: 'Accounts', who: 'Meera' },
+export const SANDBOX_ROLES: { value: SandboxRole; label: string; who: string; sees: string }[] = [
+  { value: 'ADMIN', label: 'Owner', who: 'you', sees: 'Everything, every project and every rupee' },
+  { value: 'PROJECT_MANAGER', label: 'Project manager', who: 'Anil', sees: 'His projects: orders, the BOQ, the team' },
+  { value: 'SITE_ENGINEER', label: 'Site engineer', who: 'Ravi', sees: "The site's day; no rupees" },
+  { value: 'FINANCE', label: 'Accounts', who: 'Meera', sees: 'Bills, payments, wages and accounts' },
 ]
 
 export interface SandboxInfo {
@@ -150,6 +150,14 @@ function forget() {
   const s = store()
   s?.removeItem(KEY)
   s?.removeItem(START_KEY)
+}
+
+/** SS-76: be someone else in the sample company (the same company, another of its people), staying on this page
+ *  when that role may open it, else Today. `allowed` says whether a role may open a page (lib/walkthroughs
+ *  `pageOpenFor`, passed in so this file keeps no import of the walkthroughs). */
+export async function switchSandboxRole(role: SandboxRole, allowed: (url: string, role: string) => boolean): Promise<void> {
+  const here = `${window.location.pathname}${window.location.search}`
+  await enterSandbox(role, undefined, allowed(here, role) ? here : '/today')
 }
 
 /** Back to my own company. The sample company stays as it is, to pick up later (D-PG1). */
