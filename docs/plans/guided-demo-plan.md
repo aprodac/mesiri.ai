@@ -571,7 +571,7 @@ All with the person's **real** token, like the rest of `/learn/sandbox` (a sandb
 | # | Decision | Taken |
 |---|---|---|
 | D-GC1 | How the simulation is made | **Planned in advance**: one fixed day-by-day plan of every role's entries (asked 17 Nov: "simulation planned") |
-| D-GC2 | How days pass | **The sample company has its own date**; one `today()` that knows it. **Needs Ilan's approval**: a shared component, and two of the reads are in Workforce |
+| D-GC2 | How days pass | **The sample company has its own date**; one `today()` that knows it. **Approved 17 Nov in session** (a shared component; two of the reads are in Workforce). The sandbox stays a separate simulation: real companies keep the real date |
 | D-GC3 | Your role's entries when skipping days | **Done for you on the days skipped, waiting for you on the day you land** (recommended) |
 | D-GC4 | Going back | **A save point a day, the last 30**; days after it are discarded (recommended) |
 | D-GC5 | Skip size | **Up to 7 days at a time** (recommended: one request under ~30 s) |
@@ -589,7 +589,7 @@ sandbox's own users and never returned; save points and the clock refuse any com
 | SS-74d | Save points and Go back: `sandbox_days`, save each day, restore, keep 30; `POST go-back`; real-Postgres test (save, change, go back, identical rows) | M | SS-74a |
 | SS-74e | Dashboard: the clock in the sample company's banner (day n, Next day, Skip ahead, Go back), "While you were away", "For you today" | S | §18.6 (routes stubbed until SS-74c) |
 
-Order: **SS-74b can start now** (no approval needed: the plan is data and a test). SS-74a waits for D-GC2; then
+Order: SS-74b (started 17 Nov) and SS-74a (D-GC2 approved 17 Nov) in parallel; then
 SS-74c and SS-74d; SS-74e any time against §18.6.
 
 ## 19. SS-73: the starter kit (17 Nov 2026)
