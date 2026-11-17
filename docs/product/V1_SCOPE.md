@@ -87,7 +87,7 @@ Control panel (Mesiri team): unchanged.
 | Finance (expenses, petty cash, accounts, vendors) | V1.1, paid add-on, per company |
 | Automations (user-set scheduled messages) | Later |
 | Named workers, wages, payroll | V2 |
-| Mobile app | Parked |
+| Mobile app | **Coming** (decided 17 Nov 2026, after customer talks: WhatsApp alone is not enough). Alongside WhatsApp, not instead of it; scope and timing not decided yet ([DECISIONS.md](../DECISIONS.md)) |
 | Online payments for subscriptions | After launch (V1 uses invoice + UPI / bank transfer) |
 | Signature or stamp image on DPRs | Decided 13 Oct: not in V1 |
 | Anomaly alerts (e.g. sudden manpower jump) | Later |

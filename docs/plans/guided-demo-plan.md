@@ -328,8 +328,9 @@ Each mission says who you are and when: *"You are Ravi, the site engineer. It's 
 - The playground has one user per role (owner, project manager, site engineer, storekeeper, accountant), no phone
   numbers. A mission switches the dashboard to that user, so the person sees **that role's real screens and
   permissions** (a site engineer sees no rupees; the storekeeper sees stock, not margins).
-- **The site engineer plays on a phone**: a WhatsApp-style phone in the page (Tell Mesiri, framed as a phone, with the
-  kit's photos and voice notes to send). That is how most of their real users will use Mesiri.
+- ~~**The site engineer plays on a phone**: a WhatsApp-style phone in the page.~~ **Dropped 17 Nov 2026:** customers told
+  us WhatsApp alone will not work, so Mesiri gets a mobile app too ([DECISIONS.md](../DECISIONS.md)). How the site
+  engineer plays waits for the app's shape (SS-76b); until then Ravi plays on the dashboard like the other roles.
 - Role paths become **careers**: *Site engineer → Storekeeper → Project manager → Owner*, each a set of missions.
 
 ### 16.6 The score is the project, not points
