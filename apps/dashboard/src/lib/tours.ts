@@ -1045,7 +1045,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
     introFromPage: true,
     startWhen: ['recv.stats'],
     steps: [
-      { target: 'recv.stats', title: 'At a glance', text: 'What clients owe you on the RA bills sent.', mood: 'look' },
+      { target: 'recv.stats', title: 'At a glance', text: 'What clients owe you, and how long it has waited. Tap a part of the bar to see only those clients.', mood: 'look' },
       { target: 'recv.clients', title: 'Most owed first', text: 'Each client and their bills still unpaid.' },
       { target: 'recv.record', title: 'Money received', text: 'Record a client payment against their bill.' },
       { target: 'recv.received', title: 'Received so far', text: 'Every payment recorded. Take back one entered by mistake.', mood: 'think' },
