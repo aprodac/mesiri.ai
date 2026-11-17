@@ -59,6 +59,13 @@ the first thing to do, the WhatsApp sentence that fills it), `Tile` / `TileGrid`
 whole tile links to its page) and `LinkedStrip` (a record's step before and after in its chain, §4c of the plan).
 A page does not draw its own header, empty box or tile.
 
+**One KPI part, one action table (UX-15, asked by Ilan 17 Nov 2026).** Every figure on every page is the page kit's
+`Kpi` (`components/page/kpi.tsx`): `KpiStrip` for a page's numbers (`StatStrip` is this), `Tile` / `KpiGrid` for home
+tiles. A page never draws its own tile grid or stat card again; `ui/kpi-card` is gone. Every action that has a kind
+(Import from Excel, export, PDF, WhatsApp, add, edit, remove, approve, take back ...) is drawn from `lib/actions.ts`
+by `ActionButton`, `ActionIcon` or `ActionMenuItem`, so it looks the same on every page. A new kind of figure or
+action is one line in `lib/kpi-look.ts` or `lib/actions.ts`, never a page's own icon or colour. See §3a and §4.
+
 ---
 
 ## Role homes, project hub, connected records (UX-11, UX-12, UX-09)
@@ -290,6 +297,29 @@ Rules:
 - **Numbers that need attention get coloured**: a count of open issues is
   orange (red if any are high/critical); "0 of 2 sites" is orange.
 
+### 3a. Actions by icon and colour (UX-15)
+
+A button is known by its look before it is read. One table, `lib/actions.ts`, gives each kind of action its icon and
+colour; `ActionButton` (outline, or `primary` for the page's one yellow button), `ActionIcon` (inside an existing
+button) and `ActionMenuItem` (row menus) draw from it.
+
+| Kind | Looks like | Colour (on the icon only) |
+|---|---|---|
+| Import from Excel, Excel / CSV export | a filled sheet with a grid (`SheetMark`) | green (`success`) |
+| PDF, print to PDF | a page with a folded corner and "PDF" (`PdfMark`) | ink |
+| Send on WhatsApp, confirm on WhatsApp, Send now (the DPR) | WhatsApp's mark | green |
+| Remove, reject, take back, withdraw, reverse | bin, ban, undo | red (`destructive`) |
+| Approve, confirm | tick | green |
+| Ask Mesiri | sparkles | indigo (`ai`) |
+| Add, edit, schedule, send, download, filter, view, pay, bill, photo | their lucide icon | ink |
+
+Rules:
+- **Colour sits on the icon, never on a second filled button.** On a filled button (the yellow primary, a red
+  confirm) the icon takes the button's ink (`ActionButton primary` does this); never a green or red icon on yellow.
+- The green of Excel and WhatsApp is the success token, so it stays readable in dark mode. It is an identity cue on
+  an icon, like the WhatsApp chips, not a state; a PDF is told by its shape, not by red (red stays "bad").
+- Remove is red on every page, in a menu and as an icon button.
+
 ---
 
 ### Sidebar and top bar (WEB-20)
@@ -327,8 +357,20 @@ validator** on any multi-colour palette instead of judging by eye.
 
 ## 4. Numbers
 
-- **Stat strip** (`StatStrip`): 3–5 key numbers in **one** bordered strip
-  with dividers — not one card per number. 2×2 grid on phones.
+- **Stat strip** (`StatStrip` = the page kit's `KpiStrip`): 3–5 key numbers in **one** bordered strip
+  with dividers — not one card per number. Rows of two to four on phones.
+- **One KPI look (UX-15).** Each figure (`Kpi`) reads at a glance by four things, not by a second line of words:
+  - **an icon for what kind of figure it is**, from `lib/kpi-look.ts` (`kind: 'workers' | 'money' | 'issue' ...`);
+    when a page names none it is guessed from the label, then the figure (a ₹ is money). `icon` sets one by hand,
+    `icon: null` draws none;
+  - **its state by colour** (`tone`: `good`, `attention` (also `warn`), `bad`, `info`): a bar on top, a light tint,
+    the icon's tile and the figure in the state's colour. Plain figures stay plain so the coloured ones stand out;
+  - **a small picture of the number when the data has one**: `of` draws "x of y" as y segments (up to 12, a bar
+    beyond), `share` (0 to 1) a bar: sites reported, lines priced, overdue of what we owe, billed of the order;
+  - the figure large, the label two or three words, `hint` a few words (hidden on phones in a strip).
+- A figure that filters the list under it takes `onClick` and `pressed`; one that opens a page `to`.
+- A figure that is a **category**, not a state (petty cash, paid direct, owed to staff) keeps its category colour on
+  the icon (`iconClass` from `lib/expenses.ts` `PAID_VIA`, `lib/cost.ts`), so it matches its rows.
 - `tabular-nums` on every number that sits in a column or strip.
 - Show `—` for zero/empty in stats and tables, not `0`.
 - Quantities are shown with their unit, bold, right side of the row:
@@ -405,7 +447,9 @@ and lets the whole product be re-themed from one file.
 | Need | Use | File |
 |---|---|---|
 | Section with icon + title + count | `DprSection` | `components/dpr-page.tsx` |
-| Key numbers | `StatStrip` | `components/dpr-page.tsx` |
+| Key numbers | `StatStrip` / `KpiStrip`, one figure `Kpi`, home tiles `Tile` / `KpiGrid` | `components/page/kpi.tsx` (re-exported by the page kit) |
+| What a figure is (its icon) | `KPI_ICON`, `guessKind` | `lib/kpi-look.ts` |
+| A button, icon or menu item for an action | `ActionButton`, `ActionIcon`, `ActionMenuItem` | `components/page/action-button.tsx`, table in `lib/actions.ts` |
 | Life-cycle progress | `DprSteps` | `components/dpr-page.tsx` |
 | The one sentence that needs attention | `Callout` | `components/dpr-page.tsx` |
 | Side column | `DprAside` | `components/dpr-page.tsx` |
