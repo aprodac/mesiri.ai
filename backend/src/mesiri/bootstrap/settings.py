@@ -164,9 +164,9 @@ class WhatsAppSettings(_Section):
     phone_number_id: str | None = None
     # The number people message, shown on the dashboard's welcome screen, the
     # "On WhatsApp" pop-up and the walkthroughs' "Try it on WhatsApp" (wa.me needs
-    # the country code). Mesiri's number by default (SS-20, given 16 Nov 2026);
+    # the country code). Mesiri's number by default (SS-20, given 16 Nov 2026; changed 17 Nov, WEB-101);
     # MESIRI_WHATSAPP__DISPLAY_NUMBER overrides it, and an empty value hides it.
-    display_number: str | None = "+91 95443 76072"
+    display_number: str | None = "+91 89040 34838"
 
 
 class Settings(BaseSettings):

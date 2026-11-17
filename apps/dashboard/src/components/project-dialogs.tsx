@@ -43,6 +43,8 @@ interface AddEditProjectDialogProps {
   onOpenChange: (open: boolean) => void
   project?: Project | null
   onSuccess: () => void
+  /** Where a new project opens once made (WEB-100: Project start opens its start steps). One button then. */
+  afterCreate?: (projectId: string) => string
 }
 
 
@@ -51,6 +53,7 @@ export function AddEditProjectDialog({
   onOpenChange,
   project,
   onSuccess,
+  afterCreate,
 }: AddEditProjectDialogProps) {
   const isEdit = !!project
   const navigate = useNavigate()
@@ -135,11 +138,12 @@ export function AddEditProjectDialog({
           location: location.trim() || null,
           description: description.trim() || null,
         })
-        queryClient.invalidateQueries({ queryKey: ['projects-list'] })
-        queryClient.invalidateQueries({ queryKey: ['scope-projects'] })
+        for (const key of ['projects-list', 'scope-projects', 'lifecycle']) queryClient.invalidateQueries({ queryKey: [key] })
         onSuccess()
         onOpenChange(false)
-        if (openAfter) {
+        if (afterCreate) {
+          navigate(afterCreate(created.id))
+        } else if (openAfter) {
           navigate(`/today?project=${created.id}`)
         } else {
           navigate(`/projects/${created.id}?new=1`)
@@ -274,7 +278,7 @@ export function AddEditProjectDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading} className="h-8">
               Cancel
             </Button>
-            {!isEdit && (
+            {!isEdit && !afterCreate && (
               <Button
                 type="button"
                 variant="outline"

@@ -155,6 +155,6 @@ async def test_get_gives_mesiris_number_to_every_role(monkeypatch) -> None:
         assert (await me.get_preferences(engineer, Conn())).whatsapp_number is None  # an empty setting hides it
         monkeypatch.delenv("MESIRI_WHATSAPP__DISPLAY_NUMBER")
         get_settings.cache_clear()
-        assert (await me.get_preferences(engineer, Conn())).whatsapp_number == "+91 95443 76072"  # SS-20 default
+        assert (await me.get_preferences(engineer, Conn())).whatsapp_number == "+91 89040 34838"  # SS-20 default
     finally:
         get_settings.cache_clear()

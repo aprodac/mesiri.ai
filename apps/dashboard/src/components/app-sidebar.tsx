@@ -133,6 +133,8 @@ const NEW_ACTIONS: NewAction[] = [
   { key: 'issue', label: 'Report an issue', example: 'Water tank leaking near block B', starter: 'Problem: ', roles: ['SITE_ENGINEER', 'PROJECT_MANAGER', ...OFFICE] },
   { key: 'task', label: 'Task', example: 'Ravi: fix the shuttering by Friday', starter: 'Task for ', roles: ['PROJECT_MANAGER', ...OFFICE], module: 'tasks' },
   { key: 'expense', label: 'Expense', example: 'Paid 2,400 for diesel at Lake View', starter: 'Paid ', roles: ['FINANCE', 'PROJECT_MANAGER', ...OFFICE], module: 'finance' },
+  // WEB-100: who may make one (mayCreateProject); the form itself is New project on Projects & Sites and Project start.
+  { key: 'project', label: 'Project', example: 'Lake View for Mr Thomas at Kakkanad, starts 1 Dec', starter: 'New project ', roles: ['ADMIN', 'PROJECT_MANAGER'] },
 ]
 
 function initialsOf(name: string): string {

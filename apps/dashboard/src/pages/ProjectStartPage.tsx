@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { PageError } from '@/components/dpr-page'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
 import { ContractDialog } from '@/components/billing/contract-dialog'
+import { NewProjectButton } from '@/components/new-project-button'
 import { useAuth } from '@/lib/AuthContext'
 import { mayBill } from '@/lib/billing'
 import { ProjectPickList, StageChip, usePlanningProject } from '@/components/schedule/project-picker'
@@ -42,15 +43,18 @@ const WHY: Record<StartStep['key'], string> = {
   work_orders: 'Subcontract bills are checked against measured work.',
 }
 
+/** WEB-100: a project made here opens on its own start steps. */
+const startSteps = (id: string) => `/planning/setup?project=${id}`
+
 export default function ProjectStartPage() {
   usePageTitle('Project start')
   const projectId = usePlanningProject()
   if (!projectId) {
     return (
       <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-        <Heading />
-        <p className="text-sm text-muted-foreground">Pick the project you are starting.</p>
-        <ProjectPickList to={(id) => `/planning/setup?project=${id}`} empty="No projects yet. Add one in Projects & Sites first." />
+        <Heading><NewProjectButton afterCreate={startSteps} guide="setup.new" /></Heading>
+        <p className="text-sm text-muted-foreground">Pick the project you are starting, or start a new one.</p>
+        <ProjectPickList to={startSteps} empty="No projects yet. Won a job? New project starts it here." />
       </div>
     )
   }
@@ -94,9 +98,10 @@ function StartView({ projectId }: { projectId: string }) {
   return (
     <div className="mx-auto flex w-full flex-col gap-5 pb-12 sm:px-2">
       <Heading>
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           <Link to={`/projects/${projectId}`} className="font-medium hover:underline">{d.project.name}</Link>
           <StageChip stage={d.project.stage} label={d.project.stage_label} />
+          <NewProjectButton afterCreate={startSteps} guide="setup.new" variant="outline" className="ml-auto gap-1.5" />
         </div>
       </Heading>
 

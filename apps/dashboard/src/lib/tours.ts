@@ -677,7 +677,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
   // with no project picked, the Spark points at the project list instead (project.pick).
   '/planning/setup': {
     key: '/tour/planning-setup',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['setup.steps'],
     steps: [
@@ -686,7 +686,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
       { target: 'setup.steps', title: 'Steps to "work starts"', text: 'Dates, contract, BOQ, schedule, sites, the site team, suppliers. Each step ticks itself when it is done.', say: 'The steps: dates, contract, B O Q, schedule, sites, the site team and suppliers. Do them in any order. Each one ticks itself.', mood: 'think' },
       { target: 'setup.next', title: 'Do this next', text: 'The next step is lit up. Its button opens the place to do it.', mood: 'happy' },
       { target: 'setup.schedule', title: 'The schedule today', text: 'Once there is a schedule: how much is done, what is late and the finish date. Tap to open it.', mood: 'look' },
-      { target: 'app.whatsapp', title: 'Or start it on WhatsApp', text: 'Send me "New project Lake View for Mr Thomas at Kakkanad, starts 1 Dec" and I set it up.', mood: 'happy' },
+      { target: 'setup.new', title: 'A new job', text: 'Won a new job? New project starts it here and opens its steps. On WhatsApp, "New project Lake View for Mr Thomas at Kakkanad, starts 1 Dec" does the same.', mood: 'happy' },
     ],
   },
   '/planning/schedule': {

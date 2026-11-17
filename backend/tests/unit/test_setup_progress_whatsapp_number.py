@@ -27,7 +27,7 @@ def test_mesiris_own_number_when_none_is_set(monkeypatch) -> None:
     # SS-20 (16 Nov): the number people message is Mesiri's own unless the deployment sets another; with the country
     # code, so the dashboard's wa.me links work.
     monkeypatch.delenv("MESIRI_WHATSAPP__DISPLAY_NUMBER", raising=False)
-    assert mesiri_whatsapp_number() == "+91 95443 76072"
+    assert mesiri_whatsapp_number() == "+91 89040 34838"
 
 
 @pytest.mark.parametrize("configured", ["", "   "])

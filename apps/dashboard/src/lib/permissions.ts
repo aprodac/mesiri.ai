@@ -52,6 +52,11 @@ export function highestAllowedScope(role: string, accessPolicy: AccessPolicy | n
   return null
 }
 
+/** WEB-100: who may start a new project (mirrors `_CREATE_ROLES` in apps/whatsapp-assistant/src/projects/router.py). */
+export function mayCreateProject(role: string | null | undefined): boolean {
+  return ['ADMIN', 'PROJECT_MANAGER'].includes(String(role ?? '').toUpperCase())
+}
+
 /** UX-13: who can open a money page, as NoAccess shows it (mirrors MONEY_ROLES and mayManageMoney). */
 export const MONEY_PEOPLE = ['Owner', 'Admin', 'Finance', 'Project manager']
 export const BOOKS_PEOPLE = ['Owner', 'Admin', 'Finance']

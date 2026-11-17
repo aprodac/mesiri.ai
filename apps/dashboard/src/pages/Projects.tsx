@@ -4,7 +4,7 @@ import { fetchSiteDaysApi } from '@/lib/api'
 import { fetchAllOpenIssues } from '@/lib/issues'
 import { FROZEN, hasUpdates, localIsoDate } from '@/lib/site-day'
 import { Link } from 'react-router-dom'
-import { Archive, Building2, CalendarRange, Clock, MapPin, MoreHorizontal, Pencil, Plus, Rocket, Search, Users } from 'lucide-react'
+import { Archive, Building2, CalendarRange, Clock, MapPin, MoreHorizontal, Pencil, Rocket, Search, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { PageError, PageHeader } from '@/components/dpr-page'
 import { ROW_ACCENT } from '@/lib/cues'
 import { AddEditProjectDialog } from '@/components/project-dialogs'
+import { NewProjectButton } from '@/components/new-project-button'
 import { archiveProject, fetchProjectMembers, fetchProjectsFull, fetchSitesFull, type Project } from '@/lib/projects'
 import { CHIP, plural } from '@/lib/site-day'
 import { usePageTitle } from '@/lib/page-title'
@@ -93,11 +94,6 @@ export default function Projects() {
     })
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  const openNew = () => {
-    setEditing(null)
-    setDialogOpen(true)
-  }
-
   if (query.isError) {
     return <PageError message="Your projects could not be loaded." onRetry={() => query.refetch()} back={{ to: '/today', label: 'Back to Today' }} />
   }
@@ -108,11 +104,7 @@ export default function Projects() {
         title="Projects & Sites"
         subtitle={query.isLoading ? 'Loading…' : `${plural(current, 'project')} running${paused.length ? ` · ${paused.length} paused or done` : ''}`}
         actions={
-          !readOnly && (
-            <Button size="sm" className="gap-1.5 font-semibold" onClick={openNew} data-guide="projects.add">
-              <Plus className="size-4" /> New project
-            </Button>
-          )
+          <NewProjectButton guide="projects.add" />
         }
       />
 
@@ -148,11 +140,7 @@ export default function Projects() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-14 text-center">
           <Building2 className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="font-medium">No projects yet</p>
-          {!readOnly && (
-            <Button className="mt-2 gap-1.5" onClick={openNew}>
-              <Plus className="size-4" /> New project
-            </Button>
-          )}
+          <NewProjectButton size="default" className="mt-2 gap-1.5" />
         </div>
       ) : visible.length === 0 ? (
         <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">No projects match.</p>
