@@ -1012,8 +1012,8 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['cash.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'cash.stats', title: 'At a glance', text: 'Opening balance, money in, money out, and closing balance.', mood: 'look' },
-      { target: 'cash.list', title: 'Each account', text: 'Every bank account and cash box for the period. Tap one for its entries.' },
+      { target: 'cash.stats', title: 'At a glance', text: 'Opening plus money in, less money out, is what you hold now, and how much more or less than at the start.', mood: 'look' },
+      { target: 'cash.list', title: 'Each account', text: 'Every bank account and cash box: its balance, its share of all your money, what came in and went out. Last entries opens them here.' },
     ],
   },
   '/accounts/projects': {
