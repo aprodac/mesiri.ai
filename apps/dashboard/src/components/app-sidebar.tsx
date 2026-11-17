@@ -125,7 +125,7 @@ const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
   { title: 'Automations', url: '/whatsapp?view=automations', icon: Clock, module: 'automations', allowedRoles: NON_ADMIN_ROLES },
 ]
 
-// UX-14: "+ New" next to Search. Each line opens Tell Mesiri (the same assistant as WhatsApp) with its first words
+// UX-16: "+ New" next to Search. Each line opens Tell Mesiri (the same assistant as WhatsApp) with its first words
 // typed in, so the person finishes the sentence instead of hunting for a form. Only what the role records, and only
 // in switched-on modules.
 const OFFICE = ['ADMIN', 'OWNER', 'SUPER_ADMIN'] as const
@@ -153,7 +153,7 @@ function roleLabel(role: string | undefined): string {
     .join(' ')
 }
 
-// Visual tokens per sidebar theme. Taupe is the default (UX-14); Light follows the
+// Visual tokens per sidebar theme. Taupe is the default (UX-16); Light follows the
 // app's shadcn tokens (so it also darkens correctly in dark mode). `aside` also
 // re-points the --sidebar-* variables, so the shadcn sidebar parts' own hover,
 // active and focus styles match the theme without changing ui/sidebar.tsx.
@@ -188,7 +188,7 @@ const SIDEBAR_THEMES = {
     bar: '#FACC15',
     swatch: '#EEF1F6',
   },
-  // UX-14 (17 Nov 2026): warm taupe, the default. Text is a near-white solid (not white at an opacity) so rows and
+  // UX-16 (17 Nov 2026): warm taupe, the default. Text is a near-white solid (not white at an opacity) so rows and
   // labels keep 4.5:1 on #6E665B.
   taupe: {
     aside:
@@ -332,7 +332,7 @@ function CollapsibleNavCategory({
   const isCollapsedMode = state === 'collapsed' && !isMobile
   const isChildActive = category.items.some((item) => isSubItemActive(pathname, search, item.url))
   const [isOpen, setIsOpen] = useState(isChildActive)
-  // UX-14: hover a closed drawer (or any drawer in icon mode) and its pages appear beside it, so a page is one move
+  // UX-16: hover a closed drawer (or any drawer in icon mode) and its pages appear beside it, so a page is one move
   // away without opening the drawer. Mouse only; a tap or the keyboard still opens the drawer in place.
   const canHover = useCanHover()
   const flyAllowed = canHover && !isMobile && (isCollapsedMode || !isOpen)
@@ -953,7 +953,7 @@ export function AppSidebar() {
   )
 }
 
-// UX-14: the "+ New" button (see NEW_ACTIONS). A menu of what this role records; each opens Tell Mesiri with the
+// UX-16: the "+ New" button (see NEW_ACTIONS). A menu of what this role records; each opens Tell Mesiri with the
 // sentence started.
 function NewButton({ actions, bar, ring }: { actions: NewAction[]; bar: string; ring: string }) {
   return (

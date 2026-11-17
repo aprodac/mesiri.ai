@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 
 /**
  * Sidebar look, picked per user and remembered in this browser.
- * Taupe is the default (UX-14, 17 Nov 2026: #6E665B chosen after customer demos; Charcoal and Midnight dropped the same
+ * Taupe is the default (UX-16, 17 Nov 2026: #6E665B chosen after customer demos; Charcoal and Midnight dropped the same
  * day, and a saved Charcoal choice now opens as Taupe). Light follows the app's tokens (so it also darkens in dark mode).
  * Separate from the app's light/dark switch.
  */
