@@ -1059,9 +1059,9 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['daybook.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'daybook.types', title: 'Kind of voucher', text: 'Purchase, payment, receipt, sales, contra, journal, or all of them.' },
+      { target: 'daybook.types', title: 'Kind of voucher', text: 'Purchase, payment, receipt, sales, contra, journal, or all of them, each in its own colour.' },
       { target: 'daybook.late', title: 'Changed after close', text: 'Only the entries posted after their month was closed.', mood: 'worry' },
-      { target: 'daybook.stats', title: 'At a glance', text: 'How many vouchers, the total moved, and the days with entries.', mood: 'look' },
+      { target: 'daybook.stats', title: 'At a glance', text: 'How many vouchers, the total moved, and the money that came in and went out.', mood: 'look' },
       { target: 'daybook.list', title: 'Day by day', text: 'Every voucher in date order. Open one to see its entries, reverse it or correct it.', mood: 'think' },
       { target: 'daybook.new', title: 'A voucher by hand', text: 'A journal or contra entered by hand, like an opening balance.' },
     ],
