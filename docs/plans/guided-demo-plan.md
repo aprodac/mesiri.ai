@@ -245,3 +245,127 @@ SS-68) → SS-69, SS-70, SS-71 chapters (after SS-67, SS-68, SS-72; the three ch
 | **Total** | **~205–340 M** | **~$120–205** |
 
 Sarvam: narration made once, ~₹15–25. No new running costs beyond database rows for sandboxes while they exist.
+
+## 16. The playground as a game (ideation, 17 Nov 2026)
+
+> Asked in session (17 Nov): *"a playground company or projects everyone can use and test, in Learn Mesiri … we have to
+> get some materials too, some BOQ or documents or whatever we need for the full simulation … like a role playing game,
+> from one end to the other, they learn by doing."* Builds on §1–§15 (approved 16 Nov); nothing there is replaced.
+> Status: **ideas and plan, decisions D-PG1..D-PG6 open.**
+
+### 16.1 What §1–§15 already give, and what is new
+
+| Already planned (SS-64..SS-72) | New in this section |
+|---|---|
+| A private sample company per person, removed after (SS-66) | **Play again** and **pick up where you left**: the playground is theirs until they reset it (D-PG1) |
+| 14 chapters, won → closed, watch then *your turn*, quick checks, story choices (SS-69..SS-72) | Chapters become **missions on a game clock**: the site's days move forward, things happen, the project's numbers react (16.3, 16.4) |
+| Mesiri enters data (`play`), the person does the next one (`task`) | **The starter kit**: the real paperwork a project runs on, as files they download and bring in themselves (16.2) |
+| One person, as the owner | **Play the roles**: owner, project manager, site engineer, storekeeper, accountant, each with that role's real screens and permissions (16.5) |
+| "Done by you" counts | **The report card**: the project's own numbers at handover (margin, days late, cash, stock-outs), and a certificate per role path (16.6) |
+| Words per kind of person (UX-22) | The whole game in their words: someone **new to construction** learns the site as well as the software (16.7) |
+
+### 16.2 The starter kit: the materials a real project runs on
+
+A folder of files, made by us, all for **Green Villa** (one story, the names the narration already uses: Ravi the site
+engineer, Malabar Cements, Suresh's team, Joy Tiling Works). Each file is used by a mission, and each has a **deliberate
+catch** the person finds by using Mesiri, because that is what Mesiri is for.
+
+| File | Brought in on | The catch they find |
+|---|---|---|
+| `Green Villa - estimate.xlsx`: ~45 lines in 6 sections (earthwork, concrete, masonry, plaster, flooring, painting) | BOQ (upload) | 3 lines have no budget rate ("Lines priced"); one line is priced at a loss (red margin) |
+| `Green Villa - contract summary.pdf`: client, dates, 5% retention, 10% advance | Project start | The dates they type set the schedule's finish |
+| `GF plan.pdf`, `S-101 structural.pdf` | Documents, Drawing check | A room is labelled bigger than it is drawn |
+| `Materials and suppliers.xlsx`, `Workers.xlsx` | Bring your data | Two names for the same cement ("OPC 53" and "Cement OPC-53") to merge |
+| 3 cement quotations (PDF) | Quotations | The cheapest per bag is dearest with transport |
+| Delivery challan (photo) | Deliveries (GRN) | 190 bags on the challan, 200 on the order |
+| Supplier bill (PDF) | Supplier bills | ₹10 a bag above the order: the 3-way match stops it |
+| Site photos (slab, a wall crack), 2 voice notes (English, Malayalam) | Tell Mesiri (the phone in the page) | The crack becomes an issue; the voice note becomes a day's update |
+| Subcontractor's measurement sheet | Subcontract bills | Measured more than the BOQ quantity |
+
+- Made by a script in the repo (`scripts/learn_kit/`, fixed content, no randomness) and checked in under the dashboard's
+  public files, so the files are versioned with the missions that use them. A test opens each file and checks the
+  numbers each mission expects.
+- On the Learn page: **"Download the starter kit"** (one zip) and, in each mission, the one file it needs.
+- **They bring the file in themselves** (D-PG5); "Show me" does it for them. A person on a phone gets "Use the sample
+  file" instead of a download.
+
+### 16.3 The game clock: the site's days move forward
+
+The world moves only when the person moves it: **"Next day"** in the playground's banner (and at the end of a mission).
+
+- Each next day the server plays the site's day from the shared story (`sample_story.py`, extended): attendance, work
+  on BOQ lines, use of material, a delivery that was ordered, the weather. Made through the real API like everything
+  else, so every page fills the way it would in real life: progress bars move, stock goes down, the daily report is made.
+- **What the person did changes the next day**: the cement they ordered arrives; if they didn't order it, it runs out
+  and work stops (Today shows the site idle, the schedule slips).
+- About 60 game days from won to handover, played in ~10 missions; days with nothing to learn are skipped ("A week
+  passes: 6 days of work, here is what changed").
+
+### 16.4 Events: things go wrong, as on a real site
+
+Each event is a mission's turning point, a choice with real effects on the numbers:
+
+| Event | The choice | What it changes |
+|---|---|---|
+| Malabar sends 190 of 200 bags | Accept 190 / reject the lorry | Stock, the bill, the next day's work |
+| Two days of rain | Move the slab / pay overtime later | Schedule finish, labour cost |
+| Cement runs short on slab day | Emergency buy at a higher rate / wait | Margin on the slab line, days late |
+| Suresh's team asks for an advance | Give it / not | Cash, the wage sheet |
+| A BOQ line goes red | Find why on Green / red | Teaches cost control |
+| The client pays the RA bill late | Chase it / wait | Cash in hand |
+
+No wrong answers that end the game: every path works, the numbers show the cost of it, and the narrator says what an
+experienced owner would have done and why.
+
+### 16.5 Play the roles
+
+Each mission says who you are and when: *"You are Ravi, the site engineer. It's 6 pm at Green Villa."*
+
+- The playground has one user per role (owner, project manager, site engineer, storekeeper, accountant), no phone
+  numbers. A mission switches the dashboard to that user, so the person sees **that role's real screens and
+  permissions** (a site engineer sees no rupees; the storekeeper sees stock, not margins).
+- **The site engineer plays on a phone**: a WhatsApp-style phone in the page (Tell Mesiri, framed as a phone, with the
+  kit's photos and voice notes to send). That is how most of their real users will use Mesiri.
+- Role paths become **careers**: *Site engineer → Storekeeper → Project manager → Owner*, each a set of missions.
+
+### 16.6 The score is the project, not points
+
+- The **project health** strip in the banner: margin, days late, cash in hand, stock-outs: Mesiri's own numbers, so the
+  game teaches what the real numbers mean.
+- At handover, the **report card** is the real period / closeout report of their Green Villa, next to "how an
+  experienced owner did" (the same story played well). No points, no leaderboard (D-PG3).
+- Finishing a career gives a **certificate** ("Mesiri: Site engineer"), shown on Learn. An owner sees which of their
+  team has finished which (a later step, D-PG6): a way to train new staff without the owner's time.
+
+### 16.7 For each kind of person (UX-22)
+
+The missions' narration and hints use the person's `GuideWords`: `basics` hears what a slab, a cum, a challan and
+retention are as they meet them (the game doubles as construction for beginners); `expert` gets the short version
+and can skip the watch parts; `data` starts with the kit's Excel files.
+
+### 16.8 Work, on top of §8
+
+| ID | Item | Size | Depends on |
+|---|---|---|---|
+| SS-73 | Starter kit: the generator script, the files, the test of their numbers, downloads on Learn and per mission | M | SS-65 |
+| SS-74 | Game clock: `POST /learn/sandbox/next-day` (the story's next day through the real API, following what the person did), "a week passes" | M | SS-66 |
+| SS-75 | Events and choices with effects (a table of events in the story, each a `choice` step) | M | SS-72, SS-74 |
+| SS-76 | Play the roles: a playground user per role, switch per mission; the phone frame for Tell Mesiri | M | SS-66 (security: same token rules as D-GD1) |
+| SS-77 | Project health strip, the report card, careers and certificates on Learn | S | SS-74 |
+| SS-78 | (Later) Owner assigns missions to the team and sees progress | S | SS-77 |
+
+The critical path is unchanged and first: **SS-66 sandbox → SS-67 switch and banner**, with SS-68 (play step, claimed)
+and SS-72 (participation). SS-73 (the kit) can start now in parallel: it only needs the story.
+
+Estimate on top of §15: ~90–150 M tokens (~$55–90); Sarvam narration for the new missions ~₹10–15.
+
+### 16.9 Decisions
+
+| # | Decision | Recommended |
+|---|---|---|
+| D-PG1 | One shared playground for everyone, or one per person | **One per person**, kept until they reset it (a shared one breaks: someone else's order changes your story) |
+| D-PG2 | How time moves | **"Next day" button** (and "a week passes"), never real time |
+| D-PG3 | Scoring | **The project's own numbers and a report card**; no points or leaderboard |
+| D-PG4 | Play other roles with their real permissions | **Yes**, playground users per role (security-sensitive, same rules as D-GD1) |
+| D-PG5 | Kit files: they upload them, or Mesiri does | **They do; "Show me" does it for them** |
+| D-PG6 | Owner assigns missions to the team | **Later (SS-78)**, after the careers exist |
