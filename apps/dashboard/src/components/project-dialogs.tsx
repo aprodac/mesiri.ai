@@ -6,9 +6,9 @@ import {
   ShieldAlert as ShieldIcon,
   Loader2,
   MapPin,
-  Briefcase,
   User as UserIcon,
   Hash,
+  ChevronDown,
 } from 'lucide-react'
 import {
   Dialog,
@@ -16,8 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Hint } from '@/components/hint'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import {
@@ -90,20 +92,21 @@ export function AddEditProjectDialog({
     }
   }, [open, project, queryClient])
 
-  const generateProjectCode = () => {
-    if (!name.trim()) return
-    const initials = name
-      .trim()
-      .split(/\s+/)
-      .map((w) => w[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 3) || 'PRJ'
-    const projectsList = queryClient.getQueryData<any[]>(['projects-list']) || []
-    const nextNum = projectsList.length + 1
-    const formattedNum = String(nextNum).padStart(3, '0')
-    setCode(`${initials}-${formattedNum}`)
-  }
+  // UX-28: the short code follows the name by itself ("Green Villa" -> GV-003) until the person types their own.
+  const [codeTouched, setCodeTouched] = React.useState(false)
+  const [more, setMore] = React.useState(false)
+  React.useEffect(() => {
+    if (open) {
+      setCodeTouched(!!project)
+      setMore(!!project)
+    }
+  }, [open, project])
+  React.useEffect(() => {
+    if (isEdit || codeTouched || !name.trim()) return
+    const initials = name.trim().split(/\s+/).map((w) => w[0]).join('').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3) || 'PRJ'
+    const count = (queryClient.getQueryData<unknown[]>(['projects-list']) ?? []).length + 1
+    setCode(`${initials}-${String(count).padStart(3, '0')}`)
+  }, [name, isEdit, codeTouched, queryClient])
 
   const handleSubmit = async (e: React.FormEvent, openAfter = false) => {
     e.preventDefault()
@@ -156,140 +159,100 @@ export function AddEditProjectDialog({
     }
   }
 
+  const field = (id: string, label: string, icon: React.ReactNode, value: string, set: (v: string) => void, placeholder: string,
+    hint?: React.ComponentProps<typeof Hint>) => (
+    <div className="grid gap-1.5">
+      <span className="flex items-center gap-1">
+        <Label htmlFor={id} className="text-sm font-medium">{label}</Label>
+        {hint && <Hint {...hint} />}
+      </span>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70">{icon}</span>
+        <Input id={id} value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} className="h-10 pl-9" />
+      </div>
+    </div>
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[460px] max-h-[85vh] overflow-y-auto px-5 py-4">
-        <DialogHeader className="pb-1 border-b">
-          <DialogTitle className="text-base font-semibold">
-            {isEdit ? `Edit ${project?.name ?? 'project'}` : 'New project'}
-          </DialogTitle>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? `Edit ${project?.name ?? 'project'}` : 'New project'}</DialogTitle>
+          {!isEdit && <DialogDescription>Only the name is needed. The rest can come later.</DialogDescription>}
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-3 text-xs">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && (
-            <div className="bg-destructive/10 border border-destructive text-destructive p-2 rounded flex items-center gap-2">
-              <ShieldIcon className="size-4 shrink-0" />
-              <span>{error}</span>
-            </div>
+            <p className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <ShieldIcon className="size-4 shrink-0" /> {error}
+            </p>
           )}
 
-          <div className="space-y-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="projName" className="font-semibold">Name</Label>
-              <div className="relative">
-                <Briefcase className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground/60" />
-                <Input
-                  id="projName"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Skyline Towers"
-                  className="pl-9 h-9"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <div className="flex justify-between items-center">
-                  <Label htmlFor="projCode" className="font-semibold">Short code (optional)</Label>
-                  {!isEdit && (
-                    <button
-                       type="button"
-                       onClick={generateProjectCode}
-                       className="text-[9px] text-primary-ink hover:underline font-semibold"
-                     >
-                       Generate from Name
-                     </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <Hash className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground/60" />
-                  <Input
-                    id="projCode"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    placeholder="e.g. SKY-782"
-                    className="pl-9 h-9"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label htmlFor="projLocation" className="font-semibold">Location (optional)</Label>
-                <div className="relative">
-                  <MapPin className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground/60" />
-                  <Input
-                    id="projLocation"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="e.g. Sector 4, North Zone"
-                    className="pl-9 h-9"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label htmlFor="projClient" className="font-semibold">Client (optional)</Label>
-              <div className="relative">
-                <UserIcon className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground/60" />
-                <Input
-                  id="projClient"
-                  value={client}
-                  onChange={(e) => setClient(e.target.value)}
-                  placeholder="e.g. Mehta Developers"
-                  className="pl-9 h-9"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label htmlFor="projDesc" className="font-semibold">Notes (optional)</Label>
-              <textarea
-                id="projDesc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="flex min-h-[50px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                placeholder="Anything worth knowing about the project"
-              />
-            </div>
-
-            {isEdit && (
-              <div className="grid gap-1.5">
-                <Label htmlFor="projStatus" className="font-semibold">Status</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="success">Active / On Track</SelectItem>
-                    <SelectItem value="warning">At Risk</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
-                    <SelectItem value="neutral">On Hold / Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+          <div className="grid gap-1.5">
+            <Label htmlFor="projName" className="text-sm font-medium">Project name</Label>
+            <Input id="projName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Green Villa" className="h-11 text-base" required autoFocus />
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            {field('projClient', 'Client', <UserIcon className="size-4" />, client, setClient, 'Mr Thomas', {
+              title: 'Client', text: 'Who the building is for and who pays you. Their bills and payments are kept under this name.',
+            })}
+            {field('projLocation', 'Location', <MapPin className="size-4" />, location, setLocation, 'Kakkanad, Kochi', {
+              title: 'Location', text: 'Where the site is. It goes on the daily report and the bills.',
+            })}
+          </div>
 
+          {more ? (
+            <div className="grid gap-4 rounded-lg border bg-muted/30 p-3">
+              <div className="grid gap-1.5">
+                <span className="flex items-center gap-1">
+                  <Label htmlFor="projCode" className="text-sm font-medium">Short code</Label>
+                  <Hint title="Short code" text="A short tag for the project on reports, bills and lists. It follows the name; change it if you have your own." example="Green Villa: GV-001" />
+                </span>
+                <div className="relative">
+                  <Hash className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+                  <Input id="projCode" value={code} onChange={(e) => { setCode(e.target.value); setCodeTouched(true) }} className="h-10 pl-9" />
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="projDesc" className="text-sm font-medium">Notes</Label>
+                <textarea
+                  id="projDesc"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                  placeholder="Anything worth knowing about the project"
+                />
+              </div>
+              {isEdit && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="projStatus" className="text-sm font-medium">Status</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger id="projStatus" className="h-10"><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="success">On track</SelectItem>
+                      <SelectItem value="warning">At risk</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                      <SelectItem value="neutral">On hold or completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button type="button" onClick={() => setMore(true)} className="flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">
+              <ChevronDown className="size-4" aria-hidden /> More details
+              <span className="text-xs tabular-nums">({code || 'code'}, notes)</span>
+            </button>
+          )}
 
-          <DialogFooter className="pt-3 border-t">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading} className="h-8">
-              Cancel
-            </Button>
+          <DialogFooter className="gap-2 pt-1 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
             {!isEdit && !afterCreate && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={loading}
-                className="h-8"
-                onClick={(e) => handleSubmit(e as unknown as React.FormEvent, true)}
-              >
-                {loading ? 'Creating...' : 'Create & Open Project'}
+              <Button type="button" variant="outline" disabled={loading} onClick={(e) => handleSubmit(e as unknown as React.FormEvent, true)}>
+                Create and open Today
               </Button>
             )}
-            <Button type="submit" disabled={loading} className="h-8">
+            <Button type="submit" disabled={loading || !name.trim()}>
               {loading ? 'Saving…' : isEdit ? 'Save' : 'Create project'}
             </Button>
           </DialogFooter>

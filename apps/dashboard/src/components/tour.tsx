@@ -364,12 +364,13 @@ export function TourOverlay({
     else if (W - (spot.left + spot.width + GAP) >= BUBBLE_W + 12) bubble = { left: spot.left + spot.width + GAP, top: top(spot.top), width: BUBBLE_W }
     else if (spot.left - GAP >= BUBBLE_W + 12) bubble = { left: spot.left - GAP - BUBBLE_W, top: top(spot.top), width: BUBBLE_W }
     else {
-      // No side has room for all of it: the roomier side, as tall as fits there, scrolling inside. Never over the lit thing.
-      const room = Math.max(below - 12, spot.top - GAP - 12)
-      bubble = spot.top - GAP > below
-        ? { left, top: Math.max(12, spot.top - GAP - Math.min(bubbleH, room)), width: BUBBLE_W, maxHeight: room }
-        : { left, top: below, width: BUBBLE_W, maxHeight: room }
-      if (room < 160) bubble = { left: '50%', top: top(H / 2 - bubbleH / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+      // No side has room for all of it: the roomier side, as tall as fits there, scrolling inside. Never over the lit
+      // thing; one taller than the screen (a whole list) has no side at all, so the bubble sits in the middle.
+      const roomBelow = H - below - 12
+      const roomAbove = spot.top - GAP - 12
+      if (Math.max(roomBelow, roomAbove) < 160) bubble = { left: '50%', top: top(H / 2 - bubbleH / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+      else if (roomAbove > roomBelow) bubble = { left, top: Math.max(12, spot.top - GAP - Math.min(bubbleH, roomAbove)), width: BUBBLE_W, maxHeight: roomAbove }
+      else bubble = { left, top: below, width: BUBBLE_W, maxHeight: roomBelow }
     }
   }
 

@@ -10,7 +10,8 @@
 // A text over the limit belongs in the page's help (lib/page-help.ts), a legend of dots (page kit `Legend`), a
 // chip, or nowhere. docs/DESIGN.md "Space, words and help".
 //
-// Text inside a dialog, a sheet, a tooltip, the help panel, tours and Learn is not counted: a person asked for it.
+// Text inside a dialog, a sheet, a tooltip, a hint (components/hint.tsx), the help panel, tours and Learn is not
+// counted: a person asked for it.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +23,7 @@ const LIMIT = Number(process.env.LIMIT || 12)
 
 // A person opened these to read: not page chrome.
 const SKIP_FILES = [/components\/ui\//, /help-button/, /tour\.tsx$/, /walkthrough/, /LearnPage/, /components\/onboarding\//, /page-guide\.tsx$/, /guide-voice/, /Login\.tsx$/, /Signup\.tsx$/, /WelcomePage/, /ClientViewPage/, /DocumentPage\.tsx$/, /dpr-document/, /components\/live\//, /LivePage|LivePlansPage/, /tell-mesiri/, /whatsapp-preview/, /whatsapp-phone-mockup/, /trial-banner/, /getting-started-card/, /first-report-moment/, /PlannedPage/]
-const SKIP_PARENTS = /^(Dialog|DialogContent|DialogDescription|Sheet|SheetContent|SheetDescription|Tooltip|TooltipContent|DetailSheet|DropdownMenuContent|PageError|title|option)$/
+const SKIP_PARENTS = /^(Hint|Hinted|Dialog|DialogContent|DialogDescription|Sheet|SheetContent|SheetDescription|Tooltip|TooltipContent|DetailSheet|DropdownMenuContent|PageError|title|option)$/
 // Props that are read aloud to nobody on the page.
 const SKIP_ATTRS = /^(className|aria-label|aria-description|title|placeholder|alt|to|href|data-guide|key|id|name|type|d|viewBox|message|description)$/
 

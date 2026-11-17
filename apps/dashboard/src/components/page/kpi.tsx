@@ -1,3 +1,4 @@
+import { Hint } from '@/components/hint'
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
@@ -32,6 +33,8 @@ export const KPI_TONE: Record<KpiTone, { value: string; icon: string; bar: strin
 
 export type KpiProps = {
   label: string
+  /** UX-27: a "?" beside the label that explains the figure (a glossary `term`, or `title` + `text`). */
+  explain?: React.ComponentProps<typeof Hint>
   value?: React.ReactNode
   tone?: KpiToneIn
   /** What kind of figure it is; picks the icon from lib/kpi-look.ts. Guessed from the value and label if left out. */
@@ -111,6 +114,7 @@ export function Kpi({ card = false, ...k }: KpiProps & { card?: boolean }) {
           </span>
         )}
         <span className="truncate">{k.label}</span>
+        {k.explain && <Hint {...k.explain} />}
         {k.tag && <span className="shrink-0 rounded bg-draft-soft px-1.5 py-px text-[10px] font-semibold text-draft">{k.tag}</span>}
         {k.to && <ArrowRight className="ml-auto size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />}
       </span>

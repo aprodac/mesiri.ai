@@ -1,3 +1,4 @@
+import { Hint } from '@/components/hint'
 import * as React from 'react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { ActionButton, ActionIcon, ActionMenuItem, NoAccess } from '@/components/page/page-kit'
@@ -83,20 +84,20 @@ function TotalsStrip({ totals }: { totals: BoqTotals }) {
   const earned = num(totals.earned)
   const priced = totals.line_count - Math.max(totals.lines_without_client_rate, totals.lines_without_budget_rate)
   const stats: Stat[] = [
-    { label: 'Contract value', value: formatRupees(totals.contract_value), kind: 'money', hint: 'client pays' },
+    { label: 'Contract value', value: formatRupees(totals.contract_value), kind: 'money', hint: 'client pays', explain: { term: 'contract value' } },
     {
-      label: 'Budget cost', value: formatRupees(totals.budget_cost), kind: 'bill',
+      label: 'Budget cost', value: formatRupees(totals.budget_cost), kind: 'bill', explain: { term: 'budget cost' },
       share: contract && budget !== null ? budget / contract : undefined, hint: contract && budget !== null ? `${Math.round((budget / contract) * 100)}% of contract` : undefined,
     },
-    { label: 'Margin', value: formatRupees(totals.margin), kind: 'margin', tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good', hint: marginPct(totals.margin, totals.contract_value) !== null ? `${marginPct(totals.margin, totals.contract_value)}% of contract` : undefined },
+    { label: 'Margin', explain: { term: 'margin' }, value: formatRupees(totals.margin), kind: 'margin', tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good', hint: marginPct(totals.margin, totals.contract_value) !== null ? `${marginPct(totals.margin, totals.contract_value)}% of contract` : undefined },
     ...(totals.earned !== undefined
       ? [{
-          label: 'Earned so far', value: formatRupees(totals.earned), kind: 'progress' as const,
+          label: 'Earned so far', explain: { term: 'earned so far' }, value: formatRupees(totals.earned), kind: 'progress' as const,
           share: budget && earned !== null ? earned / budget : 0, hint: budget && earned !== null ? `${Math.round((earned / budget) * 100)}% of budget` : 'by work done',
         }]
       : []),
     {
-      label: 'Lines priced', value: priced, of: totals.line_count, kind: 'work', tone: priced < totals.line_count ? 'attention' : 'good',
+      label: 'Lines priced', explain: { title: 'Lines priced', text: 'BOQ lines with your own cost rate. A line without one has no margin yet, so the totals leave it out.' }, value: priced, of: totals.line_count, kind: 'work', tone: priced < totals.line_count ? 'attention' : 'good',
       hint: [totals.lines_without_client_rate > 0 && `${totals.lines_without_client_rate} no client rate`, totals.lines_without_budget_rate > 0 && `${totals.lines_without_budget_rate} no budget rate`].filter(Boolean).join(' · ') || 'all priced',
     },
   ]
@@ -636,6 +637,10 @@ function WorkRow({
         <>
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <ArrowRight className="hidden size-4 shrink-0 text-muted-foreground sm:block" aria-hidden />
+            <Hint
+              title="Pick the BOQ line"
+              text="Which item of the BOQ this work belongs to. Only lines in the same unit are offered. Mesiri suggests one when it is sure; when several fit (three kinds of plastering), you choose."
+            />
             {picking ? (
               <Select value={lineId} onValueChange={setLineId}>
                 <SelectTrigger className="h-9 w-full sm:max-w-[280px]" aria-label={`BOQ line for ${work.work ?? 'this work'}`}>
@@ -885,7 +890,16 @@ export default function ProjectBoqPage() {
               iconClass="bg-draft-soft text-draft"
               title="Site work to add to the BOQ"
               guide="boq.waiting"
-              meta={<span className="rounded-full bg-draft-soft px-2 py-0.5 text-xs font-medium text-draft">{workQuery.data?.length} waiting</span>}
+              meta={
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="rounded-full bg-draft-soft px-2 py-0.5 text-xs font-medium text-draft">{workQuery.data?.length} waiting</span>
+                  <Hint
+                    title="Site work to add to the BOQ"
+                    text="Work the site reported (on WhatsApp, the app or here) that is not on a BOQ line yet. Put each on its line: the line's progress, what the client owes you and the schedule all move with it."
+                    example="'40 sqm plastering' on line 4.1 Plastering: that line goes from 10% to 14% done."
+                  />
+                </span>
+              }
               action={
                 !readOnly && suggestedWork.length > 0 && (
                   <ActionButton kind="add" primary data-guide="boq.addall" disabled={putAll.isPending || putWork.isPending} onClick={() => putAll.mutate(suggestedWork)}>

@@ -1,3 +1,4 @@
+import { Hint } from '@/components/hint'
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -11,16 +12,17 @@ import { fetchClients, fetchContract, putContract, rupees, type Contract, type C
 // NXT-01: a project's client and contract terms. The RA bills (NXT-02) use them: retention held from each bill,
 // the mobilisation advance recovered from each bill, GST added and TDS taken off.
 
-const TERMS: { key: keyof Contract; label: string; hint?: string; suffix?: string; type?: string }[] = [
-  { key: 'contract_value', label: 'Contract value', suffix: '₹' },
+// UX-27: what each term means is in its "?" (a glossary word, or the words here), not a grey line under every field.
+const TERMS: { key: keyof Contract; label: string; explain?: React.ComponentProps<typeof Hint>; suffix?: string; type?: string }[] = [
+  { key: 'contract_value', label: 'Contract value', suffix: '₹', explain: { term: 'contract value' } },
   { key: 'contract_no', label: 'Agreement number', type: 'text' },
   { key: 'signed_on', label: 'Signed on', type: 'date' },
-  { key: 'retention_pct', label: 'Retention', suffix: '%', hint: 'Held from each bill until the defect period ends' },
-  { key: 'mobilisation_advance', label: 'Mobilisation advance', suffix: '₹', hint: 'Paid by the client at the start' },
-  { key: 'advance_recovery_pct', label: 'Advance recovery per bill', suffix: '%', hint: 'Of each bill, until the advance is back' },
-  { key: 'gst_pct', label: 'GST', suffix: '%' },
-  { key: 'tds_pct', label: 'TDS', suffix: '%', hint: 'Deducted by the client' },
-  { key: 'defect_liability_months', label: 'Defect liability', suffix: 'months' },
+  { key: 'retention_pct', label: 'Retention', suffix: '%', explain: { term: 'retention', example: '5% retention on a ₹10 lakh bill: ₹50,000 held until the defects period ends.' } },
+  { key: 'mobilisation_advance', label: 'Mobilisation advance', suffix: '₹', explain: { term: 'mobilisation advance' } },
+  { key: 'advance_recovery_pct', label: 'Advance recovery per bill', suffix: '%', explain: { title: 'Advance recovery', text: 'The share of each bill that pays back the mobilisation advance, until all of it is back.', example: '10% a bill: on a ₹10 lakh bill, ₹1 lakh goes back against the advance.' } },
+  { key: 'gst_pct', label: 'GST', suffix: '%', explain: { term: 'GST' } },
+  { key: 'tds_pct', label: 'TDS', suffix: '%', explain: { term: 'TDS' } },
+  { key: 'defect_liability_months', label: 'Defect liability', suffix: 'months', explain: { term: 'defects period' } },
 ]
 
 type Form = Record<string, string>
@@ -77,7 +79,7 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
         <DialogHeader>
           <DialogTitle>Client and contract</DialogTitle>
           <DialogDescription>
-            {contract.data?.project.name}: the terms from the agreement. Every RA bill uses them, so nobody works out retention or advance recovery by hand.
+            {contract.data?.project.name}: copy these from the agreement. Every RA bill uses them.
           </DialogDescription>
         </DialogHeader>
         <form id="contract-form" className="grid gap-3" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
@@ -95,14 +97,16 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
           <div className="grid gap-3 sm:grid-cols-2">
             {TERMS.map((t) => (
               <div key={t.key} className="grid gap-1">
-                <Label htmlFor={`ct-${t.key}`} className="text-sm">{t.label}</Label>
+                <span className="flex items-center gap-1">
+                  <Label htmlFor={`ct-${t.key}`} className="text-sm">{t.label}</Label>
+                  {t.explain && <Hint {...t.explain} />}
+                </span>
                 <div className="relative">
                   <Input id={`ct-${t.key}`} type={t.type ?? 'number'} min={0} step="any" inputMode={t.type ? undefined : 'decimal'}
                     value={form[t.key] ?? ''} onChange={(e) => setForm((f) => ({ ...f, [t.key]: e.target.value }))}
                     className={t.suffix && !t.type ? 'pr-16' : ''} />
                   {t.suffix && !t.type && <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">{t.suffix}</span>}
                 </div>
-                {t.hint && <p className="text-xs text-muted-foreground">{t.hint}</p>}
               </div>
             ))}
           </div>

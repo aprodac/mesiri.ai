@@ -55,7 +55,23 @@ export const GLOSSARY: GlossaryTerm[] = [
   { match: ['site engineer', 'supervisor'], meaning: 'The person on site every day who runs the work and reports it.' },
   { match: ['letterhead'], meaning: "Your company's name, address, GSTIN and logo at the top of every document Mesiri makes." },
   { match: ['GST'], meaning: 'Goods and services tax, added to most bills; a GST-registered business can claim it back.' },
+  // UX-27 (17 Nov): the words of Project start, the contract and the BOQ page, for someone new to construction.
+  { match: ['TDS', 'tax deducted at source'], meaning: 'Income tax the client keeps back from each bill and pays to the government for you; you claim it when you file tax.', example: '2% TDS on a ₹10 lakh bill: ₹20,000 kept back.' },
+  { match: ['BOQ line'], meaning: 'One item of work in the BOQ: what it is, its unit, how much, and the rate the client pays.', example: '4.1 Plastering, 1,200 sqm at ₹420 a sqm.' },
+  { match: ['BOQ section'], meaning: 'A group of BOQ lines for one part of the building, like Earthwork or Plastering.' },
+  { match: ['contract value'], meaning: 'What the client pays you for all the work in the BOQ: each line\'s quantity times its rate, added up.' },
+  { match: ['budget cost'], meaning: 'What the work should cost you to build: your own cost rate for each line, added up. Less than the contract value is your profit.' },
+  { match: ['margin'], meaning: 'What is left for you: the client\'s rate minus your cost, as a share of the client\'s rate. Red means the line loses money.', example: 'Client pays ₹100, it costs you ₹80: margin 20%.' },
+  { match: ['earned so far', 'earned'], meaning: 'The value of the work already done: what the client owes you for it at the BOQ rates.' },
+  { match: ['unpriced', 'no budget rate'], meaning: 'A BOQ line with no cost rate yet, so its margin can\'t be worked out.' },
+  { match: ['rate'], meaning: 'The price for one unit of work: per sqm of plaster, per cum of concrete.' },
+  { match: ['handover'], meaning: 'The day the building is given to the client. The contract says when it is due.' },
 ]
+
+/** One term by any of its words (UX-27: a hint beside a label). */
+export function glossaryTerm(word: string): GlossaryTerm | undefined {
+  return BY_WORD.get(word.toLowerCase())
+}
 
 export interface GlossaryHit {
   term: GlossaryTerm

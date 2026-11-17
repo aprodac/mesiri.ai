@@ -2,8 +2,8 @@ import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowRight, Bell, CalendarDays, CalendarRange, Check, CheckCircle2, ChevronRight, FileSpreadsheet, Handshake, HardHat, MapPin,
-  MessageCircle, Rocket, ScrollText, Store, TrendingUp, type LucideIcon,
+  ArrowRight, CalendarDays, CalendarRange, Check, CheckCircle2, ChevronRight, FileSpreadsheet, Handshake, HardHat, MapPin,
+  Rocket, ScrollText, Store, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast-notification'
 import { PageError } from '@/components/dpr-page'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
+import { Hint } from '@/components/hint'
 import { ContractDialog } from '@/components/billing/contract-dialog'
 import { NewProjectButton } from '@/components/new-project-button'
 import { useAuth } from '@/lib/AuthContext'
@@ -32,15 +33,16 @@ const ICONS: Record<StartStep['key'], LucideIcon> = {
   dates: CalendarDays, contract: ScrollText, boq: FileSpreadsheet, schedule: CalendarRange, sites: MapPin, team: HardHat, suppliers: Store, work_orders: Handshake,
 }
 
-const WHY: Record<StartStep['key'], string> = {
-  dates: 'The handover date is what the forecast is measured against.',
-  contract: 'Retention, advance recovery, GST and TDS are worked out on every RA bill from these.',
-  boq: 'Every work update, purchase and bill is checked against these lines.',
-  schedule: 'Fills itself from site updates; delays reach you the same morning.',
-  sites: 'Each site gets its own daily report.',
-  team: 'Their WhatsApp messages are the data. No app to install.',
-  suppliers: 'Orders, deliveries and bills match up from day one.',
-  work_orders: 'Subcontract bills are checked against measured work.',
+// UX-27: why each step matters, in its "?" beside the title (read or listened to), not a grey line under every step.
+const WHY: Record<StartStep['key'], { text: string; example?: string }> = {
+  dates: { text: 'When work starts, and the handover date the contract promises the client. Mesiri measures every delay against the handover date.', example: 'Start 2 Nov 2026, handover 31 Jul 2027: about 9 months.' },
+  contract: { text: 'Who the client is and the money terms of the agreement: the contract value, retention held back, the advance and how it is paid back, GST and TDS. Every bill to the client is worked out from these.' },
+  boq: { text: 'The BOQ is the list of every item of work with its quantity and the rate the client pays. Upload the estimate Excel you already have: it becomes the BOQ and your budget.', example: '4.1 Plastering, 1,200 sqm at ₹420 a sqm.' },
+  schedule: { text: 'When each part of the work happens, and what has to finish first. It fills itself as the site reports work, so a delay shows the same day.' },
+  sites: { text: 'The places where work happens in this project (a block, a tower). Each gets its own daily report.' },
+  team: { text: 'Who reports from each site: the site engineer and the project manager. What they report becomes the data.' },
+  suppliers: { text: 'The shops you buy from. Orders, deliveries and their bills then match up from the first day.' },
+  work_orders: { text: 'Agreements with subcontractors: what work, at what rate. Their bills are then checked against the work measured.' },
 }
 
 /** WEB-100: a project made here opens on its own start steps. */
@@ -107,7 +109,7 @@ function StartView({ projectId }: { projectId: string }) {
 
       <StageTrack data={d} canEdit={canEdit} onPick={(stage) => update.mutate({ stage })} />
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className={cn('grid items-start gap-5', sched && sched.summary.scheduled > 0 && 'lg:grid-cols-[minmax(0,1fr)_300px]')}>
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-success transition-all" style={{ width: `${pct}%` }} /></div>
@@ -127,8 +129,9 @@ function StartView({ projectId }: { projectId: string }) {
           </ol>
         </section>
 
+        {sched && sched.summary.scheduled > 0 && (
         <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
-          {sched && sched.summary.scheduled > 0 && (
+          {(
             <Link to={`/planning/schedule?project=${projectId}`} className="flex flex-col gap-2 rounded-xl border p-4 hover:bg-muted/40" data-guide="setup.schedule">
               <span className="flex items-center justify-between text-sm font-semibold"><span className="flex items-center gap-2"><CalendarRange className="size-4" /> Schedule today</span><ChevronRight className="size-4 text-muted-foreground" /></span>
               <span className="grid grid-cols-3 gap-2 text-center">
@@ -138,14 +141,8 @@ function StartView({ projectId }: { projectId: string }) {
               </span>
             </Link>
           )}
-          <div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
-            <h2 className="font-semibold">What you get once this is set up</h2>
-            <Benefit icon={FileSpreadsheet} title="Start in minutes, not days" text="Your estimate Excel becomes the BOQ, budget and schedule." />
-            <Benefit icon={MessageCircle} title="The schedule updates itself" text="WhatsApp updates fill the bars in." />
-            <Benefit icon={Bell} title="Delays reach you the same day" text="What is late, on WhatsApp each morning." />
-            <Benefit icon={TrendingUp} title="One thread from start to finish" text="The same BOQ lines carry into orders, cost and bills." />
-          </div>
         </aside>
+        )}
       </div>
 
       <BoqImportDialog projectId={projectId} projectName={d.project.name} open={importing} onOpenChange={setImporting} />
@@ -238,12 +235,11 @@ function StepCard({
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span className="text-xs text-muted-foreground tabular-nums">{n}</span>
-          <h3 className="font-semibold">{step.title}</h3>
+          <h3 className="flex items-center gap-1 font-semibold">{step.title}<Hint title={step.title} text={WHY[step.key].text} example={WHY[step.key].example} /></h3>
           {step.optional && <span className="text-xs text-muted-foreground">optional</span>}
           {next && <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground">Next</span>}
         </div>
-        <p className="text-sm text-muted-foreground">{step.detail}</p>
-        <p className="text-xs text-foreground/60">{WHY[step.key]}</p>
+        {(!step.done || next) && <p className="text-sm text-muted-foreground">{step.detail}</p>}
         {step.key === 'dates' ? (
           canEdit ? (
             <form className="flex flex-wrap items-end gap-2" data-guide="setup.dates" onSubmit={(e) => { e.preventDefault(); onDates({ start_date: startDate || undefined, planned_finish: finish || undefined }) }}>
@@ -269,14 +265,5 @@ function Mini({ label, value, bad }: { label: string; value: string; bad?: boole
       <span className={cn('text-base font-semibold tabular-nums', bad && 'text-red-700 dark:text-red-300')}>{value}</span>
       <span className="text-[11px] text-muted-foreground">{label}</span>
     </span>
-  )
-}
-
-function Benefit({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text: string }) {
-  return (
-    <div className="flex gap-2.5">
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-background text-foreground/80 shadow-sm"><Icon className="size-3.5" /></span>
-      <div><div className="font-medium">{title}</div><div className="text-muted-foreground">{text}</div></div>
-    </div>
   )
 }
