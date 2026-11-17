@@ -257,7 +257,7 @@ export default function ExpensesPage() {
         phoneCols={2}
         stats={[
           {
-            label: 'Spent', kind: 'money', loading: list.isLoading, value: compact(total), className: 'bg-card',
+            label: 'Spent', kind: 'money', loading: list.isLoading, value: compact(total),
             hint: `${base.length} ${base.length === 1 ? 'expense' : 'expenses'}${gstTotal > 0 ? ` · incl. ${rupees(gstTotal)} GST` : ''}`,
           },
           ...tiles.map((t) => ({
@@ -268,8 +268,6 @@ export default function ExpensesPage() {
             loading: list.isLoading,
             value: compact(t.amount),
             tone: (t.value === 'unpaid' || t.value === 'own_pocket') && t.amount > 0 ? ('attention' as const) : ('default' as const),
-            // UX-29: white cells like the table; a figure that needs attention keeps its amber bar on top.
-            className: 'bg-card',
             share: total > 0 ? t.amount / total : 0,
             hint: t.hint ?? `${t.n} · ${total > 0 ? Math.round((t.amount / total) * 100) : 0}%`,
             pressed: via === t.value,
