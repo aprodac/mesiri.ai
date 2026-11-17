@@ -444,6 +444,8 @@
 | WEB-97 | **Switch a client off** (WEB-52 gap): Clients can be added and edited, not switched off. Needs a status on `PATCH /billing/clients/{id}` (additive) | S | Later | WEB-52 | todo | | |
 | WEB-98 | **Change an issue's words or how bad it is** (WEB-52 gap): issues can be acknowledged, resolved or marked won't-fix, not edited. Needs `PATCH /progress/issues/{id}` | S | Later | WEB-52 | todo | | |
 | WEB-99 | **Two buttons whose routes exist but need approval** (WEB-52 gaps): remove an attendance entry from the dashboard (`DELETE /labour/attendance/{id}`, Workforce code) and revoke a client-view link (`POST /client-links/{id}/revoke`, a token) | S | Must | WEB-52 | blocked | | Needs Ilan's approval: Workforce (attendance) and security-sensitive (client link tokens), CLAUDE.md stop rules 1 and 5 |
+| WEB-100 | **New project from the dashboard where a job starts:** Project start (and its project picker) gets **New project**, the same dialog as Projects & Sites, landing on the new project's start steps; the guides stop saying it is a WhatsApp-only thing | S | Must | ST-05 | in-progress | Claude (session 17 Nov, session_014PnnwR) | Asked 17 Nov in session (testing up to the BOQ: "create project is only there from WhatsApp") |
+| WEB-101 | Mesiri's WhatsApp number shown to people: **+91 89040 34838** (was +91 95443 76072), the default of `MESIRI_WHATSAPP__DISPLAY_NUMBER` | S | Must | SS-20 | in-progress | Claude (session 17 Nov, session_014PnnwR) | Asked 17 Nov in session. Only the number shown (welcome, "On WhatsApp", Try it); the Meta phone number id and token that send and receive are VPS settings |
 
 ## SA — Superadmin (control panel)
 
