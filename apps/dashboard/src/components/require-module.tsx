@@ -14,7 +14,7 @@ export function RequireModule({ module, children }: { module: ModuleKey; childre
   return (
     <NotForYou
       title={`${MODULE_NAMES[module]} isn't switched on`}
-      body="This part of Mesiri isn't included for your company. Ask the Mesiri team if you need it."
+      body="Ask the Mesiri team to switch it on."
     />
   )
 }

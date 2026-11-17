@@ -152,7 +152,7 @@ export default function VendorsPage() {
 
       {seesMoney && payables.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => payables.refetch()}>Try again</Button>}>
-          What is owed could not be loaded; the list below is the directory only.
+          What is owed could not be loaded.
         </Callout>
       ) : seesMoney && (
         <>
@@ -234,9 +234,6 @@ export default function VendorsPage() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="vendors.list">
           <Store className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">{all.length ? 'No supplier matches' : 'No suppliers yet'}</p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            {all.length ? 'Clear a filter or a tile to see more.' : 'A shop named on a delivery, an order or an expense is added here by itself. Add one with its phone, GSTIN and credit days.'}
-          </p>
           {(tile || kind !== 'all' || needle) && all.length > 0 && <Button variant="outline" size="sm" onClick={() => { setTile(''); setKind('all'); setQ('') }}>Clear filters</Button>}
         </div>
       ) : (

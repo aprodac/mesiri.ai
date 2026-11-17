@@ -358,7 +358,7 @@ export default function OperationsAnalyticsPage() {
               <header>
                 <h2 className="text-[15px] font-semibold">Site reporting</h2>
                 <p className="text-xs text-muted-foreground">
-                  Days each site sent updates, and days its report was confirmed, out of {plural(nDays, 'day')}
+                  Days reported and confirmed, of {plural(nDays, 'day')}
                 </p>
               </header>
               {data.sites.length === 0 ? (

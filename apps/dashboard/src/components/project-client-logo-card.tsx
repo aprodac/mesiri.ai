@@ -50,8 +50,7 @@ export function ProjectClientLogoCard({ projectId, clientName }: { projectId: st
   return (
     <div className="flex flex-col gap-3 text-sm">
         <p className="text-muted-foreground">
-          Printed on this project's DPRs next to your company logo{clientName ? `, with "${clientName}"` : ''}. PNG, JPEG or
-          WebP, up to 700 KB.
+          Printed on this project's DPRs{clientName ? `, with "${clientName}"` : ''} · PNG, JPEG or WebP, up to 700 KB
         </p>
         <div className="flex items-center gap-4">
           <div className="size-16 shrink-0 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">

@@ -106,13 +106,9 @@ function KindCard({ k }: { k: BudgetKind }) {
           {Math.round(used)}% of budget spent
         </div>
       )}
-      <p className="text-xs text-muted-foreground">
-        {k.budget === null
-          ? 'No BOQ line has this rate, so there is nothing to set the spending against.'
-          : k.earned === null
-            ? 'No work is on a priced line yet, so nothing is earned.'
-            : 'Earned − spent: what the work done was worth against what it cost. Forecast: what is spent, plus the work left at the rate it has cost so far.'}
-      </p>
+      {(k.budget === null || k.earned === null) && (
+        <p className="text-xs text-muted-foreground">{k.budget === null ? 'No BOQ line has this rate' : 'No work on a priced line yet'}</p>
+      )}
     </div>
   )
 }
@@ -219,8 +215,7 @@ export default function CostBudgetPage() {
           </div>
           {Number(b.labour_not_on_a_line.man_days) > 0 && (
             <Callout tone="muted" icon={HardHat}>
-              Labour on BOQ lines: {formatRupees(b.labour_on_lines.cost)} ({formatQuantity(b.labour_on_lines.man_days)} man-days). Not on a line yet:{' '}
-              {formatRupees(b.labour_not_on_a_line.cost)} ({formatQuantity(b.labour_not_on_a_line.man_days)} man-days), so no line shows it.{' '}
+              {formatRupees(b.labour_not_on_a_line.cost)} of labour ({formatQuantity(b.labour_not_on_a_line.man_days)} man-days) is not on a BOQ line.{' '}
               <a href="#labour-to-lines" className="font-medium underline underline-offset-2">
                 Put it on its lines
               </a>
@@ -294,14 +289,9 @@ export default function CostBudgetPage() {
               ) : labour.isError ? (
                 <p className="text-sm text-muted-foreground">The labour list could not be loaded.</p>
               ) : (labour.data?.groups.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">All labour (30 days) is on a BOQ line, and every split is confirmed.</p>
+                <p className="text-sm text-muted-foreground">All labour is on its BOQ lines.</p>
               ) : (
                 <>
-                  <p className="mb-2 text-sm text-muted-foreground">
-                    The last 30 days' attendance, per site, day and trade, that is on no BOQ line or that Mesiri put on lines by itself from
-                    the work measured that day. Confirm Mesiri's split, or pick the line they worked on and press Put on line; split a day over
-                    several lines by man-days.
-                  </p>
                   <ul className="divide-y rounded-lg border text-sm">
                     {labour.data!.groups.map((g) => (
                       <LabourGroupRow

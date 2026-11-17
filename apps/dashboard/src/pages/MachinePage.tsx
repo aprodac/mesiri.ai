@@ -167,7 +167,7 @@ export default function MachinePage() {
           {m.ownership === 'hired' && seesMoney && (
             <section aria-label="Hire bills" className="overflow-hidden rounded-xl border">
               <h2 className="flex items-center justify-between border-b bg-muted/30 px-4 py-2 text-sm font-semibold">Hire bills <Link to="/equipment/hire" className="text-xs font-normal text-primary hover:underline">Hire check</Link></h2>
-              {m.bills.length === 0 && <p className="p-4 text-sm text-muted-foreground">No bill yet. When {m.vendor_name ?? 'the hire company'}'s bill comes, enter it: it is checked against the hours logged.</p>}
+              {m.bills.length === 0 && <p className="p-4 text-sm text-muted-foreground">No bill yet</p>}
               {m.bills.map((b) => (
                 <div key={b.id} className="flex flex-col gap-1.5 border-b px-4 py-3 text-sm last:border-b-0">
                   <div className="flex items-center justify-between gap-2">

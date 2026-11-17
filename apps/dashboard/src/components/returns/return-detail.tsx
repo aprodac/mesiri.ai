@@ -108,7 +108,7 @@ export function ReturnDetail({ ret: r, inSheet }: { ret: MaterialReturn; inSheet
                 <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={step === 'cancel' ? 'They exchanged it at the site' : 'Bill 1182 is ₹8,400 less'} className="text-sm text-foreground" />
               </label>
             )}
-            {step === 'cancel' && <p className="text-xs text-muted-foreground">What it took from stock goes back, and the debit note leaves their account.</p>}
+            {step === 'cancel' && <p className="text-xs text-muted-foreground">Stock goes back; the debit note is removed.</p>}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex gap-2">
               <Button type="submit" size="sm" disabled={act.isPending || (step === 'cancel' && !note.trim())}>{act.isPending ? 'Saving…' : step === 'cancel' ? 'Cancel the return' : 'Save'}</Button>

@@ -434,7 +434,6 @@ export default function VendorPage() {
             </div>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground">Delivered with a rate, no bill yet: owed at the site's rate until their bill comes. When it comes, tick the deliveries on it and record it; or put them on a bill already typed as an expense, so nothing is counted twice.</p>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="inline-flex items-center gap-2 text-sm">
                   <input type="checkbox" className="size-4 accent-primary" checked={pickDeliveries.length === unbilled.length} onChange={(e) => setPickDeliveries(e.target.checked ? unbilled.map((d) => d.id) : [])} />

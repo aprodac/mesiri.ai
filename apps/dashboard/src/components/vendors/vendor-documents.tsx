@@ -77,7 +77,6 @@ function KindCard({ vendorId, row, mayAdd, onChanged }: { vendorId: string; row:
         )}
       </div>
       {row.current.map((p) => <PaperLine key={p.id} vendorId={vendorId} p={p} mayArchive={mayAdd} onArchive={() => archive.mutate(p.id)} />)}
-      {row.status === 'missing' && <p className="text-xs text-muted-foreground">Needed for a supplier registered for GST: the accountant asks for it at payment and audit.</p>}
       {adding && (
         <form className="grid gap-2 rounded-lg bg-muted/40 p-2 sm:grid-cols-[1fr_9rem_9rem_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); if (file) save.mutate() }}>
           <div className="flex flex-col gap-1">
@@ -122,7 +121,6 @@ export function VendorDocuments({ vendorId }: { vendorId: string }) {
       <ul className="grid gap-2 lg:grid-cols-2">
         {data.kinds.map((row) => <KindCard key={row.kind} vendorId={vendorId} row={row} mayAdd={data.may_add} onChanged={changed} />)}
       </ul>
-      <p className="text-xs text-muted-foreground">Delivery test certificates (mill test, cement, RMC) are kept on the delivery's GRN and in the project's Documents.</p>
     </section>
   )
 }

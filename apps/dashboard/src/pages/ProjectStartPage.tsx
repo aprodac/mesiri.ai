@@ -111,7 +111,7 @@ function StartView({ projectId }: { projectId: string }) {
           {d.ready && (
             <div className="flex items-center gap-2 rounded-xl border border-success/25 bg-success-soft px-4 py-3 text-sm text-success">
               <CheckCircle2 className="size-5 shrink-0" />
-              <span><strong>Ready for site.</strong> From now on the site's WhatsApp updates fill the schedule, the daily report and the cost.</span>
+              <strong>Ready for site</strong>
             </div>
           )}
           <ol className="flex flex-col gap-2" data-guide="setup.steps">
@@ -135,10 +135,10 @@ function StartView({ projectId }: { projectId: string }) {
           )}
           <div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
             <h2 className="font-semibold">What you get once this is set up</h2>
-            <Benefit icon={FileSpreadsheet} title="Start in minutes, not days" text="The estimate Excel you already have becomes the BOQ, the budget and the schedule. Nothing typed twice." />
-            <Benefit icon={MessageCircle} title="The schedule updates itself" text="Engineers keep sending WhatsApp updates as today. The bars fill in." />
-            <Benefit icon={Bell} title="Delays reach you the same day" text="What is late, what it pushes and the new handover date, on WhatsApp each morning." />
-            <Benefit icon={TrendingUp} title="One thread from start to finish" text="The same BOQ lines carry into purchases, work orders, cost and client bills." />
+            <Benefit icon={FileSpreadsheet} title="Start in minutes, not days" text="Your estimate Excel becomes the BOQ, budget and schedule." />
+            <Benefit icon={MessageCircle} title="The schedule updates itself" text="WhatsApp updates fill the bars in." />
+            <Benefit icon={Bell} title="Delays reach you the same day" text="What is late, on WhatsApp each morning." />
+            <Benefit icon={TrendingUp} title="One thread from start to finish" text="The same BOQ lines carry into orders, cost and bills." />
           </div>
         </aside>
       </div>

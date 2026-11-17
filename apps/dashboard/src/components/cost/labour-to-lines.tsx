@@ -104,7 +104,7 @@ export function LabourGroupRow({
       )}
       {group.over_allocated && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          Attendance for this day was sent again with fewer people. The lines share what it cost now; check the split.
+          Attendance changed after the split: check it.
         </p>
       )}
 

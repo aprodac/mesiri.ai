@@ -118,7 +118,7 @@ export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expe
           }}
         >
           {active.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Add a bank account or a site's petty cash in Finance › Money first.</p>
+            <p className="text-sm text-muted-foreground">Add an account in Finance › Money first.</p>
           ) : (
             <>
               <Select value={account} onValueChange={setAccount}>

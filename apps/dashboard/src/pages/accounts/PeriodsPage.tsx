@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarCheck2, History, Lock, LockOpen } from 'lucide-react'
 import { BooksClosed, BooksTabs } from '@/components/accounts/books'
 import { YearStrip } from '@/components/accounts/visuals'
-import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
+import { DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -74,9 +74,6 @@ export default function PeriodsPage() {
             </p>
             <YearStrip fyStart={Number(d.financial_year.slice(0, 4))} months={d.months.map((m) => ({ month: m.month, status: m.status, entries: Number(m.entries) }))} today={d.today} />
           </div>
-          <Callout tone="muted" icon={Lock}>
-            Close a month once the CA has checked it: its books stay as they are. If a bill of that month is changed later, nothing on site is stopped; the difference is posted on the first open day and marked "changed after close", so you see it.
-          </Callout>
           {[...years.entries()].map(([fy, list]) => (
             <DprSection key={fy} icon={CalendarCheck2} title={`Year ${fy}`} meta={`April to March`}>
               <ul data-guide="periods.months" className="divide-y rounded-lg border">

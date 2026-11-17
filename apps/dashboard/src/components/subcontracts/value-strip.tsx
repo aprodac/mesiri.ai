@@ -34,7 +34,7 @@ export function ValueStrip({ projectId, className }: { projectId?: string; class
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-emerald-900 dark:text-emerald-200">Over-billing caught before payment · {span === 'period' ? month : 'since the start'}</div>
           <div className="text-3xl leading-tight font-bold tracking-tight text-emerald-800 tabular-nums dark:text-emerald-200">{rupees(n(f.caught))}</div>
-          <div className="text-xs text-emerald-900/70 dark:text-emerald-200/70">on {f.flagged} of {f.bills} bills: work billed that was not measured, or above the agreed rate</div>
+          <div className="text-xs text-emerald-900/70 dark:text-emerald-200/70">on {f.flagged} of {f.bills} bills</div>
         </div>
         <div role="tablist" className="flex gap-0.5 rounded-lg bg-white/70 p-0.5 text-xs dark:bg-background/40">
           {(['period', 'all_time'] as const).map((s) => (

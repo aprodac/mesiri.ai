@@ -111,8 +111,7 @@ function PlanView({ projectId }: { projectId: string }) {
       icon={Wand2}
       action={<Button size="sm" className="gap-1.5" disabled={fill.isPending} onClick={() => fill.mutate()}><Wand2 className="size-3.5" /> {fill.isPending ? 'Filling…' : `Fill ${fits.length} line${fits.length > 1 ? 's' : ''}`}</Button>}
     >
-      {fits.length} BOQ line{fits.length > 1 ? 's' : ''} with no materials {fits.length > 1 ? 'are' : 'is'} common work Mesiri knows ({fits.slice(0, 3).map((l) => `${l.work}: ${l.standard}`).join('; ')}{fits.length > 3 ? '…' : ''}).
-      Fill them with the usual materials per unit; you can change any of them on the BOQ.
+      {fits.length} BOQ line{fits.length > 1 ? 's' : ''} with no materials: Mesiri knows the usual ones.
       {fill.isError ? ' That did not work; try again.' : ''}
     </Callout>
   ) : null

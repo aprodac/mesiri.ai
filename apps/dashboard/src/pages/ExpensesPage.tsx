@@ -29,7 +29,7 @@ import { vendorUrl } from '@/lib/vendors'
 import { fetchAllExpenseAttachmentsApi, reverseExpenseApi } from '@/lib/api'
 import { PAID_VIA, compact, fetchExpenses, mayManageMoney, paidWords, rupees, type Expense, type PaidVia } from '@/lib/expenses'
 import { useAuth } from '@/lib/AuthContext'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 
 // WEB-51 (Ilan, 5 Nov) and PRC-18 (7 Nov): Finance > Expenses. Five tiles say what was spent and how it was paid --
 // petty cash, direct, owed back to the person who paid, unpaid (decision D3: by the account it was paid from) --
@@ -349,7 +349,7 @@ export default function ExpensesPage() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="exp.empty">
           <Receipt className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">{filtered ? 'No expenses match these filters' : 'No expenses in this period'}</p>
-          <p className="max-w-sm text-sm text-muted-foreground">{filtered ? '' : 'Send a bill photo or "paid 1500 for tea" on WhatsApp, or record one here.'}</p>
+          {!filtered && <SayOnWhatsApp text="paid 1500 for tea" />}
           {filtered && (
             <Button variant="outline" size="sm" onClick={clearFilters}>
               Clear filters

@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { NoAccess } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -209,10 +208,6 @@ export default function CostCentresPage() {
 
       <div data-guide="centres.categories">
       <DprSection icon={Tags} title="Expense categories and their cost centre" meta={unset.length ? `${unset.length} not set` : undefined}>
-        <p className="mb-2 text-sm text-muted-foreground">
-          Deliveries, attendance and machines go to their centre by themselves. An expense counts in the centre of its category; a subcontract
-          bill is always Subcontract. Categories are added on <Link to="/finance/expenses" className="underline underline-offset-2">Expenses</Link>.
-        </p>
         {cats.isLoading ? (
           <Skeleton className="h-32 rounded-lg" />
         ) : (

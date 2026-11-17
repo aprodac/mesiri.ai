@@ -35,14 +35,14 @@ export function SubcontractSettings({ readOnly }: { readOnly: boolean }) {
   return (
     <section className="flex flex-col gap-3 border-t pt-4" data-guide="finset.subcontract">
       <h2 className="flex items-center gap-2 text-[15px] font-semibold"><Handshake className="size-4 text-muted-foreground" aria-hidden="true" /> Subcontractors</h2>
-      <Toggle on={!!s.tds_enabled} label="Deduct TDS from subcontract bills (194C)" hint="Each approved bill deducts it; it collects in the “TDS payable (194C)” account until you pay the government (a transfer into it)." onChange={(v) => save.mutate({ tds_enabled: v })} />
-      <Toggle on={!!s.partner_access} label="Subcontractors may use Mesiri on WhatsApp" hint="Their contacts (added on the subcontractor’s page) can ask what is pending, send bills and report work. Bills and work wait for your check; they never see anything else." onChange={(v) => save.mutate({ partner_access: v })} />
+      <Toggle on={!!s.tds_enabled} label="Deduct TDS from subcontract bills (194C)" hint="Collects in “TDS payable (194C)” until you pay it." onChange={(v) => save.mutate({ tds_enabled: v })} />
+      <Toggle on={!!s.partner_access} label="Subcontractors may use Mesiri on WhatsApp" hint="They send bills and report work. You check each." onChange={(v) => save.mutate({ partner_access: v })} />
       <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); save.mutate({ tds_default_pct: tds, retention_default_pct: ret }) }}>
         <div className="grid gap-1.5"><Label htmlFor="tdsPct">TDS % (when a subcontractor has none)</Label><Input id="tdsPct" type="number" min={0} max={20} step="any" value={tds} onChange={(e) => setTds(e.target.value)} className="h-9 w-32" disabled={readOnly} /></div>
         <div className="grid gap-1.5"><Label htmlFor="retPct">Retention % on new work orders</Label><Input id="retPct" type="number" min={0} max={50} step="any" value={ret} onChange={(e) => setRet(e.target.value)} className="h-9 w-32" disabled={readOnly} /></div>
         {!readOnly && <Button type="submit" size="sm" disabled={save.isPending}>Save</Button>}
       </form>
-      <p className="text-xs text-muted-foreground">194C: 1% for an individual or HUF, 2% for a firm; set a subcontractor’s own % on its work order.</p>
+      <p className="text-xs text-muted-foreground">194C: 1% individual or HUF, 2% firm</p>
     </section>
   )
 }

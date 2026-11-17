@@ -196,8 +196,7 @@ export function RequestDetail({ request, className, inSheet }: { request: Materi
           {request.may_act && request.follows_order && (
             // PRC-23: an open order covers it; it is received when the delivery is recorded against the order.
             <p className="w-full text-sm text-muted-foreground">
-              Moves with its order: it is received when the delivery is recorded against{' '}
-              {request.orders.filter((o) => o.status === 'open' || o.status === 'part').map((o) => o.ref).join(', ') || 'the order'}.{' '}
+              Waits for {request.orders.filter((o) => o.status === 'open' || o.status === 'part').map((o) => o.ref).join(', ') || 'its order'}.{' '}
               <button type="button" className="font-medium text-foreground underline-offset-2 hover:underline" onClick={() => setDecision('outside')}>Got the rest outside Mesiri?</button>
             </p>
           )}

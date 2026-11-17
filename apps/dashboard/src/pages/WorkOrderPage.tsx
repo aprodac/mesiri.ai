@@ -234,7 +234,7 @@ export default function WorkOrderPage() {
           )}
           {wo.measurements.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">
-              <Ruler className="size-6" />Nothing measured yet. Measure work on site, or count the site’s work updates above.
+              <Ruler className="size-6" />Nothing measured yet
             </div>
           ) : (
             <ul className="divide-y rounded-xl border bg-card">

@@ -58,7 +58,7 @@ export function UnbilledList({ projectId }: { projectId?: string }) {
           <Download className="size-4" /> Export
         </Button>
       </div>
-      <p className="text-sm text-muted-foreground">{rupees(num(q.data.totals.amount))} at the site's rates{q.data.totals.unpriced ? `, and ${q.data.totals.unpriced} with no rate` : ''}. When the supplier's bill comes, open the supplier › Not billed and record it, so nothing is counted twice.</p>
+      <p className="text-sm text-muted-foreground">{rupees(num(q.data.totals.amount))} at the site's rates{q.data.totals.unpriced ? `, and ${q.data.totals.unpriced} with no rate` : ''}</p>
       <ul className="divide-y rounded-xl border bg-card">
         {shown.map((d) => (
           <li key={d.receipt_id} className="flex items-center gap-3 px-3 py-2.5 text-sm">

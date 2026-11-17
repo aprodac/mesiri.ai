@@ -193,7 +193,6 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
       {open && order.may_receive && unlinked.length > 0 && (
         <div className="flex flex-col gap-2 border-t px-5 py-4">
           <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Came here, on no order</h3>
-          <p className="text-xs text-muted-foreground">Recorded in Materials or on WhatsApp since this order was placed. Count one on this order if it came from it.</p>
           {unlinked.map((d) => {
             const line = order.lines.find((l) => l.material_id === d.material_id)
             return (
@@ -250,7 +249,6 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
       {order.may_reopen && (
         <div className="flex flex-col gap-1.5 border-t px-5 py-4">
           <Button variant="outline" className="h-10 gap-2" disabled={reopen.isPending} onClick={() => reopen.mutate()}><RotateCcw className="size-4" /> Open it again</Button>
-          <p className="text-xs text-muted-foreground">The rest is coming after all, or it was {order.status === 'cancelled' ? 'cancelled' : 'closed'} by mistake. Its requests are ordered again.</p>
         </div>
       )}
 
@@ -259,7 +257,7 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
       <ReasonDialog
         open={dialog === 'cancel' || dialog === 'close'}
         title={dialog === 'cancel' ? `Cancel ${order.ref}` : `Close ${order.ref} short`}
-        hint={dialog === 'cancel' ? 'Its requests go back to waiting; whoever asked is told on WhatsApp.' : 'What came stays; the rest is no longer expected. A request still short waits to be ordered again, and whoever asked is told.'}
+        hint={dialog === 'cancel' ? 'Its requests go back to waiting; whoever asked is told on WhatsApp.' : 'What came stays. Requests still short wait to be ordered again.'}
         placeholder={dialog === 'cancel' ? 'Supplier has no stock' : 'Rest out of stock, ordering elsewhere'}
         onClose={() => setDialog(null)}
         onSave={(reason) => (dialog === 'cancel' ? cancelOrder(order.id, reason) : closeOrder(order.id, reason)).then(done(dialog === 'cancel' ? 'Order cancelled' : 'Order closed'), fail)}
@@ -491,7 +489,6 @@ function RateSupplier({ order, onDone, onSkip, onError }: { order: PurchaseOrder
         <Button className="h-9" disabled={!stars || save.isPending} onClick={() => save.mutate(false)}>Save</Button>
         <Button variant="ghost" className="h-9" disabled={save.isPending} onClick={() => save.mutate(true)}>Skip</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Asked once. Shown on the supplier page next to its score, not mixed into it.</p>
     </section>
   )
 }

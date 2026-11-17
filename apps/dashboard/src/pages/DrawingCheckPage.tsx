@@ -282,7 +282,7 @@ function Structure({ st }: { st: StructureTakeoff }) {
               ))}
             </tbody>
           </table>
-          <p className="border-t px-3 py-2 text-xs text-muted-foreground">All columns on the plan: {num(st.columns_kg_per_m)} kg of steel per metre of height. A 3.2 m floor: about {t(st.columns_kg_per_m * 3.2)}.</p>
+          <p className="border-t px-3 py-2 text-xs text-muted-foreground">All columns: {num(st.columns_kg_per_m)} kg per metre of height · 3.2 m floor: about {t(st.columns_kg_per_m * 3.2)}</p>
         </div>
       )}
       {st.slabs.length > 0 && (

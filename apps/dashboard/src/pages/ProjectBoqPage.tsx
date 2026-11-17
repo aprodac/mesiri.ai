@@ -3,7 +3,7 @@ import { MONEY_PEOPLE } from '@/lib/permissions'
 import { NoAccess } from '@/components/page/page-kit'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Calculator, CalendarRange, ClipboardCheck, FileSpreadsheet, MoreHorizontal, Package, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Calculator, CalendarRange, ClipboardCheck, FileSpreadsheet, MoreHorizontal, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
+import { DprHeader, DprSection, PageError, StatStrip, type Stat } from '@/components/dpr-page'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProject, type Project } from '@/lib/projects'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
@@ -62,28 +62,18 @@ function TotalsStrip({ totals }: { totals: BoqTotals }) {
     totals.lines_without_client_rate > 0 && `${totals.lines_without_client_rate} without a client rate`,
     totals.lines_without_budget_rate > 0 && `${totals.lines_without_budget_rate} without a budget rate`,
   ].filter(Boolean)
-  const tiles = [
-    { label: 'Contract value', hint: 'What the client pays', value: formatRupees(totals.contract_value), cls: '' },
-    { label: 'Budget cost', hint: 'What it should cost us', value: formatRupees(totals.budget_cost), cls: '' },
-    { label: 'Margin', hint: 'Contract value − budget cost', value: formatRupees(totals.margin), cls: marginClass(totals.margin) },
-    ...(totals.earned !== undefined
-      ? [{ label: 'Earned so far', hint: 'Budget earned by the work done', value: formatRupees(totals.earned), cls: '' }]
-      : []),
+  const stats: Stat[] = [
+    { label: 'Contract value', value: formatRupees(totals.contract_value), hint: 'client pays' },
+    { label: 'Budget cost', value: formatRupees(totals.budget_cost), hint: 'should cost us' },
+    { label: 'Margin', value: formatRupees(totals.margin), tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good' },
+    ...(totals.earned !== undefined ? [{ label: 'Earned so far', value: formatRupees(totals.earned), hint: 'by work done' }] : []),
   ]
   return (
     <div className="flex flex-col gap-2">
-      <div className={cn('grid gap-3', tiles.length > 3 ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3')}>
-        {tiles.map((t) => (
-          <div key={t.label} className="rounded-lg border px-4 py-3">
-            <p className="text-xs text-muted-foreground">{t.label}</p>
-            <p className={cn('text-xl tabular-nums', t.cls || 'font-semibold')}>{t.value}</p>
-            <p className="text-xs text-muted-foreground">{t.hint}</p>
-          </div>
-        ))}
-      </div>
+      <StatStrip stats={stats} phoneCols={2} />
       {missing.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          {totals.line_count} lines · {missing.join(' · ')}. The margin shows once every line has both rates.
+          {totals.line_count} lines · {missing.join(' · ')}
         </p>
       )}
     </div>
@@ -639,16 +629,9 @@ export default function ProjectBoqPage() {
         }
       />
 
-      <Callout tone="muted" icon={BookOpen}>
-        The BOQ (Bill of Quantities) lists every work item in the project: how much, what the client pays per unit, and what it should cost
-        us per unit. Work the site records is counted on its line (Done), with the budget it earned; next, each day's spending is set
-        against it to show green or red.
-      </Callout>
-
       {boq.sections.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6" data-guide="boq.empty">
-          <p className="font-medium">No BOQ yet for this project.</p>
-          <p className="text-sm text-muted-foreground">Upload the estimate Excel, or start one section by hand.</p>
+          <p className="font-medium">No BOQ yet</p>
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
               <Button size="sm" className="gap-1.5" onClick={() => setImporting(true)}>
@@ -665,10 +648,6 @@ export default function ProjectBoqPage() {
           <TotalsStrip totals={boq.totals} />
           {(workQuery.data?.length ?? 0) > 0 && (
             <DprSection icon={ClipboardCheck} title="Work done, not on a BOQ line yet" meta={workQuery.data?.length}>
-              <p className="mb-2 text-sm text-muted-foreground">
-                Work the site recorded that isn't counted against the budget yet. Pick its line and press Count; Mesiri suggests one where the
-                words and unit match, but never counts it by itself.
-              </p>
               <ul className="divide-y rounded-lg border text-sm">
                 {workQuery.data?.map((w) => (
                   <WorkRow

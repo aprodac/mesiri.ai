@@ -36,7 +36,7 @@ export default function TdsPage() {
         back={{ to: '/accounts', label: 'Accounts' }}
         crumb="Accounts"
         title="TDS"
-        date="194C: deducted from subcontractors, and by clients"
+        date="194C"
         action={d && <ExcelButton path="/accounts/tds/export" params={period} name={`tds-${period.date_from}-to-${period.date_to}`} />}
       />
       <BooksTabs current="/accounts/tds" />
@@ -61,7 +61,7 @@ export default function TdsPage() {
           )}
           {d.missing_pan.length > 0 && (
             <Callout tone="draft" icon={UserX} action={<Link to="/finance/vendors" className="text-sm underline">Suppliers</Link>}>
-              No PAN (GSTIN) for {d.missing_pan.join(', ')}: the return needs it. Add their GSTIN on the supplier.
+              No PAN (GSTIN) for {d.missing_pan.join(', ')}
             </Callout>
           )}
           <DprSection icon={CalendarClock} title="Month by month" meta={d.months.length || undefined}>

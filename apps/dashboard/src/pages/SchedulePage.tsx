@@ -191,14 +191,13 @@ function ScheduleView({ projectId }: { projectId: string }) {
               {worst.progress !== null ? ` at ${worst.progress}%` : ''}
               {pushedCount ? ` and pushes ${plural(pushedCount, 'activity')} after it` : ''}.
               {s.summary.slip_days > 0 && <> Forecast handover <strong>{shortDay(s.summary.forecast_finish, today)}</strong>, {plural(s.summary.slip_days, 'day')} late.</>}
-              <span className="text-foreground/70"> The owner and PM get this on WhatsApp each morning.</span>
             </Callout>
           ) : undated.length === s.activities.length ? (
             <Callout tone="info" icon={Rocket} action={canEdit && <Button size="sm" onClick={() => setQuick(true)} className="gap-1.5"><ListOrdered className="size-4" /> Quick plan</Button>}>
-              {plural(undated.length, 'section')} from the BOQ, none with dates yet. <strong>Quick plan</strong> puts them one after another in a minute; drag to fine-tune.
+              {plural(undated.length, 'section')} from the BOQ, none with dates yet.
             </Callout>
           ) : (
-            <Callout tone="success" icon={CheckCircle2}>Everything is on time. Site's WhatsApp updates keep this chart current; nobody needs to update it by hand.</Callout>
+            <Callout tone="success" icon={CheckCircle2}>Everything is on time</Callout>
           )}
 
           <StatStrip stats={stats} guide="schedule.stats" />

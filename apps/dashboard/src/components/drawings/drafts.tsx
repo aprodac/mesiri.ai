@@ -49,7 +49,7 @@ export function DraftSchedule({ read }: { read: DrawingReadWithDrafts }) {
       <div>
         <h2 className="flex items-center gap-2 text-base font-semibold"><CalendarRange className="size-4" /> Draft schedule from the floors</h2>
         <p className="text-sm text-muted-foreground">
-          {read.floors.length ? `${read.floors.join(', ')}: ` : ''}the usual order on site, with typical days. Change names and days; about {Math.round(total / 26)} months of work days in all.
+          {read.floors.length ? `${read.floors.join(', ')} · ` : ''}about {Math.round(total / 26)} months of work days
         </p>
       </div>
       <ol className="grid gap-1.5 sm:grid-cols-2">
@@ -95,7 +95,7 @@ export function DraftBoq({ read }: { read: DrawingReadWithDrafts }) {
     <section className="flex flex-col gap-3 rounded-xl border p-4">
       <div>
         <h2 className="flex items-center gap-2 text-base font-semibold"><Calculator className="size-4" /> Draft BOQ quantities from the rooms</h2>
-        <p className="text-sm text-muted-foreground">Worked out from the room sizes on each plan; wall height {read.draft_boq.clear_height_m.toFixed(2)} m ({read.draft_boq.height_note}). Check them, then add them without rates.</p>
+        <p className="text-sm text-muted-foreground">From the room sizes · wall height {read.draft_boq.clear_height_m.toFixed(2)} m ({read.draft_boq.height_note})</p>
       </div>
       {sections.map((s, si) => (
         <div key={s.name} className="overflow-x-auto rounded-lg border [contain:inline-size]">
@@ -123,7 +123,7 @@ export function DraftBoq({ read }: { read: DrawingReadWithDrafts }) {
         <Button disabled={!projectId || add.isPending} onClick={() => add.mutate()}>{add.isPending ? 'Adding…' : 'Add to the BOQ'}</Button>
         {add.isSuccess && projectId && <Button variant="ghost" asChild><Link to={`/projects/${projectId}/boq`}>Open the BOQ</Link></Button>}
       </div>
-      <p className="text-xs text-muted-foreground">One section per floor (an existing section with the same name is used). Lines already in it are left as they are. Add your rates on the BOQ page.</p>
+      <p className="text-xs text-muted-foreground">One section per floor · rates are added on the BOQ</p>
     </section>
   )
 }

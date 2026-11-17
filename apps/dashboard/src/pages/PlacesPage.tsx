@@ -254,7 +254,7 @@ function QuickSetup({ projectId, suggested }: { projectId: string; suggested: Pl
   return (
     <section className="flex flex-col" data-guide="places.setup">
       <h2 className="font-medium">Set up floors and rooms</h2>
-      <p className="mb-3 text-sm text-muted-foreground">One per line. Every floor gets the same rooms; rename, add or remove any of them after.</p>
+      <p className="mb-3 text-sm text-muted-foreground">One per line. Every floor gets the same rooms.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-1">
           <Label htmlFor="pl-floors">Floors</Label>

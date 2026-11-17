@@ -195,9 +195,7 @@ export function RateDetail({
 
       <p className="flex items-start gap-2 px-4 py-3 text-xs text-muted-foreground sm:px-5">
         <Info className="mt-0.5 size-3.5 shrink-0" />
-        Rates are per {item.unit} and compared as they cost the company: before GST from a supplier with a GSTIN (the GST is claimed back), with GST
-        from one without. {item.gst_unknown > 0 && <>{item.gst_unknown} {item.gst_unknown === 1 ? 'purchase has' : 'purchases have'} no GST said and {item.gst_unknown === 1 ? 'is' : 'are'} compared as entered. </>}A rate said in another unit (a load, a bar) was
-        converted when it was saved.
+        Per {item.unit}, after GST you claim back{item.gst_unknown > 0 && <> · {item.gst_unknown} with no GST said</>}
       </p>
       {canOrder && (
         <div className="border-t p-4 sm:px-5">

@@ -313,8 +313,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
       {(panelOpen || (categoryList && categories.length === 0)) && <CategoriesPanel categories={categories} />}
       {categoryList && categories.length > 0 && categoryList.uncategorised > 0 && (
         <Callout tone="info" icon={FolderTree}>
-          {categoryList.uncategorised === 1 ? '1 material has' : `${categoryList.uncategorised} materials have`} no category yet. Pick one for
-          each under <strong className="font-semibold">No category</strong> below, so stock and spend add up by category.
+          {categoryList.uncategorised === 1 ? '1 material has' : `${categoryList.uncategorised} materials have`} no category yet.
         </Callout>
       )}
 

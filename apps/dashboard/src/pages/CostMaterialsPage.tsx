@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { NoAccess } from '@/components/page/page-kit'
+import { Legend, NoAccess } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Package, PackageSearch } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
@@ -135,14 +135,10 @@ export default function CostMaterialsPage() {
         <Skeleton className="h-64 rounded-lg" />
       ) : d.materials.length === 0 ? (
         <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6" data-guide="costmat.empty">
-          <p className="font-medium">No BOQ line says what materials it uses yet.</p>
-          <p className="text-sm text-muted-foreground">
-            Set each line's materials per unit (cement bags per cum, sand cft per sq ft) on the BOQ, and this page sets what was used against
-            what the work needed.{' '}
-            <Link to={`/projects/${projectId}/boq`} className="font-medium underline underline-offset-2">
-              Open the BOQ
-            </Link>
-          </p>
+          <p className="font-medium">No BOQ line has its materials per unit yet</p>
+          <Link to={`/projects/${projectId}/boq`} className="text-sm font-medium underline underline-offset-2">
+            Add them on the BOQ
+          </Link>
         </div>
       ) : (
         <>
@@ -170,11 +166,14 @@ export default function CostMaterialsPage() {
                 <Row key={m.material_id} m={m} />
               ))}
             </ul>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Needed by the work done: work measured on each BOQ line × the line's materials per unit, with wastage. Green: what was used is within
-              it; amber: up to 10% more; red: more. Short to finish: what the rest of the BOQ needs beyond what is on hand and on open orders. When
-              to order it is on Planning › Material plan.
-            </p>
+            <Legend
+              className="mt-2"
+              items={[
+                { tone: 'good', label: 'Within what the work needed' },
+                { tone: 'attention', label: 'Up to 10% more' },
+                { tone: 'bad', label: 'More than 10% over' },
+              ]}
+            />
           </DprSection>
         </>
       )}

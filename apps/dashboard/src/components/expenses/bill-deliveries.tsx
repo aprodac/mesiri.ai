@@ -76,7 +76,7 @@ export function BillDeliveries({ expenseId, vendorId, vendorName, projectId, amo
       )}
       {rows.length === 0 && canManage && unbilled.length > 0 && (
         <div className="flex flex-col gap-2 rounded-lg border border-sky-200 bg-sky-50/60 p-3 text-sm dark:border-sky-900 dark:bg-sky-950/30">
-          <p>{vendorName} has {unbilled.length} {unbilled.length === 1 ? 'delivery' : 'deliveries'} with no bill here. Tick the ones on this bill, so they are not owed and counted twice.</p>
+          <p>{unbilled.length} {unbilled.length === 1 ? 'delivery' : 'deliveries'} with no bill. Tick the ones on this bill.</p>
           <ul className="max-h-44 divide-y overflow-y-auto rounded-md border bg-background">
             {unbilled.map((d) => {
               const id = d.links.receipt_id!

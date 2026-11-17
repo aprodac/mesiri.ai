@@ -138,7 +138,7 @@ function ChecksCallout({ checks }: { checks: Checks }) {
     return (
       <Callout tone="success" icon={BadgeCheck}>
         <span className="font-medium">The books agree with every module.</span>{' '}
-        <span className="text-muted-foreground">{counted}: each balance is the same in the books as in Finance › Money, the supplier ledger and Receivables.</span>
+        <span className="text-muted-foreground">{counted}</span>
       </Callout>
     )
   }
@@ -247,16 +247,13 @@ export default function TrialBalancePage() {
           {scope.mode === 'portfolio' && checks.data && <ChecksCallout checks={checks.data} />}
           {headOffice && (
             <Callout tone="info" icon={ListTree}>
-              <span className="font-medium">Head office and other projects: {drCr(headOffice.closing)}.</span>{' '}
-              <span className="text-muted-foreground">
-                What moved between {d.scope.replace(/^(project|site) /, '')} and the rest of the company (a transfer to its petty cash, a bill paid from the office bank), so its books balance on their own.
-              </span>
+              <span className="font-medium">Head office and other projects: {drCr(headOffice.closing)}</span>
             </Callout>
           )}
           <DprSection icon={ListTree} title="Ledgers by group" meta={d.rows.length || undefined}>
             {d.rows.length === 0 ? (
               <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                Nothing in the books for this period{scope.mode !== 'portfolio' ? ` on ${d.scope}` : ''}. Expenses, payments, transfers, RA bills and money from clients appear here as soon as they are recorded.
+                Nothing in the books for this period
               </p>
             ) : (
               <>
@@ -308,11 +305,9 @@ export default function TrialBalancePage() {
                   </table>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Groups follow Tally's ({Object.values(NATURE_LABEL).join(', ').toLowerCase()}). Income and expense ledgers start each year (April) at nil. Tap a ledger for every entry in it, or{' '}
                   <Link to="/accounts/chart" className="underline">
-                    arrange the chart
+                    Arrange the chart
                   </Link>
-                  .
                 </p>
               </>
             )}

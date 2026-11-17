@@ -220,7 +220,6 @@ export default function AutomationsPage({ embedded = false }: { embedded?: boole
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-12 text-center">
           <CalendarClock className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">No automations yet</p>
-          <p className="max-w-sm text-sm text-muted-foreground">For example: every day at 6 pm, send the DPR to the client's project manager.</p>
           <Button size="sm" className="mt-2 gap-1.5" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" /> New automation
           </Button>
@@ -261,9 +260,7 @@ export default function AutomationsPage({ embedded = false }: { embedded?: boole
         </ul>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        WhatsApp only lets Mesiri message people who wrote to it in the last 24 hours; anyone else is skipped and shows in History.
-      </p>
+      <p className="text-xs text-muted-foreground">Reaches people who wrote to Mesiri in the last 24 hours.</p>
 
       {/* Keyed so each opening starts from a blank form. */}
       <CreateDialog

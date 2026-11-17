@@ -164,7 +164,7 @@ export default function GstPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Books: Output GST {rupees(d.tie.output_books)}, Input GST {rupees(d.tie.input_books)} for the period
-                {d.tie.agrees ? ', the same as above.' : ': different from above; a bill was changed after its entry, or a ledger was posted by hand.'} The CA files the return; check purchases against GSTR-2B before claiming.
+                {d.tie.agrees ? ', the same as above.' : ': different from above.'}
               </p>
             </DprSection>
           )}
