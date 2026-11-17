@@ -1,10 +1,12 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Building2, ChevronRight, ChevronsDownUp, ChevronsUpDown, FolderKanban, HandCoins, Minus, Plus, TrendingDown, TrendingUp, Truck, type LucideIcon } from 'lucide-react'
+import { Building2, ChevronRight, ChevronsDownUp, ChevronsUpDown, FolderKanban, HandCoins, Minus, Plus, TrendingDown, TrendingUp, Truck, type LucideIcon } from 'lucide-react'
 import { VoucherSheet } from '@/components/accounts/books'
+import { Change } from '@/components/accounts/change-chip'
+import { LedgerEntries } from '@/components/accounts/ledger-entries'
 import { Skeleton } from '@/components/ui/skeleton'
-import { fetchProjectsBooks, fetchStatement, formatDay, rupees, type Period, type PlGroup, type PlLedger, type PlTotals, type ProfitLoss, type Scope } from '@/lib/accounts'
+import { fetchProjectsBooks, rupees, type Period, type PlGroup, type PlTotals, type ProfitLoss, type Scope } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
 // UX-31 (asked 17 Nov 2026: "for an owner and for an accountant, different profit and loss?" -> the same numbers,
@@ -26,21 +28,6 @@ const LOOK: Record<Kind, { icon: LucideIcon; tile: string; bar: string; fg: stri
   direct: { icon: Truck, tile: 'bg-draft-soft text-draft', bar: 'bg-draft', fg: 'text-draft' },
   indirect: { icon: Building2, tile: 'bg-ai-soft text-ai', bar: 'bg-ai', fg: 'text-ai' },
   other: { icon: HandCoins, tile: 'bg-info-soft text-info', bar: 'bg-info', fg: 'text-info' },
-}
-
-/** "▲ ₹2,45,300 · 14.9%", green when it is good news. */
-function Change({ now, before, goodWhenUp, className }: { now: number; before: number | null; goodWhenUp: boolean; className?: string }) {
-  if (before === null) return null
-  const d = now - before
-  if (Math.abs(d) < tiny) return <span className={cn('text-[11px] text-muted-foreground', className)}>no change</span>
-  const pct = Math.abs(before) < tiny ? null : (d / Math.abs(before)) * 100
-  const good = d > 0 === goodWhenUp
-  return (
-    <span className={cn('inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[11px] font-medium tabular-nums', good ? 'bg-success-soft text-success' : 'bg-destructive/10 text-destructive', className)}>
-      {d > 0 ? '▲' : '▼'} {rupees(Math.abs(d))}
-      {pct !== null && ` · ${Math.abs(pct) >= 1000 ? '>999' : Math.abs(pct).toFixed(1)}%`}
-    </span>
-  )
 }
 
 // --- The result, in a sentence ---------------------------------------------------------------------------------
@@ -159,41 +146,6 @@ interface Ctx {
   onEntry: (entryId: string) => void
 }
 
-/** An account's entries in the period, newest first, each opening its voucher; the full statement one tap further. */
-function Entries({ ledger, ctx, cost, indent }: { ledger: PlLedger; ctx: Ctx; cost: boolean; indent: string }) {
-  const q = useQuery({ queryKey: ['accounts', 'statement', ledger.ledger_id, ctx.period, ctx.scope], queryFn: () => fetchStatement(ledger.ledger_id, ctx.period, ctx.scope) })
-  const SHOW = 8
-  if (q.isLoading) return <div className={cn('border-t border-border/50 py-2 pr-4', indent)}><Skeleton className="h-16 w-full rounded-md" /></div>
-  if (q.isError || !q.data) return <p className={cn('border-t border-border/50 py-2 pr-4 text-xs text-muted-foreground', indent)}>The entries could not be loaded.</p>
-  const lines = [...q.data.lines].reverse()
-  const amount = (debit: string, credit: string) => (cost ? n(debit) - n(credit) : n(credit) - n(debit))
-  return (
-    <div className={cn('border-t border-border/50 bg-muted/25 py-1.5 pr-4', indent)}>
-      {lines.length === 0 && <p className="py-1.5 text-xs text-muted-foreground">No entries in this period.</p>}
-      <ul className="divide-y divide-border/50">
-        {lines.slice(0, SHOW).map((l) => {
-          const v = amount(l.debit, l.credit)
-          return (
-            <li key={l.line_id}>
-              <button type="button" onClick={() => ctx.onEntry(l.entry_id)} className="flex w-full items-start gap-3 py-1.5 text-left text-xs hover:text-foreground">
-                <span className="w-14 shrink-0 tabular-nums text-muted-foreground">{formatDay(l.date).replace(/ \d{4}$/, '')}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-foreground">{l.narration || l.against || l.ref}</span>
-                  <span className="block truncate text-muted-foreground">{[l.ref, l.project, l.site].filter(Boolean).join(' · ')}</span>
-                </span>
-                <span className={cn('shrink-0 tabular-nums', v < 0 && 'text-destructive')}>{v < 0 ? `(${rupees(v)})` : rupees(v)}</span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-      <Link to={`/accounts/ledgers/${ledger.ledger_id}${ctx.keep}`} className="mt-1 inline-flex items-center gap-1 py-1 text-xs font-medium text-primary-ink hover:underline">
-        {lines.length > SHOW ? `All ${lines.length} entries` : 'The full statement'} <ArrowRight className="size-3" />
-      </Link>
-    </div>
-  )
-}
-
 function Ledgers({ group, ctx, goodWhenUp, indent, entriesIndent }: { group: PlGroup; ctx: Ctx; goodWhenUp: boolean; indent: string; entriesIndent: string }) {
   const total = Math.abs(n(group.amount)) || 1
   return (
@@ -218,7 +170,7 @@ function Ledgers({ group, ctx, goodWhenUp, indent, entriesIndent }: { group: PlG
               {ctx.comparing && <Change now={v} before={n(l.prior)} goodWhenUp={goodWhenUp} className="hidden sm:inline-flex" />}
               <span className="w-28 shrink-0 text-right tabular-nums sm:w-32">{rupees(v)}</span>
             </button>
-            {isOpen && <Entries ledger={l} ctx={ctx} cost={!goodWhenUp} indent={entriesIndent} />}
+            {isOpen && <LedgerEntries ledgerId={l.ledger_id} period={ctx.period} scope={ctx.scope} debitUp={!goodWhenUp} keep={ctx.keep} onEntry={ctx.onEntry} indent={entriesIndent} />}
           </React.Fragment>
         )
       })}

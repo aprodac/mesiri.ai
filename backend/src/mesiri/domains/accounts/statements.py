@@ -203,10 +203,10 @@ def bs_layout(all_time: dict[Any, Decimal], before_year: dict[Any, Decimal], led
                                                "subgroups": {}})
         g["amount"] += amount
         sub = by_id.get(led["group_id"])
-        sg = g["subgroups"].setdefault(sub["id"], {"group_id": str(sub["id"]), "name": sub["name"], "amount": _ZERO,
-                                                   "ledgers": []})
+        sg = g["subgroups"].setdefault(sub["id"], {"group_id": str(sub["id"]), "name": sub["name"],
+                                                   "code": sub.get("code"), "amount": _ZERO, "ledgers": []})
         sg["amount"] += amount
-        sg["ledgers"].append({"ledger_id": str(lid), "name": led["name"], "amount": amount})
+        sg["ledgers"].append({"ledger_id": str(lid), "name": led["name"], "code": led.get("code"), "amount": amount})
     capital = next((g for g in sides["liabilities"].values() if g["code"] == "capital"), None)
     cap_group = next((g for g in groups if g["code"] == "capital"), None)
     if capital is None and cap_group is not None and (year_profit or earlier):
@@ -218,7 +218,7 @@ def bs_layout(all_time: dict[Any, Decimal], before_year: dict[Any, Decimal], led
                                   ("year_pl", "Profit or loss this year", year_profit)):
             if amount:
                 capital["amount"] += amount
-                capital["subgroups"][key] = {"group_id": None, "name": name, "amount": amount, "ledgers": []}
+                capital["subgroups"][key] = {"group_id": None, "name": name, "code": key, "amount": amount, "ledgers": []}
     out = {}
     for side, gs in sides.items():
         rows = sorted(gs.values(), key=lambda g: g["sort"])

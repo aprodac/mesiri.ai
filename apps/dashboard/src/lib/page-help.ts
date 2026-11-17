@@ -529,7 +529,8 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     tip: 'Labour reaches the books when wages are paid.',
   },
   '/accounts/balance-sheet': {
-    parts: [{ name: 'Owns', means: 'Bank, cash, what clients owe' }, { name: 'Owes', means: 'Suppliers, staff, capital' }, { name: 'A minus under owed', means: 'A supplier paid ahead (an advance)' }],
+    parts: [{ name: 'Owns', means: 'Bank, cash, what clients owe' }, { name: 'Owes', means: 'Suppliers, taxes, loans, other dues' }, { name: 'Worth', means: 'What you own less what you owe: money put in and profit kept' }, { name: 'A minus under owed', means: 'A supplier paid ahead (an advance)' }],
+    steps: ['Simple or Tally: same numbers, the page remembers your pick.', 'Tap a line for its accounts, an account for its entries, an entry for its voucher.'],
     tip: 'A project has no balance sheet of its own: see its position under Projects.',
   },
   '/accounts/trial-balance': {

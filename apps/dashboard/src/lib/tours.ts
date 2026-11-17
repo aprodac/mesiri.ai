@@ -994,13 +994,15 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/accounts/balance-sheet': {
     key: '/tour/accounts-balance-sheet',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['bs.stats'],
     steps: [
+      { target: 'bs.view', title: 'Two ways to read it', text: 'Simple: what the company is worth, in plain words. Tally: the two columns your accountant knows. The page remembers your pick.' },
       { target: 'bs.asof', title: 'On which day', text: 'The balance sheet as on any day you pick.' },
-      { target: 'bs.stats', title: 'At a glance', text: 'What the company owns, what it owes with its capital, and the profit this year.', mood: 'look' },
-      { target: 'bs.sides', title: 'Both sides', text: 'Capital and liabilities on one side, assets on the other. The badge at the top says whether they balance.', mood: 'think' },
+      { target: 'bs.compare', title: 'Against when', text: 'Set it beside the month end before, or the end of last year, to see what moved.' },
+      { target: 'bs.stats', title: 'At a glance', text: 'What you own, what you owe, and what is left: the company\'s worth. In Tally view: assets equal liabilities plus capital.', mood: 'look' },
+      { target: 'bs.sides', title: 'What makes it up', text: 'Tap a line for its accounts, an account for its entries this year, an entry for its voucher.', mood: 'think' },
     ],
   },
   '/accounts/cash-bank': {

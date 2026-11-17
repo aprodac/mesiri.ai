@@ -7,12 +7,11 @@ import { PlMonths } from '@/components/accounts/pl-months'
 import { PlFormulaStrip, PlTwoColumn } from '@/components/accounts/pl-two-column'
 import { Callout, DprHeader, PageError, Segmented } from '@/components/dpr-page'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { fetchPl, formatDay, mayReadBooks, rupees, scopeParams, type Compare } from '@/lib/accounts'
 import { usePageTitle } from '@/lib/page-title'
-import { useStartMode, type StartMode } from '@/lib/start-mode'
+import { useBooksView } from '@/lib/books-view'
 
 // ACC-06 / ACC-22: profit and loss for a period, the company, a project or a site (scope bar), with a comparison
 // against the period before or the same period last year. Backend: GET /accounts/pl.
@@ -22,23 +21,7 @@ import { useStartMode, type StartMode } from '@/lib/start-mode'
 // Which one opens: the person's last pick (this browser) -> on a phone, Simple -> Tally for finance people and for
 // those who came from other accounting software (start mode "switching") -> Simple.
 
-type View = 'simple' | 'statement' | 'months'
-const VIEW_KEY = 'mesiri.pl.view'
-const asView = (v: string | null): View | null => (v === 'simple' || v === 'list' ? 'simple' : v === 'statement' || v === 'months' ? v : null)
-
-function savedView(): View | null {
-  try {
-    return asView(localStorage.getItem(VIEW_KEY))
-  } catch {
-    return null
-  }
-}
-
-function defaultView(role: string | null | undefined, mode: StartMode, phone: boolean): View {
-  if (phone) return 'simple'
-  if (String(role ?? '').toUpperCase() === 'FINANCE' || mode === 'switching') return 'statement'
-  return 'simple'
-}
+const VIEWS = ['simple', 'statement', 'months'] as const
 
 export default function ProfitLossPage() {
   usePageTitle('Profit & loss')
@@ -48,17 +31,7 @@ export default function ProfitLossPage() {
   const { period } = periodState
   const [params, setParams] = useSearchParams()
   const compare = (params.get('compare') ?? 'previous') as Compare
-  const phone = useIsMobile()
-  const { mode } = useStartMode()
-  const view: View = asView(params.get('view')) ?? savedView() ?? defaultView(me?.role, mode, phone)
-  const pickView = (v: View) => {
-    try {
-      localStorage.setItem(VIEW_KEY, v)
-    } catch {
-      // A browser without storage still switches; the pick is just not remembered.
-    }
-    setParam('view', v)
-  }
+  const [view, pickView] = useBooksView('pl', VIEWS, { list: 'simple' })
   const setParam = (k: string, v: string) =>
     setParams((p) => {
       const n = new URLSearchParams(p)
@@ -85,7 +58,7 @@ export default function ProfitLossPage() {
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" />
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented<View>
+        <Segmented<(typeof VIEWS)[number]>
           guide="pl.view"
           label="Show as"
           value={view}
