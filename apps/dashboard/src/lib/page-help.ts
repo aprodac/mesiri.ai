@@ -525,7 +525,7 @@ export const PAGE_HELP: Record<string, PageHelp> = {
   },
   '/accounts/pl': {
     parts: [{ name: 'Income', means: 'RA bills sent, before GST' }, { name: 'Costs', means: 'Bills and expenses as booked, net of GST you claim' }, { name: 'Gross profit', means: 'Income minus direct costs', tone: 'good' }],
-    steps: ['Tap a group for its ledgers.', 'Tap a ledger for its entries.'],
+    steps: ['Simple, Tally or Month by month: same numbers, the page remembers your pick.', 'Tap a line for what is in it, an account for its entries, an entry for its voucher.', 'Tap a part of the ₹100 bar to open that line.'],
     tip: 'Labour reaches the books when wages are paid.',
   },
   '/accounts/balance-sheet': {

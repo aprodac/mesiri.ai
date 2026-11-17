@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Building2 } from 'lucide-react'
-import { BooksClosed, BooksTabs, PeriodBar, usePeriod } from '@/components/accounts/books'
-import { PlOwnerHero, PlSimple } from '@/components/accounts/pl-simple'
+import { BooksClosed, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { PlSimple } from '@/components/accounts/pl-simple'
 import { PlMonths } from '@/components/accounts/pl-months'
 import { PlFormulaStrip, PlTwoColumn } from '@/components/accounts/pl-two-column'
 import { Callout, DprHeader, PageError, Segmented } from '@/components/dpr-page'
@@ -73,11 +73,17 @@ export default function ProfitLossPage() {
   const d = q.data
   const t = d?.totals
   const span = (a: string, b: string) => (a.slice(0, 7) === b.slice(0, 7) && a.endsWith('-01') ? new Date(`${a}T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : `${formatDay(a)} – ${formatDay(b)}`)
+  const prior = d?.compare ? span(d.compare.date_from, d.compare.date_to) : undefined
+  const overheadsNote =
+    d && Number(d.overheads) !== 0 && scope.mode !== 'portfolio' ? (
+      <Callout tone="info" icon={Building2}>
+        Includes this project's share of head-office costs, {rupees(d.overheads)}. Before it: {rupees(d.net_before_overheads)} {Number(d.net_before_overheads) < 0 ? 'loss' : 'profit'}.
+      </Callout>
+    ) : null
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" />
-      <BooksTabs current="/accounts/pl" />
       <div className="flex flex-wrap items-center gap-2">
         <Segmented<View>
           guide="pl.view"
@@ -105,26 +111,22 @@ export default function ProfitLossPage() {
       </div>
       {!d || !t ? (
         <Skeleton className="h-96 rounded-xl" />
+      ) : view === 'simple' ? (
+        <PlSimple
+          pl={d}
+          period={period}
+          scope={sp}
+          company={scope.mode === 'portfolio'}
+          periodLabel={span(d.date_from, d.date_to)}
+          priorLabel={prior}
+          notice={overheadsNote}
+        />
       ) : (
         <>
-          {view === 'simple' ? (
-            <PlOwnerHero pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
-          ) : (
-            <PlFormulaStrip pl={d} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
-          )}
-          {Number(d.overheads) !== 0 && scope.mode !== 'portfolio' && (
-            <Callout tone="info" icon={Building2}>
-              Includes this project's share of head-office costs, {rupees(d.overheads)}. Before it: {rupees(d.net_before_overheads)} {Number(d.net_before_overheads) < 0 ? 'loss' : 'profit'}.
-            </Callout>
-          )}
+          <PlFormulaStrip pl={d} priorLabel={prior} />
+          {overheadsNote}
           <div data-guide="pl.statement">
-            {view === 'months' ? (
-              <PlMonths period={period} scope={sp} total={d} />
-            ) : view === 'statement' ? (
-              <PlTwoColumn pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={d.compare ? span(d.compare.date_from, d.compare.date_to) : undefined} />
-            ) : (
-              <PlSimple pl={d} />
-            )}
+            {view === 'months' ? <PlMonths period={period} scope={sp} total={d} /> : <PlTwoColumn pl={d} periodLabel={span(d.date_from, d.date_to)} priorLabel={prior} />}
           </div>
         </>
       )}
