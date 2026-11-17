@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import { initialsOf } from '@/lib/initials'
 
 // WEB-36: the parts every side panel is built from, so they read alike: a
 // tinted head that says what this is (a kicker, the big line, the facts
@@ -75,12 +76,7 @@ export function Fact({ label, children, missing }: { label: string; children?: R
 
 /** A small "who did it" line: initials, name, how and when. */
 export function ByLine({ name, detail }: { name?: string; detail: string }) {
-  const initials = (name ?? '?')
-    .split(/\s+/)
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
+  const initials = initialsOf(name)
   return (
     <div className="flex items-center gap-3">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold" aria-hidden="true">

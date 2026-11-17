@@ -24,6 +24,7 @@ import {
 import { cn } from '@/lib/utils'
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { Hint } from '@/components/hint'
 
 // NXT-02: Client billing › RA bills. A bill is made from the BOQ: work measured on each priced line (the site's own
 // WhatsApp updates) less what earlier bills already billed, at the client rate. The contract's retention, advance
@@ -41,6 +42,7 @@ export default function RaBillsPage() {
     <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
       <header className="flex items-center gap-3">
         <ModuleTitle icon={ReceiptText} title="RA bills" />
+        <Hint term="RA bill" example="Month 1: 30% of the work done. The bill asks for it at the BOQ rates, less retention and the advance's share." />
       </header>
       {!allowed ? (
         <NoAccess roles={BOOKS_PEOPLE} />
@@ -89,6 +91,13 @@ function ProjectBills({ projectId }: { projectId: string }) {
             {c ? [c.client_name ?? 'No client set', c.contract_value && `contract ${rupees(c.contract_value)}`,
               `retention ${Number(c.retention_pct ?? 0)}%`, c.mobilisation_advance && `advance ${rupees(c.mobilisation_advance)} (${Number(c.advance_recovery_pct ?? 0)}% a bill)`,
               `GST ${Number(c.gst_pct ?? 0)}%`, `TDS ${Number(c.tds_pct ?? 0)}%`].filter(Boolean).join(' · ') : 'No contract terms yet'}
+            {c && (
+              <Hint
+                className="ml-1"
+                title="How a bill is worked out"
+                text="The work done since the last bill, at the BOQ rates. Less retention (held until the defects period ends), less the advance's share, plus GST. The client then keeps TDS and pays the rest."
+              />
+            )}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -108,7 +117,7 @@ function ProjectBills({ projectId }: { projectId: string }) {
         <Skeleton className="h-48 w-full" />
       ) : list.data.length === 0 ? (
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" data-guide="ra.empty">
-          No bills yet
+          No bills yet. New RA bill counts the work done so far.
         </p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">

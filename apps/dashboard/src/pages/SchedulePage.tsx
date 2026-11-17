@@ -1,3 +1,4 @@
+import { Hint } from '@/components/hint'
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -145,12 +146,13 @@ function ScheduleView({ projectId }: { projectId: string }) {
   const pushedCount = s.activities.filter((a) => a.pushed_days > 0 && a.state !== 'done').length
 
   const stats: Stat[] = [
-    { label: 'Work done', value: s.summary.progress !== null ? `${s.summary.progress}%` : '—', icon: Gauge, hint: 'measured from site updates' },
-    { label: 'Late', value: counts.late ?? 0, tone: counts.late ? 'bad' : 'good', icon: AlertTriangle, hint: counts.behind ? `${counts.behind} more behind` : 'past their end day' },
-    { label: 'On track', value: (counts.on_track ?? 0) + (counts.done ?? 0), tone: 'good', icon: CheckCircle2, hint: `${counts.done ?? 0} finished` },
-    { label: 'Handover', value: shortDay(finishTarget, today), icon: CalendarCheck2, hint: s.summary.contract_finish ? 'contract date' : 'last planned day' },
+    { label: 'Work done', explain: { title: 'Work done', text: 'How much of the whole project is built, measured from the work the site reports against the BOQ, not from the calendar.' }, value: s.summary.progress !== null ? `${s.summary.progress}%` : '—', icon: Gauge, hint: 'measured from site updates' },
+    { label: 'Late', explain: { title: 'Late', text: 'Parts of the work that should have finished by today and have not.' }, value: counts.late ?? 0, tone: counts.late ? 'bad' : 'good', icon: AlertTriangle, hint: counts.behind ? `${counts.behind} more behind` : 'past their end day' },
+    { label: 'On track', explain: { title: 'On track', text: 'Parts of the work moving at the pace their dates need, and those already finished.' }, value: (counts.on_track ?? 0) + (counts.done ?? 0), tone: 'good', icon: CheckCircle2, hint: `${counts.done ?? 0} finished` },
+    { label: 'Handover', explain: { term: 'handover' }, value: shortDay(finishTarget, today), icon: CalendarCheck2, hint: s.summary.contract_finish ? 'contract date' : 'last planned day' },
     {
       label: 'Forecast finish',
+      explain: { title: 'Forecast finish', text: 'When the project will finish if work keeps going at the pace the site has reported so far. Later than handover means it is slipping.' },
       value: shortDay(s.summary.forecast_finish, today),
       tone: s.summary.slip_days > 0 ? 'bad' : s.summary.forecast_finish ? 'good' : 'default',
       icon: Clock,
@@ -177,7 +179,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
         <div className="flex flex-wrap items-center gap-2" data-guide="schedule.add">
           <Link to={`/planning/setup?project=${projectId}`} className="text-sm text-muted-foreground hover:text-foreground">{s.project.name}</Link>
           {canEdit && <Button variant="outline" className="gap-2" onClick={() => setImporting(true)}><ActionIcon kind="import-excel" className="size-4" /><span className="hidden sm:inline">BOQ from Excel</span></Button>}
-          {canEdit && s.activities.length > 0 && <Button variant="outline" className="gap-2" onClick={() => setQuick(true)}><ListOrdered className="size-4" /><span className="hidden sm:inline">Quick plan</span></Button>}
+          {canEdit && s.activities.length > 0 && undated.length !== s.activities.length && <Button variant="outline" className="gap-2" onClick={() => setQuick(true)}><ListOrdered className="size-4" /><span className="hidden sm:inline">Quick plan</span></Button>}
           {canEdit && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2.6} /> Activity</Button>}
         </div>
       </Heading>
@@ -196,6 +198,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
           ) : undated.length === s.activities.length ? (
             <Callout tone="info" icon={Rocket} action={canEdit && <Button size="sm" onClick={() => setQuick(true)} className="gap-1.5"><ListOrdered className="size-4" /> Quick plan</Button>}>
               {plural(undated.length, 'section')} from the BOQ, none with dates yet.
+              <Hint title="Quick plan" text="Puts the BOQ's sections one after another from the start date, each as long as its share of the work. Move any bar afterwards." />
             </Callout>
           ) : (
             <Callout tone="success" icon={CheckCircle2}>Everything is on time</Callout>
@@ -251,7 +254,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
                   onAddDates={(id) => select(id)}
                 />
                 <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1"><MessageCircle className="size-3.5" /> Fills from WhatsApp</span>
+                  <span className="inline-flex items-center gap-1"><MessageCircle className="size-3.5" /> Fills from site updates</span>
                   {canEdit && <span>Drag a bar to move it</span>}
                   {s.summary.conflicts > 0 && <span className="text-red-600">{plural(s.summary.conflicts, 'link')} broken by the dates (red dashed).</span>}
                   {(s.summary.issues_on_no_activity ?? 0) > 0 && (

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { CircleHelp, Pause, Volume2 } from 'lucide-react'
 import { useGuideVoice } from '@/components/guide-voice'
 import { glossaryTerm } from '@/lib/glossary'
@@ -13,6 +14,9 @@ import { voiceWords } from '@/lib/voice'
  * does. Shown to people who asked for explanations (new to construction, step by step, bringing data); hidden for
  * those who used other software or want no tips, who can still open Help.
  */
+/** The explanation's width. */
+const POP_W = 288
+
 export function Hint({
   term,
   title,
@@ -38,7 +42,56 @@ export function Hint({
   const eg = example ?? found?.example
   const [open, setOpen] = React.useState(false)
   const [pinned, setPinned] = React.useState(false)
+  const pinnedNow = React.useRef(false)
+  pinnedNow.current = pinned
   const box = React.useRef<HTMLSpanElement>(null)
+  const pop = React.useRef<HTMLSpanElement>(null)
+  const hoverable = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches
+  // Hover: the mouse crosses a small gap from the "?" to the explanation; a short grace keeps it open on the way.
+  const leaving = React.useRef<number | undefined>(undefined)
+  const enter = () => {
+    window.clearTimeout(leaving.current)
+    if (hoverable) setOpen(true)
+  }
+  const leave = () => {
+    if (!hoverable) return
+    window.clearTimeout(leaving.current)
+    leaving.current = window.setTimeout(() => { if (!pinnedNow.current) setOpen(false) }, 180)
+  }
+  // Drawn over the page (a portal), placed from the "?" and kept on screen: a box that clips what overflows it (a
+  // figures strip, a table) or a "?" at the screen's edge never cuts the explanation off (found 17 Nov on Schedule).
+  const [place, setPlace] = React.useState<{ left: number; top: number } | null>(null)
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setPlace(null)
+      return
+    }
+    const measure = () => {
+      const r = box.current?.getBoundingClientRect()
+      if (!r) return
+      const W = window.innerWidth
+      const H = window.innerHeight
+      const w = Math.min(POP_W, W - 16)
+      const h = pop.current?.offsetHeight ?? 160
+      const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), W - w - 8)
+      const below = r.bottom + 6
+      const top = side === 'top' || below + h > H - 8 ? Math.max(8, r.top - 6 - h) : below
+      setPlace({ left, top })
+    }
+    measure()
+    const frame = requestAnimationFrame(measure) // again once its height is known
+    const close = () => {
+      setOpen(false)
+      setPinned(false)
+    }
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open, side])
   const id = React.useId()
   const voice = useGuideVoice()
   const words = [heading, meaning, eg].filter(Boolean).join('. ')
@@ -47,7 +100,7 @@ export function Hint({
   React.useEffect(() => {
     if (!open) return
     const away = (e: Event) => {
-      if (box.current && !box.current.contains(e.target as Node)) {
+      if (box.current && !box.current.contains(e.target as Node) && !pop.current?.contains(e.target as Node)) {
         setOpen(false)
         setPinned(false)
       }
@@ -67,13 +120,12 @@ export function Hint({
   }, [open])
 
   if (!ready || !meaning || rules.words === null || rules.words === 'expert') return null
-  const hoverable = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches
   return (
     <span
       ref={box}
-      className={cn('relative inline-flex align-middle', className)}
-      onMouseEnter={() => hoverable && setOpen(true)}
-      onMouseLeave={() => hoverable && !pinned && setOpen(false)}
+      className={cn('inline-flex align-middle', className)}
+      onMouseEnter={enter}
+      onMouseLeave={leave}
     >
       <button
         type="button"
@@ -90,14 +142,15 @@ export function Hint({
       >
         <CircleHelp className="size-3.5" aria-hidden />
       </button>
-      {open && (
+      {open && place && createPortal(
         <span
           id={id}
           role="tooltip"
-          className={cn(
-            'absolute left-1/2 z-50 block w-72 max-w-[80vw] -translate-x-1/2 rounded-lg border bg-popover p-3 text-left text-sm font-normal normal-case tracking-normal text-popover-foreground shadow-lg',
-            side === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5',
-          )}
+          ref={pop}
+          onMouseEnter={enter}
+          onMouseLeave={leave}
+          style={{ position: 'fixed', left: place.left, top: place.top, width: POP_W }}
+          className="z-[70] block max-w-[calc(100vw-16px)] rounded-lg border bg-popover p-3 text-left text-sm font-normal normal-case tracking-normal text-popover-foreground shadow-lg"
         >
           <span className="block font-semibold">{heading}</span>
           <span className="mt-0.5 block text-foreground/85">{meaning}</span>
@@ -118,7 +171,8 @@ export function Hint({
             {speaking ? <Pause className="size-3.5" aria-hidden /> : <Volume2 className="size-3.5" aria-hidden />}
             {speaking ? 'Pause' : 'Listen'}
           </button>
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   )

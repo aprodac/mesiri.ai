@@ -77,6 +77,7 @@ import { useVoice } from '@/lib/voice'
 import { Spark, type SparkMood } from './spark'
 import { RIPPLE_CARD_MS, RIPPLE_END_MS, Ripple } from './ripple'
 import { appNow } from '@/lib/clock'
+import { initialsOf } from '@/lib/initials'
 
 // The company Live (WEB-53): every message the company sends Mesiri, on one
 // screen, as it happens, with Mesiri as a character (the Spark) seen
@@ -269,13 +270,7 @@ const isBill = (m: LiveFeedItem) => (m.kind === 'expense' || m.saved_kind === 'e
 const isPhoto = (m: LiveFeedItem) => /image|photo/.test(m.type)
 const clock = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''
-const initials = (name: string | null) =>
-  (name ?? '?')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join('') || '?'
+const initials = (name: string | null) => initialsOf(name)
 const short = (s: string | null | undefined, n = 140) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s ?? '')
 
 /** The viewer's day for `date` (YYYY-MM-DD). */

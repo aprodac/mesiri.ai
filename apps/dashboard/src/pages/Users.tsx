@@ -78,7 +78,8 @@ export default function Users() {
   const isActive = (u: User) => u.status === 'active' || u.status === 'invited'
   const active = users.filter(isActive)
   const inactive = users.length - active.length
-  const noWhatsApp = active.filter((u) => !u.whatsapp_number)
+  // The sample company has no phones by design (SS-66d): nothing there is missing a number.
+  const noWhatsApp = inSandbox() ? [] : active.filter((u) => !u.whatsapp_number)
   const roleCounts = ROLES.map((r) => ({ r, n: users.filter((u) => u.role === r && (show === 'active') === isActive(u)).length })).filter((x) => x.n > 0)
   const visible = users
     .filter((u) => (show === 'active') === isActive(u))
@@ -181,10 +182,12 @@ export default function Users() {
                       <FolderLock className="size-3.5 shrink-0" aria-hidden="true" />
                       <span className="truncate">{access.text}</span>
                     </span>
-                    <span className={cn('inline-flex items-center gap-1.5 tabular-nums', user.whatsapp_number ? 'text-muted-foreground' : 'text-draft')}>
-                      <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
-                      {user.whatsapp_number ? `+${user.whatsapp_number.replace(/^\+/, '')}` : 'No WhatsApp number'}
-                    </span>
+                    {!inSandbox() && (
+                      <span className={cn('inline-flex items-center gap-1.5 tabular-nums', user.whatsapp_number ? 'text-muted-foreground' : 'text-draft')}>
+                        <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
+                        {user.whatsapp_number ? `+${user.whatsapp_number.replace(/^\+/, '')}` : 'No WhatsApp number'}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {!readOnly && (

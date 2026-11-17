@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { ArrowUpDown, BrickWall, Droplet, Flame, Fuel, Package, PaintRoller, Zap } from 'lucide-react'
 import { api } from './api'
 import { appNow } from '@/lib/clock'
+import { initialsOf } from '@/lib/initials'
 
 // PRC-22: material requests -- what a site asks for, before anyone orders it. The shapes mirror
 // backend/src/mesiri/domains/procurement (requests.py describes a request; router.py the routes).
@@ -203,8 +204,7 @@ export function swatch(id: string): string {
 }
 
 export function initials(name: string | null | undefined): string {
-  const parts = (name || '?').trim().split(/\s+/)
-  return ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')).toUpperCase()
+  return initialsOf(name)
 }
 
 const DAY = 86_400_000

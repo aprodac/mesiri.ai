@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import type { User } from './api'
 import { fetchProjectMembers, fetchProjects } from './projects'
+import { initialsOf } from '@/lib/initials'
 
 // Shared by the Team list and a person's page (WEB-28).
 
@@ -53,10 +54,5 @@ export function projectAccessText(user: User, projectIds: string[], names: Map<s
 }
 
 export function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join('')
+  return initialsOf(name)
 }

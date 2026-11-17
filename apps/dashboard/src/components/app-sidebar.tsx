@@ -62,6 +62,7 @@ import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, sectionOrder, type
 import { openJump } from '@/lib/jump'
 import { usePlannedPreview } from '@/lib/preview'
 import { useShowEverything, useStartMode } from '@/lib/start-mode'
+import { initialsOf } from '@/lib/initials'
 
 type NavItem = {
   title: string
@@ -137,11 +138,6 @@ const NEW_ACTIONS: NewAction[] = [
   { key: 'project', label: 'Project', example: 'Lake View for Mr Thomas at Kakkanad, starts 1 Dec', starter: 'New project ', roles: ['ADMIN', 'PROJECT_MANAGER'] },
 ]
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
-}
 
 function roleLabel(role: string | undefined): string {
   if (!role) return ''
