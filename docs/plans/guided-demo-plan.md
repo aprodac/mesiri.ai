@@ -752,3 +752,77 @@ audio file) and the site photos (Tell Mesiri takes no photo; made-up photos look
 - Found on the way: Today's own "Next day" arrow (looking at a day) and this one (making a day pass) shared a name for
   screen readers; this one is now "Move the sample company on to the next day".
 
+
+## 21. Up to the BOQ, playable (SS-69 part 1, SS-72 first pieces, 17 Nov 2026)
+
+Asked 17 Nov: *"our focus right now is till BOQ, the role play thing working."* Chapters 2 and 3 of the guided project
+(`gv-setup`, `gv-boq` in `lib/walkthroughs.ts`) replace the generic "new project" walkthrough there:
+
+| Chapter | Step | The person does | Mesiri knows it is done when |
+|---|---|---|---|
+| Set up Green Villa | The office's turn | Opens Green Villa (the list is lit) | the page shows its steps |
+| | Your turn: the dates | Types 2 Nov 2026 and 31 Jul 2027 from the contract summary, Save dates | `GET /projects/{project}/start`: `steps.dates.done` |
+| | Your turn: the contract | "Set the client and contract", copies the summary | `steps.contract.done` |
+| | Your turn: the BOQ | Downloads the estimate from the bubble, uploads it, Import | `steps.boq.done` |
+| The BOQ | Four numbers | Reads them (3 lines unpriced, so no margin yet) | — |
+| | Quick check | Taps the line that loses money (the staircase) | the tap is on `boq.loss` |
+| | Your turn: count the site's work | "Add all suggested" (21 of 24) | `GET …/boq/work?unlinked`: at most 3 left |
+| | Your turn: which plastering? | Picks 4.1 Plastering for one, Add to line | at most 2 left |
+
+Each step is worded per kind of person (the beginner hears what a BOQ, retention and an advance are; the expert gets one
+line). Story: Green Villa has run two weeks without the office side (no dates, contract or BOQ): the owner sets it up.
+
+**The engine pieces (SS-72):** a check on what the API says (`has`, `rows`, `{project}`), a your-turn with no dialog
+(`poll`), a kit file in the bubble (`file`), "open this project" (`pick`), and the quick check (`ask`). Rules in
+`docs/engineering/LEARN_AND_TOURS.md`.
+
+**Found and fixed while playing it on the real app:**
+- The app tour ("Hi, I'm Mesiri") opened on top of the guided project inside the sample company (its people have seen no
+  tour): page tours no longer open by themselves there, and any walkthrough starting closes an open tour.
+- The guided project started in the plain words: it was fixed before the person's preferences had loaded after the
+  sample company opened. A walkthrough now waits for them (at most 4 s).
+- The bubble covered the project list it asked the person to pick from, and ran off the bottom of the screen once it
+  carried the voice player, chapter list and a file: it now lights the list while waiting for the pick, and is placed
+  by its measured height (scrolls inside if it ever needs to).
+- The kit's contract summary gave the advance as "10%"; the contract form asks rupees and a recovery %: it now says
+  ₹8,20,605 and 10% a bill, signed 20 Oct, work from 2 Nov 2026 to 31 Jul 2027.
+
+**Checked:** played start to finish in a browser against the real app and a real database, as someone new to
+construction (the beginner's words): every your-turn saved through the real dialogs, each moved on by itself, the quick
+check wrong then right. Not checked: phone width and dark mode for these two chapters; other kinds of person only through
+their words in the code.
+
+**Next (SS-69 part 2):** the schedule and the team; then "A day on site" in the sample company's own words (today it
+reuses the generic W1, which speaks of practice and Cancel).
+
+## 22. Handover (17 Nov 2026, session_016qPwVK, end of session)
+
+**Goal set by Ilan (17 Nov):** the role-play (guided project in the sample company) working end to end, **up to the BOQ
+first**. Tell Mesiri file/photo input is **not** a focus now. A mobile app is coming (DECISIONS.md): don't build
+WhatsApp-only assumptions.
+
+**Done and on main:** sandbox company per person (SS-66, §17), nothing in it reaches a phone (SS-66d), starter kit
+(SS-73, §19), role switch in the banner (SS-76, §20), chapters "Set up Green Villa" and "The BOQ" playable with the
+your-turn engine pieces (SS-69 part 1, SS-72 first pieces, §21). Another session owns the game clock (SS-74a..e).
+
+**Next, in order (claim the tracker row first):**
+1. **SS-69 part 2, finish "up to the BOQ":** the two remaining Project start steps for Green Villa, *Schedule* (Quick
+   plan from the BOQ's sections) and *Site team* (put Ravi on Green Villa; no phone numbers in a sandbox, migration 0557
+   refuses them, so the step must add an existing sandbox person to the project, not invite a number). Write them as a
+   chapter `gv-schedule-team` after `gv-boq` in `JOURNEY_CHAPTERS`, same pattern as `GV_SETUP` (`try: { kind: 'here',
+   poll: true, check: START_CHECK('schedule') }`, words per kind of person, `say` for the voice).
+2. **"A day on site" for the sample company:** today the chapter reuses the generic W1 (`site-to-report`), which talks
+   about practice and Cancel and is wrong inside a sandbox (nothing needs taking back; nothing is sent: §17.6 says the
+   chapter must say "in the sample company nothing is sent"). Write `gv-day` the same way. Coordinate with SS-74 (the
+   game clock plays the cast's entries).
+3. **Check what was not checked:** chapters 2–3 at phone width and in dark mode; the other kinds of person
+   (guided, bring_data, switching) through the e2e script (`scripts/learn_kit/e2e/`, README there).
+4. **SS-72 rest:** hints after ~30 s without progress, story choices, "done by you" per chapter and resume on Learn.
+   "Show me" needs SS-68 (claimed 16 Nov by session_014PnnwM, no code landed: ask before taking it).
+
+**How to verify a chapter:** `scripts/learn_kit/e2e/README.md` (real app + real Postgres + Playwright). Rules for
+writing steps: `docs/engineering/LEARN_AND_TOURS.md` (the sandbox chapter bullets). Dashboard checks:
+`npx tsc -b --noEmit && npx oxlint src/ && npx vite build` (the build checks every marker a step points at).
+
+**Open questions for Ilan (not blocking the above):** SS-73b voice notes/photos (on hold, not a focus); warm dark mode
+(mock-up first or build); UX-22 per-person Help/tours for the remaining ~40 pages (batches in story order).

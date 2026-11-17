@@ -17,9 +17,18 @@ export type WalkKind = 'role' | 'outcome' | 'workflow' | 'module' | 'page'
 
 /** Where a new record shows up, so the engine can say "Got it" when the practice is saved. */
 export interface WalkCheck {
-  /** An existing list route (GET), read before the practice and every few seconds after. */
+  /** An existing route (GET), read before the practice and every few seconds after. `{project}` is the project the
+   *  person has picked (the top bar's, or the one the walkthrough's page opened). */
   path: string
   params?: Record<string, string | number>
+  /** SS-72: the key that holds the rows, when the answer is not a list or `{ items }` (`work`, `sections`). */
+  rows?: string
+  /**
+   * SS-72: done when the answer says so, instead of when a new row appears: dotted paths into the answer, each with the
+   * value it must have, or `{ lte }` / `{ gte }` for a number. In a list, a part names the row by its `key` or `id`
+   * (`steps.contract.done`); `length` is how many rows. Already true when the step opens: done at once.
+   */
+  has?: Record<string, string | number | boolean | { lte?: number; gte?: number }>
 }
 
 /** A practice on WhatsApp: the person sends this message to Mesiri. */
@@ -38,6 +47,19 @@ export interface TryWhatsApp {
 export interface TryHere {
   kind: 'here'
   check?: WalkCheck
+  /** SS-72: the thing to do opens no dialog (a button that saves at once, a form on the page): the check is read
+   *  every few seconds while the step is open, and the step moves on by itself once it passes. */
+  poll?: boolean
+}
+
+/** SS-72: a quick check, answered by tapping the page. */
+export interface WalkAsk {
+  /** The marker of the right answer (a row, a figure); several separated by `|`. */
+  answer: string
+  /** Said when they tap it. */
+  right: string
+  /** Said when they tap something else; the light then moves to the answer. */
+  wrong: string
 }
 
 /** How to take a practice back (D-L3): WhatsApp words, the dashboard way, or both. */
@@ -54,6 +76,12 @@ export interface TakeBack {
 }
 
 export interface WalkStep extends TourStep {
+  /** SS-69: the project to open when the page first asks for one ("Open Green Villa from the list"). */
+  pick?: string
+  /** SS-72: a starter-kit file this step uses (public/learn/kit/<file>): the bubble offers it to download. */
+  file?: string
+  /** SS-72: a quick check: the person taps the answer on the page. */
+  ask?: WalkAsk
   /** Go to this page first; the engine navigates and waits for the step's target. A built page in module-map.ts. */
   page?: string
   try?: TryWhatsApp | TryHere
@@ -649,7 +677,131 @@ export const MODULE_WALKS: Walkthrough[] = MODULE_GROUPS.flatMap((group) => {
 })
 
 /** Every walkthrough made so far, for the ones made of others. */
-const made: Walkthrough[] = [...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS]
+// SS-69 part 1: the sample company's own chapters, up to the BOQ. Every "your turn" is done on the real page and
+// checked from what the API says afterwards (SS-72 `has`), never from where the person clicked. The figures are the
+// starter kit's (scripts/learn_kit/make_kit.py): the contract summary and the estimate.
+const KIT_CONTRACT = 'Green Villa - contract summary.pdf'
+const KIT_ESTIMATE = 'Green Villa - estimate.xlsx'
+const START_CHECK = (step: string) => ({ path: '/projects/{project}/start', has: { [`steps.${step}.done`]: true } })
+const WORK_LEFT = (n: number) => ({ path: '/projects/{project}/boq/work', params: { unlinked: 'true', limit: 500 }, rows: 'work', has: { 'work.length': { lte: n } } })
+
+const GV_SETUP: Walkthrough = {
+  id: 'gv-setup',
+  kind: 'workflow',
+  part: true,
+  sandbox: true,
+  title: 'Set up Green Villa',
+  about: 'The dates, the contract and the BOQ, from the paperwork, on Project start.',
+  minutes: 4,
+  roles: STARTERS,
+  steps: [
+    {
+      page: '/planning/setup', waitFor: ['setup.steps'], pick: 'Green Villa', mood: 'hello', file: KIT_CONTRACT,
+      title: "Green Villa: the office's turn",
+      text: 'Work started at Green Villa two weeks ago, but nobody set the project up in the office: no dates, no contract, no BOQ. You are the owner. Open Green Villa here; the contract summary has everything.',
+      say: 'Work at Green Villa started two weeks ago. But nobody set the project up in the office. No dates, no contract, no B O Q. You are the owner, so let us do it now. Open Green Villa. Everything you need is on the contract summary.',
+      for: {
+        basics: { text: 'Site work began two weeks ago, but the office side was never filled in: when the job starts and ends, what the client agreed to pay, and the list of work (the BOQ). Open Green Villa here; the contract summary has it all.' },
+        expert: { text: 'Green Villa is running without dates, a contract or a BOQ. Project start lists what is missing; the contract summary has the figures.' },
+      },
+    },
+    {
+      page: '/planning/setup', target: 'setup.dates', mood: 'think',
+      try: { kind: 'here', poll: true, check: START_CHECK('dates') },
+      title: 'Your turn: the dates',
+      text: 'From the contract summary: work starts 2 November 2026, handover 31 July 2027. Type them in and press Save dates.',
+      say: 'Your turn. From the contract summary: work starts on the second of November, and the handover is the thirty first of July, next year. Type them in, and press Save dates.',
+      for: { basics: { text: 'Two dates from the contract summary: work starts 2 November 2026, and the building is handed over 31 July 2027. Type them in and press Save dates. Every "late" Mesiri shows is measured against these.' } },
+    },
+    {
+      page: '/planning/setup', target: 'setup.contract', mood: 'think', file: KIT_CONTRACT,
+      try: { kind: 'here', poll: true, check: START_CHECK('contract') },
+      title: 'Your turn: the contract',
+      text: 'Press "Set the client and contract". Client: Dr. Anand Krishnan. Contract value ₹82,06,050, agreement GV/2026/007, signed 20 October 2026, retention 5%, advance ₹8,20,605, recovery 10% a bill, GST 18%, defects 12 months.',
+      say: 'Now the contract. Press, set the client and contract. The client is Doctor Anand Krishnan. Everything else is on the contract summary: the value, the advance, the retention and the defects period.',
+      for: {
+        basics: { text: 'The contract is what the client agreed to pay and how. Press "Set the client and contract" and copy from the summary: client Dr. Anand Krishnan, value ₹82,06,050, retention 5% (kept back until the defects period ends), advance ₹8,20,605 (paid at the start, taken back 10% from each bill), GST 18%, defects 12 months.' },
+        expert: { text: 'Client Dr. Anand Krishnan, ₹82,06,050, GV/2026/007, retention 5%, advance ₹8,20,605 recovered at 10%, GST 18%, DLP 12 months. RA bills read these.' },
+      },
+    },
+    {
+      page: '/planning/setup', target: 'setup.boq', mood: 'look', file: KIT_ESTIMATE,
+      try: { kind: 'here', poll: true, check: START_CHECK('boq') },
+      title: 'Your turn: the BOQ',
+      text: 'Download the estimate, then press "Upload the BOQ Excel" and pick it. I show you what I read before anything is saved: check it, then press Import.',
+      say: 'Last one: the B O Q. Download the estimate, press upload the B O Q Excel, and pick it. I show you what I read before anything is saved. Have a look, then press import.',
+      for: {
+        basics: { text: 'The BOQ is the list of every piece of work with its quantity and price, made before the job was won. Download the estimate, press "Upload the BOQ Excel" and pick it. I show you what I read first; then press Import.' },
+        data: { text: 'This is the step for your own Excel later. Download the estimate, press "Upload the BOQ Excel", check the columns I found and the lines I read, then press Import.' },
+      },
+    },
+    {
+      page: '/planning/setup', target: 'setup.steps', mood: 'happy',
+      title: 'Three done',
+      text: 'Each step ticked itself the moment it was saved: nobody marks anything done by hand. Now let us see what the BOQ tells you.',
+      say: 'Three done. Each step ticked itself the moment it was saved. Nobody marks anything done by hand. Now let us see what the B O Q tells you.',
+    },
+  ],
+}
+
+const GV_BOQ: Walkthrough = {
+  id: 'gv-boq',
+  kind: 'workflow',
+  part: true,
+  sandbox: true,
+  title: 'The BOQ',
+  about: 'What the estimate shows once it is in, and the site work that counts on it.',
+  minutes: 4,
+  roles: STARTERS,
+  steps: [
+    {
+      page: '/boq', target: 'boq.totals', waitFor: ['boq.lines'], pick: 'Green Villa', mood: 'look',
+      title: 'Green Villa in four numbers',
+      text: 'What the client pays, what it should cost you, the margin, and what the work done has earned. "Lines priced" says 3 lines have no cost yet, so the margin is not final.',
+      say: 'Green Villa in four numbers. What the client pays, what it should cost you, your margin, and what the work done has earned. Lines priced says three lines have no cost yet. So the margin is not final.',
+      for: {
+        basics: { text: 'The contract value is what the client pays for everything; the budget is what it should cost you; the margin is what you keep. "Lines priced" says 3 lines have no cost yet: the tiling and granite, waiting for the tiler\'s price.' },
+        expert: { text: 'Contract, budget, margin, earned. 3 lines unpriced (the tiling, for the subcontractor), so the margin is provisional.' },
+      },
+    },
+    {
+      page: '/boq', target: 'boq.lines', mood: 'think',
+      ask: {
+        answer: 'boq.loss',
+        right: 'Yes: the staircase. ₹7,900 from the client for each cubic metre, ₹8,200 to build it. Every cubic metre loses ₹300.',
+        wrong: 'Not that one. Look down the Margin column for red: it is the staircase.',
+      },
+      title: 'Quick check',
+      text: 'One line loses money on every unit it builds. Tap it.',
+      say: 'Quick check. One line loses money on every unit it builds. Can you find it? Tap it.',
+      for: { basics: { text: 'One line costs more to build than the client pays for it. Its margin is in red. Tap that line.' } },
+    },
+    {
+      page: '/boq', target: 'boq.addall', mood: 'think',
+      try: { kind: 'here', poll: true, check: WORK_LEFT(3) },
+      title: 'Your turn: count the site\'s work',
+      text: 'The site sent 24 pieces of work before this BOQ existed. I matched 21 to their lines by name and unit. Press "Add all suggested".',
+      say: 'Your turn. The site sent twenty four pieces of work before this B O Q existed. I matched twenty one of them to their lines. Press, add all suggested.',
+      for: { basics: { text: 'Before the BOQ was in, the site already reported work on WhatsApp ("18 sqm block work"). I found the line each one belongs to. Press "Add all suggested" and each line shows how far the site has got.' } },
+    },
+    {
+      page: '/boq', target: 'boq.pick', mood: 'think',
+      try: { kind: 'here', poll: true, check: WORK_LEFT(2) },
+      title: 'Your turn: which plastering?',
+      text: 'The site said "plastering". The BOQ has three plastering lines, so I did not guess. Pick 4.1 Plastering (inside walls) for one of them and press "Add to line".',
+      say: 'Your turn. The site said plastering, but the B O Q has three plastering lines. So I did not guess. Pick the inside plastering, line four point one, and press add to line.',
+      for: { expert: { text: 'Three plastering lines, so no suggestion. Pick 4.1 and Add to line.' } },
+    },
+    {
+      page: '/boq', target: 'boq.lines', mood: 'happy',
+      title: 'Green Villa is set up',
+      text: 'Dates, contract, BOQ, and the site\'s two weeks of work on their lines. From now on every update from site counts here by itself.',
+      say: 'Green Villa is set up. The dates, the contract, the B O Q, and two weeks of site work on their lines. From now on, every update from site counts here by itself.',
+    },
+  ],
+}
+
+const made: Walkthrough[] = [...WORKFLOWS, ...MODULE_WALKS, ...PAGE_WALKS, GV_SETUP, GV_BOQ]
 
 /** A walkthrough made of others, one after another (W2 = asking + ordering + delivery). An id that is not a
  *  walkthrough fails the build (vite.config.ts), so it is never silently left out here. */
@@ -727,7 +879,9 @@ export const ROLE_PATHS: Walkthrough[] = [
  *  journey works end to end from day one; a chapter with nothing to run yet (handover and closing) is left out. */
 export const JOURNEY_CHAPTERS: { title: string; walks: string[] }[] = [
   { title: 'Your sample company', walks: [] },
-  { title: 'Won: BOQ, schedule and team', walks: ['new-project'] },
+  // SS-69 part 1 (17 Nov: "our focus is till BOQ, the role play working"): the person does it, Mesiri checks it.
+  { title: 'Set up Green Villa', walks: ['gv-setup'] },
+  { title: 'The BOQ', walks: ['gv-boq'] },
   { title: 'A day on site', walks: ['site-to-report'] },
   { title: 'Material', walks: ['material'] },
   { title: 'Labour and wages', walks: ['labour-to-wages'] },

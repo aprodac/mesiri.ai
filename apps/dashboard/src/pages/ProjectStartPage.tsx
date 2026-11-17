@@ -202,14 +202,14 @@ function StepCard({
     dates: null,
     contract: mayBill(me?.role) ? (
       <>
-        <Button size="sm" variant={step.done ? 'outline' : 'default'} onClick={() => setContractOpen(true)} className="gap-1.5"><ScrollText className="size-4" /> {step.done ? 'Contract terms' : 'Set the client and contract'}</Button>
+        <Button size="sm" variant={step.done ? 'outline' : 'default'} onClick={() => setContractOpen(true)} className="gap-1.5" data-guide="setup.contract"><ScrollText className="size-4" /> {step.done ? 'Contract terms' : 'Set the client and contract'}</Button>
         {step.done && <Button size="sm" variant="ghost" asChild><Link to={`/billing/ra-bills?project=${projectId}`}>RA bills <ArrowRight className="size-3.5" /></Link></Button>}
         <ContractDialog projectId={projectId} open={contractOpen} onOpenChange={setContractOpen} />
       </>
     ) : <span className="text-xs text-muted-foreground">Set by the owner, an admin or finance.</span>,
     boq: (
       <>
-        {canEdit && <Button size="sm" variant={step.done ? 'outline' : 'default'} onClick={onImport} className="gap-1.5"><FileSpreadsheet className="size-4" /> {step.done ? 'Import more' : 'Upload the BOQ Excel'}</Button>}
+        {canEdit && <Button size="sm" variant={step.done ? 'outline' : 'default'} onClick={onImport} className="gap-1.5" data-guide="setup.boq"><FileSpreadsheet className="size-4" /> {step.done ? 'Import more' : 'Upload the BOQ Excel'}</Button>}
         {step.done && <Button size="sm" variant="ghost" asChild><Link to={`/projects/${projectId}/boq`}>Open the BOQ <ArrowRight className="size-3.5" /></Link></Button>}
       </>
     ),
@@ -241,7 +241,7 @@ function StepCard({
         <p className="text-xs text-foreground/60">{WHY[step.key]}</p>
         {step.key === 'dates' ? (
           canEdit ? (
-            <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); onDates({ start_date: startDate || undefined, planned_finish: finish || undefined }) }}>
+            <form className="flex flex-wrap items-end gap-2" data-guide="setup.dates" onSubmit={(e) => { e.preventDefault(); onDates({ start_date: startDate || undefined, planned_finish: finish || undefined }) }}>
               <div className="flex flex-col gap-1"><Label htmlFor="ps-start" className="text-xs">Work starts</Label><Input id="ps-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" /></div>
               <div className="flex flex-col gap-1"><Label htmlFor="ps-finish" className="text-xs">Handover (contract)</Label><Input id="ps-finish" type="date" value={finish} min={startDate || undefined} onChange={(e) => setFinish(e.target.value)} className="w-40" /></div>
               <Button size="sm" type="submit" disabled={saving || (!startDate && !finish) || (startDate === (data.project.start_date ?? '') && finish === (data.project.planned_finish ?? ''))}>Save dates</Button>

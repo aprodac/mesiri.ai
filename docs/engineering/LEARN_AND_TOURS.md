@@ -92,6 +92,16 @@ step's words in another place.
   `chapter` by hand: `journey()` does it, and the bubble's chapter list reads it.
 - A walkthrough with `sandbox: true` runs **only inside the person's sample company** (`lib/sandbox.ts`): what is saved
   there stays, so it needs no take-back. Never mark one that saves into the real company.
+- **"Your turn" in a sandbox chapter** (SS-72): the step's `target` is the real control and `try: { kind: 'here',
+  poll: true, check }` waits for the *result*, read from the API, never for a click: `check.has` names what the answer must
+  say (`{ 'steps.contract.done': true }`, `{ 'work.length': { lte: 3 } }`; in a list a part names a row by its `key` or
+  `id`), `check.rows` the key holding the rows, and `{project}` in `check.path` is the picked project. Already true
+  when the step opens: it passes at once. `file:` offers a starter-kit file in the bubble; `pick:` names the project to
+  open when the page asks for one ("Open Green Villa from the list"; the list is lit and the bubble sits beside it).
+- **A quick check** (SS-72): `ask: { answer, right, wrong }`, the answer a `data-guide` marker (the build checks it).
+  The bubble docks in the corner with nothing dimmed until they tap; a wrong tap lights the answer.
+- **Inside the sample company no page tour opens by itself** (the guided project does the showing); Help's "Show me
+  around" still plays one. Starting any walkthrough closes an open tour.
 - **"Today" comes from one clock** (SS-74a): a sample company lives on its own date. In the dashboard use `appNow()`
   from `lib/clock.ts`, never a bare `new Date()` (the build fails on one); in the backend and the assistant use
   `clock.today()` / `clock.at(...)` from `mesiri.domains.shared.clock`, never `date.today()` (a test fails on one).
