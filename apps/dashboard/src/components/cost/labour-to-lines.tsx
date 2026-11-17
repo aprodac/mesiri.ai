@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { X } from 'lucide-react'
+import { HardHat, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -52,21 +52,37 @@ export function LabourGroupRow({
 
   return (
     <li className="flex flex-col gap-2 px-3 py-2.5">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-        <div className="min-w-0">
-          <p className="font-medium capitalize">{who}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatDay(group.date)}
-            {group.site_name ? ` · ${group.site_name}` : ''} ·{' '}
-            <span className="tabular-nums">
-              {formatQuantity(group.man_days)} man-days{group.cost ? ` · ${formatRupees(group.cost)}` : ' · no wage'}
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400" aria-hidden>
+          <HardHat className="size-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium capitalize">{who}</span>
+            <span className="text-xs text-muted-foreground">
+              {formatDay(group.date)}
+              {group.site_name ? ` · ${group.site_name}` : ''}
             </span>
-            {group.activities.length > 0 && <> · said: {group.activities.join(', ')}</>}
+            {group.auto && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-info-soft px-1.5 py-px text-[11px] font-semibold text-info" title="Put on these lines by Mesiri from the work measured that day">
+                <Sparkles className="size-3" aria-hidden /> Mesiri's pick
+              </span>
+            )}
+            {group.over_allocated && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-draft-soft px-1.5 py-px text-[11px] font-semibold text-draft" title="Attendance changed after the split">
+                <TriangleAlert className="size-3" aria-hidden /> Check split
+              </span>
+            )}
           </p>
+          {group.activities.length > 0 && <p className="truncate text-xs text-muted-foreground italic">“{group.activities.join(', ')}”</p>}
         </div>
-        {Number(left) > 0 && Number(left) < Number(group.man_days) && (
-          <span className="text-xs text-muted-foreground tabular-nums">{formatQuantity(left)} man-days left</span>
-        )}
+        <span className="shrink-0 text-right text-xs tabular-nums">
+          <span className="font-semibold">{group.cost ? formatRupees(group.cost) : <span className="text-draft">no wage</span>}</span>
+          <span className="block text-muted-foreground">
+            {Number(left) > 0 && Number(left) < Number(group.man_days) ? `${formatQuantity(left)} of ` : ''}
+            {formatQuantity(group.man_days)} md
+          </span>
+        </span>
       </div>
 
       {group.on_lines.length > 0 && (
@@ -92,20 +108,10 @@ export function LabourGroupRow({
           ))}
         </ul>
       )}
-      {group.auto && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>Put on these lines by Mesiri from the work measured that day.</span>
-          {!readOnly && (
-            <Button size="sm" variant="outline" className="h-7" disabled={saving} onClick={() => onSave(current)}>
-              Confirm
-            </Button>
-          )}
-        </div>
-      )}
-      {group.over_allocated && (
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          Attendance changed after the split: check it.
-        </p>
+      {group.auto && !readOnly && (
+        <Button size="sm" variant="outline" className="h-7 w-fit" disabled={saving} onClick={() => onSave(current)}>
+          Confirm Mesiri's pick
+        </Button>
       )}
 
       {!readOnly && Number(left) > 0 && (

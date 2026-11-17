@@ -931,8 +931,9 @@ export const PAGE_TOURS: Record<string, Tour> = {
     steps: [
       { target: 'project.pick', title: 'Pick a project', text: 'This page works on one project at a time. Pick it here, or in the bar at the top.' },
       { target: 'budget.empty', title: 'Start with a BOQ', text: 'This project has no BOQ yet. Open it and bring the estimate Excel.', mood: 'think' },
+      { target: 'budget.totals', title: 'The project at a glance', text: 'Budget, earned, spent, and how far under or over. Green is under, red is over.', mood: 'look' },
       { target: 'budget.kinds', title: 'Labour, materials, subcontract', text: 'For each: the budget, what the work done earned, what was spent, and how far over or under.', mood: 'look' },
-      { target: 'budget.lines', title: 'Every BOQ line', text: 'Planned, done and left; the budget, what it earned, and the labour spent on it.' },
+      { target: 'budget.lines', title: 'Every BOQ line', text: 'The bar is how much is done. Then its budget, what it earned, and the labour on it: green under, red over.' },
       { target: 'budget.labour', title: 'Labour to check', text: 'Attendance on no BOQ line, or split by me from the day\'s work. Confirm it, or pick the line they worked on.', mood: 'think' },
       { target: 'app.whatsapp', title: 'On WhatsApp', text: '"Budget against spent for Green Villa?" or "Put today\'s 6 masons on ground-floor brickwork".', mood: 'happy' },
     ],
