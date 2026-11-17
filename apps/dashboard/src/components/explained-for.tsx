@@ -13,7 +13,8 @@ import { cn } from '@/lib/utils'
  * would you like to start?"), wherever a person may want to: the Help panel, Learn, the sample company's banner.
  * It changes the words of help, tours and the guided project at once; never what the person may see or do.
  */
-export function ExplainedFor({ className, guide }: { className?: string; guide?: string }) {
+/** `compact` (the sample company's banner, UX-31): the icon and who it is explained for, the words on hover. */
+export function ExplainedFor({ className, guide, compact = false }: { className?: string; guide?: string; compact?: boolean }) {
   const mode = useStartMode()
   const save = useSetStartMode()
   const toast = useToast()
@@ -21,9 +22,16 @@ export function ExplainedFor({ className, guide }: { className?: string; guide?:
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="outline" className={cn('gap-1.5 bg-background', className)} disabled={save.isPending} data-guide={guide}>
+        <Button
+          size="sm"
+          variant={compact ? 'ghost' : 'outline'}
+          className={cn('gap-1.5', !compact && 'bg-background', className)}
+          disabled={save.isPending}
+          data-guide={guide}
+          title={compact ? `Explained for: ${mode.rules.forWho}` : undefined}
+        >
           {save.isPending ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <UserRound className="size-3.5" aria-hidden />}
-          <span className="text-muted-foreground">Explained for</span>
+          {!compact && <span className="text-muted-foreground">Explained for</span>}
           <span className="font-medium">{mode.rules.forWho}</span>
           <ChevronDown className="size-3.5" aria-hidden />
         </Button>
