@@ -3,7 +3,7 @@ import { MONEY_PEOPLE } from '@/lib/permissions'
 import { ActionButton, ActionIcon, ActionMenuItem, NoAccess } from '@/components/page/page-kit'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Calculator, ClipboardCheck, ChevronRight, MoreHorizontal, Package, Plus } from 'lucide-react'
+import { ArrowRight, TriangleAlert, Calculator, ClipboardCheck, ChevronRight, MoreHorizontal, Package, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -274,94 +274,190 @@ function SectionTable({
   }
   // A section whose lines carry no BOQ codes gives the No. column nothing to show: it is left out.
   const hasCodes = section.lines.some((l) => l.boq_code)
+  // UX-20: the Value cell's faint bar is the line's share of its section, so the big lines show before any reading.
+  const sectionValue = Math.max(...section.lines.map((l) => Number(l.contract_value ?? 0)), 0)
   return (
-    <div className="overflow-x-auto rounded-lg border [contain:inline-size]" data-guide="boq.lines">
-      <table className="w-full min-w-[880px] text-sm">
+    <div data-guide="boq.lines">
+    {/* UX-20: on a phone each line is a card (nothing scrolls sideways); from md the table. */}
+    <ul className="divide-y rounded-lg border md:hidden">
+      {section.lines.map((line) => (
+        <LineCard key={line.id} line={line} readOnly={readOnly} onEdit={onEdit} onNorms={onNorms} onDelete={onDelete} />
+      ))}
+      <li className="flex items-center justify-between gap-3 bg-muted/30 px-3 py-2.5 text-sm">
+        <span className="font-semibold">Section total</span>
+        <span className="flex items-center gap-3 tabular-nums">
+          <span className="font-semibold"><Money value={section.totals.contract_value} /></span>
+          <MarginCell margin={section.totals.margin} contract={section.totals.contract_value} />
+        </span>
+      </li>
+    </ul>
+    <div className="hidden overflow-x-auto rounded-lg border [contain:inline-size] md:block">
+      {/* Fixed widths, so every section's columns line up down the page. */}
+      <table className="w-full min-w-[820px] table-fixed text-sm">
+        <colgroup>
+          {hasCodes && <col className="w-14" />}
+          <col className="w-[27%]" />
+          <col className="w-[29%]" />
+          <col className="w-[15%]" />
+          <col className="w-[13%]" />
+          <col className="w-[12%]" />
+          {!readOnly && <col className="w-10" />}
+        </colgroup>
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
             {hasCodes && <th className="px-3 py-2 text-left font-medium">No.</th>}
             <th className="px-3 py-2 text-left font-medium">Work</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)}>Quantity</th>
-            <th className="px-3 py-2 text-left font-medium">Done</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)} title="What the client pays per unit, and what it should cost you">Rate · cost</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)}>Contract value</th>
-            <th className={cn('px-3 py-2 font-medium', NUM)} title="The budget the work done so far has earned">Earned</th>
+            <th className="px-3 py-2 text-left font-medium">Progress</th>
+            <th className={cn('px-3 py-2 font-medium', NUM)} title="What the client pays per unit, and what it should cost you">Rate per unit</th>
+            <th className={cn('border-l px-3 py-2 font-medium', NUM)}>Value</th>
             <th className={cn('px-3 py-2 font-medium', NUM)}>Margin</th>
             {!readOnly && <th className="w-10" aria-label="Actions" />}
           </tr>
         </thead>
         <tbody className="divide-y">
           {section.lines.map((line) => {
-            const pct = marginPct(line.margin, line.contract_value)
+            const value = Number(line.contract_value ?? 0)
             return (
               <tr key={line.id}>
-                {hasCodes && <td className="px-3 py-2.5 align-top text-muted-foreground tabular-nums">{line.boq_code ?? ''}</td>}
-                <td className="px-3 py-2.5">
+                {hasCodes && <td className="px-3 py-3 align-top text-muted-foreground tabular-nums">{line.boq_code ?? ''}</td>}
+                <td className="px-3 py-3">
                   <span className="font-medium">{line.work}</span>
                   {line.revision_no > 1 && <span className="ml-2 text-xs text-muted-foreground">rev {line.revision_no}</span>}
                   <MaterialsNote line={line} readOnly={readOnly} onNorms={() => onNorms(line)} />
                 </td>
-                <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}>
-                  {formatQuantity(line.planned_quantity)} <span className="text-muted-foreground">{line.unit}</span>
+                <td className="px-3 py-3">
+                  <ProgressCell line={line} />
                 </td>
-                <td className="px-3 py-2.5">
-                  <DoneCell line={line} />
-                </td>
-                <td
-                  className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}
-                  title={[line.labour_rate && `Labour ₹${line.labour_rate}`, line.material_rate && `Material ₹${line.material_rate}`, line.subcontract_rate && `Subcontract ₹${line.subcontract_rate}`].filter(Boolean).join(' + ')}
-                >
-                  <div>{formatRupees(line.client_rate)}</div>
+                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)} title={costParts(line)}>
+                  <div>
+                    {formatRupees(line.client_rate)}
+                    <span className="text-xs text-muted-foreground"> /{line.unit}</span>
+                  </div>
                   <div className="text-xs text-muted-foreground">cost {formatRupees(line.budget_rate)}</div>
                 </td>
-                <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}>
+                <td className={cn('border-l px-3 py-3 whitespace-nowrap', NUM)}>
                   <Money value={line.contract_value} title={line.budget_cost ? `budget cost ${formatRupees(line.budget_cost)}` : undefined} />
+                  {sectionValue > 0 && value > 0 && (
+                    <div className="mt-1 ml-auto h-1 w-16 overflow-hidden rounded-full bg-muted" title="Its size against the biggest line in this section" aria-hidden>
+                      <div className="ml-auto h-full rounded-full bg-foreground/25" style={{ width: `${Math.max((value / sectionValue) * 100, 4)}%` }} />
+                    </div>
+                  )}
                 </td>
-                <td
-                  className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}
-                  title={[line.earned_labour && `Labour ₹${line.earned_labour}`, line.earned_material && `Material ₹${line.earned_material}`, line.earned_subcontract && `Subcontract ₹${line.earned_subcontract}`].filter(Boolean).join(' + ')}
-                >
-                  {Number(line.done_quantity) > 0 ? formatRupeesShort(line.earned) : <span className="text-muted-foreground">—</span>}
-                </td>
-                <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM, marginClass(line.margin, line.contract_value))}>
-                  <Money value={line.margin} />
-                  {pct !== null && <div className="text-xs font-normal opacity-80">{pct < 0 ? `−${-pct}` : pct}%</div>}
+                <td className={cn('px-3 py-3 whitespace-nowrap', NUM)}>
+                  <MarginCell margin={line.margin} contract={line.contract_value} />
                 </td>
                 {!readOnly && (
                   <td className="px-1 py-1">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${line.work}`}>
-                          <MoreHorizontal className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <ActionMenuItem kind="edit" onClick={() => onEdit(line)} />
-                        <DropdownMenuItem onClick={() => onNorms(line)}>
-                          <Package className="mr-2 size-3.5" /> Materials per {line.unit}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <ActionMenuItem kind="delete" onClick={() => onDelete(line)} />
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <LineMenu line={line} onEdit={onEdit} onNorms={onNorms} onDelete={onDelete} />
                   </td>
                 )}
               </tr>
             )
           })}
         </tbody>
-        <tfoot className="border-t bg-muted/30 text-sm">
+        <tfoot className="border-t-2 border-foreground/15 bg-muted/30 text-sm">
           <tr>
-            <td className="px-3 py-2" colSpan={hasCodes ? 5 : 4}>
-              <span className="font-medium">Section total</span>
+            <td className="px-3 py-2.5" colSpan={hasCodes ? 2 : 1}>
+              <span className="font-semibold">Section total</span>
             </td>
-            <td className={cn('px-3 py-2 font-semibold whitespace-nowrap', NUM)}><Money value={section.totals.contract_value} /></td>
-            <td className={cn('px-3 py-2 font-semibold whitespace-nowrap', NUM)}><Money value={section.totals.earned ?? null} /></td>
-            <td className={cn('px-3 py-2 whitespace-nowrap', NUM, marginClass(section.totals.margin, section.totals.contract_value))}><Money value={section.totals.margin} /></td>
+            <td className="px-3 py-2.5 text-xs text-muted-foreground tabular-nums">
+              {Number(section.totals.earned ?? 0) > 0 && <><Money value={section.totals.earned ?? null} /> earned</>}
+            </td>
+            <td />
+            <td className={cn('border-l px-3 py-2.5 font-semibold whitespace-nowrap', NUM)}><Money value={section.totals.contract_value} /></td>
+            <td className={cn('px-3 py-2.5 whitespace-nowrap', NUM)}><MarginCell margin={section.totals.margin} contract={section.totals.contract_value} /></td>
             {!readOnly && <td />}
           </tr>
         </tfoot>
       </table>
+    </div>
+    </div>
+  )
+}
+
+type LineActions = { onEdit: (line: BoqLine) => void; onNorms: (line: BoqLine) => void; onDelete: (line: BoqLine) => void }
+
+/** A line's ⋯ menu, the same in the table and on a phone's card. */
+function LineMenu({ line, onEdit, onNorms, onDelete }: { line: BoqLine } & LineActions) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${line.work}`}>
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <ActionMenuItem kind="edit" onClick={() => onEdit(line)} />
+        <DropdownMenuItem onClick={() => onNorms(line)}>
+          <Package className="mr-2 size-3.5" /> Materials per {line.unit}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <ActionMenuItem kind="delete" onClick={() => onDelete(line)} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/** One BOQ line on a phone: name and margin on top, progress, then rate and value in one muted line. */
+function LineCard({ line, readOnly, ...actions }: { line: BoqLine; readOnly: boolean } & LineActions) {
+  return (
+    <li className="flex flex-col gap-2 px-3 py-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {line.boq_code && <span className="mr-1.5 text-muted-foreground tabular-nums">{line.boq_code}</span>}
+          <span className="font-medium">{line.work}</span>
+          <MaterialsNote line={line} readOnly={readOnly} onNorms={() => actions.onNorms(line)} />
+        </div>
+        <div className="flex shrink-0 items-start gap-1">
+          <MarginCell margin={line.margin} contract={line.contract_value} />
+          {!readOnly && <LineMenu line={line} {...actions} />}
+        </div>
+      </div>
+      <ProgressCell line={line} />
+      <p className="text-xs text-muted-foreground tabular-nums" title={costParts(line)}>
+        {formatRupees(line.client_rate)} /{line.unit} · cost {formatRupees(line.budget_rate)} · value{' '}
+        <span className="font-medium text-foreground"><Money value={line.contract_value} /></span>
+      </p>
+    </li>
+  )
+}
+
+/** "Labour ₹260 + Material ₹210": what the budget rate is made of, for the rate cell's hover. */
+function costParts(line: BoqLine): string {
+  return [
+    line.labour_rate && `Labour ${formatRupees(line.labour_rate)}`,
+    line.material_rate && `Material ${formatRupees(line.material_rate)}`,
+    line.subcontract_rate && `Subcontract ${formatRupees(line.subcontract_rate)}`,
+  ].filter(Boolean).join(' + ')
+}
+
+/** Margin led by its %: plain ink when healthy; an orange pill when thin, a red one with a warning icon when a loss
+ *  (colour only for what needs you, DESIGN.md section 3; the icon keeps a loss readable without colour). */
+function MarginCell({ margin, contract }: { margin: string | null; contract: string | null }) {
+  if (margin === null) return <span className="text-muted-foreground">—</span>
+  const pct = marginPct(margin, contract)
+  const loss = Number(margin) < 0
+  const thin = !loss && pct !== null && pct < THIN_MARGIN
+  const label = pct === null ? null : `${pct < 0 ? `−${-pct}` : pct}%`
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      {label && (
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 font-semibold',
+            (loss || thin) && 'rounded-full px-2 py-0.5 text-xs',
+            loss && 'bg-destructive/10 text-destructive',
+            thin && 'bg-draft-soft text-draft',
+          )}
+          title={loss ? 'This line loses money' : thin ? `Thin margin: under ${THIN_MARGIN}%` : undefined}
+        >
+          {loss && <TriangleAlert className="size-3" aria-hidden />}
+          {loss ? `Loss ${label}` : label}
+        </span>
+      )}
+      <span className={cn('text-xs', loss ? 'text-destructive' : 'text-muted-foreground')}>
+        <Money value={margin} />
+      </span>
     </div>
   )
 }
@@ -383,7 +479,7 @@ function SectionSummary({ section }: { section: BoqSection }) {
           <span aria-hidden>·</span>
           <span className="inline-flex items-center gap-1.5" title="Budget earned by the work done">
             <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <span className="block h-full rounded-full bg-info" style={{ width: `${Math.min(done, 100)}%` }} />
+              <span className="block h-full rounded-full bg-foreground/55" style={{ width: `${Math.min(done, 100)}%` }} />
             </span>
             {done}% done
           </span>
@@ -411,9 +507,8 @@ function MaterialsNote({ line, readOnly, onNorms }: { line: BoqLine; readOnly: b
   }
   const text = line.materials.map((m) => `${m.material} ${formatQuantity(m.quantity_per_unit)} ${m.unit}`).join(' · ')
   return (
-    <button type="button" disabled={readOnly} className="mt-0.5 flex items-start gap-1 text-left text-xs text-muted-foreground enabled:hover:text-foreground" onClick={onNorms} title="Materials per unit of this work">
-      <Package className="mt-px size-3 shrink-0" aria-hidden />
-      <span>{text} <span className="whitespace-nowrap">per {line.unit}</span></span>
+    <button type="button" disabled={readOnly} className="mt-0.5 block text-left text-xs text-muted-foreground enabled:hover:text-foreground" onClick={onNorms} title="Materials per unit of this work">
+      {text} <span className="whitespace-nowrap">per {line.unit}</span>
     </button>
   )
 }
@@ -442,25 +537,38 @@ function ScheduleOnly({ sections, readOnly, onAdd }: { sections: BoqSection[]; r
   )
 }
 
-function DoneCell({ line }: { line: BoqLine }) {
+/** Work done on the line and the budget it earned, in one cell (UX-20): the bar is ink while under way, green when
+ *  the line is finished, orange when more was done than planned. */
+function ProgressCell({ line }: { line: BoqLine }) {
   const done = Number(line.done_quantity)
-  const pct = Math.min(Number(line.percent_done ?? 0), 100)
+  const pct = Math.round(Number(line.percent_done ?? 0))
+  const finished = !line.over_planned && pct >= 100
   return (
-    <div className="flex min-w-[120px] flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       <span className="tabular-nums whitespace-nowrap">
         {done > 0 ? (
           <>
             {formatQuantity(line.done_quantity)} <span className="text-muted-foreground">of {formatQuantity(line.planned_quantity)} {line.unit} · </span>
-            <span className="font-medium">{Math.round(Number(line.percent_done ?? 0))}%</span>
+            <span className={cn('font-medium', line.over_planned && 'text-draft', finished && 'text-success')}>{pct}%</span>
           </>
         ) : (
-          <span className="text-muted-foreground">Not started</span>
+          <span className="text-muted-foreground">
+            Not started · {formatQuantity(line.planned_quantity)} {line.unit}
+          </span>
         )}
       </span>
-      {done > 0 && (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
-          <div className={cn('h-full rounded-full', line.over_planned ? 'bg-draft' : 'bg-info')} style={{ width: `${pct}%` }} />
-        </div>
+      <div className="h-1.5 w-full max-w-[260px] overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        {done > 0 && (
+          <div
+            className={cn('h-full rounded-full', line.over_planned ? 'bg-draft' : finished ? 'bg-success' : 'bg-foreground/55')}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        )}
+      </div>
+      {done > 0 && line.earned !== null && (
+        <span className="text-xs text-muted-foreground tabular-nums" title="The budget the work done so far has earned">
+          <Money value={line.earned} /> earned of <Money value={line.budget_cost} />
+        </span>
       )}
       {line.over_planned && <span className="text-xs font-medium text-draft">More than planned</span>}
       {line.done_in_other_unit > 0 && (
