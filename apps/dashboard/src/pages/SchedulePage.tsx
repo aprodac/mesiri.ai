@@ -23,7 +23,7 @@ import {
 } from '@/lib/schedule'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleHeader } from '@/components/page/module-header'
 import { ActionIcon } from '@/components/page/action-button'
 
 // ST-04: Planning › Schedule. The project's Gantt: what should happen when, what site has actually done (measured
@@ -49,10 +49,7 @@ export default function SchedulePage() {
 
 function Heading({ children, chip }: { children?: React.ReactNode; chip?: React.ReactNode }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <ModuleTitle icon={CalendarRange} title="Schedule" chip={chip} />
-      {children}
-    </header>
+    <ModuleHeader icon={CalendarRange} title="Schedule" chip={chip}>{children}</ModuleHeader>
   )
 }
 

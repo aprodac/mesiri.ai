@@ -9,7 +9,8 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Callout, EmptyState, KpiStrip, Legend, ModuleTitle, NoAccess, PageError, Segmented, type KpiItem } from '@/components/page/page-kit'
+import { Callout, EmptyState, KpiStrip, Legend, NoAccess, PageError, Segmented, type KpiItem } from '@/components/page/page-kit'
+import { ModuleHeader } from '@/components/page/module-header'
 import { NewOrderDialog, type OrderPrefill } from '@/components/orders/new-order-dialog'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { useAuth } from '@/lib/AuthContext'
@@ -130,12 +131,7 @@ function OrderButton({ u, row, onOrder, className }: { u: Urgency; row: Material
 // ---- Page ------------------------------------------------------------------------------------------------------
 
 function Heading({ controls }: { controls?: React.ReactNode }) {
-  return (
-    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card px-4 py-3.5 sm:px-5">
-      <ModuleTitle icon={PackageSearch} title="Material plan" />
-      {controls}
-    </header>
-  )
+  return <ModuleHeader icon={PackageSearch} title="Material plan">{controls}</ModuleHeader>
 }
 
 export default function MaterialPlanPage() {

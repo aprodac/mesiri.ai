@@ -11,7 +11,8 @@ import { DraftBoq, DraftSchedule } from '@/components/drawings/drafts'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
-import { ModuleTitle, NoAccess } from '@/components/page/page-kit'
+import { NoAccess } from '@/components/page/page-kit'
+import { ModuleHeader } from '@/components/page/module-header'
 
 // DR-04: Planning › Drawing check. Drop the architect's PDF: Mesiri reads its own text (title blocks, levels, room
 // sizes, fixtures) in a second and lists what to ask the architect before the drawing reaches site, such as an area
@@ -72,9 +73,7 @@ export default function DrawingCheckPage() {
 
   return (
     <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
-      <header className="flex items-center gap-3">
-        <ModuleTitle icon={FileSearch} title="Drawing check" />
-      </header>
+      <ModuleHeader icon={FileSearch} title="Drawing check" />
 
       <button
         type="button"

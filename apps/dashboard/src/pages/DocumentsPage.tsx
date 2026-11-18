@@ -1,14 +1,15 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, CalendarClock, FileText, Lock, MapPinned, Search, Upload } from 'lucide-react'
+import { Archive, CalendarClock, FileText, FolderOpen, Lock, MapPinned, Search, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, PageError, PageHeader } from '@/components/dpr-page'
+import { Callout, PageError } from '@/components/dpr-page'
+import { ModuleHeader } from '@/components/page/module-header'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import {
   archiveDocument, DISCIPLINE_NAMES, documentError, fetchDocument, fetchDocuments, fileSize, FOLDER_NAMES, FOLDER_ORDER,
@@ -36,7 +37,7 @@ export default function DocumentsPage() {
   if (!projectId) {
     return (
       <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
-        <PageHeader title="Documents" subtitle="Pick a project." />
+        <ModuleHeader icon={FolderOpen} title="Documents" />
         <ProjectPickList to={(id) => `/planning/documents?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -59,7 +60,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
 
   return (
     <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
-      <PageHeader title="Documents" />
+      <ModuleHeader icon={FolderOpen} title="Documents" />
       {data && data.expiring.length > 0 && (
         <Callout tone="draft" icon={CalendarClock}>
           {data.expiring.map((e) => `${e.title}: ${new Date(`${e.valid_until}T00:00:00`) < appNow() ? 'expired' : 'expires'} ${dayLabel(e.valid_until)}`).join(' · ')}

@@ -129,6 +129,12 @@ action is one line in `lib/kpi-look.ts` or `lib/actions.ts`, never a page's own 
     - A colour key is a `Legend` of dots, never a paragraph.
     If a reader needs the sentence to understand the screen, the cue is wrong: fix the cue, then put the sentence in
     Help.
+  - **Dialogs and side panels (UX-48, asked 18 Nov 2026: "many modals have too much description; give help icons
+    near which can show and tell what it is").** A dialog's title says what it does; its explanation is a `Hint`
+    (?) beside the title (`<DialogTitle className="flex items-center gap-2">Quick plan <Hint title text /></DialogTitle>`),
+    and `DialogDescription` is `sr-only` for screen readers, or data only (the project, a chip like "18,000 sqft left").
+    A field's label is two or three words ("Client rate ₹/unit"); what it means is a `Hint` beside the label, never a
+    bracket in the label or a paragraph under the field. A confirm that removes something keeps its one warning line.
   - **Plain words only:** never "soft-deleted", "audit trail", "liquidity", "float", "dry-run", tool or database names.
 
 ## What the pages show: all projects, a project, a site (SCP-01..04, asked 9 Nov 2026)

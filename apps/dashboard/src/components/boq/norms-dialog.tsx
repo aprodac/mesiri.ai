@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Hint } from '@/components/hint'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -59,10 +60,13 @@ export function NormsDialog({
     <Dialog open={!!line} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Materials for {line?.work}</DialogTitle>
-          <DialogDescription>
-            What one {line?.unit} of this work uses. The material plan multiplies it by the work still to do
-            {line ? ` (${formatQuantity(line.remaining_quantity)} ${line.unit} left)` : ''} to show what to order and when.
+          <DialogTitle className="flex items-center gap-2">
+            Materials for {line?.work}
+            <Hint title="Materials per unit" text={`What one ${line?.unit ?? 'unit'} of this work uses. The material plan multiplies it by the work still to do to show what to order and when.`} example="1 m³ of M20 concrete: 8 bags cement, 15 cft M-sand, 30 cft metal." />
+          </DialogTitle>
+          <DialogDescription className="flex flex-wrap gap-1.5">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">per 1 {line?.unit}</span>
+            {line && <span className="rounded-full bg-info-soft px-2 py-0.5 text-xs font-medium text-info tabular-nums">{formatQuantity(line.remaining_quantity)} {line.unit} left</span>}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">

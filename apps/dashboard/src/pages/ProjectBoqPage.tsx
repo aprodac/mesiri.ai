@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
-import { DprHeader, DprSection, PageError, StatStrip, type Stat } from '@/components/dpr-page'
+import { ModuleHeader } from '@/components/page/module-header'
+import { DprSection, PageError, StatStrip, type Stat } from '@/components/dpr-page'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProject, type Project } from '@/lib/projects'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
@@ -139,9 +140,9 @@ function LineDialog({
   const budget = ['labour_rate', 'material_rate', 'subcontract_rate'].reduce((s, k) => s + (Number(form[k as keyof LineInput]) || 0), 0)
   const qty = Number(form.planned_quantity) || 0
 
-  const field = (id: keyof LineInput, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
+  const field = (id: keyof LineInput, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}, hint?: string) => (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={`boq-${id}`}>{label}</Label>
+      <span className="flex items-center gap-1"><Label htmlFor={`boq-${id}`}>{label}</Label>{hint && <Hint title={label} text={hint} />}</span>
       <Input id={`boq-${id}`} value={(form[id] as string) ?? ''} onChange={set(id)} {...props} />
     </div>
   )
@@ -150,8 +151,8 @@ function LineDialog({
     <Dialog open={!!state} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{state?.line ? 'Edit line' : `Add a line to ${state?.section.name ?? ''}`}</DialogTitle>
-          <DialogDescription>One work item from the estimate. Rates are per unit; leave a rate empty if you don't have it yet.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">{state?.line ? 'Edit line' : `Add a line to ${state?.section.name ?? ''}`} <Hint title="A BOQ line" text="One work item from the estimate. Rates are per unit; leave a rate empty if you don't have it yet." /></DialogTitle>
+          <DialogDescription className="sr-only">One work item from the estimate.</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3"
@@ -168,18 +169,18 @@ function LineDialog({
             {field('planned_quantity', 'Quantity', { inputMode: 'decimal', placeholder: '18000', required: true })}
             {field('unit', 'Unit', { placeholder: 'sqft, cum, rft, nos', required: true })}
           </div>
-          {qtyChanged && field('revision_reason', 'Why the quantity changed (kept in history)', { placeholder: 'Balcony added' })}
-          {field('client_rate', 'Client rate (₹ per unit, what the client pays)', { inputMode: 'decimal', placeholder: '42' })}
+          {qtyChanged && field('revision_reason', 'Why it changed', { placeholder: 'Balcony added' }, "Kept in the line's history with the old and new quantity.")}
+          {field('client_rate', 'Client rate ₹/unit', { inputMode: 'decimal', placeholder: '42' }, 'What the client pays per unit. Leave it empty if you do not have it yet.')}
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="mb-1 text-sm font-medium">Budget rate (₹ per unit, what it should cost us)</legend>
+            <legend className="mb-1 flex items-center gap-1 text-sm font-medium">Budget rate ₹/unit <Hint title="Budget rate" text="What one unit should cost us, split by labour, material and subcontract. Green / red and Budget vs actual measure against it." /></legend>
             <div className="grid grid-cols-3 gap-3">
               {field('labour_rate', 'Labour', { inputMode: 'decimal', placeholder: '14' })}
               {field('material_rate', 'Material', { inputMode: 'decimal', placeholder: '22' })}
               {field('subcontract_rate', 'Subcontract', { inputMode: 'decimal', placeholder: '—' })}
             </div>
             {qty > 0 && budget > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Budget ₹{budget.toLocaleString('en-IN')} per unit × {qty.toLocaleString('en-IN')} = ₹{(budget * qty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+              <p className="text-xs text-muted-foreground tabular-nums">
+                ₹{budget.toLocaleString('en-IN')} × {qty.toLocaleString('en-IN')} = <span className="font-semibold text-foreground">₹{(budget * qty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
               </p>
             )}
           </fieldset>
@@ -216,8 +217,8 @@ function SectionDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{section ? 'Rename section' : 'Add a section'}</DialogTitle>
-          <DialogDescription>A group of lines, as in the estimate: "Concrete work", "Plastering", or a floor.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">{section ? 'Rename section' : 'Add a section'} <Hint title="A section" text='A group of lines, as in the estimate: "Concrete work", "Plastering", or a floor.' /></DialogTitle>
+          <DialogDescription className="sr-only">A group of BOQ lines.</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3"
@@ -846,19 +847,12 @@ export default function ProjectBoqPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader
-        back={back}
-        crumb="Project"
-        title="BOQ and budget"
-        date={project?.name}
-        chip={
+      <ModuleHeader icon={Calculator} title="BOQ and budget" module="Planning" back={back} chip={
           // The schedule is another page, not something done here: a quiet link by the title, not a button.
           <Link to={`/planning/schedule?project=${id}`} data-guide="boq.schedule" className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
             <ActionIcon kind="schedule" className="size-3.5" /> Schedule <ChevronRight className="size-3.5" aria-hidden />
-          </Link>
-        }
-        action={
-          <div className="flex flex-wrap items-center gap-2">
+          </Link>}>
+        <div className="flex flex-wrap items-center gap-2">
             {!readOnly && <ActionButton kind="import-excel" onClick={() => setImporting(true)} data-guide="boq.import" />}
             {!readOnly && (
               // One yellow button per page: while the BOQ is empty, the upload below is it; while site work waits
@@ -868,8 +862,7 @@ export default function ProjectBoqPage() {
               </ActionButton>
             )}
           </div>
-        }
-      />
+      </ModuleHeader>
 
       {boq.sections.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-4 py-6" data-guide="boq.empty">

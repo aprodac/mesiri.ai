@@ -84,10 +84,9 @@ export function BoqImportDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-semibold">
             <FileSpreadsheet className="size-4 text-success" /> BOQ from Excel{projectName ? ` · ${projectName}` : ''}
+            <Hint title="BOQ from Excel" text="Upload the estimate Excel you already have. You see what Mesiri read before anything is saved." />
           </DialogTitle>
-          <DialogDescription>
-            Upload the estimate Excel you already have. You see what Mesiri read before anything is saved.
-          </DialogDescription>
+          <DialogDescription className="sr-only">Upload the estimate Excel; nothing is saved before you check it.</DialogDescription>
         </DialogHeader>
 
         {!report?.saved && (
@@ -106,8 +105,8 @@ export function BoqImportDialog({
             )}
           >
             <Upload className="size-6 text-muted-foreground" />
-            <span className="font-medium">{file ? file.name : 'Drop your BOQ / estimate .xlsx here, or click to choose'}</span>
-            <span className="text-xs text-muted-foreground">Up to 5 MB · Rows already in the BOQ are left as they are</span>
+            <span className="font-medium">{file ? file.name : 'Drop the estimate .xlsx, or tap to choose'}</span>
+            <span className="text-xs text-muted-foreground">Up to 5 MB · existing rows kept</span>
             <input
               ref={inputRef}
               id="boqFile"

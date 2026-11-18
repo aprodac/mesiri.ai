@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, PageError, PageHeader, StatStrip, type Stat } from '@/components/dpr-page'
+import { Callout, PageError, StatStrip, type Stat } from '@/components/dpr-page'
+import { ModuleHeader } from '@/components/page/module-header'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
@@ -43,7 +44,7 @@ export default function PlacesPage() {
   if (!projectId) {
     return (
       <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
-        <PageHeader title="Places" subtitle="Pick a project." />
+        <ModuleHeader icon={Layers} title="Places" />
         <ProjectPickList to={(id) => `/planning/places?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -63,7 +64,7 @@ function PlacesView({ projectId }: { projectId: string }) {
     return <PageError message="The places did not load." onRetry={() => { list.refetch(); grid.refetch() }} back={{ to: '/planning/places', label: 'All projects' }} />
   }
   if (!list.data || !grid.data) {
-    return <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2"><PageHeader title="Places" /><Skeleton className="h-64 w-full" /></div>
+    return <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2"><ModuleHeader icon={Layers} title="Places" /><Skeleton className="h-64 w-full" /></div>
   }
   const places = list.data.places
   const rows = grid.data.places
@@ -85,15 +86,14 @@ function PlacesView({ projectId }: { projectId: string }) {
 
   return (
     <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-4 sm:px-2">
-      <PageHeader title="Places"
-        actions={<>
-          {hasLive && <Button asChild variant="outline" size="sm" className="gap-1.5"><Link to={`/planning/live?project=${projectId}`}><MapPinned className="size-3.5" /> On the drawings</Link></Button>}
+      <ModuleHeader icon={Layers} title="Places">
+          {hasLive && <Button asChild variant="outline" size="sm" className="gap-1.5 bg-card"><Link to={`/planning/live?project=${projectId}`}><MapPinned className="size-3.5" /> On the drawings</Link></Button>}
           {list.data.can_edit && places.length > 0 && (
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing((e) => !e)} data-guide="places.edit">
+            <Button variant="outline" size="sm" className="gap-1.5 bg-card" onClick={() => setEditing((e) => !e)} data-guide="places.edit">
               <Pencil className="size-3.5" /> {editing ? 'Done editing' : 'Edit'}
             </Button>
           )}
-        </>} />
+      </ModuleHeader>
       {places.length === 0 ? (
         list.data.can_edit ? <QuickSetup projectId={projectId} suggested={list.data.suggested} /> : (
           <Callout tone="info" icon={Layers}>No floors and rooms yet</Callout>

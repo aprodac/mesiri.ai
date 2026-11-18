@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, Circle, Images, MapPinned, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, DprAside, PageError, PageHeader, Segmented, StatStrip, type Stat } from '@/components/dpr-page'
+import { Callout, DprAside, PageError, Segmented, StatStrip, type Stat } from '@/components/dpr-page'
+import { ModuleHeader } from '@/components/page/module-header'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { PlanCanvas } from '@/components/live-maps/plan-canvas'
 import { CHIP_STATE, fetchLiveMaps, SOFT_STATE, STATE_WORD, stateFor, timeAgo, trackOnSite, type LiveFeedItem, type LiveMap, type LiveMaps, type LiveMarker, type LiveState } from '@/lib/live-maps'
@@ -31,7 +32,7 @@ export default function LivePlansPage() {
   if (!projectId) {
     return (
       <div className="mx-auto flex w-full flex-col gap-4 pb-4 sm:px-2">
-        <PageHeader title="Live plans" subtitle="Pick a project." />
+        <ModuleHeader icon={MapPinned} title="Live plans" />
         <ProjectPickList to={(id) => `/planning/live?project=${id}`} empty="No projects yet. Add one in Projects & Sites." />
       </div>
     )
@@ -43,7 +44,7 @@ function LiveLine() {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-40" /><span className="relative inline-flex size-2 rounded-full bg-success" /></span>
-      Live from site's WhatsApp updates
+      Live
     </span>
   )
 }
@@ -63,12 +64,13 @@ function Live({ projectId }: { projectId: string }) {
   const tradeKey = trade === 'all' ? null : trade
 
   const header = (
-    <PageHeader title="Live plans" subtitle={<LiveLine />}
-      actions={map && (
-        <Button variant={photos ? 'secondary' : 'outline'} size="sm" className="gap-1.5" aria-pressed={photos} onClick={() => setPhotos((p) => !p)} data-guide="live.photos">
-          <Images className="size-3.5" /> Photos on the plan
+    <ModuleHeader icon={MapPinned} title="Live plans" chip={<span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-semibold text-success" title="From site's WhatsApp updates"><LiveLine /></span>}>
+      {map && (
+        <Button variant={photos ? 'secondary' : 'outline'} size="sm" className="gap-1.5 bg-card" aria-pressed={photos} onClick={() => setPhotos((p) => !p)} data-guide="live.photos">
+          <Images className="size-3.5" /> Photos
         </Button>
-      )} />
+      )}
+    </ModuleHeader>
   )
 
   if (!data) {

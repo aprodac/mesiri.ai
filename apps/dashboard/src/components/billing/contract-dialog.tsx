@@ -80,8 +80,8 @@ export function ContractDialog({ projectId, open, onOpenChange }: { projectId: s
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-xl">
         <DialogHeader className="border-b px-6 pt-5 pb-4">
-          <DialogTitle>Client and contract</DialogTitle>
-          <DialogDescription>{contract.data?.project.name}: copy these from the agreement. Every RA bill uses them.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">Client and contract <Hint title="Client and contract" text="Copy these from the agreement. Every RA bill uses them." /></DialogTitle>
+          <DialogDescription>{contract.data?.project.name}</DialogDescription>
         </DialogHeader>
         <form id="contract-form" className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
           <Group title="Client">

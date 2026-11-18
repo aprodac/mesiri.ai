@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Hint } from '@/components/hint'
 import { ArrowRight, CalendarRange, Diamond, ListOrdered, Plus, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -107,8 +108,8 @@ export function QuickPlanDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><ListOrdered className="size-4" /> Quick plan</DialogTitle>
-          <DialogDescription>Put the sections one after another from a start day. Say how many days each takes (0 for a milestone); fine-tune any of them later by dragging.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><ListOrdered className="size-4" /> Quick plan <Hint title="Quick plan" text="The sections go one after another from the start day, each linked to the one before it, so a delay moves the rest. Days per section: 0 makes a milestone. Unticked ones keep their dates. Fine-tune later by dragging the bars." /></DialogTitle>
+          <DialogDescription className="sr-only">Put the sections one after another from a start day.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 text-sm">
           <div className="flex items-end gap-3">
@@ -130,7 +131,6 @@ export function QuickPlanDialog({
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">Each one is linked to the one before it, so a delay moves the rest. Unticked ones keep their dates.</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -185,8 +185,8 @@ export function AddActivityDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Plus className="size-4" /> Add to the schedule</DialogTitle>
-          <DialogDescription>A step that is not a BOQ section: mobilisation, a permit, curing, handover.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><Plus className="size-4" /> Add to the schedule <Hint title="Add to the schedule" text="A step that is not a BOQ section: mobilisation, a permit, curing, handover." /></DialogTitle>
+          <DialogDescription className="sr-only">A step that is not a BOQ section.</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3 text-sm"
