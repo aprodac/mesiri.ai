@@ -321,6 +321,8 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'No rate', means: 'Never bought with a price', tone: 'attention' },
       { name: 'No minimum', means: 'Held somewhere, no minimum set' },
       { name: 'Not used 90 d', means: 'Nothing used in 90 days' },
+      { name: 'Categories on the left', means: 'Pick a category or a group to see only it' },
+      { name: 'Add here', means: 'A new item already in that category' },
     ],
     steps: ['Start with the standard builder list, or add your own.', 'Or import one Excel: items, vendors, opening stock.'],
   },

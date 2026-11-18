@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Callout, StatStrip } from '@/components/dpr-page'
-import { dayBand } from '@/lib/cues'
 import {
   fetchInventory,
   fetchLedgerRows,
@@ -119,12 +118,6 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
     return { lines: shown, balanceAfter: after }
   }, [query.data, material, dir, range])
 
-  // Each day's position, newest first, for the alternate-day shading.
-  const dayIndex = React.useMemo(() => {
-    const m = new Map<string, number>()
-    for (const r of lines) if (!m.has(r.occurred_date)) m.set(r.occurred_date, m.size)
-    return m
-  }, [lines])
   // UX-37: numbered pages, kept in the address.
   const pagedLines = usePagedUrl(lines)
   const unit = material ? catalogue.data?.items.find((m) => m.id === material)?.default_unit ?? lines[0]?.unit ?? '' : ''
@@ -308,20 +301,20 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
           ))}
         </div>
       ) : lines.length === 0 ? (
-        <p className="rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">
+        <p className="rounded-xl border border-dashed bg-card py-12 text-center text-sm text-muted-foreground">
           {filtered ? 'Nothing came in or went out for these filters.' : 'Nothing has come in or gone out in the last 30 days.'}
         </p>
       ) : (
         <>
         {/* Phones: one line per entry, the quantity in green or red on the right. */}
-        <ul className="divide-y rounded-lg border sm:hidden" data-guide="materials.list">
+        <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs sm:hidden" data-guide="materials.list">
           {pagedLines.shown.map((r, i) => {
             const newDay = i === 0 || pagedLines.shown[i - 1].occurred_date !== r.occurred_date
             const site = r.site_id ? siteNames.get(r.site_id) : undefined
             const after = balanceAfter.get(r.id)
             return (
               <li key={`m-${r.direction}-${r.id}`} data-record-id={r.id}>
-                {newDay && <div className="bg-muted/50 px-3 py-1 text-xs font-semibold">{dayLabel(r.occurred_date)}</div>}
+                {newDay && <div className="border-b bg-muted/30 px-3 py-1 text-xs font-semibold">{dayLabel(r.occurred_date)}</div>}
                 <button type="button" onClick={() => setOpenRow(r)} className="flex w-full items-center gap-3 px-3 py-2 text-left">
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-medium">
@@ -343,9 +336,9 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
             )
           })}
         </ul>
-        <div className="hidden overflow-x-auto rounded-lg border sm:block" data-guide="materials.list">
+        <div className="hidden overflow-x-auto rounded-xl border bg-card shadow-xs sm:block" data-guide="materials.list">
           <table className="w-full min-w-[760px] text-sm">
-            <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
+            <thead className="sticky top-0 border-b bg-muted/50 text-xs text-muted-foreground">
               <tr className="text-left">
                 <th className="px-3 py-2 font-medium">Date</th>
                 {showSite && <th className="px-3 py-2 font-medium">Site</th>}
@@ -372,9 +365,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
                     onClick={() => setOpenRow(r)}
                     className={cn(
                       'cursor-pointer border-t hover:bg-muted/40',
-                      // WEB-37: alternate days are shaded so each day reads as a block.
-                      dayBand(dayIndex.get(r.occurred_date) ?? 0),
-                      newDay && i > 0 && 'border-t-foreground/15',
+                      // WEB-37 / UX-69: each day reads as a block by a stronger line where it starts; the table stays white.
+                      newDay && i > 0 && 'border-t-2 border-t-foreground/15',
                       correction && 'text-muted-foreground',
                     )}
                   >

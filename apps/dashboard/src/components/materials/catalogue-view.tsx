@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, CircleSlash2, Filter, FolderTree, IndianRupee, MoreHorizontal, Pencil, Plus, Ruler, Search, ShieldAlert, Snail, Target } from 'lucide-react'
+import { CheckCircle2, CircleSlash2, FolderTree, IndianRupee, MoreHorizontal, Pencil, Plus, Ruler, Search, ShieldAlert, Snail, Target } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Callout } from '@/components/dpr-page'
-import { FilterSelect } from '@/components/filter-select'
 import { CHIP } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import {
@@ -22,6 +21,7 @@ import {
   deleteMaterial,
   updateMaterial,
   type MaterialCatalog,
+  type MaterialCategory,
 } from '@/lib/materials'
 import { CategoriesPanel } from './categories-panel'
 import { ImportDialog } from './import-dialog'
@@ -30,6 +30,7 @@ import { ActionIcon } from '@/components/page/action-button'
 import { Pill, ToggleChip } from '@/components/page/page-kit'
 import { fetchStockSummary as fetchStock } from '@/lib/materials'
 import { appNow } from '@/lib/clock'
+import { useUrlState } from '@/lib/url-state'
 import { toLocalISODate } from '@/lib/utils'
 import { qty as qtyWords } from '@/lib/site-day'
 
@@ -63,7 +64,11 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
   const [panelOpen, setPanelOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [sizesOpen, setSizesOpen] = React.useState(false)
-  const [onlyCategory, setOnlyCategory] = React.useState('all')
+  // UX-69 (asked 18 Nov: "Items, focus on the categorisation"): the category tree is the page's navigation. `pick` is
+  // 'all', a main category's id, 's:' + a sub-category's id, or 'none' (no category); kept in the address.
+  const [pick, setPick] = useUrlState<string>('cat', 'all')
+  const onlySub = pick.startsWith('s:') ? pick.slice(2) : null
+
   const [sku, setSku] = React.useState('')
   const [error, setError] = React.useState('')
   // UX-69: what each item holds and costs, from the last 90 days' stock (every site this person sees), and chips for
@@ -105,6 +110,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
     staleTime: 30_000,
   })
   const categories = React.useMemo(() => categoryList?.items ?? [], [categoryList])
+  const onlyCategory = onlySub ? (categories.find((c) => c.id === onlySub)?.parent_id ?? 'all') : pick
   const paths = React.useMemo(() => categoryPaths(categories), [categories])
   const tree = React.useMemo(() => categoryTree(categories), [categories])
   const chosenCategory = categoryId === NO_CATEGORY ? null : categoryId
@@ -237,21 +243,24 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
         groups: [
           { key: main.id, title: null as string | null, list: inCategory(main.id) },
           ...subs.map((s) => ({ key: s.id, title: s.name as string | null, list: inCategory(s.id) })),
-        ].filter((g) => g.list.length > 0),
+        ].filter((g) => g.list.length > 0 && (!onlySub || g.key === onlySub)),
       }))
       .filter((sec) => sec.groups.length > 0 && (onlyCategory === 'all' || sec.key === onlyCategory))
     const loose = shown.filter((m) => !m.category_id || !paths.has(m.category_id)).sort(byName)
     return { placed, loose: onlyCategory === 'all' || onlyCategory === 'none' ? loose : [] }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, search, paths, tree, onlyCategory, fix, held])
+  }, [catalog, search, paths, tree, onlyCategory, onlySub, fix, held])
   const nothingShown = sections.placed.length === 0 && sections.loose.length === 0
+  const countIn = (ids: string[]) => (catalog?.items ?? []).filter((m) => m.category_id && ids.includes(m.category_id)).length
+  const looseCount = (catalog?.items ?? []).filter((m) => !m.category_id || !paths.has(m.category_id)).length
+  const addHere = (catId: string) => { handleCancelEdit(); setCategoryId(catId); setFormOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
   const editing = editingMaterial !== null
   const showForm = formOpen || editing
 
   const materialRow = (m: MaterialCatalog, loose: boolean) => (
     <li key={m.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 hover:bg-muted/30', !m.is_active && 'text-muted-foreground')}>
-      <span className="min-w-0 flex-1 truncate font-medium">
+      <span className="min-w-0 flex-1 truncate font-medium max-sm:basis-full">
         {m.name}
         {m.sku && <span className="ml-2 text-xs font-normal text-muted-foreground">{m.sku}</span>}
         {loose && m.category && <span className="ml-2 text-xs font-normal text-muted-foreground">was “{m.category}”</span>}
@@ -261,7 +270,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
         const h = held.get(m.id)
         return (
           <span className="flex flex-wrap items-center gap-1.5">
-            {h && h.onHand > 0 && <span className="text-xs font-semibold tabular-nums">{qtyWords(String(h.onHand))} <span className="font-normal text-muted-foreground">on hand</span></span>}
+            {h && h.onHand > 0 && <span className="text-xs font-semibold tabular-nums">{qtyWords(String(h.onHand))} <span className="font-normal text-muted-foreground max-sm:hidden">on hand</span></span>}
             {seesMoney && h?.rate && <span className="text-xs text-muted-foreground tabular-nums">₹{Number(h.rate).toLocaleString('en-IN')}</span>}
             {needs(m, 'rate') && <Pill tone="attention" size="xs" icon={IndianRupee}>No rate</Pill>}
             {needs(m, 'min') && <Pill tone="muted" size="xs" icon={Target}>No minimum</Pill>}
@@ -280,7 +289,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
           />
         </div>
       )}
-      <span className="w-28 text-right"><span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{unitName(m)}</span></span>
+      <span className="text-right sm:w-28 max-sm:ml-auto"><span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{unitName(m)}</span></span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`More for ${m.name}`}>
@@ -318,18 +327,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
             <Search className="pointer-events-none absolute left-2.5 top-2 size-4 text-muted-foreground" />
             <Input placeholder="Search items" aria-label="Search items" value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 w-[160px] pl-8" />
           </div>
-          <FilterSelect
-            label="Category"
-            value={onlyCategory}
-            onChange={setOnlyCategory}
-            icon={Filter}
-            className="w-[160px]"
-            options={[
-              { value: 'all', label: 'All categories' },
-              ...tree.map(({ main }) => ({ value: main.id, label: main.name })),
-              { value: 'none', label: 'No category' },
-            ]}
-          />
+
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -426,6 +424,11 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
         </form>
       )}
 
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:items-start">
+      {tree.length > 0 && (
+        <CategoryNav tree={tree} pick={pick} onPick={setPick} total={catalog?.items.length ?? 0} countIn={countIn} loose={looseCount} />
+      )}
+      <div className="flex min-w-0 flex-col gap-4">
       {catalog && catalog.items.length === 0 ? (
         <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">No materials yet.</p>
       ) : nothingShown ? (
@@ -434,18 +437,30 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
         <>
           {sections.placed.map((sec) => (
             // WEB-80: one list per main category, its sub-categories as heading rows inside (as Materials > Stock).
-            <section key={sec.key} className="flex flex-col gap-1.5">
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <CategoryTile mainCategory={sec.title} size="sm" />
-                {sec.title}{' '}
-                <span className="font-normal text-muted-foreground">{sec.groups.reduce((n, g) => n + g.list.length, 0)}</span>
-              </h3>
-              <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+            <section key={sec.key} className="overflow-hidden rounded-xl border bg-card shadow-xs" data-guide="items.section">
+              <header className="flex flex-wrap items-center gap-3 border-b bg-muted/40 px-3 py-2.5">
+                <CategoryTile mainCategory={sec.title} />
+                <span className="min-w-0">
+                  <span className="block text-base font-semibold">{sec.title}</span>
+                  <span className="block text-xs text-muted-foreground">{plural(sec.groups.reduce((n, g) => n + g.list.length, 0), 'item')}{sec.groups.filter((g) => g.title).length ? ` · ${plural(sec.groups.filter((g) => g.title).length, 'group')}` : ''}</span>
+                </span>
+                <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                  {sec.groups.filter((g) => g.title).map((g) => (
+                    <button key={g.key} type="button" onClick={() => setPick(onlySub === g.key ? sec.key : `s:${g.key}`)} aria-pressed={onlySub === g.key}
+                      className={cn('rounded-full border px-2 py-0.5 text-xs font-medium', onlySub === g.key ? 'border-foreground bg-foreground text-background' : 'bg-background/80 hover:bg-background')}>
+                      {g.title} <span className="tabular-nums opacity-70">{g.list.length}</span>
+                    </button>
+                  ))}
+                  <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => addHere(sec.key)}><Plus className="size-3.5" />Add here</Button>
+                </span>
+              </header>
+              <ul className="divide-y">
                 {sec.groups.map((g) => (
                   <React.Fragment key={g.key}>
                     {g.title && (
-                      <li className="bg-muted/30 px-3 py-1 text-xs font-semibold text-muted-foreground">
-                        {g.title} <span className="font-normal">{g.list.length}</span>
+                      <li className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 text-xs font-semibold">
+                        <span className="h-3.5 w-1 rounded-full bg-foreground/40" />
+                        {g.title} <span className="font-normal text-muted-foreground tabular-nums">{g.list.length}</span>
                       </li>
                     )}
                     {g.list.map((m) => materialRow(m, false))}
@@ -455,16 +470,19 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
             </section>
           ))}
           {sections.loose.length > 0 && (
-            <section className="flex flex-col gap-1.5">
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <CategoryTile mainCategory={null} size="sm" />
-                No category <span className="font-normal text-muted-foreground">{sections.loose.length}</span>
-              </h3>
-              <ul className="divide-y overflow-hidden rounded-xl border">{sections.loose.map((m) => materialRow(m, true))}</ul>
+            <section className="overflow-hidden rounded-xl border border-draft/40 bg-card shadow-xs">
+              <header className="flex items-center gap-3 border-b bg-draft-soft/50 px-3 py-2.5">
+                <CategoryTile mainCategory={null} />
+                <span className="text-base font-semibold">No category</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{sections.loose.length} to place</span>
+              </header>
+              <ul className="divide-y">{sections.loose.map((m) => materialRow(m, true))}</ul>
             </section>
           )}
         </>
       )}
+      </div>
+      </div>
 
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
@@ -501,6 +519,69 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
 }
 
 // Main categories with their sub-categories indented; only the ones still offered.
+/** UX-69: the category tree as the page's navigation: every main category with its tile and count, its sub-categories
+ * under it when picked, and No category (amber) when some are loose. A row on a laptop, chips on a phone. */
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+function CategoryNav({ tree, pick, onPick, total, countIn, loose }: {
+  tree: { main: MaterialCategory; subs: MaterialCategory[] }[]
+  pick: string
+  onPick: (v: string) => void
+  total: number
+  countIn: (ids: string[]) => number
+  loose: number
+}) {
+  const sub = pick.startsWith('s:') ? pick.slice(2) : null
+  const openMain = sub ? tree.find((t) => t.subs.some((x) => x.id === sub))?.main.id : pick
+  const row = (on: boolean) => cn('flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition', on ? 'bg-foreground text-background' : 'hover:bg-muted')
+  return (
+    <nav aria-label="Categories" data-guide="items.categories" className="lg:sticky lg:top-4">
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden">
+        {[{ id: 'all', name: 'All', n: total }, ...tree.map((t) => ({ id: t.main.id, name: t.main.name, n: countIn([t.main.id, ...t.subs.map((x) => x.id)]) })), ...(loose ? [{ id: 'none', name: 'No category', n: loose }] : [])].map((c) => (
+          <button key={c.id} type="button" onClick={() => onPick(c.id)} aria-pressed={pick === c.id || openMain === c.id}
+            className={cn('flex shrink-0 items-center gap-1.5 rounded-full border bg-card py-1 pr-2.5 pl-1 text-xs font-medium', (pick === c.id || openMain === c.id) && 'border-foreground bg-foreground text-background')}>
+            {c.id !== 'all' && c.id !== 'none' ? <CategoryTile mainCategory={c.name} size="sm" /> : <span className="w-1" />}
+            {c.name} <span className="tabular-nums opacity-70">{c.n}</span>
+          </button>
+        ))}
+      </div>
+      <ul className="hidden flex-col gap-0.5 rounded-xl border bg-card p-1.5 shadow-xs lg:flex">
+        <li><button type="button" className={row(pick === 'all')} onClick={() => onPick('all')}><FolderTree className="size-4" /><span className="flex-1">All items</span><span className="text-xs tabular-nums opacity-70">{total}</span></button></li>
+        {tree.map(({ main, subs }) => {
+          const n = countIn([main.id, ...subs.map((x) => x.id)])
+          const open = openMain === main.id
+          return (
+            <li key={main.id}>
+              <button type="button" className={row(pick === main.id)} onClick={() => onPick(pick === main.id ? 'all' : main.id)} aria-expanded={open}>
+                <CategoryTile mainCategory={main.name} size="sm" />
+                <span className="flex-1 truncate font-medium">{main.name}</span>
+                <span className="text-xs tabular-nums opacity-70">{n}</span>
+              </button>
+              {open && subs.length > 0 && (
+                <ul className="my-0.5 ml-5 flex flex-col gap-0.5 border-l pl-2">
+                  {subs.map((x) => {
+                    const c = countIn([x.id])
+                    return (
+                      <li key={x.id}>
+                        <button type="button" className={cn(row(sub === x.id), 'py-1 text-xs')} onClick={() => onPick(sub === x.id ? main.id : `s:${x.id}`)}>
+                          <span className="flex-1 truncate">{x.name}</span><span className={cn('tabular-nums', c ? 'opacity-70' : 'opacity-40')}>{c}</span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </li>
+          )
+        })}
+        {loose > 0 && (
+          <li><button type="button" className={cn(row(pick === 'none'), pick !== 'none' && 'text-draft')} onClick={() => onPick(pick === 'none' ? 'all' : 'none')}><FolderTree className="size-4" /><span className="flex-1">No category</span><span className="text-xs font-semibold tabular-nums">{loose}</span></button></li>
+        )}
+      </ul>
+    </nav>
+  )
+}
+
 function CategorySelect({
   value,
   onChange,
