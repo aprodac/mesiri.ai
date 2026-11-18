@@ -24,6 +24,10 @@ import {
   GraduationCap,
   ChevronsUpDown,
   Plus,
+  Pin,
+  PinOff,
+  SlidersHorizontal,
+  EyeOff,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -58,11 +62,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useNavCounts, useTaskCounts, useWaitingCounts } from '@/lib/nav-counts'
-import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, sectionOrder, type ModuleGroup, type NavSection } from '@/lib/module-map'
+import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, type ModuleGroup, type NavSection } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
 import { usePlannedPreview } from '@/lib/preview'
 import { useShowEverything, useStartMode } from '@/lib/start-mode'
 import { initialsOf } from '@/lib/initials'
+import { openSidebarCustomise, useSidebarPrefs, usePinnable } from '@/lib/sidebar-prefs'
 
 type NavItem = {
   title: string
@@ -90,6 +95,8 @@ type NavItem = {
 // A live count on a drawer's page (TSK-06): `tone` is the badge colour, `label` what the number means.
 type SubCount = { n: number; tone: keyof typeof BADGE; label: string }
 type SubItem = { title: string; url: string; soon?: boolean; phase?: string; count?: SubCount }
+/** UX-65: pin or unpin a page from its row (mouse only; on a phone, "Customise sidebar"). */
+type PinControl = { pinned: (url: string) => boolean; canPin: (url: string) => boolean; toggle: (url: string, title: string) => void }
 type NavCategory = {
   key: string
   title: string
@@ -223,12 +230,14 @@ function CollapsibleNavCategory({
   pathname,
   search,
   theme,
+  pin,
 }: {
   category: NavCategory
   getUrlWithScope: (url: string) => string
   pathname: string
   search: string
   theme: SidebarTheme
+  pin: PinControl
 }) {
   const S = SIDEBAR_THEMES[theme]
   const { state, isMobile } = useSidebar()
@@ -313,24 +322,28 @@ function CollapsibleNavCategory({
         <div className={cn('my-0.5 ml-4 flex flex-col gap-0.5 border-l pl-2.5 group-data-[collapsible=icon]:hidden', S.guide)}>
           {category.items.map((item) => {
             const active = isSubItemActive(pathname, search, item.url)
+            const pinned = pin.pinned(item.url)
             return (
-              <Link
-                key={item.url}
-                to={getUrlWithScope(item.url)}
-                title={item.soon ? `${item.title} · planned (${item.phase}), not built yet` : undefined}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'group/row relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
-                  S.ring,
-                  active ? S.rowActive : S.rowIdle,
-                  item.soon && !active && 'opacity-75',
-                )}
-              >
-                {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full" style={{ backgroundColor: S.bar }} />}
-                <span className="truncate">{item.title}</span>
-                {item.soon && <SoonDot className="ml-auto" />}
-                {item.count && item.count.n > 0 && <CountPill count={item.count} className="ml-auto" />}
-              </Link>
+              <div key={item.url} className="group/pin relative">
+                <Link
+                  to={getUrlWithScope(item.url)}
+                  title={item.soon ? `${item.title} · planned (${item.phase}), not built yet` : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'group/row relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                    S.ring,
+                    active ? S.rowActive : S.rowIdle,
+                    item.soon && !active && 'opacity-75',
+                  )}
+                >
+                  {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-[13px] w-[3px] rounded-full" style={{ backgroundColor: S.bar }} />}
+                  <span className="truncate">{item.title}</span>
+                  {pinned && <Pin aria-label="pinned" className="size-3 shrink-0 rotate-45 text-[#FACC15]/80 dark:text-primary-ink" />}
+                  {item.soon && <SoonDot className="ml-auto" />}
+                  {item.count && item.count.n > 0 && <CountPill count={item.count} className="ml-auto" />}
+                </Link>
+                {pin.canPin(item.url) && <PinButton pinned={pinned} title={item.title} onClick={() => pin.toggle(item.url, item.title)} group="pin" />}
+              </div>
             )
           })}
         </div>
@@ -398,6 +411,28 @@ function CountPill({ count, className }: { count: SubCount; className?: string }
 /** A planned page (WEB-72): a small hollow dot, named for screen readers. */
 function SoonDot({ className }: { className?: string }) {
   return <span role="img" aria-label="planned" className={cn('size-1.5 shrink-0 rounded-full border border-current opacity-60', className)} />
+}
+
+/** UX-65: the pin on a row, shown when the mouse is over the row or the keyboard reaches it. Phones use "Customise". */
+function PinButton({ pinned, title, onClick, group }: { pinned: boolean; title: string; onClick: () => void; group: 'pin' | 'menu' }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onClick()
+      }}
+      aria-label={pinned ? `Unpin ${title} from your pages` : `Pin ${title} to your pages`}
+      title={pinned ? 'Unpin from your pages' : 'Pin to your pages'}
+      className={cn(
+        'absolute top-1/2 right-1 hidden size-6 -translate-y-1/2 items-center justify-center rounded-md bg-[#2C2924] text-[#A29A8C] opacity-0 transition-opacity hover:text-[#FACC15] focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[#FACC15] pointer-fine:flex group-data-[collapsible=icon]:hidden! dark:bg-muted dark:text-muted-foreground dark:hover:text-primary-ink',
+        group === 'pin' ? 'group-hover/pin:opacity-100' : 'group-hover/menu-item:opacity-100',
+      )}
+    >
+      {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+    </button>
+  )
 }
 
 const GROUP_LABEL = 'px-2.5 text-[11px] font-semibold uppercase tracking-wider'
@@ -559,7 +594,30 @@ export function AppSidebar() {
     }
     return entries
   }
-  const allSections = sectionOrder(role)
+  // UX-65: the person's own sidebar (lib/sidebar-prefs.ts): their sections' order and the ones they hid, and their
+  // pinned pages ("Your pages"); before they change anything, their role's.
+  const sb = useSidebarPrefs()
+  const pinnable = usePinnable()
+  const [justPinned, setJustPinned] = useState<string | null>(null)
+  useEffect(() => {
+    if (!justPinned) return
+    const t = window.setTimeout(() => setJustPinned(null), 1600)
+    return () => window.clearTimeout(t)
+  }, [justPinned])
+  const pin: PinControl = {
+    pinned: (url) => sb.prefs.pins.includes(url),
+    canPin: (url) => pinnable.byUrl.has(url) && !trial.readOnly && (sb.prefs.pins.includes(url) || !sb.full),
+    toggle: (url) => {
+      if (sb.togglePin(url)) setJustPinned(url)
+    },
+  }
+  const yourPages: NavItem[] = sb.prefs.pins
+    .map((url) => pinnable.byUrl.get(url))
+    .filter((p): p is NonNullable<typeof p> => !!p)
+    .map((p) => ({ title: p.title, url: p.url, icon: p.icon, soon: p.page.status === 'planned', count: pageCounts[p.url], exact: p.url.includes('?') }))
+  const hiddenSections = sb.prefs.hidden.filter((key) => sectionEntries(key).length > 0)
+  const allSections = sb.prefs.order
+    .filter((key) => !sb.prefs.hidden.includes(key))
     .map((key) => ({ key, title: SECTION_TITLES[key], entries: sectionEntries(key) }))
     .filter((section) => section.entries.length > 0)
   // SS-31 (guided-onboarding-plan.md 6.2): step-by-step mode starts with the everyday pages and the role's own
@@ -585,10 +643,11 @@ export function AppSidebar() {
       pathname={location.pathname}
       search={location.search}
       theme={sidebarTheme}
+      pin={pin}
     />
   )
 
-  const renderLink = (item: NavItem) => {
+  const renderLink = (item: NavItem, pinMode?: 'pin' | 'unpin') => {
     const ItemIcon = item.icon
     const active = item.exact ? isSubItemActive(location.pathname, location.search, item.url) : checkIsItemActive(location.pathname, item.url)
     const tone = item.count?.tone ?? item.badge
@@ -596,8 +655,9 @@ export function AppSidebar() {
     // A plain string className: SidebarMenuButton (asChild -> Radix Slot) merges className as text, which silently
     // drops a function, so the active state never rendered. A Link, not a NavLink: NavLink sets aria-current from
     // the path alone, so every ?view= of a page (the Tasks rows, Automations under /whatsapp) was "current".
+    const canPin = pinMode && pin.canPin(item.url)
     return (
-      <SidebarMenuItem key={item.title}>
+      <SidebarMenuItem key={item.url} className={cn(justPinned === item.url && pinMode === 'unpin' && 'rounded-lg ring-2 ring-[#FACC15]/70 transition-shadow dark:ring-primary/60')}>
         <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
           <Link
             to={getUrlWithScope(item.url)}
@@ -631,6 +691,7 @@ export function AppSidebar() {
             )}
           </Link>
         </SidebarMenuButton>
+        {canPin && <PinButton pinned={pin.pinned(item.url)} title={item.title} onClick={() => pin.toggle(item.url, item.title)} group="menu" />}
       </SidebarMenuItem>
     )
   }
@@ -714,12 +775,46 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                   {newActions.length > 0 && <NewButton actions={newActions} bar={S.bar} ring={S.ring} />}
                 </SidebarMenuItem>
-                {PRIMARY_ITEMS.map(renderLink)}
+                {PRIMARY_ITEMS.map((i) => renderLink(i))}
                 {bringData && renderLink(bringData)}
                 {learn && renderLink(learn)}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {sb.ready && (
+            <SidebarGroup className="p-1" data-guide="app.pins">
+              <SidebarGroupLabel className={cn(GROUP_LABEL, 'flex items-center justify-between pr-1', S.label)}>
+                <span className="flex items-center gap-1.5">
+                  <Pin className="size-3 rotate-45" aria-hidden /> Your pages
+                </span>
+                {!trial.readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => openSidebarCustomise('pages')}
+                    className={cn('flex size-6 items-center justify-center rounded-md normal-case', S.iconBtn, S.ring)}
+                    title="Customise your sidebar"
+                    aria-label="Customise your sidebar"
+                  >
+                    <SlidersHorizontal className="size-3.5" />
+                  </button>
+                )}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {yourPages.map((i) => renderLink(i, 'unpin'))}
+                  {yourPages.length === 0 && !trial.readOnly && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton onClick={() => openSidebarCustomise('pages')} tooltip="Pin a page" className={cn(NAV_LINK_BASE, 'border border-dashed', S.divider, S.rowIdle, S.ring)}>
+                        <Plus className={cn('size-4 shrink-0', S.icon)} />
+                        <span className="truncate">Pin the pages you use</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
 
           {sections.map((section) => (
             <SidebarGroup key={section.key} className="p-1">
@@ -731,7 +826,7 @@ export function AppSidebar() {
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5">
-                  {section.entries.map((entry) => (entry.kind === 'link' ? renderLink(entry.item) : renderCategory(entry.category)))}
+                  {section.entries.map((entry) => (entry.kind === 'link' ? renderLink(entry.item, 'pin') : renderCategory(entry.category)))}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -764,12 +859,39 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5">
                   {finishSetup && renderLink(finishSetup)}
-                  {visibleManagementItems.map(renderLink)}
+                  {visibleManagementItems.map((i) => renderLink(i))}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
           )}
 
+          {sb.ready && !trial.readOnly && (
+            <SidebarGroup className="mt-auto p-1">
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => openSidebarCustomise(hiddenSections.length ? 'sections' : 'pages')}
+                    tooltip="Customise your sidebar"
+                    data-guide="app.customise"
+                    className={cn(NAV_LINK_BASE, S.rowIdle, S.ring)}
+                  >
+                    <SlidersHorizontal className={cn('size-4 shrink-0', S.icon)} />
+                    <span className="truncate">Customise</span>
+                    {hiddenSections.length > 0 && (
+                      <span
+                        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-current/20 px-1.5 text-[11px] tabular-nums opacity-80 group-data-[collapsible=icon]:hidden"
+                        title={`Hidden: ${hiddenSections.map((h) => SECTION_TITLES[h]).join(', ')}`}
+                        aria-label={`${hiddenSections.length} hidden`}
+                      >
+                        <EyeOff className="size-3" aria-hidden />
+                        {hiddenSections.length}
+                      </span>
+                    )}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroup>
+          )}
         </SidebarContent>
 
         <SidebarFooter className={cn('border-t p-2', S.divider)}>

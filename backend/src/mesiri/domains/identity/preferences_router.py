@@ -1,5 +1,6 @@
 """The signed-in person's own preferences (WA-169): the language their WhatsApp replies are in, and how Mesiri
-guides them (SS-27: their start mode and the page guides they closed).
+guides them (SS-27: their start mode and the page guides they closed), and their own sidebar (UX-65: pinned pages,
+the sections' order, the sections they hid).
 
 Self only: the route reads and writes the caller's own ``users`` row (the id comes from their token,
 never from the request), so it grants nothing and changes nobody else. The dashboard and the
@@ -49,6 +50,13 @@ NEW_PERSON_FOR = dt.timedelta(days=14)
 _PAGE = re.compile(r"^/[a-z0-9/_-]{0,80}$")
 #: A person can close at most this many page guides; past it, the oldest entries are dropped.
 GUIDE_SEEN_MAX = 300
+#: UX-65: a pinned page is a dashboard path, optionally one of its views ("/tasks?view=overdue").
+_LINK = re.compile(r"^/[a-z0-9/_-]{0,80}(\?view=[a-z0-9_-]{1,40})?$")
+#: UX-65: the sidebar's sections a person can order or hide (lib/module-map.ts NavSection, without the everyday pages
+#: and Settings, which always show).
+NAV_SECTIONS: tuple[str, ...] = ("tasks", "plan", "site", "buy", "money")
+#: UX-65: at most this many pinned pages (the dashboard offers 12; a little room for an older client).
+SIDEBAR_PINS_MAX = 24
 
 _users = sa.Table(
     "users",
@@ -59,8 +67,50 @@ _users = sa.Table(
     sa.Column("voice_transcript", sa.Boolean),
     sa.Column("start_mode", sa.String),
     sa.Column("guide_seen", postgresql.JSONB),
+    sa.Column("sidebar", postgresql.JSONB),
     sa.Column("created_at", sa.DateTime(timezone=True)),
 )
+
+
+class SidebarPrefs(BaseModel):
+    """UX-65: the person's own sidebar. Only what it shows: every page they may open stays reachable (search, links)."""
+
+    #: Pinned pages, in their order ("Your pages" at the top of the sidebar).
+    pins: list[str] = Field(default_factory=list, max_length=SIDEBAR_PINS_MAX)
+    #: The sections in the order they want them; a section left out keeps its role's place after these.
+    order: list[str] = Field(default_factory=list, max_length=len(NAV_SECTIONS))
+    #: Sections they hid.
+    hidden: list[str] = Field(default_factory=list, max_length=len(NAV_SECTIONS))
+
+    @field_validator("pins")
+    @classmethod
+    def _pages(cls, value: list[str]) -> list[str]:
+        bad = [v for v in value if not _LINK.match(v)]
+        if bad:
+            raise ValueError(f"not a dashboard page: {bad[0]!r}")
+        return list(dict.fromkeys(value))
+
+    @field_validator("order", "hidden")
+    @classmethod
+    def _sections(cls, value: list[str]) -> list[str]:
+        bad = [v for v in value if v not in NAV_SECTIONS]
+        if bad:
+            raise ValueError(f"not a sidebar section: {bad[0]!r}")
+        return list(dict.fromkeys(value))
+
+
+def clean_sidebar(raw: object) -> SidebarPrefs | None:
+    """The stored sidebar, keeping only entries that still make sense; None when never set (the role's default)."""
+    if not isinstance(raw, dict):
+        return None
+    def strings(key: str) -> list[str]:
+        value = raw.get(key)
+        return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+    return SidebarPrefs(
+        pins=list(dict.fromkeys(p for p in strings("pins") if _LINK.match(p)))[:SIDEBAR_PINS_MAX],
+        order=list(dict.fromkeys(s for s in strings("order") if s in NAV_SECTIONS)),
+        hidden=list(dict.fromkeys(s for s in strings("hidden") if s in NAV_SECTIONS)),
+    )
 
 
 class Preferences(BaseModel):
@@ -79,6 +129,8 @@ class Preferences(BaseModel):
     #: The number people message Mesiri on (MESIRI_WHATSAPP__DISPLAY_NUMBER), for every page's "Try it on WhatsApp";
     #: None when the deployment has not set one. The same public number setup-progress gives admins.
     whatsapp_number: str | None = None
+    #: UX-65: their own sidebar; None: never changed, so the dashboard shows their role's default.
+    sidebar: SidebarPrefs | None = None
 
 
 class StartModeIn(BaseModel):
@@ -139,13 +191,14 @@ async def get_preferences(
     ``voice_transcript`` (WA-246)."""
     row = (await conn.execute(
         sa.select(_users.c.reply_language, _users.c.voice_transcript, _users.c.start_mode, _users.c.guide_seen,
-                  _users.c.created_at).where(_mine(ctx))
+                  _users.c.created_at, _users.c.sidebar).where(_mine(ctx))
     )).first()
     mode, ask = start_mode_for(getattr(row, "start_mode", None), getattr(row, "created_at", None), dt.datetime.now(dt.UTC))
     return Preferences(reply_language=effective_reply_language(row.reply_language if row else None),
                        voice_transcript=await _voice_transcript(conn, ctx, row.voice_transcript if row else None),
                        start_mode=mode, ask_start_mode=ask and row is not None,
                        guide_seen=clean_guide_seen(getattr(row, "guide_seen", None)),
+                       sidebar=clean_sidebar(getattr(row, "sidebar", None)),
                        whatsapp_number=(get_settings().whatsapp.display_number or "").strip() or None)
 
 
@@ -222,3 +275,29 @@ async def reset_guide_seen(
     if not result.rowcount:
         raise HTTPException(status_code=404, detail="User not found")
     return Preferences(guide_seen={})
+
+
+@router.put("/sidebar", response_model=Preferences)
+async def set_sidebar(
+    body: SidebarPrefs,
+    ctx: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+) -> Preferences:
+    """UX-65: the caller's own sidebar (pinned pages, the sections' order, hidden sections). It changes only what their
+    sidebar shows: a page they pin but may not open is simply not shown, and every page stays reachable."""
+    result = await conn.execute(_users.update().where(_mine(ctx)).values(sidebar=body.model_dump()))
+    if not result.rowcount:
+        raise HTTPException(status_code=404, detail="User not found")
+    return Preferences(sidebar=body)  # the rest: read with GET
+
+
+@router.delete("/sidebar", response_model=Preferences)
+async def reset_sidebar(
+    ctx: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+) -> Preferences:
+    """UX-65 "Back to my role's sidebar": forget the caller's choices."""
+    result = await conn.execute(_users.update().where(_mine(ctx)).values(sidebar=sa.null()))
+    if not result.rowcount:
+        raise HTTPException(status_code=404, detail="User not found")
+    return Preferences(sidebar=None)
