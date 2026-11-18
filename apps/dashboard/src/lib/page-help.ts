@@ -71,12 +71,13 @@ export const PAGE_HELP: Record<string, PageHelp> = {
   },
   '/issues': {
     parts: [
-      { name: 'Open', means: 'Not fixed yet', tone: 'attention' },
-      { name: 'High or critical', means: 'Stops work: act first', tone: 'bad' },
-      { name: 'Time lost', means: 'Hours the site lost to it' },
-      { name: 'Dismiss', means: 'Close an issue that no longer matters (not "fixed")' },
+      { name: 'Not seen', means: 'Nobody has said they are on it', tone: 'attention', find: 'issues.states' },
+      { name: 'Seen', means: 'Someone is on it, not fixed yet', find: 'issues.states' },
+      { name: 'High or critical', means: 'Stops work: act first', tone: 'bad', find: 'issues.stats' },
+      { name: 'Waiting 3+ days', means: 'Amber after a day, red after three', tone: 'bad' },
+      { name: "Won't fix", means: 'Closed because it no longer matters (not "fixed")' },
     ],
-    steps: ['Open an issue.', 'Give it to someone, or mark it fixed.'],
+    steps: ['Open an issue.', 'Give it to someone as a task, or mark it fixed.'],
   },
   '/site-log': {
     parts: [
