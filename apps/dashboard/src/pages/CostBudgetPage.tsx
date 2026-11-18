@@ -1,12 +1,11 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { ActionButton, KpiStrip, NoAccess } from '@/components/page/page-kit'
+import { ActionButton, ActionChip, ClearButton, KpiStrip, ListToolbar, NoAccess, NoMatch, SearchBox, SortSelect } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDown, ArrowDownWideNarrow, ArrowRight, ArrowUpDown, Boxes, Calculator, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Layers, MapPin, Search,
-  ShoppingCart, TrendingDown, TrendingUp, TriangleAlert, X,
+  ArrowDown, ArrowRight, ArrowUpDown, Boxes, Calculator, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Layers, MapPin, ShoppingCart, TrendingDown, TrendingUp, TriangleAlert, X,
 } from 'lucide-react'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { Pager } from '@/components/page/pager'
@@ -156,23 +155,6 @@ function KindCard({ k }: { k: BudgetKind }) {
   )
 }
 
-/** A short note with one thing to do: an icon, the figure, a few words, the link. */
-function Nudge({ icon: Icon, tone, children, to, action }: { icon: LucideIcon; tone: 'attention' | 'muted'; children: React.ReactNode; to: string; action: string }) {
-  const body = (
-    <>
-      <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-md', tone === 'attention' ? 'bg-draft-soft text-draft' : 'bg-muted text-muted-foreground')} aria-hidden>
-        <Icon className="size-3.5" />
-      </span>
-      <span className="min-w-0 flex-1 text-sm">{children}</span>
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-foreground">
-        {action} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
-      </span>
-    </>
-  )
-  const cls = 'group flex items-center gap-2.5 rounded-xl border bg-card px-3 py-2 transition-colors hover:bg-muted/40'
-  return to.startsWith('#') ? <a href={to} className={cls}>{body}</a> : <Link to={to} className={cls}>{body}</Link>
-}
-
 /** How much of a line is done: a bar (amber past the plan) and "done / planned unit". */
 function Progress({ l }: { l: BudgetLine }) {
   const pct = Math.max(0, Number(l.percent_done ?? 0))
@@ -270,18 +252,6 @@ function BoqLinesTable({ lines }: { lines: Line[] }) {
   const totalBudget = sumOf(rows.map((l) => num(l.budget_cost)))
   const totalEarned = sumOf(rows.map((l) => (Number(l.done_quantity) > 0 ? num(l.earned) : null)))
   const bands = !sorter && sections.length > 1
-  const searchRef = React.useRef<HTMLInputElement>(null)
-  // "/" jumps to the search, as in most tools (never while typing in a field).
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null
-      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
-      e.preventDefault()
-      searchRef.current?.focus()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
   const exportShown = () =>
     exportCsv(
       `boq-budget-${appNow().toISOString().slice(0, 10)}.csv`,
@@ -298,54 +268,26 @@ function BoqLinesTable({ lines }: { lines: Line[] }) {
 
   return (
     <DprSection icon={Calculator} title="BOQ lines" meta={any ? `${rows.length} of ${lines.length}` : lines.length} id="boq-lines">
-      <div className="flex flex-wrap items-center gap-2" data-guide="budget.filters">
-        <label className="flex h-9 items-center gap-2 rounded-lg border bg-card px-2.5">
-          <Search className="size-4 text-muted-foreground" aria-hidden />
-          <span className="sr-only">Search BOQ lines</span>
-          <input
-            ref={searchRef}
-            value={q}
-            onChange={(e) => reset(setQ)(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && reset(setQ)('')}
-            placeholder="Search work or code"
-            className="w-36 bg-transparent text-sm outline-none sm:w-48"
-          />
-          <kbd className="hidden rounded border bg-muted px-1 text-[10px] text-muted-foreground sm:inline" title="Press / to search">/</kbd>
-        </label>
+      <ListToolbar
+        guide="budget.filters"
+        right={
+          <>
+            <ActionButton kind="export-excel" size="default" disabled={rows.length === 0} onClick={exportShown} title="The lines shown, as a CSV file (opens in Excel)">
+              <span className="hidden sm:inline">{any ? 'Export shown' : 'Export lines'}</span>
+            </ActionButton>
+            <SortSelect value={sort} options={SORTS} onChange={reset(setSort)} label="Sort the lines" />
+          </>
+        }
+      >
+        <SearchBox value={q} onChange={reset(setQ)} placeholder="Search work or code" label="Search BOQ lines" />
         {sections.length > 1 && <FilterPill icon={Layers} label="Section" allLabel="All sections" value={sec} options={secOptions} onChange={reset(setSec)} />}
         <FilterPill icon={Gauge} label="Done" allLabel="However far" value={prog} options={progOptions} onChange={reset(setProg)} />
         <FilterPill icon={HardHat} label="Labour" allLabel="Any labour" value={lab} options={labOptions} onChange={reset(setLab)} />
-        {any && (
-          <Button variant="ghost" size="sm" className="h-9 gap-1" onClick={clear}>
-            <X className="size-3.5" aria-hidden /> Clear
-          </Button>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-        <ActionButton kind="export-excel" size="default" disabled={rows.length === 0} onClick={exportShown} title="The lines shown, as a CSV file (opens in Excel)">
-          <span className="hidden sm:inline">{any ? 'Export shown' : 'Export lines'}</span>
-        </ActionButton>
-        <label className="flex h-9 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm">
-          <ArrowDownWideNarrow className="size-4 text-muted-foreground" aria-hidden />
-          <span className="sr-only">Sort</span>
-          <select value={sort} onChange={(e) => reset(setSort)(e.target.value)} className="bg-transparent outline-none" aria-label="Sort the lines">
-            {SORTS.map((x) => (
-              <option key={x.value} value={x.value}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        </div>
-      </div>
+        <ClearButton show={any} onClick={clear} />
+      </ListToolbar>
 
       {rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card py-10 text-center">
-          <Search className="size-5 text-muted-foreground" aria-hidden />
-          <p className="text-sm font-medium">No BOQ line matches</p>
-          <Button variant="outline" size="sm" onClick={clear}>
-            Clear filters
-          </Button>
-        </div>
+        <NoMatch noun="BOQ line" onClear={clear} />
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-card [contain:inline-size]" data-guide="budget.lines">
           <table className="w-full text-sm md:min-w-[820px]">
@@ -604,16 +546,16 @@ export default function CostBudgetPage() {
           {(b.work_not_on_a_line > 0 || Number(b.labour_not_on_a_line.man_days) > 0) && (
             <div className="grid gap-2 md:grid-cols-2">
               {b.work_not_on_a_line > 0 && (
-                <Nudge icon={ClipboardCheck} tone="attention" to={`/projects/${projectId}/boq`} action="Put on lines">
+                <ActionChip icon={ClipboardCheck} to={`/projects/${projectId}/boq`} action="Put on lines">
                   <span className="font-semibold tabular-nums">{b.work_not_on_a_line}</span> {b.work_not_on_a_line === 1 ? 'piece of work' : 'pieces of work'} not on a BOQ line
                   <span className="text-muted-foreground"> · earns nothing</span>
-                </Nudge>
+                </ActionChip>
               )}
               {Number(b.labour_not_on_a_line.man_days) > 0 && (
-                <Nudge icon={HardHat} tone="attention" to="#labour-to-lines" action="Check">
+                <ActionChip icon={HardHat} to="#labour-to-lines" action="Check">
                   <span className="font-semibold tabular-nums">{compact(Number(b.labour_not_on_a_line.cost))}</span> labour not on a line
                   <span className="text-muted-foreground tabular-nums"> · {formatQuantity(b.labour_not_on_a_line.man_days)} man-days</span>
-                </Nudge>
+                </ActionChip>
               )}
             </div>
           )}

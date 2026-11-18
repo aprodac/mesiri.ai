@@ -3,11 +3,12 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDownWideNarrow, ArrowRight, CircleCheck, CircleDashed, ClipboardList, Eye, Package, PackageCheck, PackageSearch, PackageX, Search,
-  TriangleAlert, X,
+  CircleCheck, CircleDashed, ClipboardList, Eye, Package, PackageCheck, PackageSearch, PackageX, TriangleAlert,
 } from 'lucide-react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { ActionButton, KpiStrip, Legend, NoAccess } from '@/components/page/page-kit'
+import {
+  ActionButton, ActionChip, ClearButton, KpiStrip, Legend, NoAccess, NoMatch, Pill, ReasonChip, SearchBox, SortSelect, StateBar, ToggleChip,
+} from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
 import { NumbersTable, ShowSwitch, type NumberColumn } from '@/components/page/numbers-view'
 import { sortByColumn, useColumnSort, useShowMode } from '@/lib/numbers-view'
@@ -18,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { formatQuantity, maySeeBoq } from '@/lib/boq'
 import { fetchProjectMaterials, type MaterialReconciliation, type VarianceColour } from '@/lib/cost'
-import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours'
+import { COLOUR_DOT, COLOUR_TEXT, COLOUR_TONE, COLOUR_WORD } from '@/lib/cost-colours'
 import { exportCsv } from '@/lib/export'
 import { usePagedUrl } from '@/lib/paging'
 import { usePageTitle } from '@/lib/page-title'
@@ -39,12 +40,8 @@ import { cn } from '@/lib/utils'
 type M = MaterialReconciliation
 const n = (v: string | null | undefined) => (v === null || v === undefined ? 0 : Number(v))
 
-const LOOK: Record<VarianceColour, { icon: LucideIcon; pill: string }> = {
-  red: { icon: TriangleAlert, pill: 'bg-destructive/10 text-destructive' },
-  amber: { icon: Eye, pill: 'bg-draft-soft text-draft' },
-  green: { icon: CircleCheck, pill: 'bg-success-soft text-success' },
-  grey: { icon: CircleDashed, pill: 'bg-muted text-muted-foreground' },
-}
+/** Each colour's icon; its look is the list kit's tone (COLOUR_TONE). */
+const LOOK: Record<VarianceColour, { icon: LucideIcon }> = { red: { icon: TriangleAlert }, amber: { icon: Eye }, green: { icon: CircleCheck }, grey: { icon: CircleDashed } }
 const ORDER: VarianceColour[] = ['red', 'amber', 'green', 'grey']
 
 /** Why a material is its colour, in a few words (the full sentence is its tooltip). */
@@ -136,32 +133,18 @@ function ShortPill({ m }: { m: M }) {
   if (m.short_by === null) return <span className="text-muted-foreground">—</span>
   const short = n(m.short_by) > 0
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums', short ? 'bg-destructive/10 text-destructive' : 'bg-success-soft text-success')}>
-      {short ? <PackageX className="size-3" aria-hidden /> : <PackageCheck className="size-3" aria-hidden />}
+    <Pill tone={short ? 'bad' : 'good'} icon={short ? PackageX : PackageCheck} size="xs">
       {short ? `${formatQuantity(m.short_by)} ${m.unit} short` : 'Enough'}
-    </span>
+    </Pill>
   )
 }
 
-function ReasonChip({ m, projectId }: { m: M; projectId: string }) {
+function Reason({ m, projectId }: { m: M; projectId: string }) {
   const fix =
     m.reason === 'no_usage_recorded' ? { to: `/materials?view=movements&dir=out&material=${m.material_id}&project=${projectId}`, label: 'Record use' }
     : m.reason === 'unit_differs' || m.reason === 'used_no_work' ? { to: `/projects/${projectId}/boq`, label: m.reason === 'unit_differs' ? 'Fix the unit' : 'Check the BOQ' }
     : null
-  const Icon = LOOK[m.colour].icon
-  return (
-    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-px text-[11px] font-medium', LOOK[m.colour].pill)} title={why(m)}>
-        <Icon className="size-3" aria-hidden />
-        {REASON[m.reason]}
-      </span>
-      {fix && (
-        <Link to={fix.to} className="inline-flex items-center gap-0.5 text-[11px] font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
-          {fix.label} <ArrowRight className="size-3" aria-hidden />
-        </Link>
-      )}
-    </span>
-  )
+  return <ReasonChip tone={COLOUR_TONE[m.colour]} icon={LOOK[m.colour].icon} label={REASON[m.reason]} title={why(m)} fix={fix} />
 }
 
 /** UX-43/44: the Numbers view's columns: every figure the API gives, in its own column. */
@@ -241,18 +224,6 @@ export default function CostMaterialsPage() {
   }, [q.data, colour, shortOnly, needle, sort, show, col, dir])
   // UX-37: numbered pages, kept in the address.
   const paged = usePagedUrl(listed)
-  const searchRef = React.useRef<HTMLInputElement>(null)
-  // "/" jumps to the search, as in most tools (never while typing in a field).
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null
-      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
-      e.preventDefault()
-      searchRef.current?.focus()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
 
   if (!allowed) return <NoAccess roles={MONEY_PEOPLE} />
   const header = <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Materials vs BOQ" date={projectId ? undefined : 'Pick a project'} />
@@ -320,99 +291,36 @@ export default function CostMaterialsPage() {
           />
 
           {d.lines_without_norms > 0 && (
-            <Link to={`/projects/${projectId}/boq`} className="group flex items-center gap-2.5 rounded-xl border bg-card px-3 py-2 transition-colors hover:bg-muted/40">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-draft-soft text-draft" aria-hidden>
-                <PackageSearch className="size-3.5" />
-              </span>
-              <span className="min-w-0 flex-1 text-sm">
-                <span className="font-semibold tabular-nums">{d.lines_without_norms}</span> BOQ {d.lines_without_norms === 1 ? 'line has' : 'lines have'} no materials set
-                <span className="text-muted-foreground"> · not counted here</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold">
-                Set them <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
-              </span>
-            </Link>
+            <ActionChip icon={PackageSearch} to={`/projects/${projectId}/boq`} action="Set them">
+              <span className="font-semibold tabular-nums">{d.lines_without_norms}</span> BOQ {d.lines_without_norms === 1 ? 'line has' : 'lines have'} no materials set
+              <span className="text-muted-foreground"> · not counted here</span>
+            </ActionChip>
           )}
 
           <DprSection icon={Package} title="Materials" meta={any ? `${listed.length} of ${all.length}` : all.length}>
-            {/* The materials by colour: one bar, each colour a filter; "short to finish" another. */}
-            <div className="mb-2 flex flex-col gap-2 rounded-xl border bg-card p-3">
-              <div className="flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={ORDER.map((c) => `${count(c)} ${COLOUR_WORD[c]}`).join(', ')}>
-                {ORDER.map((c) => count(c) > 0 && <span key={c} className={COLOUR_DOT[c]} style={{ width: `${(count(c) / Math.max(judged, 1)) * 100}%` }} />)}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {ORDER.filter((c) => count(c) > 0).map((c) => {
-                  const on = colour === c
-                  const Icon = LOOK[c].icon
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setColour(on ? '' : c)}
-                      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition', LOOK[c].pill, on ? 'ring-2 ring-foreground/70' : 'hover:ring-1 hover:ring-foreground/20')}
-                    >
-                      <Icon className="size-3.5" aria-hidden />
-                      <span className="tabular-nums">{count(c)}</span> {COLOUR_WORD[c]}
-                    </button>
-                  )
-                })}
-                {shortCount > 0 && (
-                  <button
-                    type="button"
-                    aria-pressed={!!shortOnly}
-                    onClick={() => setShortOnly(shortOnly ? '' : '1')}
-                    className={cn('inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-semibold transition', shortOnly ? 'border-foreground bg-foreground text-background' : 'border-destructive/50 text-destructive hover:border-destructive')}
-                  >
-                    <PackageX className="size-3.5" aria-hidden />
-                    <span className="tabular-nums">{shortCount}</span> short to finish
-                  </button>
-                )}
-                <span className="ml-auto flex flex-wrap items-center gap-2">
-                  <label className="flex h-8 items-center gap-2 rounded-lg border bg-card px-2.5">
-                    <Search className="size-3.5 text-muted-foreground" aria-hidden />
-                    <span className="sr-only">Search materials</span>
-                    <input
-                      ref={searchRef}
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Escape' && setSearch('')}
-                      placeholder="Search materials"
-                      className="w-32 bg-transparent text-sm outline-none"
-                    />
-                    <kbd className="hidden rounded border bg-muted px-1 text-[10px] text-muted-foreground sm:inline" title="Press / to search">/</kbd>
-                  </label>
-                  <label className="flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm">
-                    <ArrowDownWideNarrow className="size-3.5 text-muted-foreground" aria-hidden />
-                    <select value={col ? '' : sort} onChange={(e) => { setSort(e.target.value); clearCol() }} className="bg-transparent outline-none" aria-label="Sort the materials">
-                      {SORTS.map((x) => (
-                        <option key={x.value} value={x.value}>
-                          {x.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {any && (
-                    <Button variant="ghost" size="sm" className="h-8 gap-1" onClick={clear}>
-                      <X className="size-3.5" aria-hidden /> Clear
-                    </Button>
-                  )}
-                  <ShowSwitch show={show} onShow={setShow} label="How to show the materials" />
-                  <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The materials shown, as a CSV file (opens in Excel)">
-                    <span className="hidden sm:inline">{any ? 'Export shown' : 'Export'}</span>
-                  </ActionButton>
-                </span>
-              </div>
+            {/* The materials by colour: one bar, each colour a filter; "short to finish" another (UX-45 list kit). */}
+            <div className="mb-2">
+              <StateBar
+                items={ORDER.map((c) => ({ value: c, label: COLOUR_WORD[c], count: count(c), icon: LOOK[c].icon, tone: COLOUR_TONE[c] }))}
+                value={colour}
+                onChange={setColour}
+                extra={<ToggleChip on={!!shortOnly} onClick={() => setShortOnly(shortOnly ? '' : '1')} icon={PackageX} count={shortCount} label="short to finish" tone="bad" />}
+                right={
+                  <>
+                    <SearchBox value={search} onChange={setSearch} placeholder="Search materials" size="sm" />
+                    <SortSelect value={col ? '' : sort} options={SORTS} onChange={(v) => { setSort(v); clearCol() }} label="Sort the materials" size="sm" />
+                    <ClearButton show={any} onClick={clear} size="sm" />
+                    <ShowSwitch show={show} onShow={setShow} label="How to show the materials" />
+                    <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The materials shown, as a CSV file (opens in Excel)">
+                      <span className="hidden sm:inline">{any ? 'Export shown' : 'Export'}</span>
+                    </ActionButton>
+                  </>
+                }
+              />
             </div>
 
             {listed.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card py-10 text-center">
-                <Search className="size-5 text-muted-foreground" aria-hidden />
-                <p className="text-sm font-medium">No material matches</p>
-                <Button variant="outline" size="sm" onClick={clear}>
-                  Clear filters
-                </Button>
-              </div>
+              <NoMatch noun="material" onClear={clear} />
             ) : show === 'numbers' ? (
               <NumbersTable
                 rows={paged.shown}
@@ -457,7 +365,7 @@ export default function CostMaterialsPage() {
                                 {m.unit} · {m.lines} {m.lines === 1 ? 'line' : 'lines'}
                               </span>
                             </span>
-                            <ReasonChip m={m} projectId={projectId} />
+                            <Reason m={m} projectId={projectId} />
                             {/* Below a laptop the bars fold under the name (docs/DESIGN.md section 8). */}
                             <span className="flex max-w-72 flex-col gap-2 pt-1 md:hidden">
                               <UsedBar m={m} />

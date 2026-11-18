@@ -3,16 +3,15 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDownWideNarrow, ArrowRight, Boxes, ChevronDown, ChevronUp, Fuel, Gauge, Handshake, HardHat, Landmark, PackageX, Receipt,
-  Search, Shapes, Tags, Truck, Wallet, X,
+  Boxes, ChevronDown, ChevronUp, Fuel, Gauge, Handshake, HardHat, Landmark, PackageX, Receipt,
+  Shapes, Tags, Truck, Wallet,
 } from 'lucide-react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { ActionButton, NoAccess } from '@/components/page/page-kit'
+import { ActionButton, BulkBar, ClearButton, ListToolbar, NoAccess, NoMatch, NoteChip, SearchBox, SortSelect } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { PeriodSelect } from '@/components/filter-select'
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
@@ -153,24 +152,6 @@ function CentreCard({ k, label, amount, parts, total, then }: { k: Key; label: s
       )}
     </div>
   )
-}
-
-/** A note about what the figures leave out, as a chip; a link when it can be fixed. */
-function Note({ icon: Icon, tone, children, to }: { icon: LucideIcon; tone: 'attention' | 'muted'; children: React.ReactNode; to?: string }) {
-  const cls = cn(
-    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs',
-    tone === 'attention' ? 'bg-draft-soft text-draft' : 'border bg-card text-muted-foreground',
-    to && 'hover:ring-1 hover:ring-foreground/20',
-  )
-  const body = (
-    <>
-      <Icon className="size-3.5 shrink-0" aria-hidden />
-      <span>{children}</span>
-      {to && <ArrowRight className="size-3" aria-hidden />}
-    </>
-  )
-  if (!to) return <span className={cls}>{body}</span>
-  return to.startsWith('#') ? <a href={to} className={cls}>{body}</a> : <Link to={to} className={cls}>{body}</Link>
 }
 
 function CentrePick({ category, centres, canEdit, onSave, saving }: { category: CostCategory; centres: { key: CentreKey; label: string }[]; canEdit: boolean; onSave: (c: CentreKey | null) => void; saving: boolean }) {
@@ -366,29 +347,29 @@ export default function CostCentresPage() {
         {d && (
           <div className="flex flex-wrap gap-1.5">
             {notSet > 0 && (
-              <Note icon={Tags} tone="attention" to="#categories">
+              <NoteChip icon={Tags} tone="attention" to="#categories">
                 <b className="tabular-nums">{compact(notSet)}</b> in {unset.length || 'some'} {unset.length === 1 ? 'category' : 'categories'} with no centre
-              </Note>
+              </NoteChip>
             )}
             {d.unpriced_deliveries > 0 && (
-              <Note icon={PackageX} tone="attention" to="/materials?view=movements&dir=in">
+              <NoteChip icon={PackageX} tone="attention" to="/materials?view=movements&dir=in">
                 <b className="tabular-nums">{d.unpriced_deliveries}</b> {d.unpriced_deliveries === 1 ? 'delivery' : 'deliveries'} with no price, not in Materials
-              </Note>
+              </NoteChip>
             )}
             {Number(d.man_days) > Number(d.priced_man_days) && (
-              <Note icon={HardHat} tone="attention" to="/labour">
+              <NoteChip icon={HardHat} tone="attention" to="/labour">
                 <b className="tabular-nums">{Number(d.man_days) - Number(d.priced_man_days)}</b> man-days with no wage, not in Labour
-              </Note>
+              </NoteChip>
             )}
             {d.gst && Number(d.gst.claimable) > 0 && (
-              <Note icon={Receipt} tone="muted">
+              <NoteChip icon={Receipt} tone="muted">
                 <b className="tabular-nums">{formatRupees(d.gst.claimable)}</b> GST left out: it can be claimed back
-              </Note>
+              </NoteChip>
             )}
             {d.gst && Number(d.gst.in_cost) > 0 && (
-              <Note icon={Receipt} tone="muted">
+              <NoteChip icon={Receipt} tone="muted">
                 <b className="tabular-nums">{formatRupees(d.gst.in_cost)}</b> GST counted as cost ({d.gst.in_cost_count} {d.gst.in_cost_count === 1 ? 'expense' : 'expenses'}, no GSTIN)
-              </Note>
+              </NoteChip>
             )}
           </div>
         )}
@@ -425,39 +406,27 @@ export default function CostCentresPage() {
             <Skeleton className="h-32 rounded-xl" />
           ) : (
             <>
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <label className="flex h-9 items-center gap-2 rounded-lg border bg-card px-2.5">
-                  <Search className="size-4 text-muted-foreground" aria-hidden />
-                  <span className="sr-only">Search categories</span>
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search categories" className="w-36 bg-transparent text-sm outline-none sm:w-44" />
-                </label>
-                <FilterPill icon={Tags} label="Cost centre" allLabel="Any centre" value={centreFilter} options={centreOptions} onChange={setCentreFilter} />
-                {(q || centreFilter) && (
-                  <Button variant="ghost" size="sm" className="h-9 gap-1" onClick={() => { setQ(''); setCentreFilter('') }}>
-                    <X className="size-3.5" aria-hidden /> Clear
-                  </Button>
-                )}
-                <span className="ml-auto flex items-center gap-2">
-                  <label className="flex h-9 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm">
-                    <ArrowDownWideNarrow className="size-4 text-muted-foreground" aria-hidden />
-                    <select value={catSort} onChange={(e) => setCatSort(e.target.value)} className="bg-transparent outline-none" aria-label="Sort the categories">
-                      {CAT_SORTS.map((x) => (
-                        <option key={x.value} value={x.value}>
-                          {x.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <ActionButton kind="export-excel" size="default" disabled={listed.length === 0} onClick={exportCats} title="The categories shown, as a CSV file (opens in Excel)">
-                    <span className="hidden sm:inline">Export</span>
-                  </ActionButton>
-                </span>
+              <div className="mb-2">
+                <ListToolbar
+                  right={
+                    <>
+                      <SortSelect value={catSort} options={CAT_SORTS} onChange={setCatSort} label="Sort the categories" />
+                      <ActionButton kind="export-excel" size="default" disabled={listed.length === 0} onClick={exportCats} title="The categories shown, as a CSV file (opens in Excel)">
+                        <span className="hidden sm:inline">Export</span>
+                      </ActionButton>
+                    </>
+                  }
+                >
+                  <SearchBox value={q} onChange={setQ} placeholder="Search categories" />
+                  <FilterPill icon={Tags} label="Cost centre" allLabel="Any centre" value={centreFilter} options={centreOptions} onChange={setCentreFilter} />
+                  <ClearButton show={!!(q || centreFilter)} onClick={() => { setQ(''); setCentreFilter('') }} />
+                </ListToolbar>
               </div>
 
               {/* Several at once: tick them, pick the centre. */}
-              {canEdit && picked.size > 0 && (
-                <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-foreground/20 bg-foreground px-3 py-2 text-sm text-background">
-                  <span className="font-semibold tabular-nums">{picked.size} picked</span>
+              {canEdit && (
+                <div className="mb-2 empty:hidden">
+                <BulkBar count={picked.size} onClear={() => setPicked(new Set())}>
                   <span className="opacity-70">Move to</span>
                   <Select onValueChange={(v) => save.mutate({ ids: [...picked], centre: v === NOT_SET ? null : (v as CentreKey) })} disabled={save.isPending}>
                     <SelectTrigger className="h-8 w-[170px] bg-background text-foreground" aria-label="Cost centre for the picked categories">
@@ -475,17 +444,12 @@ export default function CostCentresPage() {
                       <SelectItem value={NOT_SET}>Not set</SelectItem>
                     </SelectContent>
                   </Select>
-                  <button type="button" className="ml-auto inline-flex items-center gap-1 text-xs opacity-80 hover:opacity-100" onClick={() => setPicked(new Set())}>
-                    <X className="size-3.5" aria-hidden /> Clear
-                  </button>
+                </BulkBar>
                 </div>
               )}
 
               {listed.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card py-10 text-center">
-                  <Search className="size-5 text-muted-foreground" aria-hidden />
-                  <p className="text-sm font-medium">No category matches</p>
-                </div>
+                <NoMatch noun="category" onClear={() => { setQ(''); setCentreFilter('') }} />
               ) : (
                 <div className="overflow-x-auto rounded-xl border bg-card [contain:inline-size]">
                   <table className="w-full text-sm">

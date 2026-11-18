@@ -3,11 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDownWideNarrow, ArrowRight, ChevronRight, CircleCheck, CircleDashed, ClipboardCheck, Eye, Gauge, HardHat, Landmark, Package,
-  PieChart, Scale, Search, ShoppingCart, TrafficCone, TriangleAlert, X,
+  ArrowRight, ChevronRight, CircleCheck, CircleDashed, ClipboardCheck, Eye, Gauge, HardHat, Landmark, Package,
+  PieChart, Scale, ShoppingCart, TrafficCone, TriangleAlert,
 } from 'lucide-react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { KpiStrip, NoAccess } from '@/components/page/page-kit'
+import { ActionChip, ClearButton, KpiStrip, ListToolbar, NoAccess, NoMatch, SearchBox, SortSelect, StateBar } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
 import { NumbersTable, ShowSwitch, type NumberColumn } from '@/components/page/numbers-view'
 import { sortByColumn, useColumnSort, useShowMode } from '@/lib/numbers-view'
@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { maySeeBoq } from '@/lib/boq'
 import { fetchPortfolio, type PortfolioRow, type VarianceColour } from '@/lib/cost'
-import { COLOUR_DOT, COLOUR_TEXT } from '@/lib/cost-colours'
+import { COLOUR_DOT, COLOUR_TEXT, COLOUR_TONE } from '@/lib/cost-colours'
 import { compact } from '@/lib/expenses'
 import { usePagedUrl } from '@/lib/paging'
 import { usePageTitle } from '@/lib/page-title'
@@ -97,21 +97,6 @@ function WeekChip({ p }: { p: PortfolioRow }) {
       <span className={cn('size-2 rounded-full', COLOUR_DOT[c])} aria-hidden />
       {c === 'grey' ? 'Not judged' : c === 'red' ? `${p.week.red_lines} red ${p.week.red_lines === 1 ? 'line' : 'lines'}` : c === 'amber' ? 'Amber' : 'Green'}
     </span>
-  )
-}
-
-/** A to-do with one thing to do: an icon, the figure, a few words, the link. */
-function Nudge({ icon: Icon, to, action, children }: { icon: LucideIcon; to: string; action: string; children: React.ReactNode }) {
-  return (
-    <Link to={to} className="group flex items-center gap-2.5 rounded-xl border bg-card px-3 py-2 transition-colors hover:bg-muted/40">
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-draft-soft text-draft" aria-hidden>
-        <Icon className="size-3.5" />
-      </span>
-      <span className="min-w-0 flex-1 text-sm">{children}</span>
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold">
-        {action} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
-      </span>
-    </Link>
   )
 }
 
@@ -253,89 +238,50 @@ export default function CostHomePage() {
             ]}
           />
 
-          {/* The projects by forecast colour: one bar, each colour a filter. */}
+          {/* The projects by forecast colour: one bar, each colour a filter (UX-45 list kit). */}
           {rows.length > 1 && (
-            <div className="flex flex-col gap-2 rounded-xl border bg-card p-3" data-guide="cost.health">
-              <div className="flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={ORDER.map((c) => `${count(c)} ${LOOK[c].word}`).join(', ')}>
-                {ORDER.map((c) => count(c) > 0 && <span key={c} className={COLOUR_DOT[c]} style={{ width: `${(count(c) / rows.length) * 100}%` }} />)}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {ORDER.filter((c) => count(c) > 0).map((c) => {
-                  const on = colour === c
-                  const Icon = LOOK[c].icon
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setColour(on ? '' : c)}
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition',
-                        LOOK[c].pill,
-                        on ? 'ring-2 ring-foreground/70' : 'hover:ring-1 hover:ring-foreground/20',
-                      )}
-                    >
-                      <Icon className="size-3.5" aria-hidden />
-                      <span className="tabular-nums">{count(c)}</span> {LOOK[c].word}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <StateBar
+              guide="cost.health"
+              items={ORDER.map((c) => ({ value: c, label: LOOK[c].word, count: count(c), icon: LOOK[c].icon, tone: COLOUR_TONE[c] }))}
+              value={colour}
+              onChange={setColour}
+            />
           )}
 
           {(labourLeft > 0 || workLeft > 0) && (
             <div className="grid gap-2 md:grid-cols-2">
               {labourLeft > 0 && (
-                <Nudge icon={HardHat} to={`${budgetLink}#labour-to-lines`} action="Put on lines">
+                <ActionChip icon={HardHat} to={`${budgetLink}#labour-to-lines`} action="Put on lines">
                   <span className="font-semibold tabular-nums">{compact(labourLeft)}</span> labour not on a BOQ line
-                </Nudge>
+                </ActionChip>
               )}
               {workLeft > 0 && (
-                <Nudge icon={ClipboardCheck} to="/boq" action="Put on lines">
+                <ActionChip icon={ClipboardCheck} to="/boq" action="Put on lines">
                   <span className="font-semibold tabular-nums">{workLeft}</span> {workLeft === 1 ? 'piece' : 'pieces'} of measured work not on a line
-                </Nudge>
+                </ActionChip>
               )}
             </div>
           )}
 
           <DprSection icon={TrafficCone} title="Projects" meta={any ? `${listed.length} of ${rows.length}` : rows.length}>
             {rows.length > 1 && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <label className="flex h-9 items-center gap-2 rounded-lg border bg-card px-2.5">
-                  <Search className="size-4 text-muted-foreground" aria-hidden />
-                  <span className="sr-only">Search projects</span>
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search projects" className="w-36 bg-transparent text-sm outline-none sm:w-48" />
-                </label>
-                <FilterPill icon={TrafficCone} label="Forecast" allLabel="Any forecast" value={colour} options={colourOptions} onChange={setColour} />
-                {any && (
-                  <Button variant="ghost" size="sm" className="h-9 gap-1" onClick={() => { setSearch(''); setColour('') }}>
-                    <X className="size-3.5" aria-hidden /> Clear
-                  </Button>
-                )}
-                <span className="ml-auto flex items-center gap-2">
-                  <label className="flex h-9 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm">
-                    <ArrowDownWideNarrow className="size-4 text-muted-foreground" aria-hidden />
-                    <select value={col && show === 'numbers' ? '' : sort} onChange={(e) => { setSort(e.target.value); clearCol() }} className="bg-transparent outline-none" aria-label="Sort the projects">
-                      {SORTS.map((x) => (
-                        <option key={x.value} value={x.value}>
-                          {x.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <ShowSwitch show={show} onShow={setShow} label="How to show the projects" />
-                </span>
+              <div className="mb-2">
+                <ListToolbar
+                  right={
+                    <>
+                      <SortSelect value={col && show === 'numbers' ? '' : sort} options={SORTS} onChange={(v) => { setSort(v); clearCol() }} label="Sort the projects" />
+                      <ShowSwitch show={show} onShow={setShow} label="How to show the projects" />
+                    </>
+                  }
+                >
+                  <SearchBox value={search} onChange={setSearch} placeholder="Search projects" />
+                  <FilterPill icon={TrafficCone} label="Forecast" allLabel="Any forecast" value={colour} options={colourOptions} onChange={setColour} />
+                  <ClearButton show={any} onClick={() => { setSearch(''); setColour('') }} />
+                </ListToolbar>
               </div>
             )}
             {listed.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card py-10 text-center">
-                <Search className="size-5 text-muted-foreground" aria-hidden />
-                <p className="text-sm font-medium">No project matches</p>
-                <Button variant="outline" size="sm" onClick={() => { setSearch(''); setColour('') }}>
-                  Clear filters
-                </Button>
-              </div>
+              <NoMatch noun="project" onClear={() => { setSearch(''); setColour('') }} />
             ) : show === 'numbers' ? (
               <NumbersTable
                 rows={paged.shown}

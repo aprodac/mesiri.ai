@@ -15,3 +15,6 @@ export const COLOUR_TEXT: Record<VarianceColour, string> = {
   grey: 'text-muted-foreground',
 }
 export const COLOUR_WORD: Record<VarianceColour, string> = { green: 'Green', amber: 'Amber', red: 'Red', grey: 'Not judged' }
+
+/** UX-45: the colours as the list kit's tones (lib/list-kit.ts), for StateBar, Pill and ReasonChip. */
+export const COLOUR_TONE: Record<VarianceColour, 'good' | 'attention' | 'bad' | 'muted'> = { green: 'good', amber: 'attention', red: 'bad', grey: 'muted' }

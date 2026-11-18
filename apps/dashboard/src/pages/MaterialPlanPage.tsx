@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 // the week it runs short. Nothing is typed here: site's work updates shrink the need, the schedule moves it.
 // MP-03: the day to order by (the day it runs short less the supplier's delivery time), and an Order button that
 // opens the purchase order form filled in.
-// UX-45 (18 Nov): it reads by urgency, by colour and icon, not by sentences (docs/DESIGN.md "Cues, not words"). Four
+// UX-46 (18 Nov): it reads by urgency, by colour and icon, not by sentences (docs/DESIGN.md "Cues, not words"). Four
 // groups (Order now red, This week amber, Later blue, Covered green), most urgent first; a KPI strip whose figures
 // filter; "To order" cards on laptops; each row's cover as one bar; the weeks as a heatmap that turns red from the
 // week it runs short; the name column stays put; Covered folds away; search ("/"). The full figures and reasons are
