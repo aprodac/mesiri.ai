@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight, CalendarDays, CalendarRange, Check, CheckCircle2, ChevronRight, FileSpreadsheet, Handshake, HardHat, MapPin,
-  Rocket, ScrollText, Store, type LucideIcon,
+  Lock, Rocket, ScrollText, Store, type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -21,7 +21,7 @@ import { usePageTitle } from '@/lib/page-title'
 import { fetchProjectStart, fetchSchedule, plural, shortDay, updateProjectStart, type ProjectStart, type Stage, type StartStep } from '@/lib/schedule'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { ModuleHeader } from '@/components/page/module-header'
 import { DatePicker } from '@/components/ui/date-picker'
 
 // ST-05: Planning › Project start. The day a job is won, one page takes it to "work starts": the stage and the
@@ -63,12 +63,9 @@ export default function ProjectStartPage() {
   return <StartView key={projectId} projectId={projectId} />
 }
 
-function Heading({ children }: { children?: React.ReactNode }) {
+function Heading({ children, chip }: { children?: React.ReactNode; chip?: React.ReactNode }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <ModuleTitle icon={Rocket} title="Project start" />
-      {children}
-    </header>
+    <ModuleHeader icon={Rocket} title="Project start" chip={chip}>{children}</ModuleHeader>
   )
 }
 
@@ -99,12 +96,8 @@ function StartView({ projectId }: { projectId: string }) {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-5 pb-12 sm:px-2">
-      <Heading>
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <Link to={`/projects/${projectId}`} className="font-medium hover:underline">{d.project.name}</Link>
-          <StageChip stage={d.project.stage} label={d.project.stage_label} />
-          <NewProjectButton afterCreate={startSteps} guide="setup.new" variant="outline" className="ml-auto gap-1.5" />
-        </div>
+      <Heading chip={<StageChip stage={d.project.stage} label={d.project.stage_label} />}>
+        <NewProjectButton afterCreate={startSteps} guide="setup.new" variant="outline" className="gap-1.5 bg-card" />
       </Heading>
 
       <StageTrack data={d} canEdit={canEdit} onPick={(stage) => update.mutate({ stage })} />
@@ -112,8 +105,12 @@ function StartView({ projectId }: { projectId: string }) {
       <div className={cn('grid items-start gap-5', sched && sched.summary.scheduled > 0 && 'lg:grid-cols-[minmax(0,1fr)_300px]')}>
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-success transition-all" style={{ width: `${pct}%` }} /></div>
-            <span className="text-sm font-medium tabular-nums">{d.done} of {d.total} done</span>
+            <span className="flex h-2 flex-1 gap-1" role="img" aria-label={`${d.done} of ${d.total} done (${pct}%)`}>
+              {d.steps.map((st) => (
+                <span key={st.key} title={st.title} className={cn('h-full flex-1 rounded-full', st.done ? 'bg-success' : d.next === st.key ? 'bg-primary' : 'bg-muted')} />
+              ))}
+            </span>
+            <span className="text-sm font-semibold tabular-nums">{d.done}<span className="font-normal text-muted-foreground">/{d.total}</span></span>
           </div>
           {d.ready && (
             <div className="flex items-center gap-2 rounded-xl border border-success/25 bg-success-soft px-4 py-3 text-sm text-success">
@@ -208,7 +205,7 @@ function StepCard({
         {step.done && <Button size="sm" variant="ghost" asChild><Link to={`/billing/ra-bills?project=${projectId}`}>RA bills <ArrowRight className="size-3.5" /></Link></Button>}
         <ContractDialog projectId={projectId} open={contractOpen} onOpenChange={setContractOpen} />
       </>
-    ) : <span className="text-xs text-muted-foreground">Set by the owner, an admin or finance.</span>,
+    ) : <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground" title="Set by the owner, an admin or finance"><Lock className="size-3" aria-hidden /> Owner · admin · finance</span>,
     boq: (
       <>
         {canEdit && <Button size="sm" variant={step.done ? 'outline' : 'default'} onClick={onImport} className="gap-1.5" data-guide="setup.boq"><FileSpreadsheet className="size-4" /> {step.done ? 'Import more' : 'Upload the BOQ Excel'}</Button>}
@@ -227,19 +224,34 @@ function StepCard({
     work_orders: <Button size="sm" variant="outline" asChild><Link to="/subcontract/work-orders">Work orders <ArrowRight className="size-3.5" /></Link></Button>,
   }
 
+  const compact = step.done && !next
+  // The step's meaning is in its "?" (WHY); the line under the title shows only figures ("0 of 2 activities have dates").
+  const figure = /\d/.test(step.detail) ? step.detail : null
+  if (compact) {
+    return (
+      <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card px-4 py-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-success-soft text-success"><Check className="size-4" strokeWidth={3} aria-label="Done" /></span>
+        <span className="text-xs text-muted-foreground tabular-nums">{n}</span>
+        <h3 className="flex items-center gap-1 font-medium">{step.title}<Hint title={step.title} text={WHY[step.key].text} example={WHY[step.key].example} /></h3>
+        {figure && <span className="text-xs text-muted-foreground">{figure}</span>}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">{step.key === 'dates' ? <span className="text-sm tabular-nums">{shortDay(data.project.start_date)} → {shortDay(data.project.planned_finish)}</span> : actions[step.key]}</div>
+      </li>
+    )
+  }
+
   return (
-    <li data-guide={next ? 'setup.next' : undefined} className={cn('flex gap-3 rounded-xl border p-4 transition', next && 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30', step.done && !next && 'bg-card')}>
-      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', step.done ? 'bg-success-soft text-success' : next ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
-        {step.done ? <Check className="size-5" strokeWidth={3} /> : <Icon className="size-4" />}
+    <li data-guide={next ? 'setup.next' : undefined} className={cn('flex gap-3 rounded-xl border bg-card p-4 transition', next && 'border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30')}>
+      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', next ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+        <Icon className="size-4" />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div className="flex flex-wrap items-baseline gap-x-2">
+        <div className="flex flex-wrap items-center gap-x-2">
           <span className="text-xs text-muted-foreground tabular-nums">{n}</span>
           <h3 className="flex items-center gap-1 font-semibold">{step.title}<Hint title={step.title} text={WHY[step.key].text} example={WHY[step.key].example} /></h3>
-          {step.optional && <span className="text-xs text-muted-foreground">optional</span>}
+          {step.optional && <span className="rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground">optional</span>}
           {next && <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground">Next</span>}
         </div>
-        {(!step.done || next) && <p className="text-sm text-muted-foreground">{step.detail}</p>}
+        {figure && <p className="text-sm text-muted-foreground">{figure}</p>}
         {step.key === 'dates' ? (
           canEdit ? (
             <form className="flex flex-wrap items-end gap-2" data-guide="setup.dates" onSubmit={(e) => { e.preventDefault(); onDates({ start_date: startDate || undefined, planned_finish: finish || undefined }) }}>
@@ -258,6 +270,7 @@ function StepCard({
     </li>
   )
 }
+
 
 function Mini({ label, value, bad }: { label: string; value: string; bad?: boolean }) {
   return (
