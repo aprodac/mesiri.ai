@@ -13,6 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
 import { VOUCHER_LABEL, fetchDayBook, mayReadBooks, rupees, scopeParams, type Entry, type VoucherType } from '@/lib/accounts'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
@@ -26,7 +28,7 @@ import { cn } from '@/lib/utils'
 // payments rose); the total at the foot (UX-44, asked: "it should be a table, a ledger table is easier").
 
 const TYPES: (VoucherType | '')[] = ['', 'purchase', 'payment', 'receipt', 'sales', 'contra', 'journal']
-const PAGE = 200
+const PAGE = 100
 
 /** A voucher's row accent and its amount's colour, by kind (the chips in visuals.tsx). */
 const KIND_ACCENT: Record<VoucherType, { bar: string; amount: string }> = {
@@ -106,13 +108,14 @@ export default function DayBookPage() {
   const late = params.get('late') === '1'
   const [q, setQ] = React.useState(params.get('q') ?? '')
   const search = useDebounced(q)
-  const [limit, setLimit] = React.useState(PAGE)
   const [openId, setOpenId] = React.useState<string | null>(null)
   const [cursor, setCursor] = React.useState(-1)
   const [writing, setWriting] = React.useState(false)  // ACC-12
   const sp = scopeParams(scope)
   const allowed = mayReadBooks(me?.role)
-  const filter = { ...period, ...sp, voucher_type: type, q: search, after_close: late, limit }
+  // UX-37: numbered pages, the server sends one page at a time.
+  const server = useServerPage({ size: PAGE, resetOn: JSON.stringify([period, sp, type, search, late]) })
+  const filter = { ...period, ...sp, voucher_type: type, q: search, after_close: late, limit: server.limit, offset: server.offset }
   const book = useQuery({ queryKey: ['accounts', 'day-book', filter], queryFn: () => fetchDayBook(filter), enabled: allowed, placeholderData: keepPreviousData })
 
   const setParam = (k: string, v: string | null) =>
@@ -327,11 +330,7 @@ export default function DayBookPage() {
                     </table>
                   </div>
                 </div>
-                {d.count > entries.length && (
-                  <Button variant="outline" className="self-center bg-card" onClick={() => setLimit((l) => Math.min(1000, l + PAGE))} disabled={limit >= 1000}>
-                    {limit >= 1000 ? `Showing ${entries.length} of ${d.count}: narrow the period or search` : `Show more (${entries.length} of ${d.count})`}
-                  </Button>
-                )}
+                <Pager {...server.pager(d.count, entries.length)} noun="vouchers" className={cn(book.isPlaceholderData && 'opacity-60')} />
                 <p className="hidden text-xs text-muted-foreground sm:block">↑ ↓ to move, Enter to open a voucher.</p>
               </div>
             )}

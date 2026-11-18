@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { addDays, plural, shortDay, type Activity, type ScheduleChange } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
+import { DatePicker } from '@/components/ui/date-picker'
 
 /** ST-04: a change is shown before it is saved: what moves with it, and how far the project's last day moves. */
 export function ConfirmChangeDialog({
@@ -113,7 +114,7 @@ export function QuickPlanDialog({
           <div className="flex items-end gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="qp-start" className="text-xs">Work starts</Label>
-              <Input id="qp-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-44" />
+              <DatePicker id="qp-start" value={start} onChange={(v) => setStart(v)} className="w-44" />
             </div>
             <p className="pb-2 text-muted-foreground">Finishes about <strong className="text-foreground">{shortDay(finish)}</strong> ({plural(total, 'day')})</p>
           </div>
@@ -207,8 +208,8 @@ export function AddActivityDialog({
             </select>
           </div>
           <div className={cn('grid gap-2', milestone ? 'grid-cols-1' : 'grid-cols-2')}>
-            <div className="flex flex-col gap-1"><Label htmlFor="add-start">{milestone ? 'Day' : 'Start'}</Label><Input id="add-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} required /></div>
-            {!milestone && <div className="flex flex-col gap-1"><Label htmlFor="add-end">End</Label><Input id="add-end" type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} required /></div>}
+            <div className="flex flex-col gap-1"><Label htmlFor="add-start">{milestone ? 'Day' : 'Start'}</Label><DatePicker id="add-start" value={start} onChange={(v) => setStart(v)} required /></div>
+            {!milestone && <div className="flex flex-col gap-1"><Label htmlFor="add-end">End</Label><DatePicker id="add-end" value={end} min={start} onChange={(v) => setEnd(v)} required /></div>}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { fetchVendorsApi } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import { fetchPriceList, gstWords, shortDate } from '@/lib/rates'
-import { categoryPaths, fetchLastPurchase, fetchMaterialCategories, fetchMaterials } from '@/lib/materials'
+import { categoryPaths, fetchLastPurchase, fetchMaterialCategories, fetchAllMaterials } from '@/lib/materials'
 import { asDuplicateConflict, fetchRequests, qty } from '@/lib/requests'
 import { createOrder, rupees, updateOrder, type PurchaseOrder } from '@/lib/orders'
 import type { AppScope } from '@/lib/scope-types'
@@ -24,6 +24,7 @@ import { useSupplierScores } from '@/lib/supplier-performance'
 import { GstField } from '@/components/procurement/gst-field'
 import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-06/07: place an order with a supplier. From a request (PRC-22) it opens filled in: the request's site and
 // what is still to buy, each line linked to the request so the request follows the order. The duplicate check
@@ -107,7 +108,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
   // PRC-51: the supplier typed is a vendor record -> its live quotes are offered next to each rate box.
   const vendorId = React.useMemo(() => vendors.find((v) => v.name.trim().toLowerCase() === supplier.trim().toLowerCase())?.id ?? '', [vendors, supplier])
   const scores = useSupplierScores(open)  // PRC-50: the chosen supplier's score beside its name
-  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchMaterials({ is_active: true, limit: 200 }), enabled: open, staleTime: 60_000 })
+  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchAllMaterials({ is_active: true }), enabled: open, staleTime: 60_000 })
   const { data: categories } = useQuery({ queryKey: ['materials', 'categories'], queryFn: fetchMaterialCategories, enabled: open, staleTime: 60_000 })
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
   const materials = React.useMemo(() => catalog?.items ?? [], [catalog])
@@ -290,7 +291,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
                   {{ today: 'Today', tomorrow: 'Tomorrow', week: 'This week', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.expected_date && editing?.expected_date < iso(appNow()) ? editing?.expected_date : iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {when === 'pick' && <DatePicker aria-label="Date" className="h-9 w-[150px]" min={editing?.expected_date && editing?.expected_date < iso(appNow()) ? editing?.expected_date : iso(appNow())} value={picked} onChange={(v) => setPicked(v)} />}
             </div>
           </div>
 

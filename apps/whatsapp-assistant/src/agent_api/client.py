@@ -45,11 +45,16 @@ class ApiResponse:
 def token_for(actor: Actor, minutes: int = TOKEN_MINUTES) -> str:
     """The same token the login issues (sub / org / role / name), short-lived."""
     from mesiri.domains.identity.auth_service import create_access_token
+    from mesiri.domains.shared import clock
+    from mesiri.domains.shared.sandbox_gate import current_sandbox
 
-    return create_access_token(
-        {"sub": actor.user_id, "org": actor.organization_id, "role": actor.role, "name": actor.name},
-        expires_delta=timedelta(minutes=minutes),
-    )
+    claims: dict[str, Any] = {"sub": actor.user_id, "org": actor.organization_id, "role": actor.role, "name": actor.name}
+    # UX-26: Tell Mesiri in a sample company: the assistant's calls carry the sample's mark and its own date, as the
+    # person's own sample token does, so nothing they start reaches a phone and "today" is the sample's day.
+    sample_of = current_sandbox()
+    if sample_of:
+        claims |= {"sandbox": sample_of, "today": clock.today().isoformat()}
+    return create_access_token(claims, expires_delta=timedelta(minutes=minutes))
 
 
 class ApiClient:

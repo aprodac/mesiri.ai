@@ -17,6 +17,8 @@ import { useReadOnly } from '@/lib/trial'
 import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // TSK-02: the Tasks module. Four views by ?view= (the sidebar links to each): given to me, all open, overdue, done.
 // A list on the left (late first, then by due day), the chosen task on the right (a sheet on a phone). The API
@@ -71,6 +73,8 @@ export default function TasksPage() {
     }
     return true
   }), [all, site, person, search])
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
 
   const options = React.useMemo(() => {
     const unique = <T,>(items: T[], key: (t: T) => string) => [...new Map(items.map((t) => [key(t), t])).values()]
@@ -137,6 +141,7 @@ export default function TasksPage() {
 
       {isError ? <PageError message="Tasks did not load." onRetry={() => refetch()} back={{ to: '/today', label: 'Back to Today' }} /> : (
         <div className="flex flex-col items-start gap-5 lg:flex-row">
+          <>
           <section aria-label="Tasks" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border empty:hidden" data-guide={isLoading ? undefined : list.length ? 'tasks.list' : 'tasks.empty'}>
             {isLoading && [0, 1, 2, 3].map((i) => <div key={i} className="h-20 animate-pulse border-b bg-muted/40" />)}
             {!isLoading && list.length === 0 && (
@@ -148,8 +153,10 @@ export default function TasksPage() {
                 action={canCreate && !all.length && view !== 'done' ? <Button className="gap-2" onClick={() => setCreating(true)}><Plus className="size-4" /> New task</Button> : undefined}
               />
             )}
-            {list.map((t) => <TaskRow key={t.id} task={t} today={today} selected={current?.id === t.id} onPick={() => setSelected(t.id)} />)}
+            {pagedList.shown.map((t) => <TaskRow key={t.id} task={t} today={today} selected={current?.id === t.id} onPick={() => setSelected(t.id)} />)}
           </section>
+            <Pager {...pagedList.pager} noun="tasks" className="mt-2" />
+          </>
 
           {!isMobile && current && (
             <aside aria-label="Task detail" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[420px]" data-guide="tasks.detail">

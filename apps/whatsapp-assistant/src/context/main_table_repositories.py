@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from mesiri.authorization.roles import is_org_wide
-from mesiri.domains.organizations.lifecycle import is_operational
+from mesiri.domains.organizations.lifecycle import may_message
 from mesiri.infrastructure.errors import map_postgres_error
 
 from .identity_bridge import (
@@ -119,6 +119,17 @@ class MainExternalIdentityRepository(_EngineMixin):
         digits = _digits(external_subject)
         if provider != "whatsapp" or not digits:
             return None
+        # UX-26: a sample company's sender id names its person, and only ever one in a sample company.
+        from mesiri.domains.shared.sandbox_gate import sample_sender_user
+
+        sample_user = sample_sender_user(external_subject)
+        if sample_user is not None:
+            row = await self._row(
+                "SELECT u.id FROM users u JOIN organizations o ON o.id = u.organization_id "
+                "WHERE u.id = :id AND o.sandbox_of IS NOT NULL",
+                {"id": sample_user},
+            )
+            return ExternalIdentity(provider, digits, context_user_id(row["id"])) if row else None
         # Inactive users still match (the resolver then reports them as
         # disabled, as before). Since migration 0483 a number's digits belong
         # to one user (BE-04), so the ORDER BY only matters for a bad row.
@@ -153,7 +164,8 @@ class MainMembershipRepository(_EngineMixin):
         )
         if row is None:
             return None
-        active = is_operational(row["status"], row["trial_ends_at"], datetime.now(UTC))
+        # UX-26: a message's company: may_message (a sample company's person may talk to Mesiri too).
+        active = may_message(row["status"], row["trial_ends_at"], datetime.now(UTC))
         return Organization(organization_id, active)
 
     async def list_active_memberships(self, user_id: str) -> list[Membership]:
@@ -165,7 +177,7 @@ class MainMembershipRepository(_EngineMixin):
             "JOIN organizations o ON o.id = u.organization_id WHERE u.id = :id",
             {"id": uid},
         )
-        if row is None or not is_operational(
+        if row is None or not may_message(
             row["status"], row["trial_ends_at"], datetime.now(UTC)
         ):
             return []

@@ -16,7 +16,7 @@ import {
   categoryPaths,
   categoryTree,
   fetchMaterialCategories,
-  fetchMaterials,
+  fetchAllMaterials,
   fetchUnitsOfMeasure,
   createMaterial,
   deleteMaterial,
@@ -64,7 +64,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', 'manage'],
-    queryFn: () => fetchMaterials({ limit: 200 }),
+    queryFn: () => fetchAllMaterials(),
     staleTime: 30_000,
   })
 

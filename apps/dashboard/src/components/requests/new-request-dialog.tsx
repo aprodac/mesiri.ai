@@ -9,12 +9,13 @@ import { Combobox } from '@/components/ui/combobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast-notification'
 import { fetchProjects, fetchSites } from '@/lib/projects'
-import { fetchMaterialCategories, categoryPaths, fetchMaterials, fetchStockCheck } from '@/lib/materials'
+import { fetchMaterialCategories, categoryPaths, fetchAllMaterials, fetchStockCheck } from '@/lib/materials'
 import { asDuplicateConflict, createRequest, qty, updateRequest, type DuplicateConflict, type MaterialRequest } from '@/lib/requests'
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from './parts'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-22: ask for material. Built for speed: the site is the scope's, several items in one request, each line says
 // what the site already holds, and a request that repeats an open one is shown before it is saved.
@@ -81,7 +82,7 @@ export function NewRequestDialog({ open, onOpenChange, scope, editing, prefill }
   React.useEffect(() => {
     if (open && !siteId && sites.length === 1) setSiteId(sites[0].id)
   }, [open, siteId, sites])
-  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchMaterials({ is_active: true, limit: 200 }), enabled: open, staleTime: 60_000 })
+  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchAllMaterials({ is_active: true }), enabled: open, staleTime: 60_000 })
   const { data: categories } = useQuery({ queryKey: ['materials', 'categories'], queryFn: fetchMaterialCategories, enabled: open, staleTime: 60_000 })
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
   const materials = React.useMemo(() => catalog?.items ?? [], [catalog])
@@ -217,7 +218,7 @@ export function NewRequestDialog({ open, onOpenChange, scope, editing, prefill }
                   {{ today: 'Today', tomorrow: 'Tomorrow', week: 'This week', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {when === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={editing?.needed_by && editing?.needed_by < iso(appNow()) ? editing?.needed_by : iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {when === 'pick' && <DatePicker aria-label="Date" className="h-9 w-[150px]" min={editing?.needed_by && editing?.needed_by < iso(appNow()) ? editing?.needed_by : iso(appNow())} value={picked} onChange={(v) => setPicked(v)} />}
             </div>
           </div>
 

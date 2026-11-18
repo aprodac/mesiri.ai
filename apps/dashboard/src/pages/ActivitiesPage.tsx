@@ -42,6 +42,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn, toLocalISODate } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 
 // --- Status ---
 // The backend's activity statuses are PLANNED, IN_PROGRESS, STOPPED and
@@ -263,11 +266,13 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
 
   const handleDatePresetChange = (val: string) => setDatePreset(val)
 
+  // UX-37: numbered pages, the server sends 50 at a time (it used to stop at the first 100).
+  const server = useServerPage({ size: 50, resetOn: JSON.stringify([scope, statusFilter, dateFrom, dateTo]) })
   const fetchList = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const params: Parameters<typeof fetchActivitiesApi>[0] = { limit: 100, offset: 0 }
+      const params: Parameters<typeof fetchActivitiesApi>[0] = { limit: server.limit, offset: server.offset }
       if (scope.mode === 'project' && scope.projectId) {
         params.project_id = scope.projectId
       } else if (scope.mode === 'site') {
@@ -285,7 +290,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
     } finally {
       setLoading(false)
     }
-  }, [scope, statusFilter, dateFrom, dateTo])
+  }, [scope, statusFilter, dateFrom, dateTo, server.limit, server.offset])
 
   React.useEffect(() => { fetchList() }, [fetchList])
 
@@ -451,9 +456,9 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
         </Select>
         {datePreset === 'CUSTOM' && (
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Input type="date" value={customFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker value={customFrom} onChange={(v) => setDateFrom(v)} className="h-9 w-[150px]" />
             to
-            <Input type="date" value={customTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker value={customTo} onChange={(v) => setDateTo(v)} className="h-9 w-[150px]" />
           </div>
         )}
         {hasActiveFilters && (
@@ -462,7 +467,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           </Button>
         )}
         <span className="ml-auto text-sm text-muted-foreground">
-          {filteredActivities.length === total ? plural(total, 'work item') : `${filteredActivities.length} of ${total}`}
+          {plural(total, 'work item')}
         </span>
       </div>
 
@@ -603,6 +608,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
             </section>
           ))}
         </div>
+        <Pager {...server.pager(total, activities.length)} noun="work items" className="mt-2" />
         </>
       )}
 
@@ -855,12 +861,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Activity Date</Label>
-              <Input
-                type="date"
-                value={editForm.activity_date}
-                onChange={(e) => setEditForm((f) => ({ ...f, activity_date: e.target.value }))}
-                className="h-8 text-xs"
-              />
+              <DatePicker value={editForm.activity_date} onChange={(v) => setEditForm((f) => ({ ...f, activity_date: v }))} className="h-8 text-xs" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Reason (optional)</Label>

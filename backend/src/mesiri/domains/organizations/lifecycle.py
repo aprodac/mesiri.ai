@@ -59,6 +59,16 @@ def is_operational(status: object, trial_ends_at: dt.datetime | None, now: dt.da
     return effective_status(status, trial_ends_at, now) in OPERATIONAL_STATUSES
 
 
+def may_message(status: object, trial_ends_at: dt.datetime | None, now: dt.datetime) -> bool:
+    """May a person of this company talk to Mesiri now (one message, as it arrives)?
+
+    An operational company; also a learning sample company (UX-26: Tell Mesiri there, from the dashboard only, since
+    its people have no phone). Everything else that runs by itself (schedules, reports, reminders) asks
+    ``is_operational``, which a sample company never is.
+    """
+    return is_operational(status, trial_ends_at, now) or normalize(status) == SANDBOX
+
+
 def operational_sql(alias: str = "o") -> str:
     """The same rule as `is_operational`, as a SQL condition on the
     `organizations` table (aliased `alias`; pass "" for no alias)."""

@@ -14,6 +14,8 @@ import { useScope } from '@/lib/ScopeContext'
 import { LINK_LABEL, VOUCHER_LABEL, drCr, fetchStatement, formatDay, linkedRecord, mayReadBooks, rupees, scopeParams, type Statement, type StatementLine } from '@/lib/accounts'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // ACC-05: one ledger (a supplier, a client, a bank, an expense head ...): opening, every entry with what it was
 // against and the running balance, closing; for the company, a project or a site. Each line opens its voucher.
@@ -53,6 +55,16 @@ export default function LedgerStatementPage() {
   const [q, setQ] = React.useState('')
   const [side, setSide] = React.useState<Side>('')
   usePageTitle(st.data?.ledger.name ?? 'Ledger')
+  const needle = q.trim().toLowerCase()
+  const lines = (st.data?.lines ?? []).filter(
+    (l) => (!side || (side === 'dr' ? Number(l.debit) > 0 : Number(l.credit) > 0)) && (!needle || [l.against, l.narration, l.ref, l.project, l.site].join(' ').toLowerCase().includes(needle)),
+  )
+  const filtered = !!needle || !!side
+  // UX-37: 100 lines to a page; a later page starts with the balance brought forward (unfiltered only: a filtered
+  // list has no running balance to bring forward).
+  const pagedLines = usePagedUrl(lines, { size: 100, resetOn: JSON.stringify([period, sp, needle, side]) })
+  const before = !filtered && pagedLines.from > 1 ? lines[pagedLines.from - 2] : undefined
+  const lastPage = pagedLines.page === pagedLines.pages
 
   if (!allowed) return <BooksClosed />
   if (st.isError) return <PageError message="This ledger could not be loaded." onRetry={() => st.refetch()} back={{ to: '/accounts/ledgers', label: 'Ledgers' }} />
@@ -64,16 +76,11 @@ export default function LedgerStatementPage() {
   const money = d?.ledger.link_kind === 'money_account'
   const drTone = money ? ('in' as const) : ('dr' as const)
   const crTone = money ? ('out' as const) : ('cr' as const)
-  const needle = q.trim().toLowerCase()
-  const lines = (d?.lines ?? []).filter(
-    (l) => (!side || (side === 'dr' ? Number(l.debit) > 0 : Number(l.credit) > 0)) && (!needle || [l.against, l.narration, l.ref, l.project, l.site].join(' ').toLowerCase().includes(needle)),
-  )
   const months = (() => {
     const m = new Map<string, StatementLine[]>()
-    for (const l of lines) m.set(l.date.slice(0, 7), [...(m.get(l.date.slice(0, 7)) ?? []), l])
+    for (const l of pagedLines.shown) m.set(l.date.slice(0, 7), [...(m.get(l.date.slice(0, 7)) ?? []), l])
     return [...m.entries()]
   })()
-  const filtered = !!needle || !!side
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
@@ -174,11 +181,11 @@ export default function LedgerStatementPage() {
                   <tbody>
                     {!filtered && (
                       <tr className="border-b bg-muted/30 text-muted-foreground">
-                        <td className="whitespace-nowrap px-3 py-2">{formatDay(d.date_from)}</td>
-                        <td className="px-3 py-2 font-medium">Opening balance{d.year_start ? ' (from the start of the year)' : ''}</td>
+                        <td className="whitespace-nowrap px-3 py-2">{formatDay(before ? before.date : d.date_from)}</td>
+                        <td className="px-3 py-2 font-medium">{before ? 'Brought forward' : `Opening balance${d.year_start ? ' (from the start of the year)' : ''}`}</td>
                         <td />
                         <td />
-                        <td className="px-3 py-2 text-right tabular-nums">{drCr(d.opening)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{drCr(before ? before.balance : d.opening)}</td>
                       </tr>
                     )}
                     {months.map(([m, list]) => {
@@ -233,7 +240,7 @@ export default function LedgerStatementPage() {
                       </tr>
                     )}
                   </tbody>
-                  {!filtered && (
+                  {!filtered && lastPage && (
                     <tfoot>
                       <tr className="border-t-[1.5px] border-foreground/25 bg-muted/30 font-semibold">
                         <td className="whitespace-nowrap px-3 py-2.5">{formatDay(d.date_to)}</td>
@@ -250,6 +257,7 @@ export default function LedgerStatementPage() {
               </div>
             )}
           </div>
+          <Pager {...pagedLines.pager} noun="lines" />
         </>
       )}
       <VoucherSheet entryId={openId} onClose={() => setOpenId(null)} onOpen={setOpenId} />

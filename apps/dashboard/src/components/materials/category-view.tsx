@@ -31,6 +31,7 @@ import { RecordTransferDialog, type TransferPrefill } from './record-transfer-di
 import { StockItemPanel, type OtherSiteStock } from './stock-item-panel'
 import { NO_FLOW, buildFlows, flowKey, lasts, lowWords, type StockFlow } from '@/lib/stock-flow'
 import { appNow } from '@/lib/clock'
+import { Hint } from '@/components/hint'
 
 // Materials > Stock (PRC-17d, WEB-50, WEB-77). What each site held before the period, what came, what was used and
 // what is left, by main category -- the client's "previous stock, consumption, current balance at a glance" -- now
@@ -577,7 +578,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
                     <tr>
                       <th className="px-3 py-2 font-semibold">Item</th>
                       {showSite && <th className="px-3 py-2 font-semibold">Site</th>}
-                      <th className="px-3 py-2 text-right font-semibold">Before</th>
+                      <th className="px-3 py-2 text-right font-semibold">Before<Hint className="ml-0.5" title="Before" text="What the site had at the start of the days picked above." side="bottom" /></th>
                       <th className="px-3 py-2 text-right font-semibold">Received</th>
                       {other && (
                         <th className="px-3 py-2 text-right font-semibold" title="Opening stock entered, adjustments and corrections in this period">
@@ -588,10 +589,10 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
                       <th className="px-3 py-2 text-right font-semibold">In stock</th>
                       {coming && <th className="px-3 py-2 text-right font-semibold" title="Still to come on open purchase orders">Coming</th>}
                       {asked && <th className="px-3 py-2 text-right font-semibold" title="Asked for on requests waiting for the office">Asked</th>}
-                      <th className="px-3 py-2 font-semibold">Lasts</th>
-                      {minCol && <th className="px-3 py-2 font-semibold" title="The least this site should hold; below it the office is told each morning">Minimum</th>}
+                      <th className="px-3 py-2 font-semibold">Lasts<Hint className="ml-0.5" title="Lasts" text="How many days the stock lasts at the rate the site has been using it. Short means order now: the supplier needs days to deliver." example="38 bags of cement, 6 used a day: about 6 days." /></th>
+                      {minCol && <th className="px-3 py-2 font-semibold">Minimum<Hint className="ml-0.5" title="Minimum" text="The least this site should hold. Below it, the office is told each morning so work never stops for want of it." /></th>}
                       {money && <th className="px-3 py-2 text-right font-semibold">Last rate</th>}
-                      {money && <th className="px-3 py-2 text-right font-semibold">Spend</th>}
+                      {money && <th className="px-3 py-2 text-right font-semibold">Spend<Hint className="ml-0.5" title="Spend" text="What the deliveries in these days cost, at the rates on their bills or orders." /></th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y">

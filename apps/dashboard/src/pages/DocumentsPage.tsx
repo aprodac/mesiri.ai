@@ -17,6 +17,9 @@ import {
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // DOC-01: Planning › Documents. One place for a project's papers: drawings with their revision, permits with their
 // expiry, the contract and estimate (office only, D-DOC1). Drop files in: number, title, revision and folder are read
@@ -46,6 +49,8 @@ function DocumentsView({ projectId }: { projectId: string }) {
   const [q, setQ] = React.useState('')
   const [openId, setOpenId] = React.useState<string | null>(null)
   const query = useQuery<DocumentsList>({ queryKey: ['documents', projectId, folder, q], queryFn: () => fetchDocuments(projectId, { folder: folder ?? undefined, q: q || undefined }) })
+  // UX-37: numbered pages, kept in the address.
+  const pagedDocs = usePagedUrl(query.data?.documents ?? [], { resetOn: `${folder}|${q}` })
 
   if (query.isError) return <PageError message="The documents did not load." onRetry={() => query.refetch()} back={{ to: '/planning/documents', label: 'All projects' }} />
   const data = query.data
@@ -79,9 +84,12 @@ function DocumentsView({ projectId }: { projectId: string }) {
               {q || folder ? 'Nothing here.' : 'No documents yet. Drop the drawings, permits and contract above.'}
             </p>
           ) : (
-            <ul className="divide-y rounded-lg border" data-guide="docs.list">
-              {data.documents.map((d) => <DocRow key={d.id} doc={d} onOpen={() => setOpenId(d.id)} />)}
-            </ul>
+            <>
+              <ul className="divide-y rounded-lg border bg-card" data-guide="docs.list">
+                {pagedDocs.shown.map((d) => <DocRow key={d.id} doc={d} onOpen={() => setOpenId(d.id)} />)}
+              </ul>
+              <Pager {...pagedDocs.pager} noun="documents" className="mt-2" />
+            </>
           )}
         </div>
       </div>
@@ -270,7 +278,7 @@ function DocSheet({ id, projectId, onClose }: { id: string | null; projectId: st
                   {FOLDER_ORDER.map((f) => <option key={f} value={f}>{FOLDER_NAMES[f]}</option>)}
                 </select>
               </div>
-              <div className="grid gap-1"><Label htmlFor="d-valid">Valid until</Label><Input id="d-valid" type="date" value={form.valid_until ?? ''} onChange={(e) => setForm((f) => ({ ...f, valid_until: e.target.value }))} /></div>
+              <div className="grid gap-1"><Label htmlFor="d-valid">Valid until</Label><DatePicker id="d-valid" value={form.valid_until ?? ''} onChange={(v) => setForm((f) => ({ ...f, valid_until: v }))} /></div>
               <div className="flex flex-wrap gap-2 sm:col-span-2">
                 <Button type="submit" size="sm" disabled={save.isPending}>Save details</Button>
                 {doc.can_manage && doc.status === 'current' && (

@@ -28,6 +28,8 @@ import { NewRequestDialog } from '@/components/requests/new-request-dialog'
 import { ModuleTitle, SayOnWhatsApp } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // PRC-22 (design approved by Ilan, 7 Nov 2026): Materials > Requests. What the sites need and what is happening
 // to it. Four tiles say what needs attention; tabs by status; filters as dropdowns with the same cues as the rows;
@@ -133,6 +135,8 @@ export default function RequestsPage() {
         .sort((a, b) => URGENCY_ORDER[a.urgency] - URGENCY_ORDER[b.urgency] || (a.needed_by ?? '9999').localeCompare(b.needed_by ?? '9999') || b.number - a.number),
     [filtered, tab, tile],
   )
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
 
   // The one being worked on stays open when acting on it moves it to another tab (ordered, received); a tab change or
   // a pick of another row lets it go.
@@ -257,6 +261,7 @@ export default function RequestsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
+        <>
         <section aria-label="Requests" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border" data-guide={isLoading ? undefined : 'req.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Requests did not load. Refresh to try again.</p>}
@@ -266,10 +271,12 @@ export default function RequestsPage() {
               {all.length === 0 ? <><span className="font-medium text-foreground">No requests yet</span><SayOnWhatsApp text="Need 50 bags cement tomorrow" /></> : tab === 'waiting' ? 'Nothing waiting for the office.' : 'No requests here with these filters.'}
             </div>
           )}
-          {list.map((r) => (
+          {pagedList.shown.map((r) => (
             <RequestRow key={r.id} request={r} selected={current?.id === r.id} onPick={() => setSelected(r.id)} />
           ))}
         </section>
+          <Pager {...pagedList.pager} noun="requests" className="mt-2" />
+        </>
 
         {!isMobile && current && (
           <aside aria-label="Request detail" className="sticky top-4 w-full shrink-0 overflow-hidden rounded-xl border lg:w-[420px]">

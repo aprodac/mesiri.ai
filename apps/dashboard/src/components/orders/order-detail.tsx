@@ -20,6 +20,7 @@ import { orderLinks } from '@/lib/links'
 import { VendorLink } from '@/components/vendors/vendor-parts'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-06/08: one order, as the office and the site see it: the supplier, what was ordered and what came per line,
 // the deliveries so far, the requests it covers, and the next step (receive, move the date, cancel, close short).
@@ -233,11 +234,11 @@ export function OrderDetail({ order: listed, inSheet }: { order: PurchaseOrder; 
           )}
           {order.may_edit || order.may_close ? (
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex h-10 items-center gap-2 rounded-md border px-2.5 text-sm">
-                <CalendarDays className="size-4 text-muted-foreground" />
+              <div className="flex items-center gap-2 text-sm">
                 <span className="text-xs text-muted-foreground">Expected</span>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date !== (order.expected_date ?? '') && move.mutate(date)} className="bg-transparent outline-none dark:[color-scheme:dark]" />
-              </label>
+                {/* Saved as soon as a day is picked (the typed field saved when it was left). */}
+                <DatePicker aria-label="Expected on" value={date} required className="w-44" onChange={(v) => { setDate(v); if (v && v !== (order.expected_date ?? '')) move.mutate(v) }} />
+              </div>
               {order.may_edit && <Button variant="outline" className="h-10" onClick={() => setDialog('edit')}><Pencil className="size-4" /> Change</Button>}
               {order.may_cancel && <Button variant="outline" className="h-10 border-destructive/30 text-destructive" onClick={() => setDialog('cancel')}><X className="size-4" /> Cancel order</Button>}
               {order.may_close && <Button variant="outline" className="h-10" onClick={() => setDialog('close')}>Close short</Button>}
@@ -425,7 +426,7 @@ function ReceiveDialog({ order, lineId, open, onClose, onDone, onError }: { orde
           </div>
           <div className="flex items-center gap-2">
             <Label htmlFor="receive-date">Date</Label>
-            <Input id="receive-date" type="date" max={today()} value={date} onChange={(e) => setDate(e.target.value)} className="w-[160px] dark:[color-scheme:dark]" />
+            <DatePicker id="receive-date" max={today()} value={date} onChange={(v) => setDate(v)} className="w-[160px]" />
           </div>
           {missingReason && <p className="text-xs text-destructive">Say why it was rejected.</p>}
           {extra && (

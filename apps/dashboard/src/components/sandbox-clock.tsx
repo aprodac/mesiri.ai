@@ -59,7 +59,7 @@ export function SandboxClock() {
 
   if (!session || clock.isError) return null
   if (clock.data?.old) {
-    return <p className="m-0 text-xs text-info/90">Made before days could pass: Start over to play them.</p>
+    return <p className="m-0 text-xs text-muted-foreground">Older sample: Start over (in ⋯) to play its days.</p>
   }
   const c = clock.data
   const done = !!c && c.day >= c.last_day
@@ -157,7 +157,7 @@ export function SandboxClock() {
           </DropdownMenu>
         )}
         {c && c.for_you.length > 0 && <ForYouMenu items={c.for_you} late={late} />}
-        {c && c.for_you.length === 0 && !done && <span className="text-xs text-info/90">Nothing waiting for you today.</span>}
+        {c && c.for_you.length === 0 && !done && <span className="text-xs text-muted-foreground">Nothing for you today</span>}
       </div>
       {error && <p className="m-0 text-sm text-destructive">{error}</p>}
       {away && <Away away={away} onClose={() => setAway(null)} />}

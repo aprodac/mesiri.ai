@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import {
-  fetchMaterials,
+  fetchAllMaterials,
   createInflow,
   fetchLastPurchase,
   formatMoney,
@@ -35,6 +35,7 @@ import { Combobox } from '@/components/ui/combobox'
 import { GstField } from '@/components/procurement/gst-field'
 import { GST_NOT_SAID, gstPayload, type GstValue } from '@/lib/gst'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 function todayIso(): string {
   return appNow().toISOString().slice(0, 10)
@@ -155,7 +156,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: Recor
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', ''],
-    queryFn: () => fetchMaterials({ is_active: true, limit: 200 }),
+    queryFn: () => fetchAllMaterials({ is_active: true }),
     enabled: open,
     staleTime: 60_000,
   })
@@ -445,13 +446,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope, prefill }: Recor
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="occurredDate">Day</Label>
-              <Input
-                id="occurredDate"
-                type="date"
-                value={occurredDate}
-                onChange={(e) => setOccurredDate(e.target.value)}
-                required
-              />
+              <DatePicker id="occurredDate" value={occurredDate} onChange={(v) => setOccurredDate(v)} required />
             </div>
           </div>
 

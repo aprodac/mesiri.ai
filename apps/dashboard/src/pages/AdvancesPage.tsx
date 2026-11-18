@@ -19,6 +19,9 @@ import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // LW-03 (plan docs/plans/wages-and-labour-plan.md): money given ahead of wages, to a worker or a labour team, out of
 // a money account; taken back on the next wage sheet. "Gave Ravi 500 advance" on WhatsApp lands here too.
@@ -48,6 +51,8 @@ export default function AdvancesPage() {
 
   const live = (list.data?.items ?? []).filter((a) => !a.voided_at)
   const outstanding = (balances.data?.items ?? []).filter((b) => n(b.outstanding) > 0)
+  // UX-37: numbered pages, kept in the address.
+  const pagedOutstanding = usePagedUrl(outstanding)
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
@@ -66,8 +71,9 @@ export default function AdvancesPage() {
 
       {money && outstanding.length > 0 && (
         <Section title="Still to take back" note="Most first">
+          <>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" data-guide="advances.owed">
-            {outstanding.map((b) => (
+            {pagedOutstanding.shown.map((b) => (
               <div key={b.payee_key} className="flex items-center justify-between gap-3 rounded-xl border border-draft/25 bg-draft-soft/40 px-4 py-3">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{b.payee_name}</p>
@@ -77,6 +83,8 @@ export default function AdvancesPage() {
               </div>
             ))}
           </div>
+            <Pager {...pagedOutstanding.pager} noun="advances" className="mt-2" />
+          </>
         </Section>
       )}
 
@@ -165,7 +173,7 @@ function GiveDialog({ onClose, onGiven, defaultSite }: { onClose: () => void; on
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="on">Given on</Label>
-              <Input id="on" type="date" value={on} onChange={(e) => setOn(e.target.value)} />
+              <DatePicker id="on" value={on} onChange={(v) => setOn(v)} />
             </div>
           </div>
           <div className="grid gap-1.5">

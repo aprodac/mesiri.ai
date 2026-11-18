@@ -13,6 +13,8 @@ import { usePageTitle } from '@/lib/page-title'
 import { fetchProjects } from '@/lib/projects'
 import { useScope } from '@/lib/ScopeContext'
 import { cn } from '@/lib/utils'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // CC-08: materials against the BOQ. Per material with a norm on a BOQ line (MP-01): what the work done so far should
 // have used against what was used, and what is still needed to finish against what is on hand and coming, so a
@@ -110,6 +112,8 @@ export default function CostMaterialsPage() {
     queryFn: () => fetchProjectMaterials(projectId!),
     enabled: allowed && !!projectId,
   })
+  // UX-37: numbered pages, kept in the address.
+  const pagedMaterials = usePagedUrl(q.data?.materials ?? [])
   if (!allowed) {
     return (
       <NoAccess roles={MONEY_PEOPLE} />
@@ -161,11 +165,12 @@ export default function CostMaterialsPage() {
             </Callout>
           )}
           <DprSection icon={Package} title="Materials, worst first" meta={d.materials.length}>
-            <ul className="divide-y rounded-lg border" data-guide="costmat.list">
-              {d.materials.map((m) => (
+            <ul className="divide-y rounded-lg border bg-card" data-guide="costmat.list">
+              {pagedMaterials.shown.map((m) => (
                 <Row key={m.material_id} m={m} />
               ))}
             </ul>
+            <Pager {...pagedMaterials.pager} noun="materials" className="mt-2" />
             <Legend
               className="mt-2"
               items={[

@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Pager } from '@/components/page/pager'
+import { useServerPage } from '@/lib/paging'
 import { Building2, ChevronRight, CircleCheck, CircleDashed, FileText, RefreshCw, TriangleAlert, X } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import { fetchDailyReportPdfApi, fetchDprHistoryApi, type DprHistoryItem } from '@/lib/api'
@@ -9,7 +11,6 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast-notification'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Callout, PageHeader } from '@/components/dpr-page'
@@ -18,6 +19,7 @@ import { useUrlState } from '@/lib/url-state'
 import { FilterSelect } from '@/components/filter-select'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // Daily Reports history (WEB-06): every site and project DPR, newest day
 // first, with the figures from the version that was confirmed or sent. Each
@@ -191,18 +193,16 @@ export default function DailyReportsPage() {
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
   }
-  const query = useInfiniteQuery({
-    queryKey: ['dpr-history', filters],
-    queryFn: ({ pageParam }) => fetchDprHistoryApi({ ...filters, limit: PAGE_SIZE, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
-      return loaded < last.total ? loaded : undefined
-    },
+  // UX-37: numbered pages, the server sends one page at a time.
+  const server = useServerPage({ size: PAGE_SIZE, resetOn: JSON.stringify(filters) })
+  const query = useQuery({
+    queryKey: ['dpr-history', filters, server.offset],
+    queryFn: () => fetchDprHistoryApi({ ...filters, limit: server.limit, offset: server.offset }),
+    placeholderData: keepPreviousData,
   })
 
-  const items = React.useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
-  const total = query.data?.pages[0]?.total ?? 0
+  const items = React.useMemo(() => query.data?.items ?? [], [query.data])
+  const total = query.data?.total ?? 0
   // Day -> project -> its project DPR and its sites' DPRs.
   const byDate = React.useMemo(() => {
     const days = new Map<string, Map<string, { name: string; project?: DprHistoryItem; sites: DprHistoryItem[] }>>()
@@ -275,9 +275,9 @@ export default function DailyReportsPage() {
         </Select>
         {range === 'custom' && (
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Input type="date" aria-label="From" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker aria-label="From" value={customFrom} max={customTo || undefined} onChange={(v) => setCustomFrom(v)} className="h-9 w-[150px]" />
             to
-            <Input type="date" aria-label="To" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <DatePicker aria-label="To" value={customTo} min={customFrom || undefined} onChange={(v) => setCustomTo(v)} className="h-9 w-[150px]" />
           </div>
         )}
         {/* WEB-40: a dropdown, like the other filters. */}
@@ -354,11 +354,7 @@ export default function DailyReportsPage() {
               </div>
             </section>
           ))}
-          {query.hasNextPage && (
-            <Button variant="outline" className="self-center" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>
-              {query.isFetchingNextPage ? 'Loading…' : `Show older reports (${total - items.length} left)`}
-            </Button>
-          )}
+          <Pager {...server.pager(total, items.length)} noun="reports" className={cn(query.isPlaceholderData && 'opacity-60')} />
         </div>
       )}
     </div>

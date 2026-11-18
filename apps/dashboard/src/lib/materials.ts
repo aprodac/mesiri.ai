@@ -227,6 +227,21 @@ export async function fetchMaterials(
   return res.data
 }
 
+/**
+ * UX-37: the whole catalogue, 200 at a time (the server's most), for pickers and the catalogue page. Asking for one
+ * page of 200 hid every material after the 200th from a company with more.
+ */
+export async function fetchAllMaterials(filters: Omit<MaterialCatalogFilters, 'limit' | 'offset'> = {}): Promise<MaterialCatalogListResponse> {
+  const first = await fetchMaterials({ ...filters, limit: 200, offset: 0 })
+  const items = [...first.items]
+  while (items.length < first.total && items.length < 5000) {
+    const more = await fetchMaterials({ ...filters, limit: 200, offset: items.length })
+    if (!more.items.length) break
+    items.push(...more.items)
+  }
+  return { items, total: first.total }
+}
+
 export async function fetchMaterial(id: string): Promise<MaterialCatalog> {
   const res = await api.get<MaterialCatalog>(`/materials/${id}`)
   return res.data

@@ -34,6 +34,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
 import { NewVoucherDialog } from './new-voucher-dialog'
 import { ActionIcon } from '@/components/page/action-button'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // ACC-05: what every Accounts page shares: the period (kept in the address, so a view can be sent to the CA), the
 // row of Accounts pages, a voucher opened in a side sheet from any figure, and the Excel button.
@@ -74,9 +75,9 @@ export function PeriodBar({ state }: { state: ReturnType<typeof usePeriod> }) {
       <Segmented<PresetKey> label="Period" value={state.range} options={PRESETS.map((p) => ({ value: p, label: PRESET_LABEL[p] }))} onChange={state.setRange} />
       {state.range === 'custom' ? (
         <div className="flex items-center gap-1.5 text-sm">
-          <Input type="date" aria-label="From" value={state.period.date_from} max={state.period.date_to} onChange={(e) => e.target.value && state.setDates({ ...state.period, date_from: e.target.value })} className="h-8 w-[150px] dark:[color-scheme:dark]" />
+          <DatePicker aria-label="From" value={state.period.date_from} max={state.period.date_to} onChange={(v) => v && state.setDates({ ...state.period, date_from: v })} className="h-8 w-[150px]" />
           <span className="text-muted-foreground">to</span>
-          <Input type="date" aria-label="To" value={state.period.date_to} min={state.period.date_from} onChange={(e) => e.target.value && state.setDates({ ...state.period, date_to: e.target.value })} className="h-8 w-[150px] dark:[color-scheme:dark]" />
+          <DatePicker aria-label="To" value={state.period.date_to} min={state.period.date_from} onChange={(v) => v && state.setDates({ ...state.period, date_to: v })} className="h-8 w-[150px]" />
         </div>
       ) : (
         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

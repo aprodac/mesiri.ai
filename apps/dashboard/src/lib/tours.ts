@@ -898,13 +898,14 @@ export const PAGE_TOURS: Record<string, Tour> = {
   // Cost control (SS-45): was the money spent matched by the work done?
   '/cost': {
     key: '/tour/cost',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['cost.stats', 'cost.empty'],
     steps: [
       { target: 'cost.empty', title: 'Start with a BOQ', text: 'Cost control sets the money spent against the BOQ. Add one first.', mood: 'think' },
       { target: 'cost.stats', title: 'At a glance', text: 'The budget, what the work done earned at BOQ rates, what was spent, what is ordered but not yet in, and how many projects are heading over.', mood: 'look' },
-      { target: 'cost.projects', title: 'Worst first', text: 'Each project green or red by where it will finish. Tap one for its BOQ lines.' },
+      { target: 'cost.health', title: 'Green, amber, red', text: 'Every project by where it will finish. Tap a colour to see only those.', mood: 'look' },
+      { target: 'cost.projects', title: 'Worst first', text: 'Blue is work done, green or red is money spent. Tap a project for its BOQ lines.' },
       { target: 'cost.pages', title: 'Look closer', text: 'Green / red by day, budget against actual, materials against the BOQ, and where the money went.' },
       { target: 'app.whatsapp', title: 'Ask on WhatsApp', text: '"How is Green Villa doing on cost?"', mood: 'happy' },
     ],
@@ -931,8 +932,9 @@ export const PAGE_TOURS: Record<string, Tour> = {
     steps: [
       { target: 'project.pick', title: 'Pick a project', text: 'This page works on one project at a time. Pick it here, or in the bar at the top.' },
       { target: 'budget.empty', title: 'Start with a BOQ', text: 'This project has no BOQ yet. Open it and bring the estimate Excel.', mood: 'think' },
+      { target: 'budget.totals', title: 'The project at a glance', text: 'Budget, earned, spent, and how far under or over. Green is under, red is over.', mood: 'look' },
       { target: 'budget.kinds', title: 'Labour, materials, subcontract', text: 'For each: the budget, what the work done earned, what was spent, and how far over or under.', mood: 'look' },
-      { target: 'budget.lines', title: 'Every BOQ line', text: 'Planned, done and left; the budget, what it earned, and the labour spent on it.' },
+      { target: 'budget.lines', title: 'Every BOQ line', text: 'The bar is how much is done. Then its budget, what it earned, and the labour on it: green under, red over.' },
       { target: 'budget.labour', title: 'Labour to check', text: 'Attendance on no BOQ line, or split by me from the day\'s work. Confirm it, or pick the line they worked on.', mood: 'think' },
       { target: 'app.whatsapp', title: 'On WhatsApp', text: '"Budget against spent for Green Villa?" or "Put today\'s 6 masons on ground-floor brickwork".', mood: 'happy' },
     ],

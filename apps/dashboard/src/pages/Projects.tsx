@@ -25,6 +25,8 @@ import { fetchLifecycle } from '@/lib/schedule'
 import { StageChip, scheduleLine } from '@/components/schedule/project-picker'
 import { cn, formatClock } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // WEB-28: Projects & Sites as rows that say what each project is set up
 // with -- its sites, its people, when its DPR goes out -- instead of
@@ -93,6 +95,8 @@ export default function Projects() {
       return !q || [p.name, p.code, p.client, p.location].some((v) => v?.toLowerCase().includes(q))
     })
     .sort((a, b) => a.name.localeCompare(b.name))
+  // UX-37: numbered pages, kept in the address.
+  const pagedVisible = usePagedUrl(visible)
 
   if (query.isError) {
     return <PageError message="Your projects could not be loaded." onRetry={() => query.refetch()} back={{ to: '/today', label: 'Back to Today' }} />
@@ -145,8 +149,9 @@ export default function Projects() {
       ) : visible.length === 0 ? (
         <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">No projects match.</p>
       ) : (
+        <>
         <ul className="flex flex-col divide-y rounded-xl border" data-guide="projects.list">
-          {visible.map((project) => (
+          {pagedVisible.shown.map((project) => (
             <ProjectRow
               key={project.id}
               project={project}
@@ -160,6 +165,8 @@ export default function Projects() {
             />
           ))}
         </ul>
+          <Pager {...pagedVisible.pager} noun="projects" className="mt-2" />
+        </>
       )}
 
       <AddEditProjectDialog

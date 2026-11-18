@@ -48,6 +48,7 @@ import { fetchProjects } from '@/lib/projects'
 import { useScope } from '@/lib/ScopeContext'
 import { cn } from '@/lib/utils'
 import { Kpi as PageKpi } from '@/components/page/page-kit'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-19 (reports plan R1): a week or a month of one project in ten seconds. The headline sentence (made by fixed
 // rules from the figures, D-R7), the key figures against plan and the last period, what needs you, one line per
@@ -859,10 +860,10 @@ export default function PeriodReportPage() {
       {kind === 'custom' ? (
         <div className="flex items-center gap-1.5 text-sm">
           <label className="sr-only" htmlFor="report-from">From</label>
-          <input id="report-from" type="date" className="h-8 rounded-md border bg-background px-2" value={params.get('from') ?? ''} onChange={(e) => set({ from: e.target.value })} />
+          <DatePicker id="report-from" className="h-8 rounded-md border bg-background px-2" value={params.get('from') ?? ''} onChange={(v) => set({ from: v })} />
           <span className="text-muted-foreground">to</span>
           <label className="sr-only" htmlFor="report-to">To</label>
-          <input id="report-to" type="date" className="h-8 rounded-md border bg-background px-2" value={params.get('to') ?? ''} onChange={(e) => set({ to: e.target.value })} />
+          <DatePicker id="report-to" className="h-8 rounded-md border bg-background px-2" value={params.get('to') ?? ''} onChange={(v) => set({ to: v })} />
         </div>
       ) : null}
       {info && (

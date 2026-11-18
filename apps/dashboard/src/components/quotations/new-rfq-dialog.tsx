@@ -12,12 +12,13 @@ import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { fetchVendorsApi } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
-import { categoryPaths, fetchMaterialCategories, fetchMaterials } from '@/lib/materials'
+import { categoryPaths, fetchMaterialCategories, fetchAllMaterials } from '@/lib/materials'
 import { createRfq, type Rfq } from '@/lib/rfqs'
 import type { AppScope } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { CategoryTile } from '@/components/requests/parts'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-40: ask suppliers for quotes. From a site's request it opens filled in (its site and what is still to buy, each
 // line linked so the request follows the order the award makes); from Rates with the item. Suppliers are picked as
@@ -92,7 +93,7 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
     if (open && projectId && !siteId && sites.length === 1) setSiteId(sites[0].id)
   }, [open, projectId, siteId, sites])
   const { data: vendors = [] } = useQuery({ queryKey: ['finance', 'vendors', 'names'], queryFn: fetchVendorsApi, enabled: open, retry: false, staleTime: 60_000 })
-  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchMaterials({ is_active: true, limit: 200 }), enabled: open, staleTime: 60_000 })
+  const { data: catalog } = useQuery({ queryKey: ['materials', 'catalog', ''], queryFn: () => fetchAllMaterials({ is_active: true }), enabled: open, staleTime: 60_000 })
   const { data: categories } = useQuery({ queryKey: ['materials', 'categories'], queryFn: fetchMaterialCategories, enabled: open, staleTime: 60_000 })
   const paths = React.useMemo(() => categoryPaths(categories?.items ?? []), [categories])
   const materials = React.useMemo(() => catalog?.items ?? [], [catalog])
@@ -215,14 +216,14 @@ export function NewRfqDialog({ open, onOpenChange, scope, prefill, onCreated }: 
                   {{ today: 'Today', tomorrow: 'Tomorrow', three: 'In 3 days', pick: 'Pick a date' }[w]}
                 </button>
               ))}
-              {due === 'pick' && <Input type="date" aria-label="Date" className="h-9 w-[150px] dark:[color-scheme:dark]" min={iso(appNow())} value={picked} onChange={(e) => setPicked(e.target.value)} />}
+              {due === 'pick' && <DatePicker aria-label="Date" className="h-9 w-[150px]" min={iso(appNow())} value={picked} onChange={(v) => setPicked(v)} />}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr]">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rfq-needed">Site needs it by</Label>
-              <Input id="rfq-needed" type="date" className="dark:[color-scheme:dark]" value={neededBy} onChange={(e) => setNeededBy(e.target.value)} />
+              <DatePicker id="rfq-needed" value={neededBy} onChange={(v) => setNeededBy(v)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rfq-terms">Terms for the suppliers</Label>

@@ -17,6 +17,8 @@ import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/compo
 import { RfqDetail } from '@/components/quotations/rfq-detail'
 import { NewRfqDialog } from '@/components/quotations/new-rfq-dialog'
 import { type KpiProps, KpiStrip, ModuleTitle } from '@/components/page/page-kit'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // PRC-44: Procurement › Quotations, in the Requests / Purchase orders design: tiles for what needs doing (waiting for
 // quotes, ready to compare, quotes overdue, saved by comparing), status tabs, a list beside the chosen RFQ (a sheet
@@ -97,6 +99,8 @@ export default function QuotationsPage() {
     () => filtered.filter((r) => (tile ? inTile(r, tile) : inTab(r, tab))).sort((a, b) => ORDER[a.status] - ORDER[b.status] || (a.due_days ?? 999) - (b.due_days ?? 999) || b.number - a.number),
     [filtered, tab, tile],
   )
+  // UX-37: numbered pages, kept in the address.
+  const pagedList = usePagedUrl(list)
   const current = all.find((r) => r.id === selected) ?? (isMobile ? undefined : list[0])
 
   const options = React.useMemo(() => {
@@ -160,6 +164,7 @@ export default function QuotationsPage() {
       </div>
 
       <div className="flex flex-col items-start gap-5 lg:flex-row">
+        <>
         <section aria-label="Quotations" className="w-full min-w-0 flex-1 overflow-hidden rounded-xl border lg:max-w-[440px]" data-guide={isLoading ? undefined : 'quotes.list'}>
           {isLoading && <div className="flex flex-col">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse border-b bg-muted/40" />)}</div>}
           {isError && <p className="p-6 text-sm text-destructive">Quotations did not load. Refresh to try again.</p>}
@@ -170,8 +175,10 @@ export default function QuotationsPage() {
               {all.length === 0 && office && !readOnly && <Button className="mt-2 gap-2" onClick={() => setCreating(true)}><Plus className="size-4" />Ask for quotes</Button>}
             </div>
           )}
-          {list.map((r) => <RfqRow key={r.id} rfq={r} selected={current?.id === r.id} onPick={() => setSelected(r.id)} />)}
+          {pagedList.shown.map((r) => <RfqRow key={r.id} rfq={r} selected={current?.id === r.id} onPick={() => setSelected(r.id)} />)}
         </section>
+          <Pager {...pagedList.pager} noun="price requests" className="mt-2" />
+        </>
         {!isMobile && current && (
           <aside aria-label="RFQ detail" data-guide="quotes.detail" className="sticky top-4 w-full min-w-0 flex-[1.6] overflow-hidden rounded-xl border"><RfqDetail key={current.id} rfq={current} /></aside>
         )}

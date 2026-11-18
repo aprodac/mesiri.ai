@@ -3,6 +3,7 @@ import { api } from './api'
 import { useAuth } from './AuthContext'
 import { MONEY_ROLES } from './module-map'
 import { appNow } from '@/lib/clock'
+import { initialsOf } from '@/lib/initials'
 
 // CC-09 / CC-10: suppliers, what we owe them (the supplier ledger) and paying them. Rules live in the backend
 // (domains/vendors/ledger.py): a priced delivery is owed until its bill comes, then the bill; a payment leaves the
@@ -258,7 +259,7 @@ export function balanceWords(balance: string, rupees: (n: number) => string): st
 }
 
 export function initials(name: string): string {
-  return name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+  return initialsOf(name)
 }
 
 /** How a payment would go, oldest bills first (or the ones ticked): the same rule as the API. */

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { applyAdvance } from '@/lib/vendors'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-35: an expense's payments, and paying what is left (or repaying who paid it from their pocket) from one of the
 // company's accounts -- in full or in part, on a date -- with undo for a payment made by mistake. Only shown to the
@@ -137,7 +138,7 @@ export function ExpensePayments({ expenseId, owedTo, canPay, startOpen }: { expe
               </Select>
               <div className="grid grid-cols-2 gap-2">
                 <Input type="number" min={0} step="any" inputMode="decimal" aria-label="Amount" placeholder={`${left} (all)`} value={amount} onChange={(e) => setAmount(e.target.value)} className="bg-background" />
-                <Input type="date" aria-label="Paid on" value={date} max={today()} onChange={(e) => setDate(e.target.value)} className="bg-background dark:[color-scheme:dark]" />
+                <DatePicker aria-label="Paid on" value={date} max={today()} onChange={(v) => setDate(v)} className="bg-background" />
               </div>
               {pay.isError && <p className="text-sm text-destructive">{apiErrorMessage(pay.error)}</p>}
               <div className="flex gap-2">

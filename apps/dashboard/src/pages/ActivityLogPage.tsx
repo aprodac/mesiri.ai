@@ -12,6 +12,8 @@ import { activityUrl, fetchActivity, type ActivityFilters, type ActivityItem } f
 import { usePageTitle } from '@/lib/page-title'
 import { toLocalISODate } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // ADM-02: Settings › Activity log. Who changed what, when: every save, edit, delete and approval, on the web and
 // on WhatsApp, newest first, by day. Read only, for the owner and admins. Written by one recorder at the API
@@ -59,6 +61,8 @@ export default function ActivityLogPage() {
   const items = React.useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
   const people = query.data?.pages[0]?.people ?? []
   const days = React.useMemo(() => groupByDay(items), [items])
+  // UX-37: numbered pages, kept in the address.
+  const pagedDays = usePagedUrl(days)
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
@@ -95,8 +99,9 @@ export default function ActivityLogPage() {
           ) : items.length === 0 ? (
             <div data-guide="activity.empty"><EmptyState icon={History} title="Nothing in this view" /></div>
           ) : (
+            <>
             <div className="flex flex-col gap-4" data-guide="activity.list">
-              {days.map(([day, rows]) => (
+              {pagedDays.shown.map(([day, rows]) => (
                 <section key={day}>
                   <h2 className="mb-1 text-xs font-semibold text-muted-foreground">{dayLabel(day)}</h2>
                   <ul className="divide-y rounded-lg border">
@@ -110,6 +115,8 @@ export default function ActivityLogPage() {
                 </Button>
               )}
             </div>
+              <Pager {...pagedDays.pager} noun="days" className="mt-2" />
+            </>
           )}
         </>
       )}

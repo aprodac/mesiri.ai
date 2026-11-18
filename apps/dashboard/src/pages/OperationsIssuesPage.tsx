@@ -28,6 +28,8 @@ import { useUrlState } from '@/lib/url-state'
 import { plural } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
 import { MakeTaskButton } from '@/components/tasks/make-task-button'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -169,15 +171,25 @@ export default function OperationsIssuesPage() {
     setLoading(true)
     setLoadError(false)
     try {
-      const res = await fetchSiteIssuesApi({
+      // UX-37: every issue, 100 at a time (the server's most), up to 1,000; the page then shows them in pages.
+      const ask = (offset: number) => fetchSiteIssuesApi({
         projectId: scopeFilter.projectId,
         siteId: scopeFilter.siteId,
         status: statusFilter !== 'ALL' && statusFilter !== ACTIVE_FILTER ? statusFilter : undefined,
         severity: severityFilter !== 'ALL' ? severityFilter : undefined,
         limit: 100,
+        offset,
       })
-      setIssues(res.items || [])
-      setTotalCount(res.total ?? (res.items || []).length)
+      const res = await ask(0)
+      const items = [...(res.items || [])]
+      const total = res.total ?? items.length
+      while (items.length < Math.min(total, 1000)) {
+        const more = await ask(items.length)
+        if (!more.items?.length) break
+        items.push(...more.items)
+      }
+      setIssues(items)
+      setTotalCount(total)
     } catch {
       // Not "nothing is stuck": a failed load must not look like good news.
       setIssues([])
@@ -222,6 +234,8 @@ export default function OperationsIssuesPage() {
         return new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime()
       })
   }, [issues, searchQuery, statusFilter])
+  // UX-37: numbered pages, kept in the address.
+  const pagedFilteredIssues = usePagedUrl(filteredIssues)
 
   const stats = React.useMemo(() => {
     // Every non-closed status counts as open: WONT_FIX and CANCELLED are
@@ -415,8 +429,9 @@ export default function OperationsIssuesPage() {
           <p className="text-sm font-medium">{filtered ? 'No issues match these filters' : 'Nothing is stuck right now'}</p>
         </div>
       ) : (
+        <>
         <ul className="flex flex-col divide-y overflow-hidden rounded-xl border px-4" data-guide="issues.list">
-          {filteredIssues.map((item) => {
+          {pagedFilteredIssues.shown.map((item) => {
             const closed = isClosed(item.status)
             return (
               <li key={item.id} className={cn('-mx-4 flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4', severityAccent(item), closed && 'opacity-70')}>
@@ -482,6 +497,8 @@ export default function OperationsIssuesPage() {
             )
           })}
         </ul>
+          <Pager {...pagedFilteredIssues.pager} noun="issues" className="mt-2" />
+        </>
       )}
 
       {/* ── Report Issue Dialog ── */}

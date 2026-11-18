@@ -16,6 +16,8 @@ import { usePageTitle } from '@/lib/page-title'
 import { useScope } from '@/lib/ScopeContext'
 import { createClient, fetchClients, mayBill, rupees, updateClient, type Client, type ClientInput } from '@/lib/billing'
 import { ModuleTitle, NoAccess } from '@/components/page/page-kit'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // NXT-01: Client billing › Clients. Each client the company builds for, their projects and contract values.
 // A project's terms are set from Planning › Project start (Client and contract) or the RA bills page.
@@ -38,6 +40,8 @@ export default function ClientsPage() {
   const { scope } = useScope()
   const projectId = scope.mode === 'portfolio' ? null : scope.projectId
   const clients = query.data && projectId ? query.data.filter((c) => c.projects?.some((p) => p.id === projectId)) : query.data
+  // UX-37: numbered pages, kept in the address.
+  const pagedClients = usePagedUrl(clients ?? [])
   const [editing, setEditing] = React.useState<Client | 'new' | null>(null)
 
   return (
@@ -57,8 +61,9 @@ export default function ClientsPage() {
           {projectId ? 'No client for this project yet' : 'No clients yet'}
         </p>
       ) : (
+        <>
         <ul className="divide-y rounded-lg border" data-guide="clients.list">
-          {clients.map((c) => {
+          {pagedClients.shown.map((c) => {
             const total = c.projects?.reduce((s, p) => s + Number(p.contract_value || 0), 0) ?? 0
             return (
               <li key={c.id} className="flex flex-wrap items-start justify-between gap-3 p-3">
@@ -85,6 +90,8 @@ export default function ClientsPage() {
             )
           })}
         </ul>
+          <Pager {...pagedClients.pager} noun="clients" className="mt-2" />
+        </>
       )}
       <ClientDialog editing={editing} onClose={() => setEditing(null)} />
     </div>

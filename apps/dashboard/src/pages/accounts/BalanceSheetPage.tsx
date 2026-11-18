@@ -7,7 +7,7 @@ import { figures } from '@/components/accounts/bs-model'
 import { BsSimple } from '@/components/accounts/bs-simple'
 import { BsEquation, BsTwoColumn } from '@/components/accounts/bs-two-column'
 import { DprHeader, PageError, Segmented } from '@/components/dpr-page'
-import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchBalanceSheet, formatDay, mayReadBooks } from '@/lib/accounts'
@@ -109,7 +109,7 @@ export default function BalanceSheetPage() {
         />
         <label data-guide="bs.asof" className="flex items-center gap-2 text-xs text-muted-foreground">
           As on
-          <Input type="date" value={asOf ?? d?.as_of ?? ''} onChange={(e) => set('as_of', e.target.value || null)} className="h-8 w-[150px] dark:[color-scheme:dark]" />
+          <DatePicker value={asOf ?? d?.as_of ?? ''} onChange={(v) => set('as_of', v || null)} className="h-8 w-[150px]" />
         </label>
         <Segmented<CompareTo>
           guide="bs.compare"

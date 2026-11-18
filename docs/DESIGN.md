@@ -371,8 +371,8 @@ validator** on any multi-colour palette instead of judging by eye.
   - **an icon for what kind of figure it is**, from `lib/kpi-look.ts` (`kind: 'workers' | 'money' | 'issue' ...`);
     when a page names none it is guessed from the label, then the figure (a ₹ is money). `icon` sets one by hand,
     `icon: null` draws none;
-  - **its state by colour** (`tone`: `good`, `attention` (also `warn`), `bad`, `info`): a bar on top, a light tint,
-    the icon's tile and the figure in the state's colour. Plain figures stay plain so the coloured ones stand out;
+  - **its state by colour** (`tone`: `good`, `attention` (also `warn`), `bad`, `info`): a bar on top, the icon's tile
+    and the figure in the state's colour, on a white cell (`bg-card`, UX-30: every figure sits on white, like tables). Plain figures stay plain so the coloured ones stand out;
   - **a small picture of the number when the data has one**: `of` draws "x of y" as y segments (up to 12, a bar
     beyond), `share` (0 to 1) a bar: sites reported, lines priced, overdue of what we owe, billed of the order;
   - the figure large, the label two or three words, `hint` a few words (hidden on phones in a strip).

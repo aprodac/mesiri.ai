@@ -1,3 +1,4 @@
+import { Hint } from '@/components/hint'
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
@@ -9,8 +10,8 @@ import { cn } from '@/lib/utils'
 // Tile, ui/kpi-card and the tile grids pages drew by hand. A figure reads at a glance by four things, never by a
 // second line of words:
 //   - an icon for what kind of figure it is (lib/kpi-look.ts: workers, money, issues ...),
-//   - its state by colour (good, attention, bad, info; docs/DESIGN.md section 3), as a bar on top, a tinted ground,
-//     the icon's tile and the figure itself,
+//   - its state by colour (good, attention, bad, info; docs/DESIGN.md section 3), as a bar on top, the icon's tile
+//     and the figure itself; every figure sits on white (`bg-card`, UX-30), like tables,
 //   - "x of y" drawn as y segments (up to 12) or a bar, and a share (0 to 1) as a bar,
 //   - the figure large, the label short.
 // Two containers: `KpiStrip` (the numbers of a page in one bordered strip; `StatStrip` is this) and `KpiGrid`
@@ -24,14 +25,16 @@ const tone = (t?: KpiToneIn): KpiTone => (t === 'warn' ? 'attention' : t ?? 'def
 
 export const KPI_TONE: Record<KpiTone, { value: string; icon: string; bar: string; ground: string; fill: string; dot: string }> = {
   default: { value: '', icon: 'bg-muted text-muted-foreground', bar: '', ground: '', fill: 'bg-foreground/45', dot: 'bg-muted-foreground/40' },
-  good: { value: 'text-success', icon: 'bg-success-soft text-success', bar: 'before:bg-success', ground: 'bg-success-soft/35', fill: 'bg-success', dot: 'bg-success' },
-  info: { value: 'text-info', icon: 'bg-info-soft text-info', bar: 'before:bg-info', ground: 'bg-info-soft/40', fill: 'bg-info', dot: 'bg-info' },
-  attention: { value: 'text-draft', icon: 'bg-draft-soft text-draft', bar: 'before:bg-draft', ground: 'bg-draft-soft/50', fill: 'bg-draft', dot: 'bg-draft' },
-  bad: { value: 'text-destructive', icon: 'bg-destructive/10 text-destructive', bar: 'before:bg-destructive', ground: 'bg-destructive/[0.05]', fill: 'bg-destructive', dot: 'bg-destructive' },
+  good: { value: 'text-success', icon: 'bg-success-soft text-success', bar: 'before:bg-success', ground: '', fill: 'bg-success', dot: 'bg-success' },
+  info: { value: 'text-info', icon: 'bg-info-soft text-info', bar: 'before:bg-info', ground: '', fill: 'bg-info', dot: 'bg-info' },
+  attention: { value: 'text-draft', icon: 'bg-draft-soft text-draft', bar: 'before:bg-draft', ground: '', fill: 'bg-draft', dot: 'bg-draft' },
+  bad: { value: 'text-destructive', icon: 'bg-destructive/10 text-destructive', bar: 'before:bg-destructive', ground: '', fill: 'bg-destructive', dot: 'bg-destructive' },
 }
 
 export type KpiProps = {
   label: string
+  /** UX-27: a "?" beside the label that explains the figure (a glossary `term`, or `title` + `text`). */
+  explain?: React.ComponentProps<typeof Hint>
   value?: React.ReactNode
   tone?: KpiToneIn
   /** What kind of figure it is; picks the icon from lib/kpi-look.ts. Guessed from the value and label if left out. */
@@ -111,6 +114,7 @@ export function Kpi({ card = false, ...k }: KpiProps & { card?: boolean }) {
           </span>
         )}
         <span className="truncate">{k.label}</span>
+        {k.explain && <Hint {...k.explain} />}
         {k.tag && <span className="shrink-0 rounded bg-draft-soft px-1.5 py-px text-[10px] font-semibold text-draft">{k.tag}</span>}
         {k.to && <ArrowRight className="ml-auto size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />}
       </span>
@@ -133,7 +137,7 @@ export function Kpi({ card = false, ...k }: KpiProps & { card?: boolean }) {
   )
   const cls = cn(
     'group relative flex min-w-0 flex-col gap-1 text-left',
-    card ? 'overflow-hidden rounded-xl border bg-background px-3.5 py-3 sm:px-4' : 'flex-1 bg-background px-2.5 py-2 sm:px-4 sm:py-2.5',
+    card ? 'overflow-hidden rounded-xl border bg-card px-3.5 py-3 sm:px-4' : 'flex-1 bg-card px-2.5 py-2 sm:px-4 sm:py-2.5',
     t !== 'default' && "before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:content-['']",
     look.bar,
     look.ground,

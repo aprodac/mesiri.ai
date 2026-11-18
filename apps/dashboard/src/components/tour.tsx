@@ -12,6 +12,7 @@ import type { GuideWords } from '@/lib/start-mode'
 import { SPOT_EVENT, openHelp, type Spot } from '@/lib/tour-events'
 import { VOICED, spokenWords } from '@/lib/walkthroughs'
 import { VoicePlayer, useGuideVoice } from '@/components/guide-voice'
+import { typingIn } from '@/lib/keys'
 import { TOUR_EVENT, WALKTHROUGH_EVENT, walkthroughRunning } from '@/lib/tour-events'
 import { inSandbox } from '@/lib/sandbox'
 
@@ -226,9 +227,7 @@ export function GuidedTour() {
     if (!running) return
     next.current?.focus()
     const keys = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') skip()
-      else if (e.key === 'ArrowRight') go(1)
-      else if (e.key === 'ArrowLeft') go(-1)
+      if (e.key === 'Escape') skip() // ← and → are the bubble's own (TourOverlay), for tours and walkthroughs alike
     }
     window.addEventListener('keydown', keys)
     return () => window.removeEventListener('keydown', keys)
@@ -275,6 +274,10 @@ function pageWalkId(tour: Tour): string {
   return path ? `page${path.replace(/\//g, '-')}` : ''
 }
 
+function Kbd({ children }: { children: React.ReactNode }) {
+  return <kbd className="rounded border bg-muted px-1 font-sans text-[10px] font-medium text-foreground/80">{children}</kbd>
+}
+
 export interface TourOverlayProps {
   step: TourStep
   rect: DOMRect | null
@@ -302,6 +305,22 @@ export function TourOverlay({
   step, rect, sparkKey, counter, nextRef, onBack, onNext, nextLabel, nextDisabled, onSkip, skipLabel = 'Skip tour', passThrough, dock, children,
 }: TourOverlayProps) {
   const phone = window.innerWidth < 640
+  // Keyboard (asked 17 Nov): → next, ← back, for every bubble (page tours and walkthroughs); the voice's keys are the
+  // player's (components/guide-voice.tsx). Never while typing in a field or with a modifier held.
+  React.useEffect(() => {
+    const keys = (e: KeyboardEvent) => {
+      if (typingIn(e) || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === 'ArrowRight' && !nextDisabled) {
+        e.preventDefault()
+        onNext()
+      } else if (e.key === 'ArrowLeft' && onBack) {
+        e.preventDefault()
+        onBack()
+      }
+    }
+    window.addEventListener('keydown', keys)
+    return () => window.removeEventListener('keydown', keys)
+  }, [onNext, onBack, nextDisabled])
   const spot = rect
     ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
     : null
@@ -364,12 +383,13 @@ export function TourOverlay({
     else if (W - (spot.left + spot.width + GAP) >= BUBBLE_W + 12) bubble = { left: spot.left + spot.width + GAP, top: top(spot.top), width: BUBBLE_W }
     else if (spot.left - GAP >= BUBBLE_W + 12) bubble = { left: spot.left - GAP - BUBBLE_W, top: top(spot.top), width: BUBBLE_W }
     else {
-      // No side has room for all of it: the roomier side, as tall as fits there, scrolling inside. Never over the lit thing.
-      const room = Math.max(below - 12, spot.top - GAP - 12)
-      bubble = spot.top - GAP > below
-        ? { left, top: Math.max(12, spot.top - GAP - Math.min(bubbleH, room)), width: BUBBLE_W, maxHeight: room }
-        : { left, top: below, width: BUBBLE_W, maxHeight: room }
-      if (room < 160) bubble = { left: '50%', top: top(H / 2 - bubbleH / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+      // No side has room for all of it: the roomier side, as tall as fits there, scrolling inside. Never over the lit
+      // thing; one taller than the screen (a whole list) has no side at all, so the bubble sits in the middle.
+      const roomBelow = H - below - 12
+      const roomAbove = spot.top - GAP - 12
+      if (Math.max(roomBelow, roomAbove) < 160) bubble = { left: '50%', top: top(H / 2 - bubbleH / 2), transform: 'translateX(-50%)', width: BUBBLE_W }
+      else if (roomAbove > roomBelow) bubble = { left, top: Math.max(12, spot.top - GAP - Math.min(bubbleH, roomAbove)), width: BUBBLE_W, maxHeight: roomAbove }
+      else bubble = { left, top: below, width: BUBBLE_W, maxHeight: roomBelow }
     }
   }
 
@@ -408,6 +428,11 @@ export function TourOverlay({
             </p>
           </div>
           {children}
+          {!phone && (
+            <p className="m-0 text-[11px] text-muted-foreground" aria-hidden>
+              <Kbd>←</Kbd> <Kbd>→</Kbd> steps{children ? <> · <Kbd>K</Kbd> play · <Kbd>M</Kbd> mute · <Kbd>[</Kbd> <Kbd>]</Kbd> speed</> : null} · <Kbd>Esc</Kbd> stop
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-xs tabular-nums text-muted-foreground">{counter}</span>
             <button type="button" onClick={onSkip} className="text-xs text-muted-foreground underline underline-offset-2">

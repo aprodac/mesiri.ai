@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 from backend.ports import ActorIdentity, ProjectSummary, SiteSummary
 from mesiri.authorization.roles import is_org_wide
-from mesiri.domains.organizations.lifecycle import is_operational
+from mesiri.domains.organizations.lifecycle import may_message
 
 # Who reaches every project in their org (an org-wide role, or an
 # all_projects access policy) is defined once in
@@ -115,9 +115,18 @@ class PostgresActorReader:
     async def resolve_by_whatsapp_id(self, wa_id: str) -> ActorIdentity | None:
         from sqlalchemy import text
 
+        from mesiri.domains.shared.sandbox_gate import sample_sender_user
+
         digits = _digits(wa_id)
         if not digits:
             return None
+        # UX-26: a sample company's sender id names its person directly, and only ever a person in a sample company.
+        sample_user = sample_sender_user(wa_id)
+        who = (
+            "u.id = CAST(:uid AS uuid) AND o.sandbox_of IS NOT NULL "
+            if sample_user is not None
+            else "u.whatsapp_number IS NOT NULL AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = :d "
+        )
 
         async with self._get_engine().connect() as conn:
             # ----------------------------------------------------------------
@@ -142,8 +151,7 @@ class PostgresActorReader:
                             "       o.trial_ends_at AS org_trial_ends_at, o.timezone AS org_timezone "
                             "FROM users u "
                             "LEFT JOIN organizations o ON o.id = u.organization_id "
-                            "WHERE u.whatsapp_number IS NOT NULL "
-                            "  AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = :d "
+                            "WHERE " + who +
                             # lower(): the control panel's reactivate wrote
                             # "Active" (capitalized) while users are
                             # stored lowercase, so a case-sensitive match silently
@@ -153,7 +161,7 @@ class PostgresActorReader:
                             "  AND lower(u.status) = 'active' "
                             "LIMIT 1"
                         ),
-                        {"d": digits},
+                        {"d": digits, "uid": str(sample_user) if sample_user else None},
                     )
                 )
                 .mappings()
@@ -227,7 +235,8 @@ class PostgresActorReader:
             # lifecycle.is_operational: active, or a trial that hasn't
             # ended (SS-02). Case-insensitive, so a row written "Active"
             # before migration 0463 doesn't silently suspend a tenant.
-            org_active=is_operational(
+            # UX-26: may_message, not is_operational: a sample company's person may talk to Mesiri (Tell Mesiri).
+            org_active=may_message(
                 row["org_status"], row.get("org_trial_ends_at"), datetime.now(UTC)
             )
             if row["org_status"] is not None

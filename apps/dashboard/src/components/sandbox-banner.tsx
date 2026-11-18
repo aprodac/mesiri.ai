@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Check, ChevronDown, FlaskConical, Loader2, LogOut, Play, RotateCcw, UserRound } from 'lucide-react'
+import { Check, ChevronDown, FlaskConical, Loader2, LogOut, MoreHorizontal, Play, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ExplainedFor } from '@/components/explained-for'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -14,6 +14,8 @@ import { SandboxClock } from '@/components/sandbox-clock'
  * (SS-67, guided-demo-plan.md section 17.2). Leave goes back to their own company (the sample stays, to pick up
  * later); Start over removes it and makes a fresh one; the guided project can be started from here at any time.
  * SS-76: "Be …" switches to another of its people (Anil, Ravi, Meera, or the owner) in place, to see their screens.
+ * UX-31 (17 Nov, "less description and better UI"): one white row: a Sample tag (what it means on hover), the company
+ * and who you are as one menu, the days, then Explained for, Guided project, a menu with Start over, and Leave.
  */
 export function SandboxBanner() {
   const session = sandboxSession()
@@ -46,37 +48,43 @@ export function SandboxBanner() {
   }
   const current = SANDBOX_ROLES.find((r) => r.value === session.role)
 
+  const who = session.role !== 'ADMIN' && session.user_name ? session.user_name : sandboxRoleLabel(session.role)
+
   return (
     <section
       role="status"
       aria-label="Sample company"
       data-sandbox-banner=""
-      className="flex flex-col gap-2 rounded-xl border border-info/30 bg-info-soft px-4 py-2.5 text-info sm:flex-row sm:items-center sm:gap-3"
+      className="flex flex-col gap-2 rounded-xl border bg-card px-3 py-2 text-sm shadow-xs"
     >
-      <FlaskConical className="hidden size-5 shrink-0 sm:block" aria-hidden />
-      <div className="min-w-0 flex-1 text-sm">
-        <p className="m-0 font-semibold">Sample company: nothing here is real.</p>
-        <p className="m-0 text-info/90">
-          {/* The backend names the role's person "Anil (project manager)"; the owner is the person themself. */}
-          {session.name}, as {session.role !== 'ADMIN' && session.user_name ? session.user_name : sandboxRoleLabel(session.role)}. Nothing is sent; your company is untouched.
-          {current && <span className="hidden sm:inline"> {current.label} sees: {current.sees.toLowerCase()}.</span>}
-        </p>
-        {error && <p className="m-0 mt-1 text-destructive">{error}</p>}
-        {/* SS-74e: the sample company's days: Next day, Skip ahead, and what is the person's to do. */}
-        <div className="mt-2">
-          <SandboxClock />
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2 sm:max-w-md sm:justify-end">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-info-soft px-2 py-1 text-xs font-semibold text-info"
+          title="Nothing here is real: nothing is sent and your own company is untouched."
+        >
+          <FlaskConical className="size-3.5" aria-hidden /> Sample
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="outline" className="gap-1.5 bg-background" disabled={!!busy} data-guide="sandbox.role">
-              {busy === 'role' ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <UserRound className="size-3.5" aria-hidden />}
-              {busy === 'role' ? 'Switching…' : `Be: ${current?.label ?? 'Owner'}`}
-              <ChevronDown className="size-3.5" aria-hidden />
-            </Button>
+            <button
+              type="button"
+              className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left hover:bg-muted disabled:opacity-60"
+              disabled={!!busy}
+              data-guide="sandbox.role"
+              aria-label={`${session.name}, seen as ${who}. Change who you are`}
+            >
+              <span className="truncate font-semibold">{session.name}</span>
+              <span className="shrink-0 text-muted-foreground">·</span>
+              {busy === 'role' ? (
+                <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" aria-hidden /> Switching…</span>
+              ) : (
+                <span className="truncate text-muted-foreground">{current?.label ?? who}</span>
+              )}
+              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuContent align="start" className="w-72">
             <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">See the sample company as</DropdownMenuLabel>
             {SANDBOX_ROLES.map((r) => (
               <DropdownMenuItem key={r.value} onSelect={() => void become(r.value)} className="items-start gap-2">
@@ -89,20 +97,42 @@ export function SandboxBanner() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <ExplainedFor guide="sandbox.explained" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+        <ExplainedFor compact guide="sandbox.explained" />
         {walkFor(JOURNEY, session.role) && (
-          <Button size="sm" variant="outline" className="gap-1.5 bg-background" disabled={!!busy} onClick={() => startWalkthrough(JOURNEY.id)}>
+          <Button size="sm" variant="ghost" className="gap-1.5" disabled={!!busy} onClick={() => startWalkthrough(JOURNEY.id)}>
             <Play className="size-3.5" aria-hidden /> Guided project
           </Button>
         )}
-        <Button size="sm" variant="outline" className="gap-1.5 bg-background" disabled={!!busy} onClick={() => void reset()}>
-          {busy === 'reset' ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <RotateCcw className="size-3.5" aria-hidden />}
-          {busy === 'reset' ? 'Making a fresh one…' : 'Start over'}
-        </Button>
-        <Button size="sm" className="gap-1.5" disabled={!!busy} onClick={() => leaveSandbox()}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" className="size-8" disabled={!!busy} aria-label="More for the sample company">
+              {busy === 'reset' ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <MoreHorizontal className="size-4" aria-hidden />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuItem onSelect={() => void reset()} className="items-start gap-2">
+              <RotateCcw className="mt-0.5 size-4" aria-hidden />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Start over</span>
+                <span className="block text-xs text-muted-foreground">A fresh sample company, from day 1</span>
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button size="sm" variant="outline" className="gap-1.5" disabled={!!busy} onClick={() => leaveSandbox()}>
           <LogOut className="size-3.5" aria-hidden /> Leave
         </Button>
       </div>
+      </div>
+      {/* SS-74e: the sample company's days: Next day, Skip ahead, and what is the person's to do. */}
+      <div className="border-t pt-2">
+        <SandboxClock />
+      </div>
+      {busy === 'reset' && <p className="m-0 text-xs text-muted-foreground">Making a fresh one…</p>}
+      {error && <p className="m-0 text-sm text-destructive">{error}</p>}
     </section>
   )
 }

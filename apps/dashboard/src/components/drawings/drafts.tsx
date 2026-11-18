@@ -11,6 +11,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { fetchLifecycle } from '@/lib/schedule'
 import { ActionIcon } from '@/components/page/action-button'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // DR-05 / DR-06: the drafts the drawing reader makes, edited here and then added to a project. Adding never
 // changes what the project already has: an activity or BOQ line that is already there is skipped and said.
@@ -67,7 +68,7 @@ export function DraftSchedule({ read }: { read: DrawingReadWithDrafts }) {
       <Button variant="outline" size="sm" className="w-fit gap-1.5" onClick={() => setRows((x) => [...x, { name: '', days: 5 }])}><Plus className="size-3.5" /> Add an activity</Button>
       <div className="flex flex-wrap items-end gap-2 border-t pt-3">
         <ProjectSelect value={projectId} onChange={setProjectId} />
-        <div className="grid gap-1"><Label htmlFor="ds-start" className="text-xs">Work starts</Label><Input id="ds-start" type="date" className="h-9 w-40" value={start} onChange={(e) => setStart(e.target.value)} /></div>
+        <div className="grid gap-1"><Label htmlFor="ds-start" className="text-xs">Work starts</Label><DatePicker id="ds-start" className="h-9 w-40" value={start} onChange={(v) => setStart(v)} /></div>
         <Button disabled={!projectId || !start || add.isPending || rows.length === 0} onClick={() => add.mutate()}>{add.isPending ? 'Adding…' : 'Add to the schedule'}</Button>
         {add.isSuccess && projectId && <Button variant="ghost" asChild><Link to={`/planning/schedule?project=${projectId}`}>Open the schedule</Link></Button>}
       </div>

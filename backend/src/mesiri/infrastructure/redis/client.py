@@ -103,6 +103,22 @@ class RedisClient:
             raise map_redis_error(exc) from exc
         return bool(claimed)
 
+    async def count(self, key: str, *, ttl_seconds: int) -> int:
+        """Add one to a counter and return it; the counter goes ``ttl_seconds`` after its first count (a window).
+
+        INCR and EXPIRE in one round trip (a pipeline), so a counter can never be left without its expiry.
+        """
+        client = self._require_client
+        name = self.namespaced(key)
+        try:
+            async with client.pipeline(transaction=True) as pipe:
+                pipe.incr(name)
+                pipe.expire(name, ttl_seconds, nx=True)
+                value, _ = await pipe.execute()
+        except Exception as exc:  # noqa: BLE001
+            raise map_redis_error(exc) from exc
+        return int(value)
+
     async def check_health(self) -> None:
         client = self._require_client
         try:
@@ -170,6 +186,12 @@ class FakeRedis:
             return False
         self._store[namespaced] = value
         return True
+
+    async def count(self, key: str, *, ttl_seconds: int) -> int:
+        namespaced = self.namespaced(key)
+        value = int(self._store.get(namespaced, "0")) + 1
+        self._store[namespaced] = str(value)
+        return value
 
     async def check_health(self) -> None:
         if self.fail_health or not self._connected:

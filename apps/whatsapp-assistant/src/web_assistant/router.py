@@ -8,7 +8,8 @@ trial usage guard all apply unchanged. Mesiri's replies come back in the
 response instead of going to WhatsApp (decided: no copy on WhatsApp in V1).
 
 Who it acts as is never in the request: always the signed-in user, by the
-WhatsApp number on their own account. No number, no messages.
+WhatsApp number on their own account. No number, no messages; in a sample company, a sender id
+that names them and can never be a phone (UX-26).
 """
 
 from __future__ import annotations
@@ -76,10 +77,9 @@ async def within_rate_limit(redis: object | None, user_id: str) -> bool:
     (tests, local) there is no limit."""
     if redis is None:
         return True
-    key = f"web_assistant:rate:{user_id}"
-    count = await redis.incr(key)  # type: ignore[attr-defined]
-    if count == 1:
-        await redis.expire(key, RATE_WINDOW_S)  # type: ignore[attr-defined]
+    # UX-26 (found 17 Nov): this called incr/expire, which the app's Redis client (and its stand-in) don't have, so
+    # every Tell Mesiri message answered 500 wherever Redis is set up. The client's own counter now.
+    count = await redis.count(f"web_assistant:rate:{user_id}", ttl_seconds=RATE_WINDOW_S)  # type: ignore[attr-defined]
     return int(count) <= RATE_LIMIT
 
 
@@ -91,6 +91,16 @@ async def sender_number(user: dict) -> tuple[uuid.UUID, str]:
     except ValueError:
         raise HTTPException(status_code=401, detail="Sign in again") from None
     bind_tenant(org_id)
+    if user.get("sandbox"):
+        # UX-26: a person in a sample company has no number (nothing there may reach a phone): they talk to Mesiri
+        # with a sender id that names them and can never be a phone (sandbox_gate.sample_sender_id).
+        from mesiri.domains.shared.sandbox_gate import sample_sender_id
+
+        try:
+            await user_whatsapp_number(org_id, user_id)
+        except UserNotFound:
+            raise HTTPException(status_code=401, detail="Sign in again") from None
+        return user_id, sample_sender_id(user_id)
     try:
         number = await user_whatsapp_number(org_id, user_id)
     except UserNotFound:

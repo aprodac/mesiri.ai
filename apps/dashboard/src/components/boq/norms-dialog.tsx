@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Combobox } from '@/components/ui/combobox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { fetchMaterials, type MaterialCatalog } from '@/lib/materials'
+import { fetchAllMaterials, type MaterialCatalog } from '@/lib/materials'
 import { formatQuantity, type BoqLine, type NormInput } from '@/lib/boq'
 import { ActionIcon } from '@/components/page/action-button'
 
@@ -42,7 +42,7 @@ export function NormsDialog({
 
   const catalog = useQuery({
     queryKey: ['materials-catalog-active'],
-    queryFn: () => fetchMaterials({ is_active: true, limit: 200 }),
+    queryFn: () => fetchAllMaterials({ is_active: true }),
     enabled: !!line,
     staleTime: 60_000,
   })

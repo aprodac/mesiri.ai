@@ -21,6 +21,8 @@ import { useScope } from '@/lib/ScopeContext'
 import { useReadOnly } from '@/lib/trial'
 import { useUrlState } from '@/lib/url-state'
 import { usePageTitle } from '@/lib/page-title'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 import { periodRange, type Period } from '@/lib/period'
 import { exportCsv } from '@/lib/export'
 import { CHIP } from '@/lib/site-day'
@@ -39,7 +41,6 @@ import { ActionButton, ActionMenuItem, KpiStrip, ModuleTitle, SayOnWhatsApp } fr
 // shows the bill or takes the expense back. /finance/expenses/:id opens that expense here. UX-29 (17 Nov): the list is
 // a white table (date, expense, site, paid, amount) and the figures sit on white like it.
 
-const PAGE = 50
 const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', weekday: 'short' })
 const dayLabel = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
@@ -68,7 +69,6 @@ export default function ExpensesPage() {
   const [period, setPeriod] = useUrlState<Period>('period', '30d')
   const [from, setFrom] = useUrlState<string>('from', '')
   const [to, setTo] = useUrlState<string>('to', '')
-  const [shownCount, setShownCount] = React.useState(PAGE)
   const [recordOpen, setRecordOpen] = React.useState(false)
   const [taking, setTaking] = React.useState<Expense | null>(null)
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(null)
@@ -217,7 +217,9 @@ export default function ExpensesPage() {
       ]),
     )
 
-  const shown = React.useMemo(() => expenses.slice(0, shownCount), [expenses, shownCount])
+  // UX-37: numbered pages; a changed filter or period starts again from page 1.
+  const paged = usePagedUrl(expenses, { resetOn: JSON.stringify([q, category, vendor, site, via, photo, source, period, from, to]) })
+  const shown = paged.shown
 
   const clearFilters = () =>
     setParams((prev) => {
@@ -257,7 +259,7 @@ export default function ExpensesPage() {
         phoneCols={2}
         stats={[
           {
-            label: 'Spent', kind: 'money', loading: list.isLoading, value: compact(total), className: 'bg-card',
+            label: 'Spent', kind: 'money', loading: list.isLoading, value: compact(total),
             hint: `${base.length} ${base.length === 1 ? 'expense' : 'expenses'}${gstTotal > 0 ? ` · incl. ${rupees(gstTotal)} GST` : ''}`,
           },
           ...tiles.map((t) => ({
@@ -268,8 +270,6 @@ export default function ExpensesPage() {
             loading: list.isLoading,
             value: compact(t.amount),
             tone: (t.value === 'unpaid' || t.value === 'own_pocket') && t.amount > 0 ? ('attention' as const) : ('default' as const),
-            // UX-29: white cells like the table; a figure that needs attention keeps its amber bar on top.
-            className: 'bg-card',
             share: total > 0 ? t.amount / total : 0,
             hint: t.hint ?? `${t.n} · ${total > 0 ? Math.round((t.amount / total) * 100) : 0}%`,
             pressed: via === t.value,
@@ -453,7 +453,7 @@ export default function ExpensesPage() {
                   <TableRow className="hover:bg-transparent">
                     <TableCell className="hidden pl-4 sm:table-cell" />
                     <TableCell className="pl-4 text-xs font-medium text-muted-foreground sm:pl-2">
-                      {expenses.length > shown.length ? `${shown.length} of ${expenses.length} shown · total of all` : `${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'}`}
+                      {paged.pages > 1 ? `Total of all ${expenses.length} expenses` : `${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'}`}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell" />
                     <TableCell className="hidden md:table-cell" />
@@ -463,11 +463,7 @@ export default function ExpensesPage() {
                 </TableFooter>
               </Table>
             </div>
-            {expenses.length > shownCount && (
-              <Button variant="outline" className="self-center" onClick={() => setShownCount((n) => n + PAGE)}>
-                Load more ({expenses.length - shownCount} left)
-              </Button>
-            )}
+            <Pager {...paged.pager} noun="expenses" />
           </div>
         </div>
       )}

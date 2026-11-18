@@ -1,3 +1,5 @@
+import { Hint } from '@/components/hint'
+import { useStartMode } from '@/lib/start-mode'
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -68,6 +70,9 @@ export function BoqImportDialog({
     if (f) preview.mutate(f)
   }
   const report: BoqImportReport | undefined = run.data ?? preview.data
+  // UX-27: for the people who asked for explanations, "What came in" says what each column is; the plain list goes.
+  const { rules } = useStartMode()
+  const explained = rules.words !== null && rules.words !== 'expert'
   const problems = report?.rows.filter((r) => r.result === 'problem') ?? []
   // CC-13: materials per unit from the file's "Materials per unit" sheet.
   const materialLines = report?.material_lines_set ?? 0
@@ -81,9 +86,7 @@ export function BoqImportDialog({
             <FileSpreadsheet className="size-4 text-success" /> BOQ from Excel{projectName ? ` · ${projectName}` : ''}
           </DialogTitle>
           <DialogDescription>
-            Upload the estimate you already have. Mesiri finds the Description, Unit, Qty and Rate columns; heading rows
-            (like “A. EARTHWORK”) become sections. A “Materials per unit” sheet (in the template) adds what one unit of each
-            line uses. You see everything before it is saved.
+            Upload the estimate Excel you already have. You see what Mesiri read before anything is saved.
           </DialogDescription>
         </DialogHeader>
 
@@ -161,13 +164,15 @@ export function BoqImportDialog({
             )}
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Figure label="Sections" value={`${report.sections_added + report.sections_found}`} hint={report.sections_found ? `${report.sections_found} already there` : 'new'} />
-              <Figure label="Lines" value={`${report.lines_added}`} hint={report.lines_kept ? `+${report.lines_kept} kept` : 'to add'} />
-              <Figure label="Contract value" value={formatRupees(report.contract_value)} hint="qty × client rate" />
-              <Figure label="Budget cost" value={formatRupees(report.budget_cost)} hint="qty × your rates" />
+              <Figure label="Sections" term="BOQ section" value={`${report.sections_added + report.sections_found}`} hint={report.sections_found ? `${report.sections_found} already there` : 'new'} />
+              <Figure label="Lines" term="BOQ line" value={`${report.lines_added}`} hint={report.lines_kept ? `+${report.lines_kept} kept` : 'to add'} />
+              <Figure label="Contract value" term="contract value" value={formatRupees(report.contract_value)} hint="qty × client rate" />
+              <Figure label="Budget cost" term="budget cost" value={formatRupees(report.budget_cost)} hint="qty × your rates" />
             </div>
 
-            <p className="text-xs text-muted-foreground">
+            {explained && <WhatCameIn report={report} />}
+
+            <p className={cn('text-xs text-muted-foreground', explained && 'hidden')}>
               Columns read: {Object.keys(report.columns).map((k) => `${COLUMN_WORDS[k] ?? k} (“${report.columns[k]}”)`).join(', ')}
               {report.ignored_columns.length ? `. Not used: ${report.ignored_columns.join(', ')}` : ''}.
             </p>
@@ -221,12 +226,67 @@ export function BoqImportDialog({
   )
 }
 
-function Figure({ label, value, hint }: { label: string; value: string; hint: string }) {
+function Figure({ label, value, hint, term }: { label: string; value: string; hint: string; term?: string }) {
   return (
     <div className="rounded-lg border px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">{label}{term && <Hint term={term} />}</div>
       <div className="truncate text-lg font-semibold tabular-nums">{value}</div>
       <div className="text-[11px] text-muted-foreground">{hint}</div>
     </div>
+  )
+}
+
+/** What each column of the estimate becomes, in plain words (UX-27). */
+const COLUMN_MEANING: Record<string, string> = {
+  work: 'what the work is',
+  unit: 'how it is measured (sqm, cum, nos)',
+  quantity: 'how much of it the project needs',
+  code: "the item's number in the estimate",
+  section: 'the group it belongs to',
+  client_rate: 'what the client pays for one unit',
+  labour_rate: 'what the labour for one unit costs you',
+  material_rate: 'what the material for one unit costs you',
+  subcontract_rate: 'what a subcontractor charges you for one unit',
+  start: 'when that part starts',
+  finish: 'when it finishes',
+  after: 'what must finish before it',
+}
+
+/**
+ * UX-27 (asked 17 Nov: "explain the uploaded contents of that BOQ" for a beginner): what Mesiri read in the Excel and
+ * what the numbers mean, from this file's own figures. For the people who asked for explanations (the Hint's rule).
+ */
+function WhatCameIn({ report }: { report: BoqImportReport }) {
+  const contract = Number(report.contract_value || 0)
+  const budget = Number(report.budget_cost || 0)
+  const margin = contract && budget ? contract - budget : null
+  const cols = Object.keys(report.columns).filter((k) => COLUMN_MEANING[k])
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border border-info/30 bg-info-soft/40 p-3 text-sm" aria-label="What came in">
+      <h3 className="m-0 font-semibold">What came in</h3>
+      <p className="m-0">
+        {report.sections_added + report.sections_found} sections (groups of work), {report.lines_added + report.lines_kept} lines (one item each).
+      </p>
+      {cols.length > 0 && (
+        <ul className="m-0 grid gap-0.5 pl-0">
+          {cols.map((k) => (
+            <li key={k} className="list-none">
+              <span className="font-medium">“{report.columns[k]}”</span> <span className="text-muted-foreground">is</span> {COLUMN_MEANING[k]}
+            </li>
+          ))}
+        </ul>
+      )}
+      {contract > 0 && (
+        <p className="m-0">
+          Quantity × client rate, added up: the client pays <span className="font-semibold tabular-nums">{formatRupees(report.contract_value)}</span>.
+          {budget > 0 && (
+            <> Quantity × your own rates: it costs you <span className="font-semibold tabular-nums">{formatRupees(report.budget_cost)}</span>.</>
+          )}
+          {margin !== null && (
+            <> What is left, <span className={margin < 0 ? 'font-semibold text-destructive' : 'font-semibold'}>{formatRupees(String(margin))}</span>, is your margin ({Math.round((margin / contract) * 100)}%).</>
+          )}
+        </p>
+      )}
+    </section>
   )
 }

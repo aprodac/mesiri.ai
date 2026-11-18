@@ -3,7 +3,6 @@ import { MONEY_PEOPLE } from '@/lib/permissions'
 import { useQuery } from '@tanstack/react-query'
 import { BadgePercent, CalendarDays, LayoutGrid, MapPin, Search, Store, Tags, TrendingDown, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { FilterSelect } from '@/components/filter-select'
 import { CategoryTile, FilterPill, type FilterOption } from '@/components/requests/parts'
@@ -26,6 +25,7 @@ import { MONEY_ROLES } from '@/lib/module-map'
 import { RATE_PERIODS, fetchRates, rate, ratePeriodRange, shortDate, type RateItem, type RatePeriod, type RatePurchase, vendorColour } from '@/lib/rates'
 import { type KpiProps, KpiStrip, ModuleTitle, NoAccess, SayOnWhatsApp } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // PRC-14 / PRC-16: Procurement > Rates. What each item cost, from which supplier, over time: four tiles for what
 // needs a look (rates that went up, went down, cheaper elsewhere, spend), filters, one row per item with its trend
@@ -193,9 +193,9 @@ export default function RatesPage() {
           <FilterSelect label="Period" value={period} onChange={setPeriod} options={RATE_PERIODS} icon={CalendarDays} className="h-9 w-[160px] rounded-lg" />
           {period === 'custom' && (
             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Input type="date" aria-label="From" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9 w-[140px] dark:[color-scheme:dark]" />
+              <DatePicker aria-label="From" value={from} max={to || undefined} onChange={(v) => setFrom(v)} className="h-9 w-[140px]" />
               to
-              <Input type="date" aria-label="To" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9 w-[140px] dark:[color-scheme:dark]" />
+              <DatePicker aria-label="To" value={to} min={from || undefined} onChange={(v) => setTo(v)} className="h-9 w-[140px]" />
             </span>
           )}
           <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-2.5">

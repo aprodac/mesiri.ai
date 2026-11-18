@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { QrCode } from '@/components/onboarding/qr-code'
 import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
 import { Label } from '@/components/onboarding/conversation'
+import { initialsOf } from '@/lib/initials'
 
 // WEB-71 (Ilan, 6 Nov): in a live meeting people scan the QR code on Live and join the company. The QR code
 // sends the company's join code ("JOIN ACME-4821"); the admin gets "X is trying to join, let them in?" on
@@ -38,13 +39,7 @@ function waitingOn(p: JoiningPerson): string {
   return [roleName(p.role), p.project].filter(Boolean).join(' · ')
 }
 
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join('') || '?'
+const initials = (name: string) => initialsOf(name)
 
 /** What Mesiri says when someone moves on a step (presenter mode talks). */
 export function joiningLine(p: JoiningPerson, before: JoiningPerson['step'] | undefined): string | null {

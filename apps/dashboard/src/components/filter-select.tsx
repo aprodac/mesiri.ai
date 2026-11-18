@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { CalendarDays } from 'lucide-react'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { Period } from '@/lib/period'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // WEB-40: filters as compact dropdowns instead of rows of pill buttons, so a
 // page's toolbar fits on one line: an icon, the chosen value, a caret.
@@ -70,9 +70,9 @@ export function PeriodSelect({
       <FilterSelect label="Period" value={value} onChange={onChange} options={PERIOD_WORDS} icon={CalendarDays} className="w-[150px]" />
       {value === 'custom' && (
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Input type="date" aria-label="From" value={from} max={to || undefined} onChange={(e) => onFrom(e.target.value)} className="h-8 w-[140px] dark:[color-scheme:dark]" />
+          <DatePicker aria-label="From" value={from} max={to || undefined} onChange={(v) => onFrom(v)} className="h-8 w-[140px]" />
           to
-          <Input type="date" aria-label="To" value={to} min={from || undefined} onChange={(e) => onTo(e.target.value)} className="h-8 w-[140px] dark:[color-scheme:dark]" />
+          <DatePicker aria-label="To" value={to} min={from || undefined} onChange={(v) => onTo(v)} className="h-8 w-[140px]" />
         </span>
       )}
     </div>

@@ -21,6 +21,8 @@ import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/compo
 import { OrderDetail, VendorTile } from '@/components/orders/order-detail'
 import { ModuleTitle } from '@/components/page/page-kit'
 import { ActionIcon } from '@/components/page/action-button'
+import { Pager } from '@/components/page/pager'
+import { usePagedUrl } from '@/lib/paging'
 
 // PRC-45: Procurement › Pending deliveries. Every order line still to come, as a board grouped by when it is due
 // (Late · Today · This week · Later · No date) or by supplier, so the office chases the right shop in one message.
@@ -104,6 +106,8 @@ export default function PendingDeliveriesPage() {
     return BUCKETS.map((b) => ({ key: b.value, supplier: null as PurchaseOrder | null, title: b.label, hint: b.hint, tone: b.tone, dot: b.dot, items: shown.filter((p) => p.bucket === b.value) }))
       .filter((g) => g.items.length)
   }, [shown, groupBy])
+  // UX-37: numbered pages, kept in the address.
+  const pagedGroups = usePagedUrl<(typeof groups)[number]>(groups)
 
   const current = (data?.items ?? []).find((o) => o.id === selected)
 
@@ -156,8 +160,9 @@ export default function PendingDeliveriesPage() {
         </div>
       )}
 
+      <>
       <div className="flex flex-col gap-5" data-guide="pending.list">
-        {groups.map((g) => (
+        {pagedGroups.shown.map((g) => (
           <section key={g.key} aria-label={g.title} className="flex flex-col gap-2">
             {g.supplier ? (
               <SupplierHeader order={g.supplier} items={g.items} company={company} />
@@ -175,6 +180,8 @@ export default function PendingDeliveriesPage() {
           </section>
         ))}
       </div>
+        <Pager {...pagedGroups.pager} noun="groups" className="mt-2" />
+      </>
 
       <Sheet open={!!current} onOpenChange={(o) => !o && setSelected('')}>
         <SheetContent side={isMobile ? 'bottom' : 'right'} className={cn('gap-0 overflow-y-auto p-0', isMobile ? 'max-h-[92vh] rounded-t-2xl' : 'w-full sm:max-w-[460px]')}>

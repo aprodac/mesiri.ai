@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import {
-  fetchMaterials,
+  fetchAllMaterials,
   fetchStockCheck,
   createTransfer,
   asOverStockConflict,
@@ -24,6 +24,7 @@ import {
 import type { AppScope } from '@/lib/scope-types'
 import { Combobox } from '@/components/ui/combobox'
 import { appNow } from '@/lib/clock'
+import { DatePicker } from '@/components/ui/date-picker'
 
 function todayIso(): string {
   return appNow().toISOString().slice(0, 10)
@@ -110,7 +111,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope, prefill }: Rec
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', ''],
-    queryFn: () => fetchMaterials({ is_active: true, limit: 200 }),
+    queryFn: () => fetchAllMaterials({ is_active: true }),
     enabled: open,
     staleTime: 60_000,
   })
@@ -313,13 +314,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope, prefill }: Rec
 
           <div className="grid gap-1.5">
             <Label htmlFor="transferDate">Date</Label>
-            <Input
-              id="transferDate"
-              type="date"
-              value={occurredDate}
-              onChange={(e) => setOccurredDate(e.target.value)}
-              required
-            />
+            <DatePicker id="transferDate" value={occurredDate} onChange={(v) => setOccurredDate(v)} required />
           </div>
 
           <div className="grid gap-1.5">

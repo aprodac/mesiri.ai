@@ -37,3 +37,14 @@ def test_the_database_refusal_becomes_a_plain_reason() -> None:
                "MESIRI_SANDBOX: People in the sample company can't have a WhatsApp number, so nothing in it reaches a real phone.")
     assert invalid_value_detail(message) == (
         "People in the sample company can't have a WhatsApp number, so nothing in it reaches a real phone.")
+
+
+def test_a_sample_company_may_message_mesiri_but_is_never_operational() -> None:
+    """UX-26: Tell Mesiri in a sample company. Its person may send a message; nothing that runs by itself reaches it."""
+    assert lifecycle.may_message("sandbox", None, NOW) is True
+    assert lifecycle.is_operational("sandbox", None, NOW) is False
+    # The guards: the rule for a message is otherwise exactly is_operational.
+    assert lifecycle.may_message("active", None, NOW) is True
+    for status in ("expired", "suspended", "pending", None):
+        assert lifecycle.may_message(status, None, NOW) is False
+    assert lifecycle.may_message("trial", NOW - dt.timedelta(days=1), NOW) is False
