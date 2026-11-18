@@ -105,7 +105,8 @@ export interface StateItem {
 
 /**
  * How the rows split by state: one bar, and a chip per state that filters the list (pressed again, all).
- * `extra` holds more chips (a dashed "need a fix"), `right` the search, sort and switches.
+ * `extra` holds more chips (a dashed "need a fix"), `right` the search, sort and switches. `strip={false}` leaves out
+ * the coloured bar when the chips' counts say enough; `children` sit under the chips in the same box (a toolbar row).
  */
 export function StateBar({
   items,
@@ -114,6 +115,8 @@ export function StateBar({
   extra,
   right,
   guide,
+  strip = true,
+  children,
 }: {
   items: StateItem[]
   value: string
@@ -121,13 +124,17 @@ export function StateBar({
   extra?: React.ReactNode
   right?: React.ReactNode
   guide?: string
+  strip?: boolean
+  children?: React.ReactNode
 }) {
   const total = items.reduce((t, i) => t + i.count, 0)
   return (
     <div className="flex flex-col gap-2 rounded-xl border bg-card p-3" data-guide={guide}>
-      <div className="flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={items.map((i) => `${i.count} ${i.label}`).join(', ')}>
-        {items.map((i) => i.count > 0 && <span key={i.value} className={i.bar ?? TONE[i.tone].dot} style={{ width: `${(i.count / Math.max(total, 1)) * 100}%` }} />)}
-      </div>
+      {strip && (
+        <div className="flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={items.map((i) => `${i.count} ${i.label}`).join(', ')}>
+          {items.map((i) => i.count > 0 && <span key={i.value} className={i.bar ?? TONE[i.tone].dot} style={{ width: `${(i.count / Math.max(total, 1)) * 100}%` }} />)}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         {items
           .filter((i) => i.count > 0)
@@ -149,6 +156,7 @@ export function StateBar({
         {extra}
         {right && <span className="ml-auto flex flex-wrap items-center gap-2">{right}</span>}
       </div>
+      {children && <div className="border-t pt-2">{children}</div>}
     </div>
   )
 }

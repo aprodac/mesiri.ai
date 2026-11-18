@@ -295,7 +295,7 @@ export default function OperationsIssuesPage() {
     return `/issues?${next}`
   }
 
-  // ── Where they come from: by kind and by site, among the issues in the chosen state.
+  // ── How many of each kind and at each site, in the chosen state: the counts in the Kind and Site menus.
   const breakdownBase = React.useMemo(() => issues.filter(inStatus), [issues, inStatus])
   const byKind = React.useMemo(() => countBy(breakdownBase, (i) => i.issue_type.toUpperCase()), [breakdownBase])
   const bySite = React.useMemo(() => countBy(breakdownBase, (i) => i.site_id), [breakdownBase])
@@ -469,50 +469,24 @@ export default function OperationsIssuesPage() {
               { label: 'Open', icon: CircleDot, value: open.length || '—', tone: open.length ? 'attention' : 'good', hint: open.length ? `${open.filter((i) => i.status.toUpperCase() === 'OPEN').length} not seen yet` : 'nothing stuck', to: filterLink({}) },
               { label: 'High or critical', icon: Siren, value: stats.urgent || '—', tone: stats.urgent ? 'bad' : 'good', of: open.length || undefined, to: filterLink({ urgent: '1' }) },
               { label: `Waiting ${LATE_DAYS}+ days`, icon: Hourglass, value: stats.late || '—', tone: stats.late ? 'bad' : 'good', of: open.length || undefined, to: filterLink({ late: '1', sort: 'oldest' }) },
-              { label: 'Time lost', icon: Clock, value: stats.lost ? (stats.lost >= 120 ? `${Math.round(stats.lost / 6) / 10} h` : minutesWord(stats.lost)) : '—', tone: stats.lost ? 'attention' : 'default', hint: 'by open issues', to: filterLink({ sort: 'lost' }) },
               { label: 'Fixed this week', icon: CircleCheck, value: stats.fixedWeek || '—', tone: stats.fixedWeek ? 'good' : 'default', hint: stats.typicalFix != null ? `usually in ${spanWord(stats.typicalFix)}` : undefined, to: filterLink({ status: 'RESOLVED', sort: 'newest' }) },
             ]}
           />
 
-          {(stats.urgentNotSeen > 0 || stats.noTask > 0) && (
-            <div className="grid gap-2 md:grid-cols-2">
-              {stats.urgentNotSeen > 0 && (
-                <ActionChip icon={Siren} tone="bad" to={filterLink({ status: 'OPEN', urgent: '1' })} action="Show them">
-                  <span className="font-semibold tabular-nums">{stats.urgentNotSeen}</span> high or critical {stats.urgentNotSeen === 1 ? 'issue nobody has' : 'issues nobody has'} seen yet
-                </ActionChip>
-              )}
-              {stats.noTask > 0 && (
-                <ActionChip icon={ListTodo} to={filterLink({ urgent: '1', notask: '1' })} action="Give them to someone">
-                  <span className="font-semibold tabular-nums">{stats.noTask}</span> urgent {stats.noTask === 1 ? 'issue has' : 'issues have'} no task
-                </ActionChip>
-              )}
-            </div>
-          )}
+          {/* One thing to do at most: the most urgent. */}
+          {stats.urgentNotSeen > 0 ? (
+            <ActionChip icon={Siren} tone="bad" to={filterLink({ status: 'OPEN', urgent: '1' })} action="Show them">
+              <span className="font-semibold tabular-nums">{stats.urgentNotSeen}</span> high or critical {stats.urgentNotSeen === 1 ? 'issue nobody has' : 'issues nobody has'} seen yet
+            </ActionChip>
+          ) : stats.noTask > 0 ? (
+            <ActionChip icon={ListTodo} to={filterLink({ urgent: '1', notask: '1' })} action="Give them to someone">
+              <span className="font-semibold tabular-nums">{stats.noTask}</span> urgent {stats.noTask === 1 ? 'issue has' : 'issues have'} no task
+            </ActionChip>
+          ) : null}
 
-          {(byKind.length > 1 || bySite.length > 1) && (
-            <div className={cn('hidden gap-2 sm:grid', byKind.length > 1 && bySite.length > 1 && 'md:grid-cols-2')} data-guide="issues.breakdown">
-              {byKind.length > 1 && (
-                <Breakdown
-                  title="What holds work up"
-                  rows={byKind.map(([k, n]) => ({ key: k, label: kindWord(k), icon: kindIcon(k), count: n }))}
-                  value={kind}
-                  onPick={setKind}
-                />
-              )}
-              {bySite.length > 1 && (
-                <Breakdown
-                  title="Where"
-                  rows={bySite.map(([s, n]) => ({ key: s, label: names.get(s)?.name || '—', icon: MapPin, count: n }))}
-                  value={where}
-                  onPick={setWhere}
-                />
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2">
-            <StateBar
+          <StateBar
               guide="issues.states"
+              strip={false}
               items={STATES.map((s) => ({ ...s, count: beforeStatus.filter((i) => i.status.toUpperCase() === s.value).length }))}
               value={status === 'ALL' ? '' : status}
               onChange={setStatus}
@@ -530,13 +504,13 @@ export default function OperationsIssuesPage() {
                   )}
                 </>
               }
-            />
+            >
             <div className="flex flex-wrap items-center gap-2" data-guide="issues.search">
               <SearchBox value={search} onChange={setSearch} placeholder="Search issues, sites, people" label="Search issues" size="sm" />
               <FilterSelect value={severity} onChange={setSeverity} all="Any severity" label="Severity" options={SEVERITIES.map((s) => ({ value: s, label: SEVERITY_WORD[s] }))} />
-              <FilterSelect value={kind} onChange={setKind} all="Any kind" label="Kind" options={KINDS.filter((k) => issues.some((i) => i.issue_type.toUpperCase() === k.value)).map((k) => ({ value: k.value, label: k.label }))} />
+              <FilterSelect value={kind} onChange={setKind} all="Any kind" label="Kind" options={withPicked(byKind, kind).map(([k, n]) => ({ value: k, label: `${kindWord(k)} · ${n}` }))} />
               {sitesWithIssues.length > 1 && (
-                <FilterSelect value={where} onChange={setWhere} all="Every site" label="Site" options={sitesWithIssues.map((s) => ({ value: s, label: names.get(s)?.name || '—' })).sort((a, b) => a.label.localeCompare(b.label))} />
+                <FilterSelect value={where} onChange={setWhere} all="Every site" label="Site" options={withPicked(bySite, where).map(([s, n]) => ({ value: s, label: `${names.get(s)?.name || '—'} · ${n}` }))} />
               )}
               <ClearButton show={any} onClick={clear} size="sm" />
               <span className="ml-auto flex flex-wrap items-center gap-2">
@@ -548,7 +522,7 @@ export default function OperationsIssuesPage() {
                 </ActionButton>
               </span>
             </div>
-          </div>
+          </StateBar>
 
           <BulkBar count={picked.size} onClear={() => setPicked(new Set())}>
             <Button size="sm" variant="secondary" className="h-7 gap-1" disabled={busy || !pickedOpen.some((i) => i.status.toUpperCase() === 'OPEN')} onClick={() => acknowledge(pickedOpen.filter((i) => i.status.toUpperCase() === 'OPEN').map((i) => i.id))}>
@@ -785,6 +759,9 @@ export default function OperationsIssuesPage() {
 
 // ─── Parts ────────────────────────────────────────────────────────────────────
 
+/** A menu's choices, keeping the picked one even when none are left in the chosen state (else the menu shows blank). */
+const withPicked = (rows: [string, number][], picked: string): [string, number][] => (picked && !rows.some(([k]) => k === picked) ? [...rows, [picked, 0]] : rows)
+
 function countBy(rows: SiteIssueItem[], key: (i: SiteIssueItem) => string): [string, number][] {
   const m = new Map<string, number>()
   for (const r of rows) m.set(key(r), (m.get(key(r)) ?? 0) + 1)
@@ -798,50 +775,11 @@ function FilterSelect({ value, onChange, all, label, options }: { value: string;
       value={value}
       onChange={(e) => onChange(e.target.value)}
       aria-label={label}
-      className={cn('h-8 rounded-lg border bg-card px-2 text-sm outline-none', value && 'border-foreground/60 font-medium')}
+      className={cn('h-8 max-w-36 rounded-lg border bg-card px-2 text-sm outline-none', value && 'border-foreground/60 font-medium')}
     >
       <option value="">{all}</option>
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
-  )
-}
-
-/** Where the issues come from, as bars: each row filters the list (pressed again, all). The top five, then "more". */
-function Breakdown({ title, rows, value, onPick }: { title: string; rows: { key: string; label: string; icon: LucideIcon; count: number }[]; value: string; onPick: (v: string) => void }) {
-  const [all, setAll] = React.useState(false)
-  const most = Math.max(1, ...rows.map((r) => r.count))
-  const shown = all ? rows : rows.slice(0, 5)
-  return (
-    <div className="rounded-xl border bg-card p-3">
-      <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
-      <ul className="flex flex-col gap-1">
-        {shown.map((r) => {
-          const on = value === r.key
-          return (
-            <li key={r.key}>
-              <button
-                type="button"
-                aria-pressed={on}
-                onClick={() => onPick(on ? '' : r.key)}
-                className={cn('group flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm transition', on ? 'bg-foreground text-background' : 'hover:bg-muted/50')}
-              >
-                <r.icon className={cn('size-3.5 shrink-0', on ? '' : 'text-muted-foreground')} aria-hidden />
-                <span className="w-32 shrink-0 truncate sm:w-40">{r.label}</span>
-                <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                  <span className={cn('block h-full rounded-full', on ? 'bg-background' : 'bg-foreground/40 group-hover:bg-foreground/60')} style={{ width: `${(r.count / most) * 100}%` }} />
-                </span>
-                <span className="w-6 text-right font-semibold tabular-nums">{r.count}</span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-      {rows.length > 5 && (
-        <button type="button" className="mt-1 px-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline" onClick={() => setAll(!all)}>
-          {all ? 'Fewer' : `${rows.length - 5} more`}
-        </button>
-      )}
-    </div>
   )
 }
 
@@ -897,7 +835,7 @@ function IssueRow({
   const Icon = kindIcon(i.issue_type)
   const stop = (e: React.SyntheticEvent) => e.stopPropagation()
   return (
-    <tr className={cn('cursor-pointer align-top hover:bg-muted/30', closed && 'text-muted-foreground', picked && 'bg-muted/40')} onClick={onOpen} title="Open the issue" data-record-id={i.id}>
+    <tr className={cn('group cursor-pointer align-top hover:bg-muted/30', closed && 'text-muted-foreground', picked && 'bg-muted/40')} onClick={onOpen} title="Open the issue" data-record-id={i.id}>
       <td className="w-8 py-3 pl-3" onClick={stop}>
         {!closed && <input type="checkbox" className="size-3.5 accent-foreground" checked={picked} onChange={onPick} aria-label={`Tick ${kindWord(i.issue_type)} on ${site}`} />}
       </td>
@@ -935,7 +873,7 @@ function IssueRow({
         <span className="flex flex-col items-end gap-1.5">
           <StatePill status={i.status} />
           {!closed && (
-            <span className="hidden items-center gap-1 sm:flex">
+            <span className="hidden items-center gap-1 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 sm:flex pointer-fine:opacity-0">
               {i.status.toUpperCase() === 'OPEN' && (
                 <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={onSeen} disabled={busy} title="Tell the site someone is on it">
                   <Eye className="size-3.5" /> Mark seen

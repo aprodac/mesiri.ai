@@ -135,8 +135,8 @@ export const PAGE_TOURS: Record<string, Tour> = {
     version: 2,
     introFromPage: true,
     steps: [
-      { target: 'issues.stats', title: 'At a glance', text: 'Open, urgent, waiting 3+ days, time lost, fixed this week. Tap one to see them.', mood: 'look' },
-      { target: 'issues.states', title: 'By state', text: 'Not seen, seen, fixed. Tap a colour to show only those.', mood: 'look' },
+      { target: 'issues.stats', title: 'At a glance', text: 'Open, urgent, waiting 3+ days, fixed this week. Tap one to see them.', mood: 'look' },
+      { target: 'issues.states', title: 'By state', text: 'Not seen, seen, fixed. Tap one to show only those; search and filter below.', mood: 'look' },
       { target: 'issues.search', title: 'Find one', text: 'Search by what was said, the site or who reported it.', mood: 'look' },
       { target: 'issues.list', title: 'Act on it', text: 'Mark it seen or fixed here, or tick several. Open one for its tasks and history.' },
       { target: 'issues.add', title: 'Report one here', text: 'Or report it from the office. On WhatsApp, the site just says what is wrong.', mood: 'happy' },

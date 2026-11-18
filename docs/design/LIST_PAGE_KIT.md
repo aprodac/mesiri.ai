@@ -58,7 +58,7 @@ Import every part from the page kit: `import { … } from '@/components/page/pag
 
 | Part | Use it for | Notes |
 |---|---|---|
-| `StateBar` | How the rows split by state, one bar, a chip per state that filters | `items` = `{ value, label, count, icon, tone }`; `extra` for a `ToggleChip`; `right` for the toolbar items. |
+| `StateBar` | How the rows split by state, one bar, a chip per state that filters | `items` = `{ value, label, count, icon, tone }`; `extra` for a `ToggleChip`; `right` for the toolbar items; `children` for a toolbar row under the chips in the same box; `strip={false}` when the chips' counts say enough (Issues). |
 | `ToggleChip` | A dashed chip for "rows needing something": "**3** need a fix", "**8** short to finish" | Hides itself at 0. |
 | `ListToolbar` | The row of search, filters and sort when there is no `StateBar` | `right` sits at the end (sort, view, export). |
 | `SearchBox` | Search | **"/" jumps to it, Esc clears.** One per page (`slash={false}` on a second). |
@@ -248,6 +248,11 @@ export default function ExamplePage() {
 ---
 
 ## 8. Don't
+
+- Don't stack blocks above the list that say the same thing twice (a figure, a to-do and a chip for one count). The
+  list should start in the top half of a laptop screen: at most a figure strip, one to-do, and the state box. Counts
+  for kind / site go in their menus ("Material shortage · 3"), not in extra cards. Row buttons show on hover; the
+  panel and ticking several do the rest (Issues, UX-61, trimmed on 18 Nov after "is it too much?").
 
 - Don't write a new search box, sort menu, colour bar, chip or pager on a page: use the part, or add to the kit
   (`components/page/list-kit.tsx`) and to this file.
