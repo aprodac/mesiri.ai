@@ -42,7 +42,7 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { MakeTaskButton } from '@/components/tasks/make-task-button'
 
-// UX-61: the Issues page on the list kit (docs/design/LIST_PAGE_KIT.md): figures, what needs a person, where the
+// UX-63: the Issues page on the list kit (docs/design/LIST_PAGE_KIT.md): figures, what needs a person, where the
 // issues come from (by kind, by site: each a filter), a bar of states, Bars or Numbers, ticking several, and a panel
 // that walks the list (previous / next), shows the issue's timeline, its tasks and the site's other open issues.
 
@@ -371,6 +371,8 @@ export default function OperationsIssuesPage() {
 
   // ── Reporting one
   const [reportOpen, setReportOpen] = React.useState(false)
+  // The new issue's panel opens once the form has closed (opened while it closes, the panel reads that as a click outside).
+  const openAfterClose = React.useRef<string | null>(null)
   const [newSiteId, setNewSiteId] = React.useState('')
   const [newKind, setNewKind] = React.useState('OTHER')
   const [newSeverity, setNewSeverity] = React.useState('MEDIUM')
@@ -401,7 +403,7 @@ export default function OperationsIssuesPage() {
       setReportOpen(false)
       setNewNarrative('')
       reload()
-      if (made?.id) openPanel(made.id)
+      if (made?.id) openAfterClose.current = made.id
     } catch {
       toast.error('Could not report the issue', 'Please try again.')
     } finally {
@@ -610,7 +612,15 @@ export default function OperationsIssuesPage() {
 
       {/* ── Report an issue ── */}
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onCloseAutoFocus={(e) => {
+            e.preventDefault()
+            const id = openAfterClose.current
+            openAfterClose.current = null
+            if (id) openPanel(id)
+          }}
+        >
           <form onSubmit={report}>
             <DialogHeader>
               <DialogTitle className="text-base font-semibold">Report an issue</DialogTitle>

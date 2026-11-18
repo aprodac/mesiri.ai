@@ -53,6 +53,8 @@ import ProjectBooksPage from '@/pages/accounts/ProjectBooksPage'
 import GstPage from '@/pages/accounts/GstPage'
 import TdsPage from '@/pages/accounts/TdsPage'
 import ReceivablesPage from '@/pages/ReceivablesPage'
+import CashFlowPage from '@/pages/accounts/CashFlowPage'
+import VariationsPage from '@/pages/VariationsPage'
 import CostCentresPage from '@/pages/CostCentresPage'
 import PlannedPage from '@/pages/PlannedPage'
 import PeriodReportPage from '@/pages/PeriodReportPage'
@@ -224,6 +226,7 @@ export default function App() {
           <Route path="planning/drawing-check" element={<DrawingCheckPage />} />
           <Route path="billing/clients" element={<ClientsPage />} />
           <Route path="billing/ra-bills" element={<RaBillsPage />} />
+          <Route path="billing/variations" element={<VariationsPage />} />
           <Route path="billing/client-view" element={<ClientLinksPage />} />
           {/* CC-01 / CC-04 / CC-07: the Cost control module. */}
           <Route path="cost" element={cst(<CostHomePage />)} />
@@ -265,6 +268,7 @@ export default function App() {
           <Route path="accounts/pl" element={acc(<ProfitLossPage />)} />
           <Route path="accounts/balance-sheet" element={acc(<BalanceSheetPage />)} />
           <Route path="accounts/cash-bank" element={acc(<CashBankPage />)} />
+          <Route path="accounts/cash-flow" element={acc(<CashFlowPage />)} />
           <Route path="accounts/projects" element={acc(<ProjectsBooksPage />)} />
           <Route path="accounts/projects/:id" element={acc(<ProjectBooksPage />)} />
           <Route path="accounts/gst" element={acc(<GstPage />)} />
