@@ -1,11 +1,14 @@
 import * as React from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowDownWideNarrow, ArrowRight, ChevronRight, CircleCheck, CircleDashed, Eye, HardHat, Package, Ruler, Search,
-  TrafficCone, TriangleAlert, X,
+  ArrowDown, ArrowUpDown, Layers, TrafficCone, TriangleAlert, Wrench, X,
 } from 'lucide-react'
+import { FilterPill, type FilterOption } from '@/components/requests/parts'
+import { ActionButton } from '@/components/page/page-kit'
+import { exportCsv } from '@/lib/export'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { KpiStrip, Legend, NoAccess } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
@@ -35,6 +38,8 @@ import { appNow } from '@/lib/clock'
 // on one scale; a KPI strip; one bar of the lines by colour that filters the table; the days as coloured tiles to
 // tap; the lines as a table with search, colour filter, sort and pages, each with its labour against what the work
 // earned as a bar and the reason as a short chip with its fix. A site engineer still sees no money (D-CC4).
+// UX-40: section and "need a fix" filters, header sort, export of the lines shown, "/" to search, a line opens in
+// Budget vs actual, and each figure says what changed against the same number of days before.
 
 const TONE = { green: 'good', amber: 'attention', red: 'bad', grey: 'default' } as const
 
@@ -46,6 +51,18 @@ const LOOK: Record<VarianceColour, { icon: LucideIcon; pill: string; soft: strin
   grey: { icon: CircleDashed, pill: 'bg-muted text-muted-foreground', soft: 'bg-muted/60', ring: 'ring-foreground/15' },
 }
 const ORDER: VarianceColour[] = ['red', 'amber', 'green', 'grey']
+/** Lines not judged because something is missing that a person can add. */
+const NEEDS_FIX = new Set<VarianceReason>(['no_labour', 'no_labour_rate', 'no_wage'])
+
+/** A column header that sorts; pressed again, back to worst first. */
+function SortHead({ label, on, onClick, left }: { label: string; on: boolean; onClick: () => void; left?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} className={cn('inline-flex items-center gap-1 rounded hover:text-foreground', !left && 'flex-row-reverse', on && 'font-semibold text-foreground')}>
+      {label}
+      {on ? <ArrowDown className="size-3" aria-hidden /> : <ArrowUpDown className="size-3 opacity-40" aria-hidden />}
+    </button>
+  )
+}
 
 /** Why a line is its colour, in two or three words (the full sentence is its tooltip). */
 const REASON: Record<VarianceReason, string> = {
@@ -278,7 +295,7 @@ function ProjectPicker() {
 
 const SORTS: { value: string; label: string; key?: (l: VarianceLine) => number | string }[] = [
   { value: '', label: 'Worst first' },
-  { value: 'over', label: 'Most over', key: (l) => num(l.difference) ?? Number.POSITIVE_INFINITY },
+  { value: 'over', label: 'Most over', key: (l) => num(l.difference) ?? Number.MAX_SAFE_INTEGER },
   { value: 'mandays', label: 'Most man-days', key: (l) => -Number(l.labour_man_days) },
   { value: 'spent', label: 'Most labour spent', key: (l) => -(num(l.labour_cost) ?? 0) },
   { value: 'code', label: 'BOQ order', key: (l) => `${l.boq_code ?? '~'} ${l.work}` },
@@ -288,6 +305,7 @@ export default function CostVariancePage() {
   const { me } = useAuth()
   const { scope } = useScope()
   const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   usePageTitle('Green / red')
   // D-CC4: a site engineer sees their own site's colours and quantities (the API takes the money out).
   const siteView = !maySeeBoq(me?.role) && String(me?.role ?? '').toUpperCase() === 'SITE_ENGINEER'
@@ -301,10 +319,27 @@ export default function CostVariancePage() {
   const colour = (params.get('colour') ?? '') as VarianceColour | ''
   const search = params.get('q') ?? ''
   const sort = params.get('sort') ?? ''
+  const section = params.get('section') ?? ''
+  const fixOnly = params.get('fix') === '1'
   const q = useQuery({
     queryKey: ['cost', 'variance', projectId, siteId, dateFrom, dateTo],
     queryFn: () => fetchProjectVariance(projectId!, { date_from: dateFrom, date_to: dateTo, site_id: siteId }),
     enabled: allowed && !!projectId,
+  })
+  // UX-40: the same number of days just before, to say what changed ("▲ 2 vs the 7 days before").
+  const span = Math.round((Date.parse(`${dateTo}T00:00:00`) - Date.parse(`${dateFrom}T00:00:00`)) / 86_400_000) + 1
+  const shift = (iso: string, days: number) => {
+    const d = new Date(`${iso}T00:00:00`)
+    d.setDate(d.getDate() - days)
+    return isoDay(d)
+  }
+  const prevFrom = shift(dateFrom, span)
+  const prevTo = shift(dateFrom, 1)
+  const prev = useQuery({
+    queryKey: ['cost', 'variance', projectId, siteId, prevFrom, prevTo],
+    queryFn: () => fetchProjectVariance(projectId!, { date_from: prevFrom, date_to: prevTo, site_id: siteId }),
+    enabled: allowed && !!projectId && span > 0 && span <= 92,
+    retry: false,
   })
 
   const set = (changes: Record<string, string | null>) =>
@@ -327,7 +362,11 @@ export default function CostVariancePage() {
   const needle = search.trim().toLowerCase()
   const listed = React.useMemo(() => {
     const out = (q.data?.lines ?? []).filter(
-      (l) => (!colour || l.colour === colour) && (!needle || `${l.boq_code ?? ''} ${l.work} ${l.section ?? ''}`.toLowerCase().includes(needle)),
+      (l) =>
+        (!colour || l.colour === colour) &&
+        (!section || (l.section ?? '') === section) &&
+        (!fixOnly || NEEDS_FIX.has(l.reason)) &&
+        (!needle || `${l.boq_code ?? ''} ${l.work} ${l.section ?? ''}`.toLowerCase().includes(needle)),
     )
     const key = SORTS.find((x) => x.value === sort)?.key
     if (!key) return out
@@ -336,8 +375,20 @@ export default function CostVariancePage() {
       const kb = key(b)
       return typeof ka === 'string' ? ka.localeCompare(String(kb)) : ka - Number(kb)
     })
-  }, [q.data, colour, needle, sort])
+  }, [q.data, colour, section, fixOnly, needle, sort])
   const paged = usePagedUrl(listed)
+  const searchRef = React.useRef<HTMLInputElement>(null)
+  // "/" jumps to the search, as in most tools (never while typing in a field).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   if (!allowed) return <NoAccess roles={MONEY_PEOPLE} />
   const header = (
@@ -381,8 +432,37 @@ export default function CostVariancePage() {
   const earned = num(v?.summary.earned_labour)
   const spent = num(v?.summary.labour_cost)
   const diff = num(v?.summary.difference)
-  const any = !!(colour || search)
-  const clear = () => set({ colour: null, q: null })
+  const any = !!(colour || search || section || fixOnly)
+  const clear = () => set({ colour: null, q: null, section: null, fix: null })
+  const sections = [...new Set(lines.map((l) => l.section ?? ''))].filter(Boolean)
+  const sectionOptions: FilterOption[] = sections.map((x) => ({ value: x, label: x, count: lines.filter((l) => l.section === x).length }))
+  const fixCount = lines.filter((l) => NEEDS_FIX.has(l.reason)).length
+  // What changed against the days before: an arrow, the amount, and good (green) or bad (red).
+  const p = prev.data
+  const before = span === 1 ? 'the day before' : `the ${span} days before`
+  const delta = (now: number | null, then: number | null, upIsBad: boolean, fmt: (n: number) => string = (n) => String(n)) => {
+    if (now === null || then === null || !p) return undefined
+    const d = now - then
+    if (Math.abs(d) < 1e-9) return <span className="text-muted-foreground">same as {before}</span>
+    const bad = upIsBad ? d > 0 : d < 0
+    return (
+      <span className={cn('font-medium', bad ? 'text-destructive' : 'text-success')} title={`Against ${before}`}>
+        {d > 0 ? '▲' : '▼'} {fmt(Math.abs(d))} <span className="font-normal text-muted-foreground">vs before</span>
+      </span>
+    )
+  }
+  const exportShown = () =>
+    exportCsv(
+      `green-red-${dateFrom}-to-${dateTo}.csv`,
+      money
+        ? ['Code', 'Work', 'Section', 'Colour', 'Why', 'Done', 'Unit', 'Man-days', 'Labour earned', 'Labour spent', 'Gap (earned − spent)']
+        : ['Code', 'Work', 'Section', 'Colour', 'Why', 'Done', 'Unit', 'Man-days'],
+      listed.map((l) => {
+        const base = [l.boq_code ?? '', l.work, l.section ?? '', COLOUR_WORD[l.colour], REASON[l.reason], l.done_quantity, l.unit, l.labour_man_days]
+        return money ? [...base, l.earned_labour ?? '', l.labour_cost ?? '', l.difference ?? ''] : base
+      }),
+    )
+  const sortBy = (value: string) => set({ sort: sort === value ? null : value })
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
@@ -471,12 +551,12 @@ export default function CostVariancePage() {
             stats={[
               ...(money
                 ? [
-                    { label: 'Labour earned', icon: Ruler, tone: 'info' as const, value: earned === null ? '—' : compact(earned) },
-                    { label: 'Labour spent', kind: 'workers' as const, tone: TONE[v.summary.colour], value: spent === null ? '—' : compact(spent) },
+                    { label: 'Labour earned', icon: Ruler, tone: 'info' as const, value: earned === null ? '—' : compact(earned), hint: delta(earned, num(p?.summary.earned_labour), false, compact) },
+                    { label: 'Labour spent', kind: 'workers' as const, tone: TONE[v.summary.colour], value: spent === null ? '—' : compact(spent), hint: delta(spent, num(p?.summary.labour_cost), true, compact) },
                   ]
-                : [{ label: 'Man-days', kind: 'workers' as const, value: formatQuantity(v.labour.man_days) }]),
-              { label: 'Red lines', icon: TriangleAlert, tone: count('red') > 0 ? ('bad' as const) : ('default' as const), value: count('red'), of: judged || undefined },
-              { label: 'Amber lines', icon: Eye, tone: count('amber') > 0 ? ('attention' as const) : ('default' as const), value: count('amber'), of: judged || undefined },
+                : [{ label: 'Man-days', kind: 'workers' as const, value: formatQuantity(v.labour.man_days), hint: delta(Number(v.labour.man_days), p ? Number(p.labour.man_days) : null, false, (n) => formatQuantity(String(n))) }]),
+              { label: 'Red lines', icon: TriangleAlert, tone: count('red') > 0 ? ('bad' as const) : ('default' as const), value: count('red'), of: judged || undefined, hint: delta(count('red'), p ? p.summary.lines.red : null, true) },
+              { label: 'Amber lines', icon: Eye, tone: count('amber') > 0 ? ('attention' as const) : ('default' as const), value: count('amber'), of: judged || undefined, hint: delta(count('amber'), p ? p.summary.lines.amber : null, true) },
               { label: 'Off the lines', icon: HardHat, tone: Number(v.labour.not_on_a_line.man_days) > 0 ? ('attention' as const) : ('good' as const), value: `${formatQuantity(v.labour.not_on_a_line.man_days)} md`, hint: money && v.labour.not_on_a_line.cost ? compact(Number(v.labour.not_on_a_line.cost)) : undefined },
             ]}
           />
@@ -539,11 +619,32 @@ export default function CostVariancePage() {
                           </button>
                         )
                       })}
+                      {fixCount > 0 && !siteView && (
+                        <button
+                          type="button"
+                          aria-pressed={fixOnly}
+                          onClick={() => set({ fix: fixOnly ? null : '1' })}
+                          className={cn('inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-semibold transition', fixOnly ? 'border-foreground bg-foreground text-background' : 'hover:border-foreground/40')}
+                          title="Lines that are not judged because labour, a rate or a wage is missing"
+                        >
+                          <Wrench className="size-3.5" aria-hidden />
+                          <span className="tabular-nums">{fixCount}</span> need a fix
+                        </button>
+                      )}
                       <span className="ml-auto flex flex-wrap items-center gap-2">
+                        {sections.length > 1 && <FilterPill icon={Layers} label="Section" allLabel="All sections" value={section} options={sectionOptions} onChange={(x) => set({ section: x })} />}
                         <label className="flex h-8 items-center gap-2 rounded-lg border bg-card px-2.5">
                           <Search className="size-3.5 text-muted-foreground" aria-hidden />
                           <span className="sr-only">Search BOQ lines</span>
-                          <input value={search} onChange={(e) => set({ q: e.target.value })} placeholder="Search work or code" className="w-36 bg-transparent text-sm outline-none" />
+                          <input
+                            ref={searchRef}
+                            value={search}
+                            onChange={(e) => set({ q: e.target.value })}
+                            onKeyDown={(e) => e.key === 'Escape' && set({ q: null })}
+                            placeholder="Search work or code"
+                            className="w-36 bg-transparent text-sm outline-none"
+                          />
+                          <kbd className="hidden rounded border bg-muted px-1 text-[10px] text-muted-foreground sm:inline" title="Press / to search">/</kbd>
                         </label>
                         <label className="flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm">
                           <ArrowDownWideNarrow className="size-3.5 text-muted-foreground" aria-hidden />
@@ -560,6 +661,9 @@ export default function CostVariancePage() {
                             <X className="size-3.5" aria-hidden /> Clear
                           </Button>
                         )}
+                        <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The lines shown, as a CSV file (opens in Excel)">
+                          <span className="hidden sm:inline">{any ? 'Export shown' : 'Export lines'}</span>
+                        </ActionButton>
                       </span>
                     </div>
                   </div>
@@ -579,14 +683,29 @@ export default function CostVariancePage() {
                           <tr>
                             <th className="px-3 py-2 text-left font-medium">Work</th>
                             <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Done</th>
-                            <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Man-days</th>
-                            {money && <th className="hidden w-56 px-3 py-2 text-left font-medium lg:table-cell">Labour earned vs spent</th>}
-                            {money && <th className="px-3 py-2 text-right font-medium">Gap</th>}
+                            <th className="hidden px-3 py-2 text-right font-medium md:table-cell" aria-sort={sort === 'mandays' ? 'descending' : undefined}>
+                              <SortHead label="Man-days" on={sort === 'mandays'} onClick={() => sortBy('mandays')} />
+                            </th>
+                            {money && (
+                              <th className="hidden w-56 px-3 py-2 text-left font-medium lg:table-cell" aria-sort={sort === 'spent' ? 'descending' : undefined}>
+                                <SortHead label="Labour earned vs spent" on={sort === 'spent'} onClick={() => sortBy('spent')} left />
+                              </th>
+                            )}
+                            {money && (
+                              <th className="px-3 py-2 text-right font-medium" aria-sort={sort === 'over' ? 'ascending' : undefined}>
+                                <SortHead label="Gap" on={sort === 'over'} onClick={() => sortBy('over')} />
+                              </th>
+                            )}
                           </tr>
                         </thead>
                         <tbody className="divide-y">
                           {paged.shown.map((l) => (
-                            <tr key={l.line_id} className="align-top hover:bg-muted/30">
+                            <tr
+                              key={l.line_id}
+                              className={cn('align-top hover:bg-muted/30', !siteView && 'cursor-pointer')}
+                              onClick={siteView ? undefined : () => navigate(`/cost/budget?project=${projectId}&q=${encodeURIComponent(l.boq_code ?? l.work)}`)}
+                              title={siteView ? undefined : 'Open this line in Budget vs actual'}
+                            >
                               <td className="relative px-3 py-2.5 pl-4">
                                 <span className={cn('absolute top-2 bottom-2 left-1.5 w-1 rounded-full', COLOUR_DOT[l.colour])} aria-hidden />
                                 <span className="flex flex-col gap-1">

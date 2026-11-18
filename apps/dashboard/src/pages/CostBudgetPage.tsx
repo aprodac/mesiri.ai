@@ -216,7 +216,7 @@ const SORTS: { value: string; label: string; key?: (l: Line) => number }[] = [
   { value: 'earned', label: 'Most earned', key: (l) => -(Number(l.done_quantity) > 0 ? num(l.earned) ?? 0 : 0) },
   { value: 'left', label: 'Most budget left', key: (l) => -((num(l.budget_cost) ?? 0) - (Number(l.done_quantity) > 0 ? num(l.earned) ?? 0 : 0)) },
   { value: 'done', label: 'Most done', key: (l) => -Number(l.percent_done ?? 0) },
-  { value: 'over', label: 'Labour most over', key: (l) => num(l.labour_difference) ?? Number.POSITIVE_INFINITY },
+  { value: 'over', label: 'Labour most over', key: (l) => num(l.labour_difference) ?? Number.MAX_SAFE_INTEGER },
 ]
 
 /** A column header that sorts the table; pressed again, back to BOQ order. */
