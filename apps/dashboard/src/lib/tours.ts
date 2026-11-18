@@ -1113,7 +1113,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['tb.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'tb.stats', title: 'Does it balance', text: 'Debits and credits in the period, and whether closing debits equal closing credits.', mood: 'look' },
+      { target: 'tb.stats', title: 'Does it balance', text: 'Debits and credits in the period, and closing debits = closing credits. A ≠ in red says by how much it is out.', mood: 'look' },
       { target: 'tb.search', title: 'Find a ledger', text: 'Type a name.' },
       { target: 'tb.list', title: 'Ledgers by group', text: 'Each ledger\'s opening, movement and closing. Tap one for its entries.', mood: 'think' },
       { target: 'books.excel', title: 'To Excel', text: 'Download it for the CA.' },

@@ -1,10 +1,11 @@
 import * as React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { BadgeCheck, ChevronRight, CircleAlert, ListTree, Scale, Search, TriangleAlert } from 'lucide-react'
-import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, usePeriod } from '@/components/accounts/books'
-import { DrCr, NATURE_DOT, NatureDot, ShareBar } from '@/components/accounts/visuals'
-import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
+import { BadgeCheck, ChevronRight, CircleAlert, ListTree, Search, TriangleAlert } from 'lucide-react'
+import { BooksClosed, ExcelButton, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { FlowStrip } from '@/components/accounts/money-kit'
+import { DrCr, NATURE_DOT, ShareBar } from '@/components/accounts/visuals'
+import { Callout, DprHeader, PageError } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -29,6 +30,18 @@ import { cn } from '@/lib/utils'
 // ACC-05 / ACC-22: every ledger's opening, debits, credits and closing for a period, in the chart's groups, for the
 // whole company, a project or a site (the scope bar). Debits equal credits, said at the top; the books are checked
 // against Finance › Money, the supplier ledger and Receivables. Backend: GET /accounts/trial-balance, /checks.
+// UXA-07: the check as an equation (closing debits = closing credits, the period's debits and credits beside it);
+// each top group a pill in its kind's colour; debits amber and credits blue as on the voucher; the kinds' legend
+// filters the table.
+
+/** A kind of group as a pill (the balance sheet's colours, and income and expense as on the P&L). */
+const NATURE_PILL: Record<string, string> = {
+  asset: 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400',
+  liability: 'border-amber-500/25 bg-amber-500/10 text-amber-800 dark:text-amber-400',
+  equity: 'border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-400',
+  income: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  expense: 'border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-400',
+}
 
 interface Node {
   group: LedgerGroup
@@ -76,8 +89,8 @@ function Amounts({ opening, debit, credit, closing, strong, bar }: { opening: nu
   return (
     <>
       <td className="hidden px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell">{drCr(opening)}</td>
-      <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{cell(debit)}</td>
-      <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{cell(credit)}</td>
+      <td className="hidden px-3 py-2 text-right tabular-nums text-draft sm:table-cell">{cell(debit)}</td>
+      <td className="hidden px-3 py-2 text-right tabular-nums text-info sm:table-cell">{cell(credit)}</td>
       <td className="px-3 py-2 text-right">
         <DrCr value={closing} strong={strong} />
         {bar && <ShareBar value={Number(closing)} max={bar} className="ml-auto mt-1 w-24" />}
@@ -92,11 +105,14 @@ function GroupRows({ node, depth, open, toggle, onLedger, forceOpen, max }: { no
   return (
     <>
       <tr className={cn('cursor-pointer hover:bg-muted/40', depth === 0 && 'bg-muted/30')} onClick={() => toggle(node.group.id)}>
-        <td className="py-2 pr-3 font-medium" style={pad}>
-          <span className="inline-flex items-center gap-1">
+        <td className={cn('pr-3 font-medium', depth === 0 ? 'py-2.5' : 'py-2')} style={pad}>
+          <span className="inline-flex items-center gap-1.5">
             <ChevronRight className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-90')} />
-            {depth === 0 && <NatureDot nature={node.group.nature} />}
-            {node.group.name}
+            {depth === 0 ? (
+              <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold', NATURE_PILL[node.group.nature])}>{node.group.name}</span>
+            ) : (
+              node.group.name
+            )}
           </span>
         </td>
         <Amounts opening={node.opening} debit={node.debit} credit={node.credit} closing={node.closing} strong bar={depth === 0 ? max : undefined} />
@@ -187,6 +203,7 @@ export default function TrialBalancePage() {
   const [q, setQ] = React.useState('')
   const [open, setOpen] = React.useState<Set<string>>(new Set())
   const [all, setAll] = React.useState(false)
+  const [kind, setKind] = React.useState<string | null>(null)
 
   const tree = React.useMemo(() => (tb.data ? buildTree(tb.data.groups, tb.data.rows, q) : []), [tb.data, q])
   if (!allowed) return <BooksClosed />
@@ -204,8 +221,9 @@ export default function TrialBalancePage() {
   const onLedger = (r: TrialRow) => navigate(`/accounts/ledgers/${r.ledger_id}${keep ? `?${keep}` : ''}`)
   const t = d?.totals
   const headOffice = d?.rows.find((r) => r.code === 'head_office')
-  const max = Math.max(0, ...tree.map((n) => Math.abs(n.closing)))
   const natures = [...new Set(tree.map((n) => n.group.nature))]
+  const shownTree = kind ? tree.filter((n) => n.group.nature === kind) : tree
+  const max = Math.max(0, ...shownTree.map((n) => Math.abs(n.closing)))
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
@@ -223,25 +241,28 @@ export default function TrialBalancePage() {
         date={d ? d.financial_year : undefined}
         action={d && <ExcelButton path="/accounts/trial-balance/export" params={{ ...period, ...sp }} name={`trial-balance-${period.date_from}-to-${period.date_to}`} />}
       />
-      <BooksTabs current="/accounts/trial-balance" />
       <PeriodBar state={periodState} />
       {tb.isLoading || !d || !t ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip guide="tb.stats"
-            phoneCols={2}
-            stats={[
-              { label: 'Debits in the period', value: rupees(t.debit), icon: Scale },
-              { label: 'Credits in the period', value: rupees(t.credit), icon: Scale },
+          <FlowStrip
+            guide="tb.stats"
+            items={[
+              { label: 'Debits in the period', value: rupees(t.debit), tone: 'dr', sub: `${d.rows.filter((r) => r.ledger_id).length} ledgers with entries` },
+              { label: 'Credits in the period', value: rupees(t.credit), tone: 'cr', sub: Math.abs(Number(t.debit) - Number(t.credit)) < 0.005 ? 'equal to the debits' : 'not equal to the debits' },
+              { label: 'Closing debits', value: rupees(t.closing_debit), tone: 'dr', sub: 'what is held or owed to you' },
               {
-                label: t.balanced ? 'Balanced' : 'Does not balance',
-                value: t.balanced ? `${rupees(t.closing_debit)} each side` : rupees(Number(t.closing_debit) - Number(t.closing_credit)),
-                tone: t.balanced ? 'good' : 'bad',
-                icon: t.balanced ? BadgeCheck : CircleAlert,
-                hint: 'Closing debits = closing credits',
+                label: 'Closing credits',
+                value: rupees(t.closing_credit),
+                tone: t.balanced ? 'balance' : 'out',
+                op: t.balanced ? '=' : '≠',
+                sub: t.balanced ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-success"><BadgeCheck className="size-3" /> the books balance</span>
+                ) : (
+                  <span className="font-medium text-destructive">out by {rupees(Math.abs(Number(t.closing_debit) - Number(t.closing_credit)))}</span>
+                ),
               },
-              { label: 'Ledgers with entries', value: String(d.rows.filter((r) => r.ledger_id).length), icon: ListTree },
             ]}
           />
           {scope.mode === 'portfolio' && checks.data && <ChecksCallout checks={checks.data} />}
@@ -250,7 +271,10 @@ export default function TrialBalancePage() {
               <span className="font-medium">Head office and other projects: {drCr(headOffice.closing)}</span>
             </Callout>
           )}
-          <DprSection icon={ListTree} title="Ledgers by group" meta={d.rows.length || undefined}>
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-2 px-1 text-base font-semibold">
+              <ListTree className="size-4 text-muted-foreground" /> Ledgers by group <span className="text-sm font-normal text-muted-foreground">{d.rows.length}</span>
+            </h2>
             {d.rows.length === 0 ? (
               <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
                 Nothing in the books for this period
@@ -265,38 +289,48 @@ export default function TrialBalancePage() {
                   <Button size="sm" variant="ghost" onClick={() => setAll((a) => !a)}>
                     {all ? 'Collapse all' : 'Expand all'}
                   </Button>
-                  <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="Kinds of group">
+                  <span className="ml-auto flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="Show one kind of group">
                     {natures.map((n) => (
-                      <span key={n} className="inline-flex items-center gap-1.5">
+                      <button
+                        key={n}
+                        type="button"
+                        aria-pressed={kind === n}
+                        onClick={() => setKind(kind === n ? null : n)}
+                        className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5', kind === n ? NATURE_PILL[n] : 'text-muted-foreground hover:text-foreground', kind && kind !== n && 'opacity-60')}
+                      >
                         <span className={cn('size-2 rounded-full', NATURE_DOT[n])} /> {NATURE_LABEL[n]}
-                      </span>
+                      </button>
                     ))}
                   </span>
                 </div>
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
                   <table data-guide="tb.list" className="w-full text-sm">
                     <thead>
-                      <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
+                      <tr className="border-b bg-muted text-xs text-muted-foreground">
                         <th className="px-3 py-2 text-left font-medium">Group / ledger</th>
                         <th className="hidden px-3 py-2 text-right font-medium md:table-cell">Opening</th>
-                        <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Debit</th>
-                        <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Credit</th>
+                        <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">
+                          <span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-draft" /> Debit</span>
+                        </th>
+                        <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">
+                          <span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-info" /> Credit</span>
+                        </th>
                         <th className="px-3 py-2 text-right font-medium">Closing</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y">
-                      {tree.map((n) => (
+                    <tbody className="divide-y divide-border/60">
+                      {shownTree.map((n) => (
                         <GroupRows key={n.group.id} node={n} depth={0} open={open} toggle={toggle} onLedger={onLedger} forceOpen={all || !!q.trim()} max={max} />
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="border-t-2 font-semibold">
+                      <tr className={cn('border-t-[1.5px] font-semibold', t.balanced ? 'border-success/40 bg-success-soft/30' : 'border-destructive/40 bg-destructive/[0.04]')}>
                         <td className="px-3 py-2">Total</td>
                         <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">
                           {rupees(t.opening_debit)} Dr / {rupees(t.opening_credit)} Cr
                         </td>
-                        <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{rupees(t.debit)}</td>
-                        <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{rupees(t.credit)}</td>
+                        <td className="hidden px-3 py-2 text-right tabular-nums text-draft sm:table-cell">{rupees(t.debit)}</td>
+                        <td className="hidden px-3 py-2 text-right tabular-nums text-info sm:table-cell">{rupees(t.credit)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {rupees(t.closing_debit)} Dr / {rupees(t.closing_credit)} Cr
                         </td>
@@ -311,7 +345,7 @@ export default function TrialBalancePage() {
                 </p>
               </>
             )}
-          </DprSection>
+          </section>
         </>
       )}
     </div>
