@@ -85,7 +85,7 @@ function TotalsStrip({ totals }: { totals: BoqTotals }) {
   const earned = num(totals.earned)
   const priced = totals.line_count - Math.max(totals.lines_without_client_rate, totals.lines_without_budget_rate)
   const stats: Stat[] = [
-    { label: 'Contract value', value: formatRupees(totals.contract_value), kind: 'money', hint: 'client pays', explain: { term: 'contract value' } },
+    { label: 'Contract value', value: formatRupees(totals.contract_value), kind: 'money', explain: { term: 'contract value' } },
     {
       label: 'Budget cost', value: formatRupees(totals.budget_cost), kind: 'bill', explain: { term: 'budget cost' },
       share: contract && budget !== null ? budget / contract : undefined, hint: contract && budget !== null ? `${Math.round((budget / contract) * 100)}% of contract` : undefined,
@@ -94,12 +94,12 @@ function TotalsStrip({ totals }: { totals: BoqTotals }) {
     ...(totals.earned !== undefined
       ? [{
           label: 'Earned so far', explain: { term: 'earned so far' }, value: formatRupees(totals.earned), kind: 'progress' as const,
-          share: budget && earned !== null ? earned / budget : 0, hint: budget && earned !== null ? `${Math.round((earned / budget) * 100)}% of budget` : 'by work done',
+          share: budget && earned !== null ? earned / budget : 0, hint: budget && earned !== null ? `${Math.round((earned / budget) * 100)}% of budget` : undefined,
         }]
       : []),
     {
       label: 'Lines priced', explain: { title: 'Lines priced', text: 'BOQ lines with your own cost rate. A line without one has no margin yet, so the totals leave it out.' }, value: priced, of: totals.line_count, kind: 'work', tone: priced < totals.line_count ? 'attention' : 'good',
-      hint: [totals.lines_without_client_rate > 0 && `${totals.lines_without_client_rate} no client rate`, totals.lines_without_budget_rate > 0 && `${totals.lines_without_budget_rate} no budget rate`].filter(Boolean).join(' · ') || 'all priced',
+      hint: [totals.lines_without_client_rate > 0 && `${totals.lines_without_client_rate} no client rate`, totals.lines_without_budget_rate > 0 && `${totals.lines_without_budget_rate} no budget rate`].filter(Boolean).join(' · ') || undefined,
     },
   ]
   return <StatStrip stats={stats} phoneCols={2} guide="boq.totals" />
