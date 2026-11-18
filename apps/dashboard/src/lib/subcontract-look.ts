@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { BrickWall, Construction, Droplets, Grid3x3, Hammer, HardHat, PaintRoller, Paintbrush, Plug, ShieldHalf, Wrench } from 'lucide-react'
 import { n, type WorkOrder } from './subcontracts'
 
-// UX-63 (18 Nov 2026): the subcontract module's visual language, one place for every page. A job's state (one colour
+// UX-64 (18 Nov 2026): the subcontract module's visual language, one place for every page. A job's state (one colour
 // each, worst first), a trade's icon and colour (from the work's own words), and the money bar (paid · billed not paid
 // · done not billed · left). All read from what GET /subcontracts/work-orders already returns; nothing is stored.
 

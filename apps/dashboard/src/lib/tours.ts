@@ -412,7 +412,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/subcontract/teams': {
     key: '/tour/subcontractors',
-    // UX-63: the page now leads with who needs you (states, next step, rates by work).
+    // UX-64: the page now leads with who needs you (states, next step, rates by work).
     version: 2,
     introFromPage: true,
     startWhen: ['subs.list', 'subs.empty'],

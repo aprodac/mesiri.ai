@@ -102,7 +102,7 @@ export default function WorkOrderPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
-      {/* UX-63: the module's header band: back, the trade, the job's state and its dates. */}
+      {/* UX-64: the module's header band: back, the trade, the job's state and its dates. */}
       <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card px-4 py-3.5 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <Link to="/subcontract/work-orders" className="-ml-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" title="Back to Work orders" aria-label="Back to Work orders"><ArrowLeft className="size-[18px]" /></Link>

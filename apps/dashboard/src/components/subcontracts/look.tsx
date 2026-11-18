@@ -8,7 +8,7 @@ import { fetchBillsWaiting } from '@/lib/subcontracts'
 import { BAR_PARTS, STATE_LOOK, type JobState, type MoneySplit } from '@/lib/subcontract-look'
 import { cn } from '@/lib/utils'
 
-// UX-63: the subcontract module's shared parts. The header band with the module's three pages as tabs (Bills carries
+// UX-64: the subcontract module's shared parts. The header band with the module's three pages as tabs (Bills carries
 // how many wait), the state chip, the trade tile and the money bar, so every page reads the same way.
 
 const PAGES = [

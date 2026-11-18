@@ -27,7 +27,7 @@ import { ActionIcon, type KpiItem, KpiStrip } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
 import { usePagedUrl } from '@/lib/paging'
 
-// NXT-05 (8 Nov 2026): Subcontract › Work orders. Every work given out: who, where, its state (UX-63: late, over-billed,
+// NXT-05 (8 Nov 2026): Subcontract › Work orders. Every work given out: who, where, its state (UX-64: late, over-billed,
 // idle, ...), the money bar (paid, billed, done not billed, left) and payable; tiles that filter (open, bills to check, over the agreed / measured, retention held), status tabs, search,
 // subcontractor filter, export. A row opens the work order.
 

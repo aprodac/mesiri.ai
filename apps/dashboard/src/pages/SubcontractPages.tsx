@@ -27,7 +27,7 @@ import { Pager } from '@/components/page/pager'
 import { usePagedUrl } from '@/lib/paging'
 
 // NXT-06/07, NXT-17 (8 Nov 2026): the other subcontract pages. Bills & checks (every bill waiting for a person, each line
-// drawn against what was measured and agreed (UX-63), approve / reject; and the bills already checked); the subcontractors
+// drawn against what was measured and agreed (UX-64), approve / reject; and the bills already checked); the subcontractors
 // page is SubcontractorsPage.tsx;
 // a subcontractor's statement (print, send on WhatsApp); the work order document (print, send).
 
@@ -44,7 +44,7 @@ export function BillsChecksPage() {
   // SCP-03: with a project or a site picked, its bills only.
   const { scope } = useScope()
   const projectId = scope.mode === 'portfolio' ? '' : scope.projectId
-  // UX-63: the work orders, for each bill line's measured quantity and agreed rate, and the bills already checked.
+  // UX-64: the work orders, for each bill line's measured quantity and agreed rate, and the bills already checked.
   const wos = useQuery({ queryKey: ['subcontracts', 'list', projectId], queryFn: () => fetchWorkOrders(projectId ? { project_id: projectId } : {}) })
   const inScope = (b: { project_id?: string; site_id?: string | null }) =>
     scope.mode === 'portfolio' || (b.project_id === scope.projectId && (scope.mode !== 'site' || b.site_id === scope.siteId))

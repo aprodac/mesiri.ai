@@ -12,7 +12,7 @@ import { fetchValue, n, woUrl } from '@/lib/subcontracts'
 
 export function ValueStrip({ projectId, className, compact }: { projectId?: string; className?: string; compact?: boolean }) {
   const [span, setSpan] = React.useState<'period' | 'all_time'>('period')
-  // UX-63: elsewhere than Bills & checks it starts as one line; a tap opens the whole strip.
+  // UX-64: elsewhere than Bills & checks it starts as one line; a tap opens the whole strip.
   const [open, setOpen] = React.useState(!compact)
   const q = useQuery({ queryKey: ['subcontracts', 'value', projectId ?? ''], queryFn: () => fetchValue({ project_id: projectId }), retry: false })
   if (!q.data) return null

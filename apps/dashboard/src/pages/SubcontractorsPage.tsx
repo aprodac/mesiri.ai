@@ -28,7 +28,7 @@ import {
 } from '@/lib/subcontract-look'
 import { cn } from '@/lib/utils'
 
-// UX-63 (18 Nov 2026): Subcontract › Subcontractors, every outside team as it needs you. Figures that filter (teams
+// UX-64 (18 Nov 2026): Subcontract › Subcontractors, every outside team as it needs you. Figures that filter (teams
 // working, work given, done, done but not billed, payable now, retention), each team's worst job state, trade, the
 // money bar and the one next step; a side panel with their jobs, record and rates; and Rates by work (the same work
 // across teams, cheapest first). Everything is read from GET /subcontracts/work-orders (and payables for teams with
