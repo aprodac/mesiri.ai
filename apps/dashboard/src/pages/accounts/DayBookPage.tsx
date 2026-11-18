@@ -20,9 +20,10 @@ import { cn } from '@/lib/utils'
 // moved, the amount. Filter by kind, search a party or a number, see what changed after a month was closed. ↑ ↓ to
 // move, Enter to open. Backend: GET /accounts/day-book.
 // UX-34 (Mercon's journal as the reference): the kinds as coloured tabs (with their counts when the whole period is
-// loaded); the period's money in and out as figures; each day a card with its date, money in and out; each voucher a
-// row with a bar in its kind's colour, its badge, what moved from which ledger to which, and the amount (receipts
-// green, payments rose).
+// loaded); the period's money in and out as figures; then one table, as an accountant reads a day book: a band per
+// day (its money in and out), a row per voucher with a stripe in its kind's colour, its badge and number, the debit
+// ledgers (amber) and credit ledgers (blue) in their own columns, the project and the amount (receipts green,
+// payments rose); the total at the foot (UX-44, asked: "it should be a table, a ledger table is easier").
 
 const TYPES: (VoucherType | '')[] = ['', 'purchase', 'payment', 'receipt', 'sales', 'contra', 'journal']
 const PAGE = 200
@@ -236,57 +237,96 @@ export default function DayBookPage() {
               </p>
             ) : (
               <div className={cn('flex flex-col gap-3', book.isFetching && 'opacity-70')}>
-                {days.map(([day, list]) => {
-                  const date = new Date(`${day}T00:00:00`)
-                  return (
-                    <section key={day} className="overflow-hidden rounded-xl border bg-card shadow-xs">
-                      <header className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2">
-                        <span className="flex items-baseline gap-2">
-                          <span className="text-lg font-semibold tabular-nums leading-none">{date.getDate()}</span>
-                          <span className="text-sm font-medium">{date.toLocaleDateString('en-IN', { weekday: 'long' })}</span>
-                          <span className="text-xs text-muted-foreground">{date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span>
-                        </span>
-                        <DayMoney list={list} />
-                      </header>
-                      <ul className="divide-y">
-                        {list.map((e) => {
-                          index += 1
-                          const i = index
-                          const accent = KIND_ACCENT[e.voucher_type]
-                          return (
-                            <li key={e.id} id={`voucher-${i}`}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCursor(i)
-                                  setOpenId(e.id)
-                                }}
-                                className={cn('relative flex w-full flex-col gap-1.5 py-2.5 pl-5 pr-4 text-left text-sm hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4', cursor === i && 'bg-muted/60 ring-1 ring-inset ring-ring')}
-                              >
-                                <span className={cn('absolute inset-y-2 left-1.5 w-1 rounded-full', accent.bar)} aria-hidden="true" />
-                                <span className="flex shrink-0 items-center gap-2 sm:w-40">
-                                  <VoucherBadge type={e.voucher_type} label={VOUCHER_LABEL[e.voucher_type]} />
-                                  <span className="text-xs text-muted-foreground tabular-nums">{e.ref}</span>
-                                </span>
-                                <span className="flex min-w-0 flex-1 flex-col gap-1">
-                                  <span className="truncate font-medium">{e.narration || summary(e)}</span>
-                                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                                    <Flow e={e} />
-                                    {e.project && <span className="truncate text-xs text-muted-foreground">{e.project}</span>}
+                <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 z-[1]">
+                        <tr className="border-b bg-muted text-xs text-muted-foreground">
+                          <th className="w-28 px-3 py-2 text-left font-medium">Voucher</th>
+                          <th className="px-3 py-2 text-left font-medium">Particulars</th>
+                          <th className="hidden px-3 py-2 text-left font-medium md:table-cell">
+                            <span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-draft" /> Debit</span>
+                          </th>
+                          <th className="hidden px-3 py-2 text-left font-medium md:table-cell">
+                            <span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-info" /> Credit</span>
+                          </th>
+                          <th className="hidden px-3 py-2 text-left font-medium lg:table-cell">Project</th>
+                          <th className="px-3 py-2 text-right font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      {days.map(([day, list]) => {
+                        const date = new Date(`${day}T00:00:00`)
+                        return (
+                          <tbody key={day}>
+                            <tr className="border-b bg-muted/50">
+                              <td colSpan={6} className="px-3 py-1.5">
+                                <span className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="flex items-baseline gap-2">
+                                    <span className="text-base font-semibold tabular-nums leading-none">{date.getDate()}</span>
+                                    <span className="text-[13px] font-medium">{date.toLocaleDateString('en-IN', { weekday: 'long' })}</span>
+                                    <span className="text-xs text-muted-foreground">{date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span>
                                   </span>
+                                  <DayMoney list={list} />
                                 </span>
-                                <span className={cn('flex shrink-0 items-center gap-2 text-base font-semibold tabular-nums', accent.amount)}>
-                                  {e.after_close && <History className="size-3.5 text-draft" aria-label="Changed after close" />}
-                                  {rupees(e.amount)}
-                                </span>
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </section>
-                  )
-                })}
+                              </td>
+                            </tr>
+                            {list.map((e) => {
+                              index += 1
+                              const i = index
+                              const accent = KIND_ACCENT[e.voucher_type]
+                              const dr = e.lines.filter((l) => Number(l.debit) > 0).map((l) => l.ledger)
+                              const cr = e.lines.filter((l) => Number(l.credit) > 0).map((l) => l.ledger)
+                              return (
+                                <tr
+                                  key={e.id}
+                                  id={`voucher-${i}`}
+                                  tabIndex={-1}
+                                  onClick={() => {
+                                    setCursor(i)
+                                    setOpenId(e.id)
+                                  }}
+                                  className={cn('cursor-pointer border-b border-border/60 align-top hover:bg-muted/40', cursor === i && 'bg-muted/60 outline outline-1 -outline-offset-1 outline-ring', e.after_close && 'bg-draft-soft/30')}
+                                >
+                                  <td className="relative py-2.5 pl-4 pr-3">
+                                    <span className={cn('absolute inset-y-1.5 left-1 w-1 rounded-full', accent.bar)} aria-hidden="true" />
+                                    <VoucherBadge type={e.voucher_type} label={VOUCHER_LABEL[e.voucher_type]} />
+                                    <span className="mt-1 block text-xs tabular-nums text-muted-foreground">{e.ref}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="flex items-center gap-1.5 font-medium">
+                                      {e.after_close && <History className="size-3.5 shrink-0 text-draft" aria-label="Changed after close" />}
+                                      {e.narration || summary(e)}
+                                    </span>
+                                    <span className="mt-1 block md:hidden">
+                                      <Flow e={e} />
+                                    </span>
+                                    {e.project && <span className="mt-0.5 block text-xs text-muted-foreground lg:hidden">{e.project}</span>}
+                                  </td>
+                                  <td className="hidden px-3 py-2.5 text-[13px] text-draft md:table-cell">{dr.join(', ')}</td>
+                                  <td className="hidden px-3 py-2.5 text-[13px] text-info md:table-cell">{cr.join(', ')}</td>
+                                  <td className="hidden px-3 py-2.5 text-[13px] text-muted-foreground lg:table-cell">{e.project ?? '—'}</td>
+                                  <td className={cn('whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums', accent.amount)}>{rupees(e.amount)}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        )
+                      })}
+                      <tfoot>
+                        <tr className="border-t-[1.5px] border-foreground/25 bg-muted/30 font-semibold">
+                          <td colSpan={2} className="px-3 py-2.5">
+                            {complete ? 'Total' : `Total of the ${entries.length} shown`}{' '}
+                            <span className="font-normal text-muted-foreground">· {entries.length} vouchers</span>
+                          </td>
+                          <td className="hidden md:table-cell" />
+                          <td className="hidden md:table-cell" />
+                          <td className="hidden lg:table-cell" />
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{rupees(entries.reduce((t, e) => t + Number(e.amount), 0))}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
                 {d.count > entries.length && (
                   <Button variant="outline" className="self-center bg-card" onClick={() => setLimit((l) => Math.min(1000, l + PAGE))} disabled={limit >= 1000}>
                     {limit >= 1000 ? `Showing ${entries.length} of ${d.count}: narrow the period or search` : `Show more (${entries.length} of ${d.count})`}
