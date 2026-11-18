@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, ChevronDown, ChevronRight, Layers, MapPinned, Pencil, Plus } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, CircleCheck, CircleDashed, Hammer, Layers, MapPinned, Pencil, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,9 +29,9 @@ import { ActionIcon } from '@/components/page/action-button'
 
 // Status tokens only (docs/DESIGN.md §3): green done, blue in progress, grey not started.
 const CELL: Record<CellState, string> = {
-  done: 'bg-success text-white dark:text-background',
-  in_progress: 'bg-info-soft text-info',
-  not_started: 'bg-muted text-muted-foreground',
+  done: 'bg-success text-background',
+  in_progress: 'bg-info-soft text-info ring-1 ring-inset ring-info/30',
+  not_started: 'bg-transparent border border-dashed border-border',
 }
 const CELL_WORD: Record<CellState, string> = { done: 'Done', in_progress: 'In progress', not_started: 'Not started' }
 
@@ -78,10 +78,10 @@ function PlacesView({ projectId }: { projectId: string }) {
   const finished = rooms.filter((r) => r.done.length > 0 && r.left.length === 0).length
   const underWay = rooms.filter((r) => r.left.length > 0 && Object.values(r.cells).some((c) => c.state !== 'not_started')).length
   const stats: Stat[] = [
-    { label: 'Floors', value: floors.length - foundation.size || '—', hint: footings ? `and ${footings} footings` : undefined },
-    { label: 'Rooms', value: rooms.length || '—' },
-    { label: 'Rooms finished', value: finished || '—', tone: finished ? 'good' : undefined, },
-    { label: 'Under way', value: underWay || '—', tone: underWay ? 'info' : undefined },
+    { label: 'Floors', value: floors.length - foundation.size || '—', icon: Layers, hint: footings ? `+${footings} footings` : undefined },
+    { label: 'Rooms finished', value: finished, of: rooms.length || undefined, tone: finished ? 'good' : undefined, icon: CircleCheck },
+    { label: 'Under way', value: underWay, tone: underWay ? 'info' : undefined, icon: Hammer },
+    { label: 'Not started', value: rooms.length - finished - underWay, icon: CircleDashed },
   ]
   const hasLive = !!live.data?.maps.length
 
@@ -125,15 +125,52 @@ function PlacesView({ projectId }: { projectId: string }) {
 function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-      {(Object.keys(CELL) as CellState[]).map((s) => (
-        <span key={s} className="inline-flex items-center gap-1.5"><span className={cn('inline-block size-3 rounded-sm', CELL[s])} />{CELL_WORD[s]}</span>
+      {(Object.keys(CELL) as CellState[]).map((st) => (
+        <span key={st} className="inline-flex items-center gap-1.5"><span className={cn('inline-block h-3 w-5 rounded-sm', CELL[st])} />{CELL_WORD[st]}</span>
       ))}
     </div>
   )
 }
 
+/** A floor's cell: how many of its rooms are done (green) and under way (blue) for that trade, as one bar and "3/5". */
+function FloorCell({ rooms, kind }: { rooms: PlaceProgressRow[]; kind: string }) {
+  const n = rooms.length
+  const done = rooms.filter((r) => r.cells[kind]?.state === 'done').length
+  const going = rooms.filter((r) => r.cells[kind]?.state === 'in_progress').length
+  if (!n) return null
+  return (
+    <span className="flex h-7 min-w-14 flex-col justify-center gap-1 px-1" title={`${done} of ${n} rooms done, ${going} under way`}>
+      <span className="flex h-2 overflow-hidden rounded-full bg-muted">
+        {done > 0 && <span className="bg-success" style={{ width: `${(done / n) * 100}%` }} />}
+        {going > 0 && <span className="bg-info/60" style={{ width: `${(going / n) * 100}%` }} />}
+      </span>
+      <span className={cn('text-center text-[10px] font-semibold tabular-nums', done === n ? 'text-success' : 'text-muted-foreground')}>{done}/{n}</span>
+    </span>
+  )
+}
+
+/** A room's trades as small segments: green done, blue under way, grey not started. */
+function RoomTrades({ row, kinds }: { row: PlaceProgressRow; kinds: PlacesProgress['kinds'] }) {
+  return (
+    <span className="ml-auto flex gap-0.5 pl-2" aria-hidden>
+      {kinds.map((k) => {
+        const st = row.cells[k.key]?.state
+        return <span key={k.key} className={cn('h-1.5 w-3 rounded-full', st === 'done' ? 'bg-success' : st === 'in_progress' ? 'bg-info/60' : 'bg-muted')} />
+      })}
+    </span>
+  )
+}
+
+const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1)
+
 function Grid({ rows, kinds, onOpen }: { rows: PlaceProgressRow[]; kinds: PlacesProgress['kinds']; onOpen: (r: PlaceProgressRow) => void }) {
-  const [shut, setShut] = React.useState<Set<string>>(new Set())
+  // Floors with no work reported yet start folded, when another floor has some: the eye goes to the floors under way.
+  const [shut, setShut] = React.useState<Set<string>>(() => {
+    const quiet = (id: string) => rows.filter((x) => x.parent_id === id).every((x) => Object.values(x.cells).every((c) => c.state === 'not_started'))
+    const tops = rows.filter((r) => r.depth === 0 && rows.some((x) => x.parent_id === r.id))
+    const idle = tops.filter((r) => quiet(r.id))
+    return idle.length < tops.length ? new Set(idle.map((r) => r.id)) : new Set()
+  })
   const hasKids = (id: string) => rows.some((r) => r.parent_id === id)
   const hidden = (r: PlaceProgressRow): boolean => {
     let parent = r.parent_id
@@ -143,32 +180,39 @@ function Grid({ rows, kinds, onOpen }: { rows: PlaceProgressRow[]; kinds: Places
     }
     return false
   }
+  const kidsOf = (id: string) => rows.filter((x) => x.parent_id === id)
+  const anyPhotos = rows.some((x) => x.photos > 0)
   const toggle = (id: string) => setShut((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   return (
     <div className="overflow-x-auto rounded-xl border bg-card [contain:inline-size]" data-guide="places.grid">
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
-            <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">Place</th>
-            {kinds.map((k) => <th key={k.key} className="px-1 py-2 text-center font-medium whitespace-nowrap">{k.name}</th>)}
-            <th className="px-2 py-2 text-right font-medium">Photos</th>
+            <th className="sticky left-0 z-10 w-40 bg-muted px-3 sm:w-64 py-2 text-left font-medium">Place</th>
+            {kinds.map((k) => <th key={k.key} className="px-1 py-2 text-center font-medium whitespace-nowrap">{cap(k.name)}</th>)}
+            {anyPhotos && <th className="px-2 py-2 text-right font-medium"><Camera className="ml-auto size-3.5" aria-label="Photos" /></th>}
           </tr>
         </thead>
         <tbody className="divide-y">
           {rows.filter((r) => !hidden(r)).map((r) => (
-            <tr key={r.id} className={cn(r.depth === 0 && 'bg-muted/20')}>
-              <td className="sticky left-0 z-10 bg-card px-2 py-1.5 whitespace-nowrap">
+            <tr key={r.id} className={cn(r.depth === 0 && 'bg-muted/30')}>
+              <td className={cn('sticky left-0 z-10 min-w-40 px-2 sm:min-w-56 py-1.5 whitespace-nowrap', r.depth === 0 ? 'bg-muted' : 'bg-card')}>
                 <div className="flex items-center gap-1" style={{ paddingLeft: r.depth * 16 }}>
                   {hasKids(r.id) ? (
                     <button type="button" className="rounded p-0.5 hover:bg-muted" aria-label={shut.has(r.id) ? `Show ${r.name}'s rooms` : `Hide ${r.name}'s rooms`} onClick={() => toggle(r.id)}>
                       {shut.has(r.id) ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
                     </button>
                   ) : <span className="w-5" />}
-                  <button type="button" className={cn('text-left hover:underline', r.depth === 0 && 'font-medium')} onClick={() => onOpen(r)}>{r.name}</button>
+                  <button type="button" className={cn('text-left hover:underline', r.depth === 0 && 'font-semibold')} onClick={() => onOpen(r)}>{r.name}</button>
+                  {r.depth === 0 ? (
+                    <span className="ml-auto pl-2 text-[11px] text-muted-foreground tabular-nums" title="Rooms with every trade done">{kidsOf(r.id).filter((k) => k.done.length > 0 && k.left.length === 0).length}/{kidsOf(r.id).length}</span>
+                  ) : <RoomTrades row={r} kinds={kinds} />}
                 </div>
               </td>
               {kinds.map((k) => {
                 const c = r.cells[k.key]
+                const kids = kidsOf(r.id)
+                if (r.depth === 0 && kids.length) return <td key={k.key} className="px-1 py-1"><button type="button" className="block w-full" onClick={() => onOpen(r)}><FloorCell rooms={kids} kind={k.key} /></button></td>
                 return (
                   <td key={k.key} className="px-1 py-1">
                     <button type="button" onClick={() => onOpen(r)} title={`${r.label}: ${k.name} ${CELL_WORD[c.state].toLowerCase()}${c.last ? `, last ${dayLabel(c.last)}` : ''}`}
@@ -178,7 +222,7 @@ function Grid({ rows, kinds, onOpen }: { rows: PlaceProgressRow[]; kinds: Places
                   </td>
                 )
               })}
-              <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{r.photos || '—'}</td>
+              {anyPhotos && <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{r.photos || ''}</td>}
             </tr>
           ))}
         </tbody>
