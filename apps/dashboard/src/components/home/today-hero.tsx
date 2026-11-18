@@ -7,7 +7,7 @@ import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { cn } from '@/lib/utils'
 
 // UX-66 (asked 18 Nov 2026: "the Today page looks so boring"; a dark day card was tried and rejected, then this look
-// was picked from three): the greeting and the day on the page itself, the day's moves beside it, then five figure
+// was picked from three; UX-68 moved the greeting to Home): the day on the page itself, the day's moves beside it, then five figure
 // cards: sites reported (with a bar and the time left to the cutoff), workers, work done, photos, open issues, each
 // with its own icon colour. What the day still needs follows as chips. It replaces the page header, the figures strip
 // and the "Needs your attention" box (the same figures and lines).
@@ -24,11 +24,6 @@ export interface HeroLine {
   key: string
   text: string
   note?: string
-}
-
-function greeting(now: Date): string {
-  const h = now.getHours()
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
 }
 
 /** "2h 10m to 6:00 pm" before the cutoff ("18:00"), "Reports closed at 6:00 pm" after it; null without one. */
@@ -54,7 +49,6 @@ const FIG_TONE = [
 ]
 
 export function TodayHero({
-  name,
   isToday,
   dateLabel,
   scopeLabel,
@@ -70,7 +64,6 @@ export function TodayHero({
   showLive,
   canTell,
 }: {
-  name: string
   isToday: boolean
   dateLabel: string
   scopeLabel: string | null
@@ -87,7 +80,6 @@ export function TodayHero({
   canTell: boolean
 }) {
   const [now] = React.useState(() => appNow())
-  const first = name.trim().split(/\s+/)[0]
   const left = isToday ? cutoffLine(cutoff, now) : null
   const all = sites > 0 && reported >= sites
   const btn = 'flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent'
@@ -95,7 +87,7 @@ export function TodayHero({
     <section aria-label="Your day" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">{isToday ? `${greeting(now)}${first ? `, ${first}` : ''}` : 'A past day'}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{isToday ? 'Today' : 'A past day'}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {dateLabel}
             {scopeLabel ? ` · ${scopeLabel}` : ''}

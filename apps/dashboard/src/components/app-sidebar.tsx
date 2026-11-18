@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   LogOut,
   ArrowLeft,
+  House,
   Activity,
   BarChart3,
   FileText,
@@ -111,6 +112,7 @@ const NON_ADMIN_ROLES = ['PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const
 // Settings. Each page has one home; a module with one page is a link, with several a drawer. Modules a
 // company has not switched on (WEB-02) and pages a role may not see are hidden.
 const PRIMARY_ITEMS: NavItem[] = [
+  { title: 'Home', url: '/home', icon: House },
   { title: 'Today', url: '/today', icon: CalendarDays, badge: 'drafts' },
   { title: 'Daily reports', url: '/reports', icon: FileText },
   { title: 'Issues', url: '/issues', icon: AlertCircle, badge: 'issues' },
@@ -209,7 +211,7 @@ const NAV_LINK_BASE =
 function checkIsItemActive(pathname: string, itemUrl: string): boolean {
   if (pathname === itemUrl) return true
   if (itemUrl === '/settings') return SETTINGS_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
-  if (itemUrl === '/today' && pathname === '/') return true
+  if (itemUrl === '/home' && pathname === '/') return true
   if (itemUrl === '/operations/dashboard' && (pathname === '/operations' || pathname === '/operations/dashboard' || pathname === '/overview')) return true
   if (itemUrl === '/finance/expenses' && pathname === '/finance') return true
   if (itemUrl === '/materials/overview' && pathname === '/materials') return true

@@ -11,6 +11,7 @@ export type ScopeLevel = 'site' | 'project' | 'company'
 
 const LEVELS: [string, ScopeLevel][] = [
   // Daily
+  ['/home', 'site'],
   ['/today', 'site'],
   ['/reports', 'site'],
   ['/reports/period', 'site'],

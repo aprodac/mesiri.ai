@@ -40,10 +40,18 @@ const SEE_MONEY = 'Rupees show only to owner, admin, finance and project manager
 
 export const PAGE_HELP: Record<string, PageHelp> = {
   // ── Every day ────────────────────────────────────────────────────────────────────────────────────────────────
+  '/home': {
+    parts: [
+      { name: 'Your figures', means: 'The numbers your role watches; tap one for its page', find: 'home.figures' },
+      { name: 'This week', means: 'What needs you, worst first; tap a line to do it', find: 'home.week' },
+      { name: 'Red line', means: 'Urgent: money at risk, short now, late', tone: 'bad' },
+      { name: 'Your projects', means: 'Each project in a line: budget, late work, today on site', find: 'home.projects' },
+    ],
+    steps: ['Start with the red lines in This week.', 'Open a project to see its day.'],
+    tip: 'Pin any page to "Your pages" with the pin beside its name at the top.',
+  },
   '/today': {
     parts: [
-      { name: 'This week', means: 'What needs you, worst first; tap a line to do it', find: 'today.week' },
-      { name: 'Red line', means: 'Urgent: money at risk, short now, late', tone: 'bad' },
       { name: 'Reported', means: 'Sites that sent an update today', tone: 'good' },
       { name: 'Not reported', means: 'Sites that sent nothing yet', tone: 'attention' },
       { name: 'Workers', means: 'People on site today, from attendance' },
@@ -51,7 +59,6 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Open issues', means: 'Problems still waiting for someone', tone: 'bad' },
     ],
     steps: ['Open a site to see its day.', 'Confirm the day so it goes into the evening report.'],
-    tip: 'Pin any page to "Your pages" with the pin beside its name at the top.',
   },
   '/site/approvals': {
     parts: [

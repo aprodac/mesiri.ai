@@ -5,6 +5,7 @@ import {
   Boxes,
   Calculator,
   CalendarDays,
+  House,
   AlarmClock,
   CircleCheck,
   ClipboardCheck,
@@ -154,6 +155,7 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     about: 'What happened on site today, and what is stuck.',
     section: 'daily',
     pages: [
+      { title: 'Home', url: '/home', status: 'built', whatsapp: [{ kind: 'answer', say: "What is waiting for me?", reply: "5 waiting, 2 urgent: wages for 2–8 Nov at Main building to pay, 200 bags cement for Green Villa, Suresh's bill B-3 flagged.", tools: ['waiting'] }], phase: 'V1', about: 'What needs you this week and how your projects are doing, for your role.', example: 'Pay 2 suppliers, chase Mr. Thomas, Green Villa 4% over budget.', tracker: 'UX-61, UX-65, UX-68', related: [{ title: 'Today', url: '/today' }] },
       { title: 'Today', url: '/today', status: 'built', whatsapp: [{ kind: 'save', say: "6 masons, 4 helpers. First-floor slab shuttering done. Cement ran out.", reply: "Main building, today\n6 masons, 4 helpers\nSlab shuttering, first floor: done\nIssue: cement ran out", tools: ['record_attendance', 'record_work', 'report_issue'] }, { kind: 'answer', say: "What happened at the sites today?", reply: "Main building: 10 people, slab shuttering done, cement ran out. Compound wall hasn't reported yet.", tools: ['day_summary'] }], phase: 'V1', about: "Each site's day: what came in, what is missing, what needs you.", example: 'Main building sent 4 updates; Compound wall has not reported.' },
       { title: 'Daily reports', url: '/reports', status: 'built', whatsapp: [{ kind: 'save', say: "Send today's report", reply: "Today's report, Green Villa\nTo the owner and the client", tools: ['send_dpr'] }, { kind: 'save', say: "Rain today, no work at Compound wall", reply: "Compound wall, today\nRain: no work", tools: ['set_site_conditions'] }], phase: 'V1', about: 'Every DPR, newest first.', example: 'Last evening\'s PDF that went to the owner.' },
       { title: 'Weekly & monthly', url: '/reports/period', status: 'built', whatsapp: [{ kind: 'answer', say: "Send me October's report for Green Villa", reply: "October for Green Villa: work against plan, labour, materials and money. (PDF attached)", tools: ['period_report'] }, { kind: 'save', say: "Send the monthly report to Ravi on the 1st", reply: "Monthly report, Green Villa\nTo Ravi, every 1st", tools: ['schedule_report'] }], phase: 'V1', about: 'A week or a month in one report: work against plan, labour, materials, money and what needs you, as PDF and Excel.', example: 'October report to the MD on the 1st: 3 sites, ₹42 L spent, 2 delays.', tracker: 'PRC-19, PRC-20', related: [{ title: 'Daily reports', url: '/reports' }] },
@@ -427,6 +429,7 @@ export function findPage(pathname: string, search = ''): { group: ModuleGroup; p
 
 /** Icons for the few built pages the sidebar shows as plain links. */
 export const PAGE_ICONS: Record<string, LucideIcon> = {
+  '/home': House,
   '/today': CalendarDays,
   '/tasks': ListChecks,
   '/tasks?view=all': ListTodo,

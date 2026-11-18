@@ -65,4 +65,4 @@ export function setupCounts(p: SetupProgress, guide?: GuideSteps): { done: numbe
 }
 
 /** Where the sidebar's "Finish setup" goes: Today, with the card shown. */
-export const SETUP_URL = '/today?setup=1'
+export const SETUP_URL = '/home?setup=1'

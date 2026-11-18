@@ -225,7 +225,7 @@ export function ThisWeek() {
   const urgent = items.filter((i) => i.tone === 'bad').length
 
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs" data-guide="today.week" aria-label="This week">
+    <section className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs" data-guide="home.week" aria-label="This week">
       <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
         <h2 className="text-[15px] font-semibold">This week</h2>
         {items.length > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums">{items.length}</span>}

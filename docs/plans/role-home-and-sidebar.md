@@ -26,6 +26,19 @@ figure cards (sites reported with a bar and the time left to the cutoff; workers
 their own icon colours) and what the day still needs as chips (`components/home/today-hero.tsx`). Then two columns: This week, tasks and the sites as cards on the left;
 the role's figures, time saved and open issues on the right (one column on a phone). Same data, same tour markers.
 
+## Home and Today, separated (UX-68)
+
+Asked: "is Today supposed to be the home page?" No: Today was doing two jobs. Now:
+
+- **Home** (`/home`, first in the sidebar, where people land): the greeting, the role's figures first, This week,
+  "Your projects" (owners and project managers: one line each with budget state, % done, late activities, sites
+  reported today, people on site, open issues, report sent; it opens that project's Today), tasks, suppliers and bills
+  waiting, time saved, getting started.
+- **Today** (`/today`): the site's day only: the day's figures, the site cards, the daily report, open issues, other
+  days.
+- **Landing:** everyone opens Home; a site engineer opens Today (their job is the day's report). Unknown addresses go
+  to the same place.
+
 ## Sidebar: "Your pages" and Customise
 
 - **Your pages** sits under the everyday pages. Each role starts with its own (`lib/sidebar-prefs.ts` `ROLE_PINS`):
