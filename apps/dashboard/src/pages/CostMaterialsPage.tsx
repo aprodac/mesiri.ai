@@ -1,26 +1,60 @@
-import { Link } from 'react-router-dom'
-import { MONEY_PEOPLE } from '@/lib/permissions'
-import { Legend, NoAccess } from '@/components/page/page-kit'
+import * as React from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Package, PackageSearch } from 'lucide-react'
-import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
+import type { LucideIcon } from 'lucide-react'
+import {
+  ArrowDownWideNarrow, ArrowRight, CircleCheck, CircleDashed, ClipboardList, Eye, Package, PackageCheck, PackageSearch, PackageX, Search,
+  TriangleAlert, X,
+} from 'lucide-react'
+import { MONEY_PEOPLE } from '@/lib/permissions'
+import { ActionButton, KpiStrip, Legend, NoAccess } from '@/components/page/page-kit'
+import { Pager } from '@/components/page/pager'
+import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
+import { ProjectPickList } from '@/components/schedule/project-picker'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { formatQuantity, maySeeBoq } from '@/lib/boq'
-import { fetchProjectMaterials, type MaterialReconciliation } from '@/lib/cost'
+import { fetchProjectMaterials, type MaterialReconciliation, type VarianceColour } from '@/lib/cost'
 import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours'
+import { exportCsv } from '@/lib/export'
+import { usePagedUrl } from '@/lib/paging'
 import { usePageTitle } from '@/lib/page-title'
 import { useScope } from '@/lib/ScopeContext'
+import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
-import { Pager } from '@/components/page/pager'
-import { usePagedUrl } from '@/lib/paging'
-import { ProjectPickList } from '@/components/schedule/project-picker'
 
 // CC-08: materials against the BOQ. Per material with a norm on a BOQ line (MP-01): what the work done so far should
 // have used against what was used, and what is still needed to finish against what is on hand and coming, so a
 // shortage is seen before closeout ("4 loads of metal short"). Backend: GET /cost/projects/{id}/materials.
+// UX-42 (18 Nov): it reads by colour and shape. A KPI strip; one bar of the materials by colour whose chips filter, and
+// "short to finish" as a filter; each material its use against what the work needed as a bar with a tick at the need,
+// what is still needed to finish as one bar (on hand green, on order blue, short red), a short reason chip with its
+// fix, and a link to its stock book; search, sort, pages and export.
 
-function why(m: MaterialReconciliation): string {
+type M = MaterialReconciliation
+const n = (v: string | null | undefined) => (v === null || v === undefined ? 0 : Number(v))
+
+const LOOK: Record<VarianceColour, { icon: LucideIcon; pill: string }> = {
+  red: { icon: TriangleAlert, pill: 'bg-destructive/10 text-destructive' },
+  amber: { icon: Eye, pill: 'bg-draft-soft text-draft' },
+  green: { icon: CircleCheck, pill: 'bg-success-soft text-success' },
+  grey: { icon: CircleDashed, pill: 'bg-muted text-muted-foreground' },
+}
+const ORDER: VarianceColour[] = ['red', 'amber', 'green', 'grey']
+
+/** Why a material is its colour, in a few words (the full sentence is its tooltip). */
+const REASON: Record<M['reason'], string> = {
+  over_norm: 'Used more than the work needed',
+  near_norm: 'A little more, within 10%',
+  within_norm: 'Within what the work needed',
+  used_no_work: 'Used, no work measured',
+  no_usage_recorded: 'No use recorded on site',
+  nothing_yet: 'Nothing used yet',
+  unit_differs: 'Stock in another unit',
+}
+
+function why(m: M): string {
   const u = m.unit
   switch (m.reason) {
     case 'over_norm':
@@ -39,56 +73,105 @@ function why(m: MaterialReconciliation): string {
   }
 }
 
-function Row({ m }: { m: MaterialReconciliation }) {
-  const short = m.short_by !== null && Number(m.short_by) > 0
+/** Used against what the work done needed: a bar in its colour, a tick where the need ends. */
+function UsedBar({ m }: { m: M }) {
+  const used = n(m.used)
+  const need = n(m.should_have_used)
+  const scale = Math.max(used, need)
+  if (scale <= 0 || m.reason === 'unit_differs') return <span className="text-xs text-muted-foreground">—</span>
+  const pct = (v: number) => Math.min(100, (v / scale) * 100)
   return (
-    <li className="flex gap-3 px-3 py-3">
-      <span className={cn('mt-1 w-1 shrink-0 rounded-full', COLOUR_DOT[m.colour])} aria-hidden="true" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-          <p className="font-medium">
-            <span className={cn('mr-2 text-xs font-semibold uppercase tracking-wide', COLOUR_TEXT[m.colour])}>{COLOUR_WORD[m.colour]}</span>
-            {m.material}
-          </p>
-          {short ? (
-            <span className="text-sm font-semibold tabular-nums text-destructive">
-              {formatQuantity(m.short_by!)} {m.unit} short to finish
-            </span>
-          ) : m.short_by !== null ? (
-            <span className="text-sm tabular-nums text-success">Enough to finish</span>
-          ) : null}
-        </div>
-        <p className="text-sm text-muted-foreground">{why(m)}</p>
-        <dl className="grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
-          {[
-            ['BOQ needs', m.required_total],
-            ['Still needed', m.still_needed],
-            ['Received', m.received],
-            ['Used', m.used],
-            ['On hand', m.on_hand],
-            ['On order', m.on_order],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <dt className="text-muted-foreground">{label}</dt>
-              <dd className="font-medium tabular-nums">
-                {formatQuantity(value!)} <span className="font-normal text-muted-foreground">{m.unit}</span>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </li>
+    <span className="flex flex-col gap-1">
+      <span className="relative block h-2 rounded-full bg-muted" aria-hidden>
+        <span className={cn('block h-full rounded-full', COLOUR_DOT[m.colour])} style={{ width: `${Math.max(pct(used), used > 0 ? 2 : 0)}%` }} />
+        {need > 0 && <span className="absolute -top-1 -bottom-1 w-0.5 rounded bg-foreground/70" style={{ left: `calc(${pct(need)}% - 1px)` }} title={`The work needed ${formatQuantity(m.should_have_used)} ${m.unit}`} />}
+      </span>
+      <span className="flex justify-between text-[11px] tabular-nums">
+        <span>
+          <span className={cn('font-semibold', COLOUR_TEXT[m.colour])}>{formatQuantity(m.used)}</span> <span className="text-muted-foreground">used</span>
+        </span>
+        <span className="text-muted-foreground">
+          {formatQuantity(m.should_have_used)} needed
+        </span>
+      </span>
+    </span>
   )
 }
 
-function ProjectPicker() {
-  // UX-35: the one project picker (cards, one project opens by itself).
-  return <ProjectPickList to={(id) => `/cost/materials?project=${id}`} empty="No projects yet." />
+/** What is still needed to finish, as one bar: on hand (green), on order (blue), short (red). */
+function FinishBar({ m }: { m: M }) {
+  const still = n(m.still_needed)
+  if (m.short_by === null) return <span className="text-xs text-muted-foreground">—</span>
+  if (still <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+        <PackageCheck className="size-3.5" aria-hidden /> Nothing left to need
+      </span>
+    )
+  }
+  const hand = Math.min(n(m.on_hand), still)
+  const order = Math.min(n(m.on_order), Math.max(0, still - hand))
+  const short = Math.max(0, n(m.short_by))
+  const total = Math.max(still, hand + order + short)
+  const w = (v: number) => `${(v / total) * 100}%`
+  return (
+    <span className="flex flex-col gap-1">
+      <span className="flex h-2 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${formatQuantity(String(still))} ${m.unit} still needed: ${formatQuantity(String(hand))} on hand, ${formatQuantity(String(order))} on order, ${formatQuantity(String(short))} short`}>
+        {hand > 0 && <span className="bg-success" style={{ width: w(hand) }} />}
+        {order > 0 && <span className="bg-info" style={{ width: w(order) }} />}
+        {short > 0 && <span className="bg-destructive" style={{ width: w(short) }} />}
+      </span>
+      <span className="text-[11px] text-muted-foreground tabular-nums">
+        <span className="font-semibold text-foreground">{formatQuantity(m.still_needed)}</span> {m.unit} to go
+      </span>
+    </span>
+  )
 }
+
+function ShortPill({ m }: { m: M }) {
+  if (m.short_by === null) return <span className="text-muted-foreground">—</span>
+  const short = n(m.short_by) > 0
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums', short ? 'bg-destructive/10 text-destructive' : 'bg-success-soft text-success')}>
+      {short ? <PackageX className="size-3" aria-hidden /> : <PackageCheck className="size-3" aria-hidden />}
+      {short ? `${formatQuantity(m.short_by)} ${m.unit} short` : 'Enough'}
+    </span>
+  )
+}
+
+function ReasonChip({ m, projectId }: { m: M; projectId: string }) {
+  const fix =
+    m.reason === 'no_usage_recorded' ? { to: `/materials?view=movements&dir=out&material=${m.material_id}&project=${projectId}`, label: 'Record use' }
+    : m.reason === 'unit_differs' || m.reason === 'used_no_work' ? { to: `/projects/${projectId}/boq`, label: m.reason === 'unit_differs' ? 'Fix the unit' : 'Check the BOQ' }
+    : null
+  const Icon = LOOK[m.colour].icon
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-px text-[11px] font-medium', LOOK[m.colour].pill)} title={why(m)}>
+        <Icon className="size-3" aria-hidden />
+        {REASON[m.reason]}
+      </span>
+      {fix && (
+        <Link to={fix.to} className="inline-flex items-center gap-0.5 text-[11px] font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
+          {fix.label} <ArrowRight className="size-3" aria-hidden />
+        </Link>
+      )}
+    </span>
+  )
+}
+
+const SORTS: { value: string; label: string; key?: (m: M) => number | string }[] = [
+  { value: '', label: 'Worst first' },
+  { value: 'short', label: 'Most short to finish', key: (m) => -n(m.short_by) },
+  { value: 'over', label: 'Most used over the work', key: (m) => -n(m.used_over_work) },
+  { value: 'still', label: 'Most still needed', key: (m) => -n(m.still_needed) },
+  { value: 'name', label: 'Name', key: (m) => m.material.toLowerCase() },
+]
 
 export default function CostMaterialsPage() {
   const { me } = useAuth()
   const { scope } = useScope()
+  const navigate = useNavigate()
   usePageTitle('Materials vs BOQ')
   const allowed = maySeeBoq(me?.role)
   const projectId = scope.mode !== 'portfolio' ? scope.projectId : null
@@ -97,73 +180,274 @@ export default function CostMaterialsPage() {
     queryFn: () => fetchProjectMaterials(projectId!),
     enabled: allowed && !!projectId,
   })
-  // UX-37: numbered pages, kept in the address.
-  const pagedMaterials = usePagedUrl(q.data?.materials ?? [])
-  if (!allowed) {
-    return (
-      <NoAccess roles={MONEY_PEOPLE} />
+  const [search, setSearch] = useUrlState<string>('q', '')
+  const [colour, setColour] = useUrlState<string>('colour', '')
+  const [shortOnly, setShortOnly] = useUrlState<string>('short', '')
+  const [sort, setSort] = useUrlState<string>('sort', '')
+  const needle = search.trim().toLowerCase()
+  const listed = React.useMemo(() => {
+    const out = (q.data?.materials ?? []).filter(
+      (m) => (!colour || m.colour === colour) && (!shortOnly || n(m.short_by) > 0) && (!needle || m.material.toLowerCase().includes(needle)),
     )
-  }
-  const header = (
-    <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Materials vs BOQ" date={projectId ? undefined : 'Pick a project'} />
-  )
+    const key = SORTS.find((x) => x.value === sort)?.key
+    if (!key) return out
+    return [...out].sort((a, b) => {
+      const ka = key(a)
+      const kb = key(b)
+      return typeof ka === 'string' ? ka.localeCompare(String(kb)) : ka - Number(kb)
+    })
+  }, [q.data, colour, shortOnly, needle, sort])
+  // UX-37: numbered pages, kept in the address.
+  const paged = usePagedUrl(listed)
+  const searchRef = React.useRef<HTMLInputElement>(null)
+  // "/" jumps to the search, as in most tools (never while typing in a field).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  if (!allowed) return <NoAccess roles={MONEY_PEOPLE} />
+  const header = <DprHeader back={{ to: '/cost', label: 'Overview' }} crumb="Cost control" title="Materials vs BOQ" date={projectId ? undefined : 'Pick a project'} />
   if (!projectId) {
     return (
       <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         {header}
-        <ProjectPicker />
+        {/* UX-35: the one project picker (cards, one project opens by itself). */}
+        <ProjectPickList to={(id) => `/cost/materials?project=${id}`} empty="No projects yet." />
       </div>
     )
   }
   if (q.isError) return <PageError message="Materials vs BOQ could not be loaded." onRetry={() => q.refetch()} back={{ to: '/cost', label: 'Overview' }} />
   const d = q.data
+  const all = d?.materials ?? []
+  const count = (c: VarianceColour) => d?.summary[c] ?? 0
+  const judged = ORDER.reduce((t, c) => t + count(c), 0)
+  const shortCount = all.filter((m) => n(m.short_by) > 0).length
+  const lines = (d?.lines_with_norms ?? 0) + (d?.lines_without_norms ?? 0)
+  const any = !!(search || colour || shortOnly)
+  const clear = () => {
+    setSearch('')
+    setColour('')
+    setShortOnly('')
+  }
+  const exportShown = () =>
+    exportCsv(
+      `materials-vs-boq-${d?.date ?? ''}.csv`,
+      ['Material', 'Unit', 'Colour', 'Why', 'BOQ needs', 'Work done needed', 'Used', 'Used over the work', 'Received', 'On hand', 'On order', 'Still needed', 'Short to finish'],
+      listed.map((m) => [
+        m.material, m.unit, COLOUR_WORD[m.colour], REASON[m.reason], m.required_total, m.should_have_used, m.used, m.used_over_work ?? '', m.received, m.on_hand,
+        m.on_order, m.still_needed, m.short_by ?? '',
+      ]),
+    )
+
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       {header}
       {q.isLoading || !d ? (
-        <Skeleton className="h-64 rounded-lg" />
-      ) : d.materials.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-4 py-6" data-guide="costmat.empty">
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
+      ) : all.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-card px-4 py-10 text-center" data-guide="costmat.empty">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" aria-hidden>
+            <PackageSearch className="size-5" />
+          </span>
           <p className="font-medium">No BOQ line has its materials per unit yet</p>
-          <Link to={`/projects/${projectId}/boq`} className="text-sm font-medium underline underline-offset-2">
-            Add them on the BOQ
-          </Link>
+          <Button asChild size="sm">
+            <Link to={`/projects/${projectId}/boq`}>Add them on the BOQ</Link>
+          </Button>
         </div>
       ) : (
         <>
-          <StatStrip
+          <KpiStrip
             guide="costmat.stats"
             stats={[
-              { label: 'Used beyond the work', value: `${d.summary.red} red · ${d.summary.amber} amber`, tone: d.summary.red > 0 ? 'bad' : d.summary.amber > 0 ? 'warn' : 'good' },
-              { label: 'Within the norm', value: String(d.summary.green), tone: 'good' },
-              { label: 'Short to finish', value: String(d.short_at_completion), tone: d.short_at_completion > 0 ? 'bad' : 'good', hint: 'beyond stock and open orders' },
-              { label: 'Not judged', value: String(d.summary.grey) },
+              { label: 'Used over the work', icon: TriangleAlert, tone: count('red') > 0 ? 'bad' : count('amber') > 0 ? 'attention' : 'good', value: count('red') + count('amber'), of: judged || undefined, hint: `${count('red')} red · ${count('amber')} amber` },
+              { label: 'Within the BOQ', icon: CircleCheck, tone: 'good', value: count('green'), of: judged || undefined },
+              { label: 'Short to finish', icon: PackageX, tone: d.short_at_completion > 0 ? 'bad' : 'good', value: d.short_at_completion, hint: 'beyond stock and orders' },
+              { label: 'Not judged', icon: CircleDashed, value: count('grey') },
+              { label: 'Lines with materials', icon: ClipboardList, tone: d.lines_without_norms > 0 ? 'attention' : 'good', value: d.lines_with_norms, of: lines || undefined },
             ]}
           />
+
           {d.lines_without_norms > 0 && (
-            <Callout tone="muted" icon={PackageSearch}>
-              {d.lines_without_norms} BOQ {d.lines_without_norms === 1 ? 'line has' : 'lines have'} no materials set, so what they use is not
-              counted here.{' '}
-              <Link to={`/projects/${projectId}/boq`} className="font-medium underline underline-offset-2">
-                Set them on the BOQ
-              </Link>
-            </Callout>
+            <Link to={`/projects/${projectId}/boq`} className="group flex items-center gap-2.5 rounded-xl border bg-card px-3 py-2 transition-colors hover:bg-muted/40">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-draft-soft text-draft" aria-hidden>
+                <PackageSearch className="size-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 text-sm">
+                <span className="font-semibold tabular-nums">{d.lines_without_norms}</span> BOQ {d.lines_without_norms === 1 ? 'line has' : 'lines have'} no materials set
+                <span className="text-muted-foreground"> · not counted here</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold">
+                Set them <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </span>
+            </Link>
           )}
-          <DprSection icon={Package} title="Materials, worst first" meta={d.materials.length}>
-            <ul className="divide-y rounded-lg border bg-card" data-guide="costmat.list">
-              {pagedMaterials.shown.map((m) => (
-                <Row key={m.material_id} m={m} />
-              ))}
-            </ul>
-            <Pager {...pagedMaterials.pager} noun="materials" className="mt-2" />
-            <Legend
-              className="mt-2"
-              items={[
-                { tone: 'good', label: 'Within what the work needed' },
-                { tone: 'attention', label: 'Up to 10% more' },
-                { tone: 'bad', label: 'More than 10% over' },
-              ]}
-            />
+
+          <DprSection icon={Package} title="Materials" meta={any ? `${listed.length} of ${all.length}` : all.length}>
+            {/* The materials by colour: one bar, each colour a filter; "short to finish" another. */}
+            <div className="mb-2 flex flex-col gap-2 rounded-xl border bg-card p-3">
+              <div className="flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={ORDER.map((c) => `${count(c)} ${COLOUR_WORD[c]}`).join(', ')}>
+                {ORDER.map((c) => count(c) > 0 && <span key={c} className={COLOUR_DOT[c]} style={{ width: `${(count(c) / Math.max(judged, 1)) * 100}%` }} />)}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {ORDER.filter((c) => count(c) > 0).map((c) => {
+                  const on = colour === c
+                  const Icon = LOOK[c].icon
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setColour(on ? '' : c)}
+                      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition', LOOK[c].pill, on ? 'ring-2 ring-foreground/70' : 'hover:ring-1 hover:ring-foreground/20')}
+                    >
+                      <Icon className="size-3.5" aria-hidden />
+                      <span className="tabular-nums">{count(c)}</span> {COLOUR_WORD[c]}
+                    </button>
+                  )
+                })}
+                {shortCount > 0 && (
+                  <button
+                    type="button"
+                    aria-pressed={!!shortOnly}
+                    onClick={() => setShortOnly(shortOnly ? '' : '1')}
+                    className={cn('inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-semibold transition', shortOnly ? 'border-foreground bg-foreground text-background' : 'border-destructive/50 text-destructive hover:border-destructive')}
+                  >
+                    <PackageX className="size-3.5" aria-hidden />
+                    <span className="tabular-nums">{shortCount}</span> short to finish
+                  </button>
+                )}
+                <span className="ml-auto flex flex-wrap items-center gap-2">
+                  <label className="flex h-8 items-center gap-2 rounded-lg border bg-card px-2.5">
+                    <Search className="size-3.5 text-muted-foreground" aria-hidden />
+                    <span className="sr-only">Search materials</span>
+                    <input
+                      ref={searchRef}
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Escape' && setSearch('')}
+                      placeholder="Search materials"
+                      className="w-32 bg-transparent text-sm outline-none"
+                    />
+                    <kbd className="hidden rounded border bg-muted px-1 text-[10px] text-muted-foreground sm:inline" title="Press / to search">/</kbd>
+                  </label>
+                  <label className="flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm">
+                    <ArrowDownWideNarrow className="size-3.5 text-muted-foreground" aria-hidden />
+                    <select value={sort} onChange={(e) => setSort(e.target.value)} className="bg-transparent outline-none" aria-label="Sort the materials">
+                      {SORTS.map((x) => (
+                        <option key={x.value} value={x.value}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {any && (
+                    <Button variant="ghost" size="sm" className="h-8 gap-1" onClick={clear}>
+                      <X className="size-3.5" aria-hidden /> Clear
+                    </Button>
+                  )}
+                  <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The materials shown, as a CSV file (opens in Excel)">
+                    <span className="hidden sm:inline">{any ? 'Export shown' : 'Export'}</span>
+                  </ActionButton>
+                </span>
+              </div>
+            </div>
+
+            {listed.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card py-10 text-center">
+                <Search className="size-5 text-muted-foreground" aria-hidden />
+                <p className="text-sm font-medium">No material matches</p>
+                <Button variant="outline" size="sm" onClick={clear}>
+                  Clear filters
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border bg-card" data-guide="costmat.list">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Material</th>
+                      <th className="hidden w-56 px-3 py-2 text-left font-medium md:table-cell">Used vs work needed</th>
+                      <th className="hidden w-52 px-3 py-2 text-left font-medium lg:table-cell">To finish</th>
+                      <th className="px-3 py-2 text-right font-medium">Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {paged.shown.map((m) => (
+                      <tr
+                        key={m.material_id}
+                        className="cursor-pointer align-top hover:bg-muted/30"
+                        onClick={() => navigate(`/materials?view=movements&material=${m.material_id}&project=${projectId}`)}
+                        title="Open its stock book"
+                      >
+                        <td className="relative px-3 py-2.5 pl-4">
+                          <span className={cn('absolute top-2 bottom-2 left-1.5 w-1 rounded-full', COLOUR_DOT[m.colour])} aria-hidden />
+                          <span className="flex flex-col gap-1">
+                            <span className="flex items-baseline gap-2">
+                              <span className="font-medium">{m.material}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {m.unit} · {m.lines} {m.lines === 1 ? 'line' : 'lines'}
+                              </span>
+                            </span>
+                            <ReasonChip m={m} projectId={projectId} />
+                            {/* Below a laptop the bars fold under the name (docs/DESIGN.md section 8). */}
+                            <span className="flex max-w-72 flex-col gap-2 pt-1 md:hidden">
+                              <UsedBar m={m} />
+                              <FinishBar m={m} />
+                              <span className="text-[11px] text-muted-foreground tabular-nums sm:hidden">
+                                {formatQuantity(m.on_hand)} on hand{n(m.on_order) > 0 ? ` · ${formatQuantity(m.on_order)} ordered` : ''}
+                              </span>
+                            </span>
+                            <span className="hidden max-w-60 pt-1 md:block lg:hidden">
+                              <FinishBar m={m} />
+                            </span>
+                          </span>
+                        </td>
+                        <td className="hidden px-3 py-2.5 md:table-cell">
+                          <UsedBar m={m} />
+                        </td>
+                        <td className="hidden px-3 py-2.5 lg:table-cell">
+                          <FinishBar m={m} />
+                        </td>
+                        <td className="w-px px-3 py-2.5 text-right">
+                          <span className="flex flex-col items-end gap-1">
+                            <ShortPill m={m} />
+                            <span className="hidden text-[11px] whitespace-nowrap text-muted-foreground tabular-nums sm:block">
+                              {formatQuantity(m.on_hand)} on hand{n(m.on_order) > 0 ? ` · ${formatQuantity(m.on_order)} ordered` : ''}
+                            </span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <Pager {...paged.pager} noun="materials" className="mt-2" />
+            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
+              <Legend
+                items={[
+                  { tone: 'good', label: 'Within what the work needed' },
+                  { tone: 'attention', label: 'Up to 10% more' },
+                  { tone: 'bad', label: 'More than 10% over' },
+                ]}
+              />
+              <span className="flex items-center gap-3 text-xs text-muted-foreground">
+                To finish:
+                <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-success" aria-hidden /> on hand</span>
+                <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-info" aria-hidden /> on order</span>
+                <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-destructive" aria-hidden /> short</span>
+              </span>
+            </div>
           </DprSection>
         </>
       )}

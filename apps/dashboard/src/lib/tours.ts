@@ -941,14 +941,14 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/cost/materials': {
     key: '/tour/cost-materials',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['costmat.stats', 'costmat.empty'],
     steps: [
       { target: 'project.pick', title: 'Pick a project', text: 'This page works on one project at a time. Pick it here, or in the bar at the top.' },
       { target: 'costmat.empty', title: 'Materials for each BOQ line', text: 'Set what each line uses per unit on the BOQ, like cement bags per m³, and this page sets what was used against what the work needed.', mood: 'think' },
-      { target: 'costmat.stats', title: 'At a glance', text: 'Materials used beyond what the work needed, within it, short to finish, and not judged.', mood: 'look' },
-      { target: 'costmat.list', title: 'Worst first', text: 'Each material: used against what the work done needed. Red is more than 10% over.', mood: 'worry' },
+      { target: 'costmat.stats', title: 'At a glance', text: 'Materials used over the work, within it, short to finish, and not judged.', mood: 'look' },
+      { target: 'costmat.list', title: 'Worst first', text: 'The first bar is used against what the work needed (the tick). The second is what is left: on hand, ordered, short.', mood: 'worry' },
       { target: 'app.whatsapp', title: 'Ask on WhatsApp', text: '"Is cement use above the BOQ?"', mood: 'happy' },
     ],
   },
