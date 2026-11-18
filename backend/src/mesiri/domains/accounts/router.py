@@ -581,7 +581,7 @@ async def projects(date_from: datetime.date | None = None, date_to: datetime.dat
     allowed = await _ready_projects(conn, auth)
     date_from, date_to = await _period(conn, auth, date_from, date_to)
     rows = await statements.projects_table(conn, auth.organization_id, date_from, date_to, allowed)
-    total = {k: sum((Decimal(r[k]) for r in rows), Decimal(0)) for k in ("billed", "cost", "overheads", "profit",
+    total = {k: sum((Decimal(r[k]) for r in rows), Decimal(0)) for k in ("billed", "cost", "direct", "overheads", "profit",
                                                                          "receivable", "payable")}
     total["margin"] = statements.pct(total["profit"], total["billed"])
     return _out({"date_from": date_from, "date_to": date_to, "projects": rows, "total": total,

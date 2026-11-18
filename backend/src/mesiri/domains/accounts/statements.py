@@ -313,9 +313,17 @@ async def position(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID,
 async def projects_table(conn: AsyncConnection, org: uuid.UUID, date_from: datetime.date, date_to: datetime.date,
                          project_ids: set | None) -> list[dict[str, Any]]:
     """Every project's P&L in the period and what it is owed and owes today: the "which site makes money" list."""
+    # UX-57: ``direct`` is the part of ``cost`` under Purchases or Direct expenses (the P&L's own rule, PL_SECTION):
+    # the rest of ``cost`` is indirect cost booked on the project; ``overheads`` is the head-office share on top.
     rows = (await conn.execute(text(
+        "WITH RECURSIVE gtree AS ("
+        "  SELECT id, id AS root FROM ledger_groups WHERE organization_id = :org AND parent_id IS NULL "
+        "  UNION ALL SELECT c.id, t.root FROM ledger_groups c JOIN gtree t ON c.parent_id = t.id), "
+        "roots AS (SELECT t.id, r.code AS root_code FROM gtree t JOIN ledger_groups r ON r.id = t.root) "
         "SELECT p.id, p.name, "
         "COALESCE(SUM(CASE WHEN l.code = 'contract_revenue' AND jl.entry_date BETWEEN :f AND :t THEN jl.credit - jl.debit END), 0) AS billed, "
+        "COALESCE(SUM(CASE WHEN g.nature = 'expense' AND COALESCE(l.code, '') <> :oh AND jl.entry_date BETWEEN :f AND :t "
+        "    AND rt.root_code IN (:direct_a, :direct_b) THEN jl.debit - jl.credit END), 0) AS direct, "
         "COALESCE(SUM(CASE WHEN g.nature = 'expense' AND COALESCE(l.code, '') <> :oh AND jl.entry_date BETWEEN :f AND :t "
         "    THEN jl.debit - jl.credit END), 0) AS cost, "
         "COALESCE(SUM(CASE WHEN l.code = :oh AND jl.entry_date BETWEEN :f AND :t THEN jl.debit - jl.credit END), 0) AS overheads, "
@@ -324,15 +332,17 @@ async def projects_table(conn: AsyncConnection, org: uuid.UUID, date_from: datet
         "COALESCE(SUM(CASE WHEN l.link_kind = 'vendor' AND jl.entry_date <= :t THEN jl.credit - jl.debit END), 0) AS payable "
         "FROM projects p JOIN journal_lines jl ON jl.project_id = p.id AND jl.organization_id = p.organization_id "
         "JOIN ledgers l ON l.id = jl.ledger_id JOIN ledger_groups g ON g.id = l.group_id "
+        "LEFT JOIN roots rt ON rt.id = g.id "
         "WHERE p.organization_id = :org AND (CAST(:all AS boolean) OR p.id = ANY(:ids)) "
         "GROUP BY p.id, p.name ORDER BY p.name"),
         {"org": org, "f": date_from, "t": date_to, "oh": OVERHEADS, "all": project_ids is None,
-         "ids": list(project_ids or [])})).mappings().all()
+         "ids": list(project_ids or []), "direct_a": "purchases", "direct_b": "direct_expenses"})).mappings().all()
     out = []
     for r in rows:
         billed, cost, oh = Decimal(r["billed"]), Decimal(r["cost"]), Decimal(r["overheads"])
         profit = billed - cost - oh
-        out.append({"project_id": str(r["id"]), "name": r["name"], "billed": billed, "cost": cost, "overheads": oh,
+        out.append({"project_id": str(r["id"]), "name": r["name"], "billed": billed, "cost": cost,
+                    "direct": Decimal(r["direct"]), "overheads": oh,
                     "profit": profit, "margin": pct(profit, billed), "receivable": Decimal(r["receivable"]),
                     "payable": Decimal(r["payable"])})
     return sorted(out, key=lambda r: -r["profit"])

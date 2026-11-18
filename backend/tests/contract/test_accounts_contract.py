@@ -359,6 +359,7 @@ async def test_phase_b_statements_agree_with_the_books_for_the_company_and_the_p
         table = (await client.get(f"/accounts/projects?date_from={month}&date_to={end}", headers=h)).json()
         villa = next(p for p in table["projects"] if p["name"] == "Villa")
         assert (villa["billed"], villa["cost"], villa["profit"], villa["margin"]) == ("100000.00", "60700.00", "39300.00", "39.30")
+        assert villa["direct"] == "60700.00" and table["total"]["direct"] == "60700.00"  # all of it is site cost (UX-57)
 
         home = (await client.get("/accounts/home", headers=h)).json()
         assert home["cash_bank"]["total"] == "163000.00" and home["receivable"] == "61000.00"
