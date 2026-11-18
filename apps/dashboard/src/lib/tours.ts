@@ -1052,6 +1052,28 @@ export const PAGE_TOURS: Record<string, Tour> = {
       { target: 'ledgers.list', title: 'Largest balance first', text: 'Tap a ledger for its statement, entry by entry.', mood: 'think' },
     ],
   },
+  '/accounts/cash-flow': {
+    key: '/tour/accounts/cash-flow',
+    version: 1,
+    introFromPage: true,
+    steps: [
+      { target: 'cashflow.stats', title: 'At a glance', text: 'Cash today, what comes in and goes out, and the lowest point ahead.', mood: 'look' },
+      { target: 'cashflow.chart', title: 'Week by week', text: 'Green comes in, red goes out; the line is the cash left. Tap a week.', mood: 'look' },
+      { target: 'cashflow.kinds', title: 'What is counted', text: 'Switch a kind off to see the weeks without it.', mood: 'think' },
+      { target: 'cashflow.weeks', title: 'Every payment', text: 'Open a week for each bill, order and wage sheet, with its page.' },
+    ],
+  },
+  '/billing/variations': {
+    key: '/tour/billing/variations',
+    version: 1,
+    introFromPage: true,
+    steps: [
+      { target: 'variations.add', title: 'Price it first', text: 'The client asks for extra work: record it with its price before it is built.', mood: 'happy' },
+      { target: 'variations.stats', title: 'The money', text: 'With the client, approved, and how much of it is billed.', mood: 'look' },
+      { target: 'variations.states', title: 'Where each one is', text: 'Draft, with the client, approved or rejected. Tap one to see only those.', mood: 'look' },
+      { target: 'variations.list', title: 'Approve it', text: 'Approved, it goes on the BOQ, so its work is billed on the next RA bill.' },
+    ],
+  },
   '/accounts/receivables': {
     key: '/tour/accounts-receivables',
     version: 1,

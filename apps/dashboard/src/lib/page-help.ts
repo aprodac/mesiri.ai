@@ -520,6 +520,26 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     ],
     tip: 'Posted from your records on their own: nothing to type. Every figure opens its entries.',
   },
+  '/accounts/cash-flow': {
+    parts: [
+      { name: 'Coming in', means: 'RA bills sent and not paid, on the day the client usually pays', tone: 'good', find: 'cashflow.stats' },
+      { name: 'Going out', means: 'Supplier and subcontractor bills after their credit days, orders, wages', tone: 'bad', find: 'cashflow.stats' },
+      { name: 'Lowest point', means: 'The least cash left at a week\'s end; red when it runs out' },
+      { name: 'Clients pay in', means: 'Days after a bill the client pays; change it to see a slower client', find: 'cashflow.assume' },
+      { name: '≈', means: 'A guessed date: no credit days set, no expected day on the order, or an estimate' },
+      { name: 'One project picked', means: 'Its money in and out only: the bank is the company\'s' },
+    ],
+    steps: ['See the week the cash runs short.', 'Open it: chase a client bill, or move a payment.'],
+  },
+  '/billing/variations': {
+    parts: [
+      { name: 'With the client', means: 'Sent, not answered yet; chased after 14 days', tone: 'attention', find: 'variations.states' },
+      { name: 'Approved', means: 'On the BOQ: a VO line, or more of a line', tone: 'good', find: 'variations.states' },
+      { name: 'Margin', means: 'Amount less our cost, when our cost is priced: green 15% and up' },
+      { name: 'Billed', means: 'How much of an approved new item RA bills have taken' },
+    ],
+    steps: ['Record what the client asked, with its price.', 'Mark it sent, then approved: it goes on the BOQ.', 'The site does it; the next RA bill bills it.'],
+  },
   '/accounts/receivables': { parts: [{ name: 'Clients owe', means: 'RA bills sent, not paid', tone: 'attention' }, { name: 'Overdue', means: 'Past the due day', tone: 'bad' }] },
   '/accounts/cash-bank': {
     tip: 'The same balances as Finance › Money. Tap an account for its book, day by day.', parts: [{ name: 'Opening / Closing', means: 'Balance at the start and end' }, { name: 'Money in', means: 'Received', tone: 'good' }, { name: 'Money out', means: 'Paid', tone: 'bad' }] },
