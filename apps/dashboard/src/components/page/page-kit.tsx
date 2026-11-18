@@ -14,6 +14,10 @@ import { KPI_TONE, Kpi, KpiGrid, type KpiProps, type KpiTone } from '@/component
 export { PageHeader, StatStrip, Callout, PageError, Segmented, DprSection as IconSection } from '@/components/dpr-page'
 export { Kpi, KpiStrip, KpiGrid, KpiMeter, type KpiItem, type KpiProps, type KpiTone } from '@/components/page/kpi'
 export { ActionButton, ActionIcon, ActionMenuItem } from '@/components/page/action-button'
+// UX-45: the list page kit, the pager and the Numbers view (recipe: docs/design/LIST_PAGE_KIT.md).
+export { ActionChip, BulkBar, ClearButton, ListToolbar, NoMatch, NoteChip, Pill, ReasonChip, SearchBox, SortSelect, StateBar, ToggleChip, type StateItem } from '@/components/page/list-kit'
+export { Pager } from '@/components/page/pager'
+export { NumbersTable, ShowSwitch, type NumberColumn } from '@/components/page/numbers-view'
 
 /**
  * A module page's title (UX-08): one icon tile in the brand colour, the module's name above the title taken from

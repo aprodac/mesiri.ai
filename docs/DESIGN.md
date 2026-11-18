@@ -466,6 +466,9 @@ and lets the whole product be re-themed from one file.
 | The DPR as a page of paper, live | `DprDocument`, `DprViewToggle` | `components/dpr-document.tsx` |
 | Status / severity chips | `siteStatus`, `severityChip`, `CHIP` | `lib/site-day.ts` |
 | Buttons, inputs, dialogs, sheets | shadcn/ui | `components/ui/*` |
+| **A list page**: search, sort, Clear, state bar with filter chips, action and note chips, pills, reason chips, no match, bulk bar | `SearchBox`, `SortSelect`, `ClearButton`, `StateBar`, `ToggleChip`, `ActionChip`, `NoteChip`, `Pill`, `ReasonChip`, `NoMatch`, `BulkBar`, `ListToolbar` | `components/page/list-kit.tsx` (UX-45). **Recipe: [design/LIST_PAGE_KIT.md](design/LIST_PAGE_KIT.md)** |
+| Pages of a list | `Pager` + `usePagedUrl` / `useServerPage` | `components/page/pager.tsx`, `lib/paging.ts` |
+| Every figure in its own column; Bars / Numbers | `NumbersTable`, `ShowSwitch`, `useShowMode`, `useColumnSort` | `components/page/numbers-view.tsx`, `lib/numbers-view.ts` |
 
 Reuse these before writing new ones. If a page needs something new twice,
 add it here and to this table.
@@ -515,11 +518,11 @@ pass the same.
 | Basic | How |
 |---|---|
 | Its own browser tab title | Default per route in `lib/page-title.ts`; a page about one thing names it: `usePageTitle('Tower 1 · Site DPR')` |
-| Filters and search survive Back, refresh and a shared link | Keep them in the address with `useUrlState('q', '')` (`lib/url-state.ts`). Several keys at once (Clear filters) = one `setSearchParams` call |
+| Filters and search survive Back, refresh and a shared link | Keep them in the address with `useUrlState('q', '')` (`lib/url-state.ts`). Several `useUrlState` setters in a row are safe (UX-43); with a raw `setSearchParams`, use `updateParams` |
 | Loading looks like the page, not a line of text | Skeletons (`DprPageSkeleton`, row/tile skeletons) |
 | A failure says what failed, with **Try again** and a way out | `PageError` (full page) or a `Callout` with a Try again action (list pages). Never show "nothing here" when the request failed |
 | An empty page says what will appear and when; with filters on, offers Clear | Dashed box with icon, one line, one action |
-| Long lists don't load everything | "Load more" (Gallery, Timeline) |
+| Long lists don't load everything | Numbered pages: `Pager` with `usePagedUrl` or `useServerPage` (UX-37); never "Load more", never a list cut off at a limit without saying so |
 | Every button does something | No buttons that only show a toast ("Exporting…") — build it or remove it |
 | Keyboard | "Skip to content" link (AppLayout); visible focus; toggles have `aria-pressed`; icon buttons have `aria-label` + `title`; viewers take ← / → |
 | Phone | Header actions stay on the title row; nothing wider than the screen |
@@ -529,7 +532,8 @@ pass the same.
 
 ## 11. Checklist before pushing a page
 
-- [ ] White ground; no card-per-section stack.
+- [ ] Sand ground, white surfaces (UX-21); no card-per-section stack.
+- [ ] A list page follows [design/LIST_PAGE_KIT.md](design/LIST_PAGE_KIT.md) and its checklist.
 - [ ] Main content fits on one laptop screen where it can; no double padding, empty sections are one line.
 - [ ] State visible at a glance (status chip + row icons + steps if it has a life cycle).
 - [ ] Exactly one primary button in the header.

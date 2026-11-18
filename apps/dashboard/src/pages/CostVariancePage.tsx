@@ -3,16 +3,14 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDownWideNarrow, ArrowRight, CircleCheck, CircleDashed, Eye, HardHat, Package, Ruler, Search,
-  ArrowDown, ArrowUpDown, Layers, TrafficCone, TriangleAlert, Wrench, X,
+  ArrowRight, CircleCheck, CircleDashed, Eye, HardHat, Package, Ruler, ArrowDown, ArrowUpDown, Layers, TrafficCone, TriangleAlert, Wrench, X,
 } from 'lucide-react'
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
-import { ActionButton } from '@/components/page/page-kit'
 import { exportCsv } from '@/lib/export'
 import { NumbersTable, ShowSwitch, type NumberColumn } from '@/components/page/numbers-view'
 import { sortByColumn, useColumnSort, useShowMode } from '@/lib/numbers-view'
 import { MONEY_PEOPLE } from '@/lib/permissions'
-import { KpiStrip, Legend, NoAccess } from '@/components/page/page-kit'
+import { ActionButton, ActionChip, ClearButton, KpiStrip, Legend, NoAccess, NoMatch, SearchBox, SortSelect, StateBar, ToggleChip } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { CostExportButton } from '@/components/cost/export-button'
@@ -26,7 +24,7 @@ import { compact } from '@/lib/expenses'
 import { usePagedUrl } from '@/lib/paging'
 import { usePageTitle } from '@/lib/page-title'
 import { useScope } from '@/lib/ScopeContext'
-import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours'
+import { COLOUR_DOT, COLOUR_TEXT, COLOUR_TONE, COLOUR_WORD } from '@/lib/cost-colours'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
 import { updateParams } from '@/lib/url-state'
@@ -405,18 +403,6 @@ export default function CostVariancePage() {
     })
   }, [q.data, colour, section, fixOnly, needle, sort, show, col, dir])
   const paged = usePagedUrl(listed)
-  const searchRef = React.useRef<HTMLInputElement>(null)
-  // "/" jumps to the search, as in most tools (never while typing in a field).
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null
-      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
-      e.preventDefault()
-      searchRef.current?.focus()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
 
   if (!allowed) return <NoAccess roles={MONEY_PEOPLE} />
   const header = (
@@ -590,18 +576,10 @@ export default function CostVariancePage() {
           />
 
           {money && Number(v.labour.not_on_a_line.cost ?? 0) > 0 && (
-            <Link to={`/cost/budget?project=${projectId}#labour-to-lines`} className="group flex items-center gap-2.5 rounded-xl border bg-card px-3 py-2 transition-colors hover:bg-muted/40">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-draft-soft text-draft" aria-hidden>
-                <HardHat className="size-3.5" />
-              </span>
-              <span className="min-w-0 flex-1 text-sm">
-                <span className="font-semibold tabular-nums">{compact(Number(v.labour.not_on_a_line.cost))}</span> labour not on a BOQ line
-                <span className="text-muted-foreground tabular-nums"> · {formatQuantity(v.labour.not_on_a_line.man_days)} man-days, not judged</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold">
-                Put on lines <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
-              </span>
-            </Link>
+            <ActionChip icon={HardHat} to={`/cost/budget?project=${projectId}#labour-to-lines`} action="Put on lines">
+              <span className="font-semibold tabular-nums">{compact(Number(v.labour.not_on_a_line.cost))}</span> labour not on a BOQ line
+              <span className="text-muted-foreground tabular-nums"> · {formatQuantity(v.labour.not_on_a_line.man_days)} man-days, not judged</span>
+            </ActionChip>
           )}
 
           {v.days.length > 1 && (
@@ -626,85 +604,40 @@ export default function CostVariancePage() {
                 </div>
               ) : (
                 <>
-                  {/* The lines by colour: one bar, each colour a filter. */}
-                  <div className="mb-2 flex flex-col gap-2 rounded-xl border bg-card p-3">
-                    <div className="flex h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={ORDER.map((c) => `${count(c)} ${COLOUR_WORD[c]}`).join(', ')}>
-                      {ORDER.map((c) => count(c) > 0 && <span key={c} className={COLOUR_DOT[c]} style={{ width: `${(count(c) / Math.max(judged, 1)) * 100}%` }} />)}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {ORDER.filter((c) => count(c) > 0).map((c) => {
-                        const on = colour === c
-                        return (
-                          <button
-                            key={c}
-                            type="button"
-                            aria-pressed={on}
-                            onClick={() => set({ colour: on ? null : c })}
-                            className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition', LOOK[c].pill, on ? 'ring-2 ring-foreground/70' : 'hover:ring-1 hover:ring-foreground/20')}
-                          >
-                            {React.createElement(LOOK[c].icon, { className: 'size-3.5', 'aria-hidden': true })}
-                            <span className="tabular-nums">{count(c)}</span> {COLOUR_WORD[c]}
-                          </button>
+                  {/* The lines by colour: one bar, each colour a filter (UX-45 list kit). */}
+                  <div className="mb-2">
+                    <StateBar
+                      items={ORDER.map((c) => ({ value: c, label: COLOUR_WORD[c], count: count(c), icon: LOOK[c].icon, tone: COLOUR_TONE[c] }))}
+                      value={colour}
+                      onChange={(c) => set({ colour: c || null })}
+                      extra={
+                        !siteView && (
+                          <ToggleChip on={fixOnly} onClick={() => set({ fix: fixOnly ? null : '1' })} icon={Wrench} count={fixCount} label="need a fix" title="Lines that are not judged because labour, a rate or a wage is missing" />
                         )
-                      })}
-                      {fixCount > 0 && !siteView && (
-                        <button
-                          type="button"
-                          aria-pressed={fixOnly}
-                          onClick={() => set({ fix: fixOnly ? null : '1' })}
-                          className={cn('inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-semibold transition', fixOnly ? 'border-foreground bg-foreground text-background' : 'hover:border-foreground/40')}
-                          title="Lines that are not judged because labour, a rate or a wage is missing"
-                        >
-                          <Wrench className="size-3.5" aria-hidden />
-                          <span className="tabular-nums">{fixCount}</span> need a fix
-                        </button>
-                      )}
-                      <span className="ml-auto flex flex-wrap items-center gap-2">
-                        {sections.length > 1 && <FilterPill icon={Layers} label="Section" allLabel="All sections" value={section} options={sectionOptions} onChange={(x) => set({ section: x })} />}
-                        <label className="flex h-8 items-center gap-2 rounded-lg border bg-card px-2.5">
-                          <Search className="size-3.5 text-muted-foreground" aria-hidden />
-                          <span className="sr-only">Search BOQ lines</span>
-                          <input
-                            ref={searchRef}
-                            value={search}
-                            onChange={(e) => set({ q: e.target.value })}
-                            onKeyDown={(e) => e.key === 'Escape' && set({ q: null })}
-                            placeholder="Search work or code"
-                            className="w-36 bg-transparent text-sm outline-none"
+                      }
+                      right={
+                        <>
+                          {sections.length > 1 && <FilterPill icon={Layers} label="Section" allLabel="All sections" value={section} options={sectionOptions} onChange={(x) => set({ section: x })} />}
+                          <SearchBox value={search} onChange={(x) => set({ q: x || null })} placeholder="Search work or code" size="sm" />
+                          <SortSelect
+                            value={col && show === 'numbers' ? '' : sort}
+                            options={SORTS.filter((x) => money || (x.value !== 'over' && x.value !== 'spent'))}
+                            onChange={(x) => { set({ sort: x }); clearCol() }}
+                            label="Sort the lines"
+                            size="sm"
                           />
-                          <kbd className="hidden rounded border bg-muted px-1 text-[10px] text-muted-foreground sm:inline" title="Press / to search">/</kbd>
-                        </label>
-                        <label className="flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm">
-                          <ArrowDownWideNarrow className="size-3.5 text-muted-foreground" aria-hidden />
-                          <select value={col && show === 'numbers' ? '' : sort} onChange={(e) => { set({ sort: e.target.value }); clearCol() }} className="bg-transparent outline-none" aria-label="Sort the lines">
-                            {SORTS.filter((x) => money || (x.value !== 'over' && x.value !== 'spent')).map((x) => (
-                              <option key={x.value} value={x.value}>
-                                {x.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        {any && (
-                          <Button variant="ghost" size="sm" className="h-8 gap-1" onClick={clear}>
-                            <X className="size-3.5" aria-hidden /> Clear
-                          </Button>
-                        )}
-                        <ShowSwitch show={show} onShow={setShow} label="How to show the lines" />
-                        <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The lines shown, as a CSV file (opens in Excel)">
-                          <span className="hidden sm:inline">{any ? 'Export shown' : 'Export lines'}</span>
-                        </ActionButton>
-                      </span>
-                    </div>
+                          <ClearButton show={any} onClick={clear} size="sm" />
+                          <ShowSwitch show={show} onShow={setShow} label="How to show the lines" />
+                          <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The lines shown, as a CSV file (opens in Excel)">
+                            <span className="hidden sm:inline">{any ? 'Export shown' : 'Export lines'}</span>
+                          </ActionButton>
+                        </>
+                      }
+                    />
                   </div>
 
                   {listed.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card py-10 text-center">
-                      <Search className="size-5 text-muted-foreground" aria-hidden />
-                      <p className="text-sm font-medium">No line matches</p>
-                      <Button variant="outline" size="sm" onClick={clear}>
-                        Clear filters
-                      </Button>
-                    </div>
+                    <NoMatch noun="line" onClear={clear} />
                   ) : show === 'numbers' ? (
                     <NumbersTable
                       rows={paged.shown}
