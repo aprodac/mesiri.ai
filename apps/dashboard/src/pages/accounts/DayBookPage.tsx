@@ -165,7 +165,7 @@ export default function DayBookPage() {
   if (book.isError) return <PageError message="The day book could not be loaded." onRetry={() => book.refetch()} back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} />
   const d = book.data
   let index = -1
-  // With the whole period loaded (no kind picked), the counts per kind and money in and out add up exactly
+  // With the whole period on one page (no kind picked), the counts per kind and money in and out are the period's
   const complete = !!d && d.count === entries.length
   const moneyIn = entries.filter((e) => e.voucher_type === 'receipt').reduce((t, e) => t + Number(e.amount), 0)
   const moneyOut = entries.filter((e) => e.voucher_type === 'payment').reduce((t, e) => t + Number(e.amount), 0)
@@ -225,8 +225,8 @@ export default function DayBookPage() {
             items={[
               { label: 'Vouchers', value: String(d.count), tone: 'plain', sub: `${days.length} ${days.length === 1 ? 'day' : 'days'} with entries` },
               { label: 'Total moved', value: rupees(d.total), tone: 'balance', sub: type ? VOUCHER_LABEL[type] : 'every kind' },
-              { label: 'Money in', value: complete ? rupees(moneyIn) : '—', tone: 'in', sub: complete ? 'receipts' : 'load all to add up' },
-              { label: 'Money out', value: complete ? rupees(moneyOut) : '—', tone: 'out', sub: complete ? 'payments' : 'load all to add up' },
+              { label: 'Money in', value: rupees(moneyIn), tone: 'in', sub: complete ? 'receipts' : 'receipts on this page' },
+              { label: 'Money out', value: rupees(moneyOut), tone: 'out', sub: complete ? 'payments' : 'payments on this page' },
             ]}
           />
           <section data-guide="daybook.list" className="flex flex-col gap-3">
@@ -318,7 +318,7 @@ export default function DayBookPage() {
                       <tfoot>
                         <tr className="border-t-[1.5px] border-foreground/25 bg-muted/30 font-semibold">
                           <td colSpan={2} className="px-3 py-2.5">
-                            {complete ? 'Total' : `Total of the ${entries.length} shown`}{' '}
+                            {complete ? 'Total' : 'This page'}{' '}
                             <span className="font-normal text-muted-foreground">· {entries.length} vouchers</span>
                           </td>
                           <td className="hidden md:table-cell" />
