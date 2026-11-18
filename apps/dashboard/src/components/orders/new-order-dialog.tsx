@@ -37,7 +37,7 @@ export interface OrderPrefill {
   request_ref?: string
   /** PRC-24: the request it comes from; other waiting requests at the same site can be added to the same order. */
   request_id?: string
-  /** UX-65: lines from several requests at one site (Requests' "Order together") each carry their own request's ref. */
+  /** UX-67: lines from several requests at one site (Requests' "Order together") each carry their own request's ref. */
   lines: { material_id: string; quantity: string; request_line_id?: string; rate?: string; request_ref?: string }[]
   /** PRC-14: "Order from the cheapest supplier" on the Rates page. */
   vendor_name?: string

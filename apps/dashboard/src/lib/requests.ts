@@ -250,7 +250,7 @@ export function qty(value: string, unit: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// UX-65 (18 Nov 2026): how long the office takes. A waiting request's age is a chip (grey under a day, amber from a
+// UX-67 (18 Nov 2026): how long the office takes. A waiting request's age is a chip (grey under a day, amber from a
 // day, red from two: asked 18 Nov, "go with the recommended"); the office's speed is the average time from asked to
 // ordered (or sent from a site) over the last 30 days.
 // ---------------------------------------------------------------------------

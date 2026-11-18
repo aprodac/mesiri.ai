@@ -163,6 +163,8 @@ export interface Preferences {
   guide_seen: Record<string, number>
   /** The number people message Mesiri on, for "Try it on WhatsApp"; null when not set. */
   whatsapp_number?: string | null
+  /** UX-65: their own sidebar (lib/sidebar-prefs.ts); null: never changed, their role's default. */
+  sidebar?: { pins: string[]; order: string[]; hidden: string[] } | null
 }
 
 const KEY = ['me-preferences']

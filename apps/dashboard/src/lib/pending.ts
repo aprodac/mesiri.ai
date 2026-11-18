@@ -63,7 +63,7 @@ export function chaseMessage(lines: PendingLine[], company?: string | null): str
 }
 
 
-/** UX-65: the next seven days from today, as ISO dates, for the week board. */
+/** UX-67: the next seven days from today, as ISO dates, for the week board. */
 export function weekDays(today = startOfToday()): string[] {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i)
@@ -71,7 +71,7 @@ export function weekDays(today = startOfToday()): string[] {
   })
 }
 
-/** UX-65: one WhatsApp message to the site about a day's deliveries, grouped by site (the person picks the chat). */
+/** UX-67: one WhatsApp message to the site about a day's deliveries, grouped by site (the person picks the chat). */
 export function tellSiteMessage(lines: PendingLine[], dayWords: string): string {
   const bySite = new Map<string, PendingLine[]>()
   for (const p of lines) bySite.set(p.order.site_id, [...(bySite.get(p.order.site_id) ?? []), p])

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { AlertCircle, CalendarDays, ChevronRight, Map as MapIcon } from 'lucide-react'
+import { AlertCircle, CalendarDays, ChevronRight, Map as MapIcon, Pin } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ScopeBar } from '@/components/scope-bar'
 import { ArrivalBack, ScopeNote } from '@/components/scope-note'
@@ -21,6 +21,9 @@ import { WalkthroughRunner } from '@/components/walkthrough'
 import { StartQuestionDialog } from '@/components/onboarding/start-question'
 import { useNavCounts } from '@/lib/nav-counts'
 import { findPage } from '@/lib/module-map'
+import { SidebarCustomise } from '@/components/sidebar-customise'
+import { openSidebarCustomise, usePinnable, useSidebarPrefs } from '@/lib/sidebar-prefs'
+import { useTrial } from '@/lib/trial'
 import { usePlannedPreview } from '@/lib/preview'
 import { routeTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
@@ -44,10 +47,41 @@ function Breadcrumb() {
         </>
       )}
       <span className="truncate font-medium">{hit.page.title}</span>
+      <PinThisPage url={hit.page.url} title={hit.page.navTitle ?? hit.page.title} />
       {hit.page.status === 'planned' && (
         <span className="ml-1 shrink-0 rounded-full bg-draft-soft px-2 py-px text-[11px] font-semibold text-draft">Planned</span>
       )}
     </nav>
+  )
+}
+
+/** UX-65: pin the page you are on to "Your pages" (or unpin it), beside its name. */
+function PinThisPage({ url, title }: { url: string; title: string }) {
+  const sb = useSidebarPrefs()
+  const { byUrl } = usePinnable()
+  const trial = useTrial()
+  if (!sb.ready || trial.readOnly || !byUrl.has(url)) return null
+  const pinned = sb.prefs.pins.includes(url)
+  if (!pinned && sb.full)
+    return (
+      <button type="button" onClick={() => openSidebarCustomise('pages')} className="ml-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted hover:text-foreground" title="Your pages are full: open Customise" aria-label="Your pages are full: customise">
+        <Pin className="size-3.5" />
+      </button>
+    )
+  return (
+    <button
+      type="button"
+      onClick={() => sb.togglePin(url)}
+      aria-pressed={pinned}
+      className={cn(
+        'ml-0.5 flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
+        pinned ? 'text-yellow-600 hover:bg-muted dark:text-yellow-400' : 'text-muted-foreground/70 hover:bg-muted hover:text-foreground',
+      )}
+      title={pinned ? `Unpin ${title} from your sidebar` : `Pin ${title} to your sidebar`}
+      aria-label={pinned ? `Unpin ${title} from your sidebar` : `Pin ${title} to your sidebar`}
+    >
+      <Pin className={cn('size-3.5', pinned && 'rotate-45 fill-current')} />
+    </button>
   )
 }
 
@@ -144,6 +178,7 @@ export function AppLayout() {
       <WalkthroughRunner />
       <SidebarProvider>
         <AppSidebar />
+        <SidebarCustomise />
         <SidebarInset>
           <TopBar />
           <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 p-4 outline-none">

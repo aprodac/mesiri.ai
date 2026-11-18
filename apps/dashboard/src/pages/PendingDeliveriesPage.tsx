@@ -30,7 +30,7 @@ import { usePagedUrl } from '@/lib/paging'
 // (Late · Today · This week · Later · No date) or by supplier, so the office chases the right shop in one message.
 // Read from the same order list as Purchase orders (what came is read from deliveries); "Material came", "Move date"
 // and "Close short" open that order's own sheet, so there is one receiving path.
-// UX-65 (18 Nov): figures as a KpiStrip; a Week board (late, then the next seven days, a column each) with "Tell site"
+// UX-67 (18 Nov): figures as a KpiStrip; a Week board (late, then the next seven days, a column each) with "Tell site"
 // per day (one WhatsApp message of that day's deliveries); due chips by tone; a supplier often late carries its on-time
 // share (the supplier score, PRC-50).
 
@@ -257,14 +257,14 @@ function PendingCard({ p, company, showSupplier, score, onOpen }: { p: PendingLi
   )
 }
 
-/** UX-65: a supplier that is often late, by its on-time share over the last 12 months (the supplier score). */
+/** UX-67: a supplier that is often late, by its on-time share over the last 12 months (the supplier score). */
 function OnTimeChip({ p }: { p?: SupplierPerformance }) {
   const pct = p?.measures.on_time.pct
   if (!p || pct === null || pct === undefined || p.measures.on_time.of < 2 || Number(pct) >= 80) return null
   return <Pill tone={Number(pct) < 50 ? 'bad' : 'attention'} size="xs" icon={AlarmClock} title={`On time in ${Math.round(Number(pct))}% of ${p.measures.on_time.of} deliveries`}>{Math.round(Number(pct))}% on time</Pill>
 }
 
-/** UX-65: what comes when: late first, then the next seven days, a column each, with "Tell site" for the day. */
+/** UX-67: what comes when: late first, then the next seven days, a column each, with "Tell site" for the day. */
 function WeekBoard({ lines, scores, onOpen }: { lines: PendingLine[]; scores: Map<string, SupplierPerformance>; onOpen: (orderId: string) => void }) {
   const days = weekDays()
   const late = lines.filter((p) => p.bucket === 'late')

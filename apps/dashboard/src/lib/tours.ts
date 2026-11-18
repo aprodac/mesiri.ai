@@ -87,6 +87,12 @@ export const APP_TOUR: Tour = {
       title: 'Everything is here',
       text: 'Every part of Mesiri, in the order a project runs: Plan, Site, Buy, Money. You start with the everyday pages; "Show all" opens the rest.',
     },
+    {
+      target: 'app.pins',
+      title: 'Your pages',
+      text: 'The pages your role opens most. Pin any page with its pin; Customise orders or hides the rest.',
+      mood: 'happy',
+    },
     { target: 'app.search', title: 'Find anything', text: 'Search finds any page, project or record; Ctrl K opens it from anywhere. New, beside it, starts a record in one sentence.', mood: 'look' },
     { target: 'app.scope', title: 'One project or all', text: 'Pick a project or a site here, and every page shows just that one.' },
     {
@@ -108,9 +114,11 @@ export const APP_TOUR: Tour = {
 export const PAGE_TOURS: Record<string, Tour> = {
   '/today': {
     key: '/tour/today',
-    version: 1,
+    // 2: This week for every role (UX-65), not only the owner.
+    version: 2,
     introFromPage: true,
     steps: [
+      { target: 'today.week', title: 'This week', text: 'What waits on you, worst first. Each line opens the page that does it.', mood: 'look' },
       { target: 'today.day', title: 'Any day', text: 'Move between days here. Each day keeps what the sites sent.' },
       { target: 'today.checklist', title: 'Getting started', text: 'Your first steps. Each one ticks itself when it is done.' },
       { target: 'today.sites', title: "Each site's day", text: "Who came, what work was done, what came in and what is missing. Open a site to see its whole day." },

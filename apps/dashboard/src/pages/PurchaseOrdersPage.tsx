@@ -31,14 +31,14 @@ import { usePagedUrl } from '@/lib/paging'
 // PRC-10: Procurement > Purchase orders, in the Requests page's visual language (approved 7 Nov): tiles for what
 // needs attention, status tabs, filter dropdowns with the row cues, a list beside the chosen order (a sheet on a
 // phone). Late first. What came and what is still to come are read from deliveries.
-// UX-65 (18 Nov): figures in rupees (to come, late, ordered this month, delivered but not billed); the tabs and filters
+// UX-67 (18 Nov): figures in rupees (to come, late, ordered this month, delivered but not billed); the tabs and filters
 // in one StateBar box; on each row the supplier's score, the rate against the best rate paid for that material
 // (GET /procurement/rates), and three steps Ordered · Came · Billed (not billed: GET /finance/vendors/unbilled).
 
 type Tab = 'open' | 'part' | 'received' | 'closed' | 'all'
 type Tile = '' | 'open' | 'late' | 'soon' | 'part' | 'unbilled'
 
-// UX-65: the status tabs as the list kit's StateBar, one tone each.
+// UX-67: the status tabs as the list kit's StateBar, one tone each.
 const TABS: { value: Exclude<Tab, 'all'>; label: string; icon: typeof Truck; tone: Tone }[] = [
   { value: 'open', label: 'To come', icon: Truck, tone: 'info' },
   { value: 'part', label: 'Part received', icon: PackageOpen, tone: 'attention' },
@@ -101,7 +101,7 @@ export default function PurchaseOrdersPage() {
     refetchInterval: 60_000,
   })
   const all = React.useMemo(() => data?.items ?? [], [data])
-  // UX-65: the money roles see rates, scores and what came but is not billed.
+  // UX-67: the money roles see rates, scores and what came but is not billed.
   const money = mayManageMoney(me?.role) || (me?.role || '').toUpperCase() === 'PROJECT_MANAGER'
   const scores = useSupplierScores()
   const rates = useQuery({ queryKey: ['procurement', 'rates', 'all'], queryFn: () => fetchRates(), enabled: money, staleTime: 5 * 60_000, retry: false })
@@ -245,7 +245,7 @@ export default function PurchaseOrdersPage() {
   )
 }
 
-/** UX-65: the order's rate against the best average paid for its first priced line's material: a chip when dearer. */
+/** UX-67: the order's rate against the best average paid for its first priced line's material: a chip when dearer. */
 function RateCheck({ order, best }: { order: PurchaseOrder; best: Map<string, RateItem> }) {
   const line = order.lines.find((l) => l.rate && best.get(l.material_id)?.best)
   if (!line) return null
@@ -258,7 +258,7 @@ function RateCheck({ order, best }: { order: PurchaseOrder; best: Map<string, Ra
   return null
 }
 
-/** UX-65: Ordered · Came · Billed, three dots (green done, amber part or not billed, grey not yet). */
+/** UX-67: Ordered · Came · Billed, three dots (green done, amber part or not billed, grey not yet). */
 function Steps({ order, unbilled }: { order: PurchaseOrder; unbilled: number }) {
   const came = order.progress > 0
   const billed = came && unbilled <= 0

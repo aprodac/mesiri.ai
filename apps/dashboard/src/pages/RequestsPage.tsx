@@ -37,7 +37,7 @@ import { Pager } from '@/components/page/pager'
 import { usePagedUrl } from '@/lib/paging'
 
 // PRC-22 (design approved by Ilan, 7 Nov 2026): Materials > Requests. What the sites need and what is happening
-// to it. UX-65 (18 Nov): the figures as a KpiStrip with the office's speed (asked to ordered); the status tabs and the
+// to it. UX-67 (18 Nov): the figures as a KpiStrip with the office's speed (asked to ordered); the status tabs and the
 // filters in one StateBar box; it opens on a tab with work ("All clear" when nothing waits); each waiting row shows how
 // long it has waited (amber after a day, red after two) and whether it is in the project's material plan; the office
 // ticks several waiting requests at one site and orders them together in one purchase order.
@@ -45,7 +45,7 @@ import { usePagedUrl } from '@/lib/paging'
 type Tab = 'waiting' | 'ordered' | 'done' | 'rejected' | 'all'
 type Tile = '' | 'waiting' | 'late' | 'soon' | 'dup'
 
-// UX-65: the status tabs as the list kit's StateBar: a tone per status (the same colours as the chips).
+// UX-67: the status tabs as the list kit's StateBar: a tone per status (the same colours as the chips).
 const TABS: { value: Exclude<Tab, 'all'>; label: string; icon: typeof Inbox; tone: Tone }[] = [
   { value: 'waiting', label: 'Waiting', icon: Inbox, tone: 'attention' },
   { value: 'ordered', label: 'Ordered', icon: ShoppingCart, tone: 'info' },
@@ -101,7 +101,7 @@ export default function RequestsPage() {
   const [search, setSearch] = React.useState('')
   const [selected, setSelected] = useUrlState<string>('id', '')
   const [creating, setCreating] = React.useState(false)
-  // UX-65: ticked waiting requests (one site), ordered together.
+  // UX-67: ticked waiting requests (one site), ordered together.
   const [picked, setPicked] = React.useState<string[]>([])
   const [ordering, setOrdering] = React.useState<OrderPrefill | null>(null)
   const searchRef = React.useRef<HTMLInputElement>(null)
@@ -138,7 +138,7 @@ export default function RequestsPage() {
   }, [site, by, category, due, search])
 
   const filtered = React.useMemo(() => all.filter((r) => passFilters(r)), [all, passFilters])
-  // UX-65: open on a tab with work: Waiting when something waits, else Ordered (never an empty first screen).
+  // UX-67: open on a tab with work: Waiting when something waits, else Ordered (never an empty first screen).
   const waitingCount = filtered.filter((r) => r.status === 'waiting').length
   const tab: Tab = tabAsked || (isLoading || waitingCount > 0 || !filtered.some((r) => inTab(r, 'ordered')) ? 'waiting' : 'ordered')
   const list = React.useMemo(
@@ -196,7 +196,7 @@ export default function RequestsPage() {
     { key: 'speed', label: 'Office orders in', value: speed ? hoursWords(speed.hours) : '—', icon: Gauge, tone: !speed ? 'default' : speed.hours <= 8 ? 'good' : speed.hours <= 24 ? 'default' : 'attention', hint: speed ? `avg of ${speed.count} · 30 days` : undefined },
   ] as KpiItem[]).map((k) => ({ ...k, loading: isLoading }))
 
-  // UX-65: is each waiting line in its project's material plan (and within what the work still needs)? Asked once
+  // UX-67: is each waiting line in its project's material plan (and within what the work still needs)? Asked once
   // per project with waiting requests; a role that may not see the BOQ gets no plan chip.
   const planProjects = React.useMemo(() => [...new Set(all.filter((r) => r.status === 'waiting').map((r) => r.project_id))].slice(0, 8), [all])
   const plans = useQueries({
@@ -328,7 +328,7 @@ function AllClear({ ordered, onOrdered }: { ordered: number; onOrdered: () => vo
   )
 }
 
-/** UX-65: is the waiting line in the project's material plan, and within what the work still needs? */
+/** UX-67: is the waiting line in the project's material plan, and within what the work still needs? */
 function PlanChip({ line, plan }: { line: MaterialRequest['lines'][number]; plan: Map<string, MaterialPlanRow> }) {
   const row = plan.get(line.material_id)
   if (!row || Number(row.required) <= 0) return <Pill tone="muted" size="xs" icon={ListChecks} title="This material is not in the project's material plan (BOQ)">Not in plan</Pill>

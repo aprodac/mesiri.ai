@@ -51,6 +51,7 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Open issues', means: 'Problems still waiting for someone', tone: 'bad' },
     ],
     steps: ['Open a site to see its day.', 'Confirm the day so it goes into the evening report.'],
+    tip: 'Pin any page to "Your pages" with the pin beside its name at the top.',
   },
   '/site/approvals': {
     parts: [
