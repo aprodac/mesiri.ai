@@ -11,6 +11,7 @@ import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
 import { SandboxBanner } from '@/components/sandbox-banner'
 import { JumpBox } from '@/components/jump-box'
+import { usePageTracking } from '@/lib/page-usage'
 import { HelpButton } from '@/components/help-button'
 import { WhatsAppPageButton, WhatsAppPreviewModal } from '@/components/whatsapp-page-button'
 import { TellMesiriButton, TellMesiriDock } from '@/components/tell-mesiri/tell-mesiri-dock'
@@ -148,6 +149,12 @@ function TopBar() {
   )
 }
 
+/** UX-70: counts the pages this person opens (Search's "Most used", the sidebar's pin suggestion). */
+function PageTracker() {
+  usePageTracking()
+  return null
+}
+
 export function AppLayout() {
   const { pathname } = useLocation()
   // Default tab title per route; a page naming its exact subject overrides
@@ -165,6 +172,7 @@ export function AppLayout() {
         Skip to content
       </a>
       <JumpBox />
+      <PageTracker />
       <StartProjectDialog />
       {/* SS-28: "How would you like to start?" for anyone not asked yet. */}
       <StartQuestionDialog />

@@ -10,13 +10,15 @@ import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES } from '@/lib/module-map'
 import { fetchProjects } from '@/lib/projects'
 import { cn } from '@/lib/utils'
 import { JUMP_EVENT } from '@/lib/jump'
+import { usePageUsage } from '@/lib/page-usage'
+import { EVERYDAY } from '@/lib/sidebar-prefs'
 
 // UX-04: one box that jumps to any page or project (Ctrl K / Cmd K, or Search in the sidebar). Built on the
 // existing dialog rather than a new library; pages come from lib/module-map.ts, so a new page is findable
 // as soon as it is in the map.
 
 
-type Result = { key: string; title: string; hint: string; url: string; icon: React.ElementType; words: string }
+type Result = { key: string; title: string; hint: string; url: string; icon: React.ElementType; words: string; group?: string }
 
 function score(result: Result, query: string): number {
   if (!query) return 1
@@ -37,6 +39,8 @@ export function JumpBox() {
   const role = (me?.role || '').toUpperCase()
   const isAdmin = role === 'ADMIN'
   const projects = useQuery({ queryKey: ['jump', 'projects'], queryFn: fetchProjects, enabled: open, staleTime: 60_000 })
+  // UX-70: with nothing typed, the pages this person opens most come first.
+  const usage = usePageUsage()
 
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -82,13 +86,24 @@ export function JumpBox() {
       icon: Building2,
       words: `${p.name} project`.toLowerCase(),
     }))
+    if (!query.trim()) {
+      const byUrl = new Map(pages.map((p) => [p.url, p]))
+      // The everyday pages are always at the top of the sidebar already.
+      const used = usage.filter((u) => !EVERYDAY.includes(u.url)).map((u) => byUrl.get(u.url)).filter((p): p is Result => !!p).slice(0, 6)
+      const usedUrls = new Set(used.map((p) => p.url))
+      const rest = [...projectRows, ...pages.filter((p) => !usedUrls.has(p.url))].slice(0, Math.max(4, 9 - used.length))
+      return [
+        ...used.map((p) => ({ ...p, group: 'Most used' })),
+        ...rest.map((p) => ({ ...p, group: used.length ? (p.hint === 'Project' ? 'Projects' : 'Pages') : undefined })),
+      ]
+    }
     return [...projectRows, ...pages]
       .map((r) => ({ r, s: score(r, query.trim()) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .slice(0, query ? 12 : 9)
       .map((x) => x.r)
-  }, [query, projects.data, role, isAdmin, isModuleEnabled])
+  }, [query, projects.data, role, isAdmin, isModuleEnabled, usage])
 
   const go = (result: Result | undefined) => {
     if (!result) return
@@ -135,8 +150,13 @@ export function JumpBox() {
             {results.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches “{query}”.</li>}
             {results.map((result, index) => {
               const Icon = result.icon
+              const heading = result.group && result.group !== results[index - 1]?.group ? result.group : null
               return (
-                <li key={result.key} role="option" aria-selected={index === active}>
+                <React.Fragment key={result.key}>
+                {heading && (
+                  <li role="presentation" className="px-2.5 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase first:pt-1">{heading}</li>
+                )}
+                <li role="option" aria-selected={index === active}>
                   <button
                     type="button"
                     onMouseEnter={() => setActive(index)}
@@ -149,6 +169,7 @@ export function JumpBox() {
                     {index === active && <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />}
                   </button>
                 </li>
+                </React.Fragment>
               )
             })}
           </ul>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import type { NavSection } from '@/lib/module-map'
 import { CUSTOMISE_EVENT as OPEN_EVENT, MAX_PINS, ROLE_NAMES, sectionTitle, usePinnable, useSidebarPrefs, type PinnablePage } from '@/lib/sidebar-prefs'
 import { cn } from '@/lib/utils'
+import { usePageUsage } from '@/lib/page-usage'
 
 // UX-65: "Customise your sidebar". Two tabs: the pinned pages ("Your pages": add, drag or move, remove) and the
 // sections (drag or move, show or hide). Every change shows in the sidebar behind the sheet at once and is saved on the
@@ -206,7 +207,13 @@ function AddPages({ pages, pins, full, onAdd }: { pages: PinnablePage[]; pins: s
     const hay = `${p.title} ${p.group.title} ${p.page.about}`.toLowerCase()
     return words.every((w) => hay.includes(w))
   }
-  const groups = SECTION_ORDER_FOR_LIST.map((s) => ({ s, rows: pages.filter((p) => p.section === s && match(p)) })).filter((g) => g.rows.length > 0)
+  // UX-70: the pages this person opens most, not yet pinned, come first.
+  const usage = usePageUsage()
+  const most = words.length ? [] : usage.map((u) => pages.find((p) => p.url === u.url)).filter((p): p is PinnablePage => !!p && !pins.includes(p.url)).slice(0, 5)
+  const groups: { s: NavSection | 'most'; rows: PinnablePage[] }[] = [
+    ...(most.length ? [{ s: 'most' as const, rows: most }] : []),
+    ...SECTION_ORDER_FOR_LIST.map((s) => ({ s, rows: pages.filter((p) => p.section === s && match(p)) })),
+  ].filter((g) => g.rows.length > 0)
   return (
     <section aria-label="Add a page" className="mt-5">
       <h3 className="mb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Add a page</h3>
@@ -222,8 +229,8 @@ function AddPages({ pages, pins, full, onAdd }: { pages: PinnablePage[]; pins: s
       {full && <p className="mt-2 rounded-lg bg-draft-soft px-3 py-2 text-xs text-draft">{MAX_PINS} pinned: unpin one to add another.</p>}
       {groups.length === 0 && <p className="mt-3 text-sm text-muted-foreground">No page matches “{q}”.</p>}
       {groups.map(({ s, rows }) => (
-        <div key={s} className="mt-3">
-          <div className="mb-1 text-xs font-semibold text-foreground/70">{sectionTitle(s)}</div>
+        <div key={s} className={cn('mt-3', s === 'most' && 'rounded-lg bg-primary/10 p-2')}>
+          <div className="mb-1 text-xs font-semibold text-foreground/70">{s === 'most' ? 'You open most' : sectionTitle(s)}</div>
           <ul className="flex flex-col gap-0.5">
             {rows.map((p) => {
               const on = pins.includes(p.url)

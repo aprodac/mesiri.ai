@@ -29,6 +29,7 @@ import {
   PinOff,
   SlidersHorizontal,
   EyeOff,
+  X,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -68,7 +69,8 @@ import { openJump } from '@/lib/jump'
 import { usePlannedPreview } from '@/lib/preview'
 import { useShowEverything, useStartMode } from '@/lib/start-mode'
 import { initialsOf } from '@/lib/initials'
-import { openSidebarCustomise, useSidebarPrefs, usePinnable } from '@/lib/sidebar-prefs'
+import { EVERYDAY, openSidebarCustomise, useSidebarPrefs, usePinnable } from '@/lib/sidebar-prefs'
+import { SUGGEST_DAYS, SUGGEST_SCORE, dismissSuggestion, dismissedSuggestions, usePageUsage } from '@/lib/page-usage'
 
 type NavItem = {
   title: string
@@ -106,6 +108,9 @@ type NavCategory = {
 }
 
 const NON_ADMIN_ROLES = ['PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const
+
+/** Tasks' views reached from the page's own tabs, not the sidebar (UX-70). */
+const TASK_TABS_ONLY = ['/tasks?view=all', '/tasks?view=done']
 
 // The sidebar tells the project's story (UX-04, docs/plans/ui-story-plan.md section 4): the daily pages, then
 // PLAN, SITE, BUY and MONEY (in the order the role reaches for them, lib/module-map.ts sectionOrder), then
@@ -581,8 +586,9 @@ export function AppSidebar() {
       const category = toCategory(group)
       if (category.items.length === 0) continue
       if (group.flat) {
-        // Its own section (Tasks): each page is a row, with its icon and its count.
-        for (const p of category.items) {
+        // Its own section (Tasks): each page is a row, with its icon and its count. UX-70: only what is used daily:
+        // My tasks, and Overdue while something is late; All tasks and Done are tabs on the page (and in search).
+        for (const p of category.items.filter((i) => !TASK_TABS_ONLY.includes(i.url) && !(i.url === '/tasks?view=overdue' && !(i.count && i.count.n > 0)))) {
           entries.push({ kind: 'link', item: { title: p.title, url: p.url, icon: PAGE_ICONS[p.url] ?? group.icon, soon: p.soon, count: p.count, exact: true } })
         }
         continue
@@ -613,14 +619,28 @@ export function AppSidebar() {
       if (sb.togglePin(url)) setJustPinned(url)
     },
   }
+  // UX-70: a page this person keeps opening (on several days, lately) and hasn't pinned: offered once, never moved
+  // there by itself. "No" is remembered.
+  const usage = usePageUsage()
+  const person = me?.user_id ?? ''
+  const suggestion =
+    sb.ready && !trial.readOnly && !sb.full
+      ? usage
+          .filter((u) => u.days >= SUGGEST_DAYS && u.score >= SUGGEST_SCORE)
+          .map((u) => pinnable.byUrl.get(u.url))
+          .find((p) => !!p && !sb.prefs.pins.includes(p.url) && !EVERYDAY.includes(p.url) && !dismissedSuggestions(person).includes(p.url))
+      : undefined
   const yourPages: NavItem[] = sb.prefs.pins
     .map((url) => pinnable.byUrl.get(url))
     .filter((p): p is NonNullable<typeof p> => !!p)
     .map((p) => ({ title: p.title, url: p.url, icon: p.icon, soon: p.page.status === 'planned', count: pageCounts[p.url], exact: p.url.includes('?') }))
+  // UX-70: a page pinned to "Your pages" isn't a second row in its section (inside a drawer it stays, with its module).
+  const unpinnedEntries = (section: NavSection) =>
+    sectionEntries(section).filter((e) => e.kind === 'category' || !sb.prefs.pins.includes(e.item.url))
   const hiddenSections = sb.prefs.hidden.filter((key) => sectionEntries(key).length > 0)
   const allSections = sb.prefs.order
     .filter((key) => !sb.prefs.hidden.includes(key))
-    .map((key) => ({ key, title: SECTION_TITLES[key], entries: sectionEntries(key) }))
+    .map((key) => ({ key, title: SECTION_TITLES[key], entries: unpinnedEntries(key) }))
     .filter((section) => section.entries.length > 0)
   // SS-31 (guided-onboarding-plan.md 6.2): step-by-step mode starts with the everyday pages and the role's own
   // first section (UX-04: each role's day comes first), and one row
@@ -805,6 +825,34 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5">
                   {yourPages.map((i) => renderLink(i, 'unpin'))}
+                  {suggestion && (
+                    <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+                      <div className={cn('flex items-center gap-1 rounded-lg border border-dashed pr-1', S.divider)}>
+                        <button
+                          type="button"
+                          onClick={() => pin.toggle(suggestion.url, suggestion.title)}
+                          title="You open this often. Pin it here"
+                          aria-label={`Pin ${suggestion.title}: you open it often`}
+                          className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm', S.rowIdle, S.ring)}
+                        >
+                          <suggestion.icon className={cn('size-4 shrink-0', S.icon)} />
+                          <span className="truncate">{suggestion.title}</span>
+                          <span className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-full text-[#2A2829]" style={{ backgroundColor: S.bar }} aria-hidden>
+                            <Pin className="size-3 rotate-45" />
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dismissSuggestion(person, suggestion.url)}
+                          title="Not now"
+                          aria-label={`Don't suggest ${suggestion.title}`}
+                          className={cn('flex size-6 shrink-0 items-center justify-center rounded-md', S.iconBtn, S.ring)}
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+                    </SidebarMenuItem>
+                  )}
                   {yourPages.length === 0 && !trial.readOnly && (
                     <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => openSidebarCustomise('pages')} tooltip="Pin a page" className={cn(NAV_LINK_BASE, 'border border-dashed', S.divider, S.rowIdle, S.ring)}>
