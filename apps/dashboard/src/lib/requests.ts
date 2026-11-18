@@ -248,3 +248,40 @@ export function cover(line: RequestLine): { here: number; ordered: number; buy: 
 export function qty(value: string, unit: string): string {
   return `${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${unit}`
 }
+
+// ---------------------------------------------------------------------------
+// UX-65 (18 Nov 2026): how long the office takes. A waiting request's age is a chip (grey under a day, amber from a
+// day, red from two: asked 18 Nov, "go with the recommended"); the office's speed is the average time from asked to
+// ordered (or sent from a site) over the last 30 days.
+// ---------------------------------------------------------------------------
+
+export const WAIT_AMBER_HOURS = 24
+export const WAIT_RED_HOURS = 48
+
+/** Hours a request has waited for the office (0 once decided). */
+export function waitedHours(r: Pick<MaterialRequest, 'status' | 'created_at'>, now = appNow()): number {
+  if (r.status !== 'waiting') return 0
+  return Math.max(0, (now.getTime() - new Date(r.created_at).getTime()) / 3_600_000)
+}
+
+export function waitTone(hours: number): 'muted' | 'attention' | 'bad' {
+  return hours >= WAIT_RED_HOURS ? 'bad' : hours >= WAIT_AMBER_HOURS ? 'attention' : 'muted'
+}
+
+/** "40m", "6h", "3d": a duration in the largest whole unit. */
+export function hoursWords(hours: number): string {
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`
+  if (hours < 24) return `${Math.round(hours)}h`
+  return `${Math.round(hours / 24)}d`
+}
+
+/** The office's average hours from asked to ordered or sent, over the last 30 days; null with nothing decided. */
+export function officeSpeed(items: MaterialRequest[], now = appNow()): { hours: number; count: number } | null {
+  const since = now.getTime() - 30 * DAY
+  const took = items
+    .filter((r) => (r.status === 'ordered' || r.status === 'sent' || r.status === 'done') && r.decided_at && new Date(r.decided_at).getTime() >= since)
+    .map((r) => (new Date(r.decided_at!).getTime() - new Date(r.created_at).getTime()) / 3_600_000)
+    .filter((h) => h >= 0)
+  if (!took.length) return null
+  return { hours: took.reduce((a, b) => a + b, 0) / took.length, count: took.length }
+}

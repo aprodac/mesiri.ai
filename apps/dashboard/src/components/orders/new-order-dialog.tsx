@@ -37,7 +37,8 @@ export interface OrderPrefill {
   request_ref?: string
   /** PRC-24: the request it comes from; other waiting requests at the same site can be added to the same order. */
   request_id?: string
-  lines: { material_id: string; quantity: string; request_line_id?: string; rate?: string }[]
+  /** UX-65: lines from several requests at one site (Requests' "Order together") each carry their own request's ref. */
+  lines: { material_id: string; quantity: string; request_line_id?: string; rate?: string; request_ref?: string }[]
   /** PRC-14: "Order from the cheapest supplier" on the Rates page. */
   vendor_name?: string
 }
@@ -84,7 +85,7 @@ export function NewOrderDialog({ open, onOpenChange, scope, prefill, editing }: 
     setLines(editing
       ? editing.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, rate: l.rate ? String(Number(l.rate)) : '', requestLineId: l.request?.line_id, requestRef: l.request?.ref }))
       : prefill?.lines.length
-        ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, rate: l.rate ?? '', requestLineId: l.request_line_id, requestRef: prefill.request_ref }))
+        ? prefill.lines.map((l, i) => ({ key: i + 1, materialId: l.material_id, quantity: l.quantity, rate: l.rate ?? '', requestLineId: l.request_line_id, requestRef: l.request_ref ?? prefill.request_ref }))
         : [{ key: 1, materialId: '', quantity: '', rate: '' }])
     const firstPriced = editing?.lines.find((l) => l.gst_percent != null)
     setGst(firstPriced ? { percent: String(Number(firstPriced.gst_percent)), includes: firstPriced.rate_includes_gst ?? null } : GST_NOT_SAID)

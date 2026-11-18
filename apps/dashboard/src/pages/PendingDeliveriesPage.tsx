@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlarmClock, CalendarClock, CalendarDays, LayoutGrid, MapPin, MessageCircle, PackageCheck, Phone, Store, Truck } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useScope } from '@/lib/ScopeContext'
@@ -13,13 +12,16 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { qty, swatch } from '@/lib/requests'
 import { fetchOrders, rupees, whatsappUrl, type PurchaseOrder } from '@/lib/orders'
-import { chaseMessage, lateWords, pendingLines, type Bucket, type GroupBy, type PendingLine } from '@/lib/pending'
+import { chaseMessage, lateWords, pendingLines, tellSiteMessage, weekDays, type Bucket, type GroupBy, type PendingLine } from '@/lib/pending'
 import { appNow } from '@/lib/clock'
 
 type Tile = '' | Bucket
 import { CategoryTile, FilterPill, ProjectDot, type FilterOption } from '@/components/requests/parts'
 import { OrderDetail, VendorTile } from '@/components/orders/order-detail'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { KpiStrip, ModuleTitle, Pill, Segmented, type KpiItem } from '@/components/page/page-kit'
+import { useSupplierScores, type SupplierPerformance } from '@/lib/supplier-performance'
+import { compact } from '@/lib/expenses'
+import { TONE, type Tone } from '@/lib/list-kit'
 import { ActionIcon } from '@/components/page/action-button'
 import { Pager } from '@/components/page/pager'
 import { usePagedUrl } from '@/lib/paging'
@@ -28,6 +30,11 @@ import { usePagedUrl } from '@/lib/paging'
 // (Late · Today · This week · Later · No date) or by supplier, so the office chases the right shop in one message.
 // Read from the same order list as Purchase orders (what came is read from deliveries); "Material came", "Move date"
 // and "Close short" open that order's own sheet, so there is one receiving path.
+// UX-65 (18 Nov): figures as a KpiStrip; a Week board (late, then the next seven days, a column each) with "Tell site"
+// per day (one WhatsApp message of that day's deliveries); due chips by tone; a supplier often late carries its on-time
+// share (the supplier score, PRC-50).
+
+const BUCKET_TONE: Record<Bucket, Tone> = { late: 'bad', today: 'attention', week: 'info', later: 'muted', none: 'muted' }
 
 const BUCKETS: { value: Bucket; label: string; hint: string; tone: string; dot: string }[] = [
   { value: 'late', label: 'Late', hint: 'Past the date the supplier gave', tone: 'text-destructive', dot: 'bg-destructive' },
@@ -88,12 +95,16 @@ export default function PendingDeliveriesPage() {
 
   const value = filtered.reduce((sum, p) => sum + (p.value ?? 0), 0)
   const lateSuppliers = new Set(filtered.filter((p) => p.bucket === 'late').map((p) => p.order.vendor_id)).size
-  const tiles: { value: Bucket; label: string; icon: LucideIcon; tone: string; ring: string; num?: string; sub?: string }[] = [
-    { value: 'late', label: 'Late', icon: AlarmClock, tone: 'bg-destructive text-white', ring: 'ring-destructive', num: 'text-destructive', sub: lateSuppliers ? `${lateSuppliers} supplier${lateSuppliers === 1 ? '' : 's'} to chase` : undefined },
-    { value: 'today', label: 'Due today', icon: Truck, tone: 'bg-orange-200 text-orange-950 dark:bg-orange-900 dark:text-orange-100', ring: 'ring-orange-500' },
-    { value: 'week', label: 'This week', icon: CalendarDays, tone: 'bg-info-soft text-info', ring: 'ring-blue-500' },
-    { value: 'none', label: 'No date', icon: CalendarClock, tone: 'bg-muted text-foreground/70', ring: 'ring-foreground/40' },
-  ]
+  const toggle = (b: Bucket) => setTile(tile === b ? '' : b)
+  const countOf = (b: Bucket) => filtered.filter((p) => p.bucket === b).length
+  const tiles = ([
+    { key: 'late', label: 'Late', value: countOf('late') || '—', icon: AlarmClock, tone: countOf('late') ? 'bad' : 'default', hint: lateSuppliers ? `${lateSuppliers} to chase` : undefined, pressed: tile === 'late', onClick: () => toggle('late') },
+    { key: 'today', label: 'Due today', value: countOf('today') || '—', icon: Truck, tone: countOf('today') ? 'attention' : 'default', pressed: tile === 'today', onClick: () => toggle('today') },
+    { key: 'week', label: 'This week', value: countOf('week') || '—', icon: CalendarDays, tone: countOf('week') ? 'info' : 'default', pressed: tile === 'week', onClick: () => toggle('week') },
+    { key: 'none', label: 'No date', value: countOf('none') || '—', icon: CalendarClock, tone: countOf('none') ? 'attention' : 'default', pressed: tile === 'none', onClick: () => toggle('none') },
+    ...(value > 0 ? [{ key: 'value', label: 'Still to come', value: compact(value), kind: 'money' }] : []),
+  ] as KpiItem[]).map((k) => ({ ...k, loading: isLoading }))
+  const scores = useSupplierScores()
 
   const groups = React.useMemo(() => {
     if (groupBy === 'supplier') {
@@ -116,34 +127,14 @@ export default function PendingDeliveriesPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <ModuleTitle icon={Truck} title="Pending deliveries" />
         <div className="flex items-center gap-3">
-          {value > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">Still to come: <strong className="text-foreground tabular-nums">{rupees(value)}</strong></span>}
           <Button variant="outline" className="gap-2" disabled={!shown.length} onClick={() => exportPending(shown)} title="The lines shown, as a CSV file (opens in Excel)"><ActionIcon kind="export-excel" className="size-4" /> <span className="hidden sm:inline">Export</span></Button>
         </div>
       </header>
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3" data-guide="pending.tiles">
-        {tiles.map((t) => {
-          const on = tile === t.value
-          const count = filtered.filter((p) => p.bucket === t.value).length
-          return (
-            <button key={t.value} type="button" aria-pressed={on} onClick={() => setTile(on ? '' : t.value)} className={cn('flex flex-col items-center gap-1 rounded-xl border bg-card p-2 text-center transition hover:-translate-y-px sm:flex-row sm:gap-3 sm:p-3.5 sm:text-left', on && cn('ring-2', t.ring))}>
-              <span className={cn('inline-flex size-8 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', t.tone)}><t.icon className="size-4 sm:size-5" /></span>
-              <span className="flex min-w-0 flex-col">
-                <span className={cn('text-xl leading-none font-semibold tabular-nums sm:text-3xl', count ? t.num : undefined)}>{count}</span>
-                <span className="text-[11px] leading-tight text-muted-foreground sm:text-sm sm:text-foreground/80">{t.label}</span>
-                {t.sub && <span className="hidden truncate text-xs text-muted-foreground sm:block">{t.sub}</span>}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <KpiStrip guide="pending.tiles" stats={tiles} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="Group by" className="flex gap-0.5 rounded-xl bg-muted p-1" data-guide="pending.group">
-          {([['date', 'By date'], ['supplier', 'By supplier']] as [GroupBy, string][]).map(([v, label]) => (
-            <button key={v} role="tab" type="button" aria-selected={groupBy === v} onClick={() => setGroupBy(v)} className={cn('h-8 rounded-lg px-3 text-sm whitespace-nowrap', groupBy === v ? 'bg-background font-semibold shadow-sm' : 'text-foreground/75 hover:text-foreground')}>{label}</button>
-          ))}
-        </div>
+        <Segmented label="Group by" guide="pending.group" value={groupBy} onChange={setGroupBy} options={[{ value: 'date', label: 'By date' }, { value: 'week', label: 'Week' }, { value: 'supplier', label: 'By supplier' }]} />
         <div className="flex flex-wrap items-center gap-2">
           {!siteId && <FilterPill icon={MapPin} label="Site" allLabel="All sites" value={site} options={options.sites} onChange={setSite} />}
           <FilterPill icon={Store} label="Supplier" allLabel="Every supplier" value={vendor} options={options.vendors} onChange={setVendor} />
@@ -160,7 +151,8 @@ export default function PendingDeliveriesPage() {
         </div>
       )}
 
-      <>
+      {groupBy === 'week' && shown.length > 0 && <WeekBoard lines={shown} scores={scores} onOpen={(id) => setSelected(id)} />}
+      {groupBy !== 'week' && <>
       <div className="flex flex-col gap-5" data-guide="pending.list">
         {pagedGroups.shown.map((g) => (
           <section key={g.key} aria-label={g.title} className="flex flex-col gap-2">
@@ -175,13 +167,13 @@ export default function PendingDeliveriesPage() {
               </div>
             )}
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {g.items.map((p) => <PendingCard key={p.key} p={p} company={company} showSupplier={!g.supplier} onOpen={() => setSelected(p.order.id)} />)}
+              {g.items.map((p) => <PendingCard key={p.key} p={p} company={company} showSupplier={!g.supplier} score={scores.get(p.order.vendor_id)} onOpen={() => setSelected(p.order.id)} />)}
             </div>
           </section>
         ))}
       </div>
         <Pager {...pagedGroups.pager} noun="groups" className="mt-2" />
-      </>
+      </>}
 
       <Sheet open={!!current} onOpenChange={(o) => !o && setSelected('')}>
         <SheetContent side={isMobile ? 'bottom' : 'right'} className={cn('gap-0 overflow-y-auto p-0', isMobile ? 'max-h-[92vh] rounded-t-2xl' : 'w-full sm:max-w-[460px]')}>
@@ -225,7 +217,7 @@ function ChaseButtons({ phone, message, label }: { phone: string | null; message
   )
 }
 
-function PendingCard({ p, company, showSupplier, onOpen }: { p: PendingLine; company?: string | null; showSupplier: boolean; onOpen: () => void }) {
+function PendingCard({ p, company, showSupplier, score, onOpen }: { p: PendingLine; company?: string | null; showSupplier: boolean; score?: SupplierPerformance; onOpen: () => void }) {
   const ordered = Number(p.line.quantity)
   const came = Math.max(0, ordered - p.pending)
   const pct = ordered > 0 ? Math.min(100, (came / ordered) * 100) : 0
@@ -237,7 +229,7 @@ function PendingCard({ p, company, showSupplier, onOpen }: { p: PendingLine; com
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex items-baseline justify-between gap-2">
             <span className="min-w-0 truncate font-semibold">{p.line.material}</span>
-            <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap', late ? 'bg-destructive text-white' : p.bucket === 'today' ? 'bg-orange-200 text-orange-950 dark:bg-orange-900 dark:text-orange-100' : 'bg-muted text-foreground/80')}>{lateWords(p)}</span>
+            <Pill tone={BUCKET_TONE[p.bucket]} size="xs" icon={late ? AlarmClock : CalendarDays}>{lateWords(p)}</Pill>
           </span>
           <span className="text-sm tabular-nums"><strong>{qty(String(p.pending), p.line.unit)}</strong> <span className="text-muted-foreground">still to come{came > 0 ? ` of ${qty(p.line.quantity, p.line.unit)}` : ''}</span></span>
         </span>
@@ -247,6 +239,7 @@ function PendingCard({ p, company, showSupplier, onOpen }: { p: PendingLine; com
       )}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         {showSupplier && <span className="font-medium text-foreground/90">{p.order.vendor_name}</span>}
+        <OnTimeChip p={score} />
         <span className="tabular-nums">{p.order.ref}{p.order.their_ref ? ` · ${p.order.their_ref}` : ''}</span>
         <span className="inline-flex items-center gap-1"><ProjectDot id={p.order.project_id} />{p.order.site_name}</span>
         {p.value !== null && <span className="font-semibold text-foreground tabular-nums">{rupees(p.value)}</span>}
@@ -261,5 +254,63 @@ function PendingCard({ p, company, showSupplier, onOpen }: { p: PendingLine; com
         {showSupplier && <ChaseButtons phone={p.order.vendor_phone} message={chaseMessage([p], company)} label="Chase" />}
       </div>
     </article>
+  )
+}
+
+/** UX-65: a supplier that is often late, by its on-time share over the last 12 months (the supplier score). */
+function OnTimeChip({ p }: { p?: SupplierPerformance }) {
+  const pct = p?.measures.on_time.pct
+  if (!p || pct === null || pct === undefined || p.measures.on_time.of < 2 || Number(pct) >= 80) return null
+  return <Pill tone={Number(pct) < 50 ? 'bad' : 'attention'} size="xs" icon={AlarmClock} title={`On time in ${Math.round(Number(pct))}% of ${p.measures.on_time.of} deliveries`}>{Math.round(Number(pct))}% on time</Pill>
+}
+
+/** UX-65: what comes when: late first, then the next seven days, a column each, with "Tell site" for the day. */
+function WeekBoard({ lines, scores, onOpen }: { lines: PendingLine[]; scores: Map<string, SupplierPerformance>; onOpen: (orderId: string) => void }) {
+  const days = weekDays()
+  const late = lines.filter((p) => p.bucket === 'late')
+  const cols = [
+    ...(late.length ? [{ key: 'late', title: 'Late', sub: '', tone: 'bad' as Tone, items: late, words: 'late' }] : []),
+    ...days.map((d, i) => {
+      const date = new Date(`${d}T00:00:00`)
+      return {
+        key: d,
+        title: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : date.toLocaleDateString('en-IN', { weekday: 'short' }),
+        sub: date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        tone: (i === 0 ? 'attention' : 'info') as Tone,
+        items: lines.filter((p) => p.order.expected_date === d && p.bucket !== 'late'),
+        words: i === 0 ? 'today' : i === 1 ? 'tomorrow' : `on ${date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}`,
+      }
+    }),
+  ]
+  const later = lines.filter((p) => p.bucket === 'later' || p.bucket === 'none').length
+  return (
+    <div className="flex min-w-0 flex-col gap-2 [contain:inline-size]" data-guide="pending.list">
+      <div className="grid auto-cols-[minmax(170px,1fr)] grid-flow-col gap-2 overflow-x-auto pb-1" data-guide="pending.week">
+        {cols.map((c) => (
+          <section key={c.key} className={cn('flex min-h-40 flex-col gap-2 rounded-xl border bg-card p-2', c.key === 'late' && 'border-destructive/40')}>
+            <header className="flex items-center gap-2 px-1">
+              <span className={cn('size-2 rounded-full', c.items.length ? TONE[c.tone].dot : 'bg-muted-foreground/25')} />
+              <span className={cn('text-sm font-semibold', c.items.length ? TONE[c.tone].text : 'text-muted-foreground')}>{c.title}</span>
+              <span className="text-xs text-muted-foreground">{c.sub}</span>
+              {c.items.length > 0 && (
+                <a href={whatsappUrl(null, tellSiteMessage(c.items, c.words))} target="_blank" rel="noreferrer" className="ml-auto inline-flex size-7 items-center justify-center rounded-md text-success hover:bg-muted" title="Tell site on WhatsApp" aria-label={`Tell site what comes ${c.words}`}>
+                  <MessageCircle className="size-4" />
+                </a>
+              )}
+            </header>
+            {c.items.map((p) => (
+              <button key={p.key} type="button" onClick={() => onOpen(p.order.id)} className="flex flex-col gap-1 rounded-lg border bg-background p-2 text-left text-xs hover:border-foreground/30">
+                <span className="flex items-center gap-1.5"><CategoryTile mainCategory={p.line.main_category} size="sm" /><span className="min-w-0 truncate text-sm font-semibold">{p.line.material}</span></span>
+                <span className="font-semibold tabular-nums">{qty(String(p.pending), p.line.unit)}</span>
+                <span className="flex min-w-0 items-center gap-1 text-muted-foreground"><ProjectDot id={p.order.project_id} /><span className="truncate">{p.order.site_name}</span></span>
+                <span className="flex min-w-0 items-center gap-1 text-muted-foreground"><Store className="size-3 shrink-0" /><span className="truncate">{p.order.vendor_name}</span><OnTimeChip p={scores.get(p.order.vendor_id)} /></span>
+              </button>
+            ))}
+            {!c.items.length && <span className="m-auto text-xs text-muted-foreground/60">—</span>}
+          </section>
+        ))}
+      </div>
+      {later > 0 && <span className="text-xs text-muted-foreground">+{later} later or with no date</span>}
+    </div>
   )
 }

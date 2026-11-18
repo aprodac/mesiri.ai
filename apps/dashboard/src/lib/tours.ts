@@ -791,14 +791,14 @@ export const PAGE_TOURS: Record<string, Tour> = {
   // Procurement (SS-45): from the site's request to the supplier's account.
   '/materials/requests': {
     key: '/tour/requests',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['req.list'],
     steps: [
-      { target: 'req.tiles', title: 'What needs you', text: 'Waiting for the office, late, due in 2 days, and possible duplicates. Tap one to see only those.', mood: 'look' },
+      { target: 'req.tiles', title: 'What needs you', text: 'Waiting, late, due in 2 days, duplicates, and how fast the office orders. Tap one to see only those.', mood: 'look' },
       { target: 'req.tabs', title: 'Where each request is', text: 'Waiting, ordered, received, or not ordered.' },
       { target: 'req.filters', title: 'Narrow it down', text: 'By site, who asked, category, the day it is needed, or search.' },
-      { target: 'req.list', title: 'Open one', text: 'See what was asked, then order it, get quotes for it, or mark it received.', mood: 'think' },
+      { target: 'req.list', title: 'Open one', text: 'How long it has waited, and if it is in the material plan. Tick several at one site to order them together.', mood: 'think' },
       { target: 'req.act', title: 'Decide here', text: 'Create the order already filled in, get quotes from several shops, send it from another site, or say it is not being ordered.' },
       { target: 'req.add', title: 'A request from the office', text: 'Make one here when the site asks by phone.' },
       { target: 'app.whatsapp', title: 'How site asks', text: 'Site says "Need 200 bags cement by Friday for the first-floor slab". "Show my requests" lists theirs.', mood: 'happy' },
@@ -806,14 +806,14 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/procurement/orders': {
     key: '/tour/orders',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['po.list'],
     steps: [
-      { target: 'po.tiles', title: 'At a glance', text: 'Still to come, late, due in 2 days, and part received. Tap one to see only those.', mood: 'look' },
+      { target: 'po.tiles', title: 'At a glance', text: 'To come, late, ordered this month, and what came but is not billed yet. Tap one to see only those.', mood: 'look' },
       { target: 'po.tabs', title: 'Where each order is', text: 'To come, part received, received, closed.' },
       { target: 'po.filters', title: 'Find an order', text: 'By site, supplier, category or due date, or search by PO number, the supplier\'s number or an item.' },
-      { target: 'po.list', title: 'Open an order', text: 'Record what came, change it, close it short or cancel it.', mood: 'think' },
+      { target: 'po.list', title: 'Open an order', text: 'Each shows the supplier\'s score, its rate against the best paid, and ordered · came · billed.', mood: 'think' },
       { target: 'po.send', title: 'Send it to the shop', text: 'Open the PO document, or send the order on WhatsApp already written. You press send.', mood: 'send' },
       { target: 'po.receive', title: 'When it comes', text: 'Material came: count what arrived, what was rejected and why, with the challan photo. That makes the GRN.' },
       { target: 'po.add', title: 'A new order', text: 'Order from the office. An order that repeats another is flagged before it goes.' },
@@ -835,12 +835,12 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/procurement/pending': {
     key: '/tour/pending',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['pending.list', 'pending.empty'],
     steps: [
       { target: 'pending.tiles', title: 'What is still to come', text: 'Late, due today, this week, and orders with no date. Tap one to see only those.', mood: 'look' },
-      { target: 'pending.group', title: 'By date or by supplier', text: 'By supplier puts each shop\'s lines together, so you chase each one once.' },
+      { target: 'pending.group', title: 'By date, week or supplier', text: 'Week shows what comes each day; tell the site in one tap. By supplier lets you chase each shop once.' },
       { target: 'pending.list', title: 'Each line still to come', text: 'How much has come so far. Material came records the delivery.' },
       { target: 'pending.chase', title: 'Chase the supplier', text: 'Call them, or open WhatsApp with the message already written; you send it.', mood: 'send' },
       { target: 'pending.came', title: 'It arrived', text: 'Material came records the delivery against its order.' },

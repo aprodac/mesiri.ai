@@ -5,7 +5,7 @@ import { appNow } from '@/lib/clock'
 // Read from the same order list as Procurement › Purchase orders (what came is read from deliveries).
 
 export type Bucket = 'late' | 'today' | 'week' | 'later' | 'none'
-export type GroupBy = 'date' | 'supplier'
+export type GroupBy = 'date' | 'week' | 'supplier'
 
 export interface PendingLine {
   key: string
@@ -62,3 +62,20 @@ export function chaseMessage(lines: PendingLine[], company?: string | null): str
   return [`Hello${company ? ` from ${company}` : ''}, these have not reached the site yet:`, '', ...parts, '', 'When will they come? Please reply with the date.'].join('\n')
 }
 
+
+/** UX-65: the next seven days from today, as ISO dates, for the week board. */
+export function weekDays(today = startOfToday()): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
+}
+
+/** UX-65: one WhatsApp message to the site about a day's deliveries, grouped by site (the person picks the chat). */
+export function tellSiteMessage(lines: PendingLine[], dayWords: string): string {
+  const bySite = new Map<string, PendingLine[]>()
+  for (const p of lines) bySite.set(p.order.site_id, [...(bySite.get(p.order.site_id) ?? []), p])
+  const parts = [...bySite.values()].map((ps) => [`*${ps[0].order.project_name} › ${ps[0].order.site_name}*`,
+    ...ps.map((p) => `• ${p.line.material}: ${n(p.pending)} ${p.line.unit} from ${p.order.vendor_name} (${p.order.ref})`)].join('\n'))
+  return [`Material coming ${dayWords}:`, '', ...parts, '', 'Please be ready to receive and check it.'].join('\n')
+}
