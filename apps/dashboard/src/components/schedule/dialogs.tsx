@@ -125,7 +125,7 @@ export function QuickPlanDialog({
                 <input type="checkbox" className="size-4" checked={!!picked[a.id]} onChange={(e) => setPicked((p) => ({ ...p, [a.id]: e.target.checked }))} aria-label={`Include ${a.name}`} />
                 <span className="w-6 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
                 <span className="min-w-0 flex-1 truncate">{a.name}{a.start && <span className="ml-1 text-xs text-muted-foreground">(has dates)</span>}</span>
-                {days[a.id] === 0 && <Diamond className="size-3 fill-current text-violet-600" />}
+                {days[a.id] === 0 && <Diamond className="size-3 fill-current text-foreground" />}
                 <input type="number" min={0} max={1000} value={days[a.id] ?? 7} onChange={(e) => setDays((d) => ({ ...d, [a.id]: Math.max(0, Number(e.target.value) || 0) }))} className="w-16 rounded-md border bg-background px-2 py-1 text-right tabular-nums" aria-label={`Days for ${a.name}`} />
                 <span className="w-8 text-xs text-muted-foreground">days</span>
               </li>
@@ -199,7 +199,7 @@ export function AddActivityDialog({
             <Label htmlFor="add-name">Name</Label>
             <Input id="add-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Site mobilisation" required autoFocus />
           </div>
-          <label className="flex items-center gap-2"><input type="checkbox" className="size-4 accent-violet-600" checked={milestone} onChange={(e) => setMilestone(e.target.checked)} /> Milestone (one day, e.g. “Slab cast”, “Handover”)</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="size-4 accent-foreground" checked={milestone} onChange={(e) => setMilestone(e.target.checked)} /> Milestone (one day)</label>
           <div className="flex flex-col gap-1">
             <Label htmlFor="add-after">Starts after</Label>
             <select id="add-after" value={after} onChange={(e) => pickAfter(e.target.value)} className="h-9 rounded-md border bg-background px-2">

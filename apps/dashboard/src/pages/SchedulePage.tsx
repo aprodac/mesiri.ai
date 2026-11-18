@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, PageError, Segmented, StatStrip, type Stat } from '@/components/dpr-page'
+import { EmptyState } from '@/components/page/page-kit'
 import { ActivityPanel, StateChip } from '@/components/schedule/activity-panel'
 import { BoqImportDialog } from '@/components/schedule/boq-import-dialog'
 import { AddActivityDialog, ConfirmChangeDialog, QuickPlanDialog } from '@/components/schedule/dialogs'
@@ -229,7 +230,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
           </div>
 
           {list.length === 0 ? (
-            <p className="rounded-xl border px-4 py-10 text-center text-sm text-muted-foreground">Nothing here. {filter === 'attention' ? 'Nothing is late or behind.' : ''}</p>
+            <EmptyState icon={filter === 'attention' ? CheckCircle2 : CalendarRange} title={filter === 'attention' ? 'Nothing late or behind' : 'Nothing here'} className="bg-card" />
           ) : isMobile ? (
             <MobileList schedule={s} activities={list} onSelect={select} />
           ) : (
@@ -264,7 +265,7 @@ function ScheduleView({ projectId }: { projectId: string }) {
                 </p>
               </div>
               {current && (
-                <aside aria-label="Activity" className="w-full shrink-0 overflow-hidden rounded-xl border xl:sticky xl:top-4 xl:w-[400px]">{panel}</aside>
+                <aside aria-label="Activity" className={cn("relative w-full shrink-0 overflow-hidden rounded-xl border bg-card shadow-sm before:absolute before:inset-x-0 before:top-0 before:h-1 before:content-[''] xl:sticky xl:top-4 xl:w-[400px]", current && STATE_BAR[current.state].edge)}>{panel}</aside>
               )}
             </div>
           )}

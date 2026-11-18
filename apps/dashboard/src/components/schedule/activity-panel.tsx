@@ -145,9 +145,6 @@ export function ActivityPanel({
               {a.forecast_end ? shortDay(a.forecast_end, today) : '—'}{a.slip_days > 0 ? ` (+${a.slip_days}d)` : ''}
             </Fact>
           </dl>
-          {a.progress === null && (
-            <p className="text-xs text-muted-foreground">Not measured: no BOQ lines</p>
-          )}
         </section>
       )}
 
@@ -177,7 +174,7 @@ export function ActivityPanel({
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium">Plan</h3>
             <label className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" checked={milestone} onChange={(e) => setMilestone(e.target.checked)} className="size-4 accent-violet-600" /> Milestone (one day)
+              <input type="checkbox" checked={milestone} onChange={(e) => setMilestone(e.target.checked)} className="size-4 accent-foreground" /> Milestone (one day)
             </label>
           </div>
           <div className={cn('grid gap-2', milestone ? 'grid-cols-1' : 'grid-cols-2')}>

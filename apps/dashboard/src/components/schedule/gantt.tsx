@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { CalendarPlus, Diamond, Flame, GripVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dayNum, isoOf, shortDay, type Activity, type ActivityState, type Schedule } from '@/lib/schedule'
+import { dayNum, isoOf, shortDay, STATE_WORDS, type Activity, type ActivityState, type Schedule } from '@/lib/schedule'
 
 // ST-04: the Gantt chart. One row per activity: the planned bar, the part done (measured from site reports),
 // the overrun the site's pace forecasts (striped), today's line, milestones as diamonds, the "starts after"
@@ -14,13 +14,14 @@ const ROW = 46
 const HEAD = 46
 export const NAME_COL = 300
 
-export const STATE_BAR: Record<ActivityState, { bar: string; fill: string; chip: string; dot: string }> = {
-  late: { bar: 'bg-red-200 dark:bg-red-950', fill: 'bg-red-600', chip: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200', dot: 'bg-red-600' },
-  behind: { bar: 'bg-amber-200 dark:bg-amber-950', fill: 'bg-amber-500', chip: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200', dot: 'bg-amber-500' },
-  on_track: { bar: 'bg-sky-200 dark:bg-sky-950', fill: 'bg-sky-600', chip: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200', dot: 'bg-sky-600' },
-  not_started: { bar: 'bg-slate-200 dark:bg-slate-800', fill: 'bg-slate-500', chip: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200', dot: 'bg-slate-400' },
-  done: { bar: 'bg-emerald-200 dark:bg-emerald-950', fill: 'bg-emerald-600', chip: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200', dot: 'bg-emerald-600' },
-  unscheduled: { bar: 'bg-muted', fill: 'bg-muted-foreground', chip: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/50' },
+// UX-53: the state tokens (docs/DESIGN.md §3), so the bars match every other page and read in dark mode too.
+export const STATE_BAR: Record<ActivityState, { bar: string; fill: string; chip: string; dot: string; row: string; edge: string }> = {
+  late: { bar: 'bg-destructive/15', fill: 'bg-destructive', chip: 'bg-destructive/10 text-destructive', dot: 'bg-destructive', row: 'bg-destructive/[0.04]', edge: 'before:bg-destructive' },
+  behind: { bar: 'bg-draft/25', fill: 'bg-draft', chip: 'bg-draft-soft text-draft', dot: 'bg-draft', row: 'bg-draft-soft/40', edge: 'before:bg-draft' },
+  on_track: { bar: 'bg-info-soft', fill: 'bg-info', chip: 'bg-info-soft text-info', dot: 'bg-info', row: '', edge: 'before:bg-info' },
+  not_started: { bar: 'bg-muted', fill: 'bg-muted-foreground', chip: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/50', row: '', edge: 'before:bg-muted-foreground/40' },
+  done: { bar: 'bg-success-soft', fill: 'bg-success', chip: 'bg-success-soft text-success', dot: 'bg-success', row: '', edge: 'before:bg-success' },
+  unscheduled: { bar: 'bg-muted', fill: 'bg-muted-foreground', chip: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/50', row: '', edge: 'before:bg-muted-foreground/40' },
 }
 
 export function range(schedule: Schedule, acts: Activity[]): { from: number; to: number } {
@@ -118,24 +119,27 @@ export function Gantt({
               type="button"
               onClick={() => onSelect(a.id)}
               aria-current={selectedId === a.id || undefined}
-              className={cn('flex w-full items-center gap-2 border-b px-3 text-left transition hover:bg-muted/50', selectedId === a.id && 'bg-primary/10')}
+              className={cn('flex w-full items-center gap-2 border-b px-3 text-left transition hover:bg-muted/50', tone.row, selectedId === a.id && 'bg-primary/10')}
               style={{ height: ROW }}
             >
-              <span className={cn('size-2 shrink-0 rounded-full', tone.dot)} title={a.state} />
+              <span className={cn('h-7 w-1 shrink-0 rounded-full', tone.dot)} title={STATE_WORDS[a.state]} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1 truncate text-sm font-medium">
-                  {a.milestone && <Diamond className="size-3 shrink-0 fill-current text-violet-600" />}
+                  {a.milestone && <Diamond className="size-3 shrink-0 fill-current text-foreground" />}
                   {a.code && <span className="shrink-0 text-xs font-normal text-muted-foreground">{a.code}</span>}
                   <span className="truncate">{a.name}</span>
-                  {a.critical && a.state !== 'done' && <Flame className="size-3 shrink-0 text-orange-600" aria-label="Critical path" />}
+                  {a.critical && a.state !== 'done' && <Flame className="size-3 shrink-0 text-draft" aria-label="Critical path" />}
                 </span>
                 <span className="block truncate text-[11px] text-muted-foreground">
                   {a.start ? `${shortDay(a.start, schedule.today)}${a.milestone ? '' : ` → ${shortDay(a.end, schedule.today)}`}` : 'No dates yet'}
                   {a.site_name ? ` · ${a.site_name}` : ''}
                 </span>
               </span>
-              <span className={cn('w-14 text-right text-sm font-semibold tabular-nums', a.progress === null && 'font-normal text-muted-foreground')}>
-                {a.progress === null ? '—' : `${a.progress}%`}
+              <span className="flex w-14 flex-col items-end gap-1">
+                <span className={cn('text-sm font-semibold tabular-nums', a.progress === null && 'font-normal text-muted-foreground')}>{a.progress === null ? '—' : `${a.progress}%`}</span>
+                {a.progress !== null && (
+                  <span className="h-1 w-12 overflow-hidden rounded-full bg-muted"><span className={cn('block h-full rounded-full', tone.fill)} style={{ width: `${a.progress}%` }} /></span>
+                )}
               </span>
             </button>
           )
@@ -151,7 +155,7 @@ export function Gantt({
               <div key={m.left} className="absolute top-0 truncate border-l px-1.5 pt-1 text-[11px] font-semibold" style={{ left: m.left, width: m.width }}>{m.label}</div>
             ))}
             {ticks.map((t) => t.label && (
-              <div key={t.left} className={cn('absolute bottom-1 text-center text-[10px] tabular-nums text-muted-foreground', t.weekend && 'text-red-500/70')} style={{ left: t.left, width: zoom === 'week' ? dayW : dayW * 7 }}>{t.label}</div>
+              <div key={t.left} className={cn('absolute bottom-1 text-center text-[10px] tabular-nums text-muted-foreground', t.weekend && 'text-destructive/70')} style={{ left: t.left, width: zoom === 'week' ? dayW : dayW * 7 }}>{t.label}</div>
             ))}
           </div>
           {/* Grid: Sundays shaded, Mondays ruled */}
@@ -159,14 +163,14 @@ export function Gantt({
             <div key={`g${t.left}`} className={cn('absolute bottom-0', t.weekend ? 'bg-muted/50' : 'border-l border-dashed border-border/70')} style={{ left: t.left, width: t.weekend ? dayW : 0, top: HEAD }} />
           ))}
           {activities.map((a, i) => (
-            <div key={`r${a.id}`} className={cn('absolute inset-x-0 border-b', selectedId === a.id && 'bg-primary/5')} style={{ top: HEAD + i * ROW, height: ROW }} />
+            <div key={`r${a.id}`} className={cn('absolute inset-x-0 border-b', STATE_BAR[a.state].row, selectedId === a.id && 'bg-primary/5')} style={{ top: HEAD + i * ROW, height: ROW }} />
           ))}
           {/* Contract finish and forecast finish */}
           {finishPlanned && (
-            <Marker left={x(finishPlanned) + dayW} label={`Handover ${shortDay(finishPlanned, schedule.today)}`} className="border-violet-500 text-violet-700 dark:text-violet-300" />
+            <Marker left={x(finishPlanned) + dayW} label={`Handover ${shortDay(finishPlanned, schedule.today)}`} className="border-foreground text-foreground" />
           )}
           {forecast && schedule.summary.slip_days > 0 && (
-            <Marker left={x(forecast) + dayW} label={`Forecast ${shortDay(forecast, schedule.today)}`} className="border-red-500 text-red-700 dark:text-red-300" dashed />
+            <Marker left={x(forecast) + dayW} label={`Forecast ${shortDay(forecast, schedule.today)}`} className="border-destructive text-destructive" dashed />
           )}
           {/* Today */}
           <div className="pointer-events-none absolute bottom-0 z-[5] w-0.5 bg-primary" style={{ left: (today - from) * dayW + dayW / 2, top: HEAD - 6 }}>
@@ -177,7 +181,7 @@ export function Gantt({
           <svg className="pointer-events-none absolute left-0 z-[4]" style={{ top: 0 }} width={width} height={HEAD + activities.length * ROW}>
             <defs>
               <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" className="fill-muted-foreground" /></marker>
-              <marker id="arrow-bad" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" className="fill-red-600" /></marker>
+              <marker id="arrow-bad" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" className="fill-destructive" /></marker>
             </defs>
             {links.map((l) => {
               const p = byId.get(l.predecessor)!
@@ -192,7 +196,7 @@ export function Gantt({
               const d = x2 - 8 >= x1 + 4
                 ? `M${x1},${y1} H${x2 - 8} V${y2} H${x2}`
                 : `M${x1},${y1} h6 V${mid} H${x2 - 10} V${y2} H${x2}`
-              return <path key={`${p.id}>${s.id}`} d={d} fill="none" strokeWidth={1.4} className={bad ? 'stroke-red-600' : 'stroke-muted-foreground/60'} strokeDasharray={bad ? '4 3' : undefined} markerEnd={`url(#${bad ? 'arrow-bad' : 'arrow'})`} />
+              return <path key={`${p.id}>${s.id}`} d={d} fill="none" strokeWidth={1.4} className={bad ? 'stroke-destructive' : 'stroke-muted-foreground/60'} strokeDasharray={bad ? '4 3' : undefined} markerEnd={`url(#${bad ? 'arrow-bad' : 'arrow'})`} />
             })}
           </svg>
 
@@ -239,7 +243,7 @@ export function Gantt({
                 <button key={a.id} type="button" aria-label={label} title={label} {...pointer}
                   className={cn('absolute z-[6] flex items-center gap-1.5 touch-none', canEdit && 'cursor-grab active:cursor-grabbing')}
                   style={{ top: top + ROW / 2 - 9, left: left + dayW / 2 - 9 }}>
-                  <span className={cn('size-[18px] rotate-45 rounded-[3px] border-2 border-background shadow', a.state === 'done' ? 'bg-emerald-600' : a.state === 'late' ? 'bg-red-600' : 'bg-violet-600', selectedId === a.id && 'ring-2 ring-primary ring-offset-1')} />
+                  <span className={cn('size-[18px] rotate-45 rounded-[3px] border-2 border-background shadow', a.state === 'done' ? 'bg-success' : a.state === 'late' ? 'bg-destructive' : 'bg-foreground', selectedId === a.id && 'ring-2 ring-primary ring-offset-1')} />
                   <span className="whitespace-nowrap text-[11px] font-medium text-foreground/80">{shortDay(a.start)}</span>
                 </button>
               )
@@ -262,15 +266,15 @@ export function Gantt({
                   )}
                   {canEdit && span > 40 && <GripVertical className="relative ml-0.5 size-3 shrink-0 text-foreground/40 opacity-0 group-hover:opacity-100" />}
                   {span > 70 && (
-                    <span className={cn('relative truncate px-1.5 text-[11px] font-semibold', (a.progress ?? 0) > 45 ? 'text-white' : 'text-foreground/80')}>
+                    <span className={cn('relative truncate px-1.5 text-[11px] font-semibold', (a.progress ?? 0) > 45 ? 'text-background' : 'text-foreground/80')}>
                       {a.progress !== null ? `${a.progress}%` : a.name}
                     </span>
                   )}
                 </button>
                 {over > 0 && (
-                  <div className="pointer-events-none absolute z-[5] flex items-center rounded-r-md border border-dashed border-red-500 bg-[repeating-linear-gradient(135deg,var(--color-red-200)_0_4px,transparent_4px_8px)] dark:bg-[repeating-linear-gradient(135deg,var(--color-red-900)_0_4px,transparent_4px_8px)]"
+                  <div className="pointer-events-none absolute z-[5] flex items-center rounded-r-md border border-dashed border-destructive bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,var(--destructive)_25%,transparent)_0_4px,transparent_4px_8px)]"
                     style={{ top: top + 12, height: ROW - 24, left: left + span, width: over }}>
-                    {over > 34 && <span className="px-1 text-[10px] font-bold text-red-700 dark:text-red-300">+{a.slip_days}d</span>}
+                    {over > 34 && <span className="px-1 text-[10px] font-bold text-destructive">+{a.slip_days}d</span>}
                   </div>
                 )}
                 {span <= 70 && (
