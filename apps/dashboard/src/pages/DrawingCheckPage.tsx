@@ -82,11 +82,11 @@ export default function DrawingCheckPage() {
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); pick(e.dataTransfer.files?.[0]) }}
         data-guide="drawing.drop"
-        className={cn('flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-6 text-sm transition', dragging ? 'border-primary bg-primary/5' : 'hover:bg-muted/40')}
+        className={cn('flex flex-col items-center gap-2 rounded-xl border-2 border-dashed bg-card p-6 text-sm transition', dragging ? 'border-primary bg-primary/5' : 'hover:bg-muted/40')}
       >
         <Upload className="size-6 text-muted-foreground" />
-        <span className="font-medium">{read.isPending ? 'Reading…' : r ? 'Check another drawing set' : 'Drop the drawing PDF here, or tap to choose'}</span>
-        <span className="text-xs text-muted-foreground">PDF from CAD (not a scan), up to {MAX_MB} MB</span>
+        <span className="font-medium">{read.isPending ? 'Reading…' : r ? 'Check another drawing set' : 'Drop the drawing PDF, or tap to choose'}</span>
+        <span className="flex items-center gap-1 text-[11px] text-muted-foreground" title="A PDF exported from CAD, not a scan"><span className="rounded bg-destructive/10 px-1.5 py-px font-bold text-destructive">PDF</span> from CAD · ≤ {MAX_MB} MB</span>
       </button>
       <input ref={input} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
 

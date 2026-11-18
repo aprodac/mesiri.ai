@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, PageError, StatStrip, type Stat } from '@/components/dpr-page'
+import { Hint } from '@/components/hint'
 import { ModuleHeader } from '@/components/page/module-header'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { apiErrorMessage } from '@/lib/logo-upload'
@@ -79,7 +80,7 @@ function PlacesView({ projectId }: { projectId: string }) {
   const stats: Stat[] = [
     { label: 'Floors', value: floors.length - foundation.size || '—', hint: footings ? `and ${footings} footings` : undefined },
     { label: 'Rooms', value: rooms.length || '—' },
-    { label: 'Rooms finished', value: finished || '—', tone: finished ? 'good' : undefined, hint: 'every trade reported there done' },
+    { label: 'Rooms finished', value: finished || '—', tone: finished ? 'good' : undefined, },
     { label: 'Under way', value: underWay || '—', tone: underWay ? 'info' : undefined },
   ]
   const hasLive = !!live.data?.maps.length
@@ -127,7 +128,6 @@ function Legend() {
       {(Object.keys(CELL) as CellState[]).map((s) => (
         <span key={s} className="inline-flex items-center gap-1.5"><span className={cn('inline-block size-3 rounded-sm', CELL[s])} />{CELL_WORD[s]}</span>
       ))}
-      <span>A floor is done when every room on it is.</span>
     </div>
   )
 }
@@ -145,7 +145,7 @@ function Grid({ rows, kinds, onOpen }: { rows: PlaceProgressRow[]; kinds: Places
   }
   const toggle = (id: string) => setShut((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   return (
-    <div className="overflow-x-auto rounded-lg border [contain:inline-size]" data-guide="places.grid">
+    <div className="overflow-x-auto rounded-xl border bg-card [contain:inline-size]" data-guide="places.grid">
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
@@ -157,7 +157,7 @@ function Grid({ rows, kinds, onOpen }: { rows: PlaceProgressRow[]; kinds: Places
         <tbody className="divide-y">
           {rows.filter((r) => !hidden(r)).map((r) => (
             <tr key={r.id} className={cn(r.depth === 0 && 'bg-muted/20')}>
-              <td className="sticky left-0 z-10 bg-background px-2 py-1.5 whitespace-nowrap">
+              <td className="sticky left-0 z-10 bg-card px-2 py-1.5 whitespace-nowrap">
                 <div className="flex items-center gap-1" style={{ paddingLeft: r.depth * 16 }}>
                   {hasKids(r.id) ? (
                     <button type="button" className="rounded p-0.5 hover:bg-muted" aria-label={shut.has(r.id) ? `Show ${r.name}'s rooms` : `Hide ${r.name}'s rooms`} onClick={() => toggle(r.id)}>
@@ -253,9 +253,8 @@ function QuickSetup({ projectId, suggested }: { projectId: string; suggested: Pl
     onError: (e) => toast.error('Could not set up the places', apiErrorMessage(e)),
   })
   return (
-    <section className="flex flex-col" data-guide="places.setup">
-      <h2 className="font-medium">Set up floors and rooms</h2>
-      <p className="mb-3 text-sm text-muted-foreground">One per line. Every floor gets the same rooms.</p>
+    <section className="flex flex-col rounded-xl border bg-card p-4" data-guide="places.setup">
+      <h2 className="mb-3 flex items-center gap-1.5 font-medium">Set up floors and rooms <Hint title="Floors and rooms" text="One per line. Every floor gets the same rooms; change any of them afterwards with Edit." /></h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-1">
           <Label htmlFor="pl-floors">Floors</Label>
@@ -267,7 +266,13 @@ function QuickSetup({ projectId, suggested }: { projectId: string; suggested: Pl
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{f.length} floors × {r.length} rooms = {f.length * r.length} rooms</span>
+        <span className="flex items-center gap-1.5 text-sm tabular-nums">
+          <span className="rounded-full bg-muted px-2 py-0.5"><Layers className="mr-1 inline size-3.5" aria-hidden />{f.length}</span>
+          <span className="text-muted-foreground">×</span>
+          <span className="rounded-full bg-muted px-2 py-0.5">{r.length} rooms</span>
+          <span className="text-muted-foreground">=</span>
+          <span className="rounded-full bg-info-soft px-2 py-0.5 font-semibold text-info">{f.length * r.length} rooms</span>
+        </span>
         <Button disabled={!f.length || save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'Setting up…' : 'Set up'}</Button>
       </div>
     </section>

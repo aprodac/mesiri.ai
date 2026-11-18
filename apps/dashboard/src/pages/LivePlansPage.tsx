@@ -5,6 +5,8 @@ import { ArrowLeft, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, Circle
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, DprAside, PageError, Segmented, StatStrip, type Stat } from '@/components/dpr-page'
+import { Hint } from '@/components/hint'
+import { SayOnWhatsApp } from '@/components/page/page-kit'
 import { ModuleHeader } from '@/components/page/module-header'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import { PlanCanvas } from '@/components/live-maps/plan-canvas'
@@ -105,7 +107,7 @@ function Live({ projectId }: { projectId: string }) {
         { label: 'Steel in place', value: `${((s.steel_done_kg ?? 0) / 1000).toFixed(2)} of ${((s.steel_kg ?? 0) / 1000).toFixed(2)} t` },
       ]
     : [
-        { label: `${what} done`, value: `${s.done} of ${s.count}`, tone: s.count && s.done === s.count ? 'good' : undefined, hint: 'every trade finished' },
+        { label: `${what} done`, value: `${s.done} of ${s.count}`, tone: s.count && s.done === s.count ? 'good' : undefined, },
         { label: 'Under way', value: s.in_progress || '—', tone: s.in_progress ? 'info' : undefined },
         { label: 'Not started', value: s.not_started || '—' },
         { label: 'Photos', value: s.photos || '—' },
@@ -161,7 +163,10 @@ function ByTrade({ map, trade, onTrade }: { map: LiveMap; trade: string; onTrade
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold">By trade</h2>
       {map.kinds.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing reported yet. When site sends “{map.markers[0]?.label ?? 'B3'} {map.kind === 'foundation' ? 'footing concreted' : 'plastering done'}” on WhatsApp, it shows here and on the plan.</p>
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-muted-foreground">Nothing reported yet</p>
+          <SayOnWhatsApp text={`${map.markers[0]?.label ?? 'B3'} ${map.kind === 'foundation' ? 'footing concreted' : 'plastering done'}`} />
+        </div>
       ) : map.kinds.map((k) => (
         <button key={k.key} type="button" onClick={() => onTrade(trade === k.key ? 'all' : k.key)} aria-pressed={trade === k.key}
           className={cn('-mx-2 flex flex-col gap-1.5 rounded-md px-2 py-1 text-left hover:bg-muted/60', trade === k.key && 'bg-muted')}>
@@ -185,7 +190,7 @@ function Feed({ items, onOpen, onPhoto }: { items: LiveFeedItem[]; onOpen: (f: L
   return (
     <section className="flex flex-col gap-1" data-guide="live.feed">
       <h2 className="mb-1 flex items-center gap-1.5 text-sm font-semibold"><MessageCircle className="size-3.5 text-muted-foreground" /> From site</h2>
-      {items.length === 0 ? <p className="text-sm text-muted-foreground">Site's WhatsApp updates show here as they come.</p> : (
+      {items.length === 0 ? <p className="text-sm text-muted-foreground">No updates yet</p> : (
         <ul className="-mx-2 flex flex-col">
           {items.slice(0, 8).map((f) => {
             const Icon = f.finished ? CircleCheck : CircleDashed
@@ -238,9 +243,9 @@ function Details({ projectId, map, marker, trade, onBack, onPhoto }: { projectId
       )}
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">Photos {allPhotos.length > 0 && <span className="font-normal text-muted-foreground">{allPhotos.length}</span>}</h3>
-        {!marker.place_id ? <p className="text-sm text-muted-foreground">Not tracked yet: track the drawing to record work here.</p>
+        {!marker.place_id ? <p className="text-sm text-muted-foreground">Not tracked yet</p>
           : !work.data ? <div className="h-20 animate-pulse rounded-md bg-muted" />
-          : allPhotos.length === 0 ? <p className="text-sm text-muted-foreground">None yet. A photo sent with “{marker.label} …” on WhatsApp shows here.</p> : (
+          : allPhotos.length === 0 ? <SayOnWhatsApp text={`${marker.label} … (with a photo)`} /> : (
             <div className="grid grid-cols-3 gap-1.5">
               {allPhotos.slice(0, 9).map((u, i) => (
                 <button key={u} type="button" onClick={() => onPhoto(allPhotos, i)} className="aspect-square overflow-hidden rounded-md bg-muted" aria-label={`Photo ${i + 1}`}>
@@ -294,8 +299,10 @@ function TrackCallout({ projectId, data }: { projectId: string; data: LiveMaps }
   return (
     <Callout tone="draft" icon={MapPinned}
       action={data.can_track ? <Button size="sm" disabled={track.isPending} onClick={() => track.mutate()}>{track.isPending ? 'Setting up…' : 'Track on site'}</Button> : undefined}>
-      <span className="font-medium">{names}</span> {data.untracked.length > 1 ? 'are' : 'is'} not tracked on site yet. Track {data.untracked.length > 1 ? 'them' : 'it'} and site's messages (“kitchen plastering done”, “B3 footing concreted”) colour the rooms and footings here.
-      {!data.can_track && ' The owner, an admin or the project manager can do this.'}
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span className="font-medium">{names}</span> · not tracked on site
+        <Hint title="Track on site" text="Tracking makes each room and footing a place on site. Site's messages (“kitchen plastering done”, “B3 footing concreted”) then colour them here. The owner, an admin or the project manager can do this." />
+      </span>
     </Callout>
   )
 }

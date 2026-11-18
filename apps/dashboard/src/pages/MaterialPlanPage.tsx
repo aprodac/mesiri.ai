@@ -246,6 +246,8 @@ function PlanView({ projectId }: { projectId: string }) {
       ]
     : []
   const due = rows.filter((r) => r.u === 'now' || r.u === 'soon')
+  // Covered folds away only when something else is listed; alone, it is the whole table.
+  const allCovered = filter === 'covered' || !!needle || shown.every((r) => r.u === 'covered')
 
   return (
     <div className="mx-auto flex w-full min-w-0 flex-col gap-4 pb-8 sm:px-2">
@@ -300,8 +302,8 @@ function PlanView({ projectId }: { projectId: string }) {
               <EmptyState icon={Search} title="No material matches" action={<Button variant="outline" size="sm" onClick={() => { setFilter(''); setSearch('') }}>Show all</Button>} />
             ) : (
               <>
-                <PlanTable plan={plan} rows={shown} onOrder={order} openCovered={filter === 'covered' || !!needle} />
-                <PlanCards plan={plan} rows={shown} onOrder={order} openCovered={filter === 'covered' || !!needle} />
+                <PlanTable plan={plan} rows={shown} onOrder={order} openCovered={allCovered} />
+                <PlanCards plan={plan} rows={shown} onOrder={order} openCovered={allCovered} />
               </>
             )}
           </section>

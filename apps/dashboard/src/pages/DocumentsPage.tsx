@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, PageError } from '@/components/dpr-page'
+import { EmptyState } from '@/components/page/page-kit'
 import { ModuleHeader } from '@/components/page/module-header'
 import { ProjectPickList, usePlanningProject } from '@/components/schedule/project-picker'
 import {
@@ -63,7 +64,16 @@ function DocumentsView({ projectId }: { projectId: string }) {
       <ModuleHeader icon={FolderOpen} title="Documents" />
       {data && data.expiring.length > 0 && (
         <Callout tone="draft" icon={CalendarClock}>
-          {data.expiring.map((e) => `${e.title}: ${new Date(`${e.valid_until}T00:00:00`) < appNow() ? 'expired' : 'expires'} ${dayLabel(e.valid_until)}`).join(' · ')}
+          <span className="flex flex-wrap gap-1.5">
+            {data.expiring.map((e) => {
+              const gone = new Date(`${e.valid_until}T00:00:00`) < appNow()
+              return (
+                <span key={`${e.title}-${e.valid_until}`} className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', gone ? 'bg-destructive/10 text-destructive' : 'bg-card text-draft')} title={gone ? 'Expired' : 'Expires soon'}>
+                  {e.title} · {gone ? 'expired' : 'expires'} {dayLabel(e.valid_until)}
+                </span>
+              )
+            })}
+          </span>
         </Callout>
       )}
       <Dropzone projectId={projectId} folder={folder} />
@@ -81,9 +91,7 @@ function DocumentsView({ projectId }: { projectId: string }) {
             <Input className="pl-8" placeholder="Search number or title" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search documents" />
           </div>
           {!data ? <Skeleton className="h-48 w-full" /> : data.documents.length === 0 ? (
-            <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              {q || folder ? 'Nothing here.' : 'No documents yet. Drop the drawings, permits and contract above.'}
-            </p>
+            <EmptyState icon={q ? Search : FolderOpen} title={q || folder ? 'Nothing here' : 'No documents yet'} className="bg-card" />
           ) : (
             <>
               <ul className="divide-y rounded-lg border bg-card" data-guide="docs.list">
@@ -113,7 +121,7 @@ function DocRow({ doc, onOpen }: { doc: ProjectDocument; onOpen: () => void }) {
   return (
     <li>
       <button type="button" onClick={onOpen} className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-muted/40">
-        <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <FileKind name={doc.file_name} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
             {doc.number && <span className="text-sm text-muted-foreground tabular-nums">{doc.number}</span>}
@@ -124,8 +132,8 @@ function DocRow({ doc, onOpen }: { doc: ProjectDocument; onOpen: () => void }) {
           <p className="truncate text-xs text-muted-foreground">
             {FOLDER_NAMES[doc.folder]}{doc.discipline ? ` · ${DISCIPLINE_NAMES[doc.discipline] ?? doc.discipline}` : ''} · {dayLabel(doc.created_at)}
             {doc.uploaded_by_name ? ` · ${doc.uploaded_by_name}` : ''}{doc.source === 'whatsapp' ? ' (WhatsApp)' : ''}
-            {doc.valid_until ? ` · valid to ${dayLabel(doc.valid_until)}` : ''}
           </p>
+          {doc.valid_until && <ValidTo day={doc.valid_until} />}
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">{fileSize(doc.size_bytes)}</span>
       </button>
@@ -137,6 +145,28 @@ function DocRow({ doc, onOpen }: { doc: ProjectDocument; onOpen: () => void }) {
       )}
     </li>
   )
+}
+
+/** A file's kind at a glance: PDF red, image blue, sheet green, drawing amber, else grey. */
+const FILE_LOOK: { test: RegExp; label: string; cls: string }[] = [
+  { test: /\.pdf$/i, label: 'PDF', cls: 'bg-destructive/10 text-destructive' },
+  { test: /\.(jpe?g|png|heic|webp)$/i, label: 'IMG', cls: 'bg-info-soft text-info' },
+  { test: /\.(xlsx?|csv)$/i, label: 'XLS', cls: 'bg-success-soft text-success' },
+  { test: /\.dwg$/i, label: 'DWG', cls: 'bg-draft-soft text-draft' },
+  { test: /\.docx?$/i, label: 'DOC', cls: 'bg-info-soft text-info' },
+]
+
+function FileKind({ name }: { name: string }) {
+  const look = FILE_LOOK.find((l) => l.test.test(name))
+  if (!look) return <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+  return <span className={cn('mt-0.5 w-9 shrink-0 rounded px-1 py-0.5 text-center text-[10px] font-bold', look.cls)} aria-label={look.label}>{look.label}</span>
+}
+
+/** A permit's last day: red once past, amber within 30 days, grey after. */
+function ValidTo({ day }: { day: string }) {
+  const left = Math.round((new Date(`${day}T00:00:00`).getTime() - appNow().getTime()) / 86_400_000)
+  const cls = left < 0 ? 'bg-destructive/10 text-destructive' : left <= 30 ? 'bg-draft-soft text-draft' : 'bg-muted text-muted-foreground'
+  return <span className={cn('mt-1 inline-flex items-center gap-1 rounded-full px-2 py-px text-[11px] font-medium', cls)}><CalendarClock className="size-3" aria-hidden /> {left < 0 ? 'Expired' : 'Valid to'} {dayLabel(day)}</span>
 }
 
 function useRefresh(projectId: string) {
@@ -180,13 +210,16 @@ function Dropzone({ projectId, folder }: { projectId: string; folder: Folder | n
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { e.preventDefault(); setDragging(false); send(e.dataTransfer.files) }}
       data-guide="docs.drop"
-      className={cn('flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-4', dragging && 'border-primary bg-primary/5')}
+      className={cn('flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-dashed bg-card p-4', dragging && 'border-primary bg-primary/5')}
     >
       <div className="flex items-center gap-3">
         <Upload className="size-5 text-muted-foreground" />
         <div className="text-sm">
           <p className="font-medium">{busy ? `Keeping ${busy}…` : 'Drop files here'}</p>
-          <p className="text-xs text-muted-foreground">PDF, photos, Word, Excel or DWG, up to 25 MB each{folder ? `, into ${FOLDER_NAMES[folder]}` : ''}</p>
+          <p className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground" title="PDF, photos, Word, Excel or DWG, up to 25 MB each">
+            {['PDF', 'Photo', 'Word', 'Excel', 'DWG'].map((k) => <span key={k} className="rounded bg-muted px-1.5 py-px">{k}</span>)}
+            <span>≤ 25 MB{folder ? ` → ${FOLDER_NAMES[folder]}` : ''}</span>
+          </p>
         </div>
       </div>
       <input ref={input} type="file" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.docx,.xlsx,.dwg" onChange={(e) => { send(e.target.files); e.target.value = '' }} />
