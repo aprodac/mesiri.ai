@@ -637,6 +637,37 @@ async def cash_and_bank(date_from: datetime.date | None = None, date_to: datetim
     return _out({"date_from": date_from, "date_to": date_to, "scope": scope, **book})
 
 
+@router.get("/cash-flow")
+async def cash_flow(project_id: uuid.UUID | None = None, weeks: int = Query(default=8, ge=4, le=26),
+                    client_days: int = Query(default=30, ge=0, le=180, description="Days a client takes to pay a bill"),
+                    supplier_days: int = Query(default=30, ge=0, le=180,
+                                               description="Credit days for a supplier with none set"),
+                    auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    """ACC-18 / MP-06: money expected in and out each week from today (client bills owed, work not billed yet,
+    supplier and subcontractor bills, deliveries not billed, open orders, wages owed and ahead), each item with its
+    date and page, and the cash and bank balance it starts from. ``domains/accounts/cashflow.py``."""
+    from mesiri.application.dpr import project_day
+    from mesiri.domains.accounts import cashflow
+
+    _require(auth)
+    if project_id is not None and not auth.project_scope.grants_all_org_projects \
+            and project_id not in auth.project_scope.project_ids:
+        raise HTTPException(status_code=403, detail="Not authorized for this project")
+    scope = {project_id} if project_id else (None if auth.project_scope.grants_all_org_projects
+                                             else set(auth.project_scope.project_ids))
+    org = auth.organization_id
+    today = await project_day.company_today(conn, org)
+    raw = await cashflow.gather(conn, org, scope, today, client_days=client_days, supplier_days=supplier_days,
+                                weeks=weeks)
+    items = cashflow.place(raw, today, weeks)
+    items.sort(key=lambda i: (i["date"], i["kind"]))
+    opening, accounts = (None, []) if project_id else await cashflow.opening_cash(conn, org)
+    return _out({"as_of": today, "horizon": weeks, "client_days": client_days, "supplier_days": supplier_days,
+                 "opening": opening, "accounts": accounts, "items": items,
+                 "default_on": list(cashflow.DEFAULT_ON), "in_kinds": list(cashflow.IN_KINDS),
+                 **cashflow.totals(items, today, weeks, opening)})
+
+
 @router.get("/projects")
 async def projects(date_from: datetime.date | None = None, date_to: datetime.date | None = None,
                    auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
