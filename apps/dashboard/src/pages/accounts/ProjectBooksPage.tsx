@@ -254,30 +254,6 @@ export default function ProjectBooksPage() {
             )}
           </div>
 
-          {d.months.some((m) => Number(m.income) || Number(m.cost)) && (
-            <DprSection icon={TrendingUp} title="This year, month by month">
-              <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
-                <SplitBars
-                  up="Billed"
-                  down="Cost"
-                  upClass="fill-success"
-                  downClass="fill-destructive"
-                  items={d.months.map((m) => ({
-                    key: m.month,
-                    label: new Date(`${m.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short' }),
-                    up: Math.max(0, Number(m.income)),
-                    down: Math.max(0, Number(m.cost)),
-                    detail: (
-                      <>
-                        {new Date(`${m.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long' })}: billed {short(m.income)}, cost {short(m.cost)},{' '}
-                        <span className={Number(m.profit) < 0 ? 'text-destructive' : 'text-success'}>{Number(m.profit) < 0 ? 'loss' : 'profit'} {short(Math.abs(Number(m.profit)))}</span>
-                      </>
-                    ),
-                  }))}
-                />
-              </div>
-            </DprSection>
-          )}
           {/* UX-58: the proof, folded: the sum at the top already says the totals. */}
           <section ref={linesRef} className="scroll-mt-20 overflow-hidden rounded-xl border bg-card shadow-xs" aria-label="Line by line">
             <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
@@ -309,6 +285,30 @@ export default function ProjectBooksPage() {
               </div>
             )}
           </section>
+          {d.months.some((m) => Number(m.income) || Number(m.cost)) && (
+            <DprSection icon={TrendingUp} title="This year, month by month">
+              <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
+                <SplitBars
+                  up="Billed"
+                  down="Cost"
+                  upClass="fill-success"
+                  downClass="fill-destructive"
+                  items={d.months.map((m) => ({
+                    key: m.month,
+                    label: new Date(`${m.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short' }),
+                    up: Math.max(0, Number(m.income)),
+                    down: Math.max(0, Number(m.cost)),
+                    detail: (
+                      <>
+                        {new Date(`${m.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long' })}: billed {short(m.income)}, cost {short(m.cost)},{' '}
+                        <span className={Number(m.profit) < 0 ? 'text-destructive' : 'text-success'}>{Number(m.profit) < 0 ? 'loss' : 'profit'} {short(Math.abs(Number(m.profit)))}</span>
+                      </>
+                    ),
+                  }))}
+                />
+              </div>
+            </DprSection>
+          )}
         </>
       )}
     </div>
