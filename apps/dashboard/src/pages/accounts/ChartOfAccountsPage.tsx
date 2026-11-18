@@ -1,8 +1,9 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, FolderPlus, Link2, ListTree, Pencil, Plus, Search, Sparkles } from 'lucide-react'
+import { ChevronRight, FolderPlus, HardHat, Link2, ListTree, Pencil, Plus, Search, Sparkles } from 'lucide-react'
 import { BooksClosed } from '@/components/accounts/books'
+import { ExpenseHeadsDialog } from '@/components/accounts/expense-heads'
 import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -67,6 +68,7 @@ export default function ChartOfAccountsPage() {
   const allowed = mayReadBooks(me?.role)
   const chart = useQuery({ queryKey: ['accounts', 'chart'], queryFn: fetchChart, enabled: allowed })
   const [q, setQ] = React.useState('')
+  const [headsOpen, setHeadsOpen] = React.useState(false)
   const [closed, setClosed] = React.useState<Set<string>>(new Set())
   const [edit, setEdit] = React.useState<Edit>(null)
   const [form, setForm] = React.useState({ name: '', group_id: '', notes: '' })
@@ -212,7 +214,18 @@ export default function ChartOfAccountsPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} crumb="Accounts" title="Chart of accounts" date={d ? `${d.groups.length} groups · ${d.ledgers.length} ledgers` : undefined} />
+      <DprHeader
+        back={{ to: '/accounts/trial-balance', label: 'Trial balance' }}
+        crumb="Accounts"
+        title="Chart of accounts"
+        date={d ? `${d.groups.length} groups · ${d.ledgers.length} ledgers` : undefined}
+        action={
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card" onClick={() => setHeadsOpen(true)}>
+            <HardHat className="size-3.5" /> Site or office costs
+          </Button>
+        }
+      />
+      <ExpenseHeadsDialog open={headsOpen} onOpenChange={setHeadsOpen} />
       <Callout tone="info" icon={ListTree}>
         Tally's groups. Ledgers make themselves: nothing to set up.
       </Callout>

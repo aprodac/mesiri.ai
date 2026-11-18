@@ -696,3 +696,24 @@ export interface Tds extends Period {
 export async function fetchTds(period: Partial<Period>): Promise<Tds> {
   return (await api.get('/accounts/tds', { params: clean(period) })).data
 }
+
+/** UX-59: an expense category as a books head: a site (direct) or office (indirect) cost. */
+export interface ExpenseHead {
+  category_id: string
+  name: string
+  cost_centre: string | null
+  head: 'site' | 'office'
+  /** What its name suggests. */
+  suggested: 'site' | 'office'
+  amount: string
+  on_projects: string
+}
+export async function fetchExpenseHeads(): Promise<{ heads: ExpenseHead[] }> {
+  return (await api.get('/accounts/expense-heads')).data
+}
+export async function setExpenseHead(categoryId: string, head: 'site' | 'office'): Promise<ExpenseHead> {
+  return (await api.put(`/accounts/expense-heads/${categoryId}`, { head })).data
+}
+/** Office-looking heads still counted as site cost, with money on projects: the ones worth a look. */
+export const headsToCheck = (heads: ExpenseHead[] | undefined) =>
+  (heads ?? []).filter((h) => h.suggested === 'office' && h.head === 'site' && Number(h.on_projects) !== 0)

@@ -1,8 +1,9 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Building2, ChevronRight, Settings2 } from 'lucide-react'
+import { ArrowRight, Building2, ChevronRight, HardHat, Settings2 } from 'lucide-react'
 import { BooksClosed, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { ExpenseHeadsDialog, HeadsCheckChip } from '@/components/accounts/expense-heads'
 import { FlowStrip } from '@/components/accounts/money-kit'
 import { pctText } from '@/components/accounts/visuals'
 import { DprHeader, PageError } from '@/components/dpr-page'
@@ -15,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
-import { fetchProjectsBooks, mayReadProjectBooks, mayReopen, rupees, saveOverheads, short, type OverheadSettings, type ProjectRow } from '@/lib/accounts'
+import { fetchProjectsBooks, mayReadBooks, mayReadProjectBooks, mayReopen, rupees, saveOverheads, short, type OverheadSettings, type ProjectRow } from '@/lib/accounts'
 import { maySeeBoq } from '@/lib/boq'
 import { fetchPortfolio } from '@/lib/cost'
 import { apiErrorMessage } from '@/lib/logo-upload'
@@ -143,6 +144,7 @@ export default function ProjectsBooksPage() {
   const { period } = periodState
   const allowed = mayReadProjectBooks(me?.role)
   const [gear, setGear] = React.useState(false)
+  const [heads, setHeads] = React.useState(false)
   const q = useQuery({ queryKey: ['accounts', 'projects', period], queryFn: () => fetchProjectsBooks(period), enabled: allowed })
   // Billed to date for the real margin, and Cost control's full cost and forecast (when this role may read them).
   const toDate = useQuery({ queryKey: ['accounts', 'projects', 'to-date'], queryFn: () => fetchProjectsBooks({ date_from: '2000-01-01', date_to: period.date_to }), enabled: allowed })
@@ -179,6 +181,11 @@ export default function ProjectsBooksPage() {
         action={
           <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <PeriodBar state={periodState} />
+            {d && mayReadBooks(me?.role) && (
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card" onClick={() => setHeads(true)} title="Which expense categories are site (direct) or office (indirect) costs">
+                <HardHat className="size-3.5" /> <span className="hidden sm:inline">Cost heads</span>
+              </Button>
+            )}
             {d && mayReopen(me?.role) && (
               <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card" onClick={() => setGear(true)} title="Head-office costs in project profit">
                 <Settings2 className="size-3.5" /> <span className="hidden sm:inline">Head office</span>
@@ -200,6 +207,7 @@ export default function ProjectsBooksPage() {
               { label: profit < 0 ? 'Loss (books)' : 'Profit (books)', value: (profit < 0 ? '−' : '') + rupees(profit), tone: profit < 0 ? 'out' : 'balance', op: '=', sub: d.total.margin ? `${pctText(d.total.margin)} of billing` : undefined },
             ]}
           />
+          <HeadsCheckChip enabled={mayReadBooks(me?.role)} />
           {hasReal && atRisk > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm">
               <span className="font-semibold text-destructive">{atRisk} at risk</span>
@@ -362,6 +370,7 @@ export default function ProjectsBooksPage() {
             Cost control <ArrowRight className="size-3.5" aria-hidden />
           </Link>
           {mayReopen(me?.role) && <Overheads s={d} projects={d.projects} open={gear} onOpenChange={setGear} />}
+          {mayReadBooks(me?.role) && <ExpenseHeadsDialog open={heads} onOpenChange={setHeads} />}
         </>
       )}
     </div>

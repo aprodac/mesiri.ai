@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, ChevronDown, ChevronRight, Gauge, HandCoins, PieChart, Receipt, Scale, TrendingUp } from 'lucide-react'
 import { BooksClosed, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { HeadsCheckChip } from '@/components/accounts/expense-heads'
 import { FlowStrip } from '@/components/accounts/money-kit'
 import { PlSimple } from '@/components/accounts/pl-simple'
 import { PlTwoColumn } from '@/components/accounts/pl-two-column'
@@ -12,7 +13,7 @@ import { Hint } from '@/components/hint'
 import { Legend } from '@/components/page/page-kit'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
-import { fetchProjectBooks, formatDay, mayReadProjectBooks, rupees, short, type Position } from '@/lib/accounts'
+import { fetchProjectBooks, formatDay, mayReadBooks, mayReadProjectBooks, rupees, short, type Position } from '@/lib/accounts'
 import { maySeeBoq } from '@/lib/boq'
 import { useBooksView } from '@/lib/books-view'
 import { fetchPortfolio } from '@/lib/cost'
@@ -235,6 +236,7 @@ export default function ProjectBooksPage() {
             ]}
           />
 
+          <HeadsCheckChip enabled={mayReadBooks(me?.role)} />
           {real && (
             <DprSection icon={Scale} title="Books or real">
               <BooksOrReal booksMargin={t.net_margin === null ? null : Number(t.net_margin)} booksSub={`${formatDay(d.date_from)} – ${formatDay(d.date_to)}`} real={real} projectId={d.project_id} />
