@@ -21,22 +21,23 @@ export function StateChip({ state, className }: { state: Activity['state']; clas
   return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold', STATE_BAR[state].chip, className)}>{STATE_WORDS[state]}</span>
 }
 
+/** The activity's state in a few words (UX-50: a line of figures, not a sentence). */
 function why(a: Activity, today: string): string {
   switch (a.state) {
     case 'late':
-      return `Should have finished ${shortDay(a.end, today)}: ${plural(a.days_late, 'day')} late${a.progress !== null ? ` at ${a.progress}%` : ''}.`
+      return `Due ${shortDay(a.end, today)} · ${plural(a.days_late, 'day')} late${a.progress !== null ? ` · ${a.progress}%` : ''}`
     case 'behind':
       return a.progress === null || a.progress === 0
-        ? `Should have started ${shortDay(a.start, today)}; site has not reported work on it yet.`
-        : `${a.progress}% done; by today it should be about ${a.expected}%.`
+        ? `Due to start ${shortDay(a.start, today)} · no work reported`
+        : `${a.progress}% · should be ${a.expected}%`
     case 'on_track':
-      return a.progress !== null ? `${a.progress}% done, on pace for ${shortDay(a.end, today)}.` : 'Running to plan.'
+      return a.progress !== null ? `${a.progress}% · on pace for ${shortDay(a.end, today)}` : 'On plan'
     case 'not_started':
-      return `Starts ${shortDay(a.start, today)}${a.pushed_days ? `, but late work before it pushes it about ${plural(a.pushed_days, 'day')}` : ''}.`
+      return `Starts ${shortDay(a.start, today)}${a.pushed_days ? ` · +${plural(a.pushed_days, 'day')} from late work` : ''}`
     case 'done':
-      return a.actual_end ? `Finished ${shortDay(a.actual_end, today)}.` : 'Finished.'
+      return a.actual_end ? `Finished ${shortDay(a.actual_end, today)}` : 'Finished'
     default:
-      return 'No dates yet: give it a start and an end to put it on the schedule.'
+      return '' // the chip says it
   }
 }
 
@@ -100,12 +101,12 @@ export function ActivityPanel({
             <h2 className="truncate text-base font-semibold">{a.name}</h2>
             <StateChip state={a.state} />
             {a.critical && a.state !== 'done' && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800 dark:bg-orange-950 dark:text-orange-200" title="No slack: a day late here is a day late for the project">
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-draft-soft px-2 py-0.5 text-xs font-semibold text-draft" title="No slack: a day late here is a day late for the project">
                 <Flame className="size-3" /> Critical
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-sm text-muted-foreground">{why(a, today)}</p>
+          {why(a, today) && <p className="mt-0.5 text-sm text-muted-foreground">{why(a, today)}</p>}
         </div>
         {onClose && <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X className="size-4" /></Button>}
       </header>
@@ -145,7 +146,7 @@ export function ActivityPanel({
             </Fact>
           </dl>
           {a.progress === null && (
-            <p className="text-xs text-muted-foreground">Add BOQ lines to measure progress.</p>
+            <p className="text-xs text-muted-foreground">Not measured: no BOQ lines</p>
           )}
         </section>
       )}
@@ -155,12 +156,17 @@ export function ActivityPanel({
         <section className="flex flex-col gap-1.5 border-b p-4 text-sm">
           <h3 className="flex items-center gap-1.5 font-medium"><Link2 className="size-4 text-muted-foreground" /> Linked work</h3>
           {a.pushed_days > 0 && (
-            <p className="flex items-start gap-1.5 text-red-700 dark:text-red-300"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> Late work before this one pushes it about {plural(a.pushed_days, 'day')}.</p>
+            <p className="inline-flex w-fit items-center gap-1.5 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive" title="Late work before this one pushes it"><AlertTriangle className="size-3.5 shrink-0" /> Pushed +{plural(a.pushed_days, 'day')}</p>
           )}
           {followers.length > 0 && (
-            <p className="text-muted-foreground">
-              Comes before: {followers.map((f, i) => <React.Fragment key={f.id}>{i > 0 && ', '}<span className="text-foreground">{f.name}</span>{f.pushed_days > 0 && <span className="text-red-600"> (+{f.pushed_days}d)</span>}</React.Fragment>)}
-            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Then</span>
+              {followers.map((f) => (
+                <span key={f.id} className={cn('rounded-full border px-2 py-0.5 text-xs', f.pushed_days > 0 && 'border-destructive/30 bg-destructive/10 text-destructive')}>
+                  {f.name}{f.pushed_days > 0 && ` +${f.pushed_days}d`}
+                </span>
+              ))}
+            </div>
           )}
         </section>
       )}
@@ -204,7 +210,7 @@ export function ActivityPanel({
               <button type="button" className="text-xs text-primary-ink hover:underline" onClick={() => setPickAfter((v) => !v)}>{pickAfter ? 'Done' : 'Change'}</button>
             </div>
             {!pickAfter ? (
-              <p className="text-sm">{Object.keys(after).length === 0 ? <span className="text-muted-foreground">Nothing: it can start any time</span> : Object.keys(after).map((id) => others.find((o) => o.id === id)?.name).filter(Boolean).join(', ')}</p>
+              <p className="text-sm">{Object.keys(after).length === 0 ? <span className="text-muted-foreground">Nothing · any time</span> : Object.keys(after).map((id) => others.find((o) => o.id === id)?.name).filter(Boolean).join(', ')}</p>
             ) : (
               <ul className="max-h-48 divide-y overflow-y-auto rounded-lg border text-sm">
                 {others.map((o) => {
@@ -281,10 +287,10 @@ export function ActivityPanel({
         <div className="flex flex-col gap-1">
           <h3 className="flex items-center gap-1.5 font-medium"><MessageSquareText className="size-4 text-muted-foreground" /> From site</h3>
           <p className="text-muted-foreground">
-            {a.updates ? <>{plural(a.updates, 'update')}, last {shortDay(a.last_update, today)}. <Link to={`/site-log?project=${projectId}`} className="text-primary-ink hover:underline">Site log</Link></> : 'No updates yet.'}
+            {a.updates ? <>{plural(a.updates, 'update')} · last {shortDay(a.last_update, today)} · <Link to={`/site-log?project=${projectId}`} className="text-primary-ink hover:underline">Site log</Link></> : 'No updates yet'}
           </p>
           {a.open_issues > 0 && (
-            <Link to={`/issues?project=${projectId}`} className="inline-flex items-center gap-1 font-medium text-red-700 hover:underline dark:text-red-300"><AlertTriangle className="size-3.5" /> {plural(a.open_issues, 'open issue')}</Link>
+            <Link to={`/issues?project=${projectId}`} className="inline-flex items-center gap-1 font-medium text-destructive hover:underline"><AlertTriangle className="size-3.5" /> {plural(a.open_issues, 'open issue')}</Link>
           )}
           {(a.issues ?? []).length > 0 && (
             <ul className="flex flex-col gap-0.5 text-muted-foreground">
@@ -303,7 +309,7 @@ function Fact({ label, children, bad }: { label: string; children: React.ReactNo
   return (
     <div className="flex flex-col">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn('tabular-nums', bad && 'font-semibold text-red-700 dark:text-red-300')}>{children}</dd>
+      <dd className={cn('tabular-nums', bad && 'font-semibold text-destructive')}>{children}</dd>
     </div>
   )
 }

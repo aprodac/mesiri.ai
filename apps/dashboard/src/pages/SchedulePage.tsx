@@ -143,17 +143,17 @@ function ScheduleView({ projectId }: { projectId: string }) {
   const pushedCount = s.activities.filter((a) => a.pushed_days > 0 && a.state !== 'done').length
 
   const stats: Stat[] = [
-    { label: 'Work done', explain: { title: 'Work done', text: 'How much of the whole project is built, measured from the work the site reports against the BOQ, not from the calendar.' }, value: s.summary.progress !== null ? `${s.summary.progress}%` : '—', icon: Gauge, hint: 'measured from site updates' },
-    { label: 'Late', explain: { title: 'Late', text: 'Parts of the work that should have finished by today and have not.' }, value: counts.late ?? 0, tone: counts.late ? 'bad' : 'good', icon: AlertTriangle, hint: counts.behind ? `${counts.behind} more behind` : 'past their end day' },
-    { label: 'On track', explain: { title: 'On track', text: 'Parts of the work moving at the pace their dates need, and those already finished.' }, value: (counts.on_track ?? 0) + (counts.done ?? 0), tone: 'good', icon: CheckCircle2, hint: `${counts.done ?? 0} finished` },
-    { label: 'Handover', explain: { term: 'handover' }, value: shortDay(finishTarget, today), icon: CalendarCheck2, hint: s.summary.contract_finish ? 'contract date' : 'last planned day' },
+    { label: 'Work done', explain: { title: 'Work done', text: 'How much of the whole project is built, measured from the work the site reports against the BOQ, not from the calendar.' }, value: s.summary.progress !== null ? `${s.summary.progress}%` : '—', icon: Gauge },
+    { label: 'Late', explain: { title: 'Late', text: 'Parts of the work that should have finished by today and have not.' }, value: counts.late ?? 0, tone: counts.late ? 'bad' : 'good', icon: AlertTriangle, hint: counts.behind ? `+${counts.behind} behind` : undefined },
+    { label: 'On track', explain: { title: 'On track', text: 'Parts of the work moving at the pace their dates need, and those already finished.' }, value: (counts.on_track ?? 0) + (counts.done ?? 0), tone: 'good', icon: CheckCircle2, hint: counts.done ? `${counts.done} finished` : undefined },
+    { label: 'Handover', explain: { term: 'handover' }, value: shortDay(finishTarget, today), icon: CalendarCheck2, hint: s.summary.contract_finish ? 'contract' : 'planned' },
     {
       label: 'Forecast finish',
       explain: { title: 'Forecast finish', text: 'When the project will finish if work keeps going at the pace the site has reported so far. Later than handover means it is slipping.' },
       value: shortDay(s.summary.forecast_finish, today),
       tone: s.summary.slip_days > 0 ? 'bad' : s.summary.forecast_finish ? 'good' : 'default',
       icon: Clock,
-      hint: s.summary.slip_days > 0 ? `${plural(s.summary.slip_days, 'day')} late at this pace` : 'on time at this pace',
+      hint: s.summary.slip_days > 0 ? `+${plural(s.summary.slip_days, 'day')}` : undefined,
     },
   ]
 
@@ -174,7 +174,6 @@ function ScheduleView({ projectId }: { projectId: string }) {
     <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 pb-24 sm:px-2 md:pb-8">
       <Heading chip={<StageChip stage={s.project.stage} label={s.project.stage_label} />}>
         <div className="flex flex-wrap items-center gap-2" data-guide="schedule.add">
-          <Link to={`/planning/setup?project=${projectId}`} className="text-sm text-muted-foreground hover:text-foreground">{s.project.name}</Link>
           {canEdit && <Button variant="outline" className="gap-2" onClick={() => setImporting(true)}><ActionIcon kind="import-excel" className="size-4" /><span className="hidden sm:inline">BOQ from Excel</span></Button>}
           {canEdit && s.activities.length > 0 && undated.length !== s.activities.length && <Button variant="outline" className="gap-2" onClick={() => setQuick(true)}><ListOrdered className="size-4" /><span className="hidden sm:inline">Quick plan</span></Button>}
           {canEdit && <Button className="hidden gap-2 font-semibold md:inline-flex" onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2.6} /> Activity</Button>}
@@ -187,14 +186,17 @@ function ScheduleView({ projectId }: { projectId: string }) {
         <>
           {worst ? (
             <Callout tone="draft" icon={AlertTriangle} action={<Button size="sm" variant="outline" onClick={() => { setFilter('attention'); select(worst.id) }}>See what is late</Button>}>
-              <strong>{worst.name}</strong> is {worst.state === 'late' ? `${plural(worst.days_late, 'day')} late` : 'behind'}
-              {worst.progress !== null ? ` at ${worst.progress}%` : ''}
-              {pushedCount ? ` and pushes ${plural(pushedCount, 'activity')} after it` : ''}.
-              {s.summary.slip_days > 0 && <> Forecast handover <strong>{shortDay(s.summary.forecast_finish, today)}</strong>, {plural(s.summary.slip_days, 'day')} late.</>}
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <strong>{worst.name}</strong>
+                <span className="rounded-full bg-destructive/10 px-2 py-px text-xs font-semibold text-destructive">{worst.state === 'late' ? `${plural(worst.days_late, 'day')} late` : 'Behind'}</span>
+                {worst.progress !== null && <span className="text-xs font-semibold tabular-nums">{worst.progress}%</span>}
+                {pushedCount > 0 && <span className="text-xs" title={`Pushes ${plural(pushedCount, 'activity')} after it`}>→ pushes {pushedCount}</span>}
+                {s.summary.slip_days > 0 && <span className="text-xs" title="Forecast handover at this pace">Handover <strong>{shortDay(s.summary.forecast_finish, today)}</strong> (+{s.summary.slip_days}d)</span>}
+              </span>
             </Callout>
           ) : undated.length === s.activities.length ? (
             <Callout tone="info" icon={Rocket} action={canEdit && <Button size="sm" onClick={() => setQuick(true)} className="gap-1.5"><ListOrdered className="size-4" /> Quick plan</Button>}>
-              {plural(undated.length, 'section')} from the BOQ, none with dates yet.
+              <strong className="tabular-nums">{undated.length}</strong> {undated.length === 1 ? 'section' : 'sections'} without dates
               <Hint title="Quick plan" text="Puts the BOQ's sections one after another from the start date, each as long as its share of the work. Move any bar afterwards." />
             </Callout>
           ) : (
@@ -253,9 +255,9 @@ function ScheduleView({ projectId }: { projectId: string }) {
                 <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span className="inline-flex items-center gap-1"><MessageCircle className="size-3.5" /> Fills from site updates</span>
                   {canEdit && <span>Drag a bar to move it</span>}
-                  {s.summary.conflicts > 0 && <span className="text-red-600">{plural(s.summary.conflicts, 'link')} broken by the dates (red dashed).</span>}
+                  {s.summary.conflicts > 0 && <span className="text-destructive">{plural(s.summary.conflicts, 'link')} broken by the dates (red dashed).</span>}
                   {(s.summary.issues_on_no_activity ?? 0) > 0 && (
-                    <Link to={`/issues?project=${projectId}`} className="text-red-600 underline underline-offset-2">
+                    <Link to={`/issues?project=${projectId}`} className="text-destructive underline underline-offset-2">
                       {plural(s.summary.issues_on_no_activity ?? 0, 'open issue')} not on any activity here
                     </Link>
                   )}
@@ -315,8 +317,8 @@ function Legend() {
   return (
     <span className="hidden items-center gap-2.5 text-[11px] text-muted-foreground 2xl:flex">
       {items.map(([k, label]) => <span key={k} className="inline-flex items-center gap-1"><span className={cn('size-2.5 rounded-sm', STATE_BAR[k].fill)} />{label}</span>)}
-      <span className="inline-flex items-center gap-1"><Flame className="size-3 text-orange-600" />Critical</span>
-      <span className="inline-flex items-center gap-1"><span className="h-2.5 w-4 rounded-sm border border-dashed border-red-500" />Overrun</span>
+      <span className="inline-flex items-center gap-1"><Flame className="size-3 text-draft" />Critical</span>
+      <span className="inline-flex items-center gap-1"><span className="h-2.5 w-4 rounded-sm border border-dashed border-destructive" />Overrun</span>
     </span>
   )
 }
@@ -348,12 +350,12 @@ function MobileList({ schedule: s, activities, onSelect }: { schedule: Schedule;
         <li key={a.id}>
           <button type="button" onClick={() => onSelect(a.id)} className="flex w-full flex-col gap-1.5 rounded-xl border p-3 text-left active:bg-muted/50">
             <span className="flex items-center justify-between gap-2">
-              <span className="flex min-w-0 items-center gap-1.5 font-medium"><span className="truncate">{a.name}</span>{a.critical && a.state !== 'done' && <Flame className="size-3.5 shrink-0 text-orange-600" />}</span>
+              <span className="flex min-w-0 items-center gap-1.5 font-medium"><span className="truncate">{a.name}</span>{a.critical && a.state !== 'done' && <Flame className="size-3.5 shrink-0 text-draft" />}</span>
               <StateChip state={a.state} />
             </span>
             <span className="text-xs text-muted-foreground">
               {a.start ? `${shortDay(a.start, s.today)}${a.milestone ? ' · milestone' : ` → ${shortDay(a.end, s.today)}`}` : 'No dates yet'}
-              {a.slip_days > 0 && !a.done ? <span className="text-red-600"> · forecast {shortDay(a.forecast_end, s.today)}</span> : null}
+              {a.slip_days > 0 && !a.done ? <span className="text-destructive"> · forecast {shortDay(a.forecast_end, s.today)}</span> : null}
             </span>
             {!a.milestone && a.start && (
               <span className="relative h-2 overflow-hidden rounded-full bg-muted">
