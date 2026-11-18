@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDownLeft, ArrowRight, ArrowUpRight, ChevronDown, Landmark, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, Landmark, Wallet } from 'lucide-react'
 import { BooksClosed, PeriodBar, VoucherSheet, usePeriod } from '@/components/accounts/books'
 import { LedgerEntries } from '@/components/accounts/ledger-entries'
 import { FlowStrip } from '@/components/accounts/money-kit'
@@ -17,9 +17,9 @@ import { cn } from '@/lib/utils'
 // ACC-07 / ACC-22: every cash box and bank account: opening, money in, money out, closing; each day's money in and
 // out (moves between the company's own accounts left out); each account opens its book. For a project: the money
 // paid and received for it. Backend: GET /accounts/cash-bank.
-// UX-43 (Mercon's bank accounts as the reference): the period as a sum (opening + in − out = closing); each account a
-// card with its balance, its share of all the money, what came in and went out; its last entries open in the card,
-// each to its voucher; money in and out day by day below.
+// UX-43 (Mercon's bank accounts as the reference): the period as a sum (opening + in − out = closing); the accounts as
+// one table (UX-44): opening, money in (green), money out (rose), an in / out bar, closing, its share of all the money;
+// its entries open under its row, each to its voucher; money in and out day by day below.
 
 const tiny = 0.005
 const isCash = (a: CashAccount) => /cash/i.test(a.group)
@@ -77,67 +77,102 @@ export default function CashBankPage() {
             {d.accounts.length === 0 ? (
               <p className="rounded-xl border border-dashed bg-card px-4 py-6 text-sm text-muted-foreground">No cash box or bank account has moved money in this period{scope.mode !== 'portfolio' ? ` for ${d.scope}` : ''}.</p>
             ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {accounts.map((a) => {
-                  const cash = isCash(a)
-                  const Icon = cash ? Wallet : Landmark
-                  const closing = Number(a.closing)
-                  const share = Math.max(0, closing) / all
-                  const moved = Number(a.in) + Number(a.out) || 1
-                  const isOpen = open === a.ledger_id
-                  return (
-                    <div key={a.ledger_id} className={cn('flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs', isOpen && 'md:col-span-2 xl:col-span-3')}>
-                      <div className="flex flex-col gap-3 p-4">
-                        <div className="flex items-start gap-3">
-                          <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', cash ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'bg-sky-500/10 text-sky-700 dark:text-sky-400')}>
-                            <Icon className="size-5" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <Link to={`/accounts/ledgers/${a.ledger_id}${keep}`} className="block truncate font-semibold hover:underline">
-                              {a.name}
-                            </Link>
-                            <span className="block text-xs text-muted-foreground">
-                              {a.group} · {a.lines} {a.lines === 1 ? 'entry' : 'entries'}
-                            </span>
-                          </div>
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground" title="Share of all the money in cash and bank">
-                            {Math.round(share * 100)}%
-                          </span>
-                        </div>
-                        <div>
-                          <p className={cn('text-2xl font-semibold tabular-nums tracking-tight', closing < -tiny && 'text-destructive')}>
-                            {closing < -tiny && '−'}
-                            {rupees(closing)}
-                          </p>
-                          <p className="text-xs text-muted-foreground tabular-nums">from {rupees(a.opening)} on {formatDay(d.date_from)}</p>
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-muted">
-                            {Number(a.in) > tiny && <span className="h-full rounded-l-full bg-emerald-500" style={{ width: `${(Number(a.in) / moved) * 100}%` }} />}
-                            {Number(a.out) > tiny && <span className="h-full rounded-r-full bg-rose-500" style={{ width: `${(Number(a.out) / moved) * 100}%` }} />}
-                          </div>
-                          <div className="flex justify-between text-xs tabular-nums">
-                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                              <ArrowDownLeft className="size-3.5" /> {rupees(a.in)} in
-                            </span>
-                            <span className="inline-flex items-center gap-1 text-rose-700 dark:text-rose-400">
-                              <ArrowUpRight className="size-3.5" /> {rupees(a.out)} out
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-auto flex items-center justify-between border-t bg-muted/30 px-4 py-2 text-xs">
-                        <button type="button" onClick={() => setOpen(isOpen ? null : a.ledger_id)} aria-expanded={isOpen} className="inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground">
-                          <ChevronDown className={cn('size-3.5 transition-transform', isOpen && 'rotate-180')} /> {isOpen ? 'Hide entries' : 'Last entries'}
-                        </button>
-                        <Link to={`/accounts/ledgers/${a.ledger_id}${keep}`} className="inline-flex items-center gap-1 font-medium text-primary-ink hover:underline">
-                          Statement <ArrowRight className="size-3" />
-                        </Link>
-                      </div>
-                      {isOpen && <LedgerEntries ledgerId={a.ledger_id} period={period} scope={sp} debitUp keep={keep} onEntry={setEntry} indent="pl-4" />}
-                    </div>
-                  )
-                })}
+              <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted text-xs text-muted-foreground">
+                        <th className="px-3 py-2 text-left font-medium">Account</th>
+                        <th className="px-3 py-2 text-right font-medium">Opening</th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          <span className="inline-flex items-center gap-1"><ArrowDownLeft className="size-3.5 text-emerald-600" /> Money in</span>
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          <span className="inline-flex items-center gap-1"><ArrowUpRight className="size-3.5 text-rose-600" /> Money out</span>
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">In and out</th>
+                        <th className="px-3 py-2 text-right font-medium">Closing</th>
+                        <th className="px-3 py-2 text-left font-medium">Share</th>
+                        <th className="w-24 px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {accounts.map((a) => {
+                        const cash = isCash(a)
+                        const Icon = cash ? Wallet : Landmark
+                        const closing = Number(a.closing)
+                        const share = Math.max(0, closing) / all
+                        const moved = Number(a.in) + Number(a.out) || 1
+                        const isOpen = open === a.ledger_id
+                        return (
+                          <React.Fragment key={a.ledger_id}>
+                            <tr className={cn('border-t border-border/60 first:border-t-0 hover:bg-muted/30', isOpen && 'bg-muted/30')}>
+                              <td className="px-3 py-2.5">
+                                <span className="flex items-center gap-2.5">
+                                  <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', cash ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'bg-sky-500/10 text-sky-700 dark:text-sky-400')}>
+                                    <Icon className="size-4" />
+                                  </span>
+                                  <span className="min-w-0">
+                                    <Link to={`/accounts/ledgers/${a.ledger_id}${keep}`} className="block truncate font-semibold hover:underline">
+                                      {a.name}
+                                    </Link>
+                                    <span className="block text-xs text-muted-foreground">
+                                      {a.group} · {a.lines} {a.lines === 1 ? 'entry' : 'entries'}
+                                    </span>
+                                  </span>
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted-foreground">{rupees(a.opening)}</td>
+                              <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{Number(a.in) ? `+${rupees(a.in)}` : '—'}</td>
+                              <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-rose-700 dark:text-rose-400">{Number(a.out) ? `−${rupees(a.out)}` : '—'}</td>
+                              <td className="px-3 py-2.5">
+                                <span className="flex h-1.5 w-24 gap-0.5 overflow-hidden rounded-full bg-muted">
+                                  {Number(a.in) > tiny && <span className="h-full rounded-l-full bg-emerald-500" style={{ width: `${(Number(a.in) / moved) * 100}%` }} />}
+                                  {Number(a.out) > tiny && <span className="h-full rounded-r-full bg-rose-500" style={{ width: `${(Number(a.out) / moved) * 100}%` }} />}
+                                </span>
+                              </td>
+                              <td className={cn('whitespace-nowrap px-3 py-2.5 text-right text-base font-semibold tabular-nums', closing < -tiny && 'text-destructive')}>
+                                {closing < -tiny && '−'}
+                                {rupees(closing)}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <span className="flex items-center gap-2" title="Share of all the money in cash and bank">
+                                  <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                                    <span className={cn('block h-full rounded-full', cash ? 'bg-amber-500' : 'bg-sky-500')} style={{ width: `${share * 100}%` }} />
+                                  </span>
+                                  <span className="text-xs tabular-nums text-muted-foreground">{Math.round(share * 100)}%</span>
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <button type="button" onClick={() => setOpen(isOpen ? null : a.ledger_id)} aria-expanded={isOpen} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+                                  <ChevronDown className={cn('size-3.5 transition-transform', isOpen && 'rotate-180')} /> Entries
+                                </button>
+                              </td>
+                            </tr>
+                            {isOpen && (
+                              <tr>
+                                <td colSpan={8} className="p-0">
+                                  <LedgerEntries ledgerId={a.ledger_id} period={period} scope={sp} debitUp keep={keep} onEntry={setEntry} indent="pl-14" />
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-[1.5px] border-foreground/25 bg-muted/30 font-semibold">
+                        <td className="px-3 py-2.5">All accounts</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{rupees(d.total.opening)}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-emerald-700 dark:text-emerald-400">+{rupees(d.total.in)}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-rose-700 dark:text-rose-400">−{rupees(d.total.out)}</td>
+                        <td />
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right text-base tabular-nums">{rupees(d.total.closing)}</td>
+                        <td colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             )}
           </section>
