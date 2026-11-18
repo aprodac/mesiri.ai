@@ -19,7 +19,7 @@ import { usePreferences, type Preferences } from './start-mode'
 export const ORDERABLE: NavSection[] = ['tasks', 'plan', 'site', 'buy', 'money']
 
 /** Pages that are always at the top of the sidebar, so never pinned. */
-export const EVERYDAY = ['/today', '/reports', '/issues', '/live']
+export const EVERYDAY = ['/home', '/today', '/reports', '/issues', '/live']
 
 /** At most this many pinned pages: past it the pinned list stops being a shortcut. */
 export const MAX_PINS = 12

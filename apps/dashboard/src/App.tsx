@@ -7,6 +7,8 @@ import WelcomePage from '@/pages/WelcomePage'
 import LivePage from '@/pages/LivePage'
 import { RequireAuth } from '@/lib/AuthContext'
 import TodayPage from '@/pages/TodayPage'
+import HomePage from '@/pages/HomePage'
+import { useAuth } from '@/lib/AuthContext'
 import ApprovalsPage from '@/pages/ApprovalsPage'
 import SiteDayPage from '@/pages/SiteDayPage'
 import ProjectDayPage from '@/pages/ProjectDayPage'
@@ -99,7 +101,7 @@ import { ToastProvider } from '@/components/ui/toast-notification'
 
 // V1 routes (WEB-21, docs/DESIGN.md "Pages and routes"): one address per
 // thing, named as the sidebar names it. Every older address redirects so
-// bookmarks keep working; anything unknown lands on Today.
+// bookmarks keep working; anything unknown lands on the person's landing page (Landing).
 
 /** Redirect to `to`, keeping the query string (scope, filters, date). */
 function Moved({ to }: { to: string }) {
@@ -115,6 +117,13 @@ function MovedDayPage({ level }: { level: 'sites' | 'projects' }) {
   const { id = '', date = '' } = useParams()
   const { search } = useLocation()
   return <Navigate to={`/reports/${date}/${level}/${id}${search}`} replace />
+}
+
+/** UX-68: where a person lands (the bare address, an unknown one): Home, or Today for a site engineer, whose job is
+ *  the day's report. Keeps the query (the scope). */
+function Landing() {
+  const { me } = useAuth()
+  return <Moved to={(me?.role || '').toUpperCase() === 'SITE_ENGINEER' ? '/today' : '/home'} />
 }
 
 function MovedUser() {
@@ -151,9 +160,10 @@ export default function App() {
         <Route path="/subcontract/work-orders/:id/document" element={<RequireAuth><WorkOrderDocumentPage /></RequireAuth>} />
         <Route path="/subcontract/statement/:vendorId" element={<RequireAuth><StatementPage /></RequireAuth>} />
         <Route path="/" element={<AppLayout />}>
-          <Route index element={<Moved to="/today" />} />
+          <Route index element={<Landing />} />
 
           {/* Daily */}
+          <Route path="home" element={<HomePage />} />
           <Route path="today" element={<TodayPage />} />
           <Route path="site/approvals" element={<ApprovalsPage />} />
           <Route path="approvals" element={<Navigate to="/site/approvals" replace />} />
@@ -311,7 +321,7 @@ export default function App() {
           <Route path="petty-cash" element={<Moved to="/finance/petty-cash" />} />
           {/* Removed pages (the operations dashboard -- Today does its job --
               and operations settings, which nothing read) and anything unknown. */}
-          <Route path="*" element={<Moved to="/today" />} />
+          <Route path="*" element={<Landing />} />
         </Route>
       </Routes>
     </ToastProvider>

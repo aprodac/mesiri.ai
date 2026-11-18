@@ -13,6 +13,7 @@ export function usePageTitle(title: string | null | undefined): void {
 }
 
 const ROUTE_TITLES: [string, string][] = [
+  ['/home', 'Home'],
   ['/today', 'Today'],
   ['/reports', 'Reports'],
   ['/issues', 'Issues'],

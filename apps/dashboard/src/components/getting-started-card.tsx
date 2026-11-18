@@ -314,7 +314,7 @@ function GettingStartedCardInner() {
   return (
     // Compact (WEB-25 density): progress on the title line, done steps
     // folded into it; only the steps still to do get a row.
-    <section ref={section} aria-label="Getting started" data-guide="today.checklist" className="scroll-mt-16 flex flex-col gap-2 rounded-xl border px-4 py-3">
+    <section ref={section} aria-label="Getting started" data-guide="home.checklist" className="scroll-mt-16 flex flex-col gap-2 rounded-xl border px-4 py-3">
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold">Getting started</h2>

@@ -13,9 +13,7 @@ import {
   type SiteIssueItem,
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
-import { GettingStartedCard } from '@/components/getting-started-card'
 import { FirstReportMoment } from '@/components/first-report-moment'
-import { TimeSaved } from '@/components/time-saved'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
@@ -23,13 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Callout } from '@/components/dpr-page'
 import { TodayHero } from '@/components/home/today-hero'
 import { cn, formatClock } from '@/lib/utils'
-import { SupplierPapersWaiting, SuppliersWaiting } from '@/components/vendors/vendor-parts'
-import { RoleHome } from '@/components/home/role-home'
-import { ThisWeek } from '@/components/home/this-week'
 import { ActionButton, EmptyState } from '@/components/page/page-kit'
 import { useAuth } from '@/lib/AuthContext'
-import { BillsWaitingLine } from '@/components/subcontracts/parts'
-import { MyTasksCard } from '@/components/tasks/my-tasks-card'
 import {
   CHIP,
   FROZEN,
@@ -317,14 +310,12 @@ export default function TodayPage() {
   }
   const cutoffs = [...new Set(projects.map((p) => p.reporting_cutoff_time).filter(Boolean))]
 
-  const userName = me?.name || me?.full_name || ''
   const scopeLabel = scope.mode === 'site' ? scope.siteName : scope.mode === 'project' ? scope.projectName : projects.length > 1 ? 'All projects' : null
   const daysBack = Math.round((new Date(`${today}T00:00:00`).getTime() - new Date(`${date}T00:00:00`).getTime()) / 86_400_000)
 
   return (
     <div className="mx-auto flex w-full flex-col gap-5 pb-8 sm:px-2">
       <TodayHero
-        name={userName}
         isToday={isToday}
         dateLabel={longDate(date)}
         scopeLabel={scopeLabel}
@@ -348,13 +339,7 @@ export default function TodayPage() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="flex min-w-0 flex-col gap-5">
-          {isToday && <ThisWeek />}
-          {isToday && <MyTasksCard />}
           {isToday && <FirstReportMoment />}
-          {isToday && <GettingStartedCard />}
-          {isToday && <SuppliersWaiting />}
-          {isToday && <SupplierPapersWaiting />}
-          {isToday && <BillsWaitingLine />}
       {daysQuery.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={refresh}>Try again</Button>}>
           Today's sites could not be loaded.
@@ -434,8 +419,6 @@ export default function TodayPage() {
         </div>
 
           <aside className="flex min-w-0 flex-col gap-5">
-            {isToday && <RoleHome rail />}
-            {isToday && <TimeSaved />}
             <div data-guide="today.issues">
             <section className="overflow-hidden rounded-xl border bg-card shadow-xs" aria-label="Open issues">
               <header className="flex items-center gap-2.5 border-b px-4 py-3">
