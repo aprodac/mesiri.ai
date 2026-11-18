@@ -9,6 +9,7 @@ follows); it can be moved to another group.
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -70,6 +71,24 @@ LEDGERS: tuple[tuple[str, str, str, str], ...] = (
 #: The groups a linked ledger is made in (``link_kind`` -> group code). Money accounts depend on the account type.
 LINK_GROUP = {"vendor": "sundry_creditors", "client": "sundry_debtors", "expense_category": "direct_expenses",
               "staff": "current_liabilities"}
+
+#: UX-59 (18 Nov 2026): a construction company's expense heads are direct (contract) costs, everything spent for a
+#: job, site overheads included (site staff, site office, power, hire), or indirect (head-office) costs that run the
+#: company. An expense category is a head (its ledger); one whose name plainly runs the office starts under Indirect
+#: Expenses, the rest under Direct Expenses. Kept narrow on purpose ("rent" or "salary" alone may be a site's):
+#: the owner or the accountant moves any head in Accounts (Site or office costs), as a Tally ledger moves group.
+_OFFICE_HEAD = re.compile(
+    r"\b(office|head[- ]?office|admin(istration|istrative)?|stationery|audit|accountan|accounting|legal|marketing|"
+    r"advertis|bank charge|interest|software|subscription|postage|courier|telephone|broadband|internet|director)",
+    re.IGNORECASE)
+_SITE_HEAD = re.compile(r"\b(site|project|camp)\b", re.IGNORECASE)
+
+
+def expense_head_group(name: str | None) -> str:
+    """The group a new expense category's ledger starts in: ``indirect_expenses`` for an office head, else direct."""
+    if not name or _SITE_HEAD.search(name):  # "Site office", "site admin": a site overhead is a job's cost
+        return "direct_expenses"
+    return "indirect_expenses" if _OFFICE_HEAD.search(name) else "direct_expenses"
 ACCOUNT_TYPE_GROUP = {"bank": "bank_accounts", "cash": "cash_in_hand", "employee_advance": "cash_in_hand",
                       "other": "current_assets"}
 #: The TDS payable money account (``subcontracts/store.py``) is money owed to the government, not money held.

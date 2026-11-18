@@ -306,6 +306,7 @@ async def _resolver(conn: AsyncConnection, org: uuid.UUID, refs: set[tuple]) -> 
             kind, rid = ref[1], ref[2]
             rec = names[kind].get(rid) or {"name": f"{kind} {rid[:8]}"}
             group = (chart.account_group(rec.get("account_type"), rec["name"]) if kind == "money_account"
+                     else chart.expense_head_group(rec["name"]) if kind == "expense_category"
                      else chart.LINK_GROUP[kind])
             found[ref] = (await conn.execute(text(
                 "INSERT INTO ledgers (organization_id, group_id, name, link_kind, link_id) VALUES (:org, :g, :n, :k, :id) "

@@ -213,6 +213,72 @@ async def add_ledger(body: LedgerIn, auth: AuthorizationContext = Depends(get_au
     return _out({"id": lid, "name": body.name.strip(), "group_id": body.group_id})
 
 
+class HeadIn(BaseModel):
+    head: str = Field(pattern="^(site|office)$")
+
+
+_HEAD_GROUP = {"site": "direct_expenses", "office": "indirect_expenses"}
+
+
+async def _expense_heads(conn: AsyncConnection, org: uuid.UUID) -> list[dict[str, Any]]:
+    """UX-59: every active expense category as a books head: site (Direct Expenses) or office (Indirect Expenses) by
+    its ledger's top group, what its name suggests (chart.expense_head_group), and what is booked on it, in all and on
+    projects. A category not posted yet has no ledger: it is where its name puts it."""
+    from mesiri.domains.accounts import statements
+
+    roots = statements._roots(await chart.groups(conn, org))  # noqa: SLF001 -- the P&L's own rule, one place
+    rows = (await conn.execute(text(
+        "SELECT c.id, c.name, c.cost_centre, l.id AS ledger_id, l.group_id, "
+        "COALESCE((SELECT SUM(jl.debit - jl.credit) FROM journal_lines jl WHERE jl.ledger_id = l.id), 0) AS amount, "
+        "COALESCE((SELECT SUM(jl.debit - jl.credit) FROM journal_lines jl WHERE jl.ledger_id = l.id "
+        "  AND jl.project_id IS NOT NULL), 0) AS on_projects "
+        "FROM expense_categories c LEFT JOIN ledgers l ON l.organization_id = c.organization_id "
+        "  AND l.link_kind = 'expense_category' AND l.link_id = c.id "
+        "WHERE c.organization_id = :org AND c.status = 'active' ORDER BY c.name"), {"org": org})).mappings().all()
+    out = []
+    for r in rows:
+        suggested = "office" if chart.expense_head_group(r["name"]) == "indirect_expenses" else "site"
+        top = roots.get(r["group_id"]) if r["group_id"] else None
+        head = ("office" if top and top["code"] == "indirect_expenses" else "site") if top else suggested
+        out.append({"category_id": str(r["id"]), "name": r["name"], "cost_centre": r["cost_centre"], "head": head,
+                    "suggested": suggested, "amount": Decimal(r["amount"]), "on_projects": Decimal(r["on_projects"])})
+    return out
+
+
+@router.get("/expense-heads")
+async def expense_heads(auth: AuthorizationContext = Depends(get_auth_context), conn: AsyncConnection = Depends(get_db_conn)):
+    """UX-59: the expense categories as site or office costs, for the owner or the accountant to check."""
+    await _ready(conn, auth)
+    return _out({"heads": await _expense_heads(conn, auth.organization_id)})
+
+
+@router.put("/expense-heads/{category_id}")
+async def set_expense_head(category_id: uuid.UUID, body: HeadIn, auth: AuthorizationContext = Depends(get_auth_context),
+                           conn: AsyncConnection = Depends(get_db_conn)):
+    """UX-59: make a category a site (direct) or office (indirect) cost: its ledger moves to that group, as a Tally
+    ledger moves group, so its entries before and after read the new way. Totals and profit do not change; the split
+    between direct and indirect, and so the gross profit, does."""
+    await _ready(conn, auth)
+    org = auth.organization_id
+    found = (await conn.execute(text("SELECT 1 FROM expense_categories WHERE id = :c AND organization_id = :org"),
+                                {"c": category_id, "org": org})).first()
+    if found is None:
+        raise HTTPException(status_code=404, detail="Category not found.")
+    ledger = (await sweep._resolver(conn, org, {("link", "expense_category", str(category_id))}))[  # noqa: SLF001
+        ("link", "expense_category", str(category_id))]
+    groups = await chart.groups(conn, org)
+    from mesiri.domains.accounts import statements
+
+    current = (await conn.execute(text("SELECT group_id FROM ledgers WHERE id = :l"), {"l": ledger})).scalar_one()
+    top = statements._roots(groups).get(current)  # noqa: SLF001
+    if top and top["code"] == _HEAD_GROUP[body.head]:  # already there (perhaps in a group of the accountant's own)
+        return _out(next(h for h in await _expense_heads(conn, org) if h["category_id"] == str(category_id)))
+    group = next(g["id"] for g in groups if g["code"] == _HEAD_GROUP[body.head])
+    await conn.execute(text("UPDATE ledgers SET group_id = :g, updated_at = now() WHERE id = :l AND organization_id = :org"),
+                       {"g": group, "l": ledger, "org": org})
+    return _out(next(h for h in await _expense_heads(conn, org) if h["category_id"] == str(category_id)))
+
+
 @router.patch("/ledgers/{ledger_id}")
 async def edit_ledger(ledger_id: uuid.UUID, body: LedgerPatch, auth: AuthorizationContext = Depends(get_auth_context),
                       conn: AsyncConnection = Depends(get_db_conn)):

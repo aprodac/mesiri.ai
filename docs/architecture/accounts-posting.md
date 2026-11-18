@@ -82,6 +82,16 @@ through the after-close rule).
 Who: the company's statements are the money roles'; `/accounts/projects`, `/accounts/projects/{id}`, a project's
 `/accounts/pl` and `/accounts/home?project_id` are also its project manager's (D-ACC6).
 
+**Site or office costs (UX-59, 18 Nov 2026).** Direct and indirect follow the chart, as in Tally: a cost is direct when
+its ledger's top group is Purchases or Direct Expenses, else indirect (`PL_SECTION`). An expense category is a head:
+its ledger starts under Direct Expenses (site cost, site overheads included) unless its name plainly runs the office
+(`chart.expense_head_group`: office, audit, stationery, bank charges...; never when it says site, project or camp),
+then under Indirect Expenses. `GET /accounts/expense-heads` lists the heads with what their names suggest;
+`PUT /accounts/expense-heads/{category_id}` moves a head's ledger to the other top group (left alone when already
+under it, in a group of the accountant's own), so its entries before and after read the new way. Totals and profit
+never change, only the direct / indirect split and the gross profit. `/accounts/projects` carries `direct` per project
+(UX-57); indirect = cost − direct, the head-office share on top. Who: the books' people (owner, admin, finance).
+
 ## Phase C: GST and TDS (`tax.py`)
 
 GST is read from the records (they carry the GSTIN and rate) and tied to the Output / Input GST ledgers. Claimable

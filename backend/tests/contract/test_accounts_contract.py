@@ -361,6 +361,22 @@ async def test_phase_b_statements_agree_with_the_books_for_the_company_and_the_p
         assert (villa["billed"], villa["cost"], villa["profit"], villa["margin"]) == ("100000.00", "60700.00", "39300.00", "39.30")
         assert villa["direct"] == "60700.00" and table["total"]["direct"] == "60700.00"  # all of it is site cost (UX-57)
 
+        # UX-59: Materials made an office cost moves 10,700 from direct to indirect; cost and profit stay; and back.
+        heads = (await client.get("/accounts/expense-heads", headers=h)).json()["heads"]
+        mat = next(x for x in heads if x["name"] == "Materials")
+        assert (mat["head"], mat["suggested"], mat["on_projects"]) == ("site", "site", "10700.00")
+        r = await client.put(f"/accounts/expense-heads/{ids['materials']}", headers=h, json={"head": "office"})
+        assert r.status_code == 200 and r.json()["head"] == "office"
+        table = (await client.get(f"/accounts/projects?date_from={month}&date_to={end}", headers=h)).json()
+        villa = next(p for p in table["projects"] if p["name"] == "Villa")
+        assert (villa["cost"], villa["direct"], villa["profit"]) == ("60700.00", "50000.00", "39300.00")
+        t = (await client.get(f"/accounts/pl?date_from={month}&date_to={end}", headers=h)).json()["totals"]
+        assert (t["direct"], t["indirect"], t["gross_profit"], t["net_profit"]) == ("50000.00", "10700.00", "50000.00", "39300.00")
+        assert (await client.put(f"/accounts/expense-heads/{ids['materials']}", headers=h,
+                                 json={"head": "site"})).json()["head"] == "site"
+        assert (await client.put(f"/accounts/expense-heads/{ids['materials']}", headers=h,
+                                 json={"head": "kitchen"})).status_code == 422
+
         home = (await client.get("/accounts/home", headers=h)).json()
         assert home["cash_bank"]["total"] == "163000.00" and home["receivable"] == "61000.00"
         assert home["payable"] == "55000.00" and home["tds_to_deposit"] == "500.00"  # 4,800 + 49,500 + 700 own pocket

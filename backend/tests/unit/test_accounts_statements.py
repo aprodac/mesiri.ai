@@ -77,3 +77,17 @@ def test_overheads_are_shared_by_weight_the_last_takes_the_rounding_and_it_nets_
     assert credit["project_id"] == office and credit["ledger"] == posting.code("overheads_allocated")
     assert posting.overhead_entries(datetime.date(2026, 10, 31), D(0), {p1: D(1)}, "cost") == []
     assert posting.overhead_entries(datetime.date(2026, 10, 31), D(100), {p1: D(0)}, "billing") == []
+
+
+# UX-59: a new expense category's ledger starts as a site (direct) or office (indirect) head by its name.
+def test_expense_head_group_office_and_site_names():
+    from mesiri.domains.accounts.chart import expense_head_group
+
+    office = ["Office rent", "Audit fees", "Bank charges", "Head office electricity", "Stationery", "Internet", "Marketing"]
+    site = ["Materials", "Machine rent", "Diesel", "Tea and snacks", "Labour", "Staff salary", "Subcontract work"]
+    assert all(expense_head_group(n) == "indirect_expenses" for n in office)
+    assert all(expense_head_group(n) == "direct_expenses" for n in site)
+    # Guard: a site's own office or admin is a site overhead, a job's cost.
+    assert expense_head_group("Site office tea") == "direct_expenses"
+    assert expense_head_group("Project admin") == "direct_expenses"
+    assert expense_head_group("") == "direct_expenses" and expense_head_group(None) == "direct_expenses"
