@@ -20,9 +20,10 @@ Worst first (red, amber, blue edge), six shown, "Show all". A project picked in 
 
 ## Today's look (UX-66)
 
-Asked the same day: "the Today page looks so boring". A dark day card on top (`components/home/today-hero.tsx`):
-greeting and day, a ring of sites reported, the time left to the cutoff, the day's four figures, what the day still
-needs as chips, Tell Mesiri / Live / day moves. Then two columns: This week, tasks and the sites as cards on the left;
+Asked the same day: "the Today page looks so boring". A dark day card was tried and rejected ("I hate it"); the
+look picked from three light ones (A): the greeting and the day on the page, the day's moves beside it, then five
+figure cards (sites reported with a bar and the time left to the cutoff; workers, work done, photos, open issues with
+their own icon colours) and what the day still needs as chips (`components/home/today-hero.tsx`). Then two columns: This week, tasks and the sites as cards on the left;
 the role's figures, time saved and open issues on the right (one column on a phone). Same data, same tour markers.
 
 ## Sidebar: "Your pages" and Customise

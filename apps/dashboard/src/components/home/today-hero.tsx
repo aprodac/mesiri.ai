@@ -6,10 +6,11 @@ import { appNow } from '@/lib/clock'
 import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { cn } from '@/lib/utils'
 
-// UX-66 (asked 18 Nov 2026: "the Today page looks so boring"): the day at a glance in one card, in the brand's
-// charcoal with the hazard stripe. The greeting and the day; a ring of sites reported; the day's figures; the time
-// left before reports close; what the day still needs as chips; the day's moves (previous, next, Live, Tell Mesiri).
-// It replaces the page header, the figures strip and the "Needs your attention" box (the same figures and lines).
+// UX-66 (asked 18 Nov 2026: "the Today page looks so boring"; a dark day card was tried and rejected, then this look
+// was picked from three): the greeting and the day on the page itself, the day's moves beside it, then five figure
+// cards: sites reported (with a bar and the time left to the cutoff), workers, work done, photos, open issues, each
+// with its own icon colour. What the day still needs follows as chips. It replaces the page header, the figures strip
+// and the "Needs your attention" box (the same figures and lines).
 
 export interface HeroFigure {
   label: string
@@ -30,7 +31,7 @@ function greeting(now: Date): string {
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
 }
 
-/** "2h 10m left" before the cutoff ("18:00"), "closed at 6:00 pm" after it; null without one. */
+/** "2h 10m to 6:00 pm" before the cutoff ("18:00"), "Reports closed at 6:00 pm" after it; null without one. */
 function cutoffLine(cutoff: string | null, now: Date): { text: string; late: boolean } | null {
   if (!cutoff) return null
   const [h, m] = cutoff.split(':').map(Number)
@@ -44,38 +45,13 @@ function cutoffLine(cutoff: string | null, now: Date): { text: string; late: boo
   return { text, late: left <= 60 }
 }
 
-function Ring({ done, of }: { done: number; of: number }) {
-  const r = 34
-  const c = 2 * Math.PI * r
-  const share = of ? done / of : 0
-  const full = of > 0 && done >= of
-  return (
-    <div className="relative size-[88px] shrink-0" role="img" aria-label={`${done} of ${of} sites reported`}>
-      <svg viewBox="0 0 80 80" className="size-full -rotate-90">
-        <circle cx="40" cy="40" r={r} fill="none" stroke="currentColor" strokeWidth="7" className="text-white/10" />
-        <circle
-          cx="40"
-          cy="40"
-          r={r}
-          fill="none"
-          strokeWidth="7"
-          strokeLinecap="round"
-          stroke={full ? '#4ADE80' : '#FACC15'}
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - share)}
-          className="transition-[stroke-dashoffset] duration-700 ease-out"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
-        <span className="text-2xl font-semibold tabular-nums text-white">
-          {done}
-          <span className="text-sm font-medium text-white/50">/{of}</span>
-        </span>
-        <span className="mt-1 text-[10px] font-medium tracking-wide text-white/60 uppercase">sites in</span>
-      </div>
-    </div>
-  )
-}
+/** One icon colour per figure, the same in every role's Today. */
+const FIG_TONE = [
+  'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+  'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+  'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+]
 
 export function TodayHero({
   name,
@@ -113,103 +89,99 @@ export function TodayHero({
   const [now] = React.useState(() => appNow())
   const first = name.trim().split(/\s+/)[0]
   const left = isToday ? cutoffLine(cutoff, now) : null
-  const dayBtn = 'flex size-8 items-center justify-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-[#FACC15]'
+  const all = sites > 0 && reported >= sites
+  const btn = 'flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent'
   return (
-    <section
-      aria-label="Your day"
-      className="relative overflow-hidden rounded-2xl border border-[#34302A] bg-[#1F1D1A] text-white shadow-sm dark:border-border dark:bg-[#141517]"
-    >
-      <div aria-hidden className="h-1.5 bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
-      {/* A soft glow in the corner, so the card is not a flat slab. */}
-      <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-[#FACC15]/10 blur-3xl" />
-      <div className="relative flex flex-col gap-5 p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm text-white/60">
-              {dateLabel}
-              {scopeLabel && <span className="text-white/40"> · {scopeLabel}</span>}
-            </p>
-            <h1 className="mt-0.5 text-2xl font-semibold tracking-tight sm:text-[28px]">
-              {isToday ? `${greeting(now)}${first ? `, ${first}` : ''}` : 'A past day'}
-            </h1>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {isToday && canTell && (
-              <button
-                type="button"
-                onClick={() => openTellMesiri()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#FACC15] px-3 text-sm font-semibold text-[#1F1D1A] shadow-sm transition-colors hover:bg-[#FDE047] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FACC15]"
-              >
-                <MessageSquarePlus className="size-4" /> <span className="hidden sm:inline">Tell Mesiri</span>
+    <section aria-label="Your day" className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight">{isToday ? `${greeting(now)}${first ? `, ${first}` : ''}` : 'A past day'}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {dateLabel}
+            {scopeLabel ? ` · ${scopeLabel}` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isToday && canTell && (
+            <button
+              type="button"
+              onClick={() => openTellMesiri()}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
+            >
+              <MessageSquarePlus className="size-4" /> <span className="hidden sm:inline">Tell Mesiri</span>
+            </button>
+          )}
+          {showLive && (
+            <Link to="/live" className="hidden h-8 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm hover:bg-muted sm:inline-flex" title="Watch every message to Mesiri land">
+              <Radio className="size-4 text-primary-ink" /> Live
+            </Link>
+          )}
+          <div className="flex items-center rounded-lg border bg-card" data-guide="today.day">
+            <button type="button" className={btn} onClick={() => onDay(-1)} title="Previous day" aria-label="Previous day">
+              <ChevronLeft className="size-4" />
+            </button>
+            {!isToday && (
+              <button type="button" className="h-8 rounded-lg px-2 text-sm hover:bg-muted" onClick={onToday}>
+                Today
               </button>
             )}
-            {showLive && (
-              <Link to="/live" className="hidden h-8 items-center gap-1.5 rounded-lg border border-white/15 px-2.5 text-sm text-white/90 hover:bg-white/10 sm:inline-flex" title="Watch every message to Mesiri land">
-                <Radio className="size-4 text-[#FACC15]" /> Live
-              </Link>
-            )}
-            <div className="flex items-center rounded-lg border border-white/15" data-guide="today.day">
-              <button type="button" className={dayBtn} onClick={() => onDay(-1)} title="Previous day" aria-label="Previous day">
-                <ChevronLeft className="size-4" />
-              </button>
-              {!isToday && (
-                <button type="button" className="h-8 rounded-lg px-2 text-sm text-white/90 hover:bg-white/10" onClick={onToday}>
-                  Today
-                </button>
-              )}
-              <button type="button" className={dayBtn} onClick={() => onDay(1)} disabled={isToday} title="Next day" aria-label="Next day">
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-            <button type="button" className={cn(dayBtn, 'border border-white/15')} onClick={onRefresh} disabled={refreshing} title="Refresh" aria-label="Refresh">
-              <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
+            <button type="button" className={btn} onClick={() => onDay(1)} disabled={isToday} title="Next day" aria-label="Next day">
+              <ChevronRight className="size-4" />
             </button>
           </div>
+          <button type="button" className={cn(btn, 'border bg-card')} onClick={onRefresh} disabled={refreshing} title="Refresh" aria-label="Refresh">
+            <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
+          </button>
         </div>
+      </div>
 
-        <div className="flex flex-col gap-5 md:flex-row md:items-center">
-          <div className="flex items-center gap-4">
-            <Ring done={reported} of={sites} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="col-span-2 flex flex-col justify-between rounded-xl border bg-card p-3.5 shadow-xs sm:col-span-1">
+          <div className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+            Sites reported
+            {sites > 0 && (
+              <span className={cn('rounded-full px-1.5 py-px text-[11px] font-semibold', all ? 'bg-success-soft text-success' : 'bg-draft-soft text-draft')}>
+                {all ? 'All in' : `${sites - reported} to go`}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums">
+            {reported}
+            <span className="text-base text-muted-foreground">/{sites}</span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${reported} of ${sites} sites reported`}>
+            <div className={cn('h-full rounded-full transition-[width] duration-700', all ? 'bg-success' : 'bg-primary')} style={{ width: `${sites ? (reported / sites) * 100 : 0}%` }} />
+          </div>
+          {left && (
+            <p className={cn('mt-2 flex items-center gap-1 text-xs', left.late ? 'font-medium text-draft' : 'text-muted-foreground')}>
+              <Clock className="size-3" aria-hidden /> {left.text}
+            </p>
+          )}
+        </div>
+        {figures.map((f, i) => (
+          <div key={f.label} className="flex items-center gap-3 rounded-xl border bg-card p-3.5 shadow-xs">
+            <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg', FIG_TONE[i % FIG_TONE.length])} aria-hidden>
+              <f.icon className="size-5" />
+            </span>
             <div className="min-w-0">
-              <p className="text-base font-semibold">
-                {sites === 0 ? 'No sites yet' : reported >= sites ? 'Every site has reported' : `${sites - reported} still to report`}
-              </p>
-              {left ? (
-                <p className={cn('mt-1 inline-flex items-center gap-1.5 text-sm', left.late ? 'text-[#FACC15]' : 'text-white/60')}>
-                  <Clock className="size-3.5" aria-hidden /> {left.text}
-                </p>
-              ) : (
-                <p className="mt-1 text-sm text-white/60">{isToday ? 'Updates come in from WhatsApp' : 'What the sites sent that day'}</p>
-              )}
+              <div className={cn('text-2xl font-semibold tabular-nums', !f.value && 'text-muted-foreground/50', f.bad && f.value > 0 && 'text-destructive')}>{f.value}</div>
+              <div className="truncate text-xs text-muted-foreground">{f.label}</div>
             </div>
           </div>
-          <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4 md:ml-4 md:border-l md:border-white/10 md:pl-6">
-            {figures.map((f) => (
-              <div key={f.label} className="rounded-xl bg-white/[0.04] px-3 py-2.5 ring-1 ring-white/[0.06]">
-                <div className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-white/55 uppercase">
-                  <f.icon className={cn('size-3.5', f.bad && f.value > 0 ? 'text-red-400' : 'text-[#FACC15]')} aria-hidden />
-                  <span className="truncate">{f.label}</span>
-                </div>
-                <div className={cn('mt-1 text-2xl font-semibold tabular-nums', f.value === 0 && 'text-white/35', f.bad && f.value > 0 && 'text-red-400')}>
-                  {f.value === 0 ? '–' : f.value}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {lines.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
-            {lines.slice(0, 4).map((l) => (
-              <span key={l.key} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#FACC15]/12 px-2.5 py-1 text-xs text-[#FDE68A] ring-1 ring-[#FACC15]/25" title={l.note}>
-                <TriangleAlert className="size-3.5 shrink-0" aria-hidden />
-                <span className="truncate">{l.text}</span>
-              </span>
-            ))}
-            {lines.length > 4 && <span className="text-xs text-white/50">+{lines.length - 4} more</span>}
-          </div>
-        )}
+        ))}
       </div>
+
+      {lines.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {lines.slice(0, 4).map((l) => (
+            <span key={l.key} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-draft-soft px-2.5 py-1 text-xs font-medium text-draft" title={l.note}>
+              <TriangleAlert className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{l.text}</span>
+            </span>
+          ))}
+          {lines.length > 4 && <span className="self-center text-xs text-muted-foreground">+{lines.length - 4} more</span>}
+        </div>
+      )}
     </section>
   )
 }
