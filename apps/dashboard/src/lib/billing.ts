@@ -169,3 +169,12 @@ export function billDay(d: string | null | undefined): string {
   if (!d) return '—'
   return new Date(`${d.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+/** WEB-91 / UX-60: measured work on no client bill yet, at the client rate (before retention and GST), per project. */
+export interface ToBill {
+  amount: string
+  projects: { project_id: string; project: string; lines: number; amount: string }[]
+}
+export async function fetchToBill(): Promise<ToBill> {
+  return (await api.get<ToBill>('/billing/to-bill')).data
+}

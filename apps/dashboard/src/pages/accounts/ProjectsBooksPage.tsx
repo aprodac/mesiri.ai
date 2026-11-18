@@ -18,10 +18,12 @@ import { useToast } from '@/components/ui/toast-notification'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchProjectsBooks, mayReadBooks, mayReadProjectBooks, mayReopen, rupees, saveOverheads, short, type OverheadSettings, type ProjectRow } from '@/lib/accounts'
 import { maySeeBoq } from '@/lib/boq'
+import { fetchToBill, mayBill } from '@/lib/billing'
 import { fetchPortfolio } from '@/lib/cost'
+import { fetchReceivables } from '@/lib/receivables'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
-import { HEALTH_LOOK, HEALTH_ORDER, healthOf, realView, type Health, type RealView } from '@/lib/project-health'
+import { HEALTH_LOOK, HEALTH_ORDER, ageTone, healthOf, realView, type Health, type RealView } from '@/lib/project-health'
 import { cn } from '@/lib/utils'
 
 // ACC-08 / ACC-23: which site makes money: every project's billing, cost, head-office share, profit and margin in
@@ -149,6 +151,10 @@ export default function ProjectsBooksPage() {
   // Billed to date for the real margin, and Cost control's full cost and forecast (when this role may read them).
   const toDate = useQuery({ queryKey: ['accounts', 'projects', 'to-date'], queryFn: () => fetchProjectsBooks({ date_from: '2000-01-01', date_to: period.date_to }), enabled: allowed })
   const port = useQuery({ queryKey: ['cost', 'portfolio'], queryFn: fetchPortfolio, enabled: allowed && maySeeBoq(me?.role), retry: false })
+  // UX-60: work measured but on no bill yet, and how old the unpaid bills are (the billing people's figures).
+  const billing = allowed && mayBill(me?.role)
+  const toBill = useQuery({ queryKey: ['billing', 'to-bill'], queryFn: fetchToBill, enabled: billing, retry: false })
+  const owed = useQuery({ queryKey: ['billing', 'receivables'], queryFn: fetchReceivables, enabled: billing, retry: false })
   const pickedRef = React.useRef<HTMLElement | null>(null)
   React.useEffect(() => {
     if (picked && q.data) window.setTimeout(() => pickedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
@@ -159,9 +165,13 @@ export default function ProjectsBooksPage() {
   const d = q.data
   const billedToDate = new Map((toDate.data?.projects ?? []).map((p) => [p.project_id, Number(p.billed)]))
   const byPort = new Map((port.data?.projects ?? []).map((p) => [p.project_id, p]))
+  const unbilledOf = new Map((toBill.data?.projects ?? []).map((p) => [p.project_id, Number(p.amount)]))
+  const oldestOf = new Map<string, number>()
+  for (const c of owed.data?.clients ?? []) for (const b of c.open_bills) oldestOf.set(b.project_id, Math.max(oldestOf.get(b.project_id) ?? 0, b.days))
+  const unbilledTotal = Number(toBill.data?.amount ?? 0)
   const rows: Row[] = (d?.projects ?? [])
     .map((p) => {
-      const real = realView(billedToDate.get(p.project_id) ?? Number(p.billed), byPort.get(p.project_id))
+      const real = realView(billedToDate.get(p.project_id) ?? Number(p.billed), byPort.get(p.project_id), unbilledOf.get(p.project_id) ?? 0)
       return { ...p, real, ...healthOf(real, Number(p.profit)) }
     })
     .sort((a, b) => HEALTH_ORDER[a.health] - HEALTH_ORDER[b.health] || Number(b.profit) - Number(a.profit))
@@ -208,6 +218,16 @@ export default function ProjectsBooksPage() {
             ]}
           />
           <HeadsCheckChip enabled={mayReadBooks(me?.role)} />
+          {unbilledTotal > 0 && (
+            <Link to="/billing/ra-bills" className="group flex w-fit flex-wrap items-center gap-2 rounded-xl border border-draft/30 bg-draft-soft/60 px-3 py-2 text-sm hover:border-draft">
+              <span className="font-semibold text-draft tabular-nums">{rupees(unbilledTotal)}</span>
+              <span>of work done, not billed yet</span>
+              {(toBill.data?.projects ?? []).slice(0, 3).map((p) => (
+                <span key={p.project_id} className="rounded-full bg-card px-2 py-0.5 text-xs">{p.project} · {short(p.amount)}</span>
+              ))}
+              <span className="inline-flex items-center gap-1 text-xs font-semibold">Raise RA bills <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
+            </Link>
+          )}
           {hasReal && atRisk > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm">
               <span className="font-semibold text-destructive">{atRisk} at risk</span>
@@ -246,9 +266,9 @@ export default function ProjectsBooksPage() {
             ) : (
               <>
                 {/* Laptop: one table, the books for the period and the real picture to date side by side. */}
-                <div className="hidden overflow-hidden rounded-xl border bg-card shadow-xs md:block">
+                <div className="hidden overflow-hidden rounded-xl border bg-card shadow-xs [contain:inline-size] md:block">
                   <div className="overflow-x-auto">
-                    <table data-guide="proj.list" className="w-full min-w-[980px] text-sm">
+                    <table data-guide="proj.list" className="w-full min-w-[1060px] text-sm">
                       <thead>
                         <tr className="bg-muted text-[11px] text-muted-foreground">
                           <th className="px-3 pt-2 text-left font-medium" />
@@ -256,8 +276,8 @@ export default function ProjectsBooksPage() {
                             Books · this period
                           </th>
                           {hasReal && (
-                            <th colSpan={2} className="border-l px-3 pt-2 text-left font-semibold">
-                              <span className="inline-flex items-center gap-1">Real · to date <Hint title="Real, to date" text="Billed so far against Cost control's full cost so far (with deliveries and attendance not yet billed), and where the job finishes against its BOQ budget. The tick on the bar is the work done." /></span>
+                            <th colSpan={3} className="border-l px-3 pt-2 text-left font-semibold">
+                              <span className="inline-flex items-center gap-1">Real · to date <Hint title="Real, to date" text="The work done so far at the client's rates (billed, plus measured work not billed yet) against Cost control's full cost so far, with deliveries and attendance not yet billed; and where the job finishes against its BOQ budget. The tick on the bar is the work done." /></span>
                             </th>
                           )}
                           <th colSpan={2} className="border-l px-3 pt-2 text-left font-semibold">Owed today</th>
@@ -269,6 +289,7 @@ export default function ProjectsBooksPage() {
                           <th className="px-3 py-2 text-right font-medium">Indirect</th>
                           <th className="px-3 py-2 text-right font-medium">Profit</th>
                           {hasReal && <th className="border-l px-3 py-2 text-right font-medium">Margin</th>}
+                          {hasReal && <th className="px-3 py-2 text-right font-medium">Not billed</th>}
                           {hasReal && <th className="px-3 py-2 text-left font-medium">Finish vs budget</th>}
                           <th className="border-l px-3 py-2 text-right font-medium">Client owes</th>
                           <th className="px-3 py-2 text-right font-medium">You owe</th>
@@ -305,11 +326,30 @@ export default function ProjectsBooksPage() {
                               </td>
                               {hasReal && (
                                 <td className="border-l px-3 py-2.5 text-right">
-                                  {p.real ? <MarginChip v={p.real.margin} title={`Billed ${rupees(p.real.billed)} · full cost ${rupees(p.real.spent)}`} /> : <span className="text-xs text-muted-foreground">—</span>}
+                                  {p.real ? <MarginChip v={p.real.margin} title={`Work done ${rupees(p.real.work)} (billed ${rupees(p.real.billed)} + not billed ${rupees(p.real.unbilled)}) · full cost ${rupees(p.real.spent)}`} /> : <span className="text-xs text-muted-foreground">—</span>}
+                                </td>
+                              )}
+                              {hasReal && (
+                                <td className="relative z-10 px-3 py-2.5 text-right whitespace-nowrap">
+                                  {p.real && p.real.unbilled > 0 ? (
+                                    <Link to={`/billing/ra-bills?project=${p.project_id}`} className="inline-flex flex-col items-end font-semibold text-draft tabular-nums hover:underline" title="Measured work on no RA bill yet, at the client's rates">
+                                      {short(p.real.unbilled)}
+                                      <span className="text-[11px] font-medium">Raise RA →</span>
+                                    </Link>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
                                 </td>
                               )}
                               {hasReal && <td className="px-3 py-2.5">{p.real ? <ForecastBar real={p.real} /> : <span className="text-xs text-muted-foreground">—</span>}</td>}
-                              <td className={cn('border-l px-3 py-2.5 text-right whitespace-nowrap tabular-nums', Number(p.receivable) > 0 ? 'font-semibold text-draft' : 'text-muted-foreground')}>{Number(p.receivable) ? rupees(p.receivable) : '—'}</td>
+                              <td className={cn('border-l px-3 py-2.5 text-right whitespace-nowrap tabular-nums', Number(p.receivable) > 0 ? 'font-semibold text-draft' : 'text-muted-foreground')}>
+                                {Number(p.receivable) ? rupees(p.receivable) : '—'}
+                                {oldestOf.has(p.project_id) && (
+                                  <span className={cn('ml-1.5 rounded px-1 py-px text-[11px] font-semibold', ageTone(oldestOf.get(p.project_id)!))} title="The oldest unpaid bill">
+                                    {oldestOf.get(p.project_id)}d
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums text-muted-foreground">{Number(p.payable) ? rupees(p.payable) : '—'}</td>
                             </tr>
                           )
@@ -323,6 +363,7 @@ export default function ProjectsBooksPage() {
                           <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">{indirect ? rupees(indirect) : '—'}</td>
                           <td className={cn('px-3 py-2.5 text-right whitespace-nowrap tabular-nums', profit < 0 ? 'text-destructive' : 'text-foreground')}>{rupees(profit)}</td>
                           {hasReal && <td className="border-l" />}
+                          {hasReal && <td className="px-3 py-2.5 text-right whitespace-nowrap text-draft tabular-nums">{unbilledTotal ? short(unbilledTotal) : ''}</td>}
                           {hasReal && <td />}
                           <td className="border-l px-3 py-2.5 text-right whitespace-nowrap tabular-nums">{rupees(d.total.receivable)}</td>
                           <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">{rupees(d.total.payable)}</td>
@@ -350,11 +391,12 @@ export default function ProjectsBooksPage() {
                           <span className="grid grid-cols-3 gap-2 text-xs">
                             <span className="flex flex-col"><span className="text-muted-foreground">Billed</span><span className="font-semibold tabular-nums">{short(p.billed)}</span></span>
                             <span className="flex flex-col"><span className="text-muted-foreground">Profit (books)</span><span className={cn('font-semibold tabular-nums', pprofit < 0 && 'text-destructive')}>{pprofit < 0 ? '−' : ''}{short(Math.abs(pprofit))}</span></span>
-                            <span className="flex flex-col"><span className="text-muted-foreground">Client owes</span><span className={cn('font-semibold tabular-nums', Number(p.receivable) > 0 && 'text-draft')}>{Number(p.receivable) ? short(p.receivable) : '—'}</span></span>
+                            <span className="flex flex-col"><span className="text-muted-foreground">Client owes</span><span className={cn('font-semibold tabular-nums', Number(p.receivable) > 0 && 'text-draft')}>{Number(p.receivable) ? short(p.receivable) : '—'}{oldestOf.has(p.project_id) && <span className={cn('ml-1 rounded px-1 text-[10px]', ageTone(oldestOf.get(p.project_id)!))}>{oldestOf.get(p.project_id)}d</span>}</span></span>
                           </span>
                           {p.real && (
                             <span className="flex items-center gap-2 border-t pt-2 text-xs">
                               <span className="text-muted-foreground">Real margin</span> <MarginChip v={p.real.margin} />
+                              {p.real.unbilled > 0 && <span className="rounded-full bg-draft-soft px-1.5 py-px font-semibold text-draft">{short(p.real.unbilled)} not billed</span>}
                               <span className="ml-auto"><ForecastBar real={p.real} /></span>
                             </span>
                           )}

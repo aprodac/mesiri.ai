@@ -16,9 +16,11 @@ import { useAuth } from '@/lib/AuthContext'
 import { fetchProjectBooks, formatDay, mayReadBooks, mayReadProjectBooks, rupees, short, type Position } from '@/lib/accounts'
 import { maySeeBoq } from '@/lib/boq'
 import { useBooksView } from '@/lib/books-view'
+import { fetchToBill, mayBill } from '@/lib/billing'
 import { fetchPortfolio } from '@/lib/cost'
+import { fetchReceivables } from '@/lib/receivables'
 import { usePageTitle } from '@/lib/page-title'
-import { HEALTH_LOOK, healthOf, realView, type RealView } from '@/lib/project-health'
+import { HEALTH_LOOK, ageTone, healthOf, realView, type RealView } from '@/lib/project-health'
 import { cn } from '@/lib/utils'
 
 // ACC-08 (plan §5.8): one project's books: its position (billed, received, owed, held back, owed to others), its P&L
@@ -62,7 +64,7 @@ function SplitBar({ parts }: { parts: { label: string; v: number; cls: string; s
   )
 }
 
-function PositionCards({ p }: { p: Position }) {
+function PositionCards({ p, oldest }: { p: Position; oldest: number | null }) {
   const receivable = Number(p.receivable)
   const retention = Number(p.retention_held_by_client)
   return (
@@ -70,7 +72,10 @@ function PositionCards({ p }: { p: Position }) {
       <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-xs">
         <p className="flex items-center justify-between text-xs font-semibold">
           <span className="text-success">With the client</span>
-          <span className="font-normal text-muted-foreground tabular-nums">billed {short(p.billed)} + GST {short(p.gst_billed)}</span>
+          <span className="flex items-center gap-1.5 font-normal text-muted-foreground tabular-nums">
+            billed {short(p.billed)} + GST {short(p.gst_billed)}
+            {oldest !== null && <span className={cn('rounded px-1.5 py-px text-[11px] font-semibold', ageTone(oldest))} title="The oldest unpaid bill">oldest {oldest}d</span>}
+          </span>
         </p>
         <SplitBar
           parts={[
@@ -129,8 +134,14 @@ function BooksOrReal({ booksMargin, booksSub, real, projectId }: { booksMargin: 
       <div className="flex flex-col gap-2">
         <div className="grid grid-cols-2 gap-2">
           <MarginTile label="Books margin" v={booksMargin} sub={booksSub} hint={<Hint title="Books margin" text="Billed less the cost booked in the accounts in the period. Deliveries not yet billed by the supplier and wages not yet paid are not in it yet." />} />
-          <MarginTile label="Real margin" v={real.margin} sub={`to date · cost ${short(real.spent)}`} hint={<Hint title="Real margin, to date" text="Billed so far less Cost control's full cost so far: every delivery, attendance and bill, billed or not." />} />
+          <MarginTile label="Real margin" v={real.margin} sub={`on work done ${short(real.work)} · cost ${short(real.spent)}`} hint={<Hint title="Real margin, on the work done" text="The work done so far at the client's rates (billed, plus measured work not billed yet) less Cost control's full cost so far: every delivery, attendance and bill, billed or not." />} />
         </div>
+        {real.unbilled > 0 && (
+          <Link to={`/billing/ra-bills?project=${projectId}`} className="group flex items-center justify-between gap-2 rounded-lg border border-draft/30 bg-draft-soft/60 px-2.5 py-1.5 text-xs hover:border-draft">
+            <span><span className="font-semibold text-draft tabular-nums">{rupees(real.unbilled)}</span> of work done, not billed yet</span>
+            <span className="inline-flex shrink-0 items-center gap-1 font-semibold">Raise RA bill <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
+          </Link>
+        )}
         {gap !== null && gap > 15 && (
           <p className="rounded-lg bg-draft-soft px-2.5 py-1.5 text-xs text-draft">
             <span className="font-semibold">Books look {Math.round(gap)} points better</span> · deliveries and wages not billed yet
@@ -184,6 +195,9 @@ export default function ProjectBooksPage() {
   }
   const q = useQuery({ queryKey: ['accounts', 'project', id, period], queryFn: () => fetchProjectBooks(id, period), enabled: allowed && !!id })
   const port = useQuery({ queryKey: ['cost', 'portfolio'], queryFn: fetchPortfolio, enabled: allowed && maySeeBoq(me?.role), retry: false })
+  const billing = allowed && mayBill(me?.role)
+  const toBill = useQuery({ queryKey: ['billing', 'to-bill'], queryFn: fetchToBill, enabled: billing, retry: false })
+  const owed = useQuery({ queryKey: ['billing', 'receivables'], queryFn: fetchReceivables, enabled: billing, retry: false })
   const name = q.data?.scope.replace(/^project /, '')
   usePageTitle(name ? `${name}: books` : 'Project books')
   if (!allowed) return <BooksClosed />
@@ -192,7 +206,10 @@ export default function ProjectBooksPage() {
   const p = d?.position
   const t = d?.pl.totals
   const np = Number(t?.net_profit ?? 0)
-  const real = d && p ? realView(Number(p.billed), port.data?.projects.find((r) => r.project_id === d.project_id)) : null
+  const unbilled = Number(toBill.data?.projects.find((r) => r.project_id === d?.project_id)?.amount ?? 0)
+  const real = d && p ? realView(Number(p.billed), port.data?.projects.find((r) => r.project_id === d.project_id), unbilled) : null
+  const openBills = (owed.data?.clients ?? []).flatMap((c) => c.open_bills).filter((b) => b.project_id === d?.project_id)
+  const oldest = openBills.length ? Math.max(...openBills.map((b) => b.days)) : null
   const health = d ? healthOf(real, np) : null
 
   return (
@@ -245,7 +262,7 @@ export default function ProjectBooksPage() {
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
             <DprSection icon={HandCoins} title="Position today">
-              <PositionCards p={p} />
+              <PositionCards p={p} oldest={oldest} />
             </DprSection>
             {d.centres.length > 0 && (
               <DprSection icon={PieChart} title="Where the cost went (period)">

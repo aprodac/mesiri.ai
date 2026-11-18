@@ -490,7 +490,9 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     parts: [
       { name: 'Direct cost', means: 'Site cost: materials, labour, subcontract' },
       { name: 'Indirect cost', means: 'Office costs on the project, with any head-office share' },
-      { name: 'Real margin', means: 'Billed so far less the full cost so far' },
+      { name: 'Real margin', means: 'Work done at client rates less the full cost so far' },
+      { name: 'Not billed', means: 'Measured work on no RA bill yet: raise it', tone: 'attention' },
+      { name: '7d', means: 'Age of the oldest unpaid bill: amber after 30, red after 60' },
       { name: 'Finish vs budget', means: 'Forecast at completion against the BOQ budget', tone: 'bad' },
       { name: 'At risk', means: 'Losing money or 10% over budget', tone: 'bad' },
       { name: 'Watch', means: 'Heading over, thin margin or cost ahead of work', tone: 'attention' },
