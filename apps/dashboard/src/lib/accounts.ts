@@ -523,7 +523,10 @@ export interface ProjectRow {
   project_id: string
   name: string
   billed: string
+  /** Every cost booked on the project in the period (direct + indirect), without the head-office share. */
   cost: string
+  /** UX-57: the part of ``cost`` under Purchases or Direct expenses (site cost); the rest of ``cost`` is indirect. */
+  direct?: string
   overheads: string
   profit: string
   margin: string | null

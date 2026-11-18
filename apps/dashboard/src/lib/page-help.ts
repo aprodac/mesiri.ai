@@ -486,8 +486,15 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     ],
   },
   '/accounts/projects': {
-    tip: 'Overheads off: rent and salaries stay with head office. On: shared over projects each month (company profit does not change).',
-    parts: [{ name: 'Billed', means: 'RA bills sent, before GST' }, { name: 'Cost', means: 'Every bill and expense booked to it' }, { name: 'Projects at a loss', means: 'Cost more than billed', tone: 'bad' }, { name: 'Forecast at completion', means: 'Full cost when it ends, at today\'s pace' }],
+    tip: 'Books profit leaves out deliveries and wages not billed yet: read it beside the real margin.',
+    parts: [
+      { name: 'Direct cost', means: 'Site cost: materials, labour, subcontract' },
+      { name: 'Indirect cost', means: 'Office costs on the project, with any head-office share' },
+      { name: 'Real margin', means: 'Billed so far less the full cost so far' },
+      { name: 'Finish vs budget', means: 'Forecast at completion against the BOQ budget', tone: 'bad' },
+      { name: 'At risk', means: 'Losing money or 10% over budget', tone: 'bad' },
+      { name: 'Watch', means: 'Heading over, thin margin or cost ahead of work', tone: 'attention' },
+    ],
   },
   '/accounts/ledgers': {
     parts: [

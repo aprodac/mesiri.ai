@@ -1020,13 +1020,13 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/accounts/projects': {
     key: '/tour/accounts-projects',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['proj.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'proj.stats', title: 'At a glance', text: 'What was billed, what it cost with its share of office costs, and how many projects are at a loss.', mood: 'look' },
-      { target: 'proj.list', title: 'Most profit first', text: 'Each project\'s income, cost and profit. Tap one for its own books.', mood: 'think' },
+      { target: 'proj.stats', title: 'At a glance', text: 'What was billed, its direct (site) and indirect (office) cost, and the profit in the books.', mood: 'look' },
+      { target: 'proj.list', title: 'Worst first', text: 'Each project\'s books beside its real margin and where it will finish against its budget. Red is at risk. Tap one for its own books.', mood: 'think' },
     ],
   },
   '/accounts/ledgers': {
