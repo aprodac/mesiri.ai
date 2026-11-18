@@ -42,7 +42,7 @@ import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { MakeTaskButton } from '@/components/tasks/make-task-button'
 
-// UX-61: the Issues page on the list kit (docs/design/LIST_PAGE_KIT.md): figures, what needs a person, where the
+// UX-63: the Issues page on the list kit (docs/design/LIST_PAGE_KIT.md): figures, what needs a person, where the
 // issues come from (by kind, by site: each a filter), a bar of states, Bars or Numbers, ticking several, and a panel
 // that walks the list (previous / next), shows the issue's timeline, its tasks and the site's other open issues.
 

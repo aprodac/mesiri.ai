@@ -252,7 +252,7 @@ export default function ExamplePage() {
 - Don't stack blocks above the list that say the same thing twice (a figure, a to-do and a chip for one count). The
   list should start in the top half of a laptop screen: at most a figure strip, one to-do, and the state box. Counts
   for kind / site go in their menus ("Material shortage · 3"), not in extra cards. Row buttons show on hover; the
-  panel and ticking several do the rest (Issues, UX-61, trimmed on 18 Nov after "is it too much?").
+  panel and ticking several do the rest (Issues, UX-63, trimmed on 18 Nov after "is it too much?").
 
 - Don't write a new search box, sort menu, colour bar, chip or pager on a page: use the part, or add to the kit
   (`components/page/list-kit.tsx`) and to this file.
