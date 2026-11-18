@@ -954,13 +954,13 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/cost/centres': {
     key: '/tour/cost-centres',
-    version: 1,
+    version: 2,
     introFromPage: true,
     steps: [
       { target: 'centres.period', title: 'Which period', text: '7 or 30 days, this month, everything, or your own dates.' },
-      { target: 'centres.total', title: 'Everything spent', text: 'The whole period in one bar, split by cost centre.', mood: 'look' },
-      { target: 'centres.list', title: 'Where the money went', text: 'Materials, labour, subcontract, fuel, equipment, and what each is made of.' },
-      { target: 'centres.categories', title: 'Expense categories', text: 'Each expense counts in its category\'s centre. Pick one for any category not set.', mood: 'think' },
+      { target: 'centres.total', title: 'Everything spent', text: 'One bar split by cost centre; the arrow says how it moved against the days before.', mood: 'look' },
+      { target: 'centres.list', title: 'Where the money went', text: 'A card per centre and what it is made of. Tap a part to open it.' },
+      { target: 'centres.categories', title: 'Expense categories', text: 'Each expense counts in its category\'s centre. Amber rows have none: pick one, or tick several and move them at once.', mood: 'think' },
       { target: 'app.whatsapp', title: 'Ask on WhatsApp', text: '"What did we spend on diesel this month?"', mood: 'happy' },
     ],
   },
