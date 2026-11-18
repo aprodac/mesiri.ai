@@ -43,7 +43,7 @@
   --sidebar-border: #e5e7eb;
   --sidebar-ring: #ca8a04;
   /* Status: text colour on its soft background clears 4.5:1 in both themes. */
-  /* UX-41: a brighter ground than the sand page, for panels that float over it (the voucher sheet). */
+  /* UXA-03: a brighter ground than the sand page, for panels that float over it (the voucher sheet). */
   --background-bright: #fdfcf9;
   --success: #0f5132;
   --success-soft: #dcf1e4;

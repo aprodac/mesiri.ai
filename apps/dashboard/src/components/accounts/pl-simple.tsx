@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { fetchProjectsBooks, rupees, type Period, type PlGroup, type PlTotals, type ProfitLoss, type Scope } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-40 (asked 17 Nov 2026: "for an owner and for an accountant, different profit and loss?" -> the same numbers,
+// UXA-02 (asked 17 Nov 2026: "for an owner and for an accountant, different profit and loss?" -> the same numbers,
 // a different first view): the owner's P&L. One card says the result in a sentence and where each ₹100 of income
 // went; under it the statement reads top to bottom in plain words (money earned, site costs, office and running
 // costs, other money in, profit), each line with its share of income and its change. The accounting name stays in

@@ -17,8 +17,8 @@ import { cn } from '@/lib/utils'
 // ACC-07 / ACC-22: every cash box and bank account: opening, money in, money out, closing; each day's money in and
 // out (moves between the company's own accounts left out); each account opens its book. For a project: the money
 // paid and received for it. Backend: GET /accounts/cash-bank.
-// UX-43 (Mercon's bank accounts as the reference): the period as a sum (opening + in − out = closing); the accounts as
-// one table (UX-44): opening, money in (green), money out (rose), an in / out bar, closing, its share of all the money;
+// UXA-05 (Mercon's bank accounts as the reference): the period as a sum (opening + in − out = closing); the accounts as
+// one table (UXA-06): opening, money in (green), money out (rose), an in / out bar, closing, its share of all the money;
 // its entries open under its row, each to its voucher; money in and out day by day below.
 
 const tiny = 0.005

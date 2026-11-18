@@ -1,6 +1,6 @@
 import type { BalanceSheet, BsGroup, BsSub } from '@/lib/accounts'
 
-// UX-42: the balance sheet read for an owner. Tally's groups sorted into buckets with plain names, by the chart's
+// UXA-04: the balance sheet read for an owner. Tally's groups sorted into buckets with plain names, by the chart's
 // group codes (backend chart.py GROUPS), so a renamed group still lands right. Shared by the owner's view and the
 // Tally view (its comparison figures).
 

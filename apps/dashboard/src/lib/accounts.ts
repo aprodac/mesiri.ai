@@ -470,7 +470,7 @@ export async function fetchPl(period: Partial<Period>, scope: Scope, compare: Co
 export interface BsSub {
   group_id: string | null
   name: string
-  /** The chart group's code (``bank_accounts``), or ``year_pl`` / ``earlier_pl`` for the profit lines (UX-42). */
+  /** The chart group's code (``bank_accounts``), or ``year_pl`` / ``earlier_pl`` for the profit lines (UXA-04). */
   code?: string | null
   amount: string
   ledgers: { ledger_id: string; name: string; code?: string | null; amount: string }[]

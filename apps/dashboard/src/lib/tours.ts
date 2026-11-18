@@ -966,7 +966,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   // Accounts (SS-46). The books keep themselves from what is recorded on WhatsApp and the dashboard; these pages read
   // them. books.tabs / books.period / books.excel are on every Accounts page (components/accounts/books.tsx), except
-  // books.tabs on Profit & loss (UX-40: the sidebar already lists the books).
+  // books.tabs on Profit & loss (UXA-02: the sidebar already lists the books).
   '/accounts': {
     key: '/tour/accounts',
     version: 1,

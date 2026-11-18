@@ -3,7 +3,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuth } from '@/lib/AuthContext'
 import { useStartMode } from '@/lib/start-mode'
 
-// UX-40 / UX-42: which way a statement opens (Profit & loss, Balance sheet). The same numbers, a different first view:
+// UXA-02 / UXA-04: which way a statement opens (Profit & loss, Balance sheet). The same numbers, a different first view:
 // the person's last pick (this browser) -> on a phone, the owner's view -> the Tally view for finance people and for
 // those who came from other accounting software (start mode "switching") -> the owner's view. `?view=` wins.
 

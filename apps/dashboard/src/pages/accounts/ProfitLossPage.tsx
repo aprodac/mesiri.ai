@@ -15,7 +15,7 @@ import { useBooksView } from '@/lib/books-view'
 
 // ACC-06 / ACC-22: profit and loss for a period, the company, a project or a site (scope bar), with a comparison
 // against the period before or the same period last year. Backend: GET /accounts/pl.
-// UX-39 / UX-40: the same numbers, three ways to read them. "Simple" (the owner's): the result in a sentence, where
+// UXA-01 / UXA-02: the same numbers, three ways to read them. "Simple" (the owner's): the result in a sentence, where
 // each ₹100 went, and the statement top to bottom in plain words. "Tally": the trading account and the profit and
 // loss account in two columns, with the sum as a row of figures. "Month by month": each month in a column.
 // Which one opens: the person's last pick (this browser) -> on a phone, Simple -> Tally for finance people and for
