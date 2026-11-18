@@ -973,8 +973,8 @@ export const PAGE_TOURS: Record<string, Tour> = {
     introFromPage: true,
     startWhen: ['acc.stats'],
     steps: [
-      { target: 'acc.stats', title: 'At a glance', text: 'Cash and bank today, what clients owe you, what you owe suppliers and staff, and this month\'s profit.', mood: 'look' },
-      { target: 'books.tabs', title: 'Every book, one row', text: 'Profit & loss, balance sheet, cash and bank, projects, GST, TDS, and the books an accountant checks.' },
+      { target: 'acc.stats', title: 'At a glance', text: 'Cash and bank today, plus what clients owe you, less what you owe: what you would hold if everyone paid today. Tap a figure for its page.', mood: 'look' },
+      { target: 'books.tabs', title: 'Every book', text: 'Profit & loss, balance sheet, cash and bank, projects, GST, TDS, and the books an accountant checks, one tap each.' },
       { target: 'acc.year', title: 'Month by month', text: 'The year so far: income, costs and profit each month, against last month.' },
       { target: 'acc.cash', title: 'Cash and bank', text: 'Each bank account and cash box today. Tap one for its entries.' },
       { target: 'acc.taxes', title: 'GST and TDS', text: 'GST to pay this month, and TDS to deposit.', mood: 'think' },
