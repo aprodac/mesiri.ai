@@ -46,9 +46,8 @@ export default function TdsPage() {
         crumb="Accounts"
         title="TDS"
         date="194C"
-        action={d && <ExcelButton path="/accounts/tds/export" params={period} name={`tds-${period.date_from}-to-${period.date_to}`} />}
+        action={<div className="flex min-w-0 max-w-full flex-wrap items-center gap-2"><PeriodBar state={periodState} />{d && <ExcelButton path="/accounts/tds/export" params={period} name={`tds-${period.date_from}-to-${period.date_to}`} />}</div>}
       />
-      <PeriodBar state={periodState} />
       {!d ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (

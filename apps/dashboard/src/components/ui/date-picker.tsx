@@ -66,7 +66,7 @@ export function DatePicker({
             aria-label={ariaLabel}
             aria-required={required || undefined}
             className={cn(
-              'flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs outline-none',
+              'flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-card px-3 text-left text-sm shadow-xs outline-none hover:bg-muted/40',
               'focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
               clearable && picked && 'pr-8',
             )}

@@ -139,6 +139,12 @@ action is one line in `lib/kpi-look.ts` or `lib/actions.ts`, never a page's own 
     a date chip or a stage bar is a white box (`bg-card`, a border, `shadow-xs`) on the sand page, never see-through:
     see-through, its options float on the page colour and the chosen one looks like a stray pill. `Segmented` does
     this for every page; a hand-made group copies it.
+  - **No row for controls alone (UX-56, asked 18 Nov 2026: "lot of space unnecessarily gone, we need to scroll, the date
+    is cut off").** A page's switches, period and date go in the header's action slot, beside the title, never on a
+    row of their own under a title row that is empty on the right. The header does not repeat what a control already
+    shows (the date in the picker, the scope in the banner above). A status line ("can pay what is due") is a chip in
+    the card it belongs to, not a full-width banner. A date picker is wide enough for "18 Nov 2026" with its clear
+    button (176px). A wrapper in the action slot carries `min-w-0 max-w-full`, or a phone scrolls sideways.
   - **Plain words only:** never "soft-deleted", "audit trail", "liquidity", "float", "dry-run", tool or database names.
 
 ## What the pages show: all projects, a project, a site (SCP-01..04, asked 9 Nov 2026)

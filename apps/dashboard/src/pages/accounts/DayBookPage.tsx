@@ -180,14 +180,11 @@ export default function DayBookPage() {
         back={{ to: '/accounts/trial-balance', label: 'Trial balance' }}
         crumb="Accounts"
         title="Day book"
-        action={
-          <div className="flex items-center gap-2">
+        action={<div className="flex min-w-0 max-w-full flex-wrap items-center gap-2"><PeriodBar state={periodState} />{<div className="flex items-center gap-2">
             <ExcelButton path="/accounts/day-book/export" params={{ ...period, ...sp, voucher_type: type, q: search }} name={`day-book-${period.date_from}-to-${period.date_to}`} />
             <Button data-guide="daybook.new" size="sm" className="gap-1.5" onClick={() => setWriting(true)}><Plus className="size-3.5" /> New voucher</Button>
-          </div>
-        }
+          </div>}</div>}
       />
-      <PeriodBar state={periodState} />
       <div className="flex flex-wrap items-center gap-2">
         <div data-guide="daybook.types" role="tablist" aria-label="Kind of voucher" className="flex max-w-full gap-1 overflow-x-auto rounded-xl border bg-card p-1 shadow-xs">
           {TYPES.map((t) => {

@@ -247,6 +247,18 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
               Of it, this year's {Number(bs.year_profit) < 0 ? 'loss' : 'profit'}: <span className={cn('font-medium', Number(bs.year_profit) < 0 ? 'text-destructive' : 'text-success')}>{rupees(bs.year_profit)}</span> since {formatDay(bs.year_start)}.
             </p>
           )}
+          {/* Can you pay what is due? A chip in the card, not a banner of its own (UX-56). */}
+          {cover !== null && (
+            <span className={cn('mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs', cover >= 1 ? 'bg-success-soft text-success' : 'bg-draft-soft text-draft')}>
+              {cover >= 1 ? <BadgeCheck className="size-3.5 shrink-0" /> : <CircleAlert className="size-3.5 shrink-0" />}
+              <span className="font-semibold">{cover >= 1 ? 'Can pay what is due' : 'Less in hand than due'}</span>
+              <span className="tabular-nums">· ₹{cover.toFixed(2)} in hand per ₹1 due</span>
+              <Hint
+                title="In hand for every ₹1 due soon"
+                text={`What you have in the bank or owed by clients (${rupees(ready)}) for every ₹1 due soon to suppliers, taxes and others (${rupees(dueSoon)}). Below ₹1, what is due is more than what comes in.`}
+              />
+            </span>
+          )}
         </div>
         <div className="flex min-w-0 flex-col justify-center gap-2.5">
           <div className="flex flex-col gap-1">
@@ -275,24 +287,6 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
           </div>
         </div>
       </div>
-
-      {/* Can you pay what is due? */}
-      {cover !== null && (
-        <div className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', cover >= 1 ? 'border-success/30 bg-success-soft/40' : 'border-draft/30 bg-draft-soft/50')}>
-          {cover >= 1 ? <BadgeCheck className="mt-0.5 size-4 shrink-0 text-success" /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-draft" />}
-          <p className="text-sm">
-            <span className="font-semibold">{cover >= 1 ? 'You can pay what is due.' : 'Less in hand than is due.'}</span>{' '}
-            <span className="text-muted-foreground">
-              <span className={cn('font-semibold', cover >= 1 ? 'text-success' : 'text-draft')}>₹{cover.toFixed(2)}</span> in hand for every ₹1 due soon.
-              <Hint
-                className="ml-1"
-                title="In hand for every ₹1 due soon"
-                text={`What you have in the bank or owed by clients (${rupees(ready)}) for every ₹1 due soon to suppliers, taxes and others (${rupees(dueSoon)}). Below ₹1, what is due is more than what comes in.`}
-              />
-            </span>
-          </p>
-        </div>
-      )}
 
       <div data-guide="bs.sides" className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-2 px-1">

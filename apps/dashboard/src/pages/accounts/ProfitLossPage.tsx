@@ -56,8 +56,8 @@ export default function ProfitLossPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" />
-      <div className="flex flex-wrap items-center gap-2">
+      <DprHeader back={{ to: '/accounts', label: 'Accounts' }} crumb="Accounts" title="Profit & loss" action={
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
         <Segmented<(typeof VIEWS)[number]>
           guide="pl.view"
           label="Show as"
@@ -81,7 +81,8 @@ export default function ProfitLossPage() {
           ]}
           onChange={(c) => setParam('compare', c)}
         />
-      </div>
+        </div>
+      } />
       {!d || !t ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : view === 'simple' ? (

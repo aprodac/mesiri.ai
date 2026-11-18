@@ -94,35 +94,36 @@ export default function BalanceSheetPage() {
             </span>
           )
         }
-        date={d ? `as on ${formatDay(d.as_of)} · whole company` : undefined}
+        action={
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+          <Segmented<(typeof VIEWS)[number]>
+            guide="bs.view"
+            label="Show as"
+            value={view}
+            options={[
+              { value: 'simple', label: 'Simple' },
+              { value: 'statement', label: 'Tally' },
+            ]}
+            onChange={pickView}
+          />
+          <label data-guide="bs.asof" className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="sr-only">As on</span>
+            <DatePicker value={asOf ?? d?.as_of ?? ''} onChange={(v) => set('as_of', v || null)} className="h-8 w-[176px]" />
+          </label>
+          <Segmented<CompareTo>
+            guide="bs.compare"
+            label="Compare with"
+            value={compare}
+            options={[
+              { value: '', label: 'No comparison' },
+              { value: 'month', label: 'Month end before' },
+              { value: 'year', label: 'End of last year' },
+            ]}
+            onChange={(c) => set('compare', c || null)}
+          />
+          </div>
+        }
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Segmented<(typeof VIEWS)[number]>
-          guide="bs.view"
-          label="Show as"
-          value={view}
-          options={[
-            { value: 'simple', label: 'Simple' },
-            { value: 'statement', label: 'Tally' },
-          ]}
-          onChange={pickView}
-        />
-        <label data-guide="bs.asof" className="flex items-center gap-2 text-xs text-muted-foreground">
-          As on
-          <DatePicker value={asOf ?? d?.as_of ?? ''} onChange={(v) => set('as_of', v || null)} className="h-8 w-[150px]" />
-        </label>
-        <Segmented<CompareTo>
-          guide="bs.compare"
-          label="Compare with"
-          value={compare}
-          options={[
-            { value: '', label: 'No comparison' },
-            { value: 'month', label: 'Month end before' },
-            { value: 'year', label: 'End of last year' },
-          ]}
-          onChange={(c) => set('compare', c || null)}
-        />
-      </div>
       {!d || (thenDay && pq.isLoading) ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : view === 'simple' ? (

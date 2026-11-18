@@ -89,8 +89,7 @@ export default function LedgerStatementPage() {
         crumb="Accounts"
         title={d?.ledger.name ?? 'Ledger'}
         chip={d && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{d.ledger.group_name}{d.ledger.link_kind ? ` · ${LINK_LABEL[d.ledger.link_kind]}` : ''}</span>}
-        action={
-          d && (
+        action={<div className="flex min-w-0 max-w-full flex-wrap items-center gap-2"><PeriodBar state={periodState} />{d && (
             <div className="flex gap-2">
               {record && (
                 <Button asChild size="sm" variant="outline" className="gap-1">
@@ -101,10 +100,8 @@ export default function LedgerStatementPage() {
               )}
               <ExcelButton path={`/accounts/ledgers/${id}/statement/export`} params={{ ...period, ...sp }} name={`${d.ledger.name}-${period.date_from}-to-${period.date_to}`} />
             </div>
-          )
-        }
+          )}</div>}
       />
-      <PeriodBar state={periodState} />
       {!d || !w ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (

@@ -66,9 +66,8 @@ export default function GstPage() {
           )
         }
         date={d ? (d.company_gstin ? `GSTIN ${d.company_gstin}` : 'Company GSTIN not set') : undefined}
-        action={d && <ExcelButton path="/accounts/gst/export" params={period} name={`gst-${period.date_from}-to-${period.date_to}`} />}
+        action={<div className="flex min-w-0 max-w-full flex-wrap items-center gap-2"><PeriodBar state={periodState} />{d && <ExcelButton path="/accounts/gst/export" params={period} name={`gst-${period.date_from}-to-${period.date_to}`} />}</div>}
       />
-      <PeriodBar state={periodState} />
       {!d ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (

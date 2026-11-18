@@ -64,8 +64,7 @@ export default function ProjectBooksPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
-      <DprHeader back={{ to: '/accounts/projects', label: 'Projects' }} crumb="Accounts · Projects" title={name ?? 'Project'} />
-      <PeriodBar state={periodState} />
+      <DprHeader back={{ to: '/accounts/projects', label: 'Projects' }} crumb="Accounts · Projects" title={name ?? 'Project'} action={<PeriodBar state={periodState} />} />
       {!d || !p ? (
         <Skeleton className="h-[32rem] rounded-xl" />
       ) : (
