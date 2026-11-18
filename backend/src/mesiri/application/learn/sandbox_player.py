@@ -84,6 +84,35 @@ class Moved:
     for_you: list[ForYou] = field(default_factory=list)
     waiting: list[dict[str, Any]] = field(default_factory=list)
     failed: list[dict[str, Any]] = field(default_factory=list)
+    #: UX-70: the days' notable moments, for the dashboard's "a day passes" scene: {day, who, kind, what}, in order.
+    highlights: list[dict[str, Any]] = field(default_factory=list)
+    #: UX-70: on the last day (handover), the whole run's totals for the end credits: {days, entries, by_kind}.
+    finale: dict[str, Any] | None = None
+
+
+#: UX-70: the kinds worth a line in the "a day passes" scene (not the routine attendance, use and site notes).
+NOTABLE = ("issue", "request", "order", "delivery", "supplier_payment", "client_receipt", "ra_bill", "stage",
+           "issue_resolve", "work_order", "wage_pay", "advance", "sub_payment")
+#: At most this many moments a day, and in all.
+HIGHLIGHTS_A_DAY = 4
+HIGHLIGHTS_MAX = 24
+
+
+def pick_highlights(played: list[Any]) -> list[dict[str, Any]]:
+    """UX-70: the moments worth showing from what the cast played, in plan order: per day, the first work done and the
+    notable kinds, at most HIGHLIGHTS_A_DAY a day and HIGHLIGHTS_MAX in all."""
+    out: list[dict[str, Any]] = []
+    per_day: dict[int, int] = {}
+    work_shown: set[int] = set()
+    for e in played:
+        worth = e.kind in NOTABLE or (e.kind == "work" and e.day not in work_shown)
+        if not worth or per_day.get(e.day, 0) >= HIGHLIGHTS_A_DAY:
+            continue
+        if e.kind == "work":
+            work_shown.add(e.day)
+        per_day[e.day] = per_day.get(e.day, 0) + 1
+        out.append({"day": e.day, "who": sp.WHO[e.role], "kind": e.kind, "what": e.what})
+    return out[:HIGHLIGHTS_MAX]
 
 
 #: Where each kind of entry is done on the dashboard (a "for you" item opens it).
@@ -689,6 +718,7 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
         await _tick(engine, org, role, me, start, day0)
     summary: dict[tuple[str, str], int] = {}
     failed: list[dict[str, Any]] = []
+    played_now: list[sp.Entry] = []
     try:
         for day in range(start + 1, target + 1):
             await w.at(day, day0)
@@ -709,6 +739,7 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
                     _log.warning("learn_sandbox.play_failed org=%s entry=%s %s", org, e.id, exc)
                     continue
                 await _record(engine, org, e, "played", record=record)
+                played_now.append(e)
                 key = (sp.WHO[e.role], e.kind)
                 summary[key] = summary.get(key, 0) + 1
             # The start of the person's day (the cast has played it): what Go back returns to (SS-74d).
@@ -723,10 +754,17 @@ async def _next(engine: Any, app: Any, person: RealPerson, org: uuid.UUID, day0:
     waiting = [{"id": e.id, "day": e.day, "who": sp.WHO[e.role], "what": e.what}
                for e in p.entries if e.day <= target and e.id not in played and e.role != role]
     for_you = await _tick(engine, org, role, me, target, day0) if me else []
+    finale = None
+    if target >= p.last_day:
+        by_kind: dict[str, int] = {}
+        for e in p.entries:
+            if e.id in played:
+                by_kind[e.kind] = by_kind.get(e.kind, 0) + 1
+        finale = {"days": p.last_day, "entries": sum(by_kind.values()), "by_kind": by_kind}
     user_id, name = w.users[role]
     date = day0 + dt.timedelta(days=target)
     token, expires = sandbox_token(user_id=user_id, org_id=org, role=role, name=name, real_org=person.organization_id,
                                    now=dt.datetime.now(dt.UTC), today=date)
     return Moved(day=target, date=date, token=token, expires_at=expires,
                  summary=[{"who": who, "kind": kind, "count": n} for (who, kind), n in sorted(summary.items())],
-                 for_you=for_you, waiting=waiting, failed=failed)
+                 for_you=for_you, waiting=waiting, failed=failed, highlights=pick_highlights(played_now), finale=finale)

@@ -1,0 +1,561 @@
+import * as React from 'react'
+import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
+import type { LucideIcon } from 'lucide-react'
+import {
+  AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, FastForward, FileText, Flag, Hammer, HandCoins, Package, Rewind, Truck, Wallet, X,
+} from 'lucide-react'
+import { Ink } from '@/components/live/ink'
+import { prefersReducedMotion } from '@/lib/timeline'
+import type { DaysPassed, ForYou } from '@/lib/sandbox'
+import { cn } from '@/lib/utils'
+
+// UX-70 (asked 18 Nov 2026: "in the simulation I want more cinematicness, like the bit we added when we move from
+// Live"): the sample company's days as scenes, in the Live cut's language (a dark screen, a title rising letter by
+// letter in the brand font, lines writing themselves, the page opening through an iris):
+// - DayPassScene: Next day (dusk, night while the cast plays the day, dawn with the day's title and its moments),
+//   Skip ahead (the day counter racing, the moments flashing past), Go back (a rewind: colour drains, the counter runs
+//   down);
+// - ArrivalIris: the page that loads on the new day opens through a circle;
+// - Briefing: the morning: each person's card with what they did, then "Your part today";
+// - EndCredits: Green Villa handed over: the cast and the run's numbers roll;
+// - EpisodeCard: a chapter's title card in the guided project.
+// Every scene can be skipped (a click on Skip, or Esc); with reduced motion none plays: the page simply goes.
+
+export type SceneMode = 'next' | 'skip' | 'back'
+export type Moment = NonNullable<DaysPassed['highlights']>[number]
+
+const INK = '#0b0d10'
+
+/** The cast as the scenes show them. */
+const CAST: Record<string, { role: string; tone: string }> = {
+  Ravi: { role: 'Site engineer', tone: 'bg-orange-500' },
+  Anil: { role: 'Project manager', tone: 'bg-sky-500' },
+  Meera: { role: 'Accounts', tone: 'bg-violet-500' },
+  Owner: { role: 'Owner', tone: 'bg-yellow-400 text-black' },
+}
+
+const KIND: Record<string, { icon: LucideIcon; tone: string }> = {
+  work: { icon: Hammer, tone: 'text-orange-300' },
+  request: { icon: ClipboardList, tone: 'text-amber-300' },
+  order: { icon: Package, tone: 'text-sky-300' },
+  delivery: { icon: Truck, tone: 'text-emerald-300' },
+  issue: { icon: AlertTriangle, tone: 'text-red-300' },
+  issue_resolve: { icon: CheckCircle2, tone: 'text-emerald-300' },
+  supplier_payment: { icon: Wallet, tone: 'text-violet-300' },
+  sub_payment: { icon: Wallet, tone: 'text-violet-300' },
+  wage_pay: { icon: Wallet, tone: 'text-violet-300' },
+  advance: { icon: HandCoins, tone: 'text-violet-300' },
+  client_receipt: { icon: HandCoins, tone: 'text-emerald-300' },
+  ra_bill: { icon: FileText, tone: 'text-teal-300' },
+  work_order: { icon: FileText, tone: 'text-teal-300' },
+  stage: { icon: Flag, tone: 'text-yellow-300' },
+}
+
+/** The plan writes each entry as a to-do ("Order 100 bags cement…"); a scene tells it as done ("Ordered …"). */
+function didIt(kind: string, what: string): string {
+  if (kind === 'issue') return `Problem: ${what}`
+  if (kind === 'work') return `Done: ${what}`
+  const rules: [RegExp, string][] = [[/^Order /, 'Ordered '], [/^Ask for /, 'Asked for '], [/^Pay /, 'Paid '], [/^Send /, 'Sent '], [/^Close: /, 'Fixed: ']]
+  for (const [re, to] of rules) if (re.test(what)) return what.replace(re, to)
+  return what
+}
+
+function dayName(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+function useOpen(delay = 0): boolean {
+  const [open, setOpen] = React.useState(false)
+  React.useLayoutEffect(() => {
+    let frame = 0
+    const t = window.setTimeout(() => {
+      frame = requestAnimationFrame(() => requestAnimationFrame(() => setOpen(true)))
+    }, delay)
+    return () => {
+      window.clearTimeout(t)
+      cancelAnimationFrame(frame)
+    }
+  }, [delay])
+  return open
+}
+
+const wait = (ms: number) => new Promise((r) => window.setTimeout(r, ms))
+
+/** A title rising letter by letter (the Live cut's). */
+export function RisingTitle({ text, show, delay = 0, className }: { text: string; show: boolean; delay?: number; className?: string }) {
+  return (
+    <h2 className={cn('m-0 flex flex-wrap gap-x-[0.28em] overflow-hidden font-brand leading-[1.05] tracking-[-0.02em]', className)} aria-label={text}>
+      {/* Letters rise one by one, but a word never breaks across lines. */}
+      {text.split(' ').map((word, w, words) => {
+        const before = words.slice(0, w).join(' ').length + (w ? 1 : 0)
+        return (
+          <span key={w} className="inline-flex overflow-hidden whitespace-nowrap" aria-hidden="true">
+            {[...word].map((ch, i) => (
+              <span
+                key={i}
+                className="inline-block transition-[transform,opacity] duration-500 ease-out"
+                style={{ transform: show ? 'none' : 'translateY(105%)', opacity: show ? 1 : 0, transitionDelay: `${delay + (before + i) * 35}ms` }}
+              >
+                {ch}
+              </span>
+            ))}
+          </span>
+        )
+      })}
+    </h2>
+  )
+}
+
+function MomentLine({ m, index, compact }: { m: Moment; index: number; compact?: boolean }) {
+  const look = KIND[m.kind] ?? KIND.work
+  const show = useOpen(index * (compact ? 120 : 380))
+  return (
+    <li
+      className="flex items-start gap-3 transition-[transform,opacity] duration-500 ease-out"
+      style={{ transform: show ? 'none' : 'translateX(24px)', opacity: show ? 1 : 0 }}
+    >
+      <span className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white', CAST[m.who]?.tone ?? 'bg-white/20')} aria-hidden>
+        {m.who.slice(0, 1)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-white/55 uppercase">
+          <look.icon className={cn('size-3.5', look.tone)} aria-hidden /> {m.who} · day {m.day}
+        </span>
+        <span className="block text-[15px] leading-snug text-white/90">{didIt(m.kind, m.what)}</span>
+      </span>
+    </li>
+  )
+}
+
+/** Skip: a click on the button, or Esc. */
+function SkipButton({ onSkip, label = 'Skip' }: { onSkip: () => void; label?: string }) {
+  React.useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onSkip()
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [onSkip])
+  return (
+    <button type="button" onClick={onSkip} className="absolute right-5 bottom-5 inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 ring-1 ring-white/15 backdrop-blur hover:bg-white/20">
+      {label} <ChevronRight className="size-3.5" aria-hidden />
+    </button>
+  )
+}
+
+/**
+ * The days passing, shown while the cast plays them. `result` arrives when the server is done; the scene then tells
+ * the day (its title, its moments) and calls `onFinished`, which loads the page on the new day.
+ */
+export function DayPassScene({ mode, fromDay, toDay, origin, result, onFinished }: {
+  mode: SceneMode
+  fromDay: number
+  toDay: number
+  origin: { x: number; y: number }
+  result: DaysPassed | null
+  onFinished: () => void
+}) {
+  const open = useOpen()
+  const [phase, setPhase] = React.useState<'dusk' | 'night' | 'dawn'>('dusk')
+  const [skip, setSkip] = React.useState(false)
+  const [counter, setCounter] = React.useState(fromDay)
+  const finished = React.useRef(false)
+  const finish = React.useCallback(() => {
+    if (finished.current) return
+    finished.current = true
+    onFinished()
+  }, [onFinished])
+
+  // Dusk turns to night while the cast plays; the counter creeps forward (Skip ahead) or back (Go back).
+  React.useEffect(() => {
+    const t = window.setTimeout(() => setPhase('night'), 1100)
+    return () => window.clearTimeout(t)
+  }, [])
+  React.useEffect(() => {
+    if (mode === 'next' || result) return
+    const towards = mode === 'back' ? toDay : toDay - 1
+    const id = window.setInterval(() => setCounter((c) => (c === towards ? c : c + Math.sign(towards - c))), mode === 'back' ? 260 : 420)
+    return () => window.clearInterval(id)
+  }, [mode, toDay, result])
+
+  // The day is played: dawn, the title, its moments; then the page.
+  const moments = React.useMemo(() => {
+    const all = result?.highlights ?? []
+    return mode === 'next' ? all.slice(0, 5) : all.slice(-8)
+  }, [result, mode])
+  React.useEffect(() => {
+    if (!result) return
+    if (skip) {
+      finish()
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      setCounter(result.day)
+      await wait(phase === 'dusk' ? 600 : 0)
+      if (cancelled) return
+      setPhase('dawn')
+      const hold = mode === 'back' ? 1500 : 1900 + moments.length * (mode === 'next' ? 420 : 150) + 900
+      await wait(hold)
+      if (!cancelled) finish()
+    })()
+    return () => {
+      cancelled = true
+    }
+    // phase is read once when the result lands, on purpose
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, skip])
+
+  const reveal = open ? `circle(150vmax at ${origin.x}px ${origin.y}px)` : `circle(0px at ${origin.x}px ${origin.y}px)`
+  const dawn = phase === 'dawn'
+  const title = `Day ${result?.day ?? (mode === 'next' ? toDay : counter)}`
+
+  return createPortal(
+    <div
+      role="status"
+      aria-live="assertive"
+      className="fixed inset-0 z-[90] overflow-hidden text-white"
+      style={{ clipPath: reveal, transition: 'clip-path 700ms cubic-bezier(.7,0,.2,1)', backgroundColor: INK }}
+    >
+      {mode === 'next' && <Sky phase={phase} />}
+      {mode === 'skip' && <Speed />}
+      {mode === 'back' && <Rewinding />}
+
+      <div className={cn('relative mx-auto flex h-full max-w-3xl flex-col justify-center gap-5 px-6 [text-shadow:0_1px_12px_rgba(0,0,0,.45)]', mode === 'next' && 'pb-[26vh]')}>
+        <span className="flex items-center gap-2 font-mono text-[12px] tracking-[0.12em] text-white/60 uppercase">
+          {mode === 'skip' && <FastForward className="size-4" aria-hidden />}
+          {mode === 'back' && <Rewind className="size-4" aria-hidden />}
+          {mode === 'back' ? 'Going back' : mode === 'skip' ? `Skipping ahead · ${toDay - fromDay} days` : dawn ? 'Morning at Green Villa Builders' : 'Night falls on site'}
+        </span>
+        {mode === 'next' ? (
+          <RisingTitle key={dawn ? 'dawn' : 'night'} text={dawn ? title : `Day ${fromDay}`} show={open} delay={dawn ? 100 : 350} className="text-[clamp(56px,12vw,150px)]" />
+        ) : (
+          <div className={cn('font-brand text-[clamp(64px,14vw,170px)] leading-none tabular-nums transition-transform', !result && 'animate-pulse')}>{title}</div>
+        )}
+        {dawn && result && <Ink text={dayName(result.date)} writing delay={250} className="text-[clamp(16px,2.2vw,24px)] text-white/80" />}
+        {!dawn && mode === 'next' && <p className="m-0 text-[15px] text-white/60">The team works through the day…</p>}
+        {dawn && moments.length > 0 && mode !== 'back' && (
+          <ul className={cn('m-0 mt-2 flex list-none flex-col gap-3 p-0', mode === 'skip' && 'gap-2')}>
+            {moments.map((m, i) => <MomentLine key={`${m.day}-${i}`} m={m} index={i} compact={mode === 'skip'} />)}
+          </ul>
+        )}
+        {dawn && result && mode !== 'back' && moments.length === 0 && <p className="m-0 text-[15px] text-white/60">A quiet day on site.</p>}
+        <span
+          className="h-[3px] bg-primary transition-[width] ease-in-out"
+          style={{ width: dawn ? '100%' : open ? '20%' : '0%', transitionDuration: dawn ? '1600ms' : '900ms' }}
+          aria-hidden="true"
+        />
+      </div>
+      <SkipButton onSkip={() => (result ? finish() : setSkip(true))} label={skip ? 'Opening as soon as it is ready' : 'Skip'} />
+    </div>,
+    document.body,
+  )
+}
+
+/** Next day: the sun sets, the stars come out while the cast plays the day, then the sun comes up. */
+function Sky({ phase }: { phase: 'dusk' | 'night' | 'dawn' }) {
+  const layer = 'absolute inset-0 transition-opacity duration-[1400ms] ease-in-out'
+  return (
+    <div aria-hidden className="absolute inset-0">
+      <div className={layer} style={{ opacity: phase === 'dusk' ? 1 : 0, background: 'linear-gradient(180deg,#1e1b4b 0%,#7c2d12 62%,#f97316 100%)' }} />
+      <div className={layer} style={{ opacity: phase === 'night' ? 1 : 0, background: 'linear-gradient(180deg,#05060a 0%,#0f172a 70%,#1e1b4b 100%)' }} />
+      <div className={layer} style={{ opacity: phase === 'dawn' ? 1 : 0, background: 'linear-gradient(180deg,#0c4a6e 0%,#9a3412 70%,#fbbf24 100%)' }} />
+      {/* Stars at night. */}
+      <div className={layer} style={{ opacity: phase === 'night' ? 1 : 0 }}>
+        {STARS.map(([x, y, s], i) => (
+          <span key={i} className="absolute rounded-full bg-white animate-pulse" style={{ left: `${x}%`, top: `${y}%`, width: s, height: s, animationDelay: `${(i % 7) * 0.3}s` }} />
+        ))}
+      </div>
+      {/* The sun: setting at the right, rising at the left. */}
+      <div
+        className="absolute size-40 rounded-full bg-[radial-gradient(circle,#fde68a_0%,#f59e0b_55%,transparent_70%)] blur-[1px] transition-all duration-[1600ms] ease-in-out"
+        style={
+          phase === 'dusk'
+            ? { right: '12%', bottom: '8%', opacity: 1 }
+            : phase === 'night'
+              ? { right: '12%', bottom: '-30%', opacity: 0 }
+              : { right: '70%', bottom: '6%', opacity: 1 }
+        }
+      />
+      {/* The site against the sky: a block going up in its frame, the finished blocks, a tower crane. */}
+      <svg className="absolute bottom-0 left-0 h-[30vh] w-full" viewBox="0 0 1440 300" preserveAspectRatio="xMidYMax slice" aria-hidden>
+        <g fill="#05060a" opacity="0.92">
+          <rect x="0" y="230" width="1440" height="70" />
+          <rect x="70" y="150" width="170" height="150" />
+          <rect x="260" y="185" width="120" height="115" />
+          <rect x="420" y="120" width="210" height="180" />
+          <rect x="980" y="170" width="160" height="130" />
+          <rect x="1170" y="140" width="190" height="160" />
+          {/* The crane: mast, jib, counter-jib, the hook's line. */}
+          <rect x="806" y="40" width="14" height="260" />
+          <rect x="640" y="40" width="380" height="9" />
+          <rect x="820" y="49" width="70" height="16" />
+          <rect x="700" y="49" width="2" height="90" />
+          <rect x="690" y="139" width="22" height="12" />
+          <path d="M806 40 L813 10 L820 40 Z" />
+        </g>
+        {/* The frame of the block going up: columns and slabs. */}
+        <g stroke="#05060a" strokeWidth="6" opacity="0.92">
+          <path d="M660 300V170M720 300V170M780 300V170M860 300V170M920 300V170M650 230H930M650 170H930" fill="none" />
+        </g>
+        {/* A few lit windows. */}
+        <g fill="#fbbf24" opacity={phase === 'night' ? 0.85 : 0.35}>
+          {WINDOWS.map(([x, y], i) => <rect key={i} x={x} y={y} width="10" height="12" />)}
+        </g>
+      </svg>
+    </div>
+  )
+}
+
+const WINDOWS: [number, number][] = [[95, 175], [140, 205], [185, 175], [460, 150], [520, 190], [580, 150], [460, 230], [1010, 200], [1090, 230], [1200, 165], [1260, 205], [1320, 165], [290, 215]]
+const STARS: [number, number, number][] = Array.from({ length: 42 }, (_, i) => [(i * 37) % 100, (i * 53) % 60, i % 5 === 0 ? 3 : 2])
+
+/** Skip ahead: the hazard stripe racing past, light streaks. */
+function Speed() {
+  return (
+    <div aria-hidden className="absolute inset-0">
+      <div className="absolute inset-x-0 top-0 h-2 bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)] [background-size:22px_22px] motion-safe:animate-[stripe_0.6s_linear_infinite]" />
+      {Array.from({ length: 14 }, (_, i) => (
+        <span
+          key={i}
+          className="absolute h-px bg-gradient-to-r from-transparent via-white/40 to-transparent motion-safe:animate-[streak_0.9s_linear_infinite]"
+          style={{ top: `${8 + i * 6.5}%`, width: `${20 + (i % 4) * 10}%`, animationDelay: `${(i % 5) * 0.17}s` }}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** Go back: colour drains from the page beneath, and old-tape lines run across it. */
+function Rewinding() {
+  return (
+    <div aria-hidden className="absolute inset-0">
+      <div className="absolute inset-0 bg-[#0b0d10]/85" />
+      <div className="absolute inset-0 opacity-30 [background:repeating-linear-gradient(0deg,rgba(255,255,255,.08)_0_1px,transparent_1px_4px)]" />
+      <div className="absolute inset-x-0 h-24 bg-white/[0.04] motion-safe:animate-[tape_1.4s_linear_infinite]" />
+    </div>
+  )
+}
+
+/** The page that loads on a new day opens through a circle (the Live cut's reveal). */
+export function ArrivalIris({ onDone }: { onDone: () => void }) {
+  const open = useOpen(120)
+  React.useEffect(() => {
+    const t = window.setTimeout(onDone, 1100)
+    return () => window.clearTimeout(t)
+  }, [onDone])
+  return createPortal(
+    <div aria-hidden className="pointer-events-none fixed inset-0 z-[90] grid place-items-center overflow-hidden">
+      <span
+        className="rounded-full transition-[width,height] duration-[900ms] ease-[cubic-bezier(.7,0,.2,1)]"
+        style={{ width: open ? '260vmax' : 0, height: open ? '260vmax' : 0, boxShadow: `0 0 0 260vmax ${INK}` }}
+      />
+    </div>,
+    document.body,
+  )
+}
+
+/** The morning: what each person did, then the person's own part of the day. */
+export function Briefing({ day, date, moments, summary, forYou, waiting, onClose }: {
+  day: number
+  date: string
+  moments: Moment[]
+  summary: { who: string; kind: string; count: number }[]
+  forYou: ForYou[]
+  waiting: number
+  onClose: () => void
+}) {
+  const open = useOpen(150)
+  React.useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [onClose])
+  const people = Object.keys(CAST).filter((who) => summary.some((s) => s.who === who))
+  const todo = forYou.filter((f) => !f.done)
+  return createPortal(
+    <div className="fixed inset-0 z-[85] grid place-items-center bg-black/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Morning of day ${day}`} onClick={onClose}>
+      <div
+        className="relative w-full max-w-xl overflow-hidden rounded-2xl bg-[#111316] text-white shadow-2xl ring-1 ring-white/10 transition-[transform,opacity] duration-500 ease-out"
+        style={{ transform: open ? 'none' : 'translateY(24px) scale(.98)', opacity: open ? 1 : 0 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div aria-hidden className="h-1.5 bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Close">
+          <X className="size-4" />
+        </button>
+        <div className="flex flex-col gap-4 p-5 sm:p-6">
+          <div>
+            <span className="font-mono text-[11px] tracking-[0.12em] text-white/50 uppercase">Good morning · day {day}</span>
+            <RisingTitle text={dayName(date)} show={open} delay={150} className="mt-1 text-[clamp(26px,4vw,34px)]" />
+          </div>
+          {people.length === 0 ? (
+            <p className="m-0 text-sm text-white/60">A quiet day: nobody worked.</p>
+          ) : (
+            <ul className="m-0 grid list-none gap-2 p-0 sm:grid-cols-2">
+              {people.map((who, i) => (
+                <PersonCard key={who} who={who} index={i} moments={moments.filter((m) => m.who === who)} counts={summary.filter((s) => s.who === who)} />
+              ))}
+            </ul>
+          )}
+          {waiting > 0 && <p className="m-0 text-xs text-amber-300">{waiting} waiting on something not done yet</p>}
+          <div className="rounded-xl bg-white/[0.05] p-3.5 ring-1 ring-white/10">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold">Your part today</span>
+              <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground tabular-nums">{todo.length}</span>
+            </div>
+            {todo.length === 0 ? (
+              <p className="m-0 mt-1 text-sm text-white/60">Nothing for you today. Look around.</p>
+            ) : (
+              <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0 text-sm text-white/80">
+                {todo.slice(0, 3).map((f) => (
+                  <li key={f.id} className="truncate">· {f.what}</li>
+                ))}
+                {todo.length > 3 && <li className="text-xs text-white/50">and {todo.length - 3} more in For you</li>}
+              </ul>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button type="button" onClick={onClose} className="h-9 rounded-lg px-3 text-sm text-white/70 hover:bg-white/10 hover:text-white">
+              {todo.length ? 'Later' : 'Close'}
+            </button>
+            {todo.length > 0 && (
+              <Link to={todo[0].page} onClick={onClose} className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+                Start <ChevronRight className="size-4" aria-hidden />
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+const DID_SHORT: Record<string, string> = {
+  attendance: 'attendance', work: 'work entries', use: 'material used', conditions: 'site notes', issue: 'problems',
+  request: 'requests', delivery: 'deliveries', order: 'orders', boq_count: 'BOQ counts', issue_resolve: 'fixed',
+  supplier_bill: 'bills booked', supplier_payment: 'payments', wage_pay: 'wages paid', wage_approve: 'wages approved',
+  client_receipt: 'client payments', ra_bill: 'running bills', expense: 'expenses', advance: 'advances',
+  measurement: 'measurements', work_order: 'work orders', sub_bill: 'subcontract bills', sub_payment: 'subcontract paid',
+  stage: 'stage moved',
+}
+
+function PersonCard({ who, index, moments, counts }: { who: string; index: number; moments: Moment[]; counts: { kind: string; count: number }[] }) {
+  const show = useOpen(400 + index * 220)
+  const cast = CAST[who]
+  return (
+    <li
+      className="flex gap-3 rounded-xl bg-white/[0.04] p-3 ring-1 ring-white/10 transition-[transform,opacity] duration-500 ease-out"
+      style={{ transform: show ? 'none' : 'translateY(12px)', opacity: show ? 1 : 0 }}
+    >
+      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white', cast?.tone)} aria-hidden>
+        {who.slice(0, 1)}
+      </span>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold">
+          {who} <span className="font-normal text-white/50">· {cast?.role}</span>
+        </div>
+        {moments.slice(0, 2).map((m, i) => (
+          <p key={i} className="m-0 truncate text-xs text-white/80" title={didIt(m.kind, m.what)}>
+            {didIt(m.kind, m.what)}
+          </p>
+        ))}
+        <p className="m-0 mt-0.5 truncate text-[11px] text-white/45">{counts.map((c) => `${c.count} ${DID_SHORT[c.kind] ?? c.kind}`).join(' · ')}</p>
+      </div>
+    </li>
+  )
+}
+
+/** Green Villa handed over: the cast and the run's numbers roll. */
+export function EndCredits({ finale, role, onClose }: { finale: NonNullable<DaysPassed['finale']>; role: string; onClose: () => void }) {
+  const roll = useOpen(300)
+  const k = (kind: string) => finale.by_kind[kind] ?? 0
+  const numbers: [string, number][] = [
+    ['days on site', finale.days],
+    ['entries made', finale.entries],
+    ['deliveries received', k('delivery')],
+    ['orders placed', k('order')],
+    ['problems fixed', k('issue_resolve')],
+    ['supplier payments', k('supplier_payment')],
+    ['wage weeks paid', k('wage_pay')],
+  ]
+  return createPortal(
+    <div className="fixed inset-0 z-[95] overflow-hidden text-white" style={{ backgroundColor: INK }} role="dialog" aria-modal="true" aria-label="Green Villa handed over">
+      <div aria-hidden className="absolute inset-x-0 top-0 h-1.5 bg-[repeating-linear-gradient(135deg,#1a1d21_0_8px,#facc15_8px_16px)]" />
+      <div
+        className="absolute inset-x-0 top-0 flex flex-col items-center gap-14 px-6 text-center ease-linear"
+        style={{ transform: roll ? 'translateY(-100%)' : 'translateY(100vh)', transition: roll && !prefersReducedMotion() ? 'transform 26s linear' : 'none' }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <span className="font-mono text-[12px] tracking-[0.14em] text-white/50 uppercase">Handed over on day {finale.days}</span>
+          <h2 className="m-0 font-brand text-[clamp(56px,10vw,128px)] leading-none">Green Villa</h2>
+          <span className="h-[3px] w-40 bg-primary" />
+        </div>
+        <Credit title="Starring">
+          {Object.entries(CAST).map(([who, c]) => (
+            <CreditRow key={who} left={c.role} right={who === 'Owner' ? 'The owner' : who} />
+          ))}
+          <CreditRow left="And" right={`You, as the ${role.toLowerCase().replace('_', ' ')}`} />
+        </Credit>
+        <Credit title="By the numbers">
+          {numbers.filter(([, n]) => n > 0).map(([label, n]) => <CreditRow key={label} left={label} right={n.toLocaleString('en-IN')} />)}
+        </Credit>
+        <Credit title="Suppliers">
+          {['Malabar Cements Agency', 'Kerala Steels', 'Periyar Sand & Aggregates', 'Thrissur Blocks', 'Joy Tiling Works'].map((s) => <CreditRow key={s} left="" right={s} />)}
+        </Credit>
+        <div className="flex flex-col items-center gap-2 pb-[40vh]">
+          <span className="text-white/50">Kept by</span>
+          <span className="font-brand text-4xl">Mesiri</span>
+        </div>
+      </div>
+      <SkipButton onSkip={onClose} label="Close" />
+    </div>,
+    document.body,
+  )
+}
+
+function Credit({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex w-full max-w-md flex-col gap-2">
+      <h3 className="m-0 mb-2 font-mono text-[12px] tracking-[0.14em] text-primary uppercase">{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+function CreditRow({ left, right }: { left: string; right: string }) {
+  return (
+    <div className="grid grid-cols-2 gap-6 text-[17px]">
+      <span className="text-right text-white/55 capitalize">{left}</span>
+      <span className="text-left font-semibold">{right}</span>
+    </div>
+  )
+}
+
+/** A chapter's title card in the guided project: its number, its name, its first line. */
+export function EpisodeCard({ number, of, title, line, onDone }: { number: number; of: number; title: string; line?: string; onDone: () => void }) {
+  const open = useOpen()
+  React.useEffect(() => {
+    const t = window.setTimeout(onDone, 2900)
+    return () => window.clearTimeout(t)
+  }, [onDone])
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[95] grid cursor-pointer place-items-center text-white"
+      style={{ backgroundColor: INK, clipPath: open ? 'inset(0 0 0 0)' : 'inset(50% 0 50% 0)', transition: 'clip-path 550ms cubic-bezier(.7,0,.2,1)' }}
+      onClick={onDone}
+      role="status"
+      aria-live="assertive"
+    >
+      <div className="grid max-w-[90vw] justify-items-start gap-4 px-6">
+        <span className="font-mono text-[12px] tracking-[0.14em] text-white/55 uppercase">Chapter {number} of {of}</span>
+        <RisingTitle text={title} show={open} delay={250} className="text-[clamp(44px,9vw,120px)]" />
+        {line && open && <Ink text={line} writing delay={700} className="text-[clamp(16px,2vw,22px)] text-white/75" />}
+        <span className="h-[3px] bg-primary transition-[width] duration-[2200ms] ease-in-out" style={{ width: open ? '100%' : '0%' }} aria-hidden />
+      </div>
+      <SkipButton onSkip={onDone} />
+    </div>,
+    document.body,
+  )
+}

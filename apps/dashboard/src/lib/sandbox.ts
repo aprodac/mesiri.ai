@@ -249,6 +249,34 @@ export interface DaysPassed {
   for_you: ForYou[]
   waiting: { id: string; day: number; who: string; what: string }[]
   failed: { id: string; what: string; error: string }[]
+  /** UX-70: the days' notable moments, for the "a day passes" scene (in plan order). */
+  highlights?: { day: number; who: string; kind: string; what: string }[]
+  /** UX-70: on handover, the whole run's totals for the end credits. */
+  finale?: { days: number; entries: number; by_kind: Record<string, number> } | null
+}
+
+/** UX-70: the page loads again after a scene; it opens through an iris, then the briefing (or the credits). */
+const SCENE_KEY = 'mesiri_sandbox_scene'
+export type SceneArrival = { kind: 'day' | 'back'; day: number; date: string }
+
+function markArrival(a: SceneArrival) {
+  try {
+    sessionStorage.setItem(SCENE_KEY, JSON.stringify(a))
+  } catch {
+    // Storage blocked: the page simply loads without the reveal.
+  }
+}
+
+/** Read once: the scene the page should open with, if it was just reloaded by one. */
+export function takeArrival(): SceneArrival | null {
+  try {
+    const raw = sessionStorage.getItem(SCENE_KEY)
+    if (!raw) return null
+    sessionStorage.removeItem(SCENE_KEY)
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
 }
 
 /** Shown once after the page loads again: what happened while days passed. */
@@ -279,7 +307,7 @@ export function useSandboxClock() {
 
 /** Days pass (1..7): the cast plays them; this tab takes the new token (its date moved) and loads the page again, so
  *  every page shows the new day. What happened is kept to say once ("While you were away"). */
-export async function passDays(days: number): Promise<void> {
+export async function passDays(days: number, beforeReload?: (d: DaysPassed) => Promise<void>): Promise<void> {
   const s = store()
   const session = sandboxSession()
   if (!s || !session) throw new Error('Open your sample company first.')
@@ -287,6 +315,10 @@ export async function passDays(days: number): Promise<void> {
   const d = res.data
   s.setItem(KEY, JSON.stringify({ ...session, token: d.token, expires_at: d.expires_at, today: d.date }))
   s.setItem(AWAY_KEY, JSON.stringify({ from: d.day - days, ...d, token: undefined }))
+  // UX-70: the scene finishes telling the days (it was showing while the cast played them), then the page opens on
+  // the new day through an iris.
+  if (beforeReload) await beforeReload(d)
+  markArrival({ kind: 'day', day: d.day, date: d.date })
   reload(`${window.location.pathname}${window.location.search}`)
 }
 
@@ -314,7 +346,7 @@ export async function catchUp(date: string): Promise<void> {
 
 /** SS-74d: back to an earlier day (a save point): the sample company exactly as it was then; the days after it are
  *  gone. This tab takes the new token (that day's date) and loads the page again. */
-export async function goBackTo(day: number): Promise<void> {
+export async function goBackTo(day: number, beforeReload?: (d: DaysPassed) => Promise<void>): Promise<void> {
   const s = store()
   const session = sandboxSession()
   if (!s || !session) throw new Error('Open your sample company first.')
@@ -322,6 +354,8 @@ export async function goBackTo(day: number): Promise<void> {
   const d = res.data
   s.setItem(KEY, JSON.stringify({ ...session, token: d.token, expires_at: d.expires_at, today: d.date }))
   s.removeItem(AWAY_KEY)
+  if (beforeReload) await beforeReload(d)
+  markArrival({ kind: 'back', day: d.day, date: d.date })
   reload(`${window.location.pathname}${window.location.search}`)
 }
 

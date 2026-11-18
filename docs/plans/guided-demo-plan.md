@@ -876,3 +876,28 @@ writing steps: `docs/engineering/LEARN_AND_TOURS.md` (the sandbox chapter bullet
 
 **Open questions for Ilan (not blocking the above):** SS-73b voice notes/photos (on hold, not a focus); warm dark mode
 (mock-up first or build); UX-22 per-person Help/tours for the remaining ~40 pages (batches in story order).
+
+
+### 18.15 UX-70: the days as scenes (18 Nov 2026)
+
+Asked in session: *"in the simulation I want more cinematicness, like the bit we added when we move from Live"*; all
+four proposed moments picked. `apps/dashboard/src/components/sandbox-scenes.tsx`, wired in `sandbox-clock.tsx` and the
+walkthrough engine; in the Live cut's language (`components/live/modules.tsx`: dark screen, the brand font rising letter
+by letter, ink lines, an iris).
+
+| Moment | What plays |
+|---|---|
+| Next day | Dusk over the site's skyline (blocks, a frame going up, a tower crane), night with stars while the server plays the day, dawn with "Day n", its date and up to 5 of its moments; then the page opens through a circle |
+| Skip ahead | The hazard stripe and light streaks, the day counter racing to the last day, the last 8 moments |
+| Go back | A rewind: tape lines, the counter running down |
+| Morning briefing | After a day passes: each person's card (what they did, their counts), then "Your part today" with Start |
+| End credits | On handover: the cast (and you, in your role), the run's numbers, the suppliers |
+| Chapter card | The guided project's chapter title ("Chapter 2 of 11 · Set up Green Villa") with its first line |
+
+The scene starts on the click and covers the time the server takes; it tells the day once the answer is in. Everything
+can be skipped (Skip, Esc); with reduced motion no scene plays (the briefing still comes).
+
+Backend, additive (`sandbox_player.py`, `sandbox_router.py`): `highlights` ({day, who, kind, what}: per day the first work
+done and the notable kinds, at most 4 a day and 24 in all, `pick_highlights`) and `finale` ({days, entries, by_kind}, on
+the last day) on `POST /learn/sandbox/next-day`. The plan writes entries as to-dos; the scene tells them as done
+(`didIt`: "Order …" → "Ordered …"). Test: `backend/tests/unit/test_sandbox_highlights_ux70.py`.

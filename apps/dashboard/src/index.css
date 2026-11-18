@@ -422,3 +422,16 @@
   75% { transform: translateX(-1px); }
 }
 
+
+/* UX-70: the sample company's scenes (components/sandbox-scenes.tsx). */
+@keyframes streak {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(520%); }
+}
+@keyframes stripe {
+  to { background-position: 22px 0; }
+}
+@keyframes tape {
+  from { top: -10%; }
+  to { top: 110%; }
+}

@@ -6,7 +6,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/lib/logo-upload'
-import { catchUp, goBackTo, passDays, sandboxSession, takeDaysPassed, useSandboxClock, type ForYou } from '@/lib/sandbox'
+import { catchUp, goBackTo, passDays, sandboxSession, takeArrival, takeDaysPassed, useSandboxClock, type DaysPassed, type ForYou } from '@/lib/sandbox'
+import { ArrivalIris, Briefing, DayPassScene, EndCredits, type SceneMode } from '@/components/sandbox-scenes'
+import { prefersReducedMotion } from '@/lib/timeline'
 import { findPage } from '@/lib/module-map'
 
 // SS-74e (guided-demo-plan.md section 18): the sample company's days, in its banner. Next day and Skip ahead play the
@@ -50,6 +52,23 @@ export function SandboxClock() {
   const [busy, setBusy] = React.useState<number | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [away, setAway] = React.useState(takeDaysPassed)
+  // UX-70: the scenes. `scene` plays while days pass; after the page loads again it opens through an iris, then the
+  // morning briefing (or, on handover, the end credits). Reduced motion: no scene, the briefing still comes.
+  const [arrival, setArrival] = React.useState(takeArrival)
+  const [scene, setScene] = React.useState<{ mode: SceneMode; from: number; to: number; origin: { x: number; y: number }; result: DaysPassed | null } | null>(null)
+  const finishScene = React.useRef<(() => void) | null>(null)
+  const [briefing, setBriefing] = React.useState(() => !!(arrival?.kind === 'day' && away))
+  const [credits, setCredits] = React.useState(() => !!(arrival?.kind === 'day' && away?.finale))
+  const [iris, setIris] = React.useState(() => !!arrival && !prefersReducedMotion())
+  const playScene = (mode: SceneMode, from: number, to: number, el?: HTMLElement | null) => {
+    if (prefersReducedMotion()) return undefined
+    const r = el?.getBoundingClientRect()
+    setScene({ mode, from, to, origin: r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: window.innerWidth / 2, y: 80 }, result: null })
+    return (d: DaysPassed) => new Promise<void>((resolve) => {
+      finishScene.current = resolve
+      setScene((s) => (s ? { ...s, result: d } : s))
+    })
+  }
 
   // Another tab moved the days on: this one opens the sample again on the current date (once).
   const date = clock.data?.date
@@ -65,12 +84,13 @@ export function SandboxClock() {
   const done = !!c && c.day >= c.last_day
   const late = c ? c.for_you.filter((f) => f.day < c.day).length : 0
 
-  const pass = async (days: number) => {
+  const pass = async (days: number, el?: HTMLElement | null) => {
     setBusy(days)
     setError(null)
     try {
-      await passDays(days)
+      await passDays(days, c ? playScene(days === 1 ? 'next' : 'skip', c.day, Math.min(c.day + days, c.last_day), el) : undefined)
     } catch (e) {
+      setScene(null)
       setError(apiErrorMessage(e))
       setBusy(null)
     }
@@ -84,8 +104,9 @@ export function SandboxClock() {
     setBusy(-1)
     setError(null)
     try {
-      await goBackTo(day)
+      await goBackTo(day, c ? playScene('back', c.day, day) : undefined)
     } catch (e) {
+      setScene(null)
       setError(apiErrorMessage(e))
       setBusy(null)
     }
@@ -109,7 +130,7 @@ export function SandboxClock() {
           <span className="text-xs">Green Villa is handed over. Start over to play it again.</span>
         ) : (
           <>
-            <Button size="sm" className="gap-1.5" disabled={!c || busy !== null} onClick={() => void pass(1)} data-guide="sandbox.next-day"
+            <Button size="sm" className="gap-1.5" disabled={!c || busy !== null} onClick={(e) => void pass(1, e.currentTarget)} data-guide="sandbox.next-day"
               aria-label="Move the sample company on to the next day">
               {busy === 1 ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <SkipForward className="size-3.5" aria-hidden />}
               {busy === 1 ? 'A day passes…' : 'Next day'}
@@ -160,7 +181,23 @@ export function SandboxClock() {
         {c && c.for_you.length === 0 && !done && <span className="text-xs text-muted-foreground">Nothing for you today</span>}
       </div>
       {error && <p className="m-0 text-sm text-destructive">{error}</p>}
-      {away && <Away away={away} onClose={() => setAway(null)} />}
+      {away && !briefing && !credits && <Away away={away} onClose={() => setAway(null)} />}
+      {scene && (
+        <DayPassScene mode={scene.mode} fromDay={scene.from} toDay={scene.to} origin={scene.origin} result={scene.result} onFinished={() => finishScene.current?.()} />
+      )}
+      {iris && <ArrivalIris onDone={() => { setIris(false); setArrival(null) }} />}
+      {!iris && credits && away?.finale && <EndCredits finale={away.finale} role={session.role} onClose={() => setCredits(false)} />}
+      {!iris && !credits && briefing && away && (
+        <Briefing
+          day={away.day}
+          date={away.date}
+          moments={(away.highlights ?? []).filter((h) => h.day === away.day)}
+          summary={away.summary}
+          forYou={away.for_you}
+          waiting={away.waiting.length}
+          onClose={() => setBriefing(false)}
+        />
+      )}
     </div>
   )
 }

@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { EpisodeCard } from '@/components/sandbox-scenes'
+import { prefersReducedMotion } from '@/lib/timeline'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -370,6 +372,24 @@ export function WalkthroughRunner() {
   }, [])
 
   const step: WalkStep | undefined = run?.walk.steps[run.index]
+  // UX-70: a chapter's title card when the guided project reaches a new chapter (forward, or a jump).
+  const [episode, setEpisode] = React.useState<{ number: number; of: number; title: string; line?: string } | null>(null)
+  const lastChapter = React.useRef<string | undefined>(undefined)
+  React.useEffect(() => {
+    const chapter = step?.chapter
+    if (!run || !chapter) {
+      lastChapter.current = undefined
+      return
+    }
+    if (chapter === lastChapter.current) return
+    const before = lastChapter.current
+    lastChapter.current = chapter
+    const starts = chapterStarts(run.walk.steps)
+    const at = starts.findIndex((c) => c.title === chapter)
+    // Backwards inside the project (Back) shows no card; the first chapter (the hello) has none either.
+    if (at <= 0 || (before && run.dir === -1) || prefersReducedMotion()) return
+    setEpisode({ number: at + 1, of: starts.length, title: chapter, line: step?.title })
+  }, [run, step?.chapter, step?.title])
   const stepKey = run ? `${run.walk.id}:${run.index}` : null
   const shown = !!stepKey && shownKey === stepKey
   // Practice adds real data (D-L3): never on a company whose account is read-only.
@@ -606,6 +626,7 @@ export function WalkthroughRunner() {
     return () => window.removeEventListener('keydown', keys)
   }, [run, shown, dialogOpen, tryIt, stop])
 
+  if (episode) return <EpisodeCard {...episode} onDone={() => setEpisode(null)} />
   if (finished && !run) return <Finished walk={finished.walk} next={finished.next} onClose={() => setFinished(null)} />
   if (!run || !step) return null
 
