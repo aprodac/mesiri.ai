@@ -284,7 +284,9 @@ export function Segmented<T extends string>({
   guide?: string
 }) {
   return (
-    <div className="flex w-fit max-w-full overflow-x-auto rounded-lg border p-0.5" role="group" aria-label={label} data-guide={guide}>
+    // UX-55: on white with a soft shadow, like every other control, so it reads as one switch on the sand page (it was
+    // see-through: its options floated on the page colour).
+    <div className="flex w-fit max-w-full overflow-x-auto rounded-lg border bg-card p-0.5 shadow-xs" role="group" aria-label={label} data-guide={guide}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -293,7 +295,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             'shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium',
-            value === o.value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+            value === o.value ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
           )}
         >
           {o.label}

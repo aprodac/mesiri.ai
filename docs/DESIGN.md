@@ -135,6 +135,10 @@ action is one line in `lib/kpi-look.ts` or `lib/actions.ts`, never a page's own 
     and `DialogDescription` is `sr-only` for screen readers, or data only (the project, a chip like "18,000 sqft left").
     A field's label is two or three words ("Client rate ₹/unit"); what it means is a `Hint` beside the label, never a
     bracket in the label or a paragraph under the field. A confirm that removes something keeps its one warning line.
+  - **Controls sit on white (UX-55, asked 18 Nov 2026 with a screenshot of the period switch).** A switch, a filter group,
+    a date chip or a stage bar is a white box (`bg-card`, a border, `shadow-xs`) on the sand page, never see-through:
+    see-through, its options float on the page colour and the chosen one looks like a stray pill. `Segmented` does
+    this for every page; a hand-made group copies it.
   - **Plain words only:** never "soft-deleted", "audit trail", "liquidity", "float", "dry-run", tool or database names.
 
 ## What the pages show: all projects, a project, a site (SCP-01..04, asked 9 Nov 2026)

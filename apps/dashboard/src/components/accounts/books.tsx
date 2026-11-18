@@ -80,9 +80,14 @@ export function PeriodBar({ state }: { state: ReturnType<typeof usePeriod> }) {
           <DatePicker aria-label="To" value={state.period.date_to} min={state.period.date_from} onChange={(v) => v && state.setDates({ ...state.period, date_to: v })} className="h-8 w-[150px]" />
         </div>
       ) : (
-        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-          <CalendarRange className="size-3.5" /> {formatDay(state.period.date_from)} – {formatDay(state.period.date_to)}
-        </span>
+        <button
+          type="button"
+          onClick={() => state.setRange('custom')}
+          title="Pick your own dates"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-xs font-medium tabular-nums shadow-xs hover:bg-muted"
+        >
+          <CalendarRange className="size-3.5 text-muted-foreground" /> {formatDay(state.period.date_from)} – {formatDay(state.period.date_to)}
+        </button>
       )}
     </div>
   )

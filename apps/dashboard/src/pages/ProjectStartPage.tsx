@@ -150,7 +150,7 @@ function StartView({ projectId }: { projectId: string }) {
 function StageTrack({ data, canEdit, onPick }: { data: ProjectStart; canEdit: boolean; onPick: (s: Stage) => void }) {
   const at = data.stages.findIndex((s) => s.key === data.project.stage)
   return (
-    <nav aria-label="Project stage" className="overflow-x-auto rounded-xl border p-1.5" data-guide="setup.stage">
+    <nav aria-label="Project stage" className="overflow-x-auto rounded-xl border bg-card p-1.5" data-guide="setup.stage">
       <ol className="flex min-w-max items-center gap-1">
         {data.stages.map((s, i) => {
           const done = i < at

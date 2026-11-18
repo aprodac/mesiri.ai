@@ -78,7 +78,7 @@ export default function TallyExportPage() {
                 type="button"
                 aria-pressed={on}
                 onClick={() => setPeriod(p.value)}
-                className={cn('rounded-full border px-3 py-1 text-sm', on ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60')}
+                className={cn('rounded-full border px-3 py-1 text-sm', on ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-muted')}
               >
                 {p.label}
               </button>
