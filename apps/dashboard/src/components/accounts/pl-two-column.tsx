@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 // each balance. The trading account sets income against direct costs, down to gross profit; the profit and loss
 // account sets indirect costs against the gross result and other income, down to net profit. Each side is a card;
 // the two totals sit on the same line. Above it, the sum as a row of figures: income − direct costs = gross profit
-// − indirect costs + other income = net profit. Same data as the list view (pl-statement.tsx), nothing new from
+// − indirect costs + other income = net profit. Same data as the owner view (pl-simple.tsx), nothing new from
 // the backend.
 
 /** Each kind of figure keeps one colour on the strip, its pill and its card (docs/DESIGN.md §3, category colours). */

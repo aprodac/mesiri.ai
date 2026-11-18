@@ -373,6 +373,7 @@ export function PlSimple({
   periodLabel,
   priorLabel,
   notice,
+  hero = true,
 }: {
   pl: ProfitLoss
   period: Period
@@ -383,6 +384,8 @@ export function PlSimple({
   priorLabel?: string
   /** A note between the result and the statement (a project's share of head-office costs). */
   notice?: React.ReactNode
+  /** The result card on top; off where the page already shows the result (a project's books). */
+  hero?: boolean
 }) {
   const [entry, setEntry] = React.useState<string | null>(null)
   const focus = usePlFocus()
@@ -408,7 +411,7 @@ export function PlSimple({
   const anyOpen = focus.open.size > 0
   return (
     <div className="flex flex-col gap-4">
-      <PlOwnerHero pl={pl} periodLabel={periodLabel} priorLabel={priorLabel} onFocus={focus.focus} />
+      {hero && <PlOwnerHero pl={pl} periodLabel={periodLabel} priorLabel={priorLabel} onFocus={focus.focus} />}
       {notice}
       <div data-guide="pl.statement" className="overflow-hidden rounded-xl border bg-card shadow-xs">
         <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-4 py-2">
