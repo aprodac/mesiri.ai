@@ -1,4 +1,4 @@
-"""UX-70: the moments the "a day passes" scene shows, picked from what the cast played (sandbox_player.pick_highlights)."""
+"""UX-71: the moments the "a day passes" scene shows, picked from what the cast played (sandbox_player.pick_highlights)."""
 
 from __future__ import annotations
 

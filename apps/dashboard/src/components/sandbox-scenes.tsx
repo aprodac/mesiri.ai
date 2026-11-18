@@ -10,7 +10,7 @@ import { prefersReducedMotion } from '@/lib/timeline'
 import type { DaysPassed, ForYou } from '@/lib/sandbox'
 import { cn } from '@/lib/utils'
 
-// UX-70 (asked 18 Nov 2026: "in the simulation I want more cinematicness, like the bit we added when we move from
+// UX-71 (asked 18 Nov 2026: "in the simulation I want more cinematicness, like the bit we added when we move from
 // Live"): the sample company's days as scenes, in the Live cut's language (a dark screen, a title rising letter by
 // letter in the brand font, lines writing themselves, the page opening through an iris):
 // - DayPassScene: Next day (dusk, night while the cast plays the day, dawn with the day's title and its moments),

@@ -372,7 +372,7 @@ export function WalkthroughRunner() {
   }, [])
 
   const step: WalkStep | undefined = run?.walk.steps[run.index]
-  // UX-70: a chapter's title card when the guided project reaches a new chapter (forward, or a jump).
+  // UX-71: a chapter's title card when the guided project reaches a new chapter (forward, or a jump).
   const [episode, setEpisode] = React.useState<{ number: number; of: number; title: string; line?: string } | null>(null)
   const lastChapter = React.useRef<string | undefined>(undefined)
   React.useEffect(() => {

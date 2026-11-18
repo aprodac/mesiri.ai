@@ -52,7 +52,7 @@ export function SandboxClock() {
   const [busy, setBusy] = React.useState<number | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [away, setAway] = React.useState(takeDaysPassed)
-  // UX-70: the scenes. `scene` plays while days pass; after the page loads again it opens through an iris, then the
+  // UX-71: the scenes. `scene` plays while days pass; after the page loads again it opens through an iris, then the
   // morning briefing (or, on handover, the end credits). Reduced motion: no scene, the briefing still comes.
   const [arrival, setArrival] = React.useState(takeArrival)
   const [scene, setScene] = React.useState<{ mode: SceneMode; from: number; to: number; origin: { x: number; y: number }; result: DaysPassed | null } | null>(null)

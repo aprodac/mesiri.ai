@@ -143,9 +143,9 @@ class MovedOut(BaseModel):
     token: str
     expires_at: dt.datetime
     summary: list[dict[str, Any]] = []
-    #: UX-70: the days' notable moments ({day, who, kind, what}), for the "a day passes" scene.
+    #: UX-71: the days' notable moments ({day, who, kind, what}), for the "a day passes" scene.
     highlights: list[dict[str, Any]] = []
-    #: UX-70: on handover, the whole run's totals for the end credits.
+    #: UX-71: on handover, the whole run's totals for the end credits.
     finale: dict[str, Any] | None = None
     for_you: list[ForYouOut] = []
     waiting: list[dict[str, Any]] = []

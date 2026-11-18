@@ -423,7 +423,7 @@
 }
 
 
-/* UX-70: the sample company's scenes (components/sandbox-scenes.tsx). */
+/* UX-71: the sample company's scenes (components/sandbox-scenes.tsx). */
 @keyframes streak {
   from { transform: translateX(-120%); }
   to { transform: translateX(520%); }

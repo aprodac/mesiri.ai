@@ -249,13 +249,13 @@ export interface DaysPassed {
   for_you: ForYou[]
   waiting: { id: string; day: number; who: string; what: string }[]
   failed: { id: string; what: string; error: string }[]
-  /** UX-70: the days' notable moments, for the "a day passes" scene (in plan order). */
+  /** UX-71: the days' notable moments, for the "a day passes" scene (in plan order). */
   highlights?: { day: number; who: string; kind: string; what: string }[]
-  /** UX-70: on handover, the whole run's totals for the end credits. */
+  /** UX-71: on handover, the whole run's totals for the end credits. */
   finale?: { days: number; entries: number; by_kind: Record<string, number> } | null
 }
 
-/** UX-70: the page loads again after a scene; it opens through an iris, then the briefing (or the credits). */
+/** UX-71: the page loads again after a scene; it opens through an iris, then the briefing (or the credits). */
 const SCENE_KEY = 'mesiri_sandbox_scene'
 export type SceneArrival = { kind: 'day' | 'back'; day: number; date: string }
 
@@ -315,7 +315,7 @@ export async function passDays(days: number, beforeReload?: (d: DaysPassed) => P
   const d = res.data
   s.setItem(KEY, JSON.stringify({ ...session, token: d.token, expires_at: d.expires_at, today: d.date }))
   s.setItem(AWAY_KEY, JSON.stringify({ from: d.day - days, ...d, token: undefined }))
-  // UX-70: the scene finishes telling the days (it was showing while the cast played them), then the page opens on
+  // UX-71: the scene finishes telling the days (it was showing while the cast played them), then the page opens on
   // the new day through an iris.
   if (beforeReload) await beforeReload(d)
   markArrival({ kind: 'day', day: d.day, date: d.date })

@@ -84,13 +84,13 @@ class Moved:
     for_you: list[ForYou] = field(default_factory=list)
     waiting: list[dict[str, Any]] = field(default_factory=list)
     failed: list[dict[str, Any]] = field(default_factory=list)
-    #: UX-70: the days' notable moments, for the dashboard's "a day passes" scene: {day, who, kind, what}, in order.
+    #: UX-71: the days' notable moments, for the dashboard's "a day passes" scene: {day, who, kind, what}, in order.
     highlights: list[dict[str, Any]] = field(default_factory=list)
-    #: UX-70: on the last day (handover), the whole run's totals for the end credits: {days, entries, by_kind}.
+    #: UX-71: on the last day (handover), the whole run's totals for the end credits: {days, entries, by_kind}.
     finale: dict[str, Any] | None = None
 
 
-#: UX-70: the kinds worth a line in the "a day passes" scene (not the routine attendance, use and site notes).
+#: UX-71: the kinds worth a line in the "a day passes" scene (not the routine attendance, use and site notes).
 NOTABLE = ("issue", "request", "order", "delivery", "supplier_payment", "client_receipt", "ra_bill", "stage",
            "issue_resolve", "work_order", "wage_pay", "advance", "sub_payment")
 #: At most this many moments a day, and in all.
@@ -99,7 +99,7 @@ HIGHLIGHTS_MAX = 24
 
 
 def pick_highlights(played: list[Any]) -> list[dict[str, Any]]:
-    """UX-70: the moments worth showing from what the cast played, in plan order: per day, the first work done and the
+    """UX-71: the moments worth showing from what the cast played, in plan order: per day, the first work done and the
     notable kinds, at most HIGHLIGHTS_A_DAY a day and HIGHLIGHTS_MAX in all."""
     out: list[dict[str, Any]] = []
     per_day: dict[int, int] = {}

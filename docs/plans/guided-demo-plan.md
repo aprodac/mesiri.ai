@@ -878,7 +878,7 @@ writing steps: `docs/engineering/LEARN_AND_TOURS.md` (the sandbox chapter bullet
 (mock-up first or build); UX-22 per-person Help/tours for the remaining ~40 pages (batches in story order).
 
 
-### 18.15 UX-70: the days as scenes (18 Nov 2026)
+### 18.15 UX-71: the days as scenes (18 Nov 2026)
 
 Asked in session: *"in the simulation I want more cinematicness, like the bit we added when we move from Live"*; all
 four proposed moments picked. `apps/dashboard/src/components/sandbox-scenes.tsx`, wired in `sandbox-clock.tsx` and the
@@ -900,4 +900,4 @@ can be skipped (Skip, Esc); with reduced motion no scene plays (the briefing sti
 Backend, additive (`sandbox_player.py`, `sandbox_router.py`): `highlights` ({day, who, kind, what}: per day the first work
 done and the notable kinds, at most 4 a day and 24 in all, `pick_highlights`) and `finale` ({days, entries, by_kind}, on
 the last day) on `POST /learn/sandbox/next-day`. The plan writes entries as to-dos; the scene tells them as done
-(`didIt`: "Order …" → "Ordered …"). Test: `backend/tests/unit/test_sandbox_highlights_ux70.py`.
+(`didIt`: "Order …" → "Ordered …"). Test: `backend/tests/unit/test_sandbox_highlights_ux71.py`.
