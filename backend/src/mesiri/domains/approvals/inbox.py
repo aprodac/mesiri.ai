@@ -16,6 +16,9 @@ Sources, and who they are waiting for:
 - ``labour_split``: BOQ-02c, the last 7 days' labour Mesiri put on BOQ lines by itself, or on no line, per project,
   for a person to confirm. The roles that see the BOQ (cost control's own route, asked as the caller).
 - ``task``: my own tasks, overdue or due today (the tasks module).
+- ``stock_count``: UX-62, a stock count with something counted, still open. Those who may approve one (an admin or
+  owner, D-P2-2: the count's own ``may_approve``). Urgent after ``STOCK_COUNT_STALE_DAYS`` days: the book is frozen
+  at its start, so a count left open drifts from the site.
 
 A source the person may not use is left out; a source that fails is named in ``unavailable`` so the page can say
 so, and never hides the rest.
@@ -41,13 +44,15 @@ from mesiri.authorization.roles import (
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("site_report", "material_request", "subcontract_bill", "ra_bill", "wage_sheet", "labour_split", "task")
+KINDS = ("site_report", "material_request", "subcontract_bill", "ra_bill", "wage_sheet", "labour_split", "task",
+         "stock_count")
 #: The module each source belongs to (``organization.settings.MODULES``); None: always on.
 MODULE_OF = {"site_report": "dpr", "material_request": "materials", "subcontract_bill": None, "ra_bill": "dpr",
-             "wage_sheet": "labour", "labour_split": "cost", "task": "tasks"}
+             "wage_sheet": "labour", "labour_split": "cost", "task": "tasks", "stock_count": "materials"}
 #: BOQ-02c: how far back labour splits are asked about (older ones are on the Budget page, never nagged about).
 LABOUR_SPLIT_DAYS = 7
 RA_DRAFT_STALE_DAYS = 7
+STOCK_COUNT_STALE_DAYS = 3
 
 
 def _item(kind: str, id_: Any, title: str, detail: str | None, *, since: Any, urgent: bool,
@@ -233,9 +238,31 @@ async def labour_splits(conn: AsyncConnection, auth: AuthorizationContext, today
     return out
 
 
+async def stock_counts(conn: AsyncConnection, auth: AuthorizationContext, today: datetime.date) -> list[dict]:
+    """UX-62: open stock counts this person may approve (the materials module's own list, asked as the caller)."""
+    from mesiri.domains.materials.stock_count_router import list_counts
+
+    listed = await list_counts(status="open", site_id=None, auth_context=auth, conn=conn)
+    out = []
+    for c in listed["items"]:
+        if not c.get("may_approve"):
+            continue
+        made = c.get("created_at")
+        made_day = datetime.date.fromisoformat(str(made)[:10]) if made else today
+        n = c.get("counts") or {}
+        differing = int(n.get("differing") or 0)
+        detail = f"{n.get('counted', 0)} counted" + (f", {differing} differ" if differing else ", all match")
+        out.append(_item("stock_count", c["id"], f"Stock count {c.get('ref')}: {c.get('site_name')}", detail,
+                         since=made, urgent=(today - made_day).days >= STOCK_COUNT_STALE_DAYS, ref=c.get("ref"),
+                         project_id=c.get("project_id"), project_name=c.get("project_name"),
+                         site_id=c.get("site_id"), site_name=c.get("site_name"), count=differing,
+                         amount=c.get("net_value")))
+    return out
+
+
 SOURCES: dict[str, Callable[[AsyncConnection, AuthorizationContext, datetime.date], Awaitable[list[dict]]]] = {
     "site_report": site_reports, "material_request": material_requests, "subcontract_bill": subcontract_bills,
-    "ra_bill": ra_bills, "wage_sheet": wage_sheets, "labour_split": labour_splits, "task": tasks,
+    "ra_bill": ra_bills, "wage_sheet": wage_sheets, "labour_split": labour_splits, "task": tasks, "stock_count": stock_counts,
 }
 
 

@@ -80,6 +80,7 @@ async def test_a_failing_source_is_named_and_hides_nothing_else(monkeypatch):
     monkeypatch.setattr(inbox, "SOURCES", {
         "site_report": _source(_row("site_report", "2026-11-09", False)), "material_request": broken,
         "subcontract_bill": refused, "ra_bill": odd, "wage_sheet": _source(), "labour_split": _source(), "task": _source(),
+        "stock_count": _source(),
     })
     box = await inbox.waiting(_Conn(), _Auth(), lambda m: True)
     assert box["total"] == 1 and box["unavailable"] == ["material_request", "ra_bill"]  # a 403 is "not yours", quiet
@@ -162,3 +163,24 @@ async def test_wage_weeks_wait_to_be_approved_then_paid(monkeypatch):
         role = "SITE_ENGINEER"
 
     assert await inbox.wage_sheets(_Conn(), _Engineer(), today) == []
+
+
+async def test_stock_counts_wait_for_those_who_may_approve(monkeypatch):
+    """UX-62: an open count this person may approve is waiting (urgent once it has stayed open 3 days); one they may
+    not approve, or with nothing counted yet (may_approve false), is not."""
+    def count(ref, made, may, differing):
+        return {"id": str(uuid.uuid4()), "ref": ref, "created_at": f"{made}T09:00:00", "may_approve": may,
+                "project_id": str(uuid.uuid4()), "project_name": "Villa", "site_id": str(uuid.uuid4()),
+                "site_name": "Main", "net_value": "-1200.00",
+                "counts": {"lines": 10, "counted": 8, "not_counted": 2, "differing": differing}}
+
+    async def list_counts(status, site_id, auth_context, conn):
+        assert status == "open"
+        return {"items": [count("SC-1", "2026-11-05", True, 2), count("SC-2", "2026-11-09", True, 0),
+                          count("SC-3", "2026-11-01", False, 1)]}
+
+    monkeypatch.setattr("mesiri.domains.materials.stock_count_router.list_counts", list_counts)
+    rows = await inbox.stock_counts(_Conn(), _Auth(), TODAY)
+    assert [(r["ref"], r["urgent"], r["detail"]) for r in rows] == [
+        ("SC-1", True, "8 counted, 2 differ"), ("SC-2", False, "8 counted, all match")]
+    assert rows[0]["amount"] == "-1200.00" and rows[0]["count"] == 2

@@ -565,7 +565,7 @@ ALLOWED: tuple[Allowed, ...] = (
             "What is waiting for this person, urgent first then oldest: site reports with entries to confirm (today, "
             "yesterday), material requests to decide, subcontractor bills flagged or sent for approval, RA bills in "
             "draft, pay weeks whose wages are to approve or pay, labour Mesiri put on BOQ lines to confirm "
-            "(labour_split), their own tasks overdue or due today. Each item: kind, ref, "
+            "(labour_split), their own tasks overdue or due today, stock counts to approve (stock_count). Each item: kind, ref, "
             "title, detail, project_name, "
             "site_name, since, urgent; plus counts per kind and total. Read only: acting goes through each kind's own "
             "tool."),

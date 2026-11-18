@@ -27,14 +27,14 @@ async def waiting(
     request: Request,
     kind: str | None = Query(default=None, description="Only these kinds, comma separated: site_report, "
                                                         "material_request, subcontract_bill, ra_bill, wage_sheet, "
-                                                        "labour_split, task"),
+                                                        "labour_split, task, stock_count"),
     limit: int = Query(default=100, ge=1, le=300, description="At most this many items (the counts are all of them)"),
     auth: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ) -> dict[str, Any]:
     """What is waiting for me: site reports to confirm, material requests to decide, subcontractor bills to approve,
     RA bills in draft, wages to approve or pay, labour Mesiri put on BOQ lines to confirm (BOQ-02c), my tasks overdue
-    or due today. Each item names its kind, project, site and how long it has
+    or due today, stock counts to approve. Each item names its kind, project, site and how long it has
     waited; urgent ones first."""
     kinds = inbox.KINDS
     if kind:
