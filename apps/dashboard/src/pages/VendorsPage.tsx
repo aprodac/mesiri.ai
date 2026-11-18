@@ -34,7 +34,7 @@ import { ActionIcon } from '@/components/page/action-button'
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
 // the money owed is, and one row per supplier with its balance. A row opens the supplier's page (ledger, bills, pay).
-// UX-34 (Mercon's payables ageing as the reference): what you owe and how long it waited in one card (AgeingCard, as on
+// UX-43 (Mercon's payables ageing as the reference): what you owe and how long it waited in one card (AgeingCard, as on
 // Receivables), the four figures beside it still filtering, a part of the bar filtering by age; each supplier's own
 // age bar under its balance.
 // Everyone with Finance still sees the directory: a supplier is picked when an expense is recorded.
@@ -69,7 +69,7 @@ export default function VendorsPage() {
   const [status, setStatus] = useUrlState<string>('status', 'active')
   const [kind, setKind] = useUrlState<string>('kind', 'all')
   const [tile, setTile] = useUrlState<Tile>('show', '')
-  const [age, setAge] = useUrlState<string>('age', '')  // UX-34: a part of the age bar picked
+  const [age, setAge] = useUrlState<string>('age', '')  // UX-43: a part of the age bar picked
   const [sort, setSort] = useUrlState<Sort>('sort', seesMoney ? 'owed' : 'name')
   const scores = useSupplierScores(seesMoney)
   // PRC-52: a supplier whose papers are expired, missing (GST / PAN of a registered one) or expiring soon.

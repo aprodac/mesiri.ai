@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 
 // ACC-06: what the company owns against what it owes and its capital, on a day; the year's profit and earlier years'
 // in capital. Company-wide (a project has its position: Accounts › Projects). Backend: GET /accounts/balance-sheet.
-// UX-33: two ways to read it, as on Profit & loss (lib/books-view.ts picks which opens). "Simple" (the owner's): what
+// UX-42: two ways to read it, as on Profit & loss (lib/books-view.ts picks which opens). "Simple" (the owner's): what
 // the company is worth, what it owns and owes in plain words, whether it can pay what is due, each line opening down
 // to its entries and vouchers. "Tally": the accounting equation and Tally's two columns. Either can sit beside an
 // earlier day (the month end before, or the end of last year): the same call for that day.

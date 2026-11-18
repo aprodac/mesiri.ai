@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 // ACC-05: one ledger (a supplier, a client, a bank, an expense head ...): opening, every entry with what it was
 // against and the running balance, closing; for the company, a project or a site. Each line opens its voucher.
 // Backend: GET /accounts/ledgers/{id}/statement.
-// UX-34 (Mercon's ledger as the reference): the period as a sum in the ledger's own words (a bank: opening + money in
+// UX-43 (Mercon's ledger as the reference): the period as a sum in the ledger's own words (a bank: opening + money in
 // − money out = closing; a supplier: opening + billed − paid = owed), the balance as a line, and the entries month by
 // month with each month's totals, debits amber and credits blue as on the voucher. Search and a debit / credit filter.
 

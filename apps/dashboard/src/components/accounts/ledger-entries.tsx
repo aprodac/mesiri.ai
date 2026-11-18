@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { fetchStatement, formatDay, rupees, type Period, type Scope } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-31 / UX-33: an account's entries, opened in place under its line (owner's P&L and balance sheet): newest first,
+// UX-40 / UX-42: an account's entries, opened in place under its line (owner's P&L and balance sheet): newest first,
 // each opening its voucher, the full statement one tap further. GET /accounts/ledgers/{id}/statement.
 
 const SHOW = 8

@@ -1,7 +1,7 @@
 import { rupees } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-31 / UX-33: a figure's change against the comparison, as a small pill (owner's P&L and balance sheet).
+// UX-40 / UX-42: a figure's change against the comparison, as a small pill (owner's P&L and balance sheet).
 
 const tiny = 0.005
 

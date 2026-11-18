@@ -7,7 +7,7 @@ import { LedgerEntries } from '@/components/accounts/ledger-entries'
 import { formatDay, rupees, type BalanceSheet } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-33 (asked 17 Nov 2026: "the balance sheet first, and the owner view if needed"): the owner's balance sheet.
+// UX-42 (asked 17 Nov 2026: "the balance sheet first, and the owner view if needed"): the owner's balance sheet.
 // One card says what the company is worth (what it owns less what it owes), with two bars of the same length: what
 // it owns, and what it owes plus its worth. Then "can you pay what is due?" in a sentence. Then each kind of thing
 // owned or owed in plain words (cash and bank, clients owe you, you owe suppliers, taxes to pay ...), each opening to
@@ -104,7 +104,7 @@ export function BsSimple({ bs, prior, priorLabel }: { bs: BalanceSheet; prior: M
     )
   }
 
-  // UX-33 (asked: "add percentages too"): each line's share of its side; worth as a share of what you own
+  // UX-42 (asked: "add percentages too"): each line's share of its side; worth as a share of what you own
   const base = (b: Bucket) => (b.side === 'owe' ? oweTotal : ownTotal)
   const pctOf = (v: number, of: number) => (Math.abs(of) < tiny ? null : (v / of) * 100)
   const pctText = (p: number | null) => (p === null ? '' : `${Math.abs(p) < 1 && p !== 0 ? p.toFixed(1) : Math.round(p)}%`)

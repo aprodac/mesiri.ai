@@ -24,7 +24,7 @@ import { ActionIcon } from '@/components/page/action-button'
 // NXT-03: what each client owes, most first, by age; the open bills with what came against them; money received,
 // newest first, with a way to take one back. Owner, admin and finance only (D-N3). Backend: GET /billing/receivables,
 // GET / POST /billing/receipts.
-// UX-34 (Mercon's receivables ageing as the reference): one card says what clients owe and for how long, its bar's
+// UX-43 (Mercon's receivables ageing as the reference): one card says what clients owe and for how long, its bar's
 // parts filtering the clients; each client a card with its own age bar, its share of all that is owed and its open
 // bills (age as a coloured pill, how much of each bill came in as a bar); money received in green, newest first.
 

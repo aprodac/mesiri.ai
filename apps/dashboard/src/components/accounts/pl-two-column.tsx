@@ -5,7 +5,7 @@ import { pctText } from '@/components/accounts/visuals'
 import { rupees, type PlGroup, type PlTotals, type ProfitLoss } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-30 (asked 17 Nov 2026, Mercon's P&L as the reference): the P&L read as Tally lays it out, in two parts that
+// UX-39 (asked 17 Nov 2026, Mercon's P&L as the reference): the P&L read as Tally lays it out, in two parts that
 // each balance. The trading account sets income against direct costs, down to gross profit; the profit and loss
 // account sets indirect costs against the gross result and other income, down to net profit. Each side is a card;
 // the two totals sit on the same line. Above it, the sum as a row of figures: income − direct costs = gross profit

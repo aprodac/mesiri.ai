@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { fetchPl, rupees, type Period, type PlGroup, type PlTotals, type ProfitLoss, type Scope } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-30 (asked 17 Nov 2026, Mercon's "Month by month" as the reference): the period's P&L one column per month, with
+// UX-39 (asked 17 Nov 2026, Mercon's "Month by month" as the reference): the period's P&L one column per month, with
 // a Total column, and the net result by month as bars above it. Each month is the same GET /accounts/pl the
 // statement uses, asked for that month (no new API); the Total column is the whole period's answer, so it always
 // matches the statement.

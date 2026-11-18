@@ -2,7 +2,7 @@ import * as React from 'react'
 import { rupees } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-34 (asked 17 Nov 2026: ledger statement, cash and bank, receivables, payables and day book in Mercon's style):
+// UX-43 (asked 17 Nov 2026: ledger statement, cash and bank, receivables, payables and day book in Mercon's style):
 // the few parts those pages share, so each figure, colour and bar means the same on every one of them.
 //   FlowStrip   - a sum as a row of tinted figures with their operators: Opening + In − Out = Closing.
 //   AgeingCard  - what is owed by how long it has waited: the total, one stacked bar (a part filters), the legend.

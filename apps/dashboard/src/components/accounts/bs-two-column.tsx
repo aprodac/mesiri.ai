@@ -5,7 +5,7 @@ import { subKey, then } from '@/components/accounts/bs-model'
 import { rupees, type BalanceSheet, type BsGroup, type Nature } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
-// UX-33 (Mercon's balance sheet as the reference): the accountant's view. Above, the accounting equation, Assets =
+// UX-42 (Mercon's balance sheet as the reference): the accountant's view. Above, the accounting equation, Assets =
 // Liabilities + Capital, each term in its colour, the balance check on the "=" and two ratios an accountant reads first.
 // Below, Tally's two columns, capital and liabilities beside assets, totals on one line; each group a coloured pill,
 // its subgroups opening to their ledgers, each ledger to its statement. With a comparison date every figure shows its

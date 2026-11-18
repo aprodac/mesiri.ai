@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 // ACC-05: every voucher of a period, day by day, as the accountant reads a day book: what it was, the ledgers it
 // moved, the amount. Filter by kind, search a party or a number, see what changed after a month was closed. ↑ ↓ to
 // move, Enter to open. Backend: GET /accounts/day-book.
-// UX-34 (Mercon's journal as the reference): the kinds as coloured tabs (with their counts when the whole period is
+// UX-43 (Mercon's journal as the reference): the kinds as coloured tabs (with their counts when the whole period is
 // loaded); the period's money in and out as figures; then one table, as an accountant reads a day book: a band per
 // day (its money in and out), a row per voucher with a stripe in its kind's colour, its badge and number, the debit
 // ledgers (amber) and credit ledgers (blue) in their own columns, the project and the amount (receipts green,

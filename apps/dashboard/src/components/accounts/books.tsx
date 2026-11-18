@@ -162,7 +162,7 @@ export function BooksClosed() {
   )
 }
 
-/** UX-32: each kind of voucher keeps one colour on the sheet's band and amount (the chips in visuals.tsx). */
+/** UX-41: each kind of voucher keeps one colour on the sheet's band and amount (the chips in visuals.tsx). */
 const VOUCHER_TONE: Record<VoucherType, { band: string; bar: string; fg: string }> = {
   receipt: { band: 'bg-emerald-500/[0.07]', bar: 'before:bg-emerald-500', fg: 'text-emerald-700 dark:text-emerald-400' },
   payment: { band: 'bg-rose-500/[0.07]', bar: 'before:bg-rose-500', fg: 'text-rose-700 dark:text-rose-400' },
