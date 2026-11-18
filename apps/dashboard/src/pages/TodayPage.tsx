@@ -25,6 +25,7 @@ import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
 import { SupplierPapersWaiting, SuppliersWaiting } from '@/components/vendors/vendor-parts'
 import { RoleHome } from '@/components/home/role-home'
+import { ThisWeek } from '@/components/home/this-week'
 import { ActionButton, EmptyState } from '@/components/page/page-kit'
 import { useAuth } from '@/lib/AuthContext'
 import { BillsWaitingLine } from '@/components/subcontracts/parts'
@@ -350,6 +351,7 @@ export default function TodayPage() {
         }
       />
 
+      {isToday && <ThisWeek />}
       {isToday && <RoleHome />}
       {isToday && <MyTasksCard />}
       {isToday && <TimeSaved />}

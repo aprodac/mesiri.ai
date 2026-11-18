@@ -42,6 +42,8 @@ export const PAGE_HELP: Record<string, PageHelp> = {
   // ── Every day ────────────────────────────────────────────────────────────────────────────────────────────────
   '/today': {
     parts: [
+      { name: 'This week', means: 'What needs you, worst first; tap a line to do it', find: 'today.week' },
+      { name: 'Red line', means: 'Urgent: money at risk, short now, late', tone: 'bad' },
       { name: 'Reported', means: 'Sites that sent an update today', tone: 'good' },
       { name: 'Not reported', means: 'Sites that sent nothing yet', tone: 'attention' },
       { name: 'Workers', means: 'People on site today, from attendance' },

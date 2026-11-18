@@ -112,7 +112,7 @@ export function RoleHome() {
   )
   const month = home.data?.this_month
   const profitTile = show(home, wants.home) && role === 'ADMIN' && (
-    <Tile key="profit" label="Profit this month" tag={wider('project')} to="/accounts/pl" loading={home.isLoading} tone={month && n(month.net_profit) < 0 ? 'bad' : 'default'}
+    <Tile key="profit" label="Profit this month (books)" tag={wider('project')} to="/accounts/pl" loading={home.isLoading} tone={month && n(month.net_profit) < 0 ? 'bad' : 'default'}
       value={month ? short(month.net_profit) : undefined}
       hint={month ? `${short(month.income)} billed · ${short(n(month.direct) + n(month.indirect))} cost` : undefined} />
   )
