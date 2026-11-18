@@ -1,9 +1,13 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClock, CheckCircle2, ClipboardList, Play, Save } from 'lucide-react'
+import { CheckCircle2, ClipboardList, Gem, ListChecks, MapPin, Play, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { EmptyState, ModuleTitle, Pill } from '@/components/page/page-kit'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { compact } from '@/lib/expenses'
+import { appNow } from '@/lib/clock'
+import type { Tone } from '@/lib/list-kit'
 import { useScope } from '@/lib/ScopeContext'
 import { useAuth } from '@/lib/AuthContext'
 import { usePageTitle } from '@/lib/page-title'
@@ -11,7 +15,7 @@ import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
 import { useSiteNames } from '@/lib/site-names'
 import { rupees } from '@/lib/orders'
-import { COUNT_REASONS, approveCount, cancelCount, fetchCount, fetchCounts, saveCountLines, startCount, type CountLine, type CountReason, type StockCount } from '@/lib/stock-count'
+import { COUNT_REASONS, approveCount, cancelCount, fetchCount, fetchCounts, fetchStockValue, saveCountLines, startCount, type CountLine, type CountReason, type StockCount } from '@/lib/stock-count'
 import { cn } from '@/lib/utils'
 
 // PRC-48: Materials › Stock count. Start a count for a site (all items, one category, or the 20 most valuable): the
@@ -19,6 +23,9 @@ import { cn } from '@/lib/utils'
 // and come back, leave an item empty for "not counted". Review shows book vs counted and the difference in units and
 // rupees (largest first); each difference needs a reason; the owner or admin approves it into the ledger. An approved
 // count is never changed: a new count corrects it. Sites not counted in 30 days are listed as due.
+// UX-69 (18 Nov): a card per site (last counted as a coloured chip: never or 30+ days red, 20+ amber, else green; the
+// stock it holds; a count in progress), counting starts from the card in one tap (every item, or the 20 most
+// valuable); the counts list shows each one's state and its difference in rupees (loss red, gain green).
 
 const n = (v: string | null) => (v === null ? '' : Number(v).toLocaleString('en-IN', { maximumFractionDigits: 3 }))
 const detail = (err: unknown, fallback: string) => {
@@ -34,19 +41,36 @@ export default function StockCountPage() {
   const siteNames = useSiteNames()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useUrlState<string>('id', '')
-  const [startSite, setStartSite] = React.useState(scope.mode === 'site' ? scope.siteId : '')
-  const [startScope, setStartScope] = React.useState<'all' | 'top'>('all')
   const [error, setError] = React.useState('')
   const list = useQuery({ queryKey: ['materials', 'stock-counts'], queryFn: fetchCounts })
   const canCount = !!me && me.role.toUpperCase() !== 'FINANCE' && !readOnly
   const start = useMutation({
-    mutationFn: () => startCount({ site_id: startSite, scope: startScope }),
+    mutationFn: (x: { site: string; scope: 'all' | 'top' }) => startCount({ site_id: x.site, scope: x.scope }),
     onSuccess: (c) => { queryClient.invalidateQueries({ queryKey: ['materials', 'stock-counts'] }); setSelected(c.id) },
     onError: (err) => setError(detail(err, 'The count did not start.')),
   })
   const counts = list.data?.items ?? []
   const open = counts.find((c) => c.id === selected)
-  const sites = [...siteNames.entries()].map(([id, s]) => ({ id, label: `${s.project} › ${s.name}` })).sort((a, b) => a.label.localeCompare(b.label))
+  // UX-69: a card per site in scope: when it was last counted, what it holds, a count in progress.
+  const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
+  const value = useQuery({ queryKey: ['materials', 'stock-value', projectId, null], queryFn: () => fetchStockValue({ project_id: projectId }), retry: false, staleTime: 60_000 })
+  const valueBy = new Map<string, number>()
+  for (const r of value.data?.rows ?? []) if (r.site_id && r.value) valueBy.set(r.site_id, (valueBy.get(r.site_id) ?? 0) + Number(r.value))
+  const today = appNow()
+  const siteCards = [...siteNames.entries()]
+    .filter(([id, sn]) => (scope.mode === 'site' ? id === scope.siteId : scope.mode === 'project' ? sn.projectId === scope.projectId : true))
+    .map(([id, sn]) => {
+      const last = list.data?.last_counted[id] ?? null
+      const days = last ? Math.round((today.getTime() - new Date(`${last}T00:00:00`).getTime()) / 86_400_000) : null
+      const tone: Tone = days === null || days >= 30 ? 'bad' : days >= 20 ? 'attention' : 'good'
+      return {
+        id, name: sn.name, project: sn.project, tone, days,
+        words: days === null ? 'Never counted' : days === 0 ? 'Counted today' : `${days} d ago`,
+        value: valueBy.has(id) ? valueBy.get(id)! : null,
+        open: counts.find((c) => c.site_id === id && c.status === 'open'),
+      }
+    })
+    .sort((a, b) => (b.days ?? 9999) - (a.days ?? 9999) || a.name.localeCompare(b.name))
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
@@ -54,48 +78,43 @@ export default function StockCountPage() {
         <ModuleTitle icon={ClipboardList} title="Stock count" />
       </header>
 
-      {!!list.data?.due.length && (
-        <section className="flex flex-col gap-1 rounded-xl border border-orange-300 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40" data-guide="counts.due">
-          <span className="flex items-center gap-2 font-semibold"><AlarmClock className="size-4" /> Due for a count</span>
-          {list.data.due.map((d) => (
-            <button key={d.site_id} type="button" className="text-left hover:underline" onClick={() => setStartSite(d.site_id)}>
-              {d.project_name} › {d.site_name}: {d.last_counted ? `last counted ${d.last_counted}` : 'never counted'}
-            </button>
-          ))}
-        </section>
-      )}
-
-      {canCount && (
-        <form className="flex flex-wrap items-end gap-2 rounded-xl border p-3" data-guide="counts.start" onSubmit={(e) => { e.preventDefault(); setError(''); start.mutate() }}>
-          <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs font-semibold text-muted-foreground">
-            Site
-            <select value={startSite} onChange={(e) => setStartSite(e.target.value)} className="h-10 rounded-md border bg-background px-2 text-sm text-foreground">
-              <option value="">Pick a site</option>
-              {sites.map((s) => <option key={s.id} value={s.id}>{s.label}{list.data?.last_counted[s.id] ? ` (counted ${list.data.last_counted[s.id]})` : ''}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
-            What
-            <select value={startScope} onChange={(e) => setStartScope(e.target.value as 'all' | 'top')} className="h-10 rounded-md border bg-background px-2 text-sm text-foreground">
-              <option value="all">Every item</option>
-              <option value="top">The 20 most valuable</option>
-            </select>
-          </label>
-          <Button type="submit" className="h-10 gap-2 font-semibold" disabled={!startSite || start.isPending}><Play className="size-4" /> Start count</Button>
-          {error && <p className="w-full text-sm text-destructive">{error}</p>}
-        </form>
-      )}
+      <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" data-guide="counts.due">
+        {siteCards.map((sc) => (
+          <li key={sc.id} className={cn('relative flex flex-col gap-2 overflow-hidden rounded-xl border bg-card p-3 pl-4 shadow-xs before:absolute before:inset-y-0 before:left-0 before:w-1', EDGE[sc.tone])}>
+            <span className="flex items-start gap-2">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">{sc.name}</span>
+                <span className="block truncate text-xs text-muted-foreground">{sc.project}</span>
+              </span>
+              <Pill tone={sc.tone} size="xs">{sc.words}</Pill>
+            </span>
+            {sc.value !== null && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Gem className="size-3.5" /><strong className="text-foreground tabular-nums">{compact(sc.value)}</strong> in stock</span>}
+            {sc.open ? (
+              <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={() => setSelected(sc.open!.id)}><ListChecks className="size-4" />Continue · {sc.open.counts.counted}/{sc.open.counts.lines}</Button>
+            ) : canCount && (
+              <span className="flex gap-1.5" data-guide={sc === siteCards[0] ? 'counts.start' : undefined}>
+                <Button size="sm" className="h-9 flex-1 gap-1.5 font-semibold" disabled={start.isPending} onClick={() => { setError(''); start.mutate({ site: sc.id, scope: 'all' }) }}><Play className="size-4" />Count all</Button>
+                <Button size="sm" variant="outline" className="h-9 gap-1.5" disabled={start.isPending} title="The 20 most valuable items" onClick={() => { setError(''); start.mutate({ site: sc.id, scope: 'top' }) }}>Top 20</Button>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex flex-col items-start gap-4 lg:flex-row">
-        <ul className="w-full divide-y overflow-hidden rounded-xl border lg:max-w-sm" data-guide={list.isLoading ? undefined : counts.length ? 'counts.list' : 'counts.empty'}>
+        <ul className="w-full divide-y overflow-hidden rounded-xl border bg-card lg:max-w-sm" data-guide={list.isLoading ? undefined : counts.length ? 'counts.list' : 'counts.empty'}>
           {list.isLoading && <li className="h-16 animate-pulse bg-muted/40" />}
-          {!list.isLoading && counts.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground"><strong className="block text-foreground">No counts yet</strong></li>}
+          {!list.isLoading && counts.length === 0 && <li><EmptyState icon={ClipboardList} title="No counts yet" className="border-0" /></li>}
           {counts.map((c) => (
             <li key={c.id}>
               <button type="button" onClick={() => setSelected(c.id)} className={cn('flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-muted/40', selected === c.id && 'bg-yellow-50 dark:bg-yellow-950/40')}>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{c.ref} · {c.site_name}</span>
-                  <span className="block text-xs text-muted-foreground">{c.counts.counted} of {c.counts.lines} counted · {c.counts.differing} differ{c.net_value ? ` · ${rupees(c.net_value)}` : ''}</span>
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">{c.counts.counted}/{c.counts.lines} counted · {c.counts.differing} differ
+                    {c.net_value && Number(c.net_value) !== 0 && <Pill tone={Number(c.net_value) < 0 ? 'bad' : 'good'} size="xs">{Number(c.net_value) < 0 ? '−' : '+'}{rupees(String(Math.abs(Number(c.net_value))))}</Pill>}
+                  </span>
                 </span>
                 <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', c.status === 'open' ? 'bg-yellow-100 text-yellow-900 dark:bg-yellow-950 dark:text-yellow-100' : c.status === 'approved' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100' : 'bg-muted text-muted-foreground')}>
                   {c.status === 'open' ? 'Counting' : c.status === 'approved' ? 'Approved' : 'Cancelled'}
@@ -109,6 +128,8 @@ export default function StockCountPage() {
     </div>
   )
 }
+
+const EDGE: Record<Tone, string> = { bad: 'before:bg-destructive', attention: 'before:bg-draft', good: 'before:bg-success', info: 'before:bg-info', muted: 'before:bg-muted' }
 
 type Draft = Record<string, { counted: string; reason: CountReason | '' }>
 
@@ -137,7 +158,7 @@ function CountSheet({ id }: { id: string }) {
   const money = c.net_value !== undefined
 
   return (
-    <section className="flex w-full min-w-0 flex-1 flex-col gap-3 rounded-xl border p-3 sm:p-4" data-guide="counts.sheet">
+    <section className="flex w-full min-w-0 flex-1 flex-col gap-3 rounded-xl border bg-card p-3 sm:p-4" data-guide="counts.sheet">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{c.ref} · {c.site_name}</h2>
@@ -176,10 +197,10 @@ function CountRow({ l, d, live, money, onChange }: { l: CountLine; d?: { counted
         <Input inputMode="decimal" disabled={!live} value={counted} placeholder="Not counted" onChange={(e) => onChange({ counted: e.target.value })} className="h-12 w-32 text-right text-lg tabular-nums" aria-label={`Counted ${l.material}`} />
         <span className="w-10 text-sm text-muted-foreground">{l.unit}</span>
         {!!diff && (
-          <select disabled={!live} value={d?.reason ?? ''} onChange={(e) => onChange({ reason: e.target.value as CountReason })} className="h-12 rounded-md border bg-background px-2 text-sm" aria-label={`Why ${l.material} differs`}>
-            <option value="">Why?</option>
-            {COUNT_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
+          <Select disabled={!live} value={d?.reason || undefined} onValueChange={(v) => onChange({ reason: v as CountReason })}>
+            <SelectTrigger className="h-12 w-36" aria-label={`Why ${l.material} differs`}><SelectValue placeholder="Why?" /></SelectTrigger>
+            <SelectContent>{COUNT_REASONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
+          </Select>
         )}
       </span>
     </div>

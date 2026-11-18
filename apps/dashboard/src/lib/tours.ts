@@ -162,13 +162,15 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/materials': {
     key: '/tour/materials',
-    version: 1,
+    version: 2,
     introFromPage: true,
     steps: [
       { target: 'materials.views', title: 'Three views', text: 'Stock: what each site holds. Movements: what came in, was used or moved. Items: your list of materials.' },
       { target: 'materials.in', title: 'A delivery', text: 'Record what came in. On WhatsApp: "200 bags cement came from Malabar".' },
       { target: 'materials.out', title: 'Used on site', text: 'Record what was used. On WhatsApp: "Used 20 bags cement for the slab".' },
       { target: 'materials.move', title: 'Between sites', text: 'Move stock from one site to another, so both sites stay right.', mood: 'happy' },
+      { target: 'materials.tiles', title: 'What needs you', text: 'Running low, below minimum, out, coming, asked. Tap one to see only those.', mood: 'look' },
+      { target: 'materials.bars', title: 'Each material', text: 'A bar a site, how many days it lasts, and Move or Order when a site runs low.', mood: 'think' },
     ],
   },
   '/labour': {
@@ -362,12 +364,12 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/materials/counts': {
     key: '/tour/stock-count',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['counts.list', 'counts.empty'],
     steps: [
-      { target: 'counts.due', title: 'Due for a count', text: 'Sites not counted in 30 days. Tap one to start its count.', mood: 'worry' },
-      { target: 'counts.start', title: 'Start a count', text: 'Pick the site, and every item or just the 20 most valuable. The book is frozen at that moment.' },
+      { target: 'counts.due', title: 'Every site', text: 'When each was last counted: red is never or a month ago. What it holds in stock.', mood: 'worry' },
+      { target: 'counts.start', title: 'Start a count', text: 'Count all, or just the 20 most valuable. The book is frozen at that moment.' },
       { target: 'counts.list', title: 'Every count', text: 'Each count with how much is counted and how many items differ from the book.' },
       { target: 'counts.empty', title: 'No counts yet', text: 'Count a site once a month: what the book says is there against what really is.', mood: 'think' },
       { target: 'counts.sheet', title: 'Count on a phone', text: 'Type what is really there. Each difference asks why: wastage, theft, a wrong entry. The owner approves them into the book.', mood: 'think' },
@@ -376,14 +378,14 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/materials/value': {
     key: '/tour/stock-value',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['value.list', 'value.empty'],
     steps: [
       { target: 'value.tiles', title: 'What the stock is worth', text: 'What is on hand times the average rate it was bought at.', mood: 'look' },
       { target: 'value.slow', title: 'Not moving', text: 'Stock not used in 30 days: money sitting on site. Tap it to see only those.', mood: 'worry' },
-      { target: 'value.categories', title: 'By category', text: 'Steel, cement, tiles: where the money in stock is.' },
-      { target: 'value.list', title: 'Every item', text: 'Most valuable first, with its site, quantity and rate.' },
+      { target: 'value.categories', title: 'Split by', text: 'By material, by site or by category: where the money in stock is.' },
+      { target: 'value.list', title: 'Every material', text: 'Most valuable first, its sites as a split bar. Stock unused here can move to the site that uses it.' },
       { target: 'value.empty', title: 'Nothing on hand', text: 'Stock value comes from deliveries with a rate. Record the rate when material comes in.', mood: 'think' },
       { target: 'value.export', title: 'Take it to Excel', text: 'Download the list.' },
       { target: 'app.whatsapp', title: 'Ask on WhatsApp', text: '"What is the stock at Green Villa worth?"', mood: 'happy' },

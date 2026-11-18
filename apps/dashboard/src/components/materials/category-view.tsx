@@ -1,9 +1,10 @@
 import * as React from 'react'
-import { SayOnWhatsApp } from '@/components/page/page-kit'
+import { KpiStrip, SayOnWhatsApp, type KpiItem } from '@/components/page/page-kit'
+import { ShowSwitch } from '@/components/page/numbers-view'
+import { StockBars } from './stock-bars'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Boxes, ChevronDown, ChevronRight, ClipboardList, MapPin, PackageX, Search, Target, TrendingDown, TriangleAlert, Truck } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -45,6 +46,7 @@ import { Hint } from '@/components/hint'
 // PRC-47: the minimum per site and item -- a "Below minimum" tile and chip, a bar of what is held against it, set in
 // place in the list (office), "Minimums" suggests them for a site from use; the morning note's links land here
 // (?reorder=<site>&make=request|rfq) and open a draft request or RFQ with the reorder quantities.
+// UX-69 (18 Nov): the figures as a KpiStrip; Bars (default: components/materials/stock-bars.tsx) or Numbers (this table).
 
 const NONE = '__none__'
 const sum = (values: (string | null)[]) => values.reduce((n, v) => n + (v ? Number(v) : 0), 0)
@@ -128,6 +130,12 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
   const [site, setSite] = useUrlState<string>('at', '')
   const [q, setQ] = useUrlState<string>('q', '')
   const [opened, setOpened] = useUrlState<string>('item', '')
+  // UX-69: Bars (a card a material, a bar a site, days-left chips, Move / Order) or Numbers (the full table). Kept in
+  // ?look= (the list kit's ?show= is this page's filter) and remembered in the browser.
+  const [lookParam, setLookParam] = useUrlState<string>('look', '')
+  const look: 'bars' | 'numbers' = (lookParam || (() => { try { return localStorage.getItem('materials.stock.look') ?? '' } catch { return '' } })()) === 'numbers' ? 'numbers' : 'bars'
+  const setLook = (v: 'bars' | 'numbers') => { setLookParam(v === 'bars' ? '' : v); try { localStorage.setItem('materials.stock.look', v) } catch { /* the address keeps it */ } }
+  const [quickOrder, setQuickOrder] = React.useState<OrderPrefill | null>(null)
   const [dialog, setDialog] = React.useState<'ask' | 'order' | 'came' | 'move' | 'minimums' | 'reorder-request' | 'reorder-rfq' | null>(null)
   // PRC-47: the morning note's "Make request" / "Get quotes" links.
   const [reorderSite] = useUrlState<string>('reorder', '')
@@ -243,15 +251,15 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
       .sort((a, b) => Number(b.sameProject) - Number(a.sameProject) || Number(b.row.closing) - Number(a.row.closing))
   }, [current, elsewhere.data, siteNames])
 
-  const tiles: { value: Exclude<Show, '' | 'all'>; label: string; count: number; icon: LucideIcon; iconTone: string; ring: string; numTone?: string }[] = [
-    { value: 'low', label: 'Running low', count: inSite.filter((r) => r.running_low).length, icon: TrendingDown, iconTone: 'bg-orange-200 text-orange-950 dark:bg-orange-900 dark:text-orange-100', ring: 'ring-orange-500' },
-    { value: 'below', label: 'Below minimum', count: inSite.filter((r) => r.below_min).length, icon: Target, iconTone: 'bg-orange-100 text-orange-900 dark:bg-orange-950 dark:text-orange-100', ring: 'ring-orange-400' },
-    { value: 'out', label: 'Out of stock', count: inSite.filter(isOut).length, icon: PackageX, iconTone: 'bg-destructive text-white', ring: 'ring-destructive' },
-    { value: 'coming', label: 'Coming on orders', count: inSite.filter((r) => Number(r.on_order ?? 0) > 0).length, icon: Truck, iconTone: 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-100', ring: 'ring-blue-500' },
-    { value: 'asked', label: 'Asked for', count: inSite.filter((r) => flowOf(r).asked > 0).length, icon: ClipboardList, iconTone: 'bg-yellow-100 text-yellow-900 dark:bg-yellow-950 dark:text-yellow-100', ring: 'ring-yellow-500' },
-  ]
-  for (const t of tiles) if (t.value === 'out' && t.count > 0) t.numTone = 'text-destructive'
-  for (const t of tiles) if (t.value === 'below' && t.count > 0) t.numTone = 'text-orange-700 dark:text-orange-400'
+  const toggleShow = (v: Exclude<Show, '' | 'all'>) => setShow(show === v ? '' : v)
+  const countShow = (v: Exclude<Show, '' | 'all'>) => inSite.filter((r) => matchesShow(r, v)).length
+  const tiles = ([
+    { key: 'low', label: 'Running low', value: countShow('low') || '—', icon: TrendingDown, tone: countShow('low') ? 'attention' : 'default', pressed: show === 'low', onClick: () => toggleShow('low') },
+    { key: 'below', label: 'Below minimum', value: countShow('below') || '—', icon: Target, tone: countShow('below') ? 'attention' : 'default', pressed: show === 'below', onClick: () => toggleShow('below') },
+    { key: 'out', label: 'Out of stock', value: countShow('out') || '—', icon: PackageX, tone: countShow('out') ? 'bad' : 'default', pressed: show === 'out', onClick: () => toggleShow('out') },
+    { key: 'coming', label: 'Coming', value: countShow('coming') || '—', icon: Truck, tone: countShow('coming') ? 'info' : 'default', pressed: show === 'coming', onClick: () => toggleShow('coming') },
+    { key: 'asked', label: 'Asked for', value: countShow('asked') || '—', icon: ClipboardList, pressed: show === 'asked', onClick: () => toggleShow('asked') },
+  ] as KpiItem[]).map((k) => ({ ...k, loading: isLoading }))
 
   const siteOptions: FilterOption[] = React.useMemo(() => {
     const ids = [...new Set(all.map((r) => r.site_id).filter(Boolean))] as string[]
@@ -300,6 +308,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
             <Target className="size-4" /> <span className="hidden sm:inline">Minimums</span>
           </Button>
         )}
+        <ShowSwitch show={look} onShow={setLook} label="How to show the stock" />
         <label className="flex h-9 items-center gap-2 rounded-lg border bg-background px-2.5">
           <Search className="size-4 text-muted-foreground" />
           <span className="sr-only">Search items</span>
@@ -390,31 +399,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
         </Callout>
       )}
 
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
-        {tiles.map((t) => {
-          const on = show === t.value
-          return (
-            <button
-              key={t.value}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setShow(on ? '' : t.value)}
-              className={cn(
-                'flex flex-col items-center gap-1 rounded-xl border bg-card p-2 text-center transition hover:-translate-y-px sm:flex-row sm:gap-3 sm:p-3.5 sm:text-left',
-                on && cn('ring-2', t.ring),
-              )}
-            >
-              <span className={cn('inline-flex size-8 shrink-0 items-center justify-center rounded-lg sm:size-11 sm:rounded-xl', t.iconTone)}>
-                <t.icon className="size-4 sm:size-5" />
-              </span>
-              <span className="flex flex-col">
-                <span className={cn('text-xl leading-none font-semibold tabular-nums sm:text-3xl', t.numTone)}>{isLoading ? '–' : t.count}</span>
-                <span className="text-[11px] leading-tight text-muted-foreground sm:text-sm sm:text-foreground/80">{t.label}</span>
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <KpiStrip guide="materials.tiles" stats={tiles} />
 
       {groups.length > 1 && (
         <div role="group" aria-label="Categories" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -476,6 +461,11 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
             </Button>
           )}
         </div>
+      ) : look === 'bars' ? (
+        <StockBars groups={shown} siteNames={siteNames} flowOf={flowOf} canOrder={canOrder} canMove={canRecord} periodDays={daysIn(range)} openedKey={opened}
+          onOpen={setOpened}
+          onMove={(p) => { setMovePrefill(p); setDialog('move') }}
+          onOrder={(p) => setQuickOrder(p)} />
       ) : (
         <>
           {shown.map((g) => (
@@ -668,6 +658,7 @@ export function CategoryView({ projectId, siteId, leading }: { projectId: string
       </Sheet>
 
       <NewRequestDialog open={dialog === 'ask'} onOpenChange={(o) => setDialog(o ? 'ask' : null)} scope={scope} prefill={askPrefill} />
+      <NewOrderDialog open={!!quickOrder} onOpenChange={(o) => !o && setQuickOrder(null)} scope={scope} prefill={quickOrder} />
       <NewOrderDialog open={dialog === 'order'} onOpenChange={(o) => setDialog(o ? 'order' : null)} scope={scope} prefill={orderPrefill} />
       <NewRequestDialog open={dialog === 'reorder-request'} onOpenChange={(o) => !o && endReorder()} scope={scope} prefill={reorderRequest} />
       <NewRfqDialog open={dialog === 'reorder-rfq'} onOpenChange={(o) => !o && endReorder()} scope={scope} prefill={reorderRfq} />

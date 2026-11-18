@@ -22,11 +22,13 @@ import { useSiteNames } from '@/lib/site-names'
 import { localIsoDate, qty } from '@/lib/site-day'
 import { useUrlState } from '@/lib/url-state'
 import { periodRange, type Period } from '@/lib/period'
-import { FilterSelect, PeriodSelect } from '@/components/filter-select'
+import { PeriodSelect } from '@/components/filter-select'
 import { cn } from '@/lib/utils'
 import { MovementDetailsSheet } from './movement-details-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
 import { ActionIcon } from '@/components/page/action-button'
+import { StateBar, ToggleChip, type StateItem } from '@/components/page/page-kit'
+import type { Tone } from '@/lib/list-kit'
 import { appNow } from '@/lib/clock'
 import { Pager } from '@/components/page/pager'
 import { usePagedUrl } from '@/lib/paging'
@@ -37,7 +39,20 @@ import { usePagedUrl } from '@/lib/paging'
 // stock left on the site after every line and totals at the foot.
 
 // WEB-78: deliveries on a purchase order or on none ("bought outside an order") are a filter of their own.
-type Dir = 'all' | 'in' | 'out' | 'order' | 'loose'
+type Dir = 'all' | 'in' | 'out' | 'order' | 'loose' | 'delivery' | 'used' | 'move' | 'other'
+
+// UX-69: each line's kind, for the kind chips (Deliveries, Used, Moves, Other: returns, wastage, corrections, opening).
+type Kind = 'delivery' | 'used' | 'move' | 'other'
+const kindOf = (r: LedgerRow): Kind =>
+  r.transfer_id || r.movement_reason === 'TRANSFER_IN' || r.movement_reason === 'TRANSFER_OUT' ? 'move'
+    : r.movement_reason === 'RECEIVED' && !r.reverses_movement_id ? 'delivery'
+      : r.movement_reason === 'CONSUMED' && !r.reverses_movement_id ? 'used' : 'other'
+const KINDS: { value: Kind; label: string; icon: typeof Truck; tone: Tone }[] = [
+  { value: 'delivery', label: 'Deliveries', icon: Truck, tone: 'good' },
+  { value: 'used', label: 'Used', icon: IcArrowUpRight, tone: 'bad' },
+  { value: 'move', label: 'Moves', icon: ArrowLeftRight, tone: 'info' },
+  { value: 'other', label: 'Other', icon: Package, tone: 'muted' },
+]
 
 const onOrder = (r: LedgerRow) => r.direction === 'IN' && !!r.purchase_order_id
 const looseDelivery = (r: LedgerRow) => r.direction === 'IN' && r.movement_reason === 'RECEIVED' && !r.purchase_order_id && !r.transfer_id && !r.reverses_movement_id
@@ -98,7 +113,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
       }
     }
     const shown = all
-      .filter((r) => (dir === 'all' ? true : dir === 'in' ? r.direction === 'IN' : dir === 'out' ? r.direction === 'OUT' : dir === 'order' ? onOrder(r) : looseDelivery(r)))
+      .filter((r) => (dir === 'all' ? true : dir === 'in' ? r.direction === 'IN' : dir === 'out' ? r.direction === 'OUT' : dir === 'order' ? onOrder(r) : dir === 'loose' ? looseDelivery(r) : kindOf(r) === dir))
       .filter((r) => !material || ((!range.from || r.occurred_date >= range.from) && (!range.to || r.occurred_date <= range.to)))
       .reverse()
     return { lines: shown, balanceAfter: after }
@@ -120,6 +135,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
   const stockNow = (inventory.data ?? []).filter((s) => s.material_id === material).reduce((s, r) => s + Number(r.current_stock), 0)
   const sitesInScope = [...siteNames.entries()].filter(([, s]) => !projectId || s.projectId === projectId).sort(([, a], [, b]) => (a.project + a.name).localeCompare(b.project + b.name))
   const showSite = !siteId
+  // The lines in the dates and scope, before the kind filter: what the kind chips and the day chart count.
+  const inRange = React.useMemo(() => (query.data?.rows ?? []).filter((r) => !material || ((!range.from || r.occurred_date >= range.from) && (!range.to || r.occurred_date <= range.to))), [query.data, material, range])
   const filtered = material !== null || dir !== 'all' || pickedSite !== 'all' || period !== '30d'
 
   const kind = (r: LedgerRow) => {
@@ -207,20 +224,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
           </Select>
         )}
         <PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />
-        <FilterSelect<Dir>
-          label="Direction"
-          value={dir}
-          onChange={setDir}
-          icon={ArrowLeftRight}
-          className="w-[160px]"
-          options={[
-            { value: 'all', label: 'In and out' },
-            { value: 'in', label: 'Only in' },
-            { value: 'out', label: 'Only out' },
-            { value: 'order', label: 'Came on an order' },
-            { value: 'loose', label: 'Came, no order' },
-          ]}
-        />
+
         <div className="ml-auto flex items-center gap-1">
           {filtered && (
             <Button
@@ -262,6 +266,22 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
                 ]
           }
         />
+      )}
+      {query.data && inRange.length > 0 && (
+        <StateBar
+          guide="materials.kinds"
+          items={KINDS.map((k): StateItem => ({ value: k.value, label: k.label, icon: k.icon, tone: k.tone, count: inRange.filter((r) => kindOf(r) === k.value).length }))}
+          value={['delivery', 'used', 'move', 'other'].includes(dir) ? dir : ''}
+          onChange={(v) => setDir((v || 'all') as Dir)}
+          extra={
+            <>
+              <ToggleChip on={dir === 'order'} onClick={() => setDir(dir === 'order' ? 'all' : 'order')} icon={FileText} count={inRange.filter(onOrder).length} label="on an order" />
+              <ToggleChip on={dir === 'loose'} onClick={() => setDir(dir === 'loose' ? 'all' : 'loose')} icon={TriangleAlert} tone="attention" count={inRange.filter(looseDelivery).length} label="no order" />
+            </>
+          }
+        >
+          <DayChart rows={inRange} unit={material ? unit : null} />
+        </StateBar>
       )}
       {query.data?.truncated && (
         <Callout tone="muted" icon={TriangleAlert}>
@@ -361,11 +381,15 @@ export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projec
                     <td className={cn('whitespace-nowrap px-3 py-1.5 font-medium', !newDay && 'text-transparent')}>{dayLabel(r.occurred_date)}</td>
                     {showSite && (
                       <td className="whitespace-nowrap px-3 py-1.5">
-                        {site?.name ?? '—'}
+                        {site && r.site_id && !scopeSiteId ? <button type="button" className="hover:underline" title={`Only ${site.name}`} onClick={(e) => { e.stopPropagation(); setPickedSite(r.site_id!) }}>{site.name}</button> : site?.name ?? '—'}
                         {!projectId && site && <span className="text-xs text-muted-foreground"> · {site.project}</span>}
                       </td>
                     )}
-                    {!material && <td className="whitespace-nowrap px-3 py-1.5 font-medium">{r.material_name}</td>}
+                    {!material && (
+                      <td className="whitespace-nowrap px-3 py-1.5 font-medium">
+                        <button type="button" className="hover:underline" title={`Only ${r.material_name}`} onClick={(e) => { e.stopPropagation(); if (r.material_id) setMaterialId(r.material_id) }}>{r.material_name}</button>
+                      </td>
+                    )}
                     <td className="whitespace-nowrap px-3 py-1.5">
                       {kind(r)}
                       {correction && <span className="ml-1.5 text-xs text-draft">{r.reverses_movement_id ? 'correction' : 'corrected'}</span>}
@@ -465,5 +489,52 @@ function OrderChip({ row, className, link = true }: { row: LedgerRow; className?
       {row.order_ref}
       {row.grn_ref && <span className="font-normal opacity-80">· {row.grn_ref}</span>}
     </Link>
+  )
+}
+
+/** UX-69: each day in the dates picked, what came in (green, up) against what went out (red, down): lines per day, or
+ * the quantity when one material is picked, so a jump stands out. Hover a day for its figures. */
+function DayChart({ rows, unit }: { rows: LedgerRow[]; unit: string | null }) {
+  const days = React.useMemo(() => {
+    const m = new Map<string, { inn: number; out: number }>()
+    for (const r of rows) {
+      const x = m.get(r.occurred_date) ?? { inn: 0, out: 0 }
+      const v = unit ? Number(r.quantity) : 1
+      if (r.direction === 'IN') x.inn += v
+      else x.out += v
+      m.set(r.occurred_date, x)
+    }
+    const keys = [...m.keys()].sort()
+    if (!keys.length) return []
+    const out: { day: string; inn: number; out: number }[] = []
+    const d = new Date(`${keys[0]}T00:00:00`)
+    const end = new Date(`${keys[keys.length - 1]}T00:00:00`)
+    while (d <= end && out.length < 93) {
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      out.push({ day: k, ...(m.get(k) ?? { inn: 0, out: 0 }) })
+      d.setDate(d.getDate() + 1)
+    }
+    return out
+  }, [rows, unit])
+  if (days.length < 2) return null
+  const top = Math.max(1, ...days.map((d) => Math.max(d.inn, d.out)))
+  const what = unit ? unit : 'entries'
+  return (
+    <div className="flex flex-col gap-1" data-guide="materials.chart">
+      <div className="flex h-20 items-stretch gap-px" role="img" aria-label={`In and out per day, ${what}`}>
+        {days.map((d) => (
+          <div key={d.day} className="flex min-w-0 flex-1 flex-col" title={`${dayLabel(d.day)}: +${qty(String(d.inn))} in, −${qty(String(d.out))} out ${what}`}>
+            <div className="flex flex-1 items-end"><div className="w-full rounded-t-sm bg-success/70" style={{ height: `${(d.inn / top) * 100}%` }} /></div>
+            <div className="h-px bg-border" />
+            <div className="flex flex-1 items-start"><div className="w-full rounded-b-sm bg-destructive/60" style={{ height: `${(d.out / top) * 100}%` }} /></div>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[11px] text-muted-foreground tabular-nums">
+        <span>{dayLabel(days[0].day)}</span>
+        <span className="inline-flex items-center gap-3"><span className="inline-flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-success/70" />In</span><span className="inline-flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-destructive/60" />Out</span>{unit ? ` · ${unit}` : ' · entries a day'}</span>
+        <span>{dayLabel(days[days.length - 1].day)}</span>
+      </div>
+    </div>
   )
 }

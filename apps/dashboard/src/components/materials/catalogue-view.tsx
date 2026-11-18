@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, CircleSlash2, Filter, FolderTree, MoreHorizontal, Pencil, Plus, Ruler, Search, ShieldAlert } from 'lucide-react'
+import { CheckCircle2, CircleSlash2, Filter, FolderTree, IndianRupee, MoreHorizontal, Pencil, Plus, Ruler, Search, ShieldAlert, Snail, Target } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,11 @@ import { CategoriesPanel } from './categories-panel'
 import { ImportDialog } from './import-dialog'
 import { CategoryTile } from '@/components/requests/parts'
 import { ActionIcon } from '@/components/page/action-button'
+import { Pill, ToggleChip } from '@/components/page/page-kit'
+import { fetchStockSummary as fetchStock } from '@/lib/materials'
+import { appNow } from '@/lib/clock'
+import { toLocalISODate } from '@/lib/utils'
+import { qty as qtyWords } from '@/lib/site-day'
 
 // Radix Select can't hold an empty value; this stands for "no category".
 const NO_CATEGORY = 'none'
@@ -61,6 +66,32 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
   const [onlyCategory, setOnlyCategory] = React.useState('all')
   const [sku, setSku] = React.useState('')
   const [error, setError] = React.useState('')
+  // UX-69: what each item holds and costs, from the last 90 days' stock (every site this person sees), and chips for
+  // what to tidy: no rate yet, no minimum set anywhere, not used in 90 days. Each chip is also a filter.
+  const [fix, setFix] = React.useState<'' | 'rate' | 'min' | 'idle'>('')
+  const since = React.useMemo(() => { const d = appNow(); d.setDate(d.getDate() - 90); return toLocalISODate(d) }, [])
+  const { data: stock } = useQuery({ queryKey: ['materials', 'stock-summary', { date_from: since, date_to: toLocalISODate(), all: true }], queryFn: () => fetchStock({ date_from: since, date_to: toLocalISODate() }), staleTime: 60_000, retry: false })
+  const held = React.useMemo(() => {
+    const m = new Map<string, { onHand: number; used: number; rate: string | null; min: boolean; money: boolean }>()
+    for (const r of stock ?? []) {
+      const x = m.get(r.material_id) ?? { onHand: 0, used: 0, rate: null, min: false, money: false }
+      x.onHand += Number(r.closing)
+      x.used += Number(r.used)
+      x.rate = r.last_rate ?? x.rate
+      x.min = x.min || Number(r.min_qty ?? 0) > 0
+      x.money = x.money || r.spend !== null
+      m.set(r.material_id, x)
+    }
+    return m
+  }, [stock])
+  const seesMoney = (stock ?? []).some((r) => r.spend !== null)
+  const needs = (m: MaterialCatalog, f: 'rate' | 'min' | 'idle') => {
+    const h = held.get(m.id)
+    if (!m.is_active) return false
+    if (f === 'rate') return seesMoney && !h?.rate
+    if (f === 'min') return !!h && h.onHand > 0 && !h.min
+    return !h || h.used <= 0
+  }
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', 'manage'],
@@ -195,7 +226,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
   const sections = React.useMemo(() => {
     const q = search.trim().toLowerCase()
     const shown = (catalog?.items ?? []).filter(
-      (m) => !q || `${m.name} ${categoryLabel(paths.get(m.category_id ?? ''))} ${m.sku ?? ''}`.toLowerCase().includes(q),
+      (m) => (!q || `${m.name} ${categoryLabel(paths.get(m.category_id ?? ''))} ${m.sku ?? ''}`.toLowerCase().includes(q)) && (!fix || needs(m, fix)),
     )
     const byName = (a: MaterialCatalog, b: MaterialCatalog) => a.name.localeCompare(b.name)
     const inCategory = (id: string) => shown.filter((m) => m.category_id === id).sort(byName)
@@ -211,7 +242,8 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
       .filter((sec) => sec.groups.length > 0 && (onlyCategory === 'all' || sec.key === onlyCategory))
     const loose = shown.filter((m) => !m.category_id || !paths.has(m.category_id)).sort(byName)
     return { placed, loose: onlyCategory === 'all' || onlyCategory === 'none' ? loose : [] }
-  }, [catalog, search, paths, tree, onlyCategory])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, search, paths, tree, onlyCategory, fix, held])
   const nothingShown = sections.placed.length === 0 && sections.loose.length === 0
 
   const editing = editingMaterial !== null
@@ -225,6 +257,18 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
         {loose && m.category && <span className="ml-2 text-xs font-normal text-muted-foreground">was “{m.category}”</span>}
       </span>
       {!m.is_active && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Not used</span>}
+      {(() => {
+        const h = held.get(m.id)
+        return (
+          <span className="flex flex-wrap items-center gap-1.5">
+            {h && h.onHand > 0 && <span className="text-xs font-semibold tabular-nums">{qtyWords(String(h.onHand))} <span className="font-normal text-muted-foreground">on hand</span></span>}
+            {seesMoney && h?.rate && <span className="text-xs text-muted-foreground tabular-nums">₹{Number(h.rate).toLocaleString('en-IN')}</span>}
+            {needs(m, 'rate') && <Pill tone="attention" size="xs" icon={IndianRupee}>No rate</Pill>}
+            {needs(m, 'min') && <Pill tone="muted" size="xs" icon={Target}>No minimum</Pill>}
+            {m.is_active && needs(m, 'idle') && <Pill tone="muted" size="xs" icon={Snail}>Not used 90 d</Pill>}
+          </span>
+        )
+      })()}
       {loose && tree.length > 0 && (
         <div className="w-full sm:w-56">
           <CategorySelect
@@ -236,7 +280,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
           />
         </div>
       )}
-      <span className="w-28 text-right text-sm text-muted-foreground">{unitName(m)}</span>
+      <span className="w-28 text-right"><span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{unitName(m)}</span></span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`More for ${m.name}`}>
@@ -290,6 +334,14 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">{catalog ? `${catalog.items.length} items` : 'Loading…'}</span>
+        <span className="flex flex-wrap gap-1.5" data-guide="items.fix">
+          {(['rate', 'min', 'idle'] as const).map((f) => (
+            <ToggleChip key={f} on={fix === f} onClick={() => setFix(fix === f ? '' : f)} tone={f === 'rate' ? 'attention' : 'muted'}
+              icon={f === 'rate' ? IndianRupee : f === 'min' ? Target : Snail}
+              count={(catalog?.items ?? []).filter((m) => needs(m, f)).length}
+              label={f === 'rate' ? 'no rate' : f === 'min' ? 'no minimum' : 'not used 90 d'} />
+          ))}
+        </span>
         <div className="ml-auto flex flex-wrap gap-2">
           {!showForm && (
             <Button size="sm" className="gap-1.5" onClick={() => setFormOpen(true)}>
@@ -388,7 +440,7 @@ export function CatalogueView({ leading, sizes }: { leading?: React.ReactNode; s
                 {sec.title}{' '}
                 <span className="font-normal text-muted-foreground">{sec.groups.reduce((n, g) => n + g.list.length, 0)}</span>
               </h3>
-              <ul className="divide-y overflow-hidden rounded-xl border">
+              <ul className="divide-y overflow-hidden rounded-xl border bg-card">
                 {sec.groups.map((g) => (
                   <React.Fragment key={g.key}>
                     {g.title && (
