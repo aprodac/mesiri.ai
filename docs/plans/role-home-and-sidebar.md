@@ -18,6 +18,13 @@ already reads (no new API):
 
 Worst first (red, amber, blue edge), six shown, "Show all". A project picked in the top bar narrows it.
 
+## Today's look (UX-66)
+
+Asked the same day: "the Today page looks so boring". A dark day card on top (`components/home/today-hero.tsx`):
+greeting and day, a ring of sites reported, the time left to the cutoff, the day's four figures, what the day still
+needs as chips, Tell Mesiri / Live / day moves. Then two columns: This week, tasks and the sites as cards on the left;
+the role's figures, time saved and open issues on the right (one column on a phone). Same data, same tour markers.
+
 ## Sidebar: "Your pages" and Customise
 
 - **Your pages** sits under the everyday pages. Each role starts with its own (`lib/sidebar-prefs.ts` `ROLE_PINS`):

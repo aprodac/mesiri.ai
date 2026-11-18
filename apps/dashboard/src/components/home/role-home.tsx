@@ -33,7 +33,8 @@ const TITLES: Record<Role, { title: string; note: string }> = {
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0
 const monthName = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
-export function RoleHome() {
+/** `rail`: Today's right-hand column (UX-66): one tile a row on a laptop. */
+export function RoleHome({ rail = false }: { rail?: boolean } = {}) {
   const { me } = useAuth()
   const { scope } = useScope()
   const isModuleEnabled = useModuleEnabled()
@@ -188,7 +189,7 @@ export function RoleHome() {
       }
       note={TITLES[role].note}
     >
-      <TileGrid>{tiles}</TileGrid>
+      <TileGrid className={rail ? 'lg:grid-cols-1 xl:grid-cols-1' : undefined}>{tiles}</TileGrid>
     </Section>
   )
 }
