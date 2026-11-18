@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ShieldCheck } from 'lucide-react'
+import { ChevronDown, ShieldCheck } from 'lucide-react'
 import { rupees } from '@/lib/expenses'
 import { cn } from '@/lib/utils'
 import { fetchValue, n, woUrl } from '@/lib/subcontracts'
@@ -10,8 +10,10 @@ import { fetchValue, n, woUrl } from '@/lib/subcontracts'
 // stopped, what waits; how many bills passed first time; advance recovered by itself; retention held. Every figure is
 // read from the bills (GET /subcontracts/value), never estimated.
 
-export function ValueStrip({ projectId, className }: { projectId?: string; className?: string }) {
+export function ValueStrip({ projectId, className, compact }: { projectId?: string; className?: string; compact?: boolean }) {
   const [span, setSpan] = React.useState<'period' | 'all_time'>('period')
+  // UX-63: elsewhere than Bills & checks it starts as one line; a tap opens the whole strip.
+  const [open, setOpen] = React.useState(!compact)
   const q = useQuery({ queryKey: ['subcontracts', 'value', projectId ?? ''], queryFn: () => fetchValue({ project_id: projectId }), retry: false })
   if (!q.data) return null
   const v = q.data
@@ -19,6 +21,16 @@ export function ValueStrip({ projectId, className }: { projectId?: string; class
   if (!f.bills && span === 'period' && !v.all_time.bills) return null
   const month = new Date(`${v.date_from}T00:00:00`).toLocaleDateString('en-IN', { month: 'long' })
   const passedPct = f.bills ? Math.round(f.passed_first_time / f.bills * 100) : 0
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} data-guide="sub.value"
+        className={cn('inline-flex w-fit max-w-full items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 py-1 pr-3 pl-1 text-sm text-emerald-900 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200', className)}>
+        <span className="inline-flex size-6 items-center justify-center rounded-full bg-emerald-600 text-white"><ShieldCheck className="size-3.5" /></span>
+        <span className="truncate"><strong className="tabular-nums">{rupees(n(f.caught))}</strong> over-billing caught · {span === 'period' ? month : 'since the start'}{n(f.waiting) ? <span className="text-draft"> · {rupees(n(f.waiting))} waiting</span> : null}</span>
+        <ChevronDown className="size-4 shrink-0" />
+      </button>
+    )
+  }
   const cells = [
     { label: 'Stopped (bills rejected)', value: rupees(n(f.stopped)), tone: 'text-emerald-700 dark:text-emerald-300' },
     { label: 'Accepted with a reason', value: rupees(n(f.accepted)) },

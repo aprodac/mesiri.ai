@@ -9,7 +9,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout } from '@/components/dpr-page'
-import { VendorTile } from '@/components/orders/order-detail'
+import { StateChip, TradeTile } from '@/components/subcontracts/look'
+import { jobTrade, jobView, retentionDay, shortDay } from '@/lib/subcontract-look'
+import { appNow } from '@/lib/clock'
+import { localIsoDate } from '@/lib/site-day'
 import { VendorLink } from '@/components/vendors/vendor-parts'
 import { PayVendorDialog } from '@/components/vendors/vendor-dialogs'
 import { AdvanceDialog, BillDialog, DecideDialog, MeasureDialog, ReleaseDialog, WorkOrderDialog } from '@/components/subcontracts/dialogs'
@@ -81,6 +84,9 @@ export default function WorkOrderPage() {
 
   const t = wo.totals
   const money = wo.with_money
+  const today = localIsoDate(appNow())
+  const view = jobView(wo, today)
+  const release = retentionDay(wo)
   const live = wo.status === 'issued' || wo.status === 'completed'
   const bills = wo.bills ?? []
   const waiting = bills.filter((b) => b.check_status === 'waiting' || b.check_status === 'flagged')
@@ -96,15 +102,17 @@ export default function WorkOrderPage() {
 
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
-      <Link to="/subcontract/work-orders" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Work orders</Link>
-
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      {/* UX-63: the module's header band: back, the trade, the job's state and its dates. */}
+      <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card px-4 py-3.5 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
-          <VendorTile id={wo.vendor_id} name={wo.vendor_name} size="lg" />
+          <Link to="/subcontract/work-orders" className="-ml-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" title="Back to Work orders" aria-label="Back to Work orders"><ArrowLeft className="size-[18px]" /></Link>
+          <TradeTile look={jobTrade(wo)} size="lg" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl leading-tight font-semibold tracking-tight tabular-nums">{wo.ref}</h1>
-              <span className={cn('rounded px-1.5 py-0.5 text-xs font-medium', WO_LOOK[wo.status].chip)}>{WO_LOOK[wo.status].label}</span>
+              <StateChip state={view.state} note={view.note} />
+              {view.state !== 'done' && view.state !== 'draft' && <span className={cn('rounded px-1.5 py-0.5 text-xs font-medium', WO_LOOK[wo.status].chip)}>{WO_LOOK[wo.status].label}</span>}
+              {release && n(t.retention_held) > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-900 dark:bg-violet-950 dark:text-violet-100"><Lock className="size-3" />Retention {release <= today ? 'can be released' : `releases ${shortDay(release)}`}</span>}
             </div>
             <div className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
               <VendorLink id={wo.vendor_id} name={wo.vendor_name} className="font-medium text-foreground" tab="account" />

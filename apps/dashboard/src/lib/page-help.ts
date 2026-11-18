@@ -453,9 +453,15 @@ export const PAGE_HELP: Record<string, PageHelp> = {
   // ── Subcontract ──────────────────────────────────────────────────────────────────────────────────────────────
   '/subcontract/teams': {
     parts: [
-      { name: 'Due', means: 'What you owe them', tone: 'attention' },
-      { name: 'Advance', means: 'Paid ahead, comes off their bills' },
+      { name: 'Edge colour', means: 'The team\'s worst job: late, over-billed, bill to check, retention due, idle' },
+      { name: 'Late', means: 'Past its end date, not done', tone: 'bad' },
+      { name: 'Idle', means: 'Nothing measured for 14 days', tone: 'attention' },
+      { name: 'Green bar', means: 'Paid', tone: 'good' },
+      { name: 'Blue bar', means: 'Billed, not paid yet', tone: 'info' },
+      { name: 'Striped bar', means: 'Done, not billed: you will owe it', tone: 'attention' },
+      { name: 'Rates by work', means: 'The same work across teams, cheapest first' },
     ],
+    steps: ['Start with the coloured teams.', 'Tap the button on a card for its next step.'],
   },
   '/subcontract/work-orders': {
     parts: [
@@ -464,6 +470,8 @@ export const PAGE_HELP: Record<string, PageHelp> = {
       { name: 'Bills to check', means: 'Waiting for you before pay', tone: 'attention' },
       { name: 'Over measured / agreed', means: 'Bill asks for more than done or agreed', tone: 'bad' },
       { name: 'Retention held', means: 'Kept back until the work is accepted' },
+      { name: 'Done, not billed', means: 'Measured but not billed yet', tone: 'attention' },
+      { name: 'Late', means: 'Past its end date, not done', tone: 'bad' },
     ],
     steps: ['New work order: work, rate, quantity.', 'Site measures the work.', 'Their bill is checked against it before pay.'],
   },
@@ -472,6 +480,9 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     parts: [
       { name: 'Passed', means: 'Matches measured work and rate', tone: 'good' },
       { name: 'Did not pass', means: 'Asks for more: a person decides', tone: 'bad' },
+      { name: 'Green / red bar', means: 'Billed within / beyond what was measured', tone: 'bad' },
+      { name: 'Line on the bar', means: 'The quantity agreed' },
+      { name: 'Checked', means: 'Bills already decided, with who and why' },
     ],
   },
 

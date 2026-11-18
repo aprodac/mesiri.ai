@@ -1,161 +1,176 @@
 import * as React from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Check, ClipboardCheck, FileText, Handshake, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardCheck, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout } from '@/components/dpr-page'
-import { VendorTile } from '@/components/orders/order-detail'
 import { DecideDialog } from '@/components/subcontracts/dialogs'
-import { Progress3 } from '@/components/subcontracts/parts'
+import { SubcontractHeader, TradeTile } from '@/components/subcontracts/look'
 import { ValueStrip } from '@/components/subcontracts/value-strip'
 import { useAuth } from '@/lib/AuthContext'
 import { useReadOnly } from '@/lib/trial'
 import { usePageTitle } from '@/lib/page-title'
 import { rupees } from '@/lib/expenses'
-import { day, fetchPayables, vendorUrl } from '@/lib/vendors'
+import { day, vendorUrl } from '@/lib/vendors'
+import { useUrlState } from '@/lib/url-state'
+import { jobTrade, tradeLook } from '@/lib/subcontract-look'
 import { cn } from '@/lib/utils'
-import { ModuleTitle } from '@/components/page/page-kit'
+import { EmptyState, Segmented } from '@/components/page/page-kit'
 import { useScope } from '@/lib/ScopeContext'
 import {
   CHECK_LOOK, WO_LOOK, fetchBillsWaiting, fetchStatement, fetchWorkOrder, fetchWorkOrders, n, statementText, waLink, woUrl, workOrderText,
-  type WoBill,
+  type WoBill, type WorkOrder,
 } from '@/lib/subcontracts'
 import { ActionIcon } from '@/components/page/action-button'
 import { Pager } from '@/components/page/pager'
 import { usePagedUrl } from '@/lib/paging'
 
-// NXT-06/07, NXT-17 (8 Nov 2026): the other subcontract pages. Bills & checks (every bill waiting for a person, with why,
-// approve / reject); Subcontractors (each team: work orders, done, billed, payable, retention, advance; their statement);
+// NXT-06/07, NXT-17 (8 Nov 2026): the other subcontract pages. Bills & checks (every bill waiting for a person, each line
+// drawn against what was measured and agreed (UX-63), approve / reject; and the bills already checked); the subcontractors
+// page is SubcontractorsPage.tsx;
 // a subcontractor's statement (print, send on WhatsApp); the work order document (print, send).
 
 // --- Bills & checks ------------------------------------------------------------------------------------------------
 
+type BillTab = 'waiting' | 'checked'
+
 export function BillsChecksPage() {
   usePageTitle('Bills & checks')
   const readOnly = useReadOnly()
-  const navigate = useNavigate()
+  const [tab, setTab] = useUrlState<BillTab>('tab', 'waiting')
   const waiting = useQuery({ queryKey: ['subcontracts', 'waiting'], queryFn: fetchBillsWaiting })
   const [deciding, setDeciding] = React.useState<{ bill: WoBill; decision: 'approve' | 'reject' } | null>(null)
   // SCP-03: with a project or a site picked, its bills only.
   const { scope } = useScope()
-  const list = (waiting.data ?? []).filter(
-    (b) => scope.mode === 'portfolio' || (b.project_id === scope.projectId && (scope.mode !== 'site' || b.site_id === scope.siteId)),
-  )
+  const projectId = scope.mode === 'portfolio' ? '' : scope.projectId
+  // UX-63: the work orders, for each bill line's measured quantity and agreed rate, and the bills already checked.
+  const wos = useQuery({ queryKey: ['subcontracts', 'list', projectId], queryFn: () => fetchWorkOrders(projectId ? { project_id: projectId } : {}) })
+  const inScope = (b: { project_id?: string; site_id?: string | null }) =>
+    scope.mode === 'portfolio' || (b.project_id === scope.projectId && (scope.mode !== 'site' || b.site_id === scope.siteId))
+  const list = (waiting.data ?? []).filter(inScope)
+  const byWo = new Map((wos.data?.work_orders ?? []).map((w) => [w.id, w]))
+  const checked = (wos.data?.work_orders ?? [])
+    .filter((w) => scope.mode !== 'site' || w.site_id === scope.siteId)
+    .flatMap((w) => (w.bills ?? []).filter((b) => b.check_status !== 'waiting' && b.check_status !== 'flagged').map((b) => ({ b, w })))
+    .sort((x, y) => (y.b.decided_at ?? y.b.bill_date).localeCompare(x.b.decided_at ?? x.b.bill_date))
   // UX-37: numbered pages, kept in the address.
   const pagedList = usePagedUrl(list)
+  const pagedChecked = usePagedUrl(checked)
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
-      <header className="flex items-center gap-3">
-        <ModuleTitle icon={ClipboardCheck} title="Bills & checks" />
-      </header>
-      <ValueStrip />
-      {waiting.isError ? <Callout tone="draft" icon={TriangleAlert}>The bills could not be loaded.</Callout>
+      <SubcontractHeader icon={ClipboardCheck} title="Bills & checks" />
+      <ValueStrip projectId={projectId || undefined} />
+      <Segmented label="Bills" value={tab} onChange={setTab} guide="bills.tabs" options={[{ value: 'waiting', label: 'Waiting', count: list.length }, { value: 'checked', label: 'Checked', count: checked.length }]} />
+      {tab === 'waiting' && (waiting.isError ? <Callout tone="draft" icon={TriangleAlert}>The bills could not be loaded.</Callout>
         : waiting.isLoading ? <Skeleton className="h-40 rounded-xl" />
         : !list.length ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm" data-guide="bills.empty"><Check className="size-6 text-success" /><span className="font-medium">Nothing waiting</span></div>
+          <div data-guide="bills.empty"><EmptyState icon={Check} title="Nothing waiting" className="bg-card" /></div>
         ) : (
           <>
-          <ul className="grid gap-2" data-guide="bills.list">
-            {pagedList.shown.map((b) => (
-              <li key={b.id} className="rounded-xl border bg-card p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <VendorTile id={b.vendor_id} name={b.vendor_name ?? ''} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-semibold">{b.vendor_name} · {b.ref} <Link to={woUrl(b.work_order_id, 'bills')} className="text-sm font-normal text-muted-foreground underline-offset-2 hover:underline">{b.wo_ref}</Link></span>
-                    <span className="block text-xs text-muted-foreground">{[b.project_name, b.site_name].filter(Boolean).join(' › ')} · {day(b.bill_date)}{b.submitted_by_contact ? ' · sent by the subcontractor' : b.submitted_by_name ? ` · by ${b.submitted_by_name}` : ''}</span>
-                  </span>
-                  <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', CHECK_LOOK[b.check_status].chip)}>{CHECK_LOOK[b.check_status].label}</span>
-                  <span className="text-lg font-semibold tabular-nums">{rupees(n(b.gross))}</span>
-                </div>
-                {n(b.caught) > 0 && <div className="mt-1 text-sm font-semibold text-destructive">{rupees(n(b.caught))} of it is for work not measured or above the agreed rate</div>}
-                {b.flags.length > 0 && <ul className="mt-2 grid gap-0.5 text-sm text-destructive">{b.flags.map((f, i) => <li key={i}>⚠ {f.words}</li>)}</ul>}
-                <div className="mt-2 flex flex-wrap gap-2" data-guide="bills.decide">
-                  {!readOnly && <Button size="sm" className="gap-1" onClick={() => setDeciding({ bill: b, decision: 'approve' })}><Check className="size-4" /> Approve</Button>}
-                  {!readOnly && <Button size="sm" variant="outline" onClick={() => setDeciding({ bill: b, decision: 'reject' })}>Reject</Button>}
-                  <Button size="sm" variant="ghost" onClick={() => navigate(woUrl(b.work_order_id, 'bills'))}>Open work order</Button>
-                </div>
-              </li>
-            ))}
+          <ul className="grid gap-3" data-guide="bills.list">
+            {pagedList.shown.map((b) => {
+              const wo = byWo.get(b.work_order_id)
+              const look = wo ? jobTrade(wo) : tradeLook(`${b.vendor_name ?? ''} ${b.lines.map((l) => l.description).join(' ')}`)
+              return (
+                <li key={b.id} className={cn('relative overflow-hidden rounded-xl border bg-card p-4 shadow-xs before:absolute before:inset-y-0 before:left-0 before:w-1', b.check_status === 'flagged' ? 'before:bg-red-500' : 'before:bg-amber-500')}>
+                  <div className="flex flex-wrap items-start gap-3">
+                    <TradeTile look={look} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-semibold">{b.vendor_name}</span>
+                        <span className="text-sm text-muted-foreground">{b.ref}{b.their_bill_no ? ` · their ${b.their_bill_no}` : ''}</span>
+                        <Link to={woUrl(b.work_order_id, 'bills')} className="text-sm text-muted-foreground underline-offset-2 hover:underline">{b.wo_ref}</Link>
+                      </span>
+                      <span className="block text-xs text-muted-foreground">{[b.project_name, b.site_name].filter(Boolean).join(' › ')} · {day(b.bill_date)}{b.submitted_by_contact ? ' · sent by the subcontractor' : b.submitted_by_name ? ` · by ${b.submitted_by_name}` : ''}</span>
+                    </span>
+                    <span className="flex flex-col items-end gap-1">
+                      <span className="text-xl font-semibold tabular-nums">{rupees(n(b.gross))}</span>
+                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', CHECK_LOOK[b.check_status].chip)}>{CHECK_LOOK[b.check_status].label}</span>
+                    </span>
+                  </div>
+                  <BillLines bill={b} wo={wo} />
+                  {n(b.caught) > 0 && <div className="mt-3 inline-flex rounded-lg bg-red-50 px-2.5 py-1 text-sm font-semibold text-red-800 dark:bg-red-950/50 dark:text-red-200">{rupees(n(b.caught))} above what was measured or agreed</div>}
+                  <div className="mt-3 flex flex-wrap gap-2" data-guide="bills.decide">
+                    {!readOnly && <Button size="sm" className="h-9 gap-1 sm:h-8" onClick={() => setDeciding({ bill: b, decision: 'approve' })}><Check className="size-4" /> Approve</Button>}
+                    {!readOnly && <Button size="sm" variant="outline" className="h-9 text-destructive sm:h-8" onClick={() => setDeciding({ bill: b, decision: 'reject' })}>Reject</Button>}
+                    <Button size="sm" variant="ghost" className="h-9 sm:h-8" asChild><Link to={woUrl(b.work_order_id, 'bills')}>Open work order</Link></Button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
             <Pager {...pagedList.pager} noun="bills" className="mt-2" />
           </>
-        )}
+        ))}
+      {tab === 'checked' && (wos.isLoading ? <Skeleton className="h-40 rounded-xl" /> : !checked.length ? (
+        <EmptyState icon={ClipboardCheck} title="No bill checked yet" className="bg-card" />
+      ) : (
+        <>
+          <ul className="divide-y rounded-xl border bg-card shadow-xs" data-guide="bills.checked">
+            {pagedChecked.shown.map(({ b, w }) => (
+              <li key={b.id} className={cn('flex flex-wrap items-center gap-3 px-4 py-3', b.check_status === 'rejected' && 'opacity-70')}>
+                <TradeTile look={jobTrade(w)} size="sm" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{w.vendor_name} · {b.ref} <Link to={woUrl(w.id, 'bills')} className="font-normal text-muted-foreground hover:underline">{w.ref}</Link></span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {b.decided_by_name ? `${b.check_status === 'rejected' ? 'Rejected' : 'Approved'} by ${b.decided_by_name}${b.decision_reason ? `: “${b.decision_reason}”` : ''}` : 'Passed the check'} · {day((b.decided_at ?? b.bill_date).slice(0, 10))}
+                  </span>
+                </span>
+                {n(b.caught) > 0 && <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', b.check_status === 'rejected' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200' : 'bg-muted text-muted-foreground')}>{b.check_status === 'rejected' ? `${rupees(n(b.caught))} stopped` : `${rupees(n(b.caught))} accepted`}</span>}
+                <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', CHECK_LOOK[b.check_status].chip)}>{CHECK_LOOK[b.check_status].label}</span>
+                <span className="w-24 text-right font-semibold tabular-nums">{rupees(n(b.gross))}</span>
+              </li>
+            ))}
+          </ul>
+          <Pager {...pagedChecked.pager} noun="bills" className="mt-2" />
+        </>
+      ))}
       {deciding && <DecideDialog bill={deciding.bill} decision={deciding.decision} onOpenChange={(o) => !o && setDeciding(null)} />}
     </div>
   )
 }
 
-// --- Subcontractors ------------------------------------------------------------------------------------------------
-
-export function SubcontractorsPage() {
-  usePageTitle('Subcontractors')
-  const navigate = useNavigate()
-  // SCP-03: with a project picked, the subcontractors working on it and their figures there.
-  const { scope } = useScope()
-  const projectId = scope.mode === 'portfolio' ? '' : scope.projectId
-  const wos = useQuery({ queryKey: ['subcontracts', 'list', projectId], queryFn: () => fetchWorkOrders(projectId ? { project_id: projectId } : {}) })
-  const pay = useQuery({ queryKey: ['finance', 'payables', 'sub', projectId], queryFn: () => fetchPayables({ include_settled: true, ...(projectId ? { project_id: projectId } : {}) }), retry: false })
-  const money = !!wos.data?.with_money
-  const teams = React.useMemo(() => {
-    const by = new Map<string, { id: string; name: string; open: number; value: number; done: number; billed: number; payable: number; held: number; advance: number; check: number; sites: Set<string> }>()
-    for (const w of wos.data?.work_orders ?? []) {
-      if (w.status === 'cancelled') continue
-      const t = by.get(w.vendor_id) ?? { id: w.vendor_id, name: w.vendor_name, open: 0, value: 0, done: 0, billed: 0, payable: 0, held: 0, advance: 0, check: 0, sites: new Set<string>() }
-      t.open += w.status === 'issued' ? 1 : 0
-      t.value += n(w.totals.value); t.done += n(w.totals.measured_value); t.billed += n(w.totals.billed)
-      t.payable += n(w.totals.payable_now); t.held += n(w.totals.retention_held); t.advance += n(w.totals.advance_left); t.check += w.totals.to_check
-      t.sites.add(w.site_name ?? w.project_name)
-      by.set(w.vendor_id, t)
-    }
-    for (const v of pay.data?.vendors ?? []) if (v.kind === 'subcontractor' && !by.has(v.id)) by.set(v.id, { id: v.id, name: v.name, open: 0, value: 0, done: 0, billed: 0, payable: 0, held: 0, advance: 0, check: 0, sites: new Set() })
-    return [...by.values()].sort((a, b) => b.open - a.open || b.value - a.value)
-  }, [wos.data, pay.data])
-  // UX-37: numbered pages, kept in the address.
-  const pagedTeams = usePagedUrl(teams)
+/** Each bill line against its work order line: billed so far against measured (red past it), the rate against the agreed
+ * one. The check's own words stay under it. */
+function BillLines({ bill, wo }: { bill: WoBill; wo?: WorkOrder }) {
   return (
-    <div className="mx-auto flex w-full flex-col gap-4 pb-24 sm:px-2 md:pb-8">
-      <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <ModuleTitle icon={Handshake} title="Subcontractors" />
-        </div>
-        <Button variant="outline" data-guide="subs.orders" onClick={() => navigate('/subcontract/work-orders')}>Work orders</Button>
-      </header>
-      {wos.isLoading ? <Skeleton className="h-48 rounded-xl" /> : !teams.length ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground" data-guide="subs.empty"><Handshake className="size-6" />No subcontractor yet: a work order adds one.</div>
-      ) : (
-        <>
-        <ul className="grid gap-2 md:grid-cols-2" data-guide="subs.list">
-          {pagedTeams.shown.map((t) => (
-            <li key={t.id} className="rounded-xl border bg-card p-3">
-              <div className="flex items-center gap-3">
-                <VendorTile id={t.id} name={t.name} />
-                <span className="min-w-0 flex-1">
-                  <Link to={vendorUrl(t.id)} className="block truncate font-semibold hover:underline">{t.name}</Link>
-                  <span className="block truncate text-xs text-muted-foreground">{t.open} open work {t.open === 1 ? 'order' : 'orders'}{t.sites.size ? ` · ${[...t.sites].join(', ')}` : ''}</span>
+    <div className="mt-3 flex flex-col gap-2.5 rounded-lg bg-muted/40 p-3">
+      {bill.lines.map((l) => {
+        const line = wo?.lines.find((x) => x.id === l.line_id)
+        const measured = n(line?.measured)
+        const billed = n(line?.billed)
+        const agreed = n(line?.quantity)
+        const top = Math.max(measured, billed, agreed, 1)
+        const over = billed > measured
+        const dear = n(l.rate) > n(l.agreed_rate)
+        return (
+          <div key={l.line_id} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+              <span className="font-medium">{l.description}</span>
+              <span className="flex items-center gap-2 text-xs tabular-nums">
+                <span>{Number(l.quantity).toLocaleString('en-IN')} {l.unit} this bill</span>
+                <span className={cn('rounded-full px-2 py-0.5 font-semibold', dear ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200' : 'bg-background')}>₹{Number(l.rate).toLocaleString('en-IN')}{dear ? ` · agreed ₹${Number(l.agreed_rate).toLocaleString('en-IN')}` : ''}</span>
+              </span>
+            </div>
+            {line && (
+              <>
+                <span className="relative block h-2.5 overflow-hidden rounded-full bg-background" role="img" aria-label={`Billed ${billed} of ${measured} measured, ${agreed} agreed`}>
+                  <span className="absolute inset-y-0 left-0 bg-emerald-500/70" style={{ width: `${Math.min(measured, billed) / top * 100}%` }} />
+                  {over && <span className="absolute inset-y-0 bg-red-500" style={{ left: `${measured / top * 100}%`, width: `${(billed - measured) / top * 100}%` }} />}
+                  {!over && billed < measured && <span className="absolute inset-y-0 bg-emerald-200 dark:bg-emerald-900" style={{ left: `${billed / top * 100}%`, width: `${(measured - billed) / top * 100}%` }} />}
+                  <span className="absolute inset-y-0 w-0.5 bg-foreground/60" style={{ left: `calc(${agreed / top * 100}% - 1px)` }} title="Agreed" />
                 </span>
-                {t.check > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-100">{t.check} to check</span>}
-              </div>
-              {t.value > 0 && <Progress3 className="mt-3" done={Math.round(t.done / t.value * 100)} billed={money ? Math.round(t.billed / t.value * 100) : undefined} />}
-              {money && (
-                <dl className="mt-2 grid grid-cols-4 gap-2 text-xs" data-guide="subs.money">
-                  <div><dt className="text-muted-foreground">Work</dt><dd className="font-medium tabular-nums">{rupees(t.value)}</dd></div>
-                  <div><dt className="text-muted-foreground">Payable now</dt><dd className="font-medium tabular-nums">{rupees(t.payable)}</dd></div>
-                  <div><dt className="text-muted-foreground">Retention</dt><dd className="font-medium tabular-nums">{rupees(t.held)}</dd></div>
-                  <div><dt className="text-muted-foreground">Advance left</dt><dd className="font-medium tabular-nums">{rupees(t.advance)}</dd></div>
-                </dl>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2" data-guide="subs.actions">
-                <Button size="sm" variant="outline" onClick={() => navigate(`/subcontract/work-orders?vendor=${t.id}&tab=all`)}>Work orders</Button>
-                {money && <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate(`/subcontract/statement/${t.id}`)}><FileText className="size-4" /> Statement</Button>}
-                <Button size="sm" variant="ghost" onClick={() => navigate(vendorUrl(t.id))}>Account</Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-          <Pager {...pagedTeams.pager} noun="subcontractors" className="mt-2" />
-        </>
-      )}
+                <span className="flex flex-wrap justify-between gap-x-3 text-xs text-muted-foreground tabular-nums">
+                  <span>Billed <strong className={cn('text-foreground', over && 'text-destructive')}>{billed.toLocaleString('en-IN')}</strong> · measured <strong className="text-foreground">{measured.toLocaleString('en-IN')}</strong> {l.unit}</span>
+                  <span>agreed {agreed.toLocaleString('en-IN')}</span>
+                </span>
+              </>
+            )}
+          </div>
+        )
+      })}
+      {bill.flags.length > 0 && <ul className="grid gap-0.5 text-xs text-destructive">{bill.flags.map((f, i) => <li key={i}>⚠ {f.words}</li>)}</ul>}
     </div>
   )
 }
