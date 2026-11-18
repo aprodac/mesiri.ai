@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils'
 
 // NXT-08: the bell in the top bar. Its count is everything waiting for this person (site reports to confirm,
 // material requests to decide, subcontractor bills, RA bill drafts, my tasks due); the panel lists them, urgent
-// first, grouped; each row opens the record where it is decided. Read only: the bell never acts.
+// first, grouped; each row opens the record where it is decided. Read only: the bell never acts; the Approvals page
+// (UX-62) decides the simple ones in place.
 
 export function InboxBell() {
   const [open, setOpen] = React.useState(false)
@@ -45,6 +46,13 @@ export function InboxBell() {
             </SheetDescription>
           </SheetHeader>
           <Body query={query} onPick={() => setOpen(false)} />
+          <Link
+            to="/site/approvals"
+            onClick={() => setOpen(false)}
+            className="sticky bottom-0 mt-auto flex items-center justify-center gap-1 border-t bg-background px-4 py-3 text-sm font-semibold hover:bg-muted"
+          >
+            Open Approvals<ChevronRight className="size-4" />
+          </Link>
         </SheetContent>
       </Sheet>
     </>

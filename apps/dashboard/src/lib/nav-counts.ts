@@ -5,6 +5,7 @@ import { localIsoDate } from '@/lib/site-day'
 import { useModuleEnabled } from '@/lib/modules'
 import { fetchTaskSummary, type TaskSummary } from '@/lib/tasks'
 import { appNow } from '@/lib/clock'
+import { fetchWaiting } from '@/lib/approvals'
 
 /** Today's numbers for the sidebar and top bar badges (WEB-20): drafts still
  * to confirm and open issues, in the current scope (project or site). Same query key as the
@@ -43,4 +44,10 @@ export function useTaskCounts(): TaskSummary | null {
     retry: false,
   })
   return data ?? null
+}
+
+/** UX-62: what waits on me (GET /approvals/waiting), for the Approvals row. The bell's own query key, so one call. */
+export function useWaitingCounts(): { total: number; urgent: number } | null {
+  const { data } = useQuery({ queryKey: ['approvals', 'waiting'], queryFn: fetchWaiting, refetchInterval: 60_000, staleTime: 30_000, retry: false })
+  return data ? { total: data.total, urgent: data.urgent } : null
 }

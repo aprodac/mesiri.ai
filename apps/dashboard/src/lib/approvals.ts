@@ -1,10 +1,12 @@
+import type { LucideIcon } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, FileText, HardHat, ListChecks, Package, ReceiptIndianRupee, Scale, Wallet } from 'lucide-react'
 import { api } from './api'
 import { recordUrl } from './links'
 
 // NXT-08: the approvals inbox, "what is waiting for me". Backend: domains/approvals (GET /approvals/waiting), a read
 // over each module's own list as the caller, so a row is here exactly when its page would show it to this person.
 
-export type WaitingKind = 'site_report' | 'material_request' | 'subcontract_bill' | 'ra_bill' | 'wage_sheet' | 'labour_split' | 'task'
+export type WaitingKind = 'site_report' | 'material_request' | 'subcontract_bill' | 'ra_bill' | 'wage_sheet' | 'labour_split' | 'task' | 'stock_count'
 
 export interface WaitingItem {
   kind: WaitingKind
@@ -56,8 +58,28 @@ export const KIND_LABEL: Record<WaitingKind, string> = {
   wage_sheet: 'Wages to approve or pay',
   labour_split: 'Labour on the BOQ to confirm',
   task: 'My tasks',
+  stock_count: 'Stock counts to approve',
 }
-export const KIND_ORDER: WaitingKind[] = ['site_report', 'material_request', 'subcontract_bill', 'ra_bill', 'wage_sheet', 'labour_split', 'task']
+export const KIND_ORDER: WaitingKind[] = ['site_report', 'material_request', 'subcontract_bill', 'ra_bill', 'wage_sheet', 'labour_split', 'stock_count', 'task']
+
+/** UX-62: each kind's short name, icon and tile colour on the Approvals page (one colour per kind, everywhere). */
+export const KIND_LOOK: Record<WaitingKind, { short: string; icon: LucideIcon; tile: string }> = {
+  site_report: { short: 'Site reports', icon: ClipboardCheck, tile: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' },
+  material_request: { short: 'Material', icon: Package, tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
+  subcontract_bill: { short: 'Sub bills', icon: ReceiptIndianRupee, tile: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
+  ra_bill: { short: 'RA bills', icon: FileText, tile: 'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300' },
+  wage_sheet: { short: 'Wages', icon: Wallet, tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
+  labour_split: { short: 'Labour', icon: HardHat, tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
+  stock_count: { short: 'Stock counts', icon: Scale, tile: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300' },
+  task: { short: 'My tasks', icon: ListChecks, tile: 'bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-200' },
+}
+export const NOTHING_ICON = ClipboardList
+
+/** Whole days an item has waited (0 = today). */
+export function daysWaited(since: string | null, today: string): number {
+  if (!since || !today) return 0
+  return Math.max(0, Math.round((Date.parse(today.slice(0, 10)) - Date.parse(since.slice(0, 10))) / 86_400_000))
+}
 
 /** Where a row opens: the record's own page (lib/links.ts), never a new screen. */
 export function waitingUrl(item: WaitingItem): string {
@@ -78,6 +100,8 @@ export function waitingUrl(item: WaitingItem): string {
       return `/cost/budget?project=${item.project_id ?? ''}#labour-to-lines`
     case 'task':
       return recordUrl.task(item.id)
+    case 'stock_count':
+      return `/materials/counts?id=${item.id}`
   }
 }
 

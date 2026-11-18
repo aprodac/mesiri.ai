@@ -119,6 +119,16 @@ export const PAGE_TOURS: Record<string, Tour> = {
       { target: 'today.tell', title: 'Tell me here too', text: 'You can tell me things right here, the way you would on WhatsApp.', mood: 'happy' },
     ],
   },
+  '/site/approvals': {
+    key: '/tour/approvals',
+    version: 1,
+    introFromPage: true,
+    steps: [
+      { target: 'approvals.kinds', title: 'What is waiting', text: 'Each kind has its colour and count. A red dot: some are urgent. Tap one to show only those.', mood: 'look' },
+      { target: 'approvals.urgent', title: 'Urgent first', text: 'Late requests, flagged bills, wages past pay day and overdue tasks.', mood: 'worry' },
+      { target: 'approvals.list', title: 'Decide here', text: 'Approve a bill or a week\'s wages, finish a task, or decide a material request without leaving the page. The rest open where they are checked.', mood: 'happy' },
+    ],
+  },
   '/reports': {
     key: '/tour/reports',
     version: 1,

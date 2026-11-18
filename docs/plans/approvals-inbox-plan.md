@@ -17,6 +17,9 @@ answers from the same API (tool `waiting`).
 | `subcontract_bill` | check `waiting` or `flagged` | `may_view_expenses` (the approve route's rule) | flagged | the work order's bills |
 | `ra_bill` | status `draft` | `may_manage_money` | made 7+ days ago | `/billing/ra-bills?bill=` |
 | `task` | mine, live, due today or before (tasks module) | the assignee | overdue | `/tasks?id=` |
+| `wage_sheet` | a past week in draft, or approved with money due | `may_view_expenses` | approved, pay day passed | `/labour/wages?week=` |
+| `labour_split` | BOQ-02c: last 7 days' labour put on lines by Mesiri, or on none | `may_view_expenses` | never | the Budget page |
+| `stock_count` | UX-62: open, something counted | the count's `may_approve` (admin, owner) | open 3+ days | `/materials/counts?id=` |
 
 ## How
 
@@ -32,11 +35,28 @@ answers from the same API (tool `waiting`).
 - WhatsApp v3: `waiting` on `ALLOWED` (added with `scripts/allow_route.py`), one SOP line (not `my_requests`);
   mounted in `runtime/lifecycle.py` and `agent_api/app.py`.
 
+## The Approvals page (UX-62, 18 Nov 2026)
+
+`/site/approvals` (`pages/ApprovalsPage.tsx`) is the bell's list as a page: kind tiles (`KIND_LOOK` in
+`lib/approvals.ts`: one colour and icon per kind), project filter, Urgent only, rows grouped Urgent / Today / Waiting
+longer. The simple decisions are taken on the row **with each module's own route and dialog**, never a copy:
+
+| Kind | On the row | Route |
+| --- | --- | --- |
+| `subcontract_bill` | Approve / Reject (the module's `DecideDialog`: flags shown, a reason required) | `POST /subcontracts/bills/{id}/approve\|reject` |
+| `wage_sheet` (draft) | Approve; an approved week shows Pay, which opens Wages (it needs the account to pay from) | `POST /labour/wage-sheets/{id}/approve` |
+| `task` | Done | `POST /tasks/{id}/status` |
+| `material_request` | Decide: Requests' own `RequestDetail` in a side panel (order, quotes, send from a site, no with a reason) | `POST /procurement/requests/{id}/decide`, orders |
+| the rest | Confirm / Check / Review: open the record | — |
+
+Never in bulk: one tap, one row. After any decision the list is read again, so a row someone else decided goes.
+New approval rules (an expense above a limit needing a PM, orders above a value needing the owner) do not exist yet:
+a product decision for Ilan.
+
 ## Not in this item (later, module 20)
 
 - Pushing a WhatsApp message when something new waits (PRC-25 already tells the office of a new request).
 - Comments with @mentions on records; meeting minutes that become tasks; notification settings per person.
-- Stock adjustments: there is no approval step for them today.
 - Acting from the WhatsApp list in one step (each kind's own tool still does it, with its own confirm).
 
 ## Rollback

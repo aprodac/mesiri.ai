@@ -18,6 +18,7 @@ const LEVELS: [string, ScopeLevel][] = [
   ['/site-log', 'site'],
   ['/analytics', 'site'],
   ['/tasks', 'site'],
+  ['/site/approvals', 'company'],
   // Site
   ['/labour', 'site'],
   ['/labour/wages', 'site'],

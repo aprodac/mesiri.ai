@@ -52,6 +52,18 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     ],
     steps: ['Open a site to see its day.', 'Confirm the day so it goes into the evening report.'],
   },
+  '/site/approvals': {
+    parts: [
+      { name: 'Kind tiles', means: 'One colour per kind; tap to show only those', find: 'approvals.kinds' },
+      { name: 'Red edge', means: 'Urgent: late, flagged or overdue', tone: 'bad' },
+      { name: 'Waited', means: 'Grey today, amber 3 days, red a week', tone: 'attention' },
+      { name: 'Approve / Done', means: 'Decided right here, with the module\'s own rule', tone: 'good' },
+      { name: 'Decide', means: 'A material request: order it, send from another site, or say no' },
+      { name: 'Open / Review', means: 'Checked line by line on its own page' },
+    ],
+    steps: ['Start with Urgent.', 'Approve what is simple here; open the rest.'],
+    tip: 'Nothing is approved in bulk. A rejection always asks why, and the person who asked is told.',
+  },
   '/reports': {
     parts: [
       { name: 'Confirmed', means: 'The engineer checked the day', tone: 'good' },

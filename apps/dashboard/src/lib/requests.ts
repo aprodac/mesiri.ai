@@ -119,6 +119,10 @@ export function asDuplicateConflict(err: unknown): DuplicateConflict | null {
   return d && d.code === 'possible_duplicate' ? d : null
 }
 
+export async function fetchRequest(id: string): Promise<MaterialRequest> {
+  return (await api.get<MaterialRequest>(`/procurement/requests/${id}`)).data
+}
+
 export async function updateRequest(id: string, payload: {
   lines?: { id?: string; material_id: string; quantity: string; unit_id: string }[]
   needed_by?: string | null

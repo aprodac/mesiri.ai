@@ -7,6 +7,7 @@ import WelcomePage from '@/pages/WelcomePage'
 import LivePage from '@/pages/LivePage'
 import { RequireAuth } from '@/lib/AuthContext'
 import TodayPage from '@/pages/TodayPage'
+import ApprovalsPage from '@/pages/ApprovalsPage'
 import SiteDayPage from '@/pages/SiteDayPage'
 import ProjectDayPage from '@/pages/ProjectDayPage'
 import Users from '@/pages/Users'
@@ -151,6 +152,8 @@ export default function App() {
 
           {/* Daily */}
           <Route path="today" element={<TodayPage />} />
+          <Route path="site/approvals" element={<ApprovalsPage />} />
+          <Route path="approvals" element={<Navigate to="/site/approvals" replace />} />
           <Route path="reports" element={<DailyReportsPage />} />
           {/* PRC-19: the weekly / monthly report (reports plan R1). */}
           <Route path="reports/period" element={<PeriodReportPage />} />

@@ -57,7 +57,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useNavCounts, useTaskCounts } from '@/lib/nav-counts'
+import { useNavCounts, useTaskCounts, useWaitingCounts } from '@/lib/nav-counts'
 import { MODULE_GROUPS, PAGE_ICONS, SECTION_TITLES, findPage, sectionOrder, type ModuleGroup, type NavSection } from '@/lib/module-map'
 import { openJump } from '@/lib/jump'
 import { usePlannedPreview } from '@/lib/preview'
@@ -499,10 +499,13 @@ export function AppSidebar() {
 
   const counts = useNavCounts()
   const taskCounts = useTaskCounts()
+  const waiting = useWaitingCounts()
   // TSK-06: My tasks counts what is mine still open (orange: waiting on me); Overdue counts what is late (red).
   const pageCounts: Record<string, SubCount | undefined> = {
     '/tasks': taskCounts ? { n: taskCounts.mine_open, tone: 'drafts', label: taskCounts.mine_overdue ? `open for you, ${taskCounts.mine_overdue} late` : 'open for you' } : undefined,
     '/tasks?view=overdue': taskCounts ? { n: taskCounts.overdue, tone: 'issues', label: 'late' } : undefined,
+    // UX-62: the Approvals page counts what waits on me (red when some are urgent); the bell's own query, no extra call.
+    '/site/approvals': waiting ? { n: waiting.total, tone: waiting.urgent ? 'issues' : 'drafts', label: waiting.urgent ? `waiting, ${waiting.urgent} urgent` : 'waiting' } : undefined,
   }
   // "Finish setup" (SS-19): the getting-started card stays one click away,
   // hidden or not, until everything is done.
