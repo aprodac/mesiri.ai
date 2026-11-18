@@ -219,6 +219,9 @@ If a screen makes the reader hunt for any of those, it is wrong.
   `--background` is `#f6f3ed`, matching the sand sidebar; tables, cards and lists sit on it in `bg-card`
   (white) so they lift off the page. Greys are warm (`--muted #efe9de`, `--border #e7e1d6`). Dark mode is
   unchanged. Section headers that group a long list (BOQ sections) may sit in a `bg-muted` band.
+- **A brighter ground for floating panels** (UXA-03, 17 Nov 2026): `--background-bright` (`#fdfcf9`; dark `#1a1c20`,
+  `bg-background-bright`) for a side sheet that sits over the sand page, with white `bg-card` blocks inside it. First
+  used by the voucher sheet (`components/accounts/books.tsx`); other sheets keep `bg-background` until they are redone.
 - **Data colour is not status colour.** Bars that show an amount use one data hue: progress in `info` blue
   (in progress), size in `chart-1` gold. Status colours (§3) stay for state: a healthy margin is `success`
   text; a thin one an orange pill; a loss a red pill with a warning icon.

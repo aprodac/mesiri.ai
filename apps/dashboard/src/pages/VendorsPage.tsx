@@ -11,7 +11,8 @@ import { Callout } from '@/components/dpr-page'
 import { FilterSelect } from '@/components/filter-select'
 import { VendorTile } from '@/components/orders/order-detail'
 import { LinkNamesDialog, MergeVendorDialog, PayVendorDialog, VendorFormDialog } from '@/components/vendors/vendor-dialogs'
-import { AgeBar } from '@/components/vendors/vendor-parts'
+import { AgeingCard } from '@/components/accounts/money-kit'
+import { AGE_BARS } from '@/components/accounts/money-look'
 import { UnbilledList } from '@/components/vendors/unbilled-list'
 import { useAuth } from '@/lib/AuthContext'
 import { useScope } from '@/lib/ScopeContext'
@@ -23,8 +24,8 @@ import { mayManageMoney, rupees } from '@/lib/expenses'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { exportCsv } from '@/lib/export'
 import { cn } from '@/lib/utils'
-import { KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
-import { KpiStrip, ModuleTitle, type KpiProps } from '@/components/page/page-kit'
+import { BUCKETS, KINDS, day, deleteVendor, fetchPayables, fetchUnlinkedNames, fetchVendors, num, updateVendor, vendorUrl, type Buckets, type PayableRow, type Vendor, type VendorKind } from '@/lib/vendors'
+import { ModuleTitle, type KpiProps } from '@/components/page/page-kit'
 import { ScoreChip } from '@/components/vendors/supplier-score'
 import { useSupplierScores } from '@/lib/supplier-performance'
 import { paperStatusWords, usePapersAttention } from '@/lib/vendor-documents'
@@ -35,6 +36,10 @@ import { usePagedUrl } from '@/lib/paging'
 // CC-09 (8 Nov 2026): Finance > Suppliers. Who the company buys from and pays, and -- for the roles that see spending
 // -- what it owes each of them: four tiles that filter (we owe, overdue, delivered not billed, paid ahead), how old
 // the money owed is, and one row per supplier with its balance. A row opens the supplier's page (ledger, bills, pay).
+// UXA-05 (Mercon's payables ageing as the reference): what you owe and how long it waited in one card (AgeingCard, as on
+// Receivables), the four figures beside it still filtering, a part of the bar filtering by age; each supplier's own
+// age bar under its balance. UXA-07: the list as a table (supplier, contact, score, how long the money waited, what
+// you owe), an overdue supplier with a red bar; the row opens the supplier, the menu and score keep their own clicks.
 // Everyone with Finance still sees the directory: a supplier is picked when an expense is recorded.
 
 type Tile = '' | 'owe' | 'overdue' | 'unbilled' | 'ahead'
@@ -67,6 +72,7 @@ export default function VendorsPage() {
   const [status, setStatus] = useUrlState<string>('status', 'active')
   const [kind, setKind] = useUrlState<string>('kind', 'all')
   const [tile, setTile] = useUrlState<Tile>('show', '')
+  const [age, setAge] = useUrlState<string>('age', '')  // UXA-05: a part of the age bar picked
   const [sort, setSort] = useUrlState<Sort>('sort', seesMoney ? 'owed' : 'name')
   const scores = useSupplierScores(seesMoney)
   // PRC-52: a supplier whose papers are expired, missing (GST / PAN of a registered one) or expiring soon.
@@ -112,7 +118,7 @@ export default function VendorsPage() {
   const oldest = (v: Row) => v.oldest_unbilled ?? '9999'
   // PRC-50: no score (too few orders) sorts after every scored supplier.
   const scoreOf = (v: Row) => Number(scores.get(v.id)?.score ?? -1)
-  const shown = base.filter((v) => inTile(v, tile)).sort((a, b) => {
+  const shown = base.filter((v) => inTile(v, tile) && (!age || num(v.buckets?.[age as keyof Buckets]) > 0)).sort((a, b) => {
     if (sort === 'owed') return num(b.balance) - num(a.balance) || a.name.localeCompare(b.name)
     if (sort === 'overdue') return num(b.overdue) - num(a.overdue) || num(b.balance) - num(a.balance)
     if (sort === 'oldest') return oldest(a).localeCompare(oldest(b)) || num(b.balance) - num(a.balance)
@@ -162,25 +168,44 @@ export default function VendorsPage() {
         </Callout>
       ) : seesMoney && (
         <>
-          <KpiStrip
-            guide="vendors.tiles"
-            stats={tiles.map(({ value2: x, ...k }) => ({
-              ...k,
-              key: x,
-              loading,
-              pressed: tile === x,
-              onClick: () => (x === 'unbilled' ? setView('unbilled') : setTile(tile === x ? '' : x)),
-            }))}
-          />
-          {payables.data && num(payables.data.totals.payable) + num(payables.data.totals.unbilled) > 0 && (
-            <div className="rounded-xl border bg-card p-3" data-guide="vendors.age">
-              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                <span className="font-medium">How long it has waited</span>
-                <span className="text-xs text-muted-foreground">Unpaid bills and deliveries not billed, by their date{payables.data.partial ? ' · your projects only' : ''}</span>
+          <AgeingCard
+            guide="vendors.age"
+            title="You owe suppliers"
+            total={owe}
+            totalHint={
+              <>
+                {count('owe')} suppliers{payables.data ? ` · as on ${day(payables.data.as_of)}` : ''}{payables.data?.partial ? ' · your projects only' : ''}
+                <span className="block">Bar: unpaid bills and unbilled deliveries, by age</span>
+              </>
+            }
+            buckets={BUCKETS.map((b, i) => ({ key: b.key, label: b.label, value: num(payables.data?.buckets[b.key]), bar: AGE_BARS[i], late: i >= 2 }))}
+            active={age || null}
+            onPick={(k) => setAge(k ?? '')}
+            aside={
+              <div data-guide="vendors.tiles" className="flex flex-wrap gap-2">
+                {tiles.map(({ value2: x, label, value, hint }) => {
+                  const pressed = tile === x
+                  const tone = x === 'overdue' && num(t?.overdue) > 0 ? 'border-destructive/30 bg-destructive/[0.05] text-destructive' : x === 'unbilled' && num(t?.unbilled) > 0 ? 'border-draft/30 bg-draft-soft/50 text-draft' : x === 'ahead' ? 'border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-400' : 'bg-muted/40'
+                  return (
+                    <button
+                      key={x}
+                      type="button"
+                      aria-pressed={pressed}
+                      onClick={() => (x === 'unbilled' ? setView('unbilled') : setTile(pressed ? '' : x))}
+                      className={cn('min-w-[7.5rem] rounded-lg border px-3 py-1.5 text-left text-xs transition-colors hover:brightness-95', tone, pressed && 'ring-2 ring-ring ring-offset-1 ring-offset-background')}
+                    >
+                      <span className="block text-muted-foreground">{label}</span>
+                      <span className="text-sm font-semibold tabular-nums">
+                        {loading ? '…' : value}
+                        {x === 'overdue' && owe > 0 && num(t?.overdue) > 0 && <span className="ml-1 text-xs font-normal">{Math.round((num(t?.overdue) / owe) * 100)}%</span>}
+                      </span>
+                      <span className="block text-[11px] text-muted-foreground">{hint}</span>
+                    </button>
+                  )
+                })}
               </div>
-              <AgeBar buckets={payables.data.buckets} />
-            </div>
-          )}
+            }
+          />
         </>
       )}
 
@@ -235,75 +260,113 @@ export default function VendorsPage() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center" data-guide="vendors.list">
           <Store className="size-6 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">{all.length ? 'No supplier matches' : 'No suppliers yet'}</p>
-          {(tile || kind !== 'all' || needle) && all.length > 0 && <Button variant="outline" size="sm" onClick={() => { setTile(''); setKind('all'); setQ('') }}>Clear filters</Button>}
+          {(tile || age || kind !== 'all' || needle) && all.length > 0 && <Button variant="outline" size="sm" onClick={() => { setTile(''); setAge(''); setKind('all'); setQ('') }}>Clear filters</Button>}
         </div>
       ) : (
         <>
-        <ul className="divide-y rounded-xl border bg-card" data-guide="vendors.list">
-          {pagedShown.shown.map((v) => {
-            const bal = num(v.balance)
-            const late = num(v.overdue)
-            return (
-              <li key={v.id} className={cn('relative flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30', v.status !== 'active' && 'opacity-60')}>
-                <VendorTile id={v.id} name={v.name} />
-                <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left after:absolute after:inset-0" onClick={() => navigate(vendorUrl(v.id))}>
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate font-semibold">{v.name}</span>
-                    {v.kind && v.kind !== 'supplier' && <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', KINDS[v.kind].chip)}>{KINDS[v.kind].label}</span>}
-                    {v.status !== 'active' && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Switched off</span>}
-                    {papers.get(v.id) && (
-                      <span data-testid="papers-warning" role="img" className="relative z-10 inline-flex"
-                        title={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}
-                        aria-label={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}>
-                        <FileWarning className={cn('size-4 shrink-0', papers.get(v.id)!.attention === 'expiring' ? 'text-amber-600' : 'text-red-600')} />
-                      </span>
-                    )}
-                  </span>
-                  <span className="line-clamp-1 text-xs text-muted-foreground">
-                    {[v.code, v.contact_person, v.phone, v.gstin ? `GSTIN ${v.gstin}` : null, v.credit_days != null ? `${v.credit_days} days credit` : null].filter(Boolean).join(' · ') || 'No phone or GSTIN yet'}
-                  </span>
-                </button>
-                {seesMoney && <ScoreChip p={scores.get(v.id)} className="relative z-10 text-xs" />}
-                {seesMoney && (
-                  <span className="flex shrink-0 flex-col items-end">
-                    <span className={cn('font-semibold tabular-nums', late > 0 ? 'text-destructive' : bal < 0 ? 'text-emerald-700 dark:text-emerald-400' : bal === 0 && 'text-muted-foreground')}>
-                      {bal < 0 ? `+${rupees(-bal)}` : rupees(bal)}
-                    </span>
-                    <span className="max-w-[46vw] truncate text-xs text-muted-foreground sm:max-w-none">
-                      {late > 0 ? `${rupees(late)} overdue` : bal < 0 ? 'paid ahead' : (v.unbilled_count ?? 0) > 0 ? `${v.unbilled_count} not billed` : v.bills_open ? `${v.bills_open} ${v.bills_open === 1 ? 'bill' : 'bills'} open` : v.last_payment ? `paid ${day(v.last_payment.date)}` : bal === 0 ? 'settled' : ''}
-                    </span>
-                  </span>
-                )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon" className="relative z-10 size-8 shrink-0" aria-label={`More for ${v.name}`}>
-                      <MoreHorizontal className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuItem onClick={() => navigate(vendorUrl(v.id))}>Open account</DropdownMenuItem>
-                    {canManage && <DropdownMenuItem onClick={() => setPaying(v)}>Pay {v.name.split(' ')[0]}</DropdownMenuItem>}
-                    <DropdownMenuItem onClick={() => navigate(`/procurement/orders?vendor=${v.id}`)}>Its orders</DropdownMenuItem>
-                    {seesMoney && <DropdownMenuItem onClick={() => navigate(`/finance/expenses?vendor=${v.id}&period=all`)}>Its expenses</DropdownMenuItem>}
-                    {!readOnly && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setEditing(v)}>Edit</DropdownMenuItem>
-                        {canManage && <DropdownMenuItem onClick={() => setMerging(v)}>Merge into another…</DropdownMenuItem>}
-                        <DropdownMenuItem onClick={() => toggle.mutate(v)}>{v.status === 'active' ? 'Switch off' : 'Switch on'}</DropdownMenuItem>
-                        {canManage && (
-                          <DropdownMenuItem className="text-destructive" onClick={() => window.confirm(`Delete ${v.name}? Only a supplier added by mistake, with nothing recorded, can be deleted.`) && remove.mutate(v)}>
-                            Delete
-                          </DropdownMenuItem>
-                        )}
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </li>
-            )
-          })}
-        </ul>
+        <div className="overflow-hidden rounded-xl border bg-card shadow-xs" data-guide="vendors.list">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="border-b bg-muted text-xs text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Supplier</th>
+                  <th className="px-3 py-2 text-left font-medium">Contact</th>
+                  {seesMoney && <th className="px-3 py-2 text-left font-medium">Score</th>}
+                  {seesMoney && <th className="px-3 py-2 text-left font-medium">Waiting</th>}
+                  {seesMoney && <th className="px-3 py-2 text-right font-medium">You owe</th>}
+                  <th className="w-12 px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {pagedShown.shown.map((v) => {
+                  const bal = num(v.balance)
+                  const late = num(v.overdue)
+                  const sum = v.buckets ? BUCKETS.reduce((n, x) => n + num(v.buckets![x.key]), 0) : 0
+                  return (
+                    <tr key={v.id} onClick={() => navigate(vendorUrl(v.id))} className={cn('cursor-pointer hover:bg-muted/30', v.status !== 'active' && 'opacity-60', late > 0 && 'bg-destructive/[0.03]')}>
+                      <td className={cn('px-3 py-2.5', late > 0 && 'border-l-4 border-l-destructive')}>
+                        <span className="flex items-center gap-3">
+                          <VendorTile id={v.id} name={v.name} />
+                          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span className="truncate font-semibold">{v.name}</span>
+                            {v.kind && v.kind !== 'supplier' && <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', KINDS[v.kind].chip)}>{KINDS[v.kind].label}</span>}
+                            {v.status !== 'active' && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Switched off</span>}
+                            {papers.get(v.id) && (
+                              <span data-testid="papers-warning" role="img" className="inline-flex"
+                                title={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}
+                                aria-label={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}>
+                                <FileWarning className={cn('size-4 shrink-0', papers.get(v.id)!.attention === 'expiring' ? 'text-amber-600' : 'text-red-600')} />
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="max-w-[16rem] px-3 py-2.5 text-xs text-muted-foreground">
+                        <span className="line-clamp-2">
+                          {[v.code, v.contact_person, v.phone, v.gstin ? `GSTIN ${v.gstin}` : null, v.credit_days != null ? `${v.credit_days} days credit` : null].filter(Boolean).join(' · ') || 'No phone or GSTIN yet'}
+                        </span>
+                      </td>
+                      {seesMoney && (
+                        <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <ScoreChip p={scores.get(v.id)} className="text-xs" />
+                        </td>
+                      )}
+                      {seesMoney && (
+                        <td className="px-3 py-2.5">
+                          {bal > 0 && sum > 0 ? (
+                            <span className="flex h-1.5 w-24 gap-px overflow-hidden rounded-full bg-muted" title={`${Math.round((bal / (owe || 1)) * 100)}% of all you owe`}>
+                              {BUCKETS.map((x, i) => num(v.buckets![x.key]) > 0 && <span key={x.key} className={cn('h-full', AGE_BARS[i])} style={{ width: `${(num(v.buckets![x.key]) / sum) * 100}%` }} />)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      )}
+                      {seesMoney && (
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                          <span className={cn('block font-semibold tabular-nums', late > 0 ? 'text-destructive' : bal < 0 ? 'text-emerald-700 dark:text-emerald-400' : bal === 0 && 'text-muted-foreground')}>
+                            {bal < 0 ? `+${rupees(-bal)}` : rupees(bal)}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {late > 0 ? `${rupees(late)} overdue` : bal < 0 ? 'paid ahead' : (v.unbilled_count ?? 0) > 0 ? `${v.unbilled_count} not billed` : v.bills_open ? `${v.bills_open} ${v.bills_open === 1 ? 'bill' : 'bills'} open` : v.last_payment ? `paid ${day(v.last_payment.date)}` : bal === 0 ? 'settled' : ''}
+                          </span>
+                        </td>
+                      )}
+                      <td className="px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" aria-label={`More for ${v.name}`}>
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem onClick={() => navigate(vendorUrl(v.id))}>Open account</DropdownMenuItem>
+                          {canManage && <DropdownMenuItem onClick={() => setPaying(v)}>Pay {v.name.split(' ')[0]}</DropdownMenuItem>}
+                          <DropdownMenuItem onClick={() => navigate(`/procurement/orders?vendor=${v.id}`)}>Its orders</DropdownMenuItem>
+                          {seesMoney && <DropdownMenuItem onClick={() => navigate(`/finance/expenses?vendor=${v.id}&period=all`)}>Its expenses</DropdownMenuItem>}
+                          {!readOnly && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => setEditing(v)}>Edit</DropdownMenuItem>
+                              {canManage && <DropdownMenuItem onClick={() => setMerging(v)}>Merge into another…</DropdownMenuItem>}
+                              <DropdownMenuItem onClick={() => toggle.mutate(v)}>{v.status === 'active' ? 'Switch off' : 'Switch on'}</DropdownMenuItem>
+                              {canManage && (
+                                <DropdownMenuItem className="text-destructive" onClick={() => window.confirm(`Delete ${v.name}? Only a supplier added by mistake, with nothing recorded, can be deleted.`) && remove.mutate(v)}>
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
           <Pager {...pagedShown.pager} noun="suppliers" className="mt-2" />
         </>
       )}

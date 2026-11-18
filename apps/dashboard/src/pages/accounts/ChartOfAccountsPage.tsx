@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, FolderPlus, Link2, ListTree, Pencil, Plus, Search, Sparkles } from 'lucide-react'
-import { BooksClosed, BooksTabs } from '@/components/accounts/books'
+import { BooksClosed } from '@/components/accounts/books'
 import { Callout, DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -48,6 +48,15 @@ function path(groups: Map<string, LedgerGroup>, id: string): string {
     g = g.parent_id ? groups.get(g.parent_id) : undefined
   }
   return names.join(' › ')
+}
+
+/** UXA-07: each kind of group's heading in its colour (as on the trial balance and balance sheet). */
+const NATURE_HEAD: Record<string, string> = {
+  asset: 'bg-sky-500/[0.07] text-sky-700 dark:text-sky-400',
+  liability: 'bg-amber-500/[0.08] text-amber-800 dark:text-amber-400',
+  equity: 'bg-violet-500/[0.07] text-violet-700 dark:text-violet-400',
+  income: 'bg-emerald-500/[0.07] text-emerald-700 dark:text-emerald-400',
+  expense: 'bg-rose-500/[0.06] text-rose-700 dark:text-rose-400',
 }
 
 export default function ChartOfAccountsPage() {
@@ -204,7 +213,6 @@ export default function ChartOfAccountsPage() {
   return (
     <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
       <DprHeader back={{ to: '/accounts/trial-balance', label: 'Trial balance' }} crumb="Accounts" title="Chart of accounts" date={d ? `${d.groups.length} groups · ${d.ledgers.length} ledgers` : undefined} />
-      <BooksTabs current="/accounts/chart" />
       <Callout tone="info" icon={ListTree}>
         Tally's groups. Ledgers make themselves: nothing to set up.
       </Callout>
@@ -220,8 +228,8 @@ export default function ChartOfAccountsPage() {
             {byNature
               .filter((x) => x.roots.some((g) => !words || hasAny(g.id)))
               .map((x) => (
-                <section data-guide="chart.groups" key={x.nature} className="overflow-hidden rounded-lg border">
-                  <h3 className="border-b px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{NATURE_LABEL[x.nature]}</h3>
+                <section data-guide="chart.groups" key={x.nature} className="overflow-hidden rounded-xl border bg-card shadow-xs">
+                  <h3 className={cn('border-b px-3 py-1.5 text-xs font-semibold uppercase tracking-wide', NATURE_HEAD[x.nature])}>{NATURE_LABEL[x.nature]}</h3>
                   <ul className="divide-y">{x.roots.map((g) => renderGroup(g, 0))}</ul>
                 </section>
               ))}

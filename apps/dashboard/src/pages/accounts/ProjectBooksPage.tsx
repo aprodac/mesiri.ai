@@ -1,19 +1,27 @@
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, BadgeIndianRupee, Building2, HandCoins, Landmark, PieChart, Receipt, Target, TrendingUp } from 'lucide-react'
+import { ArrowRight, Building2, HandCoins, PieChart, Receipt, Target, TrendingUp } from 'lucide-react'
 import { BooksClosed, PeriodBar, usePeriod } from '@/components/accounts/books'
-import { PlStatement } from '@/components/accounts/pl-statement'
+import { FlowStrip } from '@/components/accounts/money-kit'
+import { PlSimple } from '@/components/accounts/pl-simple'
+import { PlTwoColumn } from '@/components/accounts/pl-two-column'
 import { PartsBar, ShareBar, SplitBars, pctText } from '@/components/accounts/visuals'
-import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
+import { Callout, DprHeader, DprSection, PageError, Segmented } from '@/components/dpr-page'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
-import { fetchProjectBooks, mayReadProjectBooks, rupees, short } from '@/lib/accounts'
+import { fetchProjectBooks, formatDay, mayReadProjectBooks, rupees, short } from '@/lib/accounts'
+import { useBooksView } from '@/lib/books-view'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
 // ACC-08 (plan §5.8): one project's books: its position (billed, received, owed, held back, owed to others), its P&L
 // by group and cost centre, its months, and Cost control's BOQ budget and forecast beside the books. The project's
 // manager sees it too. Backend: GET /accounts/projects/{id}.
+// UXA-07: the period as a sum (billed − cost = profit, and what the client owes today); the position with its colour
+// cues (money in green, owed to you amber, owed to others rose); the P&L as on Profit & loss, Simple (with every line
+// opening to its entries and vouchers) or Tally, the same pick (lib/books-view.ts).
+
+const VIEWS = ['simple', 'statement'] as const
 
 const CENTRE: Record<string, string> = {
   materials: 'Materials',
@@ -24,14 +32,14 @@ const CENTRE: Record<string, string> = {
   not_set: 'No cost centre',
 }
 
-function Row({ label, v, hint, strong }: { label: string; v: string | number; hint?: string; strong?: boolean }) {
+function Row({ label, v, hint, strong, tone }: { label: string; v: string | number; hint?: string; strong?: boolean; tone?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3 px-3 py-2">
       <dt className="text-muted-foreground">
         {label}
         {hint && <span className="block text-[11px]">{hint}</span>}
       </dt>
-      <dd className={cn('tabular-nums', strong && 'font-semibold')}>{rupees(v)}</dd>
+      <dd className={cn('tabular-nums', strong && 'font-semibold', tone)}>{rupees(v)}</dd>
     </div>
   )
 }
@@ -42,6 +50,7 @@ export default function ProjectBooksPage() {
   const periodState = usePeriod()
   const { period } = periodState
   const allowed = mayReadProjectBooks(me?.role)
+  const [view, pickView] = useBooksView('pl', VIEWS, { list: 'simple', months: 'simple' })
   const q = useQuery({ queryKey: ['accounts', 'project', id, period], queryFn: () => fetchProjectBooks(id, period), enabled: allowed && !!id })
   const name = q.data?.scope.replace(/^project /, '')
   usePageTitle(name ? `${name}: books` : 'Project books')
@@ -61,21 +70,19 @@ export default function ProjectBooksPage() {
         <Skeleton className="h-[32rem] rounded-xl" />
       ) : (
         <>
-          <StatStrip
-            phoneCols={2}
-            stats={[
-              { label: 'Billed (period)', value: rupees(d.pl.totals.income), icon: Receipt },
-              { label: 'Cost (period)', value: rupees(booksCost), icon: BadgeIndianRupee },
-              {
-                label: Number(d.pl.totals.net_profit) < 0 ? 'Loss (period)' : 'Profit (period)',
-                value: rupees(d.pl.totals.net_profit),
-                icon: TrendingUp,
-                tone: Number(d.pl.totals.net_profit) < 0 ? 'bad' : 'good',
-                hint: d.pl.totals.net_margin ? `${pctText(d.pl.totals.net_margin)} of billing` : undefined,
-              },
-              { label: 'Client owes today', value: rupees(p.receivable), icon: Landmark, tone: Number(p.receivable) > 0 ? 'info' : 'default' },
-            ]}
-          />
+          {(() => {
+            const np = Number(d.pl.totals.net_profit)
+            return (
+              <FlowStrip
+                items={[
+                  { label: 'Billed in the period', value: rupees(d.pl.totals.income), tone: 'in', sub: 'RA bills, before GST' },
+                  { label: 'Cost in the period', value: rupees(booksCost), tone: 'out', op: '−', sub: 'bills, wages and expenses' },
+                  { label: np < 0 ? 'Loss' : 'Profit', value: (np < 0 ? '−' : '') + rupees(np), tone: np < 0 ? 'out' : 'balance', op: '=', sub: d.pl.totals.net_margin ? `${pctText(d.pl.totals.net_margin)} of billing` : undefined },
+                  { label: 'Client owes today', value: rupees(p.receivable), tone: 'plain', sub: `retention held ${short(p.retention_held_by_client)}` },
+                ]}
+              />
+            )
+          })()}
           {Number(d.pl.overheads) !== 0 && (
             <Callout tone="info" icon={Building2}>
               After its head-office share of {rupees(d.pl.overheads)}. Before it: {rupees(d.pl.net_before_overheads)}.
@@ -84,23 +91,23 @@ export default function ProjectBooksPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <DprSection icon={HandCoins} title="Position today">
               <div className="grid gap-3 sm:grid-cols-2">
-                <dl className="divide-y rounded-lg border text-sm">
-                  <p className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">With the client</p>
+                <dl className="divide-y rounded-xl border bg-card text-sm shadow-xs">
+                  <p className="flex items-center gap-1.5 bg-emerald-500/[0.06] px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">With the client</p>
                   <Row label="Billed so far" v={p.billed} hint={`+ GST ${short(p.gst_billed)}`} />
-                  <Row label="Received" v={p.received} />
-                  <Row label="Still owed" v={p.receivable} strong />
+                  <Row label="Received" v={p.received} tone="text-emerald-700 dark:text-emerald-400" />
+                  <Row label="Still owed" v={p.receivable} strong tone="text-draft" />
                   <Row label="Retention held back" v={p.retention_held_by_client} />
                   <Row label="TDS they deducted" v={p.tds_deducted_by_client} hint="claim it in the return" />
                   {Number(p.advance_received) !== 0 && <Row label="Advance not recovered" v={p.advance_received} />}
                 </dl>
-                <dl className="divide-y rounded-lg border text-sm">
-                  <p className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">With others</p>
+                <dl className="divide-y rounded-xl border bg-card text-sm shadow-xs">
+                  <p className="flex items-center gap-1.5 bg-rose-500/[0.05] px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-400">With others</p>
                   <Row label="Cost booked so far" v={p.cost} />
-                  <Row label="Owed to suppliers" v={p.owed_to_suppliers} strong />
+                  <Row label="Owed to suppliers" v={p.owed_to_suppliers} strong tone="text-rose-700 dark:text-rose-400" />
                   {Number(p.owed_to_staff) !== 0 && <Row label="Owed to staff" v={p.owed_to_staff} hint="paid from their pocket" />}
                   <Row label="Paid out" v={p.paid_out} />
                   <Row label="Cash: in less out" v={p.cash_in_hand} hint="received − paid out" />
-                  <Row label={Number(p.profit) < 0 ? 'Loss so far' : 'Profit so far'} v={p.profit} strong />
+                  <Row label={Number(p.profit) < 0 ? 'Loss so far' : 'Profit so far'} v={p.profit} strong tone={Number(p.profit) < 0 ? 'text-destructive' : 'text-success'} />
                 </dl>
               </div>
             </DprSection>
@@ -146,7 +153,7 @@ export default function ProjectBooksPage() {
           </div>
           {d.months.some((m) => Number(m.income) || Number(m.cost)) && (
             <DprSection icon={TrendingUp} title="This year, month by month">
-              <div className="rounded-xl border px-4 py-3">
+              <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
                 <SplitBars
                   up="Profit"
                   down="Loss"
@@ -165,8 +172,26 @@ export default function ProjectBooksPage() {
               </div>
             </DprSection>
           )}
-          <DprSection icon={Receipt} title="Profit & loss (period)">
-            <PlStatement pl={d.pl} periodLabel="Amount" />
+          <DprSection
+            icon={Receipt}
+            title="Profit & loss (period)"
+            meta={
+              <Segmented<(typeof VIEWS)[number]>
+                label="Show as"
+                value={view}
+                options={[
+                  { value: 'simple', label: 'Simple' },
+                  { value: 'statement', label: 'Tally' },
+                ]}
+                onChange={pickView}
+              />
+            }
+          >
+            {view === 'simple' ? (
+              <PlSimple pl={d.pl} period={period} scope={{ project_id: d.project_id }} company={false} hero={false} periodLabel={`${formatDay(d.date_from)} – ${formatDay(d.date_to)}`} />
+            ) : (
+              <PlTwoColumn pl={d.pl} periodLabel={`${formatDay(d.date_from)} – ${formatDay(d.date_to)}`} />
+            )}
           </DprSection>
         </>
       )}

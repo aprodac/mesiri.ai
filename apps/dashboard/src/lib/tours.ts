@@ -871,8 +871,8 @@ export const PAGE_TOURS: Record<string, Tour> = {
     introFromPage: true,
     startWhen: ['vendors.list'],
     steps: [
-      { target: 'vendors.tiles', title: 'What you owe', text: 'What you owe, what is overdue, what was delivered with no bill yet, and what you paid ahead.', mood: 'look' },
-      { target: 'vendors.age', title: 'How long it waited', text: 'Unpaid bills and unbilled deliveries by how old they are. The red end is what to pay first.', mood: 'worry' },
+      { target: 'vendors.tiles', title: 'What you owe', text: 'What you owe, what is overdue, what was delivered with no bill yet, and what you paid ahead. Tap one to see only those suppliers.', mood: 'look' },
+      { target: 'vendors.age', title: 'How long it waited', text: 'Unpaid bills and unbilled deliveries by how old they are, each with its share. The red end is what to pay first; tap a part to see only those suppliers.', mood: 'worry' },
       { target: 'vendors.view', title: 'Delivered, no bill', text: 'Material that came with no bill yet: chase the bill before you pay.', mood: 'worry' },
       { target: 'vendors.search', title: 'Find a supplier', text: 'By name, phone or GSTIN, or by kind.' },
       { target: 'vendors.sort', title: 'Sort', text: 'Most owed, most overdue, waiting longest, or the best score.' },
@@ -965,15 +965,16 @@ export const PAGE_TOURS: Record<string, Tour> = {
     ],
   },
   // Accounts (SS-46). The books keep themselves from what is recorded on WhatsApp and the dashboard; these pages read
-  // them. books.tabs / books.period / books.excel are on every Accounts page (components/accounts/books.tsx).
+  // them. books.tabs / books.period / books.excel are on every Accounts page (components/accounts/books.tsx), except
+  // books.tabs on Profit & loss (UXA-02: the sidebar already lists the books).
   '/accounts': {
     key: '/tour/accounts',
     version: 1,
     introFromPage: true,
     startWhen: ['acc.stats'],
     steps: [
-      { target: 'acc.stats', title: 'At a glance', text: 'Cash and bank today, what clients owe you, what you owe suppliers and staff, and this month\'s profit.', mood: 'look' },
-      { target: 'books.tabs', title: 'Every book, one row', text: 'Profit & loss, balance sheet, cash and bank, projects, GST, TDS, and the books an accountant checks.' },
+      { target: 'acc.stats', title: 'At a glance', text: 'Cash and bank today, plus what clients owe you, less what you owe: what you would hold if everyone paid today. Tap a figure for its page.', mood: 'look' },
+      { target: 'books.tabs', title: 'Every book', text: 'Profit & loss, balance sheet, cash and bank, projects, GST, TDS, and the books an accountant checks, one tap each.' },
       { target: 'acc.year', title: 'Month by month', text: 'The year so far: income, costs and profit each month, against last month.' },
       { target: 'acc.cash', title: 'Cash and bank', text: 'Each bank account and cash box today. Tap one for its entries.' },
       { target: 'acc.taxes', title: 'GST and TDS', text: 'GST to pay this month, and TDS to deposit.', mood: 'think' },
@@ -982,25 +983,28 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/accounts/pl': {
     key: '/tour/accounts-pl',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['pl.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
+      { target: 'pl.view', title: 'Three ways to read it', text: 'Simple: the result in plain words, top to bottom. Tally: the two columns your accountant knows. Month by month: each month side by side. The page remembers your pick.' },
       { target: 'pl.compare', title: 'Against what', text: 'Set it beside the period before, or the same time last year.' },
-      { target: 'pl.stats', title: 'At a glance', text: 'Income, costs, gross profit and net profit, with each as a share of income.', mood: 'look' },
-      { target: 'pl.statement', title: 'The statement', text: 'Income is RA bills sent before GST; costs are bills and expenses net of the GST you can claim. Tap a group for its ledgers.', mood: 'think' },
+      { target: 'pl.stats', title: 'The result at a glance', text: 'Profit or loss for the period, what changed, and where each ₹100 earned went. In Tally view: income less direct costs is gross profit; less indirect costs, plus other income, is net profit.', mood: 'look' },
+      { target: 'pl.statement', title: 'The statement', text: 'Income is RA bills before GST; costs are net of the GST you can claim. Tap a line for its ledgers, and a ledger for its entries.', mood: 'think' },
     ],
   },
   '/accounts/balance-sheet': {
     key: '/tour/accounts-balance-sheet',
-    version: 1,
+    version: 2,
     introFromPage: true,
     startWhen: ['bs.stats'],
     steps: [
+      { target: 'bs.view', title: 'Two ways to read it', text: 'Simple: what the company is worth, in plain words. Tally: the two columns your accountant knows. The page remembers your pick.' },
       { target: 'bs.asof', title: 'On which day', text: 'The balance sheet as on any day you pick.' },
-      { target: 'bs.stats', title: 'At a glance', text: 'What the company owns, what it owes with its capital, and the profit this year.', mood: 'look' },
-      { target: 'bs.sides', title: 'Both sides', text: 'Capital and liabilities on one side, assets on the other. The badge at the top says whether they balance.', mood: 'think' },
+      { target: 'bs.compare', title: 'Against when', text: 'Set it beside the month end before, or the end of last year, to see what moved.' },
+      { target: 'bs.stats', title: 'At a glance', text: 'What you own, what you owe, and what is left: the company\'s worth. In Tally view: assets equal liabilities plus capital.', mood: 'look' },
+      { target: 'bs.sides', title: 'What makes it up', text: 'Tap a line for its accounts, an account for its entries this year, an entry for its voucher.', mood: 'think' },
     ],
   },
   '/accounts/cash-bank': {
@@ -1010,8 +1014,8 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['cash.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'cash.stats', title: 'At a glance', text: 'Opening balance, money in, money out, and closing balance.', mood: 'look' },
-      { target: 'cash.list', title: 'Each account', text: 'Every bank account and cash box for the period. Tap one for its entries.' },
+      { target: 'cash.stats', title: 'At a glance', text: 'Opening plus money in, less money out, is what you hold now, and how much more or less than at the start.', mood: 'look' },
+      { target: 'cash.list', title: 'Each account', text: 'Every bank account and cash box in one table: money in, money out, its balance and its share of all your money. Entries opens them under its row.' },
     ],
   },
   '/accounts/projects': {
@@ -1043,7 +1047,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
     introFromPage: true,
     startWhen: ['recv.stats'],
     steps: [
-      { target: 'recv.stats', title: 'At a glance', text: 'What clients owe you on the RA bills sent.', mood: 'look' },
+      { target: 'recv.stats', title: 'At a glance', text: 'What clients owe you, and how long it has waited. Tap a part of the bar to see only those clients.', mood: 'look' },
       { target: 'recv.clients', title: 'Most owed first', text: 'Each client and their bills still unpaid.' },
       { target: 'recv.record', title: 'Money received', text: 'Record a client payment against their bill.' },
       { target: 'recv.received', title: 'Received so far', text: 'Every payment recorded. Take back one entered by mistake.', mood: 'think' },
@@ -1057,9 +1061,9 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['daybook.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'daybook.types', title: 'Kind of voucher', text: 'Purchase, payment, receipt, sales, contra, journal, or all of them.' },
+      { target: 'daybook.types', title: 'Kind of voucher', text: 'Purchase, payment, receipt, sales, contra, journal, or all of them, each in its own colour.' },
       { target: 'daybook.late', title: 'Changed after close', text: 'Only the entries posted after their month was closed.', mood: 'worry' },
-      { target: 'daybook.stats', title: 'At a glance', text: 'How many vouchers, the total moved, and the days with entries.', mood: 'look' },
+      { target: 'daybook.stats', title: 'At a glance', text: 'How many vouchers, the total moved, and the money that came in and went out.', mood: 'look' },
       { target: 'daybook.list', title: 'Day by day', text: 'Every voucher in date order. Open one to see its entries, reverse it or correct it.', mood: 'think' },
       { target: 'daybook.new', title: 'A voucher by hand', text: 'A journal or contra entered by hand, like an opening balance.' },
     ],
@@ -1109,7 +1113,7 @@ export const PAGE_TOURS: Record<string, Tour> = {
     startWhen: ['tb.stats'],
     steps: [
       { target: 'books.period', title: 'Which period', text: 'This month, last month, the quarter, this year or last, or your own dates. The period stays as you move between these pages.' },
-      { target: 'tb.stats', title: 'Does it balance', text: 'Debits and credits in the period, and whether closing debits equal closing credits.', mood: 'look' },
+      { target: 'tb.stats', title: 'Does it balance', text: 'Debits and credits in the period, and closing debits = closing credits. A ≠ in red says by how much it is out.', mood: 'look' },
       { target: 'tb.search', title: 'Find a ledger', text: 'Type a name.' },
       { target: 'tb.list', title: 'Ledgers by group', text: 'Each ledger\'s opening, movement and closing. Tap one for its entries.', mood: 'think' },
       { target: 'books.excel', title: 'To Excel', text: 'Download it for the CA.' },

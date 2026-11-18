@@ -61,6 +61,10 @@ def test_balance_sheet_balances_with_the_years_profit_in_capital():
     capital = next(g for g in out["liabilities"] if g["code"] == "capital")
     assert capital["amount"] == D(640000)
     assert {s["name"] for s in capital["subgroups"]} >= {"Profit or loss of earlier years", "Profit or loss this year"}
+    # UXA-04: each subgroup and ledger carries its chart code, so the owner's view can name them in plain words
+    assert {s["code"] for s in capital["subgroups"]} >= {"earlier_pl", "year_pl"}
+    bank = next(s for g in out["assets"] for s in g["subgroups"] if any(x["ledger_id"] == str(L["bank"]) for x in s["ledgers"]))
+    assert bank["code"] == next(g["code"] for g in GROUPS if g["id"] == LEDGERS[L["bank"]]["group_id"])
 
 
 def test_overheads_are_shared_by_weight_the_last_takes_the_rounding_and_it_nets_to_nil():
