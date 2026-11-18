@@ -9,6 +9,8 @@ import {
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
 import { ActionButton } from '@/components/page/page-kit'
 import { exportCsv } from '@/lib/export'
+import { NumbersTable, ShowSwitch, type NumberColumn } from '@/components/page/numbers-view'
+import { sortByColumn, useColumnSort, useShowMode } from '@/lib/numbers-view'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { KpiStrip, Legend, NoAccess } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
@@ -41,6 +43,7 @@ import { ProjectPickList } from '@/components/schedule/project-picker'
 // earned as a bar and the reason as a short chip with its fix. A site engineer still sees no money (D-CC4).
 // UX-40: section and "need a fix" filters, header sort, export of the lines shown, "/" to search, a line opens in
 // Budget vs actual, and each figure says what changed against the same number of days before.
+// UX-44: a Bars / Numbers switch (components/page/numbers-view.tsx): every figure of a line in its own column.
 
 const TONE = { green: 'good', amber: 'attention', red: 'bad', grey: 'default' } as const
 
@@ -278,6 +281,46 @@ function ProjectPicker() {
   return <ProjectPickList to={(id) => `/cost/green-red?project=${id}`} empty="No projects yet." />
 }
 
+/** UX-44: the Numbers view's columns. `money` ones are left out for a site engineer (D-CC4). */
+const rupee = (v: string | null) => (v === null ? null : formatRupees(v))
+const LINE_NAME: NumberColumn<VarianceLine> = {
+  key: 'work',
+  label: 'Work',
+  sortValue: (l) => `${l.boq_code ?? '~'} ${l.work}`.toLowerCase(),
+  cell: (l) => (
+    <span className="flex items-center gap-1.5 whitespace-nowrap" title={siteReasonText(l)}>
+      {React.createElement(LOOK[l.colour].icon, { className: cn('size-3.5 shrink-0', COLOUR_TEXT[l.colour]), 'aria-hidden': true })}
+      {l.boq_code && <span className="rounded bg-muted px-1 text-[11px] font-medium text-muted-foreground">{l.boq_code}</span>}
+      <span className="max-w-72 truncate font-medium">{l.work}</span>
+    </span>
+  ),
+}
+const LINE_COLUMNS: (NumberColumn<VarianceLine> & { money?: boolean })[] = [
+  { key: 'section', label: 'Section', text: true, sortValue: (l) => (l.section ?? '').toLowerCase() || null, cell: (l) => (l.section ? <span className="text-muted-foreground">{l.section}</span> : null) },
+  { key: 'why', label: 'Why', text: true, sortValue: (l) => REASON[l.reason], cell: (l) => <span className={cn('text-xs font-medium', COLOUR_TEXT[l.colour])}>{REASON[l.reason]}</span> },
+  {
+    key: 'done', label: 'Done', title: 'Work measured in the days', sortValue: (l) => Number(l.done_quantity),
+    cell: (l) => (Number(l.done_quantity) > 0 ? <>{formatQuantity(l.done_quantity)} <span className="text-[11px] text-muted-foreground">{l.unit}</span></> : null),
+  },
+  { key: 'mandays', label: 'Man-days', title: 'Labour put on the line', sortValue: (l) => Number(l.labour_man_days), cell: (l) => (Number(l.labour_man_days) > 0 ? formatQuantity(l.labour_man_days) : null) },
+  {
+    key: 'nowage', label: 'No wage', title: 'Man-days with no wage set', sortValue: (l) => Number(l.labour_unpriced_man_days),
+    cell: (l) => (Number(l.labour_unpriced_man_days) > 0 ? formatQuantity(l.labour_unpriced_man_days) : null), tone: () => 'text-draft',
+  },
+  { key: 'rate', label: 'Labour rate', title: 'The BOQ labour rate per unit', money: true, sortValue: (l) => (l.labour_rate === null ? null : Number(l.labour_rate)), cell: (l) => rupee(l.labour_rate) },
+  {
+    key: 'perunit', label: 'Cost per unit', title: 'What the labour cost per unit done', money: true, sortValue: (l) => (l.cost_per_unit === null ? null : Number(l.cost_per_unit)), cell: (l) => rupee(l.cost_per_unit),
+    tone: (l) => (l.cost_per_unit && l.labour_rate ? (Number(l.cost_per_unit) > Number(l.labour_rate) ? 'text-destructive' : 'text-success') : undefined),
+  },
+  { key: 'earned', label: 'Earned', title: 'Done × labour rate', money: true, sortValue: (l) => (l.earned_labour === null ? null : Number(l.earned_labour)), cell: (l) => rupee(l.earned_labour), tone: () => 'text-info' },
+  { key: 'spent', label: 'Spent', title: 'What the labour cost', money: true, sortValue: (l) => (l.labour_cost === null ? null : Number(l.labour_cost)), cell: (l) => rupee(l.labour_cost), tone: (l) => COLOUR_TEXT[l.colour] },
+  {
+    key: 'gap', label: 'Gap', title: 'Earned − spent', money: true, sortValue: (l) => (l.difference === null ? null : Number(l.difference)),
+    cell: (l) => (l.difference === null ? null : `${Number(l.difference) > 0 ? '+' : Number(l.difference) < 0 ? '−' : ''}${formatRupees(String(Math.abs(Number(l.difference))))}`),
+    tone: (l) => (Number(l.difference) < 0 ? 'font-semibold text-destructive' : Number(l.difference) > 0 ? 'font-semibold text-success' : undefined),
+  },
+]
+
 const SORTS: { value: string; label: string; key?: (l: VarianceLine) => number | string }[] = [
   { value: '', label: 'Worst first' },
   { value: 'over', label: 'Most over', key: (l) => num(l.difference) ?? Number.MAX_SAFE_INTEGER },
@@ -290,6 +333,9 @@ export default function CostVariancePage() {
   const { me } = useAuth()
   const { scope } = useScope()
   const [params, setParams] = useSearchParams()
+  // UX-44: Bars (a glance) or Numbers (every figure in its own column, any column sorts).
+  const [show, setShow] = useShowMode('gr')
+  const { col, dir, onSort: sortCol, clear: clearCol } = useColumnSort()
   const navigate = useNavigate()
   usePageTitle('Green / red')
   // D-CC4: a site engineer sees their own site's colours and quantities (the API takes the money out).
@@ -348,6 +394,8 @@ export default function CostVariancePage() {
         (!fixOnly || NEEDS_FIX.has(l.reason)) &&
         (!needle || `${l.boq_code ?? ''} ${l.work} ${l.section ?? ''}`.toLowerCase().includes(needle)),
     )
+    const byColumn = show === 'numbers' ? sortByColumn(out, [LINE_NAME, ...LINE_COLUMNS], col, dir) : null
+    if (byColumn) return byColumn
     const key = SORTS.find((x) => x.value === sort)?.key
     if (!key) return out
     return [...out].sort((a, b) => {
@@ -355,7 +403,7 @@ export default function CostVariancePage() {
       const kb = key(b)
       return typeof ka === 'string' ? ka.localeCompare(String(kb)) : ka - Number(kb)
     })
-  }, [q.data, colour, section, fixOnly, needle, sort])
+  }, [q.data, colour, section, fixOnly, needle, sort, show, col, dir])
   const paged = usePagedUrl(listed)
   const searchRef = React.useRef<HTMLInputElement>(null)
   // "/" jumps to the search, as in most tools (never while typing in a field).
@@ -628,7 +676,7 @@ export default function CostVariancePage() {
                         </label>
                         <label className="flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm">
                           <ArrowDownWideNarrow className="size-3.5 text-muted-foreground" aria-hidden />
-                          <select value={sort} onChange={(e) => set({ sort: e.target.value })} className="bg-transparent outline-none" aria-label="Sort the lines">
+                          <select value={col && show === 'numbers' ? '' : sort} onChange={(e) => { set({ sort: e.target.value }); clearCol() }} className="bg-transparent outline-none" aria-label="Sort the lines">
                             {SORTS.filter((x) => money || (x.value !== 'over' && x.value !== 'spent')).map((x) => (
                               <option key={x.value} value={x.value}>
                                 {x.label}
@@ -641,6 +689,7 @@ export default function CostVariancePage() {
                             <X className="size-3.5" aria-hidden /> Clear
                           </Button>
                         )}
+                        <ShowSwitch show={show} onShow={setShow} label="How to show the lines" />
                         <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The lines shown, as a CSV file (opens in Excel)">
                           <span className="hidden sm:inline">{any ? 'Export shown' : 'Export lines'}</span>
                         </ActionButton>
@@ -656,6 +705,21 @@ export default function CostVariancePage() {
                         Clear filters
                       </Button>
                     </div>
+                  ) : show === 'numbers' ? (
+                    <NumbersTable
+                      rows={paged.shown}
+                      rowKey={(l) => l.line_id}
+                      first={LINE_NAME}
+                      columns={money ? LINE_COLUMNS : LINE_COLUMNS.filter((c) => !c.money)}
+                      edge={(l) => COLOUR_DOT[l.colour]}
+                      col={col}
+                      dir={dir}
+                      onSort={sortCol}
+                      onOpen={siteView ? undefined : (l) => navigate(`/cost/budget?project=${projectId}&q=${encodeURIComponent(l.boq_code ?? l.work)}`)}
+                      openTitle={siteView ? undefined : 'Open this line in Budget vs actual'}
+                      minWidth={money ? 1100 : 640}
+                      footer={money ? 'Rates and costs per unit of the line · hover a name for why it is its colour' : 'Hover a name for why it is its colour'}
+                    />
                   ) : (
                     <div className="overflow-hidden rounded-xl border bg-card">
                       <table className="w-full text-sm">

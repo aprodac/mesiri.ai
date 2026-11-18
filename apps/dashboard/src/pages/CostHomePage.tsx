@@ -9,6 +9,8 @@ import {
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { KpiStrip, NoAccess } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
+import { NumbersTable, ShowSwitch, type NumberColumn } from '@/components/page/numbers-view'
+import { sortByColumn, useColumnSort, useShowMode } from '@/lib/numbers-view'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { FilterPill, type FilterOption } from '@/components/requests/parts'
 import { Button } from '@/components/ui/button'
@@ -32,6 +34,7 @@ import { cn } from '@/lib/utils'
 // of the projects by forecast colour that filters the list; the two to-dos as action chips; the projects as a table
 // with search, colour filter, sort and pages, each with a forecast pill, done against spent as two bars and the last
 // 7 days as a chip, and links to its deeper pages; the deeper pages as coloured tiles.
+// UX-44: a Bars / Numbers switch (components/page/numbers-view.tsx): every figure of a project in its own column.
 
 const num = (v: string | null | undefined) => (v === null || v === undefined ? null : Number(v))
 
@@ -112,6 +115,47 @@ function Nudge({ icon: Icon, to, action, children }: { icon: LucideIcon; to: str
   )
 }
 
+/** UX-44: the Numbers view's columns: every figure of a project in its own column. */
+const money = (v: string | null) => (v === null || num(v) === null ? null : compact(Number(v)))
+const pct = (v: string | null) => (v === null ? null : `${Math.round(Number(v))}%`)
+const PROJECT_NAME: NumberColumn<PortfolioRow> = {
+  key: 'name',
+  label: 'Project',
+  sortValue: (p) => p.name.toLowerCase(),
+  cell: (p) => (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      {React.createElement(LOOK[p.colour].icon, { className: cn('size-3.5 shrink-0', COLOUR_TEXT[p.colour]), 'aria-hidden': true })}
+      <span className="max-w-60 truncate font-medium">{p.name}</span>
+    </span>
+  ),
+}
+const ahead = (p: PortfolioRow) => (p.percent_spent === null || p.percent_done === null ? null : Number(p.percent_spent) - Number(p.percent_done))
+const PROJECT_COLUMNS: NumberColumn<PortfolioRow>[] = [
+  { key: 'budget', label: 'Budget', sortValue: (p) => num(p.budget), cell: (p) => money(p.budget) },
+  { key: 'earned', label: 'Earned', title: 'Work done × BOQ rates', sortValue: (p) => num(p.earned), cell: (p) => money(p.earned), tone: () => 'text-info' },
+  { key: 'spent', label: 'Spent', sortValue: (p) => Number(p.spent), cell: (p) => money(p.spent) },
+  { key: 'committed', label: 'Committed', title: 'Ordered, not in yet', sortValue: (p) => Number(p.committed), cell: (p) => (Number(p.committed) > 0 ? money(p.committed) : null) },
+  { key: 'done', label: '% done', sortValue: (p) => num(p.percent_done), cell: (p) => pct(p.percent_done), tone: () => 'text-info' },
+  { key: 'pspent', label: '% spent', sortValue: (p) => num(p.percent_spent), cell: (p) => pct(p.percent_spent) },
+  {
+    key: 'ahead', label: 'Spent ahead', title: '% spent − % done, in points', sortValue: ahead,
+    cell: (p) => { const a = ahead(p); return a === null ? null : `${a > 0 ? '+' : ''}${Math.round(a)} pts` },
+    tone: (p) => { const a = ahead(p) ?? 0; return a > 5 ? 'font-semibold text-destructive' : a < 0 ? 'text-success' : undefined },
+  },
+  { key: 'forecast', label: 'At finish', title: 'Forecast at completion', sortValue: (p) => num(p.forecast), cell: (p) => money(p.forecast) },
+  {
+    key: 'gap', label: 'Vs budget', title: 'Budget − forecast: − is over', sortValue: (p) => num(p.forecast_difference),
+    cell: (p) => { const d = num(p.forecast_difference); return d === null ? null : `${d > 0 ? '+' : d < 0 ? '−' : ''}${compact(Math.abs(d))}` },
+    tone: (p) => { const d = num(p.forecast_difference) ?? 0; return d < 0 ? 'font-semibold text-destructive' : d > 0 ? 'font-semibold text-success' : undefined },
+  },
+  {
+    key: 'week', label: 'Last 7 days', text: true, sortValue: (p) => (p.week.colour === 'grey' ? null : p.week.red_lines),
+    cell: (p) => <WeekChip p={p} />,
+  },
+  { key: 'labour', label: 'Labour off lines', sortValue: (p) => Number(p.labour_not_on_a_line), cell: (p) => (Number(p.labour_not_on_a_line) > 0 ? money(p.labour_not_on_a_line) : null), tone: () => 'text-draft' },
+  { key: 'work', label: 'Work off lines', sortValue: (p) => p.work_not_on_a_line, cell: (p) => (p.work_not_on_a_line > 0 ? p.work_not_on_a_line : null), tone: () => 'text-draft' },
+]
+
 const PAGES: { to: string; icon: LucideIcon; tile: string; title: string; about: string }[] = [
   { to: '/cost/green-red', icon: TrafficCone, tile: 'bg-destructive/10 text-destructive', title: 'Green / red', about: 'Labour against work, by day' },
   { to: '/cost/budget', icon: Scale, tile: 'bg-info-soft text-info', title: 'Budget vs actual', about: 'Earned, spent, forecast' },
@@ -130,6 +174,9 @@ export default function CostHomePage() {
   const [search, setSearch] = useUrlState<string>('q', '')
   const [colour, setColour] = useUrlState<string>('colour', '')
   const [sort, setSort] = useUrlState<string>('sort', '')
+  // UX-44: Bars (a glance) or Numbers (every figure in its own column, any column sorts).
+  const [show, setShow] = useShowMode('cost')
+  const { col, dir, onSort: sortCol, clear: clearCol } = useColumnSort()
 
   // SCP-03: with a project picked, that project's row and totals.
   const rows = React.useMemo(
@@ -139,6 +186,8 @@ export default function CostHomePage() {
   const needle = search.trim().toLowerCase()
   const listed = React.useMemo(() => {
     const out = rows.filter((r) => (!colour || r.colour === colour) && (!needle || r.name.toLowerCase().includes(needle)))
+    const byColumn = show === 'numbers' ? sortByColumn(out, [PROJECT_NAME, ...PROJECT_COLUMNS], col, dir) : null
+    if (byColumn) return byColumn
     const key = SORTS.find((x) => x.value === sort)?.key
     if (!key) return out
     return [...out].sort((a, b) => {
@@ -146,7 +195,7 @@ export default function CostHomePage() {
       const kb = key(b)
       return typeof ka === 'string' ? ka.localeCompare(String(kb)) : ka - Number(kb)
     })
-  }, [rows, colour, needle, sort])
+  }, [rows, colour, needle, sort, show, col, dir])
   const paged = usePagedUrl(listed)
 
   if (!allowed) return <NoAccess roles={MONEY_PEOPLE} />
@@ -264,16 +313,19 @@ export default function CostHomePage() {
                     <X className="size-3.5" aria-hidden /> Clear
                   </Button>
                 )}
-                <label className="ml-auto flex h-9 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm">
-                  <ArrowDownWideNarrow className="size-4 text-muted-foreground" aria-hidden />
-                  <select value={sort} onChange={(e) => setSort(e.target.value)} className="bg-transparent outline-none" aria-label="Sort the projects">
-                    {SORTS.map((x) => (
-                      <option key={x.value} value={x.value}>
-                        {x.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <span className="ml-auto flex items-center gap-2">
+                  <label className="flex h-9 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm">
+                    <ArrowDownWideNarrow className="size-4 text-muted-foreground" aria-hidden />
+                    <select value={col && show === 'numbers' ? '' : sort} onChange={(e) => { setSort(e.target.value); clearCol() }} className="bg-transparent outline-none" aria-label="Sort the projects">
+                      {SORTS.map((x) => (
+                        <option key={x.value} value={x.value}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <ShowSwitch show={show} onShow={setShow} label="How to show the projects" />
+                </span>
               </div>
             )}
             {listed.length === 0 ? (
@@ -284,6 +336,22 @@ export default function CostHomePage() {
                   Clear filters
                 </Button>
               </div>
+            ) : show === 'numbers' ? (
+              <NumbersTable
+                rows={paged.shown}
+                rowKey={(p) => p.project_id}
+                first={PROJECT_NAME}
+                columns={PROJECT_COLUMNS}
+                edge={(p) => COLOUR_DOT[p.colour]}
+                col={col}
+                dir={dir}
+                onSort={sortCol}
+                onOpen={(p) => navigate(`/cost/green-red?project=${p.project_id}`)}
+                openTitle="Open its Green / red"
+                guide="cost.projects"
+                minWidth={1240}
+                footer="Spent ahead: % spent − % done, in points · Off lines: labour and measured work not on a BOQ line"
+              />
             ) : (
               <div className="overflow-hidden rounded-xl border bg-card" data-guide="cost.projects">
                 <table className="w-full text-sm">

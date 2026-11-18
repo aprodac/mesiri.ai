@@ -3,12 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDown, ArrowDownWideNarrow, ArrowRight, ArrowUp, ArrowUpDown, BarChart3, CircleCheck, CircleDashed, ClipboardList, Eye, Package, PackageCheck, PackageSearch, PackageX, Search,
-  Table2, TriangleAlert, X,
+  ArrowDownWideNarrow, ArrowRight, CircleCheck, CircleDashed, ClipboardList, Eye, Package, PackageCheck, PackageSearch, PackageX, Search,
+  TriangleAlert, X,
 } from 'lucide-react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { ActionButton, KpiStrip, Legend, NoAccess } from '@/components/page/page-kit'
 import { Pager } from '@/components/page/pager'
+import { NumbersTable, ShowSwitch, type NumberColumn } from '@/components/page/numbers-view'
+import { sortByColumn, useColumnSort, useShowMode } from '@/lib/numbers-view'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { ProjectPickList } from '@/components/schedule/project-picker'
 import { Button } from '@/components/ui/button'
@@ -31,7 +33,8 @@ import { cn } from '@/lib/utils'
 // "short to finish" as a filter; each material its use against what the work needed as a bar with a tick at the need,
 // what is still needed to finish as one bar (on hand green, on order blue, short red), a short reason chip with its
 // fix, and a link to its stock book; search, sort, pages and export.
-// UX-43: a Bars / Numbers switch; Numbers puts every figure in its own column, any header sorts.
+// UX-43: a Bars / Numbers switch; Numbers puts every figure in its own column, any header sorts (UX-44: the shared
+// components/page/numbers-view.tsx).
 
 type M = MaterialReconciliation
 const n = (v: string | null | undefined) => (v === null || v === undefined ? 0 : Number(v))
@@ -161,88 +164,38 @@ function ReasonChip({ m, projectId }: { m: M; projectId: string }) {
   )
 }
 
-const SHOW_KEY = 'costmat.show'
-const readShow = () => {
-  try {
-    return localStorage.getItem(SHOW_KEY) ?? ''
-  } catch {
-    return ''
-  }
+/** UX-43/44: the Numbers view's columns: every figure the API gives, in its own column. */
+const qty = (v: string | null) => (v === null ? null : n(v) === 0 ? <span className="text-muted-foreground">0</span> : formatQuantity(v))
+const NAME: NumberColumn<M> = {
+  key: 'material',
+  label: 'Material',
+  sortValue: (m) => m.material.toLowerCase(),
+  cell: (m) => (
+    <span className="flex items-center gap-1.5 whitespace-nowrap" title={why(m)}>
+      {React.createElement(LOOK[m.colour].icon, { className: cn('size-3.5 shrink-0', COLOUR_TEXT[m.colour]), 'aria-hidden': true })}
+      <span className="font-medium">{m.material}</span>
+      <span className="text-[11px] text-muted-foreground">{m.unit}</span>
+    </span>
+  ),
 }
-
-/** The Numbers view's columns: every figure the API gives, in its own column. */
-const COLUMNS: { key: string; label: string; title: string; value: (m: M) => string | null; tone?: (m: M) => string }[] = [
-  { key: 'material', label: 'Material', title: 'Sort by name', value: () => null },
-  { key: 'required', label: 'BOQ needs', title: 'For the whole BOQ', value: (m) => m.required_total },
-  { key: 'should', label: 'Work needed', title: 'What the work done so far needed', value: (m) => m.should_have_used },
-  { key: 'used', label: 'Used', title: 'Used on site', value: (m) => m.used, tone: (m) => COLOUR_TEXT[m.colour] },
-  { key: 'over', label: 'Over the work', title: 'Used − what the work needed', value: (m) => m.used_over_work, tone: (m) => (n(m.used_over_work) > 0 ? 'text-destructive' : n(m.used_over_work) < 0 ? 'text-success' : '') },
-  { key: 'received', label: 'Received', title: 'Delivered to site', value: (m) => m.received },
-  { key: 'hand', label: 'On hand', title: 'In stock now', value: (m) => m.on_hand, tone: () => 'text-success' },
-  { key: 'order', label: 'On order', title: 'Ordered, not yet in', value: (m) => m.on_order, tone: () => 'text-info' },
-  { key: 'still', label: 'Still needed', title: 'To finish the BOQ', value: (m) => m.still_needed },
-  { key: 'short', label: 'Short', title: 'Still needed beyond stock and orders', value: (m) => m.short_by, tone: (m) => (n(m.short_by) > 0 ? 'text-destructive' : 'text-success') },
+const COLUMNS: NumberColumn<M>[] = [
+  { key: 'required', label: 'BOQ needs', title: 'For the whole BOQ', sortValue: (m) => n(m.required_total), cell: (m) => qty(m.required_total) },
+  { key: 'should', label: 'Work needed', title: 'What the work done so far needed', sortValue: (m) => n(m.should_have_used), cell: (m) => qty(m.should_have_used) },
+  { key: 'used', label: 'Used', title: 'Used on site', sortValue: (m) => n(m.used), cell: (m) => qty(m.used), tone: (m) => (n(m.used) ? COLOUR_TEXT[m.colour] : undefined) },
+  {
+    key: 'over', label: 'Over the work', title: 'Used − what the work needed', sortValue: (m) => (m.used_over_work === null ? null : n(m.used_over_work)),
+    cell: (m) => (m.used_over_work === null ? null : n(m.used_over_work) === 0 ? qty('0') : `${n(m.used_over_work) > 0 ? '+' : ''}${formatQuantity(m.used_over_work)}`),
+    tone: (m) => (n(m.used_over_work) > 0 ? 'font-semibold text-destructive' : n(m.used_over_work) < 0 ? 'font-semibold text-success' : undefined),
+  },
+  { key: 'received', label: 'Received', title: 'Delivered to site', sortValue: (m) => n(m.received), cell: (m) => qty(m.received) },
+  { key: 'hand', label: 'On hand', title: 'In stock now', sortValue: (m) => n(m.on_hand), cell: (m) => qty(m.on_hand), tone: (m) => (n(m.on_hand) ? 'text-success' : undefined) },
+  { key: 'order', label: 'On order', title: 'Ordered, not yet in', sortValue: (m) => n(m.on_order), cell: (m) => qty(m.on_order), tone: (m) => (n(m.on_order) ? 'text-info' : undefined) },
+  { key: 'still', label: 'Still needed', title: 'To finish the BOQ', sortValue: (m) => n(m.still_needed), cell: (m) => qty(m.still_needed) },
+  {
+    key: 'short', label: 'Short', title: 'Still needed beyond stock and orders', sortValue: (m) => (m.short_by === null ? null : n(m.short_by)), cell: (m) => qty(m.short_by),
+    tone: (m) => (n(m.short_by) > 0 ? 'font-semibold text-destructive' : undefined),
+  },
 ]
-
-/** Every figure in its own column; a header sorts (again: the other way, a third time: back to worst first). */
-function NumbersTable({ rows, col, dir, onSort, onOpen }: { rows: M[]; col: string; dir: string; onSort: (key: string) => void; onOpen: (m: M) => void }) {
-  return (
-    <div className="overflow-x-auto rounded-xl border bg-card [contain:inline-size]" data-guide="costmat.list">
-      <table className="w-full min-w-[980px] text-sm tabular-nums">
-        <thead className="bg-muted text-xs text-muted-foreground">
-          <tr>
-            {COLUMNS.map((c, i) => {
-              const on = col === c.key
-              return (
-                <th
-                  key={c.key}
-                  title={c.title}
-                  aria-sort={on ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                  className={cn('px-3 py-2 font-medium whitespace-nowrap', i === 0 ? 'sticky left-0 z-10 bg-muted text-left' : 'text-right')}
-                >
-                  <button type="button" onClick={() => onSort(c.key)} className={cn('inline-flex items-center gap-1 hover:text-foreground', i > 0 && 'flex-row-reverse', on && 'font-semibold text-foreground')}>
-                    {c.label}
-                    {on ? dir === 'asc' ? <ArrowUp className="size-3" aria-hidden /> : <ArrowDown className="size-3" aria-hidden /> : <ArrowUpDown className="size-3 opacity-40" aria-hidden />}
-                  </button>
-                </th>
-              )
-            })}
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.map((m) => (
-            <tr key={m.material_id} className="group cursor-pointer hover:bg-muted/30" onClick={() => onOpen(m)} title="Open its stock book">
-              <td className="sticky left-0 z-10 bg-card px-3 py-2 pl-4 group-hover:bg-muted">
-                <span className={cn('absolute top-1.5 bottom-1.5 left-1.5 w-1 rounded-full', COLOUR_DOT[m.colour])} aria-hidden />
-                <span className="flex items-center gap-1.5 whitespace-nowrap" title={why(m)}>
-                  {React.createElement(LOOK[m.colour].icon, { className: cn('size-3.5 shrink-0', COLOUR_TEXT[m.colour]), 'aria-hidden': true })}
-                  <span className="font-medium">{m.material}</span>
-                  <span className="text-[11px] text-muted-foreground">{m.unit}</span>
-                </span>
-              </td>
-              {COLUMNS.slice(1).map((c) => {
-                const v = c.value(m)
-                const zero = v === null || n(v) === 0
-                return (
-                  <td key={c.key} className={cn('px-3 py-2 text-right whitespace-nowrap', !zero && c.tone?.(m), !zero && (c.key === 'short' || c.key === 'over') && 'font-semibold')}>
-                    {v === null ? <span className="text-muted-foreground">—</span> : zero ? <span className="text-muted-foreground">0</span> : (c.key === 'over' && n(v) > 0 ? '+' : '') + formatQuantity(v)}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-        <tfoot className="border-t bg-muted/40 text-xs text-muted-foreground">
-          <tr>
-            <td className="sticky left-0 z-10 bg-muted px-3 py-2 font-medium" colSpan={COLUMNS.length}>
-              Each in its own unit · the colour edge and icon: used against what the work needed · hover a name for why
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  )
-}
 
 const SORTS: { value: string; label: string; key?: (m: M) => number | string }[] = [
   { value: '', label: 'Worst first' },
@@ -268,43 +221,16 @@ export default function CostMaterialsPage() {
   const [colour, setColour] = useUrlState<string>('colour', '')
   const [shortOnly, setShortOnly] = useUrlState<string>('short', '')
   const [sort, setSort] = useUrlState<string>('sort', '')
-  // UX-43: Bars (a glance) or Numbers (every figure in its own column, any column sorts). Kept in the address and
-  // remembered in this browser.
-  const [showParam, setShowParam] = useUrlState<string>('show', '')
-  const show: 'bars' | 'numbers' = (showParam || readShow()) === 'numbers' ? 'numbers' : 'bars'
-  const setShow = (v: 'bars' | 'numbers') => {
-    setShowParam(v === 'bars' ? '' : v)
-    try {
-      localStorage.setItem(SHOW_KEY, v)
-    } catch {
-      /* storage blocked: the address still holds it */
-    }
-  }
-  const [col, setCol] = useUrlState<string>('col', '')
-  const [dir, setDir] = useUrlState<string>('dir', '')
-  const sortCol = (key: string) => {
-    if (col !== key) {
-      setCol(key)
-      setDir(key === 'material' ? 'asc' : 'desc')
-    } else if ((dir || 'desc') === 'desc' && key !== 'material') setDir('asc')
-    else if (dir === 'asc' && key === 'material') setDir('desc')
-    else {
-      setCol('')
-      setDir('')
-    }
-  }
+  // UX-43/44: Bars (a glance) or Numbers (every figure in its own column, any column sorts).
+  const [show, setShow] = useShowMode('costmat')
+  const { col, dir, onSort: sortCol, clear: clearCol } = useColumnSort()
   const needle = search.trim().toLowerCase()
   const listed = React.useMemo(() => {
     const out = (q.data?.materials ?? []).filter(
       (m) => (!colour || m.colour === colour) && (!shortOnly || n(m.short_by) > 0) && (!needle || m.material.toLowerCase().includes(needle)),
     )
-    const column = show === 'numbers' ? COLUMNS.find((c) => c.key === col) : undefined
-    if (column) {
-      const sign = dir === 'asc' ? 1 : -1
-      return [...out].sort((a, b) =>
-        column.key === 'material' ? sign * a.material.localeCompare(b.material) : sign * (n(column.value(a)) - n(column.value(b))),
-      )
-    }
+    const byColumn = show === 'numbers' ? sortByColumn(out, [NAME, ...COLUMNS], col, dir) : null
+    if (byColumn) return byColumn
     const key = SORTS.find((x) => x.value === sort)?.key
     if (!key) return out
     return [...out].sort((a, b) => {
@@ -458,7 +384,7 @@ export default function CostMaterialsPage() {
                   </label>
                   <label className="flex h-8 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm">
                     <ArrowDownWideNarrow className="size-3.5 text-muted-foreground" aria-hidden />
-                    <select value={col ? '' : sort} onChange={(e) => { setSort(e.target.value); setCol(''); setDir('') }} className="bg-transparent outline-none" aria-label="Sort the materials">
+                    <select value={col ? '' : sort} onChange={(e) => { setSort(e.target.value); clearCol() }} className="bg-transparent outline-none" aria-label="Sort the materials">
                       {SORTS.map((x) => (
                         <option key={x.value} value={x.value}>
                           {x.label}
@@ -471,20 +397,7 @@ export default function CostMaterialsPage() {
                       <X className="size-3.5" aria-hidden /> Clear
                     </Button>
                   )}
-                  <span className="inline-flex h-8 rounded-lg border bg-card p-0.5" role="group" aria-label="How to show the materials">
-                    {(['bars', 'numbers'] as const).map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        aria-pressed={show === v}
-                        onClick={() => setShow(v)}
-                        className={cn('inline-flex items-center gap-1 rounded-md px-2 text-xs font-semibold transition', show === v ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}
-                      >
-                        {v === 'bars' ? <BarChart3 className="size-3.5" aria-hidden /> : <Table2 className="size-3.5" aria-hidden />}
-                        {v === 'bars' ? 'Bars' : 'Numbers'}
-                      </button>
-                    ))}
-                  </span>
+                  <ShowSwitch show={show} onShow={setShow} label="How to show the materials" />
                   <ActionButton kind="export-excel" size="sm" className="h-8" disabled={listed.length === 0} onClick={exportShown} title="The materials shown, as a CSV file (opens in Excel)">
                     <span className="hidden sm:inline">{any ? 'Export shown' : 'Export'}</span>
                   </ActionButton>
@@ -501,7 +414,21 @@ export default function CostMaterialsPage() {
                 </Button>
               </div>
             ) : show === 'numbers' ? (
-              <NumbersTable rows={paged.shown} col={col} dir={dir || 'desc'} onSort={sortCol} onOpen={(m) => navigate(`/materials?view=movements&material=${m.material_id}&project=${projectId}`)} />
+              <NumbersTable
+                rows={paged.shown}
+                rowKey={(m) => m.material_id}
+                first={NAME}
+                columns={COLUMNS}
+                edge={(m) => COLOUR_DOT[m.colour]}
+                col={col}
+                dir={dir}
+                onSort={sortCol}
+                onOpen={(m) => navigate(`/materials?view=movements&material=${m.material_id}&project=${projectId}`)}
+                openTitle="Open its stock book"
+                guide="costmat.list"
+                minWidth={980}
+                footer="Each in its own unit · the colour edge and icon: used against what the work needed · hover a name for why"
+              />
             ) : (
               <div className="overflow-hidden rounded-xl border bg-card" data-guide="costmat.list">
                 <table className="w-full text-sm">
