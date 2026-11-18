@@ -362,7 +362,7 @@ function RatesView({ wos }: { wos: WorkOrder[] }) {
   const rows = ratesByWork(wos)
   if (!rows.length) return <EmptyState icon={Scale} title="No rates yet" about="Rates come from work orders." className="bg-card" />
   return (
-    <ul className="grid gap-3 lg:grid-cols-2" data-guide="subs.rates">
+    <ul className="gap-3 lg:columns-2 [&>li]:mb-3 [&>li]:break-inside-avoid" data-guide="subs.rates">
       {rows.map((r) => {
         const low = r.offers[0].rate
         const high = r.offers.at(-1)!.rate

@@ -82,7 +82,7 @@ export function StockBars({ groups, siteNames, flowOf, canOrder, canMove, period
               <CategoryTile mainCategory={g.key === '__none__' ? null : g.key} size="sm" />
               {g.name} <span className="font-normal text-muted-foreground">{byMaterial.size}</span>
             </h3>
-            <ul className="grid items-start gap-2 lg:grid-cols-2">
+            <ul className="gap-2 lg:columns-2 [&>li]:mb-2 [&>li]:break-inside-avoid">
               {[...byMaterial.values()].map((rows) => (
                 <MaterialCard key={rows[0].material_id} rows={rows} siteNames={siteNames} flowOf={flowOf} canOrder={canOrder} canMove={canMove}
                   periodDays={periodDays} openedKey={openedKey} onOpen={onOpen} onMove={onMove} onOrder={onOrder} />
@@ -119,7 +119,7 @@ function MaterialCard({ rows, siteNames, flowOf, canOrder, canMove, periodDays, 
     .sort((a, b) => Number(b.closing) - Number(a.closing))[0]
   const siteName = (r: StockSummaryRow) => siteNames.get(r.site_id ?? '')?.name ?? 'Site'
   return (
-    <li className={cn('relative flex flex-col gap-2 overflow-hidden rounded-xl border bg-card p-3 pl-4 shadow-xs before:absolute before:inset-y-0 before:left-0 before:w-1', EDGE[worst])}>
+    <li className={cn('relative flex w-full flex-col gap-2 overflow-hidden rounded-xl border bg-card p-3 pl-4 shadow-xs before:absolute before:inset-y-0 before:left-0 before:w-1', EDGE[worst])}>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="font-semibold">{first.material_name}</span>
         <span className="text-xs text-muted-foreground">{first.category?.split(' › ')[1] ?? ''}</span>
