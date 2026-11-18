@@ -116,6 +116,19 @@ action is one line in `lib/kpi-look.ts` or `lib/actions.ts`, never a page's own 
     component with an on-page text over 12 words; dialogs, sheets, Help, tours and Learn are exempt. A text that
     fails goes to `lib/page-help.ts`, becomes a `Legend` (page kit: coloured dots with two or three words each),
     a chip, or goes.
+  - **Cues, not words (asked 18 Nov 2026, after UX-45: "too much description and text; we go for less description
+    and more easy-to-understand visual cues").** Before writing any words on a page, try a cue: a colour (§3), an
+    icon, a bar or meter, a chip, a group heading, a big number. Concretely:
+    - A state is a coloured pill or group with an icon, never a sentence ("Order now", not "You need to order this
+      today because it runs short before it can arrive").
+    - A date is an icon chip (calendar + "24 Nov · 6d"), a duration an icon and a number (truck + "4d").
+    - A comparison is a bar (in stock / on order / short), not three figures to add up in your head.
+    - KPI figures carry no `hint` line unless the figure is meaningless without it.
+    - Extra facts (who supplies it, the full reason, the lines behind a figure) go in a `title` tooltip or Help.
+    - Section titles are two or three words; counts sit beside them as a number, not "3 materials due within 7 days".
+    - A colour key is a `Legend` of dots, never a paragraph.
+    If a reader needs the sentence to understand the screen, the cue is wrong: fix the cue, then put the sentence in
+    Help.
   - **Plain words only:** never "soft-deleted", "audit trail", "liquidity", "float", "dry-run", tool or database names.
 
 ## What the pages show: all projects, a project, a site (SCP-01..04, asked 9 Nov 2026)
@@ -535,6 +548,7 @@ pass the same.
 - [ ] Exactly one primary button in the header.
 - [ ] No hard-coded palette colours, no monospace, no ALL-CAPS labels.
 - [ ] Passes "Basics every page must have" (10b).
+- [ ] Cues before words: every state, date and comparison is a colour, icon, bar or chip; no sentence a cue could replace.
 - [ ] Checked at 1440px and 390px, light and dark.
 
 ---

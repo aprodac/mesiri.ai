@@ -165,11 +165,15 @@ export const PAGE_HELP: Record<string, PageHelp> = {
   },
   '/planning/materials': {
     parts: [
-      { name: 'Red week', means: 'The material runs short from this week', tone: 'bad' },
-      { name: 'Short in these weeks', means: 'Need more than stock + open orders', tone: 'attention' },
-      { name: 'Materials planned', means: 'Read from the BOQ and the schedule' },
+      { name: 'Order now', means: 'Short before a new order can arrive', tone: 'bad' },
+      { name: 'This week', means: 'Order-by day within 7 days', tone: 'attention' },
+      { name: 'Later', means: 'Runs short later in these weeks', tone: 'info' },
+      { name: 'Covered', means: 'Stock + orders last these weeks', tone: 'good' },
+      { name: 'Bar', means: 'Green in stock, blue on order, red short' },
+      { name: 'Weeks', means: 'Darker needs more; red from the short week' },
+      { name: 'Truck', means: 'Days the supplier takes to deliver' },
     ],
-    steps: ['Pick a project.', 'Order before the red week.'],
+    steps: ['Pick a project.', 'Start with Order now.', 'Tap Order: the form is filled in.'],
     tip: 'Empty? On the BOQ, open a line\'s "Materials per unit" (1 cum of M20 = 8 bags cement).',
   },
   '/planning/live': {
