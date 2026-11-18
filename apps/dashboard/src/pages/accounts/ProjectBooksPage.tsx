@@ -1,7 +1,7 @@
-import type * as React from 'react'
+import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Gauge, HandCoins, PieChart, Receipt, Scale, TrendingUp } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronRight, Gauge, HandCoins, PieChart, Receipt, Scale, TrendingUp } from 'lucide-react'
 import { BooksClosed, PeriodBar, usePeriod } from '@/components/accounts/books'
 import { FlowStrip } from '@/components/accounts/money-kit'
 import { PlSimple } from '@/components/accounts/pl-simple'
@@ -172,6 +172,15 @@ export default function ProjectBooksPage() {
   const { period } = periodState
   const allowed = mayReadProjectBooks(me?.role)
   const [view, pickView] = useBooksView('pl', VIEWS, { list: 'simple', months: 'simple' })
+  // UX-58: the line-by-line P&L is folded; a figure in the sum opens it at its part.
+  const [lines, setLines] = React.useState(false)
+  const [focusOn, setFocusOn] = React.useState<{ key: string; n: number } | null>(null)
+  const linesRef = React.useRef<HTMLElement>(null)
+  const openLines = (key?: string) => {
+    setLines(true)
+    if (key && view === 'simple') setFocusOn((f) => ({ key, n: (f?.n ?? 0) + 1 }))
+    else window.setTimeout(() => linesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
   const q = useQuery({ queryKey: ['accounts', 'project', id, period], queryFn: () => fetchProjectBooks(id, period), enabled: allowed && !!id })
   const port = useQuery({ queryKey: ['cost', 'portfolio'], queryFn: fetchPortfolio, enabled: allowed && maySeeBoq(me?.role), retry: false })
   const name = q.data?.scope.replace(/^project /, '')
@@ -211,16 +220,18 @@ export default function ProjectBooksPage() {
         <>
           <FlowStrip
             items={[
-              { label: 'Billed', value: rupees(t.income), tone: 'in', sub: 'RA bills, before GST' },
-              { label: 'Direct cost', value: rupees(t.direct), tone: 'out', op: '−', sub: 'site: materials, labour, subcontract' },
+              { label: 'Billed', value: rupees(t.income), tone: 'in', sub: 'RA bills, before GST', onClick: () => openLines('income'), title: 'Open the bills' },
+              { label: 'Direct cost', value: rupees(t.direct), tone: 'out', op: '−', sub: 'site: materials, labour, subcontract', onClick: () => openLines('direct'), title: 'Open the site costs' },
               {
                 label: 'Indirect cost',
                 value: rupees(t.indirect),
                 tone: Number(t.indirect) ? 'out' : 'plain',
                 op: '−',
                 sub: Number(d.pl.overheads) ? `with ${short(d.pl.overheads)} head-office share` : 'office costs on this project',
+                onClick: Number(t.indirect) ? () => openLines('indirect') : undefined,
+                title: 'Open the office costs',
               },
-              { label: np < 0 ? 'Loss (books)' : 'Profit (books)', value: (np < 0 ? '−' : '') + rupees(np), tone: np < 0 ? 'out' : 'balance', op: '=', sub: t.net_margin ? `${pctText(t.net_margin)} of billing` : undefined },
+              { label: np < 0 ? 'Loss (books)' : 'Profit (books)', value: (np < 0 ? '−' : '') + rupees(np), tone: np < 0 ? 'out' : 'balance', op: '=', sub: t.net_margin ? `${pctText(t.net_margin)} of billing` : undefined, onClick: () => openLines(), title: 'Line by line' },
             ]}
           />
 
@@ -267,27 +278,37 @@ export default function ProjectBooksPage() {
               </div>
             </DprSection>
           )}
-          <DprSection
-            icon={Receipt}
-            title="Profit & loss (period)"
-            meta={
-              <Segmented<(typeof VIEWS)[number]>
-                label="Show as"
-                value={view}
-                options={[
-                  { value: 'simple', label: 'Simple' },
-                  { value: 'statement', label: 'Tally' },
-                ]}
-                onChange={pickView}
-              />
-            }
-          >
-            {view === 'simple' ? (
-              <PlSimple pl={d.pl} period={period} scope={{ project_id: d.project_id }} company={false} hero={false} periodLabel={`${formatDay(d.date_from)} – ${formatDay(d.date_to)}`} />
-            ) : (
-              <PlTwoColumn pl={d.pl} periodLabel={`${formatDay(d.date_from)} – ${formatDay(d.date_to)}`} />
+          {/* UX-58: the proof, folded: the sum at the top already says the totals. */}
+          <section ref={linesRef} className="scroll-mt-20 overflow-hidden rounded-xl border bg-card shadow-xs" aria-label="Line by line">
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+              <button type="button" onClick={() => (lines ? setLines(false) : openLines())} aria-expanded={lines} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                {lines ? <ChevronDown className="size-4 shrink-0" aria-hidden /> : <ChevronRight className="size-4 shrink-0" aria-hidden />}
+                <Receipt className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="font-semibold">Line by line</span>
+                <span className="truncate text-xs text-muted-foreground">every bill and expense, {formatDay(d.date_from)} – {formatDay(d.date_to)}</span>
+              </button>
+              {lines && (
+                <Segmented<(typeof VIEWS)[number]>
+                  label="Show as"
+                  value={view}
+                  options={[
+                    { value: 'simple', label: 'Simple' },
+                    { value: 'statement', label: 'Tally' },
+                  ]}
+                  onChange={pickView}
+                />
+              )}
+            </div>
+            {lines && (
+              <div className="border-t p-3">
+                {view === 'simple' ? (
+                  <PlSimple pl={d.pl} period={period} scope={{ project_id: d.project_id }} company={false} hero={false} focusOn={focusOn} periodLabel={`${formatDay(d.date_from)} – ${formatDay(d.date_to)}`} />
+                ) : (
+                  <PlTwoColumn pl={d.pl} periodLabel={`${formatDay(d.date_from)} – ${formatDay(d.date_to)}`} />
+                )}
+              </div>
             )}
-          </DprSection>
+          </section>
         </>
       )}
     </div>

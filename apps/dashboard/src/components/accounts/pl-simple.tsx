@@ -374,6 +374,7 @@ export function PlSimple({
   priorLabel,
   notice,
   hero = true,
+  focusOn,
 }: {
   pl: ProfitLoss
   period: Period
@@ -386,9 +387,15 @@ export function PlSimple({
   notice?: React.ReactNode
   /** The result card on top; off where the page already shows the result (a project's books). */
   hero?: boolean
+  /** UX-58: open this part (income, direct, indirect, other) and bring it into view; `n` changes on every ask. */
+  focusOn?: { key: string; n: number } | null
 }) {
   const [entry, setEntry] = React.useState<string | null>(null)
   const focus = usePlFocus()
+  React.useEffect(() => {
+    if (focusOn) focus.focus(focusOn.key)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per ask
+  }, [focusOn?.n])
   const t = pl.totals
   const p = pl.prior_totals
   const pr = (k: keyof PlTotals) => (p ? n(p[k]) : null)

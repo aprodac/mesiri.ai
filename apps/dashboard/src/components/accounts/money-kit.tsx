@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { ChevronRight } from 'lucide-react'
 import { rupees } from '@/lib/accounts'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +28,10 @@ export interface FlowItem {
   sub?: React.ReactNode
   /** The operator before this figure ("+", "−", "="); none for the first. */
   op?: string
+  /** UX-58: the figure opens its detail (a project's line-by-line P&L). */
+  onClick?: () => void
+  /** What a tap opens, for the tooltip. */
+  title?: string
 }
 
 export function FlowStrip({ items, guide }: { items: FlowItem[]; guide?: string }) {
@@ -39,11 +44,26 @@ export function FlowStrip({ items, guide }: { items: FlowItem[]; guide?: string 
               {it.op}
             </span>
           )}
-          <div className={cn('min-w-0 flex-1 rounded-lg border px-3 py-2.5', FLOW[it.tone].card)}>
-            <p className={cn('truncate text-xs font-medium', it.tone === 'plain' ? 'text-muted-foreground' : FLOW[it.tone].fg)}>{it.label}</p>
-            <p className={cn('mt-0.5 truncate text-lg font-semibold tabular-nums sm:text-xl', FLOW[it.tone].fg)}>{it.value}</p>
-            {it.sub && <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{it.sub}</div>}
-          </div>
+          {(() => {
+            const body = (
+              <>
+                <p className={cn('flex items-center justify-between gap-1 truncate text-xs font-medium', it.tone === 'plain' ? 'text-muted-foreground' : FLOW[it.tone].fg)}>
+                  {it.label}
+                  {it.onClick && <ChevronRight className="size-3.5 shrink-0 opacity-50 transition group-hover:translate-x-0.5 group-hover:opacity-100" aria-hidden />}
+                </p>
+                <p className={cn('mt-0.5 truncate text-lg font-semibold tabular-nums sm:text-xl', FLOW[it.tone].fg)}>{it.value}</p>
+                {it.sub && <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{it.sub}</div>}
+              </>
+            )
+            const cls = cn('min-w-0 flex-1 rounded-lg border px-3 py-2.5 text-left', FLOW[it.tone].card)
+            return it.onClick ? (
+              <button type="button" onClick={it.onClick} title={it.title} className={cn(cls, 'group transition hover:shadow-sm hover:ring-1 hover:ring-foreground/20')}>
+                {body}
+              </button>
+            ) : (
+              <div className={cls}>{body}</div>
+            )
+          })()}
         </React.Fragment>
       ))}
     </div>
