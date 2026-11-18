@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDownWideNarrow, ArrowRight, ChevronRight, CircleCheck, CircleDashed, Eye, HardHat, Package, Ruler, Search,
+  ArrowDownWideNarrow, ArrowRight, CircleCheck, CircleDashed, Eye, HardHat, Package, Ruler, Search,
   TrafficCone, TriangleAlert, X,
 } from 'lucide-react'
 import { MONEY_PEOPLE } from '@/lib/permissions'
@@ -20,11 +20,11 @@ import { fetchProjectVariance, type VarianceColour, type VarianceDay, type Varia
 import { compact } from '@/lib/expenses'
 import { usePagedUrl } from '@/lib/paging'
 import { usePageTitle } from '@/lib/page-title'
-import { fetchProjects } from '@/lib/projects'
 import { useScope } from '@/lib/ScopeContext'
 import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { ProjectPickList } from '@/components/schedule/project-picker'
 
 // CC-07: green / amber / red per BOQ line. For a period, each line's labour budget earned by the work measured
 // (done x labour rate) against the labour put on the line (CC-05): green when it earned at least what it cost,
@@ -256,24 +256,8 @@ function DayTiles({ days, picked, onPick, money }: { days: VarianceDay[]; picked
 }
 
 function ProjectPicker() {
-  const projects = useQuery({ queryKey: ['scope-projects'], queryFn: fetchProjects })
-  if (projects.isLoading) return <Skeleton className="h-32 rounded-xl" />
-  if ((projects.data ?? []).length === 0) return <p className="text-sm text-muted-foreground">No projects yet.</p>
-  return (
-    <ul className="divide-y rounded-xl border bg-card" data-guide="project.pick">
-      {(projects.data ?? []).map((p) => (
-        <li key={p.id}>
-          <Link to={`/cost/green-red?project=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-              <TrafficCone className="size-4" />
-            </span>
-            <span className="flex-1 font-medium">{p.name}</span>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
+  // UX-35: the one project picker (cards, one project opens by itself).
+  return <ProjectPickList to={(id) => `/cost/green-red?project=${id}`} empty="No projects yet." />
 }
 
 const SORTS: { value: string; label: string; key?: (l: VarianceLine) => number | string }[] = [

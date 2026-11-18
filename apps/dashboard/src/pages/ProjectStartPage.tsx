@@ -56,7 +56,7 @@ export default function ProjectStartPage() {
       <div className="mx-auto flex w-full flex-col gap-4 pb-8 sm:px-2">
         <Heading><NewProjectButton afterCreate={startSteps} guide="setup.new" /></Heading>
         <p className="text-sm text-muted-foreground">Pick the project you are starting, or start a new one.</p>
-        <ProjectPickList to={startSteps} empty="No projects yet. Won a job? New project starts it here." />
+        <ProjectPickList to={startSteps} empty="No projects yet. Won a job? New project starts it here." newProject={false} />
       </div>
     )
   }

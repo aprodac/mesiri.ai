@@ -151,35 +151,37 @@ function roleLabel(role: string | undefined): string {
 // Visual tokens for the sidebar. `aside` also re-points the --sidebar-* variables, so the shadcn sidebar parts' own
 // hover, active and focus styles match without changing ui/sidebar.tsx.
 const SIDEBAR_THEMES = {
-  // UX-16 (17 Nov 2026): one sidebar, two versions picked by the app's own light/dark switch (the moon button):
-  // warm sand in light mode, the app's dark card colours in dark mode. The other colours were dropped on request.
+  // UX-16 (17 Nov 2026): one sidebar, two versions picked by the app's own light/dark switch (the moon button).
+  // UX-35 (18 Nov, asked: "the sidebar should be a different colour, it's the same as the background"): the sand
+  // sidebar was the page's own colour. Now warm charcoal in light mode (the page stays sand, the brand's yellow bar
+  // marks the page you are on), and a shade darker than the page in dark mode.
   sand: {
     aside:
-      'bg-[#F7F3EA] text-[#45403A] dark:bg-card dark:text-foreground [--sidebar:#F7F3EA] dark:[--sidebar:var(--card)] [--sidebar-foreground:#45403A] dark:[--sidebar-foreground:var(--foreground)] [--sidebar-accent:#EFE8DA] dark:[--sidebar-accent:var(--muted)] [--sidebar-accent-foreground:#1C1A17] dark:[--sidebar-accent-foreground:var(--foreground)] [--sidebar-border:#E3DBCB] dark:[--sidebar-border:var(--border)] [--sidebar-ring:#6E665B] dark:[--sidebar-ring:var(--ring)]',
-    edge: 'border-[#E3DBCB] dark:border-border',
-    ring: 'focus-visible:ring-[#6E665B] dark:focus-visible:ring-ring',
-    rowIdle: 'text-[#45403A] hover:bg-[#EFE8DA] hover:text-[#1C1A17] dark:text-foreground/70 dark:hover:bg-muted dark:hover:text-foreground',
-    rowActive: 'bg-[#E8DCC2] text-[#1C1A17] font-semibold dark:bg-muted dark:text-foreground',
-    hoverBg: 'hover:bg-[#EFE8DA] dark:hover:bg-muted',
-    label: 'text-[#6E665B] dark:text-muted-foreground',
-    icon: 'text-[#6E665B] group-hover/row:text-[#1C1A17] dark:text-muted-foreground dark:group-hover/row:text-foreground',
-    iconActive: 'text-[#1C1A17] dark:text-foreground',
-    iconBtn: 'text-[#6E665B] hover:text-[#1C1A17] hover:bg-[#EFE8DA] dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-background',
-    divider: 'border-[#E3DBCB] dark:border-border',
-    guide: 'border-[#DDD3BF] dark:border-border',
-    chevron: 'text-[#6E665B] dark:text-muted-foreground',
-    groupIdle: 'text-[#45403A] hover:text-[#1C1A17] dark:text-foreground/70 dark:hover:text-foreground',
-    groupActive: 'text-[#1C1A17] font-semibold dark:text-foreground',
-    card: 'border-[#E3DBCB] bg-white dark:border-border dark:bg-background',
-    soon: 'bg-[#EFE8DA] text-[#6E665B] dark:bg-muted dark:text-muted-foreground',
-    headerBg: '[--sidebar-header:#FFFDF8] dark:[--sidebar-header:var(--background)]',
-    headerText: 'text-[#1C1A17] dark:text-foreground',
-    headerBtn: 'text-[#6E665B] hover:text-[#1C1A17] hover:bg-black/[0.04] dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-muted',
-    avatar: 'bg-white text-[#1C1A17] border border-[#E3DBCB] dark:bg-background dark:text-foreground dark:border-border',
-    danger: 'hover:text-destructive',
-    name: 'text-[#1C1A17] dark:text-foreground',
-    role: 'text-[#6E665B] dark:text-muted-foreground',
-    scrollbar: 'sidebar-scrollbar-light',
+      'bg-[#1F1D1A] text-[#D9D3C7] dark:bg-[#0E0F11] dark:text-foreground [--sidebar:#1F1D1A] dark:[--sidebar:#0E0F11] [--sidebar-foreground:#D9D3C7] dark:[--sidebar-foreground:var(--foreground)] [--sidebar-accent:#2C2924] dark:[--sidebar-accent:var(--muted)] [--sidebar-accent-foreground:#FFFFFF] dark:[--sidebar-accent-foreground:var(--foreground)] [--sidebar-border:#34302A] dark:[--sidebar-border:var(--border)] [--sidebar-ring:#FACC15] dark:[--sidebar-ring:var(--ring)]',
+    edge: 'border-[#34302A] dark:border-border',
+    ring: 'focus-visible:ring-[#FACC15] dark:focus-visible:ring-ring',
+    rowIdle: 'text-[#CFC8BB] hover:bg-[#2C2924] hover:text-white dark:text-foreground/70 dark:hover:bg-muted dark:hover:text-foreground',
+    rowActive: 'bg-[#3A352D] text-white font-semibold dark:bg-muted dark:text-foreground',
+    hoverBg: 'hover:bg-[#2C2924] dark:hover:bg-muted',
+    label: 'text-[#968E80] dark:text-muted-foreground',
+    icon: 'text-[#A29A8C] group-hover/row:text-white dark:text-muted-foreground dark:group-hover/row:text-foreground',
+    iconActive: 'text-[#FACC15] dark:text-foreground',
+    iconBtn: 'text-[#A29A8C] hover:text-white hover:bg-[#2C2924] dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-background',
+    divider: 'border-[#34302A] dark:border-border',
+    guide: 'border-[#3A352D] dark:border-border',
+    chevron: 'text-[#968E80] dark:text-muted-foreground',
+    groupIdle: 'text-[#CFC8BB] hover:text-white dark:text-foreground/70 dark:hover:text-foreground',
+    groupActive: 'text-white font-semibold dark:text-foreground',
+    card: 'border-[#34302A] bg-[#2A2722] dark:border-border dark:bg-background',
+    soon: 'bg-[#2C2924] text-[#968E80] dark:bg-muted dark:text-muted-foreground',
+    headerBg: '[--sidebar-header:#1F1D1A] dark:[--sidebar-header:#0E0F11]',
+    headerText: 'text-white dark:text-foreground',
+    headerBtn: 'text-[#A29A8C] hover:text-white hover:bg-white/[0.06] dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-muted',
+    avatar: 'bg-[#2A2722] text-white border border-[#3A352D] dark:bg-background dark:text-foreground dark:border-border',
+    danger: 'hover:text-red-400',
+    name: 'text-white dark:text-foreground',
+    role: 'text-[#968E80] dark:text-muted-foreground',
+    scrollbar: 'sidebar-scrollbar',
     bar: '#FACC15',
   },
 } as const
