@@ -706,15 +706,15 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/planning/materials': {
     key: '/tour/planning-materials',
-    version: 1,
+    version: 2,
     introFromPage: true,
     introSay: 'This is the material plan. It works out what each material is needed for, week by week, from your B O Q and your schedule, and warns you before anything runs short.',
     startWhen: ['matplan.empty', 'matplan.stats'],
     steps: [
       { target: 'project.pick', title: 'Pick a project', text: 'This page works on one project at a time. Pick it here, or in the bar at the top.' },
       { target: 'matplan.empty', title: 'Materials for each BOQ line', text: 'The plan needs to know what each BOQ line uses, like cement per m³ of concrete. Fill the common ones in one tap, or set them on the BOQ.', say: 'For the plan to work, it needs to know what each B O Q line uses, like bags of cement per cubic metre of concrete. Fill the common ones in one tap, or set them on the B O Q.', mood: 'think' },
-      { target: 'matplan.stats', title: 'At a glance', text: 'How many materials are planned, how many run short in these weeks, and how many BOQ lines have their materials.', say: 'At a glance: how many materials are planned, how many will run short in the coming weeks, and how many B O Q lines are ready.', mood: 'look' },
-      { target: 'matplan.table', title: 'Week by week', text: 'What each material is needed for, week by week from the schedule, against stock and what is on order. Red weeks run short; Order opens a purchase order already filled in.', say: 'Week by week, what each material is needed for, against what\'s in stock and on order. A red week means it runs short. One tap on Order, and the purchase order is filled in for you.' },
+      { target: 'matplan.stats', title: 'What to order, and when', text: 'Materials to order today, this week, later, and covered. Tap a figure to see only those.', say: 'At a glance: what to order today, what by the end of this week, what later, and what is already covered. Tap any of them to see only those materials.', mood: 'look' },
+      { target: 'matplan.table', title: 'Week by week', text: 'The most urgent first. Each bar shows what is in stock, on order and not covered; darker weeks need more, red weeks run short. Order opens a purchase order already filled in.', say: 'The most urgent materials come first. Each bar shows what is in stock, what is on order, and what is not covered yet. Darker weeks need more, and a red week means it runs short. One tap on Order, and the purchase order is filled in for you.' },
       { target: 'matplan.weeks', title: 'How far ahead', text: 'Look 4, 8 or 12 weeks ahead, or open the BOQ the plan comes from.', say: 'Look four, eight or twelve weeks ahead, or open the B O Q the plan comes from.' },
       { target: 'app.whatsapp', title: 'Ask on WhatsApp', text: 'Ask "What do I need to order for next week at Green Villa?"', say: 'Or simply ask on WhatsApp: what do I need to order for next week at Green Villa?', mood: 'happy' },
     ],
