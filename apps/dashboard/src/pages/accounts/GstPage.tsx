@@ -1,10 +1,11 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDownLeft, ArrowUpRight, BadgeCheck, CircleAlert, FileWarning, Percent, ReceiptText } from 'lucide-react'
-import { BooksClosed, BooksTabs, ExcelButton, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { ArrowDownLeft, ArrowUpRight, BadgeCheck, CircleAlert, FileWarning, ReceiptText } from 'lucide-react'
+import { BooksClosed, ExcelButton, PeriodBar, usePeriod } from '@/components/accounts/books'
+import { FlowStrip } from '@/components/accounts/money-kit'
 import { SplitBars } from '@/components/accounts/visuals'
-import { Callout, DprHeader, DprSection, PageError, Segmented, StatStrip } from '@/components/dpr-page'
+import { Callout, DprHeader, DprSection, PageError, Segmented } from '@/components/dpr-page'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchGst, formatDay, mayReadBooks, rupees, short, type GstPurchase, type TaxSplit } from '@/lib/accounts'
@@ -14,6 +15,11 @@ import { cn } from '@/lib/utils'
 // ACC-10: the month's GST for the CA. Output tax on RA bills, input tax the company can claim, net payable (GSTR-3B's
 // 3.1(a) and 4(A)(5)); IGST or CGST + SGST by place of supply; every bill with its GSTIN; credit missed and why (to fix
 // before the return); tied to the GST ledgers. Company-wide (one return per GSTIN). Backend: GET /accounts/gst.
+// UXA-07: the return as a sum (collected − claimable = to pay, or credit carried), credit missed in red; every view a
+// table on white with its total (sales and suppliers were lists); a bill whose credit is lost carries a red bar.
+
+const TABLE = 'overflow-x-auto rounded-xl border bg-card shadow-xs'
+const HEAD = 'border-b bg-muted text-xs text-muted-foreground'
 
 const WHY: Record<NonNullable<GstPurchase['reason']>, string> = {
   no_gstin: 'Supplier has no GSTIN',
@@ -62,19 +68,18 @@ export default function GstPage() {
         date={d ? (d.company_gstin ? `GSTIN ${d.company_gstin}` : 'Company GSTIN not set') : undefined}
         action={d && <ExcelButton path="/accounts/gst/export" params={period} name={`gst-${period.date_from}-to-${period.date_to}`} />}
       />
-      <BooksTabs current="/accounts/gst" />
       <PeriodBar state={periodState} />
       {!d ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (
         <>
-          <StatStrip guide="gst.stats"
-            phoneCols={2}
-            stats={[
-              { label: 'Output GST (on RA bills)', value: rupees(d.output.gst), icon: ArrowUpRight },
-              { label: 'Input GST you can claim', value: rupees(d.input.gst), icon: ArrowDownLeft, tone: 'good' },
-              { label: Number(d.payable) < 0 ? 'Credit carried forward' : 'Net GST payable', value: rupees(d.payable), icon: Percent, tone: Number(d.payable) > 0 ? 'warn' : 'good', hint: 'output − claimable input' },
-              { label: 'Credit missed', value: rupees(d.missed), icon: FileWarning, tone: Number(d.missed) > 0 ? 'bad' : 'default', hint: Number(d.missed) ? `${missed.length} bill${missed.length === 1 ? '' : 's'}` : 'none' },
+          <FlowStrip
+            guide="gst.stats"
+            items={[
+              { label: 'GST collected on RA bills', value: rupees(d.output.gst), tone: 'out', sub: `on ${short(d.output.taxable)} billed` },
+              { label: 'GST you can claim', value: rupees(d.input.gst), tone: 'in', op: '−', sub: `on ${short(d.input.taxable)} of bills` },
+              { label: Number(d.payable) < 0 ? 'Credit carried forward' : 'GST to pay', value: rupees(d.payable), tone: Number(d.payable) < 0 ? 'in' : 'balance', op: '=', sub: 'GSTR-3B 3.1(a) less 4(A)(5)' },
+              { label: 'Credit missed', value: rupees(d.missed), tone: Number(d.missed) > 0 ? 'out' : 'plain', sub: Number(d.missed) ? `${missed.length} bill${missed.length === 1 ? '' : 's'}: fix before the return` : 'none' },
             ]}
           />
           {!d.company_gstin && (
@@ -96,7 +101,7 @@ export default function GstPage() {
             </Callout>
           ))}
           {d.months.length > 1 && (
-            <div className="rounded-xl border px-4 py-3">
+            <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
               <SplitBars
                 up="To pay"
                 down="Credit to carry"
@@ -129,10 +134,10 @@ export default function GstPage() {
           />
           {view === 'summary' && (
             <DprSection icon={ReceiptText} title="In the return's terms">
-              <div className="overflow-x-auto rounded-lg border">
+              <div className={TABLE}>
                 <table data-guide="gst.body" className="w-full text-sm">
                   <thead>
-                    <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
+                    <tr className={HEAD}>
                       <th className="px-3 py-2 text-left font-medium">Table</th>
                       <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Taxable value</th>
                       <th className="hidden px-3 py-2 text-right font-medium md:table-cell">IGST</th>
@@ -153,7 +158,7 @@ export default function GstPage() {
                         <td className="px-3 py-2 text-right font-medium tabular-nums">{rupees(r.s.gst)}</td>
                       </tr>
                     ))}
-                    <tr className="bg-muted/40 font-semibold">
+                    <tr className={cn('border-t-[1.5px] font-semibold', Number(d.payable) < 0 ? 'border-emerald-500/40 bg-emerald-500/[0.06]' : 'border-sky-500/40 bg-sky-500/[0.06]')}>
                       <td className="px-3 py-2.5">{Number(d.payable) < 0 ? 'Credit to carry forward' : 'Net payable'}</td>
                       <td className="hidden sm:table-cell" />
                       <td className="hidden md:table-cell" colSpan={3} />
@@ -173,10 +178,10 @@ export default function GstPage() {
               {d.purchases.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No bill with GST in this period.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border">
+                <div className={TABLE}>
                   <table data-guide="gst.body" className="w-full text-sm">
                     <thead>
-                      <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
+                      <tr className={HEAD}>
                         <th className="px-3 py-2 text-left font-medium">Bill</th>
                         <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Taxable</th>
                         <th className="hidden px-3 py-2 text-right font-medium md:table-cell">IGST</th>
@@ -188,7 +193,7 @@ export default function GstPage() {
                     <tbody className="divide-y">
                       {d.purchases.map((p) => (
                         <tr key={p.id} className={cn(!p.claimable && 'bg-destructive/5')}>
-                          <td className="px-3 py-2">
+                          <td className={cn('px-3 py-2', !p.claimable && 'border-l-4 border-l-destructive')}>
                             <Link to={`/finance/expenses/${p.id}`} className="font-medium hover:underline">
                               {p.supplier ?? 'No supplier'}
                             </Link>
@@ -203,6 +208,16 @@ export default function GstPage() {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-[1.5px] border-foreground/25 bg-muted/30 font-semibold">
+                        <td className="px-3 py-2.5">
+                          {d.purchases.length} {d.purchases.length === 1 ? 'bill' : 'bills'} <span className="font-normal text-muted-foreground">· claimable {rupees(d.input.gst)}</span>
+                        </td>
+                        <td className="hidden px-3 py-2.5 text-right tabular-nums sm:table-cell">{rupees(d.purchases.reduce((t, p) => t + Number(p.taxable), 0))}</td>
+                        <td className="hidden md:table-cell" colSpan={3} />
+                        <td className="px-3 py-2.5 text-right tabular-nums">{rupees(d.purchases.reduce((t, p) => t + Number(p.gst), 0))}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
@@ -213,44 +228,86 @@ export default function GstPage() {
               {d.sales.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No RA bill sent in this period.</p>
               ) : (
-                <ul data-guide="gst.body" className="divide-y rounded-lg border text-sm">
-                  {d.sales.map((s) => (
-                    <li key={s.id} className="flex flex-col gap-0.5 px-3 py-2 sm:flex-row sm:items-center sm:gap-4">
-                      <span className="min-w-0 flex-1">
-                        <Link to={`/billing/ra-bills/${s.id}/document`} className="font-medium hover:underline">
-                          {s.ref} · {s.client ?? 'No client'}
-                        </Link>
-                        <span className="block text-xs text-muted-foreground">
-                          {[formatDay(s.date), s.gstin ?? 'client has no GSTIN', s.project, s.rate ? `${Number(s.rate)}%` : null, Number(s.igst) ? 'IGST' : Number(s.cgst) ? 'CGST + SGST' : null].filter(Boolean).join(' · ')}
-                        </span>
-                      </span>
-                      <span className="text-xs text-muted-foreground tabular-nums">on {rupees(s.taxable)}</span>
-                      <span className="font-medium tabular-nums">{rupees(s.gst)}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className={TABLE}>
+                  <table data-guide="gst.body" className="w-full min-w-[640px] text-sm">
+                    <thead>
+                      <tr className={HEAD}>
+                        <th className="px-3 py-2 text-left font-medium">RA bill</th>
+                        <th className="px-3 py-2 text-left font-medium">Client GSTIN</th>
+                        <th className="px-3 py-2 text-left font-medium">Rate · type</th>
+                        <th className="px-3 py-2 text-right font-medium">Taxable</th>
+                        <th className="px-3 py-2 text-right font-medium">GST</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {d.sales.map((s) => (
+                        <tr key={s.id}>
+                          <td className={cn('px-3 py-2', !s.gstin && 'border-l-4 border-l-draft')}>
+                            <Link to={`/billing/ra-bills/${s.id}/document`} className="font-medium hover:underline">
+                              {s.ref} · {s.client ?? 'No client'}
+                            </Link>
+                            <span className="block text-xs text-muted-foreground">{[formatDay(s.date), s.project].filter(Boolean).join(' · ')}</span>
+                          </td>
+                          <td className={cn('px-3 py-2 text-xs', s.gstin ? 'tabular-nums text-muted-foreground' : 'font-medium text-draft')}>{s.gstin ?? 'No GSTIN'}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {[s.rate ? `${Number(s.rate)}%` : null, Number(s.igst) ? 'IGST' : Number(s.cgst) ? 'CGST + SGST' : null].filter(Boolean).join(' · ') || '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{rupees(s.taxable)}</td>
+                          <td className="px-3 py-2 text-right font-medium tabular-nums text-rose-700 dark:text-rose-400">{rupees(s.gst)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-[1.5px] border-foreground/25 bg-muted/30 font-semibold">
+                        <td className="px-3 py-2.5" colSpan={3}>{d.sales.length} {d.sales.length === 1 ? 'RA bill' : 'RA bills'}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{rupees(d.output.taxable)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{rupees(d.output.gst)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               )}
             </DprSection>
           )}
           {view === 'suppliers' && (
             <DprSection icon={ReceiptText} title="By supplier GSTIN (for matching with GSTR-2B)">
-              <ul data-guide="gst.body" className="divide-y rounded-lg border text-sm">
-                {d.by_supplier.map((s) => (
-                  <li key={`${s.gstin}-${s.supplier}`} className="flex flex-col gap-0.5 px-3 py-2 sm:flex-row sm:items-center sm:gap-4">
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium">{s.supplier}</span>
-                      <span className={cn('block text-xs', s.gstin ? 'text-muted-foreground' : 'text-destructive')}>
-                        {s.gstin ?? 'No GSTIN: add it on the supplier to claim'} · {s.bills} bill{s.bills === 1 ? '' : 's'}
-                      </span>
-                    </span>
-                    <span className="text-xs text-muted-foreground tabular-nums">on {rupees(s.taxable)}</span>
-                    <span className="tabular-nums">
-                      {rupees(s.gst)}
-                      {Number(s.claimable) !== Number(s.gst) && <span className="ml-1 text-xs text-destructive">({rupees(Number(s.gst) - Number(s.claimable))} missed)</span>}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className={TABLE}>
+                <table data-guide="gst.body" className="w-full min-w-[640px] text-sm">
+                  <thead>
+                    <tr className={HEAD}>
+                      <th className="px-3 py-2 text-left font-medium">Supplier</th>
+                      <th className="px-3 py-2 text-left font-medium">GSTIN</th>
+                      <th className="px-3 py-2 text-right font-medium">Bills</th>
+                      <th className="px-3 py-2 text-right font-medium">Taxable</th>
+                      <th className="px-3 py-2 text-right font-medium">GST</th>
+                      <th className="px-3 py-2 text-right font-medium">Missed</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {d.by_supplier.map((s) => {
+                      const lost = Number(s.gst) - Number(s.claimable)
+                      return (
+                        <tr key={`${s.gstin}-${s.supplier}`} className={cn(lost > 0.005 && 'bg-destructive/5')}>
+                          <td className={cn('px-3 py-2 font-medium', lost > 0.005 && 'border-l-4 border-l-destructive')}>{s.supplier}</td>
+                          <td className={cn('px-3 py-2 text-xs', s.gstin ? 'tabular-nums text-muted-foreground' : 'font-medium text-destructive')}>{s.gstin ?? 'No GSTIN: add it on the supplier to claim'}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{s.bills}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{rupees(s.taxable)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{rupees(s.gst)}</td>
+                          <td className={cn('px-3 py-2 text-right tabular-nums', lost > 0.005 ? 'font-medium text-destructive' : 'text-muted-foreground')}>{lost > 0.005 ? rupees(lost) : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-[1.5px] border-foreground/25 bg-muted/30 font-semibold">
+                      <td className="px-3 py-2.5" colSpan={3}>{d.by_supplier.length} {d.by_supplier.length === 1 ? 'supplier' : 'suppliers'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{rupees(d.by_supplier.reduce((t, x) => t + Number(x.taxable), 0))}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{rupees(d.by_supplier.reduce((t, x) => t + Number(x.gst), 0))}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-destructive">{Number(d.missed) ? rupees(d.missed) : '—'}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </DprSection>
           )}
         </>
