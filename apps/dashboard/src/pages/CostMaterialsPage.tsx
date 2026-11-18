@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { MONEY_PEOPLE } from '@/lib/permissions'
 import { Legend, NoAccess } from '@/components/page/page-kit'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Package, PackageSearch } from 'lucide-react'
+import { Package, PackageSearch } from 'lucide-react'
 import { Callout, DprHeader, DprSection, PageError, StatStrip } from '@/components/dpr-page'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/AuthContext'
@@ -10,11 +10,11 @@ import { formatQuantity, maySeeBoq } from '@/lib/boq'
 import { fetchProjectMaterials, type MaterialReconciliation } from '@/lib/cost'
 import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours'
 import { usePageTitle } from '@/lib/page-title'
-import { fetchProjects } from '@/lib/projects'
 import { useScope } from '@/lib/ScopeContext'
 import { cn } from '@/lib/utils'
 import { Pager } from '@/components/page/pager'
 import { usePagedUrl } from '@/lib/paging'
+import { ProjectPickList } from '@/components/schedule/project-picker'
 
 // CC-08: materials against the BOQ. Per material with a norm on a BOQ line (MP-01): what the work done so far should
 // have used against what was used, and what is still needed to finish against what is on hand and coming, so a
@@ -82,23 +82,8 @@ function Row({ m }: { m: MaterialReconciliation }) {
 }
 
 function ProjectPicker() {
-  const projects = useQuery({ queryKey: ['scope-projects'], queryFn: fetchProjects })
-  if (projects.isLoading) return <Skeleton className="h-32 rounded-lg" />
-  return (
-    <ul className="divide-y rounded-lg border" data-guide="project.pick">
-      {(projects.data ?? []).map((p) => (
-        <li key={p.id}>
-          <Link to={`/cost/materials?project=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
-            <span className="flex size-8 items-center justify-center rounded-md bg-muted">
-              <Package className="size-4" />
-            </span>
-            <span className="flex-1 font-medium">{p.name}</span>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
+  // UX-35: the one project picker (cards, one project opens by itself).
+  return <ProjectPickList to={(id) => `/cost/materials?project=${id}`} empty="No projects yet." />
 }
 
 export default function CostMaterialsPage() {

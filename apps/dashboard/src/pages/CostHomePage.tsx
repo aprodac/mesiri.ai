@@ -46,7 +46,7 @@ const ORDER: VarianceColour[] = ['red', 'amber', 'green', 'grey']
 
 const SORTS: { value: string; label: string; key?: (r: PortfolioRow) => number | string }[] = [
   { value: '', label: 'Worst first' },
-  { value: 'over', label: 'Most over at finish', key: (r) => num(r.forecast_difference) ?? Number.POSITIVE_INFINITY },
+  { value: 'over', label: 'Most over at finish', key: (r) => num(r.forecast_difference) ?? Number.MAX_SAFE_INTEGER },
   { value: 'ahead', label: 'Spending ahead of work', key: (r) => -((num(r.percent_spent) ?? 0) - (num(r.percent_done) ?? 0)) },
   { value: 'budget', label: 'Biggest budget', key: (r) => -(num(r.budget) ?? 0) },
   { value: 'name', label: 'Name', key: (r) => r.name.toLowerCase() },

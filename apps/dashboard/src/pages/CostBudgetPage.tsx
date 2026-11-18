@@ -5,7 +5,7 @@ import { ActionButton, KpiStrip, NoAccess } from '@/components/page/page-kit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowDown, ArrowDownWideNarrow, ArrowRight, ArrowUpDown, Boxes, Calculator, ChevronRight, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Layers, MapPin, Scale, Search,
+  ArrowDown, ArrowDownWideNarrow, ArrowRight, ArrowUpDown, Boxes, Calculator, CircleCheck, CircleDashed, ClipboardCheck, Gauge, Handshake, HardHat, Layers, MapPin, Search,
   ShoppingCart, TrendingDown, TrendingUp, TriangleAlert, X,
 } from 'lucide-react'
 import { DprHeader, DprSection, PageError } from '@/components/dpr-page'
@@ -26,9 +26,9 @@ import { CENTRE_COLOURS, fetchProjectBudget, fetchProjectLabour, putLabourOnLine
 import { compact } from '@/lib/expenses'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
-import { fetchProjects } from '@/lib/projects'
 import { useScope } from '@/lib/ScopeContext'
 import { cn } from '@/lib/utils'
+import { ProjectPickList } from '@/components/schedule/project-picker'
 
 // CC-04: budget against actual for a project, to date. Per kind (labour, materials, subcontract): the BOQ's budget,
 // the budget earned by the work done (work put on a BOQ line), and what was spent in that cost centre. Earned less
@@ -216,7 +216,7 @@ const SORTS: { value: string; label: string; key?: (l: Line) => number }[] = [
   { value: 'earned', label: 'Most earned', key: (l) => -(Number(l.done_quantity) > 0 ? num(l.earned) ?? 0 : 0) },
   { value: 'left', label: 'Most budget left', key: (l) => -((num(l.budget_cost) ?? 0) - (Number(l.done_quantity) > 0 ? num(l.earned) ?? 0 : 0)) },
   { value: 'done', label: 'Most done', key: (l) => -Number(l.percent_done ?? 0) },
-  { value: 'over', label: 'Labour most over', key: (l) => num(l.labour_difference) ?? Number.POSITIVE_INFINITY },
+  { value: 'over', label: 'Labour most over', key: (l) => num(l.labour_difference) ?? Number.MAX_SAFE_INTEGER },
 ]
 
 /** A column header that sorts the table; pressed again, back to BOQ order. */
@@ -505,24 +505,8 @@ function LabourList({ groups, lines, saving, onSave }: { groups: LabourGroup[]; 
 }
 
 function ProjectPicker() {
-  const projects = useQuery({ queryKey: ['scope-projects'], queryFn: fetchProjects })
-  if (projects.isLoading) return <Skeleton className="h-32 rounded-lg" />
-  if ((projects.data ?? []).length === 0) return <p className="text-sm text-muted-foreground">No projects yet.</p>
-  return (
-    <ul className="divide-y rounded-lg border" data-guide="project.pick">
-      {(projects.data ?? []).map((p) => (
-        <li key={p.id}>
-          <Link to={`/cost/budget?project=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
-            <span className="flex size-8 items-center justify-center rounded-md bg-muted">
-              <Scale className="size-4" />
-            </span>
-            <span className="flex-1 font-medium">{p.name}</span>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
+  // UX-35: the one project picker (cards, one project opens by itself).
+  return <ProjectPickList to={(id) => `/cost/budget?project=${id}`} empty="No projects yet." />
 }
 
 export default function CostBudgetPage() {
