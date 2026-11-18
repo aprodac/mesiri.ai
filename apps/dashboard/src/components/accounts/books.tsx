@@ -88,49 +88,6 @@ export function PeriodBar({ state }: { state: ReturnType<typeof usePeriod> }) {
   )
 }
 
-const PAGES = [
-  { to: '/accounts', label: 'Home' },
-  { to: '/accounts/pl', label: 'Profit & loss' },
-  { to: '/accounts/balance-sheet', label: 'Balance sheet' },
-  { to: '/accounts/cash-bank', label: 'Cash & bank' },
-  { to: '/accounts/projects', label: 'Projects' },
-  { to: '/accounts/gst', label: 'GST' },
-  { to: '/accounts/tds', label: 'TDS' },
-  { to: '/accounts/trial-balance', label: 'Trial balance' },
-  { to: '/accounts/day-book', label: 'Day book' },
-  { to: '/accounts/ledgers', label: 'Ledgers' },
-  { to: '/accounts/chart', label: 'Chart of accounts' },
-  { to: '/accounts/periods', label: 'Months' },
-]
-
-/** The Accounts pages in one row, keeping the period and scope as you move between them. */
-export function BooksTabs({ current }: { current: string }) {
-  const [params] = useSearchParams()
-  const keep = new URLSearchParams()
-  for (const k of ['range', 'from', 'to', 'project', 'site']) {
-    const v = params.get(k)
-    if (v) keep.set(k, v)
-  }
-  const qs = keep.toString()
-  return (
-    <nav aria-label="Accounts" className="-mx-1 flex gap-1 overflow-x-auto px-1" data-guide="books.tabs">
-      {PAGES.map((p) => (
-        <Link
-          key={p.to}
-          to={`${p.to}${qs ? `?${qs}` : ''}`}
-          aria-current={current === p.to ? 'page' : undefined}
-          className={cn(
-            'shrink-0 rounded-md px-2.5 py-1 text-sm',
-            current === p.to ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {p.label}
-        </Link>
-      ))}
-    </nav>
-  )
-}
-
 export function ExcelButton({ path, params, name }: { path: string; params: object; name: string }) {
   const toast = useToast()
   const [busy, setBusy] = React.useState(false)

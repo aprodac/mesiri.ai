@@ -38,7 +38,8 @@ import { usePagedUrl } from '@/lib/paging'
 // the money owed is, and one row per supplier with its balance. A row opens the supplier's page (ledger, bills, pay).
 // UXA-05 (Mercon's payables ageing as the reference): what you owe and how long it waited in one card (AgeingCard, as on
 // Receivables), the four figures beside it still filtering, a part of the bar filtering by age; each supplier's own
-// age bar under its balance.
+// age bar under its balance. UXA-07: the list as a table (supplier, contact, score, how long the money waited, what
+// you owe), an overdue supplier with a red bar; the row opens the supplier, the menu and score keep their own clicks.
 // Everyone with Finance still sees the directory: a supplier is picked when an expense is recorded.
 
 type Tile = '' | 'owe' | 'overdue' | 'unbilled' | 'ahead'
@@ -263,79 +264,109 @@ export default function VendorsPage() {
         </div>
       ) : (
         <>
-        <ul className="divide-y rounded-xl border bg-card" data-guide="vendors.list">
-          {pagedShown.shown.map((v) => {
-            const bal = num(v.balance)
-            const late = num(v.overdue)
-            return (
-              <li key={v.id} className={cn('relative flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30', v.status !== 'active' && 'opacity-60')}>
-                <VendorTile id={v.id} name={v.name} />
-                <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left after:absolute after:inset-0" onClick={() => navigate(vendorUrl(v.id))}>
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate font-semibold">{v.name}</span>
-                    {v.kind && v.kind !== 'supplier' && <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', KINDS[v.kind].chip)}>{KINDS[v.kind].label}</span>}
-                    {v.status !== 'active' && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Switched off</span>}
-                    {papers.get(v.id) && (
-                      <span data-testid="papers-warning" role="img" className="relative z-10 inline-flex"
-                        title={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}
-                        aria-label={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}>
-                        <FileWarning className={cn('size-4 shrink-0', papers.get(v.id)!.attention === 'expiring' ? 'text-amber-600' : 'text-red-600')} />
-                      </span>
-                    )}
-                  </span>
-                  <span className="line-clamp-1 text-xs text-muted-foreground">
-                    {[v.code, v.contact_person, v.phone, v.gstin ? `GSTIN ${v.gstin}` : null, v.credit_days != null ? `${v.credit_days} days credit` : null].filter(Boolean).join(' · ') || 'No phone or GSTIN yet'}
-                  </span>
-                </button>
-                {seesMoney && <ScoreChip p={scores.get(v.id)} className="relative z-10 text-xs" />}
-                {seesMoney && (
-                  <span className="flex shrink-0 flex-col items-end">
-                    <span className={cn('font-semibold tabular-nums', late > 0 ? 'text-destructive' : bal < 0 ? 'text-emerald-700 dark:text-emerald-400' : bal === 0 && 'text-muted-foreground')}>
-                      {bal < 0 ? `+${rupees(-bal)}` : rupees(bal)}
-                    </span>
-                    {bal > 0 && v.buckets && (() => {
-                      const sum = BUCKETS.reduce((n, x) => n + num(v.buckets![x.key]), 0) || 1
-                      return (
-                        <span className="my-0.5 flex h-1.5 w-24 gap-px overflow-hidden rounded-full bg-muted" title={`${Math.round((bal / (owe || 1)) * 100)}% of all you owe`}>
-                          {BUCKETS.map((x, i) => num(v.buckets![x.key]) > 0 && <span key={x.key} className={cn('h-full', AGE_BARS[i])} style={{ width: `${(num(v.buckets![x.key]) / sum) * 100}%` }} />)}
+        <div className="overflow-hidden rounded-xl border bg-card shadow-xs" data-guide="vendors.list">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="border-b bg-muted text-xs text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Supplier</th>
+                  <th className="px-3 py-2 text-left font-medium">Contact</th>
+                  {seesMoney && <th className="px-3 py-2 text-left font-medium">Score</th>}
+                  {seesMoney && <th className="px-3 py-2 text-left font-medium">Waiting</th>}
+                  {seesMoney && <th className="px-3 py-2 text-right font-medium">You owe</th>}
+                  <th className="w-12 px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {pagedShown.shown.map((v) => {
+                  const bal = num(v.balance)
+                  const late = num(v.overdue)
+                  const sum = v.buckets ? BUCKETS.reduce((n, x) => n + num(v.buckets![x.key]), 0) : 0
+                  return (
+                    <tr key={v.id} onClick={() => navigate(vendorUrl(v.id))} className={cn('cursor-pointer hover:bg-muted/30', v.status !== 'active' && 'opacity-60', late > 0 && 'bg-destructive/[0.03]')}>
+                      <td className={cn('px-3 py-2.5', late > 0 && 'border-l-4 border-l-destructive')}>
+                        <span className="flex items-center gap-3">
+                          <VendorTile id={v.id} name={v.name} />
+                          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span className="truncate font-semibold">{v.name}</span>
+                            {v.kind && v.kind !== 'supplier' && <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', KINDS[v.kind].chip)}>{KINDS[v.kind].label}</span>}
+                            {v.status !== 'active' && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Switched off</span>}
+                            {papers.get(v.id) && (
+                              <span data-testid="papers-warning" role="img" className="inline-flex"
+                                title={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}
+                                aria-label={`Papers: ${papers.get(v.id)!.papers.map((x) => `${x.label} ${paperStatusWords(x.status, x.days_left).toLowerCase()}`).join(', ')}`}>
+                                <FileWarning className={cn('size-4 shrink-0', papers.get(v.id)!.attention === 'expiring' ? 'text-amber-600' : 'text-red-600')} />
+                              </span>
+                            )}
+                          </span>
                         </span>
-                      )
-                    })()}
-                    <span className="max-w-[46vw] truncate text-xs text-muted-foreground sm:max-w-none">
-                      {late > 0 ? `${rupees(late)} overdue` : bal < 0 ? 'paid ahead' : (v.unbilled_count ?? 0) > 0 ? `${v.unbilled_count} not billed` : v.bills_open ? `${v.bills_open} ${v.bills_open === 1 ? 'bill' : 'bills'} open` : v.last_payment ? `paid ${day(v.last_payment.date)}` : bal === 0 ? 'settled' : ''}
-                    </span>
-                  </span>
-                )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon" className="relative z-10 size-8 shrink-0" aria-label={`More for ${v.name}`}>
-                      <MoreHorizontal className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuItem onClick={() => navigate(vendorUrl(v.id))}>Open account</DropdownMenuItem>
-                    {canManage && <DropdownMenuItem onClick={() => setPaying(v)}>Pay {v.name.split(' ')[0]}</DropdownMenuItem>}
-                    <DropdownMenuItem onClick={() => navigate(`/procurement/orders?vendor=${v.id}`)}>Its orders</DropdownMenuItem>
-                    {seesMoney && <DropdownMenuItem onClick={() => navigate(`/finance/expenses?vendor=${v.id}&period=all`)}>Its expenses</DropdownMenuItem>}
-                    {!readOnly && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setEditing(v)}>Edit</DropdownMenuItem>
-                        {canManage && <DropdownMenuItem onClick={() => setMerging(v)}>Merge into another…</DropdownMenuItem>}
-                        <DropdownMenuItem onClick={() => toggle.mutate(v)}>{v.status === 'active' ? 'Switch off' : 'Switch on'}</DropdownMenuItem>
-                        {canManage && (
-                          <DropdownMenuItem className="text-destructive" onClick={() => window.confirm(`Delete ${v.name}? Only a supplier added by mistake, with nothing recorded, can be deleted.`) && remove.mutate(v)}>
-                            Delete
-                          </DropdownMenuItem>
-                        )}
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </li>
-            )
-          })}
-        </ul>
+                      </td>
+                      <td className="max-w-[16rem] px-3 py-2.5 text-xs text-muted-foreground">
+                        <span className="line-clamp-2">
+                          {[v.code, v.contact_person, v.phone, v.gstin ? `GSTIN ${v.gstin}` : null, v.credit_days != null ? `${v.credit_days} days credit` : null].filter(Boolean).join(' · ') || 'No phone or GSTIN yet'}
+                        </span>
+                      </td>
+                      {seesMoney && (
+                        <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <ScoreChip p={scores.get(v.id)} className="text-xs" />
+                        </td>
+                      )}
+                      {seesMoney && (
+                        <td className="px-3 py-2.5">
+                          {bal > 0 && sum > 0 ? (
+                            <span className="flex h-1.5 w-24 gap-px overflow-hidden rounded-full bg-muted" title={`${Math.round((bal / (owe || 1)) * 100)}% of all you owe`}>
+                              {BUCKETS.map((x, i) => num(v.buckets![x.key]) > 0 && <span key={x.key} className={cn('h-full', AGE_BARS[i])} style={{ width: `${(num(v.buckets![x.key]) / sum) * 100}%` }} />)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      )}
+                      {seesMoney && (
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                          <span className={cn('block font-semibold tabular-nums', late > 0 ? 'text-destructive' : bal < 0 ? 'text-emerald-700 dark:text-emerald-400' : bal === 0 && 'text-muted-foreground')}>
+                            {bal < 0 ? `+${rupees(-bal)}` : rupees(bal)}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {late > 0 ? `${rupees(late)} overdue` : bal < 0 ? 'paid ahead' : (v.unbilled_count ?? 0) > 0 ? `${v.unbilled_count} not billed` : v.bills_open ? `${v.bills_open} ${v.bills_open === 1 ? 'bill' : 'bills'} open` : v.last_payment ? `paid ${day(v.last_payment.date)}` : bal === 0 ? 'settled' : ''}
+                          </span>
+                        </td>
+                      )}
+                      <td className="px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" aria-label={`More for ${v.name}`}>
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem onClick={() => navigate(vendorUrl(v.id))}>Open account</DropdownMenuItem>
+                          {canManage && <DropdownMenuItem onClick={() => setPaying(v)}>Pay {v.name.split(' ')[0]}</DropdownMenuItem>}
+                          <DropdownMenuItem onClick={() => navigate(`/procurement/orders?vendor=${v.id}`)}>Its orders</DropdownMenuItem>
+                          {seesMoney && <DropdownMenuItem onClick={() => navigate(`/finance/expenses?vendor=${v.id}&period=all`)}>Its expenses</DropdownMenuItem>}
+                          {!readOnly && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => setEditing(v)}>Edit</DropdownMenuItem>
+                              {canManage && <DropdownMenuItem onClick={() => setMerging(v)}>Merge into another…</DropdownMenuItem>}
+                              <DropdownMenuItem onClick={() => toggle.mutate(v)}>{v.status === 'active' ? 'Switch off' : 'Switch on'}</DropdownMenuItem>
+                              {canManage && (
+                                <DropdownMenuItem className="text-destructive" onClick={() => window.confirm(`Delete ${v.name}? Only a supplier added by mistake, with nothing recorded, can be deleted.`) && remove.mutate(v)}>
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
           <Pager {...pagedShown.pager} noun="suppliers" className="mt-2" />
         </>
       )}
