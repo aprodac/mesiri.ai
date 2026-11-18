@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { updateParams } from '@/lib/url-state'
 
 // UX-36: paging a list in the browser; drawn by components/page/pager.tsx.
 
@@ -34,17 +35,12 @@ export function usePagedUrl<T>(rows: T[], { key = 'page', size: fixed, resetOn =
   const paged = usePaged(rows, Number(params.get(key)) || 1, size)
   const set = React.useCallback(
     (changes: Record<string, string | null>) =>
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev)
-          for (const [k, v] of Object.entries(changes)) {
-            if (v === null) next.delete(k)
-            else next.set(k, v)
-          }
-          return next
-        },
-        { replace: true },
-      ),
+      updateParams(setParams, (next) => {
+        for (const [k, v] of Object.entries(changes)) {
+          if (v === null) next.delete(k)
+          else next.set(k, v)
+        }
+      }),
     [setParams],
   )
   // A changed filter starts again from the first page (not on the first render: a link may name a page). With no
@@ -88,15 +84,10 @@ export function useServerPage({ key = 'page', size, resetOn = '' }: { key?: stri
   const page = Math.max(1, Number(params.get(key)) || 1)
   const setPage = React.useCallback(
     (p: number) =>
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev)
-          if (p <= 1) next.delete(key)
-          else next.set(key, String(p))
-          return next
-        },
-        { replace: true },
-      ),
+      updateParams(setParams, (next) => {
+        if (p <= 1) next.delete(key)
+        else next.set(key, String(p))
+      }),
     [key, setParams],
   )
   const pageRef = React.useRef(setPage)

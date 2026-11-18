@@ -27,6 +27,7 @@ import { useScope } from '@/lib/ScopeContext'
 import { COLOUR_DOT, COLOUR_TEXT, COLOUR_WORD } from '@/lib/cost-colours'
 import { cn } from '@/lib/utils'
 import { appNow } from '@/lib/clock'
+import { updateParams } from '@/lib/url-state'
 import { ProjectPickList } from '@/components/schedule/project-picker'
 
 // CC-07: green / amber / red per BOQ line. For a period, each line's labour budget earned by the work measured
@@ -327,17 +328,12 @@ export default function CostVariancePage() {
   })
 
   const set = (changes: Record<string, string | null>) =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        for (const [k, v] of Object.entries(changes)) {
-          if (v === null || v === '') next.delete(k)
-          else next.set(k, v)
-        }
-        return next
-      },
-      { replace: true },
-    )
+    updateParams(setParams, (next) => {
+      for (const [k, v] of Object.entries(changes)) {
+        if (v === null || v === '') next.delete(k)
+        else next.set(k, v)
+      }
+    })
   const setPeriod = (key: string) => set({ period: key, from: null, to: null })
   // A tapped day shows only that day; tapped again, back to the period it came from.
   const pickDay = (day: string | null) =>
