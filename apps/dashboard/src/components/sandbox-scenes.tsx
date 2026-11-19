@@ -19,7 +19,9 @@ import { cn } from '@/lib/utils'
 // - ArrivalIris: the page that loads on the new day opens through a circle;
 // - Briefing: the morning: each person's card with what they did, then "Your part today";
 // - EndCredits: Green Villa handed over: the cast and the run's numbers roll;
-// - EpisodeCard: a chapter's title card in the guided project.
+// - EpisodeCard: a chapter's title card in the guided project;
+// - OpeningScene (UX-72): coming into the sample company: its name over the site at night, the sun coming up on the
+//   cast (the person's own part marked "You"), then the day; opened again later, a short "back on site".
 // Every scene can be skipped (a click on Skip, or Esc); with reduced motion none plays: the page simply goes.
 
 export type SceneMode = 'next' | 'skip' | 'back'
@@ -557,5 +559,103 @@ export function EpisodeCard({ number, of, title, line, onDone }: { number: numbe
       <SkipButton onSkip={onDone} />
     </div>,
     document.body,
+  )
+}
+
+/** UX-72: who each role plays in the cast (lib/sandbox SANDBOX_ROLES: the owner is the person themselves). */
+const ROLE_IS: Record<string, string> = { ADMIN: 'Owner', PROJECT_MANAGER: 'Anil', SITE_ENGINEER: 'Ravi', FINANCE: 'Meera' }
+const CAST_ORDER = ['Owner', 'Anil', 'Ravi', 'Meera'] as const
+
+/**
+ * Coming into the sample company. New: its name rises over the site at night, the sun comes up on the cast (the
+ * person's own part marked "You"), then "Day 1" and its date. Opened again: the name, then the day it is on.
+ * Skippable (Skip, Esc); the caller plays nothing with reduced motion.
+ */
+export function OpeningScene({ kind, name, role, day, date, onDone }: {
+  kind: 'new' | 'back'
+  name: string
+  role: string
+  day: number | null
+  date: string | null
+  onDone: () => void
+}) {
+  const [phase, setPhase] = React.useState<'title' | 'cast' | 'day'>('title')
+  const open = useOpen(150)
+  const done = React.useRef(false)
+  const finish = React.useCallback(() => {
+    if (done.current) return
+    done.current = true
+    onDone()
+  }, [onDone])
+  React.useEffect(() => {
+    const plan: [number, () => void][] = kind === 'new'
+      ? [[2700, () => setPhase('cast')], [8100, () => setPhase('day')], [10600, finish]]
+      : [[1900, () => setPhase('day')], [4200, finish]]
+    const timers = plan.map(([ms, fn]) => window.setTimeout(fn, ms))
+    return () => timers.forEach((t) => window.clearTimeout(t))
+  }, [kind, finish])
+
+  const me = ROLE_IS[role] ?? 'Owner'
+  const dayTitle = `Day ${day ?? 1}`
+  return createPortal(
+    <div className="fixed inset-0 z-[95] overflow-hidden text-white" style={{ backgroundColor: INK }} role="status" aria-live="polite" aria-label={`${name}, ${dayTitle}`}>
+      <Sky phase={phase === 'title' ? 'night' : 'dawn'} />
+      <div className="relative mx-auto flex h-full max-w-3xl flex-col justify-center gap-5 px-6 pb-[26vh] [text-shadow:0_1px_12px_rgba(0,0,0,.45)]">
+        {phase === 'title' && (
+          <>
+            <span className="font-mono text-[12px] tracking-[0.14em] text-white/60 uppercase">{kind === 'new' ? 'Your sample company' : 'Back on site'}</span>
+            <RisingTitle text={name} show={open} delay={200} className="text-[clamp(44px,9vw,120px)]" />
+            {kind === 'new' && open && (
+              <Ink text="One project, Green Villa, from the first brick to the handover." writing delay={1100} className="text-[clamp(16px,2vw,22px)] text-white/75" />
+            )}
+          </>
+        )}
+        {phase === 'cast' && (
+          <>
+            <span className="font-mono text-[12px] tracking-[0.14em] text-white/60 uppercase">Starring</span>
+            <ul className="m-0 grid list-none grid-cols-2 gap-2.5 p-0 sm:grid-cols-4">
+              {CAST_ORDER.map((who, i) => <CastCard key={who} who={who} you={who === me} index={i} />)}
+            </ul>
+            <Ink text={`You play the ${CAST[me].role.toLowerCase()}. The others do their part each day.`} writing delay={1300} className="text-[clamp(15px,1.8vw,20px)] text-white/80" />
+          </>
+        )}
+        {phase === 'day' && (
+          <>
+            <span className="font-mono text-[12px] tracking-[0.14em] text-white/60 uppercase">Morning at {name}</span>
+            <RisingTitle text={dayTitle} show delay={100} className="text-[clamp(56px,12vw,150px)]" />
+            {date && <Ink text={dayName(date)} writing delay={350} className="text-[clamp(16px,2.2vw,24px)] text-white/80" />}
+          </>
+        )}
+        <span
+          className="h-[3px] bg-primary transition-[width] ease-in-out"
+          style={{ width: phase === 'day' ? '100%' : phase === 'cast' ? '55%' : open ? '15%' : '0%', transitionDuration: '1600ms' }}
+          aria-hidden="true"
+        />
+      </div>
+      <SkipButton onSkip={finish} />
+    </div>,
+    document.body,
+  )
+}
+
+function CastCard({ who, you, index }: { who: string; you: boolean; index: number }) {
+  const show = useOpen(200 + index * 320)
+  const cast = CAST[who]
+  return (
+    <li
+      className={cn('flex items-center gap-2.5 rounded-xl bg-black/35 p-3 ring-1 backdrop-blur-sm transition-[transform,opacity] duration-500 ease-out', you ? 'ring-primary' : 'ring-white/15')}
+      style={{ transform: show ? 'none' : 'translateY(16px)', opacity: show ? 1 : 0 }}
+    >
+      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white', cast.tone)} aria-hidden>
+        {who.slice(0, 1)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <span className="truncate">{who}</span>
+          {you && <span className="shrink-0 rounded-full bg-primary px-1.5 py-px text-[10px] font-bold text-primary-foreground uppercase">You</span>}
+        </span>
+        <span className="block truncate text-xs text-white/60">{who === 'Owner' ? 'The company' : cast.role}</span>
+      </span>
+    </li>
   )
 }

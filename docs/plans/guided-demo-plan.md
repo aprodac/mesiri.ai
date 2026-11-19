@@ -901,3 +901,23 @@ Backend, additive (`sandbox_player.py`, `sandbox_router.py`): `highlights` ({day
 done and the notable kinds, at most 4 a day and 24 in all, `pick_highlights`) and `finale` ({days, entries, by_kind}, on
 the last day) on `POST /learn/sandbox/next-day`. The plan writes entries as to-dos; the scene tells them as done
 (`didIt`: "Order …" → "Ordered …"). Test: `backend/tests/unit/test_sandbox_highlights_ux71.py`.
+
+
+### 18.16 UX-72: the opening (19 Nov 2026)
+
+Asked in session: *"what is left in it, like in the starting of the simulation"*, then *"yeah build it"*. UX-71 gave the
+days scenes, but coming into the sample company was a plain page load. `OpeningScene` in
+`apps/dashboard/src/components/sandbox-scenes.tsx`, played by `sandbox-clock.tsx`:
+
+| Coming in | What plays |
+|---|---|
+| A new sample company (`POST /learn/sandbox` answered `created: true`) | Night over the site: "Your sample company", its name rising, "One project, Green Villa, from the first brick to the handover."; the sun comes up on the cast (Owner, Anil, Ravi, Meera), the person's own part marked YOU and "You play the …"; then "Day 1" and its date. About 10 s |
+| One opened again | "Back on site", the name; then "Day n" and its date. About 4 s |
+
+Then the page opens through the iris (UX-71's `ArrivalIris`). `enterSandbox` leaves a once-only mark
+(`mesiri_sandbox_opening`, sessionStorage); a role switch passes `opening: false` and plays nothing. The guided project
+(`walkthrough.tsx`, started from `takeSandboxStart`) waits for the opening and the iris (`whenOpeningDone`, at most
+25 s so it never waits for good), then opens with Chapter 1's title card, which UX-71 left out; coming back to chapter 1
+later still shows none. Skip / Esc end it; with reduced motion no scene plays and the project starts at once. No API
+change.
+

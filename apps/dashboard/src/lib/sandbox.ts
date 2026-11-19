@@ -129,7 +129,7 @@ export function useSandboxInfo(enabled = true) {
 
 /** Open my sample company (made first if there is none; the first time takes about 10 seconds) as `role`, then load
  *  the app inside it. `start`: a walkthrough to run once it has loaded. */
-export async function enterSandbox(role: SandboxRole = 'ADMIN', start?: string, to = '/today'): Promise<void> {
+export async function enterSandbox(role: SandboxRole = 'ADMIN', start?: string, to = '/today', opening = true): Promise<void> {
   const real = getToken()
   if (!real) throw new Error('Sign in first.')
   const res = await api.post<SandboxOpened>(SANDBOX_PATH, { role })
@@ -143,7 +143,73 @@ export async function enterSandbox(role: SandboxRole = 'ADMIN', start?: string, 
   s.setItem(KEY, JSON.stringify(session))
   if (start) s.setItem(START_KEY, start)
   else s.removeItem(START_KEY)
+  if (opening) markOpening({ kind: d.created ? 'new' : 'back', name: d.name })
   reload(to)
+}
+
+/** UX-72: the page that loads inside the sample company opens with a scene: a new one with its title sequence (the
+ *  company's name, the site at dawn, the cast, Day 1), one opened again with a short "back on site". Read once. */
+const OPENING_KEY = 'mesiri_sandbox_opening'
+export type SandboxOpening = { kind: 'new' | 'back'; name: string }
+/** The opening is on screen now; the guided project waits for it (`whenOpeningDone`). */
+let openingOnScreen = false
+export const OPENING_DONE_EVENT = 'mesiri:sandbox-opening-done'
+
+function markOpening(o: SandboxOpening) {
+  try {
+    sessionStorage.setItem(OPENING_KEY, JSON.stringify(o))
+  } catch {
+    // Storage blocked: the sample company simply opens without its scene.
+  }
+}
+
+/** Read once: the opening this page load should play, if the person just came into the sample company. */
+export function takeOpening(): SandboxOpening | null {
+  try {
+    const raw = sessionStorage.getItem(OPENING_KEY)
+    if (!raw) return null
+    sessionStorage.removeItem(OPENING_KEY)
+    openingOnScreen = true
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/** The opening has finished (played, skipped, or not played at all). */
+export function openingDone() {
+  if (!openingOnScreen) return
+  openingOnScreen = false
+  window.dispatchEvent(new Event(OPENING_DONE_EVENT))
+}
+
+/** Run `then` once no opening is waiting or playing (at most `limit` ms later, so nothing ever waits for good). */
+export function whenOpeningDone(then: () => void, limit = 25000): () => void {
+  let pending = openingOnScreen
+  try {
+    pending ||= !!sessionStorage.getItem(OPENING_KEY)
+  } catch {
+    // no storage, no opening
+  }
+  if (!pending) {
+    then()
+    return () => {}
+  }
+  let ran = false
+  const go = () => {
+    if (ran) return
+    ran = true
+    window.removeEventListener(OPENING_DONE_EVENT, go)
+    window.clearTimeout(t)
+    then()
+  }
+  window.addEventListener(OPENING_DONE_EVENT, go)
+  const t = window.setTimeout(go, limit)
+  return () => {
+    ran = true
+    window.removeEventListener(OPENING_DONE_EVENT, go)
+    window.clearTimeout(t)
+  }
 }
 
 function forget() {
@@ -157,7 +223,7 @@ function forget() {
  *  `pageOpenFor`, passed in so this file keeps no import of the walkthroughs). */
 export async function switchSandboxRole(role: SandboxRole, allowed: (url: string, role: string) => boolean): Promise<void> {
   const here = `${window.location.pathname}${window.location.search}`
-  await enterSandbox(role, undefined, allowed(here, role) ? here : '/today')
+  await enterSandbox(role, undefined, allowed(here, role) ? here : '/today', false)
 }
 
 /** Back to my own company. The sample company stays as it is, to pick up later (D-PG1). */

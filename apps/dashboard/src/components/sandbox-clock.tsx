@@ -6,8 +6,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/lib/logo-upload'
-import { catchUp, goBackTo, passDays, sandboxSession, takeArrival, takeDaysPassed, useSandboxClock, type DaysPassed, type ForYou } from '@/lib/sandbox'
-import { ArrivalIris, Briefing, DayPassScene, EndCredits, type SceneMode } from '@/components/sandbox-scenes'
+import {
+  catchUp, goBackTo, openingDone, passDays, sandboxSession, takeArrival, takeDaysPassed, takeOpening, useSandboxClock, type DaysPassed, type ForYou,
+} from '@/lib/sandbox'
+import { ArrivalIris, Briefing, DayPassScene, EndCredits, OpeningScene, type SceneMode } from '@/components/sandbox-scenes'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { findPage } from '@/lib/module-map'
 
@@ -60,6 +62,27 @@ export function SandboxClock() {
   const [briefing, setBriefing] = React.useState(() => !!(arrival?.kind === 'day' && away))
   const [credits, setCredits] = React.useState(() => !!(arrival?.kind === 'day' && away?.finale))
   const [iris, setIris] = React.useState(() => !!arrival && !prefersReducedMotion())
+  // UX-72: coming into the sample company, its opening plays, then the page opens through the iris; the guided
+  // project waits for it (lib/sandbox `whenOpeningDone`). Reduced motion: no scene, the project starts at once.
+  const [opening, setOpening] = React.useState(() => (session ? takeOpening() : null))
+  const reduced = prefersReducedMotion()
+  const playOpening = !!opening && !reduced && !clock.isError
+  React.useEffect(() => {
+    if (opening && !playOpening) openingDone()
+  }, [opening, playOpening])
+  const openingEl = playOpening && opening && session && (
+    <OpeningScene
+      kind={opening.kind}
+      name={opening.name || session.name}
+      role={session.role}
+      day={clock.data?.day ?? null}
+      date={clock.data?.date ?? session.today ?? null}
+      onDone={() => {
+        setOpening(null)
+        setIris(true)
+      }}
+    />
+  )
   const playScene = (mode: SceneMode, from: number, to: number, el?: HTMLElement | null) => {
     if (prefersReducedMotion()) return undefined
     const r = el?.getBoundingClientRect()
@@ -78,7 +101,12 @@ export function SandboxClock() {
 
   if (!session || clock.isError) return null
   if (clock.data?.old) {
-    return <p className="m-0 text-xs text-muted-foreground">Older sample: Start over (in ⋯) to play its days.</p>
+    return (
+      <>
+        <p className="m-0 text-xs text-muted-foreground">Older sample: Start over (in ⋯) to play its days.</p>
+        {openingEl}
+      </>
+    )
   }
   const c = clock.data
   const done = !!c && c.day >= c.last_day
@@ -185,7 +213,8 @@ export function SandboxClock() {
       {scene && (
         <DayPassScene mode={scene.mode} fromDay={scene.from} toDay={scene.to} origin={scene.origin} result={scene.result} onFinished={() => finishScene.current?.()} />
       )}
-      {iris && <ArrivalIris onDone={() => { setIris(false); setArrival(null) }} />}
+      {openingEl}
+      {iris && <ArrivalIris onDone={() => { setIris(false); setArrival(null); openingDone() }} />}
       {!iris && credits && away?.finale && <EndCredits finale={away.finale} role={session.role} onClose={() => setCredits(false)} />}
       {!iris && !credits && briefing && away && (
         <Briefing

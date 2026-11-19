@@ -19,7 +19,7 @@ import { useGuideSeen, usePreferences, useStartMode } from '@/lib/start-mode'
 import { Button } from '@/components/ui/button'
 import { WALKTHROUGH_EVENT, setWalkthroughRunning, startWalkthrough } from '@/lib/tour-events'
 import { useTrial } from '@/lib/trial'
-import { inSandbox, takeSandboxStart } from '@/lib/sandbox'
+import { inSandbox, takeSandboxStart, whenOpeningDone } from '@/lib/sandbox'
 import {
   OUTCOME_WALKS, VOICED, canTakeBack, chapterStarts, practiceSaved, findWalkthrough, learnKey, pageOpenFor, spokenWords, walkFor, type WalkCheck, type WalkStep, type Walkthrough,
 } from '@/lib/walkthroughs'
@@ -368,7 +368,8 @@ export function WalkthroughRunner() {
   // "Start the guided project" from outside the sandbox loads the app inside it, then starts here (SS-67).
   React.useEffect(() => {
     const id = takeSandboxStart()
-    if (id) startWalkthrough(id)
+    // UX-72: after the sample company's opening scene, never under it.
+    if (id) return whenOpeningDone(() => startWalkthrough(id))
   }, [])
 
   const step: WalkStep | undefined = run?.walk.steps[run.index]
@@ -386,8 +387,9 @@ export function WalkthroughRunner() {
     lastChapter.current = chapter
     const starts = chapterStarts(run.walk.steps)
     const at = starts.findIndex((c) => c.title === chapter)
-    // Backwards inside the project (Back) shows no card; the first chapter (the hello) has none either.
-    if (at <= 0 || (before && run.dir === -1) || prefersReducedMotion()) return
+    // Backwards inside the project (Back) shows no card. The first chapter's card plays only as the project starts
+    // (UX-72: right after the sample company's opening), never when coming back to it.
+    if (at < 0 || (at === 0 && before) || (before && run.dir === -1) || prefersReducedMotion()) return
     setEpisode({ number: at + 1, of: starts.length, title: chapter, line: step?.title })
   }, [run, step?.chapter, step?.title])
   const stepKey = run ? `${run.walk.id}:${run.index}` : null
