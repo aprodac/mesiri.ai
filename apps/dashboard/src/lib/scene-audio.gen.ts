@@ -1,0 +1,37 @@
+// Made by scripts/scene_audio/make_scene_audio.py (UX-73): do not edit by hand.
+// Each scene sound in public/learn/scenes and its length in ms.
+export const SCENE_AUDIO = {
+  'briefing': 2691,
+  'chapter-a-day-on-site': 2325,
+  'chapter-a-subcontractor': 2325,
+  'chapter-billing-the-client': 2351,
+  'chapter-is-it-making-money': 2325,
+  'chapter-labour-and-wages': 2508,
+  'chapter-material': 1855,
+  'chapter-money-out': 1698,
+  'chapter-month-end': 1802,
+  'chapter-set-up-green-villa': 2691,
+  'chapter-the-boq': 1933,
+  'chapter-your-sample-company': 2456,
+  'credits': 3944,
+  'music-credits': 27533,
+  'open-back': 1620,
+  'open-cast-ADMIN': 7340,
+  'open-cast-FINANCE': 6766,
+  'open-cast-PROJECT_MANAGER': 7184,
+  'open-cast-SITE_ENGINEER': 7654,
+  'open-day': 1855,
+  'open-title': 4310,
+  'pass-back': 967,
+  'pass-dawn': 967,
+  'pass-dusk': 3709,
+  'pass-skip': 1202,
+  'sfx-boom': 3030,
+  'sfx-dawn': 6034,
+  'sfx-forward': 2038,
+  'sfx-night': 9038,
+  'sfx-rewind': 2038,
+  'sfx-whoosh': 1332,
+} as const
+
+export type SceneAudioId = keyof typeof SCENE_AUDIO

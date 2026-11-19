@@ -127,6 +127,10 @@ step's words in another place.
 - A page walkthrough's id in `VOICED` (`page-boq`) also gives that page's own tour (first visit, Help's "Show me
   around") its voice. A tour that opens by itself has no click yet, so the browser holds the sound: the player shows
   Play, never an error.
+- **The sample company's scenes** (UX-73) have their own lines, made once with ElevenLabs into static files
+  (`scripts/scene_audio/make_scene_audio.py` → `public/learn/scenes`, played by `lib/scene-sound.ts`), on or off with
+  the guide voice. A new or renamed chapter in `JOURNEY_CHAPTERS`, or a changed line, means running that script again;
+  until then its card is simply silent.
 - Site words in capitals (BOQ, DPR, GRN, RA, PO, GST, TDS, PDF, CSV) are spelled out for the voice by `spokenWords`, and
   "&" is read "and". A new abbreviation goes in its `SPELLED` list.
 

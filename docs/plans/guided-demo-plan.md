@@ -921,3 +921,31 @@ Then the page opens through the iris (UX-71's `ArrivalIris`). `enterSandbox` lea
 later still shows none. Skip / Esc end it; with reduced motion no scene plays and the project starts at once. No API
 change.
 
+
+### 18.17 UX-73: the scenes' sound (19 Nov 2026)
+
+Asked: *"is the voice over done, using ElevenLabs?"*: the step narration was Sarvam (SS-61) and the scenes were silent.
+Option A picked (*"warm English voice, not necessarily Indian"*): the scenes' lines are made **once** with ElevenLabs
+and served as static files, so the server needs no ElevenLabs key; option B (the step narrator on ElevenLabs, which
+needs a key on the VPS and changes the voice shared with Live) is not done.
+
+| Where | What it says / plays |
+|---|---|
+| Opening, new | boom, night; "Green Villa Builders. One project, from the first brick to the handover."; dawn, "Meet the team … And you, <your part>." (one per role, the cards coming as they are named); "Day one. Let's begin." |
+| Opening, again | whoosh, "Welcome back on site."; dawn |
+| Next day | whoosh, "The sun goes down on site. The team works through the day.", night under the cast's day; "Good morning.", dawn |
+| Skip ahead / Go back | fast-forward whirr, "Skipping ahead." / rewind, "Going back." |
+| Iris, briefing, credits | whoosh; "Here's what everyone did, and your part today."; the credits' music and "Green Villa, handed over. Every day of it, kept by Mesiri." |
+| Chapter cards | boom, "Chapter two. Set up Green Villa." (each of the 11, read from `JOURNEY_CHAPTERS`) |
+
+- Voice: ElevenLabs "George" (warm British storyteller), `eleven_multilingual_v2`, MP3 64 kbps. The key used has
+  text-to-speech only (no sound effects, no music), so the sound under the lines is made with ffmpeg in the same script.
+- `scripts/scene_audio/make_scene_audio.py` makes what is missing (`--force`: all again) into
+  `apps/dashboard/public/learn/scenes/`, removes files no line names, and writes `src/lib/scene-audio.gen.ts` (each
+  id and its length). A renamed chapter or a changed line: run it again in a session with ElevenLabs.
+- `src/lib/scene-sound.ts` plays them. On or off is the guide voice's own setting (`mesiri_guide_voice`): the scene's
+  speaker button or M. A scene opened without a click (after a reload) gets "Tap for sound"; the first tap or key plays
+  what waits. Reduced motion: no scene, so no sound.
+- With sound on the opening lasts as long as its lines (about 17 s new, 4 s again) and a chapter card until its line is
+  said; with sound off, the UX-72 timings.
+

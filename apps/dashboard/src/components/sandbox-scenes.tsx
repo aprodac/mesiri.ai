@@ -3,11 +3,14 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
-  AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, FastForward, FileText, Flag, Hammer, HandCoins, Package, Rewind, Truck, Wallet, X,
+  AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, FastForward, FileText, Flag, Hammer, HandCoins, Package, Rewind, Truck, Volume2,
+  VolumeX, Wallet, X,
 } from 'lucide-react'
 import { Ink } from '@/components/live/ink'
 import { prefersReducedMotion } from '@/lib/timeline'
 import type { DaysPassed, ForYou } from '@/lib/sandbox'
+import { typingIn } from '@/lib/keys'
+import { sceneSoundOn, soundMs, useSceneSound, useSounds } from '@/lib/scene-sound'
 import { cn } from '@/lib/utils'
 
 // UX-71 (asked 18 Nov 2026: "in the simulation I want more cinematicness, like the bit we added when we move from
@@ -23,6 +26,8 @@ import { cn } from '@/lib/utils'
 // - OpeningScene (UX-72): coming into the sample company: its name over the site at night, the sun coming up on the
 //   cast (the person's own part marked "You"), then the day; opened again later, a short "back on site".
 // Every scene can be skipped (a click on Skip, or Esc); with reduced motion none plays: the page simply goes.
+// UX-73: each scene has its sound (lib/scene-sound.ts: the narrator's lines and the sound under them), on or off with
+// the guide voice (the speaker button, or M); a scene with sound on waits for its line before it moves on.
 
 export type SceneMode = 'next' | 'skip' | 'back'
 export type Moment = NonNullable<DaysPassed['highlights']>[number]
@@ -131,6 +136,30 @@ function MomentLine({ m, index, compact }: { m: Moment; index: number; compact?:
   )
 }
 
+/** Sound on or off (M), and "Tap for sound" while the browser holds it until a tap. */
+function SoundButton() {
+  const sound = useSceneSound()
+  const { toggle } = sound
+  React.useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey && !typingIn(e)) toggle()
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [toggle])
+  const Icon = sound.on ? Volume2 : VolumeX
+  return (
+    <button
+      type="button"
+      onClick={sound.held ? undefined : toggle}
+      aria-label={sound.held ? 'Play the sound' : sound.on ? 'Sound off (M)' : 'Sound on (M)'}
+      className={cn('absolute bottom-5 left-5 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 ring-1 ring-white/15 backdrop-blur hover:bg-white/20', sound.held && 'animate-pulse text-white')}
+    >
+      <Icon className="size-3.5" aria-hidden /> {sound.held ? 'Tap for sound' : sound.on ? 'Sound on' : 'Sound off'}
+    </button>
+  )
+}
+
 /** Skip: a click on the button, or Esc. */
 function SkipButton({ onSkip, label = 'Skip' }: { onSkip: () => void; label?: string }) {
   React.useEffect(() => {
@@ -139,9 +168,12 @@ function SkipButton({ onSkip, label = 'Skip' }: { onSkip: () => void; label?: st
     return () => window.removeEventListener('keydown', key)
   }, [onSkip])
   return (
+    <>
+    <SoundButton />
     <button type="button" onClick={onSkip} className="absolute right-5 bottom-5 inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 ring-1 ring-white/15 backdrop-blur hover:bg-white/20">
       {label} <ChevronRight className="size-3.5" aria-hidden />
     </button>
+    </>
   )
 }
 
@@ -210,6 +242,14 @@ export function DayPassScene({ mode, fromDay, toDay, origin, result, onFinished 
 
   const reveal = open ? `circle(150vmax at ${origin.x}px ${origin.y}px)` : `circle(0px at ${origin.x}px ${origin.y}px)`
   const dawn = phase === 'dawn'
+  // UX-73: dusk with its line and the night under the cast's day; then morning. Skip ahead whirs, Go back rewinds.
+  const night = mode === 'next'
+    ? [{ id: 'sfx-whoosh', volume: 0.45 }, { id: 'pass-dusk', delay: 300 }, { id: 'sfx-night', volume: 0.35, loop: true, delay: 900 }]
+    : mode === 'skip'
+      ? [{ id: 'sfx-whoosh', volume: 0.45 }, { id: 'sfx-forward', volume: 0.4, loop: true }, { id: 'pass-skip', delay: 250 }]
+      : [{ id: 'sfx-rewind', volume: 0.4, loop: true }, { id: 'pass-back', delay: 250 }]
+  useSounds(dawn ? null : night, `pass-${mode}-${dawn}`)
+  useSounds(dawn && mode !== 'back' ? [{ id: 'pass-dawn', delay: 150 }, { id: 'sfx-dawn', volume: 0.4 }] : null, `dawn-${mode}-${dawn}`)
   const title = `Day ${result?.day ?? (mode === 'next' ? toDay : counter)}`
 
   return createPortal(
@@ -342,6 +382,7 @@ function Rewinding() {
 /** The page that loads on a new day opens through a circle (the Live cut's reveal). */
 export function ArrivalIris({ onDone }: { onDone: () => void }) {
   const open = useOpen(120)
+  useSounds([{ id: 'sfx-whoosh', volume: 0.4, delay: 80 }], 'iris')
   React.useEffect(() => {
     const t = window.setTimeout(onDone, 1100)
     return () => window.clearTimeout(t)
@@ -368,6 +409,7 @@ export function Briefing({ day, date, moments, summary, forYou, waiting, onClose
   onClose: () => void
 }) {
   const open = useOpen(150)
+  useSounds([{ id: 'briefing', delay: 450 }], `briefing-${day}`)
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', key)
@@ -472,6 +514,7 @@ function PersonCard({ who, index, moments, counts }: { who: string; index: numbe
 /** Green Villa handed over: the cast and the run's numbers roll. */
 export function EndCredits({ finale, role, onClose }: { finale: NonNullable<DaysPassed['finale']>; role: string; onClose: () => void }) {
   const roll = useOpen(300)
+  useSounds([{ id: 'music-credits', volume: 0.5 }, { id: 'credits', delay: 1400 }], 'credits')
   const k = (kind: string) => finale.by_kind[kind] ?? 0
   const numbers: [string, number][] = [
     ['days on site', finale.days],
@@ -538,10 +581,13 @@ function CreditRow({ left, right }: { left: string; right: string }) {
 /** A chapter's title card in the guided project: its number, its name, its first line. */
 export function EpisodeCard({ number, of, title, line, onDone }: { number: number; of: number; title: string; line?: string; onDone: () => void }) {
   const open = useOpen()
+  const said = `chapter-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+  useSounds([{ id: 'sfx-boom', volume: 0.5 }, { id: said, delay: 250 }], `chapter-${number}`)
   React.useEffect(() => {
-    const t = window.setTimeout(onDone, 2900)
+    // The card stays until its line is said (UX-73), never less than before.
+    const t = window.setTimeout(onDone, Math.max(2900, sceneSoundOn() ? soundMs(said) + 900 : 0))
     return () => window.clearTimeout(t)
-  }, [onDone])
+  }, [onDone, said])
   return createPortal(
     <div
       className="fixed inset-0 z-[95] grid cursor-pointer place-items-center text-white"
@@ -587,15 +633,33 @@ export function OpeningScene({ kind, name, role, day, date, onDone }: {
     done.current = true
     onDone()
   }, [onDone])
+  const me = ROLE_IS[role] ?? 'Owner'
+  // UX-73: with sound on, each part lasts as long as its line (never shorter than without).
+  const [voiced] = React.useState(sceneSoundOn)
+  const castLine = `open-cast-${role in ROLE_IS ? role : 'ADMIN'}`
   React.useEffect(() => {
+    const said = (id: string, lead: number, rest: number, least: number) => Math.max(least, voiced ? lead + soundMs(id) + rest : 0)
+    const title = kind === 'new' ? said('open-title', 600, 500, 2700) : said('open-back', 300, 400, 1900)
+    const cast = kind === 'new' ? said(castLine, 300, 700, 5400) : 0
+    const day = kind === 'new' ? said('open-day', 200, 900, 2500) : 2300
     const plan: [number, () => void][] = kind === 'new'
-      ? [[2700, () => setPhase('cast')], [8100, () => setPhase('day')], [10600, finish]]
-      : [[1900, () => setPhase('day')], [4200, finish]]
+      ? [[title, () => setPhase('cast')], [title + cast, () => setPhase('day')], [title + cast + day, finish]]
+      : [[title, () => setPhase('day')], [title + day, finish]]
     const timers = plan.map(([ms, fn]) => window.setTimeout(fn, ms))
     return () => timers.forEach((t) => window.clearTimeout(t))
-  }, [kind, finish])
-
-  const me = ROLE_IS[role] ?? 'Owner'
+  }, [kind, finish, voiced, castLine])
+  useSounds(
+    phase === 'title'
+      ? kind === 'new'
+        ? [{ id: 'sfx-boom', volume: 0.55 }, { id: 'sfx-night', volume: 0.3, loop: true, delay: 300 }, { id: 'open-title', delay: 600 }]
+        : [{ id: 'sfx-whoosh', volume: 0.45 }, { id: 'open-back', delay: 300 }]
+      : phase === 'cast'
+        ? [{ id: 'sfx-dawn', volume: 0.4 }, { id: castLine, delay: 300 }]
+        : kind === 'new' ? [{ id: 'open-day', delay: 200 }] : [{ id: 'sfx-dawn', volume: 0.4 }],
+    `opening-${kind}-${phase}`,
+  )
+  // The cast in the order the narrator names them: the others, then the person's own part.
+  const order = [...CAST_ORDER.filter((w) => w !== me), me]
   const dayTitle = `Day ${day ?? 1}`
   return createPortal(
     <div className="fixed inset-0 z-[95] overflow-hidden text-white" style={{ backgroundColor: INK }} role="status" aria-live="polite" aria-label={`${name}, ${dayTitle}`}>
@@ -614,9 +678,9 @@ export function OpeningScene({ kind, name, role, day, date, onDone }: {
           <>
             <span className="font-mono text-[12px] tracking-[0.14em] text-white/60 uppercase">Starring</span>
             <ul className="m-0 grid list-none grid-cols-2 gap-2.5 p-0 sm:grid-cols-4">
-              {CAST_ORDER.map((who, i) => <CastCard key={who} who={who} you={who === me} index={i} />)}
+              {order.map((who, i) => <CastCard key={who} who={who} you={who === me} index={i} voiced={voiced} />)}
             </ul>
-            <Ink text={`You play the ${CAST[me].role.toLowerCase()}. The others do their part each day.`} writing delay={1300} className="text-[clamp(15px,1.8vw,20px)] text-white/80" />
+            <Ink text={`You play the ${CAST[me].role.toLowerCase()}. The others do their part each day.`} writing delay={voiced ? 6200 : 1300} className="text-[clamp(15px,1.8vw,20px)] text-white/80" />
           </>
         )}
         {phase === 'day' && (
@@ -638,8 +702,9 @@ export function OpeningScene({ kind, name, role, day, date, onDone }: {
   )
 }
 
-function CastCard({ who, you, index }: { who: string; you: boolean; index: number }) {
-  const show = useOpen(200 + index * 320)
+function CastCard({ who, you, index, voiced }: { who: string; you: boolean; index: number; voiced: boolean }) {
+  // With the narrator, each card comes as it is named.
+  const show = useOpen(voiced ? 1250 + index * 1350 : 200 + index * 320)
   const cast = CAST[who]
   return (
     <li
