@@ -1,0 +1,285 @@
+{
+  "episode": 1,
+  "title": "How a construction company works",
+  "source": "docs/learning/src/00-big-picture.html (Field Guide 00, draft 7 Nov 2026): typical figures, to be checked by someone who has run sites",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "eyebrow": "Mesiri · The course · Episode 1",
+      "title": "How a construction company works",
+      "beats": [
+        "Before we pitch anything, we need to understand the people we're selling to.",
+        "This is a construction company. It turns money, material and labour into a building, usually for someone else.",
+        "In the next few minutes, you'll see how it wins work, spends money, gets paid, and where its profit quietly disappears."
+      ],
+      "lines": [
+        { "at": 1, "text": "Money + material + labour → a building" },
+        { "at": 2, "text": "Win · spend · get paid · leak" }
+      ]
+    },
+    {
+      "id": "kinds",
+      "kind": "cards",
+      "eyebrow": "1 · The kinds of companies",
+      "title": "Four kinds you'll meet",
+      "beats": [
+        "There are four kinds of construction company you'll meet.",
+        "Building contractors build for a client, under a contract. They are our main buyer: several sites at once, and five to fifty engineers.",
+        "Builders and developers buy land, build flats or villas, and sell them. They are their own client.",
+        "Government contractors build roads and public buildings, with tenders and strict paperwork. They come later for us.",
+        "And specialists, like electrical or plumbing firms, are often our customers' own subcontractors and suppliers."
+      ],
+      "cards": [
+        { "at": 1, "title": "Building contractor", "text": "Builds for a client under a contract. Several sites, 5 to 50 engineers.", "tag": "Our main buyer" },
+        { "at": 2, "title": "Builder / developer", "text": "Buys land, builds flats or villas, sells them. Its own client.", "tag": "Yes, for the building side" },
+        { "at": 3, "title": "Government contractor", "text": "Roads and public buildings. Tenders, strict billing rules.", "tag": "Later" },
+        { "at": 4, "title": "Specialist", "text": "One trade: electrical, plumbing, waterproofing.", "tag": "Often our customers' suppliers" }
+      ]
+    },
+    {
+      "id": "contracts",
+      "kind": "rows",
+      "eyebrow": "1 · How they're paid",
+      "title": "The contract decides who carries the risk",
+      "beats": [
+        "How a contractor is paid decides who carries the risk if the job costs more than planned.",
+        "With an item-rate contract, built on the BOQ, the bill of quantities, they're paid a rate for each unit of work, on the quantity actually measured.",
+        "With a lump sum, it's one fixed price for the whole job, so almost all the risk sits with the contractor.",
+        "Labour-only means the client buys the material, and the contractor supplies the people.",
+        "And cost-plus means actual cost plus a fee. The client carries the risk, but the contractor has to prove every single cost."
+      ],
+      "rows": [
+        { "at": 1, "name": "Item rate (BOQ)", "text": "₹ per m³ of concrete, ₹ per sq ft of plaster, on measured quantity", "risk": 0.55 },
+        { "at": 2, "name": "Lump sum", "text": "One fixed price, paid in stages", "risk": 0.95 },
+        { "at": 3, "name": "Labour only", "text": "Client buys material; contractor supplies labour", "risk": 0.4 },
+        { "at": 4, "name": "Cost plus", "text": "Actual cost + a fee; every cost must be proved", "risk": 0.15 }
+      ],
+      "riskLabel": "Contractor's risk"
+    },
+    {
+      "id": "money",
+      "kind": "stack",
+      "eyebrow": "1 · Where the money goes",
+      "title": "Out of every ₹100 of contract value",
+      "note": "Rough ranges for building work; every company and project differs.",
+      "beats": [
+        "Now, follow the money. Out of every hundred rupees a client pays...",
+        "material takes around forty to sixty.",
+        "Labour takes twenty to thirty.",
+        "Subcontractors, equipment, transport and overheads take most of the rest.",
+        "And what's left, the margin, is often only around ten rupees.",
+        "So here's the number to remember. With a ten percent margin, if just three percent of the material is lost, about a quarter of the profit is gone."
+      ],
+      "segments": [
+        { "at": 1, "label": "Material", "range": "40–60", "pct": 50, "tone": "#38bdf8" },
+        { "at": 2, "label": "Labour", "range": "20–30", "pct": 25, "tone": "#fb923c" },
+        { "at": 3, "label": "Subcontract, equipment, overheads", "range": "the rest", "pct": 15, "tone": "#a78bfa" },
+        { "at": 4, "label": "Margin", "range": "~10", "pct": 10, "tone": "#facc15" }
+      ],
+      "callout": { "at": 5, "big": "3% of material lost", "small": "≈ a quarter of the profit gone" }
+    },
+    {
+      "id": "life",
+      "kind": "timeline",
+      "eyebrow": "2 · The life of a project",
+      "title": "Six phases, from winning the job to the last rupee",
+      "beats": [
+        "Every project goes through six phases.",
+        "One: win. The drawings become a BOQ, every work item with its quantity and rate. Set a rate too low, and the job loses money before the first brick.",
+        "Two: set up. The estimate becomes the budget, and the team, suppliers and subcontractors are lined up.",
+        "Three: execute. This lasts months, sometimes years. It's where most of the money is spent, and where most of it leaks.",
+        "Four: bill and collect. Every month, the work done is measured and billed to the client, as a running-account bill, an R A bill.",
+        "Five: hand over. Snags are fixed, and the final bill goes in.",
+        "And six: the defects period. Often about a year, while part of every bill, called retention, is still held back."
+      ],
+      "phases": [
+        { "at": 1, "name": "Win", "text": "Estimate · BOQ · contract", "risk": "A rate too low loses money before the first brick" },
+        { "at": 2, "name": "Set up", "text": "Budget · team · suppliers", "risk": "A budget nobody tracks is just a document" },
+        { "at": 3, "name": "Execute", "text": "Work · labour · material · issues, every day", "risk": "Most money is spent, and leaks, here", "big": true },
+        { "at": 4, "name": "Bill & collect", "text": "RA bill every month", "risk": "Late or short bills starve cash" },
+        { "at": 5, "name": "Hand over", "text": "Snags · final bill", "risk": "Unbilled extras forgotten" },
+        { "at": 6, "name": "Defects period", "text": "~1 year · retention held", "risk": "Retention never chased" }
+      ]
+    },
+    {
+      "id": "people",
+      "kind": "people",
+      "eyebrow": "3 · Who's who",
+      "title": "The people, and what keeps them awake",
+      "beats": [
+        "Now, the people. Each one owns a piece of the business, and each one worries about something different.",
+        "The owner asks: are we making money on this project, and will the client pay on time?",
+        "The general manager releases the payments, and asks: was fifteen thousand rupees of work really done, for the fifteen thousand we paid?",
+        "The project manager watches time and cost across the sites. The site engineer runs one site, day by day.",
+        "The supervisor runs the workers. The storekeeper counts material in and out.",
+        "The quantity surveyor measures the work and checks the bills. Purchase buys. Accounts pays and collects, and an outside accountant, the C A, keeps the books in Tally.",
+        "In a small company, one person wears several of these hats. But the jobs still exist."
+      ],
+      "people": [
+        { "at": 1, "who": "Owner", "worry": "Are we making money? Will the client pay on time?", "tone": "#facc15" },
+        { "at": 2, "who": "General manager", "worry": "Was ₹15,000 of work done for the ₹15,000 we paid?", "tone": "#facc15" },
+        { "at": 3, "who": "Project manager", "worry": "On time? Which site is slipping?", "tone": "#38bdf8" },
+        { "at": 3, "who": "Site engineer", "worry": "Will the slab be ready Friday?", "tone": "#fb923c" },
+        { "at": 4, "who": "Supervisor", "worry": "Are my people here?", "tone": "#fb923c" },
+        { "at": 4, "who": "Storekeeper", "worry": "Who took the cement?", "tone": "#fb923c" },
+        { "at": 5, "who": "Quantity surveyor", "worry": "Does the material match the work?", "tone": "#2dd4bf" },
+        { "at": 5, "who": "Purchase", "worry": "Best rate? Already ordered?", "tone": "#2dd4bf" },
+        { "at": 5, "who": "Accounts", "worry": "Which bills are due?", "tone": "#a78bfa" },
+        { "at": 5, "who": "CA (outside)", "worry": "Books complete and filed?", "tone": "#a78bfa" }
+      ],
+      "footer": { "at": 6, "text": "Small company: one person, many hats. The jobs still exist." }
+    },
+    {
+      "id": "rhythm",
+      "kind": "rhythm",
+      "eyebrow": "4 · The rhythm",
+      "title": "Every day, every week, every month",
+      "beats": [
+        "The whole business runs to a rhythm.",
+        "Every day: work done, attendance, deliveries, material used, problems on site, photos, and the daily progress report, the D P R.",
+        "Every week: the labour is paid, often in cash or by UPI, and next week's material is ordered.",
+        "And every month: the R A bill to the client, the subcontractor and supplier bills, a stock check, and the books go to the C A."
+      ],
+      "columns": [
+        { "at": 1, "when": "Daily", "items": ["Work done", "Attendance", "Deliveries & material used", "Issues & photos", "Daily progress report (DPR)"] },
+        { "at": 2, "when": "Weekly", "items": ["Labour paid (cash / UPI)", "Site review", "Next week's material ordered"] },
+        { "at": 3, "when": "Monthly", "items": ["RA bill to the client", "Subcontractor & supplier bills", "Stock check", "Books to the CA · GST · TDS"] }
+      ]
+    },
+    {
+      "id": "cash",
+      "kind": "flow",
+      "eyebrow": "5 · How money flows",
+      "title": "Money goes out every day. It comes in once a month, late.",
+      "beats": [
+        "And here's the problem hidden in that rhythm.",
+        "Money goes out all the time: to suppliers, on thirty to sixty days' credit; to labour, every week; to subcontractors; and to salaries, fuel and hire.",
+        "But money comes in once a month, from the client, and usually late.",
+        "So the contractor pays for the client's building for one or two months, with its own money, supplier credit, or a bank overdraft.",
+        "On top of that, the client often holds back about five percent of every bill, as retention. It's real money owed, and it's easy to forget.",
+        "That's why every late or short bill hurts: it's one more week of financing someone else's building."
+      ],
+      "outs": [
+        { "label": "Suppliers", "sub": "credit, 30–60 days" },
+        { "label": "Labour", "sub": "every week" },
+        { "label": "Subcontractors", "sub": "measured bills" },
+        { "label": "Overheads", "sub": "salaries · fuel · hire" }
+      ],
+      "in": { "at": 2, "label": "Client pays RA bills", "sub": "monthly · late · minus retention" },
+      "gap": { "at": 3, "text": "The cash gap: 1–2 months funded by the contractor", "sub": "own money · supplier credit · bank overdraft" },
+      "retention": { "at": 4, "text": "~5% of every bill held as retention" }
+    },
+    {
+      "id": "leaks",
+      "kind": "leaks",
+      "eyebrow": "6 · Where the profit disappears",
+      "title": "The ten biggest money leaks",
+      "beats": [
+        "So where does the profit actually disappear? Here are the ten biggest leaks.",
+        "Material paid for, but never received: short lorries, accepted on the delivery note.",
+        "Material used beyond the work: nine bags of cement, where the work needed seven.",
+        "Labour not matched by output: six thousand four hundred rupees of masons, for four thousand rupees of plastering.",
+        "Subcontractors overpaid. Bills to the client sent late, or short. Supplier bills paid twice, or at the wrong rate.",
+        "Idle time, when a team waits a whole day for cement that ran out. And rework, when a slab is broken and redone.",
+        "Petty cash with no bills. And retention and advances, simply forgotten.",
+        "None of these is dramatic on its own. Together, they're the difference between profit and loss."
+      ],
+      "leaks": [
+        { "at": 1, "title": "Material paid, not received", "eg": "Short lorries accepted" },
+        { "at": 2, "title": "Material used beyond the work", "eg": "9 bags where 7 were needed" },
+        { "at": 3, "title": "Labour not matched by output", "eg": "₹6,400 of masons, ₹4,000 of work" },
+        { "at": 4, "title": "Subcontractors overpaid", "eg": "Paid before measuring" },
+        { "at": 4, "title": "Client bills late or short", "eg": "October's work billed in December" },
+        { "at": 4, "title": "Supplier bills paid wrong", "eg": "₹420 a bag, ordered at ₹400" },
+        { "at": 5, "title": "Idle time and delays", "eg": "A day waiting for cement" },
+        { "at": 5, "title": "Rework", "eg": "A slab broken and redone" },
+        { "at": 6, "title": "Petty cash", "eg": "Hundreds of payments, no bill" },
+        { "at": 6, "title": "Retention & advances forgotten", "eg": "5% never chased" }
+      ],
+      "footer": { "at": 7, "text": "Small leaks. Together: profit or loss." }
+    },
+    {
+      "id": "info",
+      "kind": "info",
+      "eyebrow": "7 · The information problem",
+      "title": "Everything is recorded somewhere. Nothing is known in time.",
+      "beats": [
+        "Here's the strange part. The company usually already has all of this information.",
+        "It's in paper registers on site, which reach the office days later, if they ever do.",
+        "It's in WhatsApp chats and photos, where everything is there, and nothing can be found or added up.",
+        "It's in Excel files: one person's file, in many versions. It's in Tally: accurate, but after the fact. And it's in phone calls, answered from memory.",
+        "So problems are found at month end, at closeout, or by the accountant, when it's too late to do anything about them.",
+        "What the general manager we met asked for was the opposite: to know the same day, while it can still be fixed."
+      ],
+      "sources": [
+        { "at": 1, "where": "Paper registers", "problem": "Reach the office days later, if ever" },
+        { "at": 2, "where": "WhatsApp chats", "problem": "Everything is there; nothing can be found or totalled" },
+        { "at": 3, "where": "Excel", "problem": "One person's file, many versions" },
+        { "at": 3, "where": "Tally", "problem": "Accurate, but after the fact" },
+        { "at": 3, "where": "Phone calls", "problem": "Answered from memory" }
+      ],
+      "late": { "at": 4, "text": "Found at month end. Too late." },
+      "want": { "at": 5, "text": "Know the same day, while it can still be fixed." }
+    },
+    {
+      "id": "cement",
+      "kind": "story",
+      "eyebrow": "9 · One load of cement",
+      "title": "Follow 200 bags through the whole business",
+      "beats": [
+        "Let's put it all together, and follow one load of cement through the whole business.",
+        "The BOQ has a hundred and twenty cubic metres of concrete. That needs about nine hundred and sixty bags of cement, budgeted at four hundred rupees a bag.",
+        "The site engineer sees the first-floor slab is due on Friday, with only thirty bags left. So they ask for two hundred.",
+        "Purchase orders two hundred bags from the supplier, at four hundred rupees a bag, plus GST.",
+        "On Tuesday the lorry arrives. Three bags are torn, and rejected. A hundred and ninety-seven are accepted.",
+        "On Friday the slab is poured: twenty-four cubic metres, using all two hundred bags. It should have taken about a hundred and ninety-two. That's four percent over.",
+        "Then the supplier's bill arrives: two hundred bags, at four hundred and twenty rupees. It matches neither the order, nor the delivery. Corrected, it's five thousand two hundred rupees less.",
+        "At month end, the slab is measured and billed to the client, minus five percent retention.",
+        "Without connected records, nobody would have seen that the cement was four percent over, the bill was five thousand two hundred rupees too high, and three bags never arrived."
+      ],
+      "steps": [
+        { "at": 1, "module": "Planning", "text": "BOQ: 120 m³ concrete → ~960 bags at ₹400" },
+        { "at": 2, "module": "Site", "text": "Slab due Friday, 30 bags left → ask for 200" },
+        { "at": 3, "module": "Procurement", "text": "Order 200 bags at ₹400 + GST" },
+        { "at": 4, "module": "Materials", "text": "3 torn, rejected · 197 accepted", "flag": "3 bags short" },
+        { "at": 5, "module": "Cost control", "text": "24 m³ used 200 bags; should be ~192", "flag": "4% over" },
+        { "at": 6, "module": "Finance", "text": "Bill: 200 × ₹420 → corrected to 197 × ₹400", "flag": "₹5,200 too high" },
+        { "at": 7, "module": "Client billing", "text": "24 m³ billed at the BOQ rate, minus 5% retention" }
+      ],
+      "footer": { "at": 8, "text": "Three problems nobody sees, unless the records are connected." }
+    },
+    {
+      "id": "map",
+      "kind": "map",
+      "eyebrow": "8 · The module map",
+      "title": "One business, nine connected parts",
+      "beats": [
+        "And that's the whole business on one map.",
+        "Planning sets what to build and what it should cost. Procurement buys it. Materials knows what's on site. The site records what happened each day.",
+        "Labour and subcontract knows who worked, and what they produced. Cost control compares every day's cost with the value of the work done.",
+        "Finance pays and keeps the books. Client billing turns measured work into money. And the owner's view sits on top of all of it.",
+        "Every part feeds the next. When they're connected, the owner knows the same day.",
+        "In episode two, we'll meet the owners themselves: what they're afraid of, what they want, and why they buy."
+      ],
+      "nodes": [
+        { "at": 1, "id": "plan", "name": "Planning & BOQ", "sub": "what to build, at what cost", "x": 12, "y": 22 },
+        { "at": 1, "id": "buy", "name": "Procurement", "sub": "order · receive · bill", "x": 38, "y": 8 },
+        { "at": 1, "id": "mat", "name": "Materials", "sub": "stock · use · reconcile", "x": 64, "y": 22 },
+        { "at": 1, "id": "site", "name": "Site", "sub": "work done · issues", "x": 38, "y": 48 },
+        { "at": 2, "id": "lab", "name": "Labour & subcontract", "sub": "attendance · output · bills", "x": 12, "y": 74 },
+        { "at": 2, "id": "cost", "name": "Cost control", "sub": "cost vs budget · green / red", "x": 64, "y": 74 },
+        { "at": 3, "id": "fin", "name": "Finance & accounts", "sub": "pay · record · books", "x": 38, "y": 94 },
+        { "at": 3, "id": "bill", "name": "Client billing", "sub": "RA bills · retention", "x": 88, "y": 52 },
+        { "at": 3, "id": "owner", "name": "Owner's view", "sub": "profit · cash · risks", "x": 88, "y": 10, "top": true }
+      ],
+      "links": [
+        ["plan", "buy", 1], ["buy", "mat", 1], ["mat", "site", 1], ["plan", "site", 1],
+        ["site", "lab", 2], ["site", "cost", 2], ["mat", "cost", 2], ["lab", "cost", 2],
+        ["lab", "fin", 3], ["buy", "fin", 3], ["cost", "bill", 3], ["bill", "fin", 3],
+        ["cost", "owner", 3], ["bill", "owner", 3], ["fin", "owner", 3]
+      ],
+      "next": { "at": 5, "text": "Next · Episode 2 · What owners want" }
+    }
+  ]
+}

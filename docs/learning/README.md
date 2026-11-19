@@ -8,6 +8,8 @@ experience before they are used with customers.
 Build: `node docs/learning/build.js [filter]` (Playwright, A4, page numbers) turns `src/*.html`
 into `pdf/*.pdf`. Any screenshots in `img/` come from the demo company on a local copy, never production.
 
+**Films** (19 Nov 2026): the course as short narrated episodes, made from these guides: [film/](film/README.md).
+
 ## The set (agreed 7 Nov 2026: 10 guides)
 
 | # | Guide | Status |

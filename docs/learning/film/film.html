@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mesiri film scene</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* FILM-01: one scene of a Mesiri course film, drawn at 1920×1080 and timed to its narration beats (build.mjs passes
+   window.SCENE = { scene, beats: [{ at, len, say }], dur, index, total, episode, title }). Every element appears with a
+   CSS animation whose delay is its beat's start; build.mjs seeks all animations frame by frame (window.seek). */
+:root { --ink: #0b0d10; --panel: #14171c; --line: rgba(255,255,255,.12); --text: #f4f4f5; --dim: rgba(244,244,245,.62); --primary: #facc15; --red: #f87171; --green: #4ade80; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); color: var(--text); font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+.brand { font-family: 'Unbounded', 'IBM Plex Sans', sans-serif; letter-spacing: -0.02em; }
+.mono { font-family: 'Geist Mono', ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+#stage { position: absolute; inset: 0; }
+.bg { position: absolute; inset: -10%; background: radial-gradient(40% 50% at 20% 30%, rgba(250,204,21,.10), transparent 70%), radial-gradient(35% 45% at 80% 70%, rgba(56,189,248,.08), transparent 70%); }
+.grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 80px 80px; mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%); }
+.stripe { position: absolute; left: 0; right: 0; top: 0; height: 10px; background: repeating-linear-gradient(135deg, #1a1d21 0 14px, var(--primary) 14px 28px); }
+.chrome { position: absolute; top: 44px; left: 96px; right: 96px; display: flex; justify-content: space-between; font-size: 18px; color: var(--dim); }
+.head { position: absolute; top: 120px; left: 96px; right: 96px; }
+.eyebrow { font-size: 20px; color: var(--primary); }
+.h1 { font-size: 54px; line-height: 1.08; margin: 18px 0 0; font-weight: 600; max-width: 1600px; }
+.body { position: absolute; left: 96px; right: 96px; top: 300px; bottom: 190px; }
+.caption { position: absolute; left: 0; right: 0; bottom: 64px; display: flex; justify-content: center; }
+.caption span { position: absolute; bottom: 0; max-width: 1500px; text-align: center; font-size: 30px; line-height: 1.35; padding: 10px 22px; border-radius: 12px; background: rgba(0,0,0,.55); color: #fff; opacity: 0; }
+.progress { position: absolute; left: 0; bottom: 0; height: 6px; background: var(--primary); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 30px 32px; }
+.tag { display: inline-block; margin-top: 18px; padding: 6px 14px; border-radius: 999px; font-size: 18px; font-weight: 600; background: rgba(255,255,255,.08); color: var(--dim); }
+.tag.main { background: var(--primary); color: #111; }
+.row { display: grid; grid-template-columns: 380px 1fr 420px; gap: 36px; align-items: center; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.meter { height: 18px; border-radius: 9px; background: rgba(255,255,255,.08); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 9px; background: linear-gradient(90deg, var(--green), var(--primary), var(--red)); transform-origin: left; }
+.flag { display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 999px; background: rgba(248,113,113,.16); color: #fca5a5; font-weight: 600; font-size: 22px; }
+
+/* The motions: each runs once, held at its end. */
+@keyframes rise { from { opacity: 0; transform: translateY(34px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { 0% { opacity: 0; transform: scale(.86); } 70% { opacity: 1; transform: scale(1.03); } 100% { opacity: 1; transform: none; } }
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes growY { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes draw { from { stroke-dashoffset: var(--len, 1000); } to { stroke-dashoffset: 0; } }
+@keyframes letter { from { opacity: 0; transform: translateY(105%); } to { opacity: 1; transform: none; } }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(250,204,21,0); } 50% { box-shadow: 0 0 0 12px rgba(250,204,21,.18); } }
+@keyframes cap { 0%, 99.5% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(-3%, -2%) scale(1.06); } }
+@keyframes bar { from { width: 0; } to { width: 100%; } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const S = window.SCENE
+const sc = S.scene
+const beat = (n) => (S.beats[Math.min(n, S.beats.length - 1)] || { at: 0 }).at
+const stage = document.getElementById('stage')
+
+function el(tag, cls, html, parent) {
+  const e = document.createElement(tag)
+  if (cls) e.className = cls
+  if (html != null) e.innerHTML = html
+  ;(parent || stage).appendChild(e)
+  return e
+}
+/** Animate `e` with `kind`, starting at beat `n` (plus `plus` ms). */
+function on(e, kind, n, plus = 0, len = 700, extra = '') {
+  const at = (typeof n === 'number' ? beat(n) : 0) + plus
+  e.style.animation = `${kind} ${len}ms cubic-bezier(.2,.75,.2,1) ${at}ms both${extra}`
+  return e
+}
+const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+
+// The frame every scene shares.
+on(el('div', 'bg'), 'drift', null, 0, S.dur, '')
+el('div', 'grid')
+el('div', 'stripe')
+const chrome = el('div', 'chrome')
+el('span', 'mono', 'Mesiri · The course', chrome)
+el('span', 'mono', `Episode ${S.episode} · ${esc(S.title)}`, chrome)
+
+function heading() {
+  const h = el('div', 'head')
+  on(el('div', 'eyebrow mono', esc(sc.eyebrow.replace(/^\d+ · /, '')), h), 'fade', 0, 100)
+  on(el('h1', 'h1 brand', esc(sc.title), h), 'rise', 0, 250, 800)
+}
+const body = () => el('div', 'body')
+
+const SCENES = {
+  title() {
+    const wrap = el('div', '')
+    wrap.style.cssText = 'position:absolute;left:160px;right:160px;top:300px'
+    on(el('div', 'mono', esc(sc.eyebrow), wrap), 'fade', 0, 0).style.cssText += ';color:var(--primary);font-size:24px'
+    const h = el('h1', 'brand', '', wrap)
+    h.style.cssText = 'font-size:120px;line-height:1.05;margin:28px 0 0;font-weight:600;display:flex;flex-wrap:wrap;gap:0 .28em'
+    let i = 0
+    for (const word of sc.title.split(' ')) {
+      const w = el('span', '', '', h)
+      w.style.cssText = 'display:inline-flex;overflow:hidden'
+      for (const ch of word) {
+        const c = el('span', '', esc(ch), w)
+        c.style.display = 'inline-block'
+        on(c, 'letter', 0, 300 + i++ * 45, 600)
+      }
+      i++
+    }
+    const line = el('div', '', '', wrap)
+    line.style.cssText = 'height:6px;background:var(--primary);margin-top:40px;transform-origin:left;width:100%'
+    on(line, 'grow', 0, 900, 2200)
+    for (const l of sc.lines) {
+      const p = el('div', '', esc(l.text), wrap)
+      p.style.cssText = 'font-size:40px;color:var(--dim);margin-top:30px'
+      on(p, 'rise', l.at, 300)
+    }
+  },
+  cards() {
+    heading()
+    const b = body()
+    b.style.cssText += ';display:grid;grid-template-columns:repeat(4,1fr);gap:28px;align-items:start'
+    sc.cards.forEach((c, i) => {
+      const k = el('div', 'card', `<div class="brand" style="font-size:34px;font-weight:600">${esc(c.title)}</div><div style="font-size:26px;color:var(--dim);margin-top:16px;line-height:1.4">${esc(c.text)}</div><span class="tag ${i === 0 ? 'main' : ''}">${esc(c.tag)}</span>`, b)
+      on(k, 'rise', c.at, 200)
+      if (i === 0) k.style.border = '2px solid var(--primary)'
+    })
+  },
+  rows() {
+    heading()
+    const b = body()
+    const hd = el('div', 'row mono', `<span>Contract</span><span>How they're paid</span><span>${esc(sc.riskLabel)}</span>`, b)
+    hd.style.cssText += ';font-size:18px;color:var(--dim);padding-top:0'
+    on(hd, 'fade', 0, 600)
+    for (const r of sc.rows) {
+      const row = el('div', 'row', `<span class="brand" style="font-size:34px;font-weight:600">${esc(r.name)}</span><span style="font-size:27px;color:var(--dim)">${esc(r.text)}</span><div class="meter"><i style="width:${r.risk * 100}%"></i></div>`, b)
+      on(row, 'rise', r.at, 150)
+      on(row.querySelector('i'), 'grow', r.at, 700, 1200)
+    }
+  },
+  stack() {
+    heading()
+    const b = body()
+    const bar = el('div', '', '', b)
+    bar.style.cssText = 'display:flex;height:170px;border-radius:22px;overflow:hidden;margin-top:40px;background:rgba(255,255,255,.04)'
+    const labels = el('div', '', '', b)
+    labels.style.cssText = 'display:flex;margin-top:26px'
+    for (const s of sc.segments) {
+      const seg = el('div', '', '', bar)
+      seg.style.cssText = `width:${s.pct}%;background:${s.tone};transform-origin:left;${s.label === 'Margin' ? 'box-shadow:inset 0 0 0 4px #fff' : ''}`
+      on(seg, 'grow', s.at, 100, 1100)
+      const lab = el('div', '', `<div class="brand" style="font-size:${s.pct >= 20 ? 52 : 36}px;font-weight:600;color:${s.tone}">${esc(/^\d/.test(s.range) ? `₹${s.range}` : s.range.replace(/^~(\d)/, '~₹$1'))}</div><div style="font-size:26px;color:var(--dim);margin-top:6px;padding-right:20px">${esc(s.label)}</div>`, labels)
+      lab.style.width = `${s.pct}%`
+      on(lab, 'rise', s.at, 400)
+    }
+    const c = el('div', 'card', `<div class="brand" style="font-size:56px;font-weight:600;color:var(--red)">${esc(sc.callout.big)}</div><div style="font-size:36px;margin-top:10px">${esc(sc.callout.small)}</div>`, b)
+    c.style.cssText += ';position:absolute;left:0;bottom:30px;border-color:rgba(248,113,113,.5)'
+    on(c, 'pop', sc.callout.at, 300)
+    const n = el('div', '', esc(sc.note), b)
+    n.style.cssText = 'position:absolute;right:0;bottom:40px;font-size:22px;color:var(--dim);max-width:600px;text-align:right'
+    on(n, 'fade', 0, 1500)
+  },
+  timeline() {
+    heading()
+    const b = body()
+    const track = el('div', '', '', b)
+    track.style.cssText = 'position:absolute;left:60px;right:60px;top:70px;height:6px;background:var(--primary);transform-origin:left;border-radius:3px'
+    on(track, 'grow', 0, 600, 3000)
+    const n = sc.phases.length
+    sc.phases.forEach((p, i) => {
+      const col = el('div', '', '', b)
+      const x = 60 + (i * (1728 - 120)) / (n - 1)
+      col.style.cssText = `position:absolute;left:${x}px;top:0;width:260px;transform:translateX(-50%)`
+      const dot = el('div', 'brand', String(i + 1), col)
+      dot.style.cssText = `width:${p.big ? 150 : 120}px;height:${p.big ? 150 : 120}px;margin:${p.big ? 0 : 15}px auto 0;border-radius:50%;display:grid;place-items:center;font-size:${p.big ? 56 : 44}px;font-weight:700;background:${p.big ? 'var(--primary)' : 'var(--panel)'};color:${p.big ? '#111' : 'var(--text)'};border:3px solid var(--primary)`
+      on(dot, 'pop', p.at, 0)
+      const t = el('div', '', `<div class="brand" style="font-size:32px;font-weight:600">${esc(p.name)}</div><div style="font-size:23px;color:var(--dim);margin-top:10px;line-height:1.35">${esc(p.text)}</div><div style="font-size:22px;color:#fca5a5;margin-top:14px;line-height:1.35">${esc(p.risk)}</div>`, col)
+      t.style.cssText = 'text-align:center;margin-top:26px'
+      on(t, 'rise', p.at, 250)
+    })
+  },
+  people() {
+    heading()
+    const b = body()
+    b.style.cssText += ';display:grid;grid-template-columns:repeat(5,1fr);gap:22px;align-content:start'
+    for (const p of sc.people) {
+      const k = el('div', 'card', `<div style="display:flex;align-items:center;gap:14px"><span style="width:52px;height:52px;border-radius:50%;background:${p.tone};color:#111;display:grid;place-items:center;font-weight:700;font-size:24px">${esc(p.who[0])}</span><span style="font-size:27px;font-weight:600">${esc(p.who)}</span></div><div style="font-size:23px;color:var(--dim);margin-top:16px;line-height:1.38">“${esc(p.worry)}”</div>`, b)
+      k.style.padding = '24px'
+      on(k, 'rise', p.at, 200)
+    }
+    const f = el('div', '', esc(sc.footer.text), b)
+    f.style.cssText = 'grid-column:1/-1;font-size:32px;color:var(--primary);margin-top:16px'
+    on(f, 'rise', sc.footer.at, 200)
+  },
+  rhythm() {
+    heading()
+    const b = body()
+    b.style.cssText += ';display:grid;grid-template-columns:repeat(3,1fr);gap:30px;align-items:start'
+    for (const c of sc.columns) {
+      const k = el('div', 'card', `<div class="brand" style="font-size:44px;font-weight:600;color:var(--primary)">${esc(c.when)}</div>`, b)
+      on(k, 'rise', c.at, 100)
+      c.items.forEach((it, i) => {
+        const li = el('div', '', `<span style="color:var(--primary)">●</span>&nbsp; ${esc(it)}`, k)
+        li.style.cssText = 'font-size:28px;margin-top:20px'
+        on(li, 'rise', c.at, 400 + i * 450)
+      })
+    }
+  },
+  flow() {
+    heading()
+    const b = body()
+    const mid = el('div', 'card brand', 'The company<div style="font-family:IBM Plex Sans;font-size:24px;color:var(--dim);font-weight:400;margin-top:8px">cash and bank</div>', b)
+    mid.style.cssText += ';position:absolute;left:720px;top:150px;width:330px;text-align:center;font-size:36px;font-weight:600;border:2px solid var(--primary)'
+    on(mid, 'pop', 0, 400)
+    sc.outs.forEach((o, i) => {
+      const y = 10 + i * 135
+      const arrow = el('div', '', '', b)
+      arrow.style.cssText = `position:absolute;left:1060px;top:${y + 50}px;width:250px;height:4px;background:var(--red);transform-origin:left`
+      on(arrow, 'grow', 1, i * 700, 600)
+      const k = el('div', 'card', `<div style="font-size:30px;font-weight:600">${esc(o.label)}</div><div style="font-size:22px;color:var(--dim)">${esc(o.sub)}</div>`, b)
+      k.style.cssText += `;position:absolute;left:1330px;top:${y}px;width:390px;padding:18px 26px`
+      on(k, 'rise', 1, i * 700 + 300)
+    })
+    const inArrow = el('div', '', '', b)
+    inArrow.style.cssText = 'position:absolute;left:440px;top:205px;width:270px;height:4px;background:var(--green);transform-origin:left'
+    on(inArrow, 'grow', sc.in.at, 300, 1600)
+    const ink = el('div', 'card', `<div style="font-size:30px;font-weight:600">${esc(sc.in.label)}</div><div style="font-size:22px;color:var(--dim)">${esc(sc.in.sub)}</div>`, b)
+    ink.style.cssText += ';position:absolute;left:0;top:150px;width:420px'
+    on(ink, 'rise', sc.in.at, 0)
+    const gap = el('div', 'card', `<div class="brand" style="font-size:36px;font-weight:600;color:var(--primary)">${esc(sc.gap.text)}</div><div style="font-size:24px;color:var(--dim);margin-top:8px">${esc(sc.gap.sub)}</div>`, b)
+    gap.style.cssText += ';position:absolute;left:0;top:420px;width:1000px;border-color:rgba(250,204,21,.5)'
+    on(gap, 'pop', sc.gap.at, 200)
+    const r = el('div', 'flag', `● ${esc(sc.retention.text)}`, b)
+    r.style.cssText += ';position:absolute;left:0;top:345px'
+    on(r, 'pop', sc.retention.at, 200)
+  },
+  leaks() {
+    heading()
+    const b = body()
+    b.style.cssText += ';display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:min-content;gap:20px'
+    sc.leaks.forEach((l, i) => {
+      const k = el('div', 'card', `<div class="brand" style="font-size:40px;font-weight:700;color:var(--red)">${i + 1}</div><div style="font-size:26px;font-weight:600;margin-top:8px;line-height:1.25">${esc(l.title)}</div><div style="font-size:22px;color:var(--dim);margin-top:10px">${esc(l.eg)}</div>`, b)
+      k.style.padding = '22px 24px'
+      const same = sc.leaks.filter((x, j) => x.at === l.at && j < i).length
+      on(k, 'pop', l.at, 150 + same * 900)
+    })
+    const f = el('div', '', esc(sc.footer.text), b)
+    f.style.cssText = 'grid-column:1/-1;font-size:36px;color:var(--primary);margin-top:8px'
+    on(f, 'rise', sc.footer.at, 200)
+  },
+  info() {
+    heading()
+    const b = body()
+    const list = el('div', '', '', b)
+    list.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:20px'
+    sc.sources.forEach((s, i) => {
+      const k = el('div', 'card', `<div style="font-size:30px;font-weight:600">${esc(s.where)}</div><div style="font-size:23px;color:var(--dim);margin-top:12px;line-height:1.35">${esc(s.problem)}</div>`, list)
+      const same = sc.sources.filter((x, j) => x.at === s.at && j < i).length
+      on(k, 'rise', s.at, 150 + same * 1500)
+    })
+    const late = el('div', 'flag', esc(sc.late.text), b)
+    late.style.cssText += ';margin-top:50px;font-size:34px;padding:14px 26px'
+    on(late, 'pop', sc.late.at, 200)
+    const want = el('div', 'brand', esc(sc.want.text), b)
+    want.style.cssText = 'margin-top:40px;font-size:54px;font-weight:600;color:var(--primary);max-width:1500px;line-height:1.15'
+    on(want, 'rise', sc.want.at, 300, 900)
+  },
+  story() {
+    heading()
+    const b = body()
+    b.style.top = '270px'
+    sc.steps.forEach((s, i) => {
+      const row = el('div', '', `<span class="mono" style="font-size:19px;color:var(--primary);width:250px;flex:none">${esc(s.module)}</span><span style="font-size:30px;flex:1">${esc(s.text)}</span>${s.flag ? `<span class="flag">⚑ ${esc(s.flag)}</span>` : ''}`, b)
+      row.style.cssText = 'display:flex;align-items:center;gap:24px;padding:15px 24px;border-left:5px solid var(--primary);margin-bottom:12px;background:rgba(255,255,255,.03);border-radius:0 14px 14px 0'
+      on(row, 'rise', s.at, 150)
+      if (s.flag) on(row.querySelector('.flag'), 'pop', s.at, 2200)
+    })
+    const f = el('div', 'brand', esc(sc.footer.text), b)
+    f.style.cssText = 'font-size:36px;font-weight:600;color:var(--primary);margin-top:22px'
+    on(f, 'rise', sc.footer.at, 300)
+  },
+  map() {
+    heading()
+    const b = body()
+    b.style.cssText += ';bottom:230px'
+    // Boxes by percent of the area; the lines are drawn in real pixels once the area's size is known (window.ready).
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;overflow:visible'
+    b.appendChild(svg)
+    const pct = Object.fromEntries(sc.nodes.map((n) => [n.id, [n.x / 100, n.y / 100]]))
+    window.afterLayout = () => {
+      const W = b.clientWidth, H = b.clientHeight
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
+      for (const [a, z, at] of sc.links) {
+        const [x1, y1] = [pct[a][0] * W, pct[a][1] * H], [x2, y2] = [pct[z][0] * W, pct[z][1] * H]
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+        Object.entries({ x1, y1, x2, y2, stroke: 'rgba(250,204,21,.55)', 'stroke-width': 4 }).forEach(([k, v]) => line.setAttribute(k, v))
+        const len = Math.hypot(x2 - x1, y2 - y1)
+        line.style.cssText = `stroke-dasharray:${len};--len:${len}`
+        svg.appendChild(line)
+        on(line, 'draw', at, 900, 1400)
+      }
+    }
+    const pos = Object.fromEntries(sc.nodes.map((n) => [n.id, [n.x, n.y]]))
+    sc.nodes.forEach((n, i) => {
+      const [x, y] = pos[n.id]
+      const k = el('div', 'card', `<div style="font-size:27px;font-weight:600">${esc(n.name)}</div><div style="font-size:20px;color:var(--dim);margin-top:4px">${esc(n.sub)}</div>`, b)
+      k.style.cssText += `;position:absolute;left:${x}%;top:${y}%;translate:-50% -50%;width:330px;padding:16px 22px;text-align:center;${n.top ? 'border:2px solid var(--primary);background:#2a2410' : ''}`
+      const same = sc.nodes.filter((m, j) => m.at === n.at && j < i).length
+      on(k, 'pop', n.at, same * 550)
+    })
+    const glowAt = beat(4)
+    b.querySelectorAll('.card').forEach((k) => { k.style.animation += `, glow 1600ms ease-in-out ${glowAt}ms 2` })
+    const nx = el('div', 'brand', esc(sc.next.text), stage)
+    nx.style.cssText = 'position:absolute;left:96px;bottom:140px;font-size:44px;font-weight:600;color:var(--primary)'
+    on(nx, 'rise', sc.next.at, 200)
+  },
+}
+
+SCENES[sc.kind]()
+
+// Captions: each beat's words while it is said, in chunks of at most two short lines, each shown for its share of
+// the beat (by its length in letters).
+function chunks(text, max = 92) {
+  const parts = text.match(/[^,.:;?!]+[,.:;?!]*\s*/g) || [text]
+  const out = []
+  for (const p of parts) {
+    const last = out[out.length - 1]
+    if (last && (last + p).length <= max) out[out.length - 1] = last + p
+    else out.push(p)
+  }
+  return out.map((c) => c.trim()).filter(Boolean)
+}
+const cap = el('div', 'caption')
+S.beats.forEach((b, i) => {
+  const until = i + 1 < S.beats.length ? S.beats[i + 1].at : S.dur
+  const parts = chunks(b.say)
+  const letters = parts.reduce((n, c) => n + c.length, 0)
+  let t = b.at
+  parts.forEach((c, j) => {
+    const len = j === parts.length - 1 ? until - t : (b.len * c.length) / letters
+    const s = el('span', '', esc(c), cap)
+    s.style.animation = `cap ${Math.max(1, Math.round(len))}ms linear ${Math.round(t)}ms forwards`
+    t += len
+  })
+})
+// Progress across the episode.
+const bar = el('div', 'progress')
+bar.style.left = `${(S.index / S.total) * 100}%`
+bar.style.width = `${100 / S.total}%`
+bar.style.transformOrigin = 'left'
+on(bar, 'grow', null, 0, S.dur, '')
+bar.style.animationTimingFunction = 'linear'
+const done = el('div', 'progress')
+done.style.cssText += `;left:0;width:${(S.index / S.total) * 100}%;opacity:.5`
+
+window.seek = (t) => {
+  for (const a of document.getAnimations()) {
+    a.pause()
+    a.currentTime = t
+  }
+}
+// The content starts under the heading, however many lines it takes.
+window.ready = document.fonts.ready.then(() => {
+  const h = document.querySelector('.head')
+  const b = document.querySelector('.body')
+  if (h && b) b.style.top = `${Math.max(parseInt(getComputedStyle(b).top), h.offsetTop + h.offsetHeight + 44)}px`
+  window.afterLayout?.()
+  return true
+})
+</script>
+</body>
+</html>
