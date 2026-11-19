@@ -157,7 +157,7 @@ function mixAudio(list, offset, out) {
     for (const b of s.beats) add(b.file, base + b.at, 1)
   }
   const n = inputs.length / 2
-  const graph = `${chains.join(';')};${Array.from({ length: n }, (_, i) => `[a${i}]`).join('')}amix=inputs=${n}:normalize=0:dropout_transition=0,alimiter=limit=0.95[out]`
+  const graph = `${chains.join(';')};${Array.from({ length: n }, (_, i) => `[a${i}]`).join('')}amix=inputs=${n}:normalize=0:dropout_transition=0,loudnorm=I=-16:TP=-1.5:LRA=11[out]`
   run([...inputs, '-filter_complex', graph, '-map', '[out]', '-ac', '2', '-ar', '44100', '-c:a', 'aac', '-b:a', '160k', out])
 }
 
