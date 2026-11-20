@@ -113,8 +113,8 @@ def test_lake_view_lines_hold_all_the_work_the_story_counts_on_them() -> None:
         at = (sample_story.DEMO_SITES + sample_story.DEMO_SITES_2).index(tower)
         done: dict[str, float] = {}
         works = sample_story.DEMO_WORK[at]
-        for work, _n, _u, per_day in works:  # the seed's 14 days share the site's works in turn
-            done[work] = done.get(work, 0) + per_day * (14 // len(works) + 1)
+        for work, _n, _u, days, _uses in works:  # each of the seed's stages, its quantity day by day
+            done[work] = done.get(work, 0) + sum(days)
         for stage in sample_plan.STAGES[key]:
             done[stage.work] = done.get(stage.work, 0) + stage.per_day * stage.days
         for work, qty in done.items():
