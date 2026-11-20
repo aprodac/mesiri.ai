@@ -48,8 +48,7 @@ _log = logging.getLogger(__name__)
 #: Most days at once (D-GC5).
 MAX_DAYS = 7
 #: The company's bank account in the sample, opened the first time days pass, with enough in it for the project.
-BANK_ACCOUNT = "Federal Bank current account"
-OPENING_BALANCE = 2500000
+BANK_ACCOUNT, _BANK_NAME, OPENING_BALANCE = sp.story.DEMO_BANK  # the seed opens it (D5); here only if it is missing
 
 # --- Where the sample is -----------------------------------------------------------------------------------------
 
@@ -224,7 +223,7 @@ class _World:
         if self.account is None:
             # The company's bank account, the first time days pass: suppliers, wages and the client go through it.
             made = await self.call(OWNER, "POST", "/finance/accounts", json={
-                "name": BANK_ACCOUNT, "account_type": "bank", "bank_name": "Federal Bank",
+                "name": BANK_ACCOUNT, "account_type": "bank", "bank_name": _BANK_NAME,
                 "opening_balance": OPENING_BALANCE})
             if made.ok and isinstance(made.body, dict) and made.body.get("id"):
                 self.account = str(made.body["id"])

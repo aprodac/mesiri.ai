@@ -4,7 +4,7 @@
 > entered or will be entered along the way ... so that everything is understood. For that we need to plan a proper
 > project." This page is that plan: one project, every document and record in it, who makes each, when, and where it
 > goes in Mesiri. The series ([SERIES_PLAN.md](SERIES_PLAN.md)), the starter kit, the sample company's seed and its
-> 62-day plan all follow this page; where they disagree today, section 2 says so. Status: **draft for Ilan's review**.
+> 62-day plan all follow this page; where they disagree today, section 2 says so. Status: **agreed** (Ilan, 20 Nov 2026: "Yes" to D1 to D5 as recommended). Progress in section 8.
 
 ## 1. What already exists (20 Nov 2026)
 
@@ -17,7 +17,7 @@
 
 ## 2. Where they disagree today, and the decision each needs
 
-| # | What | Today | Recommendation |
+| # | What | Today | Decided (20 Nov 2026) |
 |---|---|---|---|
 | D1 | **Green Villa's timeline** | The contract says work starts 2 Nov 2026 and handover is 31 Jul 2027 (9 months); the plan hands over on day 62 | **The 62 days are Green Villa's last two months** (finishing: plastering, tiling, painting at the Main block; the Annex from plinth to paint) and Lake View's middle (floors 3 to 6). Day 62 = 31 Jul 2027. Months 1 to 7 (foundation, frame, block work) are told as the backstory, from the seed's two weeks and the guided project |
 | D2 | **Green Villa is never billed** | Only Lake View gets running bills (days 23, 51); Green Villa is handed over unbilled | Green Villa gets its monthly RA bills (per its contract: 10% advance recovery, 5% retention), its final bill at handover, and the retention release after the defects period |
@@ -150,7 +150,9 @@ makes it from the records; nobody types it.
 
 ## 8. Work this plan needs, in order
 
-1. **Decisions D1 to D5** (Ilan).
+1. **Decisions D1 to D5** (Ilan): agreed 20 Nov 2026.
+   - Done: D3 (the mason is Rajan; the owner is Ramesh Nair in the demo seed) and D5 (the seed opens the Federal Bank
+     account and a petty-cash box per site; the player uses the same definition), checked through the API.
 2. **The documents to make:** the drawing set (A-102, A-201, A-301, S-101, S-102, S-201, E-101, P-101), the building
    permit, the supplier rate list, the places, the return note, the stock count sheet, the hire bill, the handover
    certificate: added to the starter kit's generator (`make_kit.py`), each with its page and, where it fits, a catch.

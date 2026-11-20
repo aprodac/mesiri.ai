@@ -101,7 +101,7 @@ async def main(database: str) -> None:
     # reset does; then a site engineer, for the engineer's view.
     async with engine.begin() as c:
         created = await create_company(c, NewCompany(
-            name="Demo Builders", owner_name="Anil", owner_email="owner@demo.test", project_name=demo.DEMO_PROJECT,
+            name="Demo Builders", owner_name="Ramesh Nair", owner_email="owner@demo.test", project_name=demo.DEMO_PROJECT,
             site_names=demo.DEMO_SITES, auto_dpr=True, timezone="Asia/Kolkata"))
         await c.execute(sa.text(
             "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role, status, access_policy, "

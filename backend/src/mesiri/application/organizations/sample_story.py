@@ -42,9 +42,10 @@ DEMO_VENDORS = (
 #: SS-65: a subcontractor, so the guided demo's subcontract chapter (work order, measurement, bill) has one to give
 #: work to. In the vendor register as kind ``subcontractor``; no work order yet (the chapter writes it).
 DEMO_SUBCONTRACTORS = (("Joy Tiling Works", "Angamaly", "Tiling and flooring, own crew of 6"),)
-#: The worker register: name, trade, daily wage, the site they work at (index into the four sites).
+#: The worker register: name, trade, daily wage, the site they work at (index into the four sites). The first mason is
+#: Rajan, not Ravi: Ravi is the site engineer (project bible D3, 20 Nov 2026).
 DEMO_WORKERS = (
-    ("Ravi", "mason", 1100, 0), ("Suresh", "mason", 1100, 0), ("Manoj", "mason", 1050, 1), ("Biju", "mason", 1100, 2),
+    ("Rajan", "mason", 1100, 0), ("Suresh", "mason", 1100, 0), ("Manoj", "mason", 1050, 1), ("Biju", "mason", 1100, 2),
     ("Shibu", "mason", 1050, 2), ("Joseph", "carpenter", 1000, 0), ("Thomas", "carpenter", 1000, 2),
     ("Rajesh", "bar bender", 1000, 2), ("Dinesh", "bar bender", 950, 3), ("Prakash", "electrician", 1200, 0),
     ("Satheesh", "plumber", 1150, 1), ("Sunil", "helper", 750, 0), ("Vinod", "helper", 750, 1), ("Shaji", "helper", 700, 2),
@@ -119,7 +120,12 @@ DEMO_BOQ = {
 #: Bags of cement a cubic metre of concrete uses (the lines whose work is concreting).
 DEMO_CEMENT_PER_CUM = 8
 #: Advances still out: (worker, amount, days back).
-DEMO_ADVANCES = (("Ravi", 3000, 5), ("Biju", 5000, 3), ("Shaji", 1500, 2))
+DEMO_ADVANCES = (("Rajan", 3000, 5), ("Biju", 5000, 3), ("Shaji", 1500, 2))
+#: LRN-F5 (project bible D5, 20 Nov 2026): where the company's money is kept, from the start, so payments have an
+#: account and the Money page is not empty: the bank account (name, bank, opening balance) and a petty-cash box per
+#: site (opening float). The sample company's player uses the same bank account (learn/sandbox_player.py).
+DEMO_BANK = ("Federal Bank current account", "Federal Bank", 2500000)
+DEMO_PETTY_FLOAT = 20000
 #: The second project's client and contract.
 DEMO_CLIENT = {"name": "Lake View Builders", "contact_person": "Mr. Varghese", "address": "Kakkanad, Kochi"}
 DEMO_CONTRACT = {"contract_no": "LVB/2026/014", "contract_value": 42000000, "retention_pct": 5, "gst_pct": 18}
@@ -172,6 +178,15 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
                                                                 "notes": notes})
         if made and made.get("id"):
             vendors[name] = str(made["id"])
+    # D5: the bank account and each site's petty cash, before anything is paid.
+    await post("money account", "/finance/accounts", {"name": DEMO_BANK[0], "account_type": "bank", "bank_name": DEMO_BANK[1],
+                                                      "opening_balance": DEMO_BANK[2]})
+    site_names = (*DEMO_SITES, *DEMO_SITES_2)
+    for i, (project_id, site_id) in enumerate(sites):
+        site_name = site_names[i] if i < len(site_names) else f"site {i + 1}"
+        await post("money account", "/finance/accounts", {"name": f"Petty cash · {site_name}", "account_type": "cash",
+                                                          "opening_balance": DEMO_PETTY_FLOAT, "project_id": project_id,
+                                                          "site_id": site_id})
     workers: list[tuple[dict, str, str, int, int]] = []  # (worker, name, trade, wage, site index)
     for name, trade, wage, at in DEMO_WORKERS:
         made = await post("worker", "/labour/workers", {"name": name, "trade": trade, "default_daily_wage": wage})
