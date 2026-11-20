@@ -1,6 +1,8 @@
 // LRN-F15: episode 4's website steps, done for real in the sample company (record.cjs runs shoot.cjs for each scene on
 // its day, as its role, arriving as `play` so that role's own entries of the day are left to do on screen). One async
 // action per frame of the scene in episode-04.json; each returns what to light (a selector or a locator) or null.
+/** A Pending deliveries card by its words ("200 bags still to come"). */
+const card = (pg, words) => pg.locator('main section article, main div').filter({ has: pg.getByText(words, typeof words === 'string' ? { exact: true } : {}) }).filter({ has: pg.locator('[data-guide="pending.came"]') }).last()
 const near = (pg, text, up = 3) => pg.getByText(text, { exact: true }).first().locator(`xpath=ancestor::*[${up}]`)
 
 /** The three quotations of the starter kit (green_villa.CEMENT_STORY): supplier, their no., cement and steel rates. */
@@ -75,6 +77,7 @@ module.exports = {
         await dlg.getByLabel('Cement rate').fill(String(cement))
         await dlg.getByLabel('Steel rate').fill(String(steel))
         await dlg.locator('#q-ref').fill(ref)
+        await dlg.locator('#q-delivery').fill('2')  // the papers: "Delivery in 2 days from the order"
         await dlg.getByRole('button', { name: 'Save quote' }).click()
         await h.wait(1800)
       }
@@ -96,6 +99,30 @@ module.exports = {
       await h.wait(3000)
       await h.go('/procurement/orders?project={Green Villa}')
       return '[data-guide="po.list"]'
+    },
+  ],
+  // Ravi, day 6: Malabar's lorry, recorded against the order: 190 bags on challan MCA/DC/2611, 10 still to come.
+  gate: [
+    async (pg, h) => {
+      await h.go('/procurement/pending?project={Green Villa}&site={Green Villa › Main block}')
+      return card(pg, '200 bags still to come')
+    },
+    async (pg, h) => {
+      await card(pg, '200 bags still to come').locator('[data-guide="pending.came"]').click()
+      await h.wait(1500)
+      await pg.locator('[data-guide="po.receive"]').last().click()  // the order's panel, then its delivery form
+      await h.wait(1500)
+      const dlg = pg.getByRole('dialog').filter({ hasText: 'Challan no.' }).last()
+      await dlg.getByLabel('Cement accepted').fill('190')
+      await dlg.locator('#receive-challan').fill('MCA/DC/2611')
+      await dlg.locator('#receive-by').fill('Ravi')
+      return dlg
+    },
+    async (pg, h) => {
+      await pg.getByRole('button', { name: 'Save delivery' }).click()
+      await h.wait(3000)
+      await h.go('/procurement/pending?project={Green Villa}&site={Green Villa › Main block}')
+      return card(pg, /^10 bags still to come/)
     },
   ],
 }

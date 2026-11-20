@@ -38,7 +38,13 @@ async function projectIds() {
   const r = await fetch(`${apiBase}/projects`, { headers: { Authorization: `Bearer ${sample ? sample.token : token}` } })
   const body = await r.json()
   const list = Array.isArray(body) ? body : body.items || body.projects || []
-  return Object.fromEntries(list.map((p) => [p.name, p.id]))
+  const ids = Object.fromEntries(list.map((p) => [p.name, p.id]))
+  // Sites too, as "Project › Site", for a page opened on one site (`?site={Green Villa › Main block}`).
+  for (const p of list) {
+    const s = await fetch(`${apiBase}/projects/${p.id}/sites`, { headers: { Authorization: `Bearer ${sample ? sample.token : token}` } })
+    if (s.ok) for (const site of await s.json()) ids[`${p.name} › ${site.name}`] = site.id
+  }
+  return ids
 }
 
 /** Words of a PDF page with their boxes (points), from pdftotext -bbox. */
