@@ -252,6 +252,12 @@
    "p": "lake_view"
   },
   {
+   "d": 30,
+   "k": "ra_bill",
+   "t": "Send Green Villa's running bill to Dr. Anand Krishnan, work up to today",
+   "p": "green_villa"
+  },
+  {
    "d": 34,
    "k": "work_order",
    "t": "Work order to Joy Tiling Works: floor tiling, 240 sqm at ₹95",
@@ -264,10 +270,22 @@
    "p": "lake_view"
   },
   {
+   "d": 45,
+   "k": "client_receipt",
+   "t": "Dr. Anand Krishnan paid the running bill of day 30",
+   "p": "green_villa"
+  },
+  {
    "d": 51,
    "k": "ra_bill",
    "t": "Send Lake View Apartments' running bill to the client, work up to today",
    "p": "lake_view"
+  },
+  {
+   "d": 62,
+   "k": "ra_bill",
+   "t": "Send Green Villa's final bill to Dr. Anand Krishnan: all the work, measured",
+   "p": "green_villa"
   },
   {
    "d": 62,
@@ -614,6 +632,8 @@
   "stage": "Project stage"
  },
  "counts": {
+  "contract": 1,
+  "boq_import": 1,
   "wage_approve": 18,
   "wage_pay": 18,
   "use": 351,
@@ -623,16 +643,16 @@
   "conditions": 192,
   "request": 54,
   "order": 54,
-  "boq_count": 48,
+  "boq_count": 128,
   "issue": 6,
   "delivery": 59,
   "issue_resolve": 6,
   "advance": 5,
   "supplier_bill": 59,
   "supplier_payment": 22,
-  "ra_bill": 2,
+  "ra_bill": 4,
   "work_order": 1,
-  "client_receipt": 1,
+  "client_receipt": 2,
   "measurement": 2,
   "sub_bill": 2,
   "sub_payment": 2,
@@ -708,6 +728,9 @@
       54,
       55,
       56,
+      58,
+      59,
+      60,
       61,
       62
      ],
@@ -1283,9 +1306,15 @@
       49,
       51,
       52,
-      53
+      53,
+      55,
+      56,
+      58,
+      59,
+      60,
+      61
      ],
-     "count": 48,
+     "count": 128,
      "from": [
       "/today"
      ],
@@ -1485,9 +1514,15 @@
       49,
       51,
       52,
-      53
+      53,
+      55,
+      56,
+      58,
+      59,
+      60,
+      61
      ],
-     "count": 48,
+     "count": 128,
      "from": [
       "/today"
      ],
@@ -1619,6 +1654,11 @@
       51,
       52,
       53,
+      55,
+      56,
+      58,
+      59,
+      60,
       61,
       62
      ],
@@ -1682,6 +1722,9 @@
       51,
       52,
       53,
+      55,
+      56,
+      58,
       59,
       60,
       61,
@@ -2771,6 +2814,7 @@
       28,
       35,
       42,
+      45,
       49,
       56
      ],
@@ -2889,6 +2933,7 @@
       40,
       42,
       44,
+      45,
       46,
       49,
       51,
@@ -2961,9 +3006,10 @@
       "accounts"
      ],
      "days": [
-      35
+      35,
+      45
      ],
-     "count": 1,
+     "count": 2,
      "from": [
       "/billing/ra-bills"
      ],
@@ -3104,6 +3150,7 @@
       28,
       35,
       42,
+      45,
       49,
       56
      ],
@@ -3227,8 +3274,11 @@
      "roles": [],
      "days": [
       23,
+      30,
       35,
-      51
+      45,
+      51,
+      62
      ],
      "count": 0
     },
@@ -3247,9 +3297,11 @@
      ],
      "days": [
       23,
-      51
+      30,
+      51,
+      62
      ],
-     "count": 2,
+     "count": 4,
      "from": [],
      "to": [
       "/accounts/receivables"

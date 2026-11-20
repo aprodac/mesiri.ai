@@ -14,6 +14,7 @@ from collections import defaultdict
 
 import pytest
 
+from mesiri.application.learn import green_villa as gv
 from mesiri.application.learn import sample_plan as sp
 from mesiri.application.organizations import sample_story as story
 from mesiri.domains.progress.validation import ISSUE_SEVERITIES, ISSUE_TYPES
@@ -183,11 +184,42 @@ def test_names_are_the_stories(plan):
             assert e.data["material"] in story.DEMO_SUPPLY
         if e.kind == "attendance":
             assert {w["name"] for w in e.data["workers"]} <= workers
-    # BOQ counting only on lines Lake View's estimate has (the seed makes one per site and work).
+    # BOQ counting only on lines the estimates have: Lake View's (the seed makes one per site and work); Green Villa's
+    # (project bible D2): its estimate's line for the stage, with the same unit as the work.
     lines = {(sp.SITES[at][0], work) for at in (2, 3) for work, *_ in story.DEMO_WORK[at]}
+    units = {work: unit for _h, rows in gv.ESTIMATE for _c, work, unit, *_ in rows}
+    stage_unit = {s.work: s.unit for site in ("main", "annex") for s in sp.STAGES[site]}
     for e in plan.entries:
-        if e.kind == "boq_count":
+        if e.kind == "boq_count" and e.project == sp.GREEN_VILLA:
+            assert e.data["estimate"] and units.get(e.data["line"]) == stage_unit[e.data["work"]], e.id
+        elif e.kind == "boq_count":
             assert (e.site, e.data["work"]) in lines
+
+
+def test_green_villa_is_billed_by_its_contract(plan):
+    """Project bible D2: Green Villa has its contract and BOQ from day 2, its work is counted on the estimate's lines,
+    one running bill a month and the final bill on handover day, each waiting for the contract and the BOQ; the client
+    pays a bill after green_villa.PAYS_AFTER days."""
+    byid = plan.by_id()
+    gv_entries = [e for e in plan.entries if e.project == sp.GREEN_VILLA]
+    contract = next(e for e in gv_entries if e.kind == "contract")
+    boq = next(e for e in gv_entries if e.kind == "boq_import")
+    assert contract.day == boq.day == 2
+    assert contract.data["contract_value"] == gv.CONTRACT_VALUE == 8206050
+    bills = [e for e in gv_entries if e.kind == "ra_bill"]
+    assert [b.day for b in bills] == [*sp.GV_RA_BILL_DAYS, plan.last_day]
+    assert bills[-1].data.get("final") and any(e.kind == "stage" and e.day == plan.last_day for e in gv_entries)
+    for bill in bills:
+        assert {contract.id, boq.id} <= set(bill.needs)
+    paid = [e for e in gv_entries if e.kind == "client_receipt"]
+    assert [byid[p.needs[0]].day + gv.PAYS_AFTER for p in paid] == [p.day for p in paid] == [d + gv.PAYS_AFTER for d in sp.GV_RA_BILL_DAYS]
+    # Every stage of Green Villa has a decided line: one of the estimate's, or None (done, not billable).
+    for site in ("main", "annex"):
+        for s in sp.STAGES[site]:
+            assert s.work in gv.STAGE_LINE, s.work
+            assert gv.STAGE_LINE[s.work] is None or gv.line_of(s.work), s.work
+    counted = [e for e in gv_entries if e.kind == "boq_count"]
+    assert counted and all(boq.id in e.needs for e in counted)
 
 
 def test_every_kind_has_a_real_route():

@@ -153,6 +153,12 @@ makes it from the records; nobody types it.
 1. **Decisions D1 to D5** (Ilan): agreed 20 Nov 2026.
    - Done: D3 (the mason is Rajan; the owner is Ramesh Nair in the demo seed) and D5 (the seed opens the Federal Bank
      account and a petty-cash box per site; the player uses the same definition), checked through the API.
+   - Done: **D2**, Green Villa billed by its contract. Its estimate, contract and stage-to-line map are one source,
+     `backend/.../learn/green_villa.py` (the starter kit's files and the plan both read it). Day 2: the owner sets the
+     contract, Anil puts the estimate in as the BOQ (both skip themselves when the person did the guided chapters 2
+     and 3). Its work is counted on the estimate's lines; a running bill on day 30 and the final bill at handover, each
+     less 10% advance and 5% retention plus GST; the client pays 15 days later. Played through the API for all 62 days
+     with no failure: bill 1 net Rs 11,92,169 (paid day 45), final bill net Rs 9,41,008.
 2. **The documents to make:** the drawing set (A-102, A-201, A-301, S-101, S-102, S-201, E-101, P-101), the building
    permit, the supplier rate list, the places, the return note, the stock count sheet, the hire bill, the handover
    certificate: added to the starter kit's generator (`make_kit.py`), each with its page and, where it fits, a catch.

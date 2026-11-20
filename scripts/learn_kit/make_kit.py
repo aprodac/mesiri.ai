@@ -17,9 +17,13 @@ from __future__ import annotations
 import io
 import json
 import pathlib
+import sys
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "backend" / "src"))
+from mesiri.application.learn import green_villa  # noqa: E402, I001  (after the path)
+
 OUT = ROOT / "apps" / "dashboard" / "public" / "learn" / "kit"
 
 ESTIMATE = "Green Villa - estimate.xlsx"
@@ -33,71 +37,10 @@ MEASURE = "Joy Tiling - measurement sheet.pdf"
 SUB_BILL = "Joy Tiling - bill JTW-014.pdf"
 ZIP = "green-villa-starter-kit.zip"
 
-#: The estimate: sections (heading rows) and their lines: item no., work, unit, quantity, client rate, labour rate,
-#: material rate. Lines with no labour and no material rate have no budget yet (the catch: "Lines priced" counts
-#: them); the staircase is priced below what it costs (the catch: a red margin).
-SECTIONS: tuple[tuple[str, tuple[tuple[str, str, str, float, float, float | None, float | None], ...]], ...] = (
-    ("A. EARTHWORK", (
-        ("1.1", "Site clearance", "sqm", 450, 25, 20, None),
-        ("1.2", "Excavation", "cum", 180, 480, 300, None),
-        ("1.3", "Backfilling with excavated earth", "cum", 90, 210, 160, None),
-        ("1.4", "Anti-termite treatment", "sqm", 300, 45, 10, 28),
-    )),
-    ("B. CONCRETE", (
-        ("2.1", "PCC", "cum", 22, 6200, 900, 4300),
-        ("2.2", "Footing concreting", "cum", 48, 8600, 950, 5900),
-        ("2.3", "Plinth beam", "rmt", 160, 1450, 420, 780),
-        ("2.4", "Column casting", "cum", 26, 9800, 1900, 5600),
-        ("2.5", "Lintel concreting", "cum", 14, 8900, 1300, 5800),
-        ("2.6", "Roof slab concreting", "cum", 62, 8700, 900, 6100),
-        ("2.7", "Slab shuttering", "sqm", 410, 620, 260, 210),
-        ("2.8", "Reinforcement steel", "kg", 16500, 92, 12, 70),
-        ("2.9", "Staircase waist slab", "cum", 9, 7900, 1400, 6800),
-    )),
-    ("C. MASONRY", (
-        ("3.1", "Block work", "sqm", 620, 1250, 380, 640),
-        ("3.2", "Brick work in partitions", "sqm", 140, 980, 360, 520),
-        ("3.3", "Parapet wall", "rmt", 95, 1100, 400, 520),
-    )),
-    ("D. PLASTERING", (
-        ("4.1", "Plastering", "sqm", 1450, 420, 210, 120),
-        ("4.2", "External plastering", "sqm", 780, 520, 260, 150),
-        ("4.3", "Ceiling plastering", "sqm", 380, 460, 240, 130),
-    )),
-    ("E. FLOORING AND TILING", (
-        ("5.1", "Vitrified tile flooring", "sqm", 290, 1650, None, None),
-        ("5.2", "Bathroom wall tiling", "sqm", 160, 1450, None, None),
-        ("5.3", "Granite kitchen counter", "rmt", 12, 4200, None, None),
-        ("5.4", "Skirting", "rmt", 260, 180, 60, 85),
-    )),
-    ("F. ELECTRICAL", (
-        ("6.1", "Electrical conduits", "nos", 320, 260, 90, 110),
-        ("6.2", "Wiring per point", "nos", 140, 1450, 450, 700),
-        ("6.3", "Distribution board", "nos", 2, 18500, 2500, 13000),
-    )),
-    ("G. PLUMBING", (
-        ("7.1", "CPVC water supply lines", "rmt", 180, 420, 150, 190),
-        ("7.2", "Sanitary fittings", "nos", 18, 6500, 900, 4800),
-    )),
-    ("H. PAINTING", (
-        ("8.1", "Interior emulsion", "sqm", 2100, 140, 55, 50),
-        ("8.2", "Exterior emulsion", "sqm", 780, 190, 65, 75),
-        ("8.3", "Enamel on doors and windows", "sqm", 120, 260, 110, 80),
-    )),
-    ("I. DOORS AND WINDOWS", (
-        ("9.1", "Teak main door", "nos", 1, 68000, 6000, 52000),
-        ("9.2", "Flush doors", "nos", 9, 14500, 1800, 10500),
-        ("9.3", "UPVC windows", "sqm", 46, 7200, 900, 5600),
-    )),
-)
-#: What one unit of a line uses (the "Materials per unit" sheet), in the material's stock unit. Names as the sample
-#: company's catalogue has them (domains/materials/defaults.py).
-NORMS = (
-    ("2.1", "PCC", "Cement", 4.5, "bags"), ("2.2", "Footing concreting", "Cement", 8, "bags"),
-    ("2.5", "Lintel concreting", "Cement", 8, "bags"), ("2.6", "Roof slab concreting", "Cement", 8, "bags"),
-    ("3.1", "Block work", "Solid Blocks", 12.5, "nos"), ("3.1", "Block work", "Cement", 0.4, "bags"),
-    ("4.1", "Plastering", "Cement", 0.25, "bags"), ("4.1", "Plastering", "P Sand", 0.02, "cum"),
-)
+#: The estimate and its materials per unit: Green Villa's own data (backend .../learn/green_villa.py), the one source
+#: the 62-day plan also reads (project bible D2), so the file people bring in and the BOQ the plan puts in agree.
+SECTIONS = green_villa.ESTIMATE
+NORMS = green_villa.NORMS
 #: The work the sample site reports for Green Villa (sample_story.DEMO_WORK, Main block and Annex): each must be a line
 #: here with the same unit, or that work can't count on the BOQ. "Plastering" is a catch too: three plastering lines
 #: (internal, external, ceiling), so Mesiri suggests none and the person picks (the BOQ page's "Change line").
@@ -127,18 +70,18 @@ MINIMUM = (("Green Villa", "Main block", "Cement", 100, 200), ("Green Villa", "A
 
 #: The contract summary (the "won" chapter types these in).
 CONTRACT_TERMS = (
-    ("Client", "Dr. Anand Krishnan"),
-    ("Site", "Green Villa, Puthur Road, Thrissur"),
-    ("Agreement no.", "GV/2026/007"),
+    ("Client", green_villa.CLIENT["name"]),
+    ("Site", green_villa.CLIENT["address"]),
+    ("Agreement no.", green_villa.CONTRACT["contract_no"]),
     ("Signed on", "20 October 2026"),
-    ("Contract value", "{value}, GST extra at 18% (the estimate's total)"),
+    ("Contract value", f"{{value}}, GST extra at {green_villa.CONTRACT['gst_pct']}% (the estimate's total)"),
     ("Work starts", "2 November 2026"),
     ("Handover", "31 July 2027 (9 months)"),
     ("Mobilisation advance", "{advance} (10% of the contract value), paid on signing"),
-    ("Advance recovery", "10% of each RA bill, until the advance is back"),
-    ("Retention", "5% of each RA bill, released after the defects period"),
-    ("Defects period", "12 months from handover"),
-    ("Billing", "Monthly RA bills on measured work at the BOQ rates; paid within 15 days"),
+    ("Advance recovery", f"{green_villa.CONTRACT['advance_recovery_pct']}% of each RA bill, until the advance is back"),
+    ("Retention", f"{green_villa.CONTRACT['retention_pct']}% of each RA bill, released after the defects period"),
+    ("Defects period", f"{green_villa.CONTRACT['defect_liability_months']} months from handover"),
+    ("Billing", green_villa.CONTRACT["payment_terms"]),
     ("Delay", "Rs 25,000 per week of delay beyond handover, at most 5% of the contract value"),
 )
 

@@ -30,6 +30,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from mesiri.application.learn import green_villa as gv
 from mesiri.application.organizations import sample_story as story
 
 # --- Who and where ---------------------------------------------------------------------------------------------------
@@ -157,6 +158,9 @@ ADVANCES = ((4, "Suresh", 2000), (13, "Joseph", 1500), (23, "Rajesh", 3000), (30
 TILING_RATE, TILING_RETENTION = 95, 5
 #: Lake View's running bill to the client, sent by the owner on these days.
 RA_BILL_DAYS = (23, 51)
+#: Green Villa's running bill (project bible D2): monthly by its contract, so one in the 62 days, and the final bill on
+#: the day it is handed over. Its client pays each after ``green_villa.PAYS_AFTER`` days.
+GV_RA_BILL_DAYS = (30,)
 
 # --- The plan's entries ----------------------------------------------------------------------------------------------
 
@@ -195,6 +199,11 @@ KINDS: dict[str, Kind] = {
     "wage_approve": Kind(OWNER, (("GET", "/labour/wage-sheets/open"), ("POST", "/labour/wage-sheets/{sheet_id}/approve"))),
     "ra_bill": Kind(OWNER, (("POST", "/projects/{project_id}/ra-bills"), ("POST", "/billing/ra-bills/{bill_id}/submit"))),
     "stage": Kind(OWNER, (("PATCH", "/projects/{project_id}/start"),)),
+    # D2: Green Villa's contract and its estimate as the BOQ (the guided project's chapters 2 and 3 do the same; when the
+    # person did them, these find them done).
+    "contract": Kind(OWNER, (("GET", "/projects/{project_id}/contract"), ("PUT", "/projects/{project_id}/contract"))),
+    "boq_import": Kind(PM, (("GET", "/projects/{project_id}/boq"), ("POST", "/projects/{project_id}/boq/sections"),
+                            ("POST", "/projects/{project_id}/boq/sections/{section_id}/lines"))),
 }
 #: Where each route lives, for the test that every route is real (each is mounted as it is, no extra prefix).
 ROUTER_MODULES = (
@@ -384,7 +393,8 @@ def build() -> Plan:
     unpaid: dict[str, list[Entry]] = defaultdict(list)     # vendor -> bills
     week_work: dict[str, float] = defaultdict(float)       # tiling laid this week, to measure on Saturday
     tiling: dict[str, Entry] = {}                          # the work order, and the last measurement and bill
-    to_count: list[tuple[int, Entry]] = []                 # Lake View work to count on the BOQ, on this day
+    to_count: list[tuple[int, Entry]] = []                 # work to count on the BOQ, on this day
+    gv_setup: dict[str, Entry] = {}                        # D2: Green Villa's contract and BOQ entries
     issues: dict[int, list[Entry]] = defaultdict(list)     # day to close -> issue
     ra_bills: list[tuple[int, Entry]] = []                 # (client pays on this day, the bill)
     workers = {at: [(n, t, w) for n, t, w, home in story.DEMO_WORKERS if home == at] for at in range(len(SITES))}
@@ -418,6 +428,16 @@ def build() -> Plan:
             continue
         saturday = weekday(day) == 5
         if day == 2:
+            # D2: Green Villa's contract and its estimate as the BOQ, so its work counts and it can be billed.
+            c = gv.CONTRACT
+            gv_setup["contract"] = b.add(day, "contract", f"Set {_of(story.DEMO_PROJECT)} contract with {gv.CLIENT['name']}: "
+                                         f"{c['contract_no']}, {_amount(c['contract_value'])}, retention {c['retention_pct']}%",
+                                         project=GREEN_VILLA, data={"client": dict(gv.CLIENT), **{k: c[k] for k in (
+                                             "contract_no", "signed_on", "contract_value", "mobilisation_advance",
+                                             "advance_recovery_pct", "retention_pct", "gst_pct", "defect_liability_months",
+                                             "payment_terms")}})
+            gv_setup["boq"] = b.add(day, "boq_import", f"Put {_of(story.DEMO_PROJECT)} estimate in as its BOQ: "
+                                    f"{sum(len(r) for _h, r in gv.ESTIMATE)} lines", project=GREEN_VILLA)
             # The seeded weeks' last pay week (to day 0) is still to be approved and paid: the first thing on Monday.
             for project in (GREEN_VILLA, LAKE_VIEW):
                 approve = b.add(day, "wage_approve", f"Approve {_of(PROJECT_NAME[project])} wage sheet for last week",
@@ -464,6 +484,12 @@ def build() -> Plan:
         for due in [t for t in to_count if t[0] == day]:
             to_count.remove(due)
             work = due[1]
+            if SITE_PROJECT[work.site] == GREEN_VILLA:  # D2: on the estimate's line (green_villa.STAGE_LINE)
+                line = gv.STAGE_LINE.get(work.data["work"], work.data["work"])
+                b.add(day, "boq_count", f"Count {_of(SITE_NAME[work.site])} {work.data['work'].lower()} of day {work.day} "
+                      f"on the BOQ line {line}", site=work.site, data={"work": work.data["work"], "line": line, "estimate": True},
+                      needs=(work.id, gv_setup["boq"].id))
+                continue
             b.add(day, "boq_count", f"Count {_of(SITE_NAME[work.site])} {work.data['work'].lower()} of day {work.day} on its BOQ line",
                   site=work.site, data={"work": work.data["work"], "line": f"{work.data['work']} · {SITE_NAME[work.site]}"},
                   needs=(work.id,))
@@ -507,7 +533,7 @@ def build() -> Plan:
                 qty = round(s.per_day * ratio, 2)
                 work = b.add(day, "work", f"{s.work}: {_fmt(qty)} {s.unit}" + (f" (by {s.by})" if s.by else ""), site=site,
                              data={"work": s.work, "narrative": s.narrative, "quantity": qty, "unit": s.unit, "by": s.by})
-                if (site, s.work) in boq_lines:
+                if (site, s.work) in boq_lines or (SITE_PROJECT[site] == GREEN_VILLA and gv.STAGE_LINE.get(s.work)):
                     to_count.append((_working_after(day, 1), work))
                 if s.by:
                     week_work[site] += qty
@@ -612,13 +638,23 @@ def build() -> Plan:
             bill = b.add(day, "ra_bill", f"Send {_of(PROJECT_NAME[LAKE_VIEW])} running bill to the client, work up to today",
                          project=LAKE_VIEW, data={"period_to_day": day})
             ra_bills.append((day + CLIENT_PAYS_AFTER, bill))
+        # D2: Green Villa's running bill, by its contract (needs the contract and the BOQ in).
+        if day in GV_RA_BILL_DAYS:
+            bill = b.add(day, "ra_bill", f"Send {_of(story.DEMO_PROJECT)} running bill to {gv.CLIENT['name']}, work up to today",
+                         project=GREEN_VILLA, data={"period_to_day": day},
+                         needs=(gv_setup["contract"].id, gv_setup["boq"].id))
+            ra_bills.append((day + gv.PAYS_AFTER, bill))
         for due in [t for t in ra_bills if t[0] <= day]:
             ra_bills.remove(due)
-            b.add(day, "client_receipt", f"{story.DEMO_CLIENT['name']} paid the running bill of day {due[1].day}",
-                  project=LAKE_VIEW, data={"bill": due[1].id, "client": story.DEMO_CLIENT["name"]}, needs=(due[1].id,))
+            client = gv.CLIENT["name"] if due[1].project == GREEN_VILLA else story.DEMO_CLIENT["name"]
+            b.add(day, "client_receipt", f"{client} paid the running bill of day {due[1].day}",
+                  project=due[1].project, data={"bill": due[1].id, "client": client}, needs=(due[1].id,))
 
-        # Green Villa done: the owner hands it over.
+        # Green Villa done: its final bill, then the owner hands it over.
         if all(site in finished for site, project, _n in SITES if project == GREEN_VILLA):
+            b.add(day, "ra_bill", f"Send {_of(story.DEMO_PROJECT)} final bill to {gv.CLIENT['name']}: all the work, measured",
+                  project=GREEN_VILLA, data={"period_to_day": day, "final": True},
+                  needs=(gv_setup["contract"].id, gv_setup["boq"].id))
             b.add(day, "stage", f"{story.DEMO_PROJECT} handed over to the client", project=GREEN_VILLA,
                   data={"stage": "handover"})
             last_day = day

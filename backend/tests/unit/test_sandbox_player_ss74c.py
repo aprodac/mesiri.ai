@@ -10,7 +10,7 @@ from mesiri.application.learn import sample_plan as sp
 from mesiri.application.learn import sandbox_player as player
 
 #: Kinds ticked by what they leave behind (``_outcome_done``) rather than by who saved a record.
-_BY_OUTCOME = {"stage", "issue_resolve", "conditions", "boq_count"}
+_BY_OUTCOME = {"stage", "issue_resolve", "conditions", "boq_count", "contract", "boq_import"}
 
 
 def test_every_kind_has_a_page_and_a_way_to_be_ticked():

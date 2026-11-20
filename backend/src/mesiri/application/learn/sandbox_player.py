@@ -30,6 +30,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
+from mesiri.application.learn import green_villa as gv
 from mesiri.application.learn import sample_plan as sp
 from mesiri.application.learn import sandbox_days as sd
 from mesiri.application.learn.sandbox import (
@@ -122,7 +123,7 @@ PAGE = {
     "measurement": "/subcontract/work-orders", "supplier_bill": "/finance/vendors", "supplier_payment": "/finance/vendors",
     "sub_bill": "/subcontract/bills", "sub_payment": "/subcontract/bills", "advance": "/labour/advances",
     "wage_pay": "/labour/wages", "client_receipt": "/accounts/receivables", "wage_approve": "/labour/wages",
-    "ra_bill": "/billing/ra-bills", "stage": "/planning/setup",
+    "ra_bill": "/billing/ra-bills", "stage": "/planning/setup", "contract": "/planning/setup", "boq_import": "/boq",
 }
 
 #: How a "for you" entry is known to be done: records of its kind saved by the person's user since that day began, at
@@ -167,6 +168,12 @@ async def _outcome_done(conn: Any, org: uuid.UUID, e: sp.Entry, ids: dict[str, d
         return bool(await scalar("SELECT count(*) FROM daily_reports WHERE organization_id = :o AND site_id = :s "
                                  "AND report_date = :d AND (weather IS NOT NULL OR tomorrow_plan IS NOT NULL)",
                                  s=ids["site"].get(e.site or ""), d=date))
+    if e.kind == "contract":  # D2: the project has its contract (here, or in the guided project's chapter 2)
+        return bool(await scalar("SELECT count(*) FROM project_contracts WHERE organization_id = :o AND project_id = :p",
+                                 p=ids["project"].get(e.project or "")))
+    if e.kind == "boq_import":  # D2: the project has a BOQ (here, or imported in the guided project's chapter 3)
+        return bool(await scalar("SELECT count(*) FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
+                                 "WHERE w.organization_id = :o AND w.project_id = :p", p=ids["project"].get(e.project or "")))
     if e.kind == "boq_count":  # nothing of that work left off its BOQ line
         return not await scalar(
             "SELECT count(*) FROM activities a JOIN activity_quantities q ON q.activity_id = a.id "
@@ -427,7 +434,9 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
         if not items:
             return {"counted": 0, "already_on_line": len(mine)}
         boq = await w.call(role, "GET", f"/projects/{pid}/boq")
-        line = _boq_line(boq.body if boq.ok else None, d["work"], sp.SITE_NAME[e.site])
+        # D2: Green Villa's lines are the estimate's (sections by trade), found by the line's own work name.
+        line = (_estimate_line(boq.body if boq.ok else None, d["line"]) if d.get("estimate")
+                else _boq_line(boq.body if boq.ok else None, d["work"], sp.SITE_NAME[e.site]))
         if not line:
             raise _Failed(f"no BOQ line for {d['work']} at {sp.SITE_NAME[e.site]}")
         for item in items:
@@ -491,6 +500,25 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
             "account_id": w.account, "method": "bank"}), e.kind)
     if e.kind == "stage":
         return _ok(await w.call(role, "PATCH", f"/projects/{project}/start", json={"stage": d["stage"]}), e.kind)
+    if e.kind == "contract":  # D2: set by the person in the guided project already? then nothing to do
+        have = await w.call(role, "GET", f"/projects/{project}/contract")
+        if have.ok and isinstance(have.body, dict) and have.body.get("contract"):
+            return {"already": True}
+        body = {k: v for k, v in d.items() if k != "client"}
+        return _ok(await w.call(role, "PUT", f"/projects/{project}/contract", json={"new_client": d["client"], **body}), e.kind)
+    if e.kind == "boq_import":  # D2: imported in the guided project's chapter 3 already? then nothing to do
+        boq = await w.call(role, "GET", f"/projects/{project}/boq")
+        if boq.ok and any((sec.get("lines") or []) for sec in (boq.body or {}).get("sections") or []):
+            return {"already": True}
+        lines = 0
+        for heading, rows in gv.ESTIMATE:
+            section = _ok(await w.call(role, "POST", f"/projects/{project}/boq/sections", json={"name": heading}), "BOQ section")
+            for code, work, unit, qty, client, labour, material in rows:
+                _ok(await w.call(role, "POST", f"/projects/{project}/boq/sections/{section['id']}/lines", json={
+                    "work": work, "unit": unit, "planned_quantity": qty, "boq_code": code, "client_rate": client,
+                    "labour_rate": labour, "material_rate": material}), "BOQ line")
+                lines += 1
+        return {"lines": lines}
     raise _Failed(f"unknown kind {e.kind}")
 
 
@@ -501,6 +529,17 @@ def _boq_line(boq: Any, work: str, site_name: str) -> str | None:
     for section in boq.get("sections") or []:
         if site_name not in str(section.get("name") or ""):
             continue
+        for line in section.get("lines") or []:
+            if str(line.get("work") or line.get("description") or "") == work:
+                return str(line["id"])
+    return None
+
+
+def _estimate_line(boq: Any, work: str) -> str | None:
+    """D2: the BOQ line with this work name in any section (Green Villa's BOQ is the estimate, sections by trade)."""
+    if not isinstance(boq, dict):
+        return None
+    for section in boq.get("sections") or []:
         for line in section.get("lines") or []:
             if str(line.get("work") or line.get("description") or "") == work:
                 return str(line["id"])
