@@ -6,7 +6,8 @@ going to any pitch". Agreed: a series of short episodes, not one long film, so e
 product changes.
 
 **The series is now planned in [SERIES_PLAN.md](SERIES_PLAN.md)** (20 Nov 2026): the overall objective, how each
-episode is built, each episode's objective, and every page's episode. Nothing new is filmed until it is agreed.
+episode is built, each episode's objective, and every page's episode. Nothing new is filmed until it is agreed. The order to learn in
+(episode, then the simulation) and what to make next: [../LEARNING_PATH.md](../LEARNING_PATH.md).
 
 Made so far: Episode 1 "How a construction company works" (kept as the Prologue) and Episode 2 "What owners want"
 (retired: it was about selling, not understanding).

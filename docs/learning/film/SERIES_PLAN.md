@@ -3,6 +3,9 @@
 > Asked 20 Nov 2026 (Ilan): "First, let's properly know what the objective is overall. Let's note down that, and for
 > each episode, what the objective is ... After that, only start creating the episodes." This page is that note.
 > Nothing is filmed until it is agreed. Status: **draft for Ilan's review**.
+>
+> **The learning order (watch an episode, then play its days in the simulation), what is made and what is next:
+> [../LEARNING_PATH.md](../LEARNING_PATH.md)** (20 Nov), including a review of this syllabus against the simulation.
 
 ## 1. Why we are making this
 
@@ -152,5 +155,5 @@ Each built page (lib/module-map.ts) appears in the episode where a project first
 
 - Keep the **Prologue** as it is, or redo it in the series' look?
 - **Language:** English narration with English subtitles first; Malayalam later?
-- **Length:** 6 to 10 minutes an episode (about 80 in all), or shorter?
+- ~~**Length:** 6 to 10 minutes an episode (about 80 in all), or shorter?~~ Agreed 20 Nov: 6 to 10 minutes.
 - Anything the series must teach that is missing from section 5?
