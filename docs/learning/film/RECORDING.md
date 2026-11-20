@@ -5,6 +5,14 @@
 > Tell Mesiri, the same assistant) or on the website, never drawn. Read [README.md](README.md) for the tools and
 > [../LEARNING_PATH.md](../LEARNING_PATH.md) for where each episode sits.
 
+## The local copy (learned 20 Nov)
+
+- **Never run the backend's integration or contract tests against the database you film from**: they empty its
+  tables. Use a separate database for them.
+- **Files:** `MESIRI_OBJECT_STORAGE__PROVIDER=local` with a `LOCAL_ROOT`, `PUBLIC_BASE_URL=http://localhost:8000` and
+  a `SIGNING_SECRET`, or uploaded drawings have no picture and Track on site cannot read them.
+- A sample company's token lasts 8 hours; take a fresh one (`POST /learn/sandbox`) after a long break.
+
 ## The rules for every recording
 
 1. **Real entries only.** A chat scene with `capture` is sent for real and Mesiri's real reply card is what the film
@@ -26,10 +34,13 @@
 | Need | Where | What |
 |---|---|---|
 | Real replies in chat scenes | `shoot.cjs` | For a scene with `capture`: in the sample company as that role, on that day, open Tell Mesiri (`[data-guide="app.tell"]`), send `capture.send`, wait for the card, take the reply's text and card (title, rows, buttons) and write them into `.cache/shots/<scene id>.chat.json`; `build.mjs` uses them in place of the script's `messages`. Tap `capture.tap` (Save, or Cancel) after the picture. A photo: attach the picture named. |
-| Step-by-step website scenes | `film.html`, `shoot.cjs`, `build.mjs` | A new kind `steps`: `frames`, each a picture taken after its action (`url` to open, `do` to perform, `show` what it must show, `mark` what to light), shown in turn on its beat (`at`), the box on `mark`. Simplest: shoot each frame as a page picture with its marks (as `screen` does), and draw `steps` as a `screen` whose picture changes on each frame's beat. The `do` lines are plain words: turn them into Playwright actions in a small per-episode file (`steps-NN.cjs`) rather than guessing selectors in the JSON. |
+| Step-by-step website scenes (**built 20 Nov**, episode 2) | `film.html`, `shoot.cjs`, `build.mjs` | Kind `steps`: `frames`, each a picture taken after its action (`url` to open, `do` to perform, `show` what it must show, `mark` what to light), shown in turn on its beat (`at`), the box on `mark`. Simplest: shoot each frame as a page picture with its marks (as `screen` does), and draw `steps` as a `screen` whose picture changes on each frame's beat. The `do` lines are plain words: turn them into Playwright actions in a small per-episode file (`steps-NN.cjs`) rather than guessing selectors in the JSON. |
 | The role and the day | `shoot.cjs` | Open the sample company as the role a scene names (`POST /learn/sandbox` with that role) and play it to the scene's day ("Next day" through `POST /learn/sandbox/next-day`) before shooting. |
 
-## Episode 2, "Setting up": before recording
+## Episode 2, "Setting up": recorded 20 Nov
+
+Built with `steps-02.cjs` from the sample company after the guided project's chapters 2 and 3 (reset first: Documents,
+tracking, the import and the quick plan are saved). Kept below as the record of what it needed.
 
 - [ ] **UX-81 fixed**: Rates must show M sand's rise (₹1,650 → ₹1,750); today it says "same".
 - [ ] The sample company on **day 0** ("Before day 1"), as the owner, after the guided project's chapters 2 and 3

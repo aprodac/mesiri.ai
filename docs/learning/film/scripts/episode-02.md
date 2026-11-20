@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can list what must exist before day 1 and who sets it up: the company, the project and its sites, the team on WhatsApp, drawings and documents, items, suppliers and rates, the schedule and the material plan, and the daily report time.
 
-**Length:** 17 scenes, 1329 words of narration (about 9 minutes)
+**Length:** 16 scenes, 1385 words of narration (about 9 minutes)
 
 ## Cold open
 
@@ -53,7 +53,7 @@ Narration:
 
 On screen:
 
-- Company · Project · Name, letterhead, report time · Green Villa: Main block, Annex
+- Company · Project · Name, letterhead · Green Villa: Main block, Annex; the report time
 - Team · Roles, and a WhatsApp number each
 - Drawings · Documents · Checked; permit, contract and estimate kept together
 - Items · Suppliers · Rates · What is used, from whom, at what price; opening stock
@@ -64,7 +64,7 @@ Narration:
 
 > Here is everything that must exist before Ravi's first message.
 >
-> The company, with its name and letterhead, and the time the daily report goes out. The project, and its two sites: the Main block and the Annex.
+> The company, with its name and letterhead. The project, its two sites, the Main block and the Annex, and the time its daily report goes out.
 >
 > The team, each person with a role and a WhatsApp number. Without a number, a person cannot report from site.
 >
@@ -138,52 +138,53 @@ Narration:
 **Record (on the website, step by step):**
 
 - beat 1 · open `/planning/drawing-check?project={Green Villa}` · picture: Drawing check, empty · light: the drop area
-- beat 1 · do: drop the kit's 'Green Villa - drawing set rev A.pdf' · picture: the set being read, sheet by sheet
-- beat 2 · picture: what it read: the sheets, rooms, levels, doors and windows · light: the list of sheets
-- beat 3 · picture: the question about the roof: +660 on A-201, +655 on A-301 · light: that question
-- beat 4 · picture: the question about the first-floor toilet · light: that question
+- beat 2 · do: drop the kit's drawing set rev A · picture: what it read: 8 sheets, 4 floors, 6 levels, 2 to ask · light: the four figures
+- beat 3 · picture: the roof: +660 on page 3, +655 on page 4 · light: that check
+- beat 4 · picture: the toilet: 240 x 150 below, 210 x 150 above · light: that check
+- beat 5 · picture: To ask the architect: 2 · light: that figure
 
-*Upload the real kit file in the sample company; film what Drawing check really says, and change the narration if its words differ.*
+*Done for real by steps-02.cjs; the words above are what Drawing check said on 20 Nov 2026.*
 
 Narration:
 
 > In Mesiri, Anil drops the whole drawing set on Drawing check.
 >
-> It reads every sheet: the rooms, their sizes, the levels, the doors and windows.
+> It reads every sheet in a moment: eight sheets, four floors, six levels, the rooms and their sizes.
 >
-> And it asks what does not agree. The roof: plus six sixty on the elevation, plus six fifty-five on the section. Which is right?
+> And it says what does not agree. The roof: plus six sixty on the elevation, plus six fifty-five on the section. The same level, drawn two ways?
 >
-> And the toilet upstairs is drawn smaller than the one below it, though toilets stack. Intended?
+> The toilet upstairs is drawn smaller than the one below it, though toilets stack. Intended? And episode one's copied bedroom label is here too.
 >
-> Two questions for the architect, before a single brick.
+> Two things to ask the architect, and one to check, before a single brick.
 
-### 8. One place for every paper
+### 8. Kept, and turned into places
 
-*In Mesiri · Documents · screen · screen `/planning/documents?project={Green Villa}`*
+*In Mesiri · Documents, Live plans, Places · steps*
+
+**Record (on the website, step by step):**
+
+- beat 1 · open `/planning/documents?project={Green Villa}` · picture: Documents, empty · light: the drop area
+- beat 1 · do: drop the drawing set · picture: the set filed: A-101 Ground Floor Plan, rev A, Drawings · light: its row
+- beat 2 · do: drop the building permit · picture: the permit filed under Approvals & permits · light: its row
+- beat 3 · open `/planning/live?project={Green Villa}` · picture: Live plans: the drawing, not yet tracked · light: Track on site
+- beat 3 · do: Track on site · picture: the footing plan: 14 footings, F1 to F4 · light: the plan
+- beat 4 · open `/planning/places?project={Green Villa}` · picture: Places: 2 floors, 20 rooms · light: the figures
+
+*Done for real by steps-02.cjs. Mesiri files the 8-sheet set as one document named after its first sheet (UX-82).*
 
 Narration:
 
-> The checked set goes into Documents, each sheet kept on its own.
+> Next, Anil keeps the set in Documents. Mesiri reads its title block and files it under Drawings: A-101, revision A.
 >
-> With it, the building permit from the municipality, the contract, and the estimate.
+> With it, the building permit from the municipality, under approvals and permits. When a drawing is revised, the new one goes in as revision B, and everyone opens the latest.
 >
-> When a drawing is revised, the new one is kept with the old, and everyone on the project opens the latest. Nobody builds from last month's print.
-
-### 9. Every floor and room, from the drawings
-
-*In Mesiri · Places · screen · screen `/planning/places?project={Green Villa}`*
-
-Narration:
-
-> From the same drawings, Mesiri lists the places: each floor, each room, each footing.
+> The same drawings become a live plan. One tap, Track on site, and the fourteen footings and every room on the drawings become places the site can report on.
 >
-> Nobody types them. They come off the plans.
->
-> So later, when Ravi says plastering done in bedroom two, the work lands on that room, and Live can colour it in.
+> Places now lists two floors and twenty rooms, from the plans, typed by nobody. Later, when Ravi says plastering done in bedroom two, it lands on that room.
 
 ## On a real site
 
-### 10. What the office already knows, in one Excel
+### 9. What the office already knows, in one Excel
 
 *The paper · Materials and suppliers · screen*
 
@@ -199,30 +200,30 @@ Narration:
 
 ## In Mesiri
 
-### 11. The Excel goes in as it is
+### 10. The Excel goes in as it is
 
 *In Mesiri · Bring your data · steps*
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/bring-data` · picture: Bring your data: the steps in order · light: the materials step
-- beat 2 · do: Upload the Excel: the kit's 'Green Villa - materials and suppliers.xlsx' · picture: the preview before anything is saved · light: the rows marked already in Mesiri (Cement, Malabar, Joy Tiling)
-- beat 2 · do: Import · picture: what was added: items, vendors with Colour World's ₹12,500, opening stock, the least to hold
-- beat 3 · picture: the WhatsApp line: send any other file on WhatsApp · light: that line
+- beat 1 · open `/bring-data` · picture: Bring your data, the steps in order · light: the materials step
+- beat 2 · do: Upload the Excel: the kit's materials and suppliers workbook · picture: the preview: 12 rows; items 6 new, 1 already in; vendors 2 already in, 2 new; opening stock 2; minimum stock 2 · light: the preview
+- beat 2 · do: Import 12 rows · picture: imported
+- beat 3 · open `/bring-data` · picture: the WhatsApp line · light: that line
 
-*Upload the real kit file in the sample company and film its real preview.*
+*Done for real by steps-02.cjs.*
 
 Narration:
 
 > In Mesiri, Bring your data takes things in the order a job needs them: the projects and sites, the team, the materials and suppliers, the BOQ, the drawings.
 >
-> The workbook goes in as it is. Mesiri shows what it read first: the cement, Malabar and Joy Tiling are already in, so it leaves them alone.
+> The workbook goes in as it is. Mesiri shows what it read before anything is saved: twelve rows. The cement, Malabar and Joy Tiling are already in, so it leaves them alone. Then Import.
 >
 > And anything else? Send the file on WhatsApp, with a line saying what it is.
 
 ## On a real site
 
-### 12. The price agreed, in writing
+### 11. The price agreed, in writing
 
 *The paper · Periyar's rate card · screen*
 
@@ -236,29 +237,29 @@ Narration:
 
 ## In Mesiri
 
-### 13. When each part of the work happens
+### 12. When each part of the work happens
 
 *In Mesiri · Schedule · steps*
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/planning/schedule?project={Green Villa}` · picture: 9 sections without dates; handover 31 Jul 2027 from the contract · light: the handover
-- beat 2 · do: Quick plan · picture: the dialog: the sections in order, days for each, from 2 Nov 2026 · light: the days column
-- beat 2 · do: set the days (Anil's judgement; say them as filmed), Save · picture: the bars, one after another
-- beat 2 · do: drag Electrical to overlap Masonry · picture: wiring alongside the walls · light: the two bars
-- beat 3 · picture: the forecast finish against the handover · light: the forecast
+- beat 1 · open `/planning/schedule?project={Green Villa}` · picture: 9 sections without dates; handover 31 Jul 2027 · light: the line
+- beat 2 · do: Quick plan · picture: Quick plan: from 2 Nov 2026, 7 days each to start · light: the dialog
+- beat 2 · do: type the days · picture: the days set: 25, 70, 45, 40, 25, 20, 15, 20, 10; finishes about 29 Jul (270 days) · light: finishes about
+- beat 3 · do: Plan 9 activities · picture: the bars · light: the chart
+- beat 3 · picture: earthwork behind; forecast finish 23 Sep 2027, +54 days · light: the figures
 
-*Do it in the sample company on the website; use the days actually set in the narration if they are said.*
+*Done for real by steps-02.cjs. Quick plan's help says each section is as long as its share of the work, but the dialog starts every section at 7 days (UX-83).*
 
 Narration:
 
 > Now the plan. The schedule already has its sections, straight from the BOQ: earthwork, concrete, masonry, plastering, all nine. And its finish, from the contract: the thirty-first of July.
 >
-> What it needs is dates. Quick plan lays the sections one after another from the start day, each linked to the one before, so a delay moves the rest. Anil sets the days for each, then drags the bars where work overlaps, like the wiring alongside the walls.
+> What it needs is dates. Quick plan puts the sections one after another from the start day. Anil sets the days each will take, so the last one ends by the handover: about two hundred and seventy days.
 >
-> From now on, late means something: late against this plan, and how many days it pushes the handover.
+> Saved, and late means something at once. In the sample company the earthwork is already behind this plan, and Mesiri says what that does: the handover moves fifty-four days.
 
-### 14. What to buy, and when
+### 13. What to buy, and when
 
 *In Mesiri · Material plan · screen · screen `/planning/materials?project={Green Villa}`*
 
@@ -266,25 +267,26 @@ Narration:
 
 > With the dates and the BOQ together, Mesiri works out the material plan: what each week's work needs, against what is in stock and on order.
 >
-> For Green Villa, about one thousand five hundred bags of cement, seven thousand seven hundred blocks, and so on, week by week.
+> For Green Villa's cement: about ninety-six bags a week once the concrete starts, against a hundred and twenty-two in stock. So it says when to order: four hundred bags, by the second of December.
 >
 > But only six of the thirty-four lines say what they use. The plan is honest about it: fill in the rest, and it covers the whole job.
 >
 > A week turns red before it runs short, not on the day the site stops.
 
-### 15. Everyone, with a role and a number
+### 14. Everyone, with a role and a number
 
 *In Mesiri · Team · steps*
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/team` · picture: the team: Anil, Meera, Ravi and the owner, roles and projects · light: the list
-- beat 2 · picture: what each role sees (the role column) · light: Ravi's role
-- beat 3 · picture: the warning: no one has a WhatsApp number · light: the warning
-- beat 3 · do: Ravi's ⋯ menu → add his number; type a number; do NOT save · picture: the number field filled · (the sample company never takes a WhatsApp number (nothing is sent from it): film the form, then Cancel)
-- beat 4 · open `/company` · picture: the company page: the letterhead and the report time · light: the report time
+- beat 1 · open `/team` · picture: the team: Anil, Meera, Ravi, Ramesh; roles and projects · light: the list
+- beat 2 · picture: Ravi: Site Engineer · light: his row
+- beat 3 · picture: the warning: 4 people have no WhatsApp number · light: the warning
+- beat 3 · do: Ravi's menu → WhatsApp number; type it · picture: Ravi's WhatsApp number typed · light: the field · (a sample company never takes a number: filmed, then Cancel)
+- beat 4 · open `/projects/{Green Villa}` · do: tick Send the DPR automatically; Save · picture: Daily report: day closes 6 pm, DPR by 9 pm, send automatically on · light: the section
+- beat 4 · do: Add outside contact; name, number, Client, agreed · picture: Dr. Anand Krishnan as an outside contact, agreed · light: the form · (not saved)
 
-*In the sample company a WhatsApp number cannot be saved, on purpose; film the filled form and Cancel, and keep the narration's 'until Ravi's is in'.*
+*Done for real by steps-02.cjs; the numbers are never saved in a sample company.*
 
 Narration:
 
@@ -292,13 +294,13 @@ Narration:
 >
 > The role decides what each one sees. Ravi sees his sites' day, but never the rupees. Meera sees the bills and the payments.
 >
-> And the number decides who can talk to Mesiri. Look: no one here has a WhatsApp number yet, and Mesiri says so. Ramesh opens Ravi's menu and adds his number. Until it is in, Ravi's first message on day one goes nowhere.
+> And the number decides who can talk to Mesiri. Look: no one here has a WhatsApp number yet, and Mesiri says so. Ramesh opens Ravi's menu and types his number. Until it is in, Ravi's first message on day one goes nowhere.
 >
-> The report time is set once for the company: nine every evening. From day one, the owner and the client get the day's report without asking.
+> And each project's report. Green Villa's day closes at six, and the report goes by nine. Ramesh switches on send automatically, and adds Doctor Krishnan, who agreed to get it on WhatsApp.
 
 ## What can go wrong
 
-### 16. Five ways a job starts badly
+### 15. Five ways a job starts badly
 
 *What can go wrong · leaks*
 
@@ -325,7 +327,7 @@ Narration:
 
 ## Recap and check yourself
 
-### 17. Three questions
+### 16. Three questions
 
 *Check yourself · questions*
 

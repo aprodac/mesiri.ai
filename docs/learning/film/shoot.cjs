@@ -112,10 +112,12 @@ print(json.dumps([[c for c in row] for row in ws.iter_rows(values_only=True)], d
   const line = (row) => (title(row) ? `<td colspan="${cols.length}" style="border-right-color:transparent">${esc(row[0])}</td>` : row.map(cell).join(''))
   const body = keep.map((row, n) => `<tr data-key="${esc(row[0])}" ${kind(row)}><th>${n + 1}</th>${line(row)}</tr>`).join('')
   const pg = await ctx.newPage()
-  await pg.setContent(`<body style="margin:0;width:${W}px;height:${H}px;background:#fff;font:15px Calibri,Arial,sans-serif;color:#111">
+  // A short sheet (a few vendors) is drawn larger, so it fills the picture instead of a strip at the top.
+  const fontPx = Math.min(30, Math.max(15, Math.floor(450 / keep.length)))
+  await pg.setContent(`<body style="margin:0;width:${W}px;height:${H}px;background:#fff;font:${fontPx}px Calibri,Arial,sans-serif;color:#111">
     <div style="height:34px;background:#217346;color:#fff;display:flex;align-items:center;padding:0 16px;font-weight:600">${esc(sc.sheet.xlsx)} · ${esc(sc.sheet.sheet || 'BOQ')}</div>
     <table style="border-collapse:collapse;margin:0;width:100%"><tr class="cl"><th></th>${[...cols].map((c) => `<th>${c}</th>`).join('')}</tr>${body}</table>
-    <style>td,th{border:1px solid #d4d4d4;padding:3px 10px;white-space:nowrap;max-width:620px;overflow:hidden}th{background:#f3f3f3;color:#555;font-weight:400;min-width:34px}
+    <style>table{font-size:inherit}td,th{border:1px solid #d4d4d4;padding:3px 10px;white-space:nowrap;max-width:620px;overflow:hidden}th{background:#f3f3f3;color:#555;font-weight:400;min-width:34px}
     tr.hd td{font-weight:700;background:#f8f8f8}tr.sec td{font-weight:700;background:#eef6f0}</style></body>`)
   const marks = {}
   for (const [name, key] of Object.entries(sc.sheet.marks || {})) {
@@ -158,6 +160,41 @@ async function pageShot(ctx, sc, ids) {
   return marks
 }
 
+/** LRN-F15: a "steps" scene, done for real: steps-NN.cjs gives one async action per frame, `(pg, h) => selector`
+ *  (what to light, or null); a picture after each, its mark saved as `mark`. */
+async function stepsShots(ctx, sc, ids) {
+  const file = join(__dirname, `steps-${ep.padStart(2, '0')}.cjs`)
+  const acts = require(file)[sc.id]
+  if (!acts || acts.length !== sc.frames.length) throw new Error(`${sc.id}: steps-${ep}.cjs needs ${sc.frames.length} actions`)
+  const pg = await ctx.newPage()
+  const h = {
+    url: (u) => base + u.replace(/\{([^}]+)\}/g, (_, name) => ids[name]),
+    go: async (u, wait = 4500) => {
+      await pg.goto(h.url(u))
+      await pg.waitForTimeout(wait)
+      await pg.keyboard.press('Escape').catch(() => {})
+      await pg.waitForTimeout(300)
+    },
+    kit: (name) => join(KIT, name),
+    wait: (ms) => pg.waitForTimeout(ms),
+  }
+  for (const [i, act] of acts.entries()) {
+    const shot = sc.frames[i].shot || `ep${ep.padStart(2, '0')}-${sc.id}-${i + 1}`
+    const sel = await act(pg, h)
+    await pg.waitForTimeout(700)
+    const marks = {}
+    if (sel) {
+      const box = await (typeof sel === 'string' ? pg.locator(sel) : sel).first().boundingBox()
+      if (!box) throw new Error(`${shot}: the mark is not on the page`)
+      marks.mark = { x: box.x / W, y: box.y / H, w: box.width / W, h: box.height / H }
+    }
+    await pg.screenshot({ path: join(out, `${shot}.png`) })
+    saveMarks(shot, marks)
+    console.log(shot, sel ? 'mark' : '(no mark)')
+  }
+  await pg.close()
+}
+
 ;(async () => {
   const b = await chromium.launch()
   const ctx = await b.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 2, colorScheme: 'dark' })
@@ -166,7 +203,11 @@ async function pageShot(ctx, sc, ids) {
     localStorage.setItem('theme', 'dark')
     localStorage.setItem('mesiri_guide_voice', JSON.stringify({ on: false }))
   }, token || '')
-  const ids = script.scenes.some((s) => s.kind === 'screen' && s.url && !s.paper && !s.sheet) ? await projectIds() : {}
+  const ids = script.scenes.some((s) => (s.kind === 'screen' && s.url && !s.paper && !s.sheet) || s.kind === 'steps') ? await projectIds() : {}
+  for (const sc of script.scenes.filter((s) => s.kind === 'steps')) {
+    if (process.env.ONLY && process.env.ONLY !== sc.id) continue
+    await stepsShots(ctx, sc, ids)
+  }
   for (const sc of script.scenes.filter((s) => s.kind === 'screen')) {
     if (process.env.ONLY && process.env.ONLY !== sc.shot) continue
     const marks = sc.paper ? await paperShot(ctx, sc) : sc.sheet ? await sheetShot(ctx, sc) : await pageShot(ctx, sc, ids)

@@ -35,6 +35,17 @@ const script = JSON.parse(readFileSync(join(here, `episode-${ep}.json`), 'utf8')
 const CACHE = join(here, '.cache')
 const OUT = join(here, 'out')
 
+// LRN-F15: a steps scene's frames: frame n's picture is <episode prefix>-<scene>-<n> (shoot.cjs), its box the mark
+// shoot.cjs found for that step.
+for (const sc of script.scenes.filter((s) => s.kind === 'steps')) {
+  sc.frames.forEach((f, i) => {
+    f.shot = f.shot || `ep${ep}-${sc.id}-${i + 1}`
+    const file = join(CACHE, 'shots', `${f.shot}.json`)
+    if (!existsSync(join(CACHE, 'shots', `${f.shot}.png`))) throw new Error(`${f.shot}: not shot yet: run shoot.cjs ${ep}`)
+    const marks = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+    f.rect = marks.mark || null
+  })
+}
 // A screen scene's focus and boxes may name a mark (`{ "at": 1, "mark": "value" }`): where shoot.cjs found that thing
 // on the picture (.cache/shots/<shot>.json), with `pad` (a share of the picture) round it. Never placed by hand.
 for (const sc of script.scenes.filter((s) => s.kind === 'screen')) {
@@ -150,7 +161,8 @@ const parts = []
 for (const s of scenes) {
   if (process.env.ONLY && process.env.ONLY !== s.scene.id) continue
   // A screen scene's picture is part of its key: a re-shot screen is drawn again even when the script is unchanged.
-  const shot = s.scene.shot && existsSync(join(CACHE, 'shots', `${s.scene.shot}.png`)) ? hash(readFileSync(join(CACHE, 'shots', `${s.scene.shot}.png`)).toString('base64')) : ''
+  const pics = [s.scene.shot, ...(s.scene.frames || []).map((f) => f.shot)].filter(Boolean).map((n) => join(CACHE, 'shots', `${n}.png`))
+  const shot = hash(pics.filter((f) => existsSync(f)).map((f) => hash(readFileSync(f).toString('base64'))).join('|'))
   const key = hash(JSON.stringify([s.scene, s.beats.map((b) => [b.at, b.len]), s.dur, s.index, scenes.length, page, shot]))
   const file = join(CACHE, `scene-${s.scene.id}-${key}.mp4`)
   if (!existsSync(file)) {
