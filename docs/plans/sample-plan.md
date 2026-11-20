@@ -33,7 +33,7 @@ Sunday: nobody works.
 ### Day 2 · Monday
 
 **Ravi**
-- Main block: Electrical conduits: 12.1 nos; 7 on site; used cement 2.2 bags, m sand 0.17 cum; spent ₹1,840 (nails, binding wire, cover blocks); clear; short of cement
+- Main block: Electrical conduits: 12 nos; 7 on site; used cement 2.2 bags, m sand 0.17 cum; spent ₹1,840 (nails, binding wire, cover blocks); clear; short of cement
 - Annex: Plinth beam: 24 rmt; 7 on site; used cement 10 bags, aggregate 20mm 1.5 cum, m sand 0.8 cum, steel 120 kg; spent ₹650 (tea and snacks for the crew); clear
 - Tower A: Column casting: 4 cum; 11 on site; used cement 32 bags, aggregate 20mm 3 cum, m sand 1.6 cum, steel 300 kg; spent ₹2,300 (diesel for the mixer and pump); clear
 - Tower B: Retaining wall: 35 sqm; 8 on site; used cement 24 bags, aggregate 20mm 2.5 cum, steel 400 kg, binding wire 6 kg; spent ₹900 (shifting cement bags from the road); clear

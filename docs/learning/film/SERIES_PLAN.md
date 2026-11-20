@@ -48,7 +48,7 @@ One continuous story, the one the sample company plays (`backend/.../learn/sampl
   engineer (records every site day on WhatsApp, asks for material, receives it); **Meera**, accounts (books bills,
   pays suppliers, subcontractors and wages, records what the client pays).
 - **Outside:** Malabar Cements Agency, Kerala Steels, Periyar Sand & Aggregates, Thrissur Blocks (suppliers); Joy
-  Tiling Works (subcontractor); Suresh's labour team.
+  Tiling Works (subcontractor); Rahim's labour crew.
 - **The days:** the plan's 62 days (1,477 entries) for the middle of the project; before day 1 (winning the job,
   setting up) and after day 62 (defects period, retention) come from the guided project and are told as such.
 

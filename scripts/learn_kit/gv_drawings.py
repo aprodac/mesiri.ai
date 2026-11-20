@@ -1225,22 +1225,30 @@ def section_aa(pdf) -> None:  # noqa: ANN001
     """A-301 at 1:50: the cut on A-101's line A-A, through the living and the dining (and above them the family
     living and BEDROOM-3), front at the left; the sit out and its columns seen beyond. The roof at +655 (the
     elevation says +660: the catch)."""
-    pl = Plan(pdf, 300, 205)
+    pl = Plan(pdf, 300, 225)
     lv = dict(zip(("ground", "plinth", "first", "roof", "parapet"), gv.SECTION_LEVELS, strict=True))
     p, f, roof, top = lv["plinth"], lv["first"], lv["roof"], lv["parapet"]
     _ground(pl, -330, OUT_D + 140)
-    # Below ground: rubble foundations under the walls, plinth beams on the grid lines, earth filled to the floor.
-    for y0, w in ((0, 23), (EXT + 430, 10), (OUT_D - EXT, 23)):
-        c = y0 + w / 2
+    # Below ground, as S-101 builds it: seen beyond the cut, the footings of grid line A (F1, F2, F1) on their PCC,
+    # each with its column rising to the plinth beam; the plinth beams cut on the grid lines; earth filled between.
+    by_col = {c: f for f in gv.FOOTINGS for c in f[5]}
+    on_a = [s_ for s_ in gv.COLUMN_SPOTS if s_[1] == gv.GRID_X[0][1]]
+    found = -150  # the bottom of the footings (S-101 note 4)
+    for mark, _x, y, _a, b_ in sorted(on_a, key=lambda c: c[2]):
+        f_ = by_col[mark]
+        fa, d_, c_ = f_[1], f_[3], f_[4]
+        pl.rect(y - fa / 2 - 10, found - 10, fa + 20, 10, fill=colors.HexColor("#d9d6cf"), width=0.4)  # PCC
         path = pl.pdf.beginPath()
-        for i, (yy, z) in enumerate(((c - 45, -120), (c + 45, -120), (c + 20, -30), (c - 20, -30))):
+        for i, (yy, z) in enumerate(((y - fa / 2, found), (y + fa / 2, found), (y + fa / 2, found + c_),
+                                     (y + b_ / 2 + 10, found + d_), (y - b_ / 2 - 10, found + d_), (y - fa / 2, found + c_))):
             (path.moveTo if i == 0 else path.lineTo)(*pl.p(yy, z))
         path.close()
         pl.pdf.setFillColor(colors.HexColor("#e6e3dc"))
         pl.pdf.setLineWidth(0.5)
         pl.pdf.drawPath(path, fill=1, stroke=1)
         pl.pdf.setFillColor(INK)
-        pl.rect(c - 20, -30, 40, p - 10 + 30, fill=colors.HexColor("#d4d1ca"), width=0.5)  # basement up to the floor
+        pl.rect(y - b_ / 2, found + d_, b_, p - 10 - 45 - found - d_, fill=colors.HexColor("#d4d1ca"), width=0.5)
+        pl.text(y, found - 30, f"{f_[0]} ({mark})", 5.6)
     pl.rect(23, 0, OUT_D - 46, p - 10, fill=colors.HexColor("#efede8"), width=0.3)
     for i in range(12):
         y = 40 + i * 60
@@ -1298,7 +1306,7 @@ def section_aa(pdf) -> None:  # noqa: ANN001
     dim_v(pl, list(gv.SECTION_LEVELS), -330, -300, -1)
     for y, z, text in ((OUT_D / 2, roof + 25, "RCC ROOF SLAB 12 THICK, WEATHERING COURSE AND TILES ON TOP"),
                        (OUT_D / 2, f + 6, "RCC SLAB 12 THICK ON BEAMS 23 WIDE"),
-                       (OUT_D / 2, -150, "RUBBLE FOUNDATION IN CEMENT MORTAR, PLINTH BEAMS ON THE GRID LINES"),
+                       (OUT_D / 2, -212, "FOOTINGS OF GRID LINE A SEEN BEYOND (S-101), PLINTH BEAMS PB1 CUT ON THE GRID LINES"),
                        (OUT_D / 2, 18, "EARTH FILLED AND RAMMED, PCC 1:4:8, TILES")):
         lx, ly = pl.p(y, z)
         w = pdf.stringWidth(text, "Helvetica", 5.6) + 6

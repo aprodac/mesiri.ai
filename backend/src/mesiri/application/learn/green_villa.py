@@ -247,10 +247,14 @@ COLUMNS: tuple[tuple[str, int, int, str, str], ...] = tuple(
 ARCHITECT = "Sreekumar Architects, Thrissur"
 CONSULTANT = "R. Anand, Structural Consultant"
 
+#: Built-up area, sq ft, outside faces (LRN-F12): the Main block's two floors as the drawing set draws them
+#: (ground 1366 x 786, first floor over the left and middle bays and the stair hall), and the single-storey Annex.
+BUILT_UP = {"Main block": 2150, "Annex": 450}
 #: The building permit (Documents, approvals).
 PERMIT = {"authority": "Thrissur Municipal Corporation", "number": "TMC/BP/2026/1187", "date": "30 September 2026",
           "valid": "3 years from the date of issue", "plot": "Survey no. 412/3, Puthur village, 6.2 cents",
-          "built_up_sqft": 2150, "floors": "Ground + 1 (Main block); Ground (Annex)"}
+          "built_up_sqft": sum(BUILT_UP.values()),
+          "floors": f"Main block, ground + 1: {BUILT_UP['Main block']:,} sq ft; Annex, ground: {BUILT_UP['Annex']:,} sq ft"}
 
 #: Periyar Sand & Aggregates' rate card (Rates): the agreed rate per material. The catch: M sand comes later at Rs 1,750
 #: (sample_story.DEMO_RATE_NOW), Rs 100 a cum above this card; Rates shows the rise.

@@ -33,7 +33,7 @@
 | **Anil** | Project manager | Plans, buys, counts work on the BOQ, closes problems, runs subcontracts |
 | **Ravi** | Site engineer | Runs the sites day to day on WhatsApp: attendance, work, material, problems, deliveries |
 | **Meera** | Accounts (FINANCE) | Bills, payments, wages, advances, the client's money, GST, TDS, month end |
-| Suresh | Labour contractor (Suresh's team) | Supplies helpers by the day; paid weekly |
+| Rahim | Labour contractor (Rahim's crew, "Bengal crew" in the records; LRN-F14) | Supplies helpers by the day; paid weekly. Suresh is a mason on the register, not the contractor |
 | 15 named workers | Worker register | Masons, carpenters, bar benders, electrician, plumber, helpers (rename the mason Ravi → Rajan) |
 
 **Outside:** Dr. Anand Krishnan (Green Villa's client); Lake View Builders, Mr. Varghese (Lake View's client); the
@@ -127,7 +127,7 @@ makes it from the records; nobody types it.
 | Items and units | Catalogue + kit items (tiles, granite, CPVC, wire, emulsion) | Machines' diesel; anything the drawings name |
 | Suppliers | 7 seeded + 3 in the kit | Rate list per supplier (batch 2) |
 | Subcontractor | Joy Tiling Works | — |
-| Workers | 15 with trade, wage and site | Rename mason Ravi → Rajan (D3); teams: Suresh's team (batch 3) |
+| Workers | 15 with trade, wage and site | Rename mason Ravi → Rajan (D3); teams: Rahim's crew (batch 3) |
 | Machines | None | A mixer and a vibrator per site; a hired JCB for the Annex; a tipper (batch 2) |
 | Money accounts | None | Federal Bank current account; petty cash per site (D5) |
 | Clients | Lake View Builders | Dr. Anand Krishnan (Green Villa) |
