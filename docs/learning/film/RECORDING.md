@@ -78,6 +78,20 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
       WA-316 (5): as a project manager the assistant put names in `worker_id` and Save was refused.
 - [x] Built: `node docs/learning/film/build.mjs 03` → `out/episode-03.mp4` (about 7 minutes).
 
+### Episode 4 recording, 20 Nov (this session): where it stopped
+
+- Website way for `gate` and `count` (Ilan, 20 Nov): no WhatsApp in the episode; every website scene has `as`, `day`
+  and `play` (the role the copy arrives as, so that role's entries of the day are left to do on screen).
+- `steps-04.cjs`: **`move` works** (Stock's own "Move from Annex": Annex 100 → 60, Main block 0 → 40). **`compare`
+  stops at the award (UX-85):** quotes asked from Quotations are not linked to Ravi's request, so the award warns
+  "Already on order"; asked from the request, the form locks the items to its 100 bags of cement. Waits for Ilan.
+  `gate`, `match`, `count`, `owner` not written yet.
+- Local copy notes: the dashboard installs with `pnpm install` (no npm lockfile) and builds with
+  `VITE_API_URL=http://localhost:8000 pnpm exec vite build`; serve with `vite preview --port 5199`. The answer of
+  `go-back` has no role in it: take a fresh `POST /learn/sandbox` with the role before shooting a scene (record.cjs
+  does). The hidden Tell Mesiri panel is also a `dialog`: press a dialog's buttons by their name on the page, not
+  through `getByRole('dialog').last()`.
+
 ## The owner beats (added 20 Nov): one screen per episode to shoot
 
 Each episode's scene `owner` (part "What the owner sees", SERIES_PLAN 5a) is a screen shot as the owner on that day,

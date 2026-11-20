@@ -2,11 +2,11 @@
 
 > Made from `episode-04.json` by `script_md.py`; edit the JSON, then run it again.
 
-**Status:** DRAFT script for Ilan's review (20 Nov 2026), ready to record: the sample company now plays the kit's paperwork (LRN-F18) and the kit's cement GST is 18% (LRN-F17). Recording brief: RECORDING.md. Merged 20 Nov with a second session's scenes (Ilan: "keep the count in episode 4"): count (day 16, the plan's count, LRN-F23) and owner (LRN-F22) added; the payment stays in match.
+**Status:** DRAFT script for Ilan's review (20 Nov 2026), ready to record: the sample company now plays the kit's paperwork (LRN-F18) and the kit's cement GST is 18% (LRN-F17). Recording brief: RECORDING.md. Merged 20 Nov with a second session's scenes (Ilan: "keep the count in episode 4"): count (day 16, the plan's count, LRN-F23) and owner (LRN-F22) added; the payment stays in match. Gate and count recorded on the website (Ilan, 20 Nov: "use the website way"): no WhatsApp in this episode.
 
 **Objective:** By the end you can walk a material chain across the four people: the request, the quotes, the order, the delivery checked at the gate (a short load, torn bags returned), the stock, the supplier's bill checked against the order and the delivery, and the payment; and the month-end stock count.
 
-**Length:** 16 scenes, 1306 words of narration (about 9 minutes)
+**Length:** 16 scenes, 1311 words of narration (about 9 minutes)
 
 ## Cold open
 
@@ -89,10 +89,10 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/procurement/requests?project={Green Villa}` · picture: Ravi's request: 100 bags cement, Main block · light: the request
-- beat 2 · open `/materials?project={Green Villa}` · picture: Stock: Main block 0 cement, Annex about 110 · light: the two cement rows
+- beat 1 · open `/materials/requests?project={Green Villa}` · picture: Ravi's request: 100 bags cement, Main block · light: the request
+- beat 2 · open `/materials?project={Green Villa}` · picture: Stock: Main block 0 cement, the Annex 100; the page's own way out: Move from Annex, or Order 200 · light: the two cement rows
 - beat 3 · do: Move: 40 bags cement, Annex → Main block · picture: the move filled in, before Save · light: the form
-- beat 4 · do: Save · picture: Stock after the move: Main block 40, Annex less 40 · light: the two rows
+- beat 4 · do: Save · picture: Stock after the move: Main block 40, the Annex 60 · light: the two rows
 
 *As Anil (PROJECT_MANAGER) on day 3, by steps-04.cjs. Needs LRN-F18 (the plan's day 3 has the move). Read the figures off the screen.*
 
@@ -100,7 +100,7 @@ Narration:
 
 > Tuesday, eight o'clock. Ravi's request is the first thing on Anil's screen: a hundred bags for the Main block, with why.
 >
-> Ordering takes days. But Stock shows the Annex holding a hundred and ten bags, and the Annex uses only ten a day for its plinth beam.
+> Ordering takes days. But Stock shows the Annex holding a hundred bags, and the Annex uses only ten a day for its plinth beam.
 >
 > So Anil moves forty bags from the Annex to the Main block, today. A tractor trip across the site, and the masons work by ten.
 >
@@ -162,22 +162,19 @@ Narration:
 
 ### 8. Counted at the gate, said at the gate
 
-*Friday, 11 am · Main block gate · chat*
+*In Mesiri · Pending deliveries · Friday · steps*
 
-On screen:
+**Record (on the website, step by step):**
 
-- Ravi says it at the gate; the office can enter the same from the challan on the website.
+- beat 1 · open `/procurement/pending?project={Green Villa}` · picture: Malabar's order for the Main block: 200 bags to come · light: the order
+- beat 1 · do: Material came: 190 bags, challan MCA/DC/2611, note: 6 torn and set hard · picture: the delivery filled in, before Save · light: the form
+- beat 2 · do: Save · picture: the order: 190 received, 10 still to come · light: the order
 
-**Record (real reply):**
-
-- Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 6
-- Send: `Main block: Malabar cement came, 190 bags on challan, 6 torn, sent back`
-- Then: Save
-- Record it: send these words in the sample company through Tell Mesiri, as Ravi, and film Mesiri's real reply. If the model is not available (the key's monthly cap), film the website way: the order's Material came, 190 bags, then Returns (the plan's day 6 does both).
+*Done on the website, not WhatsApp (Ilan, 20 Nov: no model key; "use the website way"). As Ravi (SITE_ENGINEER) on day 6: the plan's delivery of 190 is his own entry that day. The return is Anil's (the next scene, a paper).*
 
 Narration:
 
-> Ravi tells Mesiri what came, against the order: a hundred and ninety bags on the challan, six of them torn and sent back.
+> Ravi puts in what came, against the order, from the website: a hundred and ninety bags on the challan, six of them torn and set hard.
 >
 > Mesiri ties it to Anil's order. The order now shows a hundred and ninety received, and ten still to come.
 >
@@ -220,7 +217,7 @@ Narration:
 - beat 2 · picture: the difference Mesiri shows: the rate above the order, and the bags returned · light: the difference
 - beat 3 · do: take the bill back; the corrected bill MCA/INV/2611-R, 184 bags at Rs 400, Rs 73,600; settle the return against it · picture: the corrected bill, the return settled · light: the corrected bill
 
-*As Meera (FINANCE) on days 9 and 10, by steps-04.cjs (the plan's own entries for those days are hers: record them on screen instead of letting the cast play them). Read the difference off the screen and say only what it shows; log what it does not flag.*
+*As Meera (FINANCE) on day 9, by steps-04.cjs: the bill at Rs 410 and taking it back are her own entries that day (played as her, they are left to do on screen). The corrected bill (the plan's day 10) is entered on screen the same day, then the day goes back. Read the difference off the screen and say only what it shows.*
 
 Narration:
 
@@ -244,24 +241,25 @@ Narration:
 
 ### 13. What is really there
 
-*Monday · day 16 · month end · chat*
+*In Mesiri · Stock count · Monday 30 Nov · steps*
 
 On screen:
 
-- Book 106 and counted 103: the played sample company's Main block cement on day 16 (LRN-F23, its integration test).
+- The book and counted figures are the screen's.
 
-**Record (real reply):**
+**Record (on the website, step by step):**
 
-- Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 16
-- Send: `Main block stock count: cement 103 bags. 3 bag wastage`
-- Then: Save
-- Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
+- beat 1 · open `/materials/counts?project={Green Villa}` · do: Start a count: Main block · picture: the count started, the book frozen · light: the count
+- beat 2 · do: Cement: counted 3 fewer than the book; reason Wastage · picture: cement: book, counted, 3 short · light: the cement line
+- beat 3 · do: Save · picture: the difference: 3 bags, wastage, waiting for the owner · light: the difference
+
+*Done on the website, not WhatsApp (Ilan, 20 Nov). As Ravi on day 16: the plan's count is his own entry. Kept (keep) so the owner approves this count in the next scene. The book on screen is before Ravi's own use of the day (his entries are left to do): say no book figure, only the 3 short.*
 
 Narration:
 
-> The last day of November. Ravi counts the Main block's store, bag by bag, and says what he finds.
+> The last day of November. Ravi counts the Main block's store, bag by bag, and puts in what he finds, on Stock count.
 >
-> Mesiri compares it with the book: what came, minus what was used, minus what went back. Three bags fewer than the book.
+> Mesiri puts it beside the book: what came, minus what was used, minus what went back. Three bags fewer than the book.
 >
 > Ravi says why: wastage, spilt and set on the mixing floor. A small, honest difference, and now it is written down.
 
@@ -277,7 +275,7 @@ Narration:
 - beat 3 · open `/materials/counts` · do: open the Main block's count; Approve · picture: 3 bags short, wastage, the rupees; approved · light: the difference
 - beat 4 · open `/materials/counts` · picture: the count approved · light: the count
 
-*Owner beat (SERIES_PLAN 5a). Done for real by steps-04.cjs, as the owner on day 16, after Ravi's count. The rupees of 3 bags are the screen's.*
+*Owner beat (SERIES_PLAN 5a). Done for real by steps-04.cjs, as the owner on day 16, after Ravi's count. The rupees of 3 bags are the screen's. On the same copy as the count (keep): the approval is the owner's own entry.*
 
 Narration:
 
