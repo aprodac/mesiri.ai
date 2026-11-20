@@ -1482,6 +1482,48 @@ export async function fetchAttendanceReportsApi(params?: {
   return res.data
 }
 
+// --- Recording attendance from the dashboard (WA-121) ----------------------
+// The same POST /labour/attendance the WhatsApp assistant's `record_attendance`
+// tool calls, so a day typed on the dashboard and a day sent on WhatsApp become
+// the identical report (same totals, cost and DPR read). `recorded_via` marks
+// where it came from; an Idempotency-Key makes a double click one report.
+
+export interface RecordAttendanceLineInput {
+  /** A worker from the register (optional); leave out for a plain trade headcount. */
+  worker_id?: string | null
+  worker_name?: string | null
+  trade?: string | null
+  headcount: number
+  daily_wage?: number | null
+  contractor?: string | null
+  activity?: string | null
+  attendance_status?: 'present' | 'absent' | 'half_day'
+  overtime_hours?: number | null
+  remarks?: string | null
+}
+
+export interface RecordAttendanceInput {
+  project_id: string
+  site_id: string
+  occurred_date: string
+  lines: RecordAttendanceLineInput[]
+  notes?: string | null
+  /** The report this one replaces (the same day re-entered); leave out for a
+   *  separate crew or shift, which then counts on top. */
+  corrects_report_id?: string | null
+  recorded_via?: 'dashboard'
+}
+
+export async function recordAttendanceApi(
+  input: RecordAttendanceInput,
+  idempotencyKey: string,
+): Promise<LabourAttendanceDetailItem> {
+  const res = await api.post('/labour/attendance', { recorded_via: 'dashboard', ...input }, {
+    headers: { 'Idempotency-Key': idempotencyKey },
+  })
+  return res.data
+}
+
 /** Development cleanup only. 403 unless MESIRI_ALLOW_LABOUR_DELETE is set and
  *  the caller is ADMIN. Returns 409 while the worker still appears on any
  *  attendance line — delete those reports first. */

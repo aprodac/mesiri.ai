@@ -188,10 +188,11 @@ export const PAGE_TOURS: Record<string, Tour> = {
   },
   '/labour': {
     key: '/tour/labour',
-    version: 1,
+    version: 2,
     introFromPage: true,
     steps: [
       { target: 'labour.views', title: 'Four views', text: 'Attendance by day, the muster roll for the month, your workers and their wages, and the labour teams.' },
+      { target: 'labour.record', title: 'Record attendance', text: 'Type who worked today — "6 masons, 4 helpers" — straight from the office. It saves the same as a site sending it on WhatsApp.', mood: 'happy' },
       { target: 'labour.add', title: 'Add a worker', text: 'Add a person with their trade and daily wage. On WhatsApp the site just says who came: "Suresh team: 4 masons, 2 helpers".', mood: 'happy' },
     ],
   },

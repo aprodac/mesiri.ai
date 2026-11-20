@@ -1,11 +1,13 @@
 import * as React from 'react'
-import { UserPlus } from 'lucide-react'
+import { ClipboardList, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader, Segmented } from '@/components/dpr-page'
 import { AttendanceView } from '@/components/workforce/attendance-view'
 import { WorkersView } from '@/components/workforce/workers-view'
 import { MusterView, TeamsView } from '@/components/workforce/muster-view'
+import { RecordAttendanceDialog } from '@/components/workforce/record-attendance-dialog'
 import { useScope } from '@/lib/ScopeContext'
+import { useAuth } from '@/lib/AuthContext'
 import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
 import { useReadOnly } from '@/lib/trial'
@@ -20,9 +22,15 @@ type View = 'attendance' | 'muster' | 'workers' | 'teams'
 
 export default function LabourPage() {
   const { scope } = useScope()
+  const { me } = useAuth()
   const readOnly = useReadOnly()
   const [view, setView] = useUrlState<View>('view', 'attendance')
   const [addOpen, setAddOpen] = React.useState(false)
+  const [recordOpen, setRecordOpen] = React.useState(false)
+  // Who may record attendance on the dashboard: everyone who records on site
+  // (site engineers, PMs, admins, owners), the same as Materials — Finance and
+  // read-only trials don't. The backend re-checks project/site authorization.
+  const canRecord = !!me && me.role !== 'FINANCE' && !readOnly
   usePageTitle({ attendance: 'Labour', muster: 'Muster roll · Labour', workers: 'Workers · Labour', teams: 'Teams · Labour' }[view] ?? 'Labour')
   const projectId = scope.mode === 'project' || scope.mode === 'site' ? scope.projectId : null
   const siteId = scope.mode === 'site' ? scope.siteId : null
@@ -48,18 +56,30 @@ export default function LabourPage() {
         title="Labour"
         actions={
           !readOnly && (
-            <Button
-              size="sm"
-              variant={view === 'workers' ? 'default' : 'outline'}
-              className="gap-1.5"
-              data-guide="labour.add"
-              onClick={() => {
-                setView('workers')
-                setAddOpen(true)
-              }}
-            >
-              <UserPlus className="size-4" /> Add worker
-            </Button>
+            <div className="flex items-center gap-2">
+              {canRecord && view !== 'workers' && (
+                <Button
+                  size="sm"
+                  className="gap-1.5 font-semibold"
+                  data-guide="labour.record"
+                  onClick={() => setRecordOpen(true)}
+                >
+                  <ClipboardList className="size-4" /> Record attendance
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={view === 'workers' ? 'default' : 'outline'}
+                className="gap-1.5"
+                data-guide="labour.add"
+                onClick={() => {
+                  setView('workers')
+                  setAddOpen(true)
+                }}
+              >
+                <UserPlus className="size-4" /> Add worker
+              </Button>
+            </div>
           )
         }
       />
@@ -74,6 +94,8 @@ export default function LabourPage() {
       ) : (
         <WorkersView addOpen={addOpen} setAddOpen={setAddOpen} leading={switcher} />
       )}
+
+      <RecordAttendanceDialog open={recordOpen} onOpenChange={setRecordOpen} scope={scope} />
     </div>
   )
 }
