@@ -43,12 +43,14 @@ module.exports = {
   // Anil, day 4: the request for quotes (left from day 3), the three quotes from their papers, the cheapest per item.
   compare: [
     async (pg, h) => {
-      await h.go('/procurement/quotations?project={Green Villa}')
-      await pg.locator('[data-guide="quotes.add"]').first().click()
-      await h.wait(1200)
-      const dlg = pg.getByRole('dialog').last()
-      await pickRadix(pg, dlg.getByRole('combobox').filter({ hasText: 'Choose site' }), 'Main block')
-      await pickItem(pg, dlg, 0, 'Cement', '200')
+      // From Ravi's request (UX-85): its cement stays linked, raised to the month's 200 bags; the steel added.
+      await h.go('/materials/requests?project={Green Villa}')
+      await pg.locator('main button').filter({ hasText: 'Cement100 bags' }).first().click()
+      await h.wait(800)
+      await pg.getByRole('button', { name: 'Get quotes' }).first().click()
+      await h.wait(1500)
+      const dlg = pg.getByRole('dialog').filter({ hasText: 'Ask for quotes' }).last()
+      await dlg.getByLabel('Quantity').nth(0).fill('200')
       await dlg.getByRole('button', { name: 'Add item' }).click()
       await pickItem(pg, dlg, 1, 'Steel', '1000')
       for (const s of QUOTES.map((q) => q[0])) {
@@ -58,6 +60,11 @@ module.exports = {
       }
       await dlg.getByRole('button', { name: 'Create RFQ' }).click()
       await h.wait(3000)
+      if (!(await pg.locator('[data-guide="quotes.suppliers"]').count())) {
+        await h.go('/procurement/quotations?project={Green Villa}')
+        await pg.getByText('RFQ-0001').first().click()
+        await h.wait(1500)
+      }
       return pg.locator('[data-guide="quotes.suppliers"]').first()
     },
     async (pg, h) => {

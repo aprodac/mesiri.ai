@@ -228,9 +228,10 @@
       "frames": [
         {
           "at": 0,
-          "url": "/procurement/quotations?project={Green Villa}",
-          "show": "the request to Malabar, Kerala Steels and Sri Hardwares",
-          "mark": "the request"
+          "url": "/materials/requests?project={Green Villa}",
+          "do": "Ravi's request REQ-0001 → Get quotes: cement raised to 200 bags, steel 1,000 kg added; Malabar, Kerala Steels, Sri Hardwares",
+          "show": "RFQ-0001 · for REQ-0001, sent to the three",
+          "mark": "the suppliers"
         },
         {
           "at": 0,

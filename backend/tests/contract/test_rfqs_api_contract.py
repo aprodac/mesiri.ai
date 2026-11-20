@@ -316,3 +316,39 @@ async def test_price_list_without_quotes_rates_hidden_and_other_companies_not_fo
                 "updated_at) VALUES (:id, 'Other', 'local', 'default', 'active', now(), now())", id=other)
     stranger = await _user(test_engine, other, "admin", "Stranger")
     assert (await client.get(f"/procurement/rates/suppliers/{steels}", headers=stranger["h"])).status_code == 404
+
+
+async def test_from_a_request_the_office_quotes_for_more_and_adds_items(client, world):
+    """UX-85: from Arun's request for 100 bags, the office quotes for the month (200 bags) and adds steel for the same
+    site; the cement line stays linked to the request (the award marks it ordered, no 'already on order'). Guards: an
+    item of the request can't be dropped, nor quoted for less than is still to buy."""
+    w = world
+    req = await client.post("/procurement/requests", headers=w["arun"]["h"], json={
+        "project_id": str(w["villa"]), "site_id": str(w["block_a"]),
+        "lines": [{"material_id": w["cement"], "quantity": "100", "unit_id": w["units"]["bags"]}]})
+    assert req.status_code == 201, req.text
+    rid = req.json()["id"]
+    cement = {"material_id": w["cement"], "quantity": "200", "unit_id": w["units"]["bags"]}
+    steel = {"material_id": w["tmt"], "quantity": "1000", "unit_id": w["units"]["kg"]}
+    rfq = await client.post("/procurement/rfqs", headers=w["admin"]["h"], json={
+        "request_id": rid, "suppliers": ["Malabar Hardware", "KK Traders"], "lines": [cement, steel]})
+    assert rfq.status_code == 201, rfq.text
+    got = {line["material_id"]: line for line in rfq.json()["lines"]}
+    assert float(got[w["cement"]]["quantity"]) == 200 and got[w["cement"]]["request_line_id"]
+    assert float(got[w["tmt"]]["quantity"]) == 1000 and not got[w["tmt"]]["request_line_id"]
+    assert rfq.json()["request"]["ref"] == req.json()["ref"]
+    # Guards: less than the site still needs, or the request's item left out.
+    less = await client.post("/procurement/rfqs", headers=w["admin"]["h"], json={
+        "request_id": rid, "suppliers": ["KK Traders"], "lines": [{**cement, "quantity": "50"}]})
+    assert less.status_code == 422 and "still needs" in less.text
+    dropped = await client.post("/procurement/rfqs", headers=w["admin"]["h"], json={
+        "request_id": rid, "suppliers": ["KK Traders"], "lines": [steel]})
+    assert dropped.status_code == 422 and "Keep every item" in dropped.text
+    # The award orders it as the request's: the request is ordered, no possible duplicate.
+    await _quote(client, w, rfq.json(), "KK Traders", [{"material_id": w["cement"], "rate": "390"},
+                                                       {"material_id": w["tmt"], "rate": "66"}])
+    ok = await client.post(f"/procurement/rfqs/{rfq.json()['id']}/award", json={"mode": "lowest_per_line"},
+                           headers=w["admin"]["h"])
+    assert ok.status_code == 201, ok.text
+    asked = (await client.get(f"/procurement/requests/{rid}", headers=w["admin"]["h"])).json()
+    assert asked["status"] == "ordered"

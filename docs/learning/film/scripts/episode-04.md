@@ -128,7 +128,7 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/procurement/quotations?project={Green Villa}` · picture: the request to Malabar, Kerala Steels and Sri Hardwares · light: the request
+- beat 1 · open `/materials/requests?project={Green Villa}` · do: Ravi's request REQ-0001 → Get quotes: cement raised to 200 bags, steel 1,000 kg added; Malabar, Kerala Steels, Sri Hardwares · picture: RFQ-0001 · for REQ-0001, sent to the three · light: the suppliers
 - beat 1 · do: enter the three quotes' rates (the kit's papers) · picture: the three columns of rates · light: the table
 - beat 2 · picture: the compare: cheapest cement, cheapest total · light: the totals
 - beat 3 · picture: the split: Rs 1,46,000 · light: the split
