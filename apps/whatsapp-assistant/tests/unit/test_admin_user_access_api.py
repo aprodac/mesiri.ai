@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
+from mesiri.application.projects.defaults import ReportSettings
 from projects import router as projects_router
 from users.access_service import AccessPolicy
 from users.access_service import validate_access_policy as _validate_access_policy
@@ -52,6 +53,14 @@ class _Engine:
 
     def begin(self):
         return _ConnectContext(self._conn)
+
+
+def _company_settings(monkeypatch):
+    """[259]: create_project reads the company's report settings; these tests count the other statements."""
+    async def settings(conn, org_id):
+        return ReportSettings("Asia/Kolkata", True, "18:00", "21:00")
+
+    monkeypatch.setattr(projects_router, "new_project_settings", settings)
 
 
 @pytest.mark.asyncio
@@ -188,6 +197,7 @@ async def test_create_project_grants_creator_membership_for_non_admin(monkeypatc
     # 3: _is_org_wide's access_policy lookup (no row -> {}), 4: project_members insert for the creator.
     conn = _Conn([[], [], [], []])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
+    _company_settings(monkeypatch)
 
     await projects_router.create_project(
         projects_router.ProjectCreate(name="Tower C"),
@@ -206,6 +216,7 @@ async def test_create_project_skips_membership_row_for_admin(monkeypatch):
     """An ADMIN is already org-wide -- no project_members row needed."""
     conn = _Conn([[], []])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
+    _company_settings(monkeypatch)
 
     await projects_router.create_project(
         projects_router.ProjectCreate(name="Tower D"),

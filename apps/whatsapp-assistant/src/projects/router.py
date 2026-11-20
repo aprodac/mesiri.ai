@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from mesiri.application.projects.defaults import new_project_settings
 from mesiri.authorization.roles import policy_is_org_wide, role_is_org_wide
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from mesiri.infrastructure.postgres.tenant import TenantScopedEngine, bind_tenant
@@ -832,9 +833,7 @@ async def create_project(project_in: ProjectCreate, payload: dict = Depends(get_
     progress = max(0, min(100, project_in.progress))
     project_id = uuid.uuid4()
     creator_id = payload.get("sub")
-    # Only what was sent; the rest take the column defaults (UTC, 18:00,
-    # automatic DPR off, send by 21:00).
-    reporting = _reporting_values(project_in)
+    sent = _reporting_values(project_in)
 
     engine = get_engine()
     async with engine.begin() as conn:
@@ -842,6 +841,17 @@ async def create_project(project_in: ProjectCreate, payload: dict = Depends(get_
         if existing is not None:
             # [207]: "Rana Mart" was created three times in one evening from WhatsApp.
             raise HTTPException(status_code=409, detail=f"{existing} already exists")
+        # [259] / QA-2011: what was left out comes from the company (its zone, its report setting), never the
+        # column defaults (UTC, no report). This is the /projects production serves; the backend router that
+        # got [259] first is not mounted here, so new projects stayed UTC / off until this.
+        company = await new_project_settings(conn, org_id)
+        reporting = {
+            "reporting_timezone": company.reporting_timezone,
+            "reporting_cutoff_time": company.reporting_cutoff_time,
+            "auto_generate_dpr": company.auto_generate_dpr,
+            "dpr_send_deadline": company.dpr_send_deadline,
+            **sent,
+        }
         await conn.execute(
             projects_table.insert().values(
                 id=project_id,
@@ -878,8 +888,7 @@ async def create_project(project_in: ProjectCreate, payload: dict = Depends(get_
             )
 
 
-    # Built from what was inserted; settings not sent show their column
-    # defaults (_to_response's fallbacks), which is what the row holds.
+    # Built from what was inserted (the company's settings for what was not sent).
     from types import SimpleNamespace
 
     return _to_response(
