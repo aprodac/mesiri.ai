@@ -85,3 +85,15 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 3. `node docs/learning/film/build.mjs NN` (about 30 to 40 minutes; only changed scenes are drawn again).
 4. Watch the frames at a few points, check the sound, send the `.mp4` and `.srt`, and update the tracker row
    (LRN-F11, LRN-F13) and LEARNING_PATH.md's table.
+
+## Episode 4, "Cement runs short": before recording
+
+- [ ] **LRN-F18 in the plan first**: the move from the Annex (day 3), the quotes and the order of 200 bags at Rs 400
+      (day 4), the lorry with 190 on the challan, 6 torn returned, 184 kept (day 6), the bill at Rs 410 (day 8). Without
+      it the sample company orders 100 bags at Rs 410 and none of the kit's papers happen.
+- [ ] **LRN-F17**: the kit's cement GST at 18%, the quotes and the bill rebuilt, the paper scenes re-shot.
+- [ ] Roles and days: Anil on day 3 (`move`) and day 4 (`compare`), Ravi on day 6 (`gate`, a real reply; if the model is
+      capped, the website way the scene names), Meera on day 8 (`match`), the owner on day 8 (`stock`).
+- [ ] `steps-04.cjs` for `move`, `compare`, `match`, written against the pages on the day (as `steps-02.cjs`).
+- [ ] The compare and the bill match: say only what the screen shows (the split, the quantity difference); log what it
+      does not show.
