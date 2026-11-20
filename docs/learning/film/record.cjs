@@ -8,7 +8,8 @@
 // that have a day, in the order of their days:
 // - a scene of kind `steps` with `as` (a role) and `day` is filmed first on its day, by shoot.cjs (steps-NN.cjs does
 //   the actions) inside the sample company as that role, before the episode's own messages of that day; then the copy
-//   goes back to the start of the day (Go back), so the messages that follow find the day as it was.
+//   goes back to the start of the day (Go back), so the messages that follow find the day as it was; with `keep: true`
+//   it does not, so the next scene of that day builds on it.
 // - a chat scene with `capture` is sent for real to the assistant (POST /assistant/messages, the same handler as a
 //   WhatsApp message) as `capture.role`, on `capture.day`; the reply is written to .cache/shots/<scene>.chat.json, the
 //   button named `capture.tap` is tapped and its answer kept too. build.mjs draws these in place of the script's guess.
@@ -83,13 +84,21 @@ async function capture(sc) {
  *  `sc.day`; then the day goes back to its start, so the episode's own messages of that day find it as it was. */
 function steps(sc, mine) {
   return (async () => {
-    await playTo(sc.day, mine)
+    // `play`: the role the copy arrives on this day as, so that role's own entries are left to do on screen and the
+    // cast does not make them first (episode 5: Meera's advance on day 4, the owner's approval on day 7).
+    await playTo(sc.day, sc.play || mine)
     await as(sc.as)
     const file = join(out, `sample-${sc.id}.json`)
     writeFileSync(file, JSON.stringify(sample.answers[sc.as]))
     const r = spawnSync('node', [join(__dirname, 'shoot.cjs'), ep, token, base, apiBase],
       { env: { ...process.env, ONLY: sc.id, SAMPLE: file }, stdio: 'inherit' })
     if (r.status !== 0) throw new Error(`${sc.id}: shoot.cjs failed`)
+    // `keep`: what this scene did stays, for the scene after it on the same day (the owner approves, then Meera pays).
+    if (sc.keep) {
+      sample.tokens = {}
+      sample.answers = {}
+      return
+    }
     const back = await call(token, 'POST', '/learn/sandbox/go-back', { day: sc.day, role: mine })
     sample.tokens = { [mine]: back.token }
     sample.answers = { [mine]: back }

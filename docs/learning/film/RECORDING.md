@@ -99,15 +99,28 @@ build again (only the new scene is drawn; episode 1's rule "do not rebuild" is l
 
 ## Episode 4, "Cement runs short": before recording
 
-- [ ] **LRN-F18 in the plan first**: the move from the Annex (day 3), the quotes and the order of 200 bags at Rs 400
+- [x] **LRN-F18 in the plan** (done 20 Nov): the move from the Annex (day 3), the quotes and the order of 200 bags at Rs 400
       (day 4), the lorry with 190 on the challan, 6 torn returned, 184 kept (day 6), the bill at Rs 410 (day 8). Without
       it the sample company orders 100 bags at Rs 410 and none of the kit's papers happen.
-- [ ] **LRN-F17**: the kit's cement GST at 18%, the quotes and the bill rebuilt, the paper scenes re-shot.
-- [ ] Roles and days: Anil on day 3 (`move`) and day 4 (`compare`), Ravi on day 6 (`gate`, a real reply; if the model is
-      capped, the website way the scene names), Meera on day 8 (`match`), the owner on day 8 (`stock`).
-- [ ] Added in the merge (Ilan, 20 Nov): `pay` (Meera, FINANCE, day 14), `count` (Ravi, a real reply, day 16: fill
-      `{book}` and `{counted}` from the played day 16, counted = book − 3) and `owner` (the owner, day 16, after the count).
-      LRN-F18 must also play the payment and the count.
-- [ ] `steps-04.cjs` for `move`, `compare`, `match`, `pay`, `owner`, written against the pages on the day (as `steps-02.cjs`).
+- [x] **LRN-F17** (done 20 Nov): the kit's cement GST at 18%, the quotes and the bill rebuilt, the paper scenes re-shot.
+- [ ] Roles and days (the plan's own entries; play the role so they are the person's to-do, and film them done on
+      screen): Anil on day 3 (`move`: the transfer and the request for quotes) and day 4 (`compare`: the three quotes
+      and the award), Ravi on day 6 (`gate`: the delivery of 190, then Anil's return), Meera on days 9 and 10 (`match`:
+      the bill at Rs 410, taking it back, the corrected bill, the return settled), the owner after (`stock`).
+- [ ] `steps-04.cjs` for `move`, `compare`, `match`, written against the pages on the day (as `steps-02.cjs`).
+- [ ] Added in the merge (Ilan, 20 Nov: "keep the count in episode 4"): `pay`, `count` (Ravi, a real reply, day 16)
+      and `owner` (the owner, day 16, after the count): the plan plays the count (LRN-F23); see each scene's record note.
 - [ ] The compare and the bill match: say only what the screen shows (the split, the quantity difference); log what it
       does not show.
+
+## Episode 5, "Wages week": recorded 20 Nov
+
+- [x] The week plays as the plan has it (days 2 to 7); nothing added to the story.
+- [x] Roles and days: Meera on day 4 (`advance`), the owner on day 7 (`muster`, `sheet`: approve), Meera on day 7
+      (`pay`), the owner after (`worth`). `play` makes the copy arrive as the role whose entry is filmed, or the cast
+      makes it first (Meera's advance); `keep` skips Go back so `pay` finds the sheet approved.
+- [x] `steps-05.cjs` for `advance`, `muster`, `sheet`, `pay`; `ONLY=ep05-green-red SAMPLE=<owner's answer> shoot.cjs 05`
+      for Green / red (scrolled to the BOQ lines).
+- [x] Every figure read off the screen and the words changed to it: Rs 75,000 gross, Rs 2,000 back, Rs 73,000 to pay,
+      87 man-days; Suresh Rs 6,600 less Rs 2,000; Rahim's crew 43 man-days, Rs 30,100; Green / red for the week.
+- [x] Built: `node docs/learning/film/build.mjs 05` → `out/episode-05.mp4` (5.6 minutes).

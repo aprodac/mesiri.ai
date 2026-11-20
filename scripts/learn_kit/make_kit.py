@@ -100,17 +100,16 @@ CONTRACT_TERMS = (
 #: area the architect printed. Bedroom 2 is drawn 360 x 360 but labelled 163 sq ft, Bedroom 1's area: the catch.
 ROOMS = green_villa.GROUND_FLOOR_ROOMS
 
-#: The quotation request: 300 bags of cement and 2,000 kg of steel for Main block. Malabar is cheapest for cement,
-#: Kerala Steels cheapest in total; buying each item from its cheapest (cement Malabar, steel Kerala) is cheaper
-#: still: the catch Quotations' compare shows (lowest per item, lowest total).
-RFQ_ITEMS = (("Cement (OPC 53)", "bags", 300), ("Steel (TMT Fe 500)", "kg", 2000))
-QUOTE_RATES = {"Malabar Cements Agency": (400, 72), "Kerala Steels": (412, 66), "Sri Hardwares": (408, 70)}
-QUOTE_FROM = {"Malabar Cements Agency": ("Palakkad", "MCA/Q/0412"), "Kerala Steels": ("Industrial Estate, Kalamassery", "KS/Q/2280"),
-              "Sri Hardwares": ("MG Road, Thrissur", "SH/Q/117")}
-#: The delivery: 190 bags against an order for 200 (the catch: 10 still to come on the order).
-ORDERED, DELIVERED = 200, 190
-#: The bill: Rs 410 a bag against the order's Rs 400 (the catch: the bill's rate differs from the delivery's).
-BILL_RATE, CEMENT_GST = 410, 28
+#: The quotation request, the quotes, the delivery and the bill: green_villa.CEMENT_STORY (LRN-F18), the one source the
+#: 62-day plan plays too. Malabar is cheapest for cement, Kerala Steels cheapest in total; each item from its cheapest
+#: is cheaper still (the catch Quotations' compare shows). 190 bags come against 200 (10 still to come); the bill says
+#: Rs 410 a bag against the order's Rs 400.
+_CS = green_villa.CEMENT_STORY
+RFQ_ITEMS = tuple((printed, unit, qty) for _m, printed, unit, qty in _CS["lines"])
+QUOTE_RATES = {v: tuple(rates[m] for m, *_ in _CS["lines"]) for v, _where, _ref, rates in _CS["quotes"]}
+QUOTE_FROM = {v: (where, ref) for v, where, ref, _rates in _CS["quotes"]}
+ORDERED, DELIVERED = _CS["ordered"], _CS["sent"]
+BILL_RATE, CEMENT_GST = _CS["bill_rate"], 18  # cement's GST: 18% since the change of 22 Sept 2025 (was 28%; LRN-F17)
 #: Joy Tiling's flooring: measured room by room from the plan (rooms with floor tiles), billed for more.
 TILED = ("LIVING", "DINING", "KITCHEN", "BEDROOM-1", "BEDROOM-2", "SIT OUT")
 TILING_RATE, TILING_BILLED = 320, 92.0
@@ -135,7 +134,7 @@ MANIFEST = (
      "catch": "One bedroom is labelled bigger than it is drawn: Mesiri works out the real area and says the label was copied."},
     {"file": QUOTES[0], "title": "Three quotations: cement and steel", "kind": "pdf", "page": "/procurement/quotations",
      "also": list(QUOTES[1:]),
-     "what": "Malabar, Kerala Steels and Sri Hardwares quote for 300 bags of cement and 2,000 kg of steel.",
+     "what": f"Malabar, Kerala Steels and Sri Hardwares quote for {RFQ_ITEMS[0][2]} bags of cement and {RFQ_ITEMS[1][2]:,} kg of steel.",
      "goes": "Quotations: a request to the three, then their rates",
      "catch": "The cheapest for cement is not the cheapest in total, and splitting the order beats both. The compare shows each."},
     {"file": CHALLAN, "title": "Delivery challan", "kind": "pdf", "page": "/procurement/orders",
@@ -339,12 +338,12 @@ def quote_bytes(vendor: str) -> bytes:
     rows.append(["Total, before GST", "", "", "", _rupees(total)[3:]])
     return _doc(f"Quotation: {vendor}", [("From", f"{vendor}, {place}"), ("Quotation no.", ref), ("To", "Green Villa Builders"),
                                         ("For", "Green Villa, Main block, Puthur Road, Thrissur"), ("Date", "18 November 2026")],
-                rows, ["Rates include unloading at site. GST extra: cement 28%, steel 18%.", "Valid for 7 days. Delivery in 2 days from the order."])
+                rows, ["Rates include unloading at site. GST extra at 18% on cement and steel.", "Valid for 7 days. Delivery in 2 days from the order."])
 
 
 def challan_bytes() -> bytes:
     rows = [["Item", "Unit", "Ordered", "Sent", ""], ["Cement (OPC 53)", "bags", f"{ORDERED}", f"{DELIVERED}", ""]]
-    return _doc("Delivery challan", [("From", "Malabar Cements Agency, Palakkad"), ("Challan no.", "MCA/DC/2611"),
+    return _doc("Delivery challan", [("From", "Malabar Cements Agency, Palakkad"), ("Challan no.", _CS["challan"]),
                                      ("To", "Green Villa, Main block, Puthur Road, Thrissur"), ("Against", "Your order for cement"),
                                      ("Date", "20 November 2026"), ("Vehicle", "Lorry (sample)")],
                 rows, [f"{ORDERED - DELIVERED} bags to follow with the next load.", "Received by: ____________   Site seal: ____________"],
@@ -357,8 +356,8 @@ def bill_bytes() -> bytes:
     rows = [["Item", "Unit", "Qty", "Rate (Rs)", "Amount (Rs)"],
             ["Cement (OPC 53)", "bags", f"{DELIVERED}", f"{BILL_RATE}", _rupees(amount)[3:]],
             [f"GST {CEMENT_GST}%", "", "", "", _rupees(gst)[3:]], ["Total", "", "", "", _rupees(amount + gst)[3:]]]
-    return _doc("Tax invoice", [("From", "Malabar Cements Agency, Palakkad"), ("Invoice no.", "MCA/INV/2611"),
-                                ("To", "Green Villa Builders"), ("Delivery", "Challan MCA/DC/2611, 20 November 2026"),
+    return _doc("Tax invoice", [("From", "Malabar Cements Agency, Palakkad"), ("Invoice no.", _CS["bill"]),
+                                ("To", "Green Villa Builders"), ("Delivery", f"Challan {_CS['challan']}, 20 November 2026"),
                                 ("Date", "22 November 2026")],
                 rows, ["Payment within 15 days. Bank details on request."])
 

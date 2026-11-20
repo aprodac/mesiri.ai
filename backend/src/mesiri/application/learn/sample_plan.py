@@ -67,6 +67,12 @@ CREDIT_DAYS = 7
 #: The client pays a running bill this many days after it is sent.
 CLIENT_PAYS_AFTER = 12
 
+#: LRN-F18 (episode 4, "Cement runs short"): the Main block's first cement request plays the starter kit's paperwork
+#: (green_villa.CEMENT_STORY, the one source for the kit's papers and this plan).
+CEMENT_STORY: dict[str, Any] = {**gv.CEMENT_STORY,
+                                "lines": tuple((m, q) for m, _printed, _u, q in gv.CEMENT_STORY["lines"]),
+                                "quotes": tuple((v, ref, rates) for v, _where, ref, rates in gv.CEMENT_STORY["quotes"])}
+
 # --- What each site does next ----------------------------------------------------------------------------------------
 
 
@@ -98,7 +104,7 @@ STAGES: dict[str, tuple[Stage, ...]] = {
               by="Joy Tiling Works"),
         Stage("Putty and primer", "Wall putty and primer coat, inside", "sqm", 80, 6, (), 3),
         Stage("Painting", "Two coats of emulsion inside, exterior paint outside", "sqm", 90, 6, (), 3),
-        Stage("Snag list", "Snag list, touch-ups and cleaning for handover", "nos", 12, 2, (), 3),
+        Stage("Snag list", "Snag list, touch-ups and cleaning for handover", "nos", 6, 4, (), 3),  # LRN-F18: 4 days keeps the handover on day 62 (D1)
     ),
     "annex": (
         Stage("Plinth beam", "Plinth beam shuttering, steel and concrete", "rmt", 24, 3,
@@ -187,6 +193,14 @@ KINDS: dict[str, Kind] = {
     "request": Kind(ENGINEER, (("POST", "/procurement/requests"),)),
     "delivery": Kind(ENGINEER, (("POST", "/materials/inflows"),)),
     "order": Kind(PM, (("POST", "/procurement/orders"),)),
+    # LRN-F18 (episode 4): the Main block's cement as the kit's paperwork has it.
+    "transfer": Kind(PM, (("POST", "/materials/transfers"),)),
+    "rfq": Kind(PM, (("POST", "/procurement/rfqs"),)),
+    "quote": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/quotes"),)),
+    "award": Kind(PM, (("POST", "/procurement/rfqs/{rfq_id}/award"),)),
+    "return": Kind(PM, (("POST", "/procurement/returns"),)),
+    "return_settle": Kind(PM, (("POST", "/procurement/returns/{return_id}/settle"),)),
+    "bill_reverse": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/reverse"),)),
     "boq_count": Kind(PM, (("PUT", "/projects/{project_id}/boq/work/{quantity_id}"),)),
     "issue_resolve": Kind(PM, (("POST", "/progress/issues/{issue_id}/resolve"),)),
     "work_order": Kind(PM, (("POST", "/subcontracts/work-orders"),)),
@@ -213,7 +227,7 @@ ROUTER_MODULES = (
     "mesiri.domains.progress.router", "mesiri.domains.progress.boq_router", "mesiri.domains.materials.router",
     "mesiri.domains.expenses.router", "mesiri.domains.procurement.router", "mesiri.domains.procurement.orders_router",
     "mesiri.domains.subcontracts.router", "mesiri.domains.vendors.router", "mesiri.domains.billing.router",
-    "mesiri.domains.schedule.router",
+    "mesiri.domains.schedule.router", "mesiri.domains.procurement.rfqs_router", "mesiri.domains.procurement.returns_router",
 )
 
 
@@ -390,7 +404,10 @@ def build() -> Plan:
     finished: dict[str, int] = {}                          # site -> day its last stage ended
     coming: dict[tuple[str, str], float] = defaultdict(float)   # asked for or ordered, not yet delivered
     to_order: list[tuple[int, Entry]] = []                 # (order on this day, its request)
-    to_deliver: list[tuple[int, Entry | None, str, str, float]] = []  # (day, order or None for the seed's, site, material, qty)
+    # (day, order or None for the seed's, site, material, qty, extra: rate, vendor, a note, what follows the delivery)
+    to_deliver: list[tuple[int, Entry | None, str, str, float, dict]] = []
+    story_due: dict[int, list[Any]] = defaultdict(list)    # LRN-F18: the cement story's office work, by day
+    story_used = False
     to_bill: list[tuple[int, Entry]] = []                  # (bill on this day, delivery)
     unpaid: dict[str, list[Entry]] = defaultdict(list)     # vendor -> bills
     week_work: dict[str, float] = defaultdict(float)       # tiling laid this week, to measure on Saturday
@@ -421,6 +438,84 @@ def build() -> Plan:
             at += 1
         return total
 
+    def cement_story(day: int, request: Entry) -> None:
+        """LRN-F18: the Main block's first cement request, as the kit's paperwork has it (``CEMENT_STORY``)."""
+        cs = CEMENT_STORY
+        site, other = cs["site"], cs["from_site"]
+        move = min(cs["move"], math.floor(stock[(other, "cement")]))
+        b.add(day, "transfer", f"Move {move} bags cement from {SITE_NAME[other]} to {SITE_NAME[site]}, so its masons work",
+              site=site, data={"material": "cement", "quantity": move, "from_site": other}, needs=(request.id,))
+        stock[(other, "cement")] -= move
+        stock[(site, "cement")] += move
+        names = [v for v, _ref, _rates in cs["quotes"]]
+        lines = [{"material": m, "quantity": q} for m, q in cs["lines"]]
+        rfq = b.add(day, "rfq", f"Ask {', '.join(names[:-1])} and {names[-1]} for quotes: "
+                    + ", ".join(f"{_fmt(q)} {UNITS[m]} {m}" for m, q in cs["lines"]) + f" for {SITE_NAME[site]}",
+                    site=site, data={"lines": lines, "vendors": names}, needs=(request.id,))
+        for m, q in cs["lines"]:
+            coming[(site, m)] += q - (request.data["quantity"] if m == "cement" else 0)
+
+        def quotes_and_award(qday: int) -> None:
+            quotes = [b.add(qday, "quote", f"{v}'s quote {ref}: " + ", ".join(f"{m} {_amount(r)}" for m, r in rates.items()),
+                            site=site, data={"vendor": v, "their_ref": ref, "rates": rates, "gst_percent": 18,
+                                             "delivery_days": 2, "valid_days": 7}, needs=(rfq.id,))
+                      for v, ref, rates in cs["quotes"]]
+            best = {m: min(cs["quotes"], key=lambda vq, m=m: vq[2][m]) for m, _q in cs["lines"]}
+            award = b.add(qday, "award", "Order each line from its cheapest: "
+                          + ", ".join(f"{m} from {best[m][0]} at {_amount(best[m][2][m])}" for m, _q in cs["lines"]),
+                          site=site, data={"mode": "lowest_per_line", "request": request.id,
+                                           "lines": [{"material": m, "quantity": q, "vendor": best[m][0], "rate": best[m][2][m]}
+                                                     for m, q in cs["lines"]]},
+                          needs=tuple(q.id for q in quotes))
+            for m, q in cs["lines"]:
+                vendor, rate = best[m][0], best[m][2][m]
+                if m == "cement":
+                    to_deliver.append((_working_after(qday, LEAD_DAYS[m]), award, site, m, cs["sent"],
+                                       {"vendor": vendor, "rate": rate, "after": lorry,
+                                        "note": f" on challan {cs['challan']} ({_fmt(q)} ordered, {_fmt(q - cs['sent'])} to follow)"}))
+                    to_deliver.append((_working_after(qday, LEAD_DAYS[m] + 3), award, site, m, q - cs["sent"],
+                                       {"vendor": vendor, "rate": rate, "note": " (the rest of the order)"}))
+                else:
+                    to_deliver.append((_working_after(qday, LEAD_DAYS[m]), award, site, m, q, {"vendor": vendor, "rate": rate}))
+
+        def lorry(dday: int, delivery: Entry) -> None:
+            torn, rate, vendor = cs["torn"], delivery.data["rate"], delivery.data["vendor"]
+            lot = {"material": "cement", "vendor": vendor, "quantity": delivery.data["quantity"]}  # the player finds it
+            ret = b.add(dday, "return", f"Send back {torn} torn bags of cement to {vendor}: return note {cs['return_note']}, "
+                        f"{_amount(torn * rate)}", site=site,
+                        data={"material": "cement", "quantity": torn, "rate": rate, "vendor": vendor, "reason": "damaged",
+                              "note": cs["return_note"], "receipt": lot}, needs=(delivery.id,))
+            stock[(site, "cement")] -= torn
+
+            def wrong_bill(bday: int) -> None:
+                amount = round(delivery.data["quantity"] * cs["bill_rate"], 2)
+                wrong = b.add(bday, "supplier_bill", f"Bill from {vendor} {cs['bill']}: {_fmt(delivery.data['quantity'])} bags "
+                              f"cement at {_amount(cs['bill_rate'])}, {_amount(amount)}", site=site,
+                              data={"vendor": vendor, "amount": amount, "deliveries": [delivery.id], "bill_number": cs["bill"],
+                                    "receipt": lot},
+                              needs=(delivery.id,))
+                taken = b.add(bday, "bill_reverse", f"Take back {_of(vendor)} bill {cs['bill']}: {_amount(cs['bill_rate'] - rate)} "
+                              f"a bag above the order, and {torn} bags returned; ask for a corrected bill", site=site,
+                              data={"vendor": vendor, "bill_number": cs["bill"]}, needs=(wrong.id,))
+
+                def corrected(cday: int) -> None:
+                    kept = delivery.data["quantity"] - torn
+                    bill = b.add(cday, "supplier_bill", f"Corrected bill from {vendor} {cs['bill']}-R: {_fmt(kept)} bags cement "
+                                 f"at {_amount(rate)}, {_amount(round(kept * rate, 2))}", site=site,
+                                 data={"vendor": vendor, "amount": round(kept * rate, 2), "deliveries": [delivery.id],
+                                       "bill_number": f"{cs['bill']}-R", "returned": torn, "receipt": lot},
+                                 needs=(delivery.id, taken.id))
+                    unpaid[vendor].append(bill)
+                    b.add(cday, "return_settle", f"Settle return note {cs['return_note']} against {_of(vendor)} corrected bill",
+                          site=site, data={"vendor": vendor, "how": "credit", "bill_number": f"{cs['bill']}-R"},
+                          needs=(ret.id, bill.id))
+
+                story_due[_working_after(bday, 1)].append(corrected)
+
+            story_due[_working_after(dday, BILL_AFTER)].append(wrong_bill)
+
+        story_due[_working_after(day, 1)].append(quotes_and_award)
+
     day, last_day = 0, None
     while last_day is None:
         day += 1
@@ -450,28 +545,38 @@ def build() -> Plan:
         # Morning: the lorries that are due.
         for due in [d for d in to_deliver if d[0] == day]:
             to_deliver.remove(due)
-            _d, order, site, material, qty = due
+            _d, order, site, material, qty, extra = due
             vendor, _size, rate = story.DEMO_SUPPLY[material]
+            vendor, rate = extra.get("vendor", vendor), extra.get("rate", rate)
             delivery = b.add(day, "delivery", f"Received {_fmt(qty)} {UNITS[material]} {material} from {vendor} at {SITE_NAME[site]}"
-                             + ("" if order else " (on the order placed before)"), site=site,
+                             + ("" if order else " (on the order placed before)") + extra.get("note", ""), site=site,
                              data={"material": material, "quantity": qty, "vendor": vendor, "rate": rate,
                                    "against": order.id if order else "seeded order"},
                              needs=(order.id,) if order else ())
             stock[(site, material)] += qty
             coming[(site, material)] -= qty
-            to_bill.append((_working_after(day, BILL_AFTER), delivery))
+            if extra.get("after"):
+                extra["after"](day, delivery)
+            else:
+                to_bill.append((_working_after(day, BILL_AFTER), delivery))
 
         # The office: orders for yesterday's requests, bills that came, work to count, issues to close.
+        for act in story_due.pop(day, []):
+            act(day)
         for due in [t for t in to_order if t[0] == day]:
             to_order.remove(due)
             request = due[1]
             material, qty, site = request.data["material"], request.data["quantity"], request.site
+            if not story_used and site == CEMENT_STORY["site"] and material == "cement":
+                story_used = True
+                cement_story(day, request)
+                continue
             vendor, _size, rate = story.DEMO_SUPPLY[material]
             order = b.add(day, "order", f"Order {_fmt(qty)} {UNITS[material]} {material} from {vendor} for {SITE_NAME[site]} "
                           f"at {_amount(rate)} a {PER[material]}",
                           site=site, data={"material": material, "quantity": qty, "vendor": vendor, "rate": rate,
                                            "expected_in_days": LEAD_DAYS[material]}, needs=(request.id,))
-            to_deliver.append((_working_after(day, LEAD_DAYS[material]), order, site, material, qty))
+            to_deliver.append((_working_after(day, LEAD_DAYS[material]), order, site, material, qty, {}))
         for due in [t for t in to_bill if t[0] == day]:
             to_bill.remove(due)
             delivery = due[1]
@@ -570,7 +675,7 @@ def build() -> Plan:
                     qty = min(seeded_left[(site, m)], size * max(1, math.ceil((need - have) / size)))
                     seeded_left[(site, m)] -= qty
                     coming[(site, m)] += qty
-                    to_deliver.append((_working_after(day, 1), None, site, m, qty))
+                    to_deliver.append((_working_after(day, 1), None, site, m, qty, {}))
                     continue
                 qty = size * max(1, math.ceil((need - have) / size))
                 request = b.add(day, "request", f"Ask for {_fmt(qty)} {UNITS[m]} {m} for {SITE_NAME[site]}", site=site,
