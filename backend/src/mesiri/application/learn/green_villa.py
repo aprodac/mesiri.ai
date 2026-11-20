@@ -123,3 +123,62 @@ def line_of(work: str) -> tuple[str, str, str, float, float, float | None, float
     """The estimate line a work name is counted on (``STAGE_LINE``), or None."""
     name = STAGE_LINE.get(work, work)
     return next((line for _h, rows in ESTIMATE for line in rows if line[1] == name), None)
+
+
+# --- The paperwork before and around the 62 days (project bible section 5, LRN-F5) ----------------------------------
+
+#: The architect's and consultants' drawing set, one PDF the way an office issues it: (number, title, kind). Drawing
+#: check reads it whole; Documents keeps each sheet; "Track" turns its rooms and footings into places.
+DRAWINGS: tuple[tuple[str, str, str], ...] = (
+    ("A-101", "GROUND FLOOR PLAN", "plan"), ("A-102", "FIRST FLOOR PLAN", "plan"),
+    ("A-201", "FRONT ELEVATION", "elevation"), ("A-301", "SECTION A-A", "section"),
+    ("S-101", "FOOTING LAYOUT AND SCHEDULE", "structure"), ("S-102", "COLUMN SCHEDULE", "schedule"),
+    ("E-101", "ELECTRICAL LAYOUT GROUND FLOOR", "services"), ("P-101", "PLUMBING LAYOUT GROUND FLOOR", "services"),
+)
+#: The first floor (A-102): (label, x, y, width, depth in cm, printed sq ft). The catch: the TOILET is drawn 210 deep
+#: here and 240 on the ground floor (A-101), though the floors are meant to stack: Drawing check asks "intended?".
+FIRST_FLOOR_ROOMS: tuple[tuple[str, int, int, int, int, int], ...] = (
+    ("FAMILY LIVING", 0, 0, 520, 430, 241), ("BEDROOM-3", 520, 0, 400, 360, 155), ("BALCONY", 920, 0, 330, 150, 53),
+    ("MASTER BEDROOM", 0, 430, 420, 400, 181), ("DRESS", 420, 430, 200, 180, 39), ("TOILET", 780, 430, 210, 150, 34),
+)
+#: Levels in cm above ground. The elevation and the section agree, except the roof: +660 on the elevation, +655 on the
+#: section (the catch: Drawing check asks which is right before the slab is cast).
+ELEVATION_LEVELS = (0, 45, 345, 660, 765)
+SECTION_LEVELS = (0, 45, 345, 655, 765)
+#: The footings (S-101): type, size in cm, depth, the columns on them (C-marks) and the bars each way.
+FOOTINGS: tuple[tuple[str, int, int, int, int, tuple[str, ...], int, int], ...] = (
+    # (type, A, B, depth, PCC, columns, bars each way, bar dia)
+    ("F1", 150, 150, 45, 10, ("C1", "C2", "C3", "C4"), 8, 12),
+    ("F2", 180, 180, 50, 10, ("C5", "C6"), 10, 12),
+)
+#: The columns (S-102): mark, size in cm, main bars, ties.
+COLUMNS: tuple[tuple[str, int, int, str, str], ...] = (
+    ("C1", 23, 45, "6-T16", "T8 @ 15 CM"), ("C2", 23, 45, "6-T16", "T8 @ 15 CM"), ("C3", 23, 45, "6-T16", "T8 @ 15 CM"),
+    ("C4", 23, 45, "6-T16", "T8 @ 15 CM"), ("C5", 23, 60, "8-T16", "T8 @ 15 CM"), ("C6", 23, 60, "8-T16", "T8 @ 15 CM"),
+)
+ARCHITECT = "Sreekumar Architects, Thrissur"
+CONSULTANT = "R. Anand, Structural Consultant"
+
+#: The building permit (Documents, approvals).
+PERMIT = {"authority": "Thrissur Municipal Corporation", "number": "TMC/BP/2026/1187", "date": "30 September 2026",
+          "valid": "3 years from the date of issue", "plot": "Survey no. 412/3, Puthur village, 6.2 cents",
+          "built_up_sqft": 2150, "floors": "Ground + 1 (Main block); Ground (Annex)"}
+
+#: Periyar Sand & Aggregates' rate card (Rates): the agreed rate per material. The catch: M sand comes later at Rs 1,750
+#: (sample_story.DEMO_RATE_NOW), Rs 100 a cum above this card; Rates shows the rise.
+RATE_CARD = {"vendor": "Periyar Sand & Aggregates", "ref": "PSA/RC/2026-27", "from": "1 October 2026",
+             "rates": (("m sand", "cum", 1650), ("p sand", "cum", 1900), ("aggregate 20mm", "cum", 1450))}
+
+#: A return to the supplier (Returns): bags torn in Malabar's load (the kit's challan, 190 bags). The debit note lowers
+#: what Green Villa Builders owes Malabar at once, at the order's rate.
+RETURN = {"vendor": "Malabar Cements Agency", "note": "GV/RN/014", "against": "MCA/DC/2611", "material": "Cement (OPC 53)",
+          "unit": "bags", "quantity": 6, "rate": 400, "reason": "Bags torn and set hard; refused at the gate"}
+
+#: A hired machine (Equipment, Hire check): the bill against the hours logged on site. The catch: billed 42 hours,
+#: 36 logged (two half days the mixer stood idle with the motor fault are billed as working).
+HIRE = {"vendor": "Kerala Earthmovers & Equipments", "bill": "KEE/2027/0118", "machine": "Concrete mixer with hopper (10/7)",
+        "site": "Annex", "for": "Annex roof slab and plinth", "rate_per_hour": 450, "billed_hours": 42, "logged_hours": 36}
+
+#: The handover certificate (Documents, handover), signed on handover day.
+HANDOVER = {"date": "31 July 2027", "defects_until": "31 July 2028", "keys": 3,
+            "note": "Handed over complete, with the snag list closed; retention to be released after the defects period."}

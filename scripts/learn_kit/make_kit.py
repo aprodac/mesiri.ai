@@ -35,6 +35,13 @@ CHALLAN = "Malabar - delivery challan.pdf"
 BILL = "Malabar - bill MCA-INV-2611.pdf"
 MEASURE = "Joy Tiling - measurement sheet.pdf"
 SUB_BILL = "Joy Tiling - bill JTW-014.pdf"
+# LRN-F5 (project bible section 5): the rest of a real project's paperwork.
+DRAWING_SET = "Green Villa - drawing set rev A.pdf"
+PERMIT = "Green Villa - building permit.pdf"
+RATE_CARD = "Periyar - rate card.pdf"
+RETURN_NOTE = "Malabar - return note GV-RN-014.pdf"
+HIRE_BILL = "Kerala Earthmovers - hire bill KEE-0118.pdf"
+HANDOVER = "Green Villa - handover certificate.pdf"
 ZIP = "green-villa-starter-kit.zip"
 
 #: The estimate and its materials per unit: Green Villa's own data (backend .../learn/green_villa.py), the one source
@@ -143,6 +150,30 @@ MANIFEST = (
      "what": "The flooring measured room by room, and the subcontractor's bill for it.",
      "goes": "Subcontract: measurement, then the bill",
      "catch": "The bill asks for more square metres than were measured: Mesiri says how many more."},
+    {"file": DRAWING_SET, "title": "The drawing set (8 sheets)", "kind": "pdf", "page": "/planning/drawing-check",
+     "what": "The architect's and consultants' set: both floor plans, the elevation, a section, the footings, the columns, electrical and plumbing.",
+     "goes": "Drawing check, then Documents (each sheet kept, its rooms and footings tracked as places)",
+     "catch": "The first-floor toilet is drawn smaller than the one below it, and the roof is +660 on the elevation but +655 on the section: Mesiri asks which is right before the slab is cast."},
+    {"file": PERMIT, "title": "Building permit", "kind": "pdf", "page": "/planning/documents",
+     "what": "The municipality's permit: the plot, the built-up area, the floors allowed.",
+     "goes": "Documents: Approvals",
+     "catch": "None: it is kept where everyone on the project can find the latest one."},
+    {"file": RATE_CARD, "title": "Periyar's rate card", "kind": "pdf", "page": "/procurement/rates",
+     "what": "The rates agreed with the sand and aggregate supplier for the year.",
+     "goes": "Rates (and the rate on each order)",
+     "catch": "M sand is agreed at Rs 1,650 a cum, but the later loads come at Rs 1,750: Rates shows the rise."},
+    {"file": RETURN_NOTE, "title": "Return note", "kind": "pdf", "page": "/procurement/returns",
+     "what": "Six torn bags from Malabar's load sent back.",
+     "goes": "Returns: from the delivery",
+     "catch": "The debit note takes Rs 2,400 off what you owe Malabar at once, before their next bill."},
+    {"file": HIRE_BILL, "title": "A hire bill", "kind": "pdf", "page": "/equipment/hire",
+     "what": "The concrete mixer hired for the Annex, billed by the hour.",
+     "goes": "Equipment: Hire check",
+     "catch": "42 hours billed, 36 logged on site: Mesiri shows the 6 hours (Rs 2,700) to question."},
+    {"file": HANDOVER, "title": "Handover certificate", "kind": "pdf", "page": "/planning/documents",
+     "what": "Green Villa handed over to Dr. Anand Krishnan, the defects period starting.",
+     "goes": "Documents: Handover",
+     "catch": "None: it starts the 12-month defects period, after which the retention is released."},
 )
 
 
@@ -315,7 +346,7 @@ def plan_bytes() -> bytes:
              ("DWG.TITLE:", "GROUND FLOOR PLAN"), ("DWG.NO:", "A-101"), ("REV:", "B"), ("SCALE:", "1:100"),
              ("DATE:", "09.10.2026"), ("DRAWN BY:", "SK"), ("CHECKED BY:", "AR"))
     for i, (key, value) in enumerate(block):
-        pdf.drawString(bx + 12, by + bh - 22 - i * 18, f"{key} {value}")
+        pdf.drawString(bx + 12, by + bh - 22 - i * 18, f"{key} {value}".strip())
     pdf.drawString(bx + 12, by + 10, "ALL DIMENSIONS ARE IN CM")
     pdf.drawString(left0, 45, "Sample drawing for learning Mesiri. Not for construction.")
     pdf.showPage()
@@ -389,6 +420,155 @@ def sub_bill_bytes() -> bytes:
                 rows, ["Labour only; tiles and adhesive supplied by the contractor."])
 
 
+def _title_block(pdf, width: float, number: str, title: str, scale: str) -> None:  # noqa: ANN001
+    """The title block every sheet of the set carries, bottom right, the way Drawing check reads it."""
+    bx, by, bw, bh = width - 320, 40, 280, 222
+    pdf.setLineWidth(1)
+    pdf.rect(bx, by, bw, bh)
+    pdf.setFont("Helvetica", 9)
+    block = (("PROJECT:", "GREEN VILLA, PUTHUR ROAD, THRISSUR"), ("CLIENT:", green_villa.CLIENT["name"].upper()),
+             ("", green_villa.ARCHITECT.split(",")[0].upper()),
+             ("DWG.TITLE:", title), ("DWG.NO:", number), ("REV:", "A"), ("SCALE:", scale), ("DATE:", "09.10.2026"),
+             ("DRAWN BY:", "SK"), ("CHECKED BY:", "AR" if number[0] in "AEP" else "RA"))
+    for i, (key, value) in enumerate(block):
+        pdf.drawString(bx + 12, by + bh - 22 - i * 18, f"{key} {value}".strip())
+    pdf.drawString(bx + 12, by + 10, "ALL DIMENSIONS ARE IN CM")
+    pdf.drawString(70, 45, f"{green_villa.ARCHITECT if number[0] != 'S' else green_villa.CONSULTANT}. "
+                           "Sample drawing for learning Mesiri. Not for construction.")
+
+
+def _rooms(pdf, rooms, left0: float, top0: float, scale: float) -> None:  # noqa: ANN001
+    pdf.setLineWidth(2)
+    for label, x, y, w, d, sqft in rooms:
+        left, bottom = left0 + x * scale, top0 - (y + d) * scale
+        pdf.rect(left, bottom, w * scale, d * scale)
+        cx, cy = left + w * scale / 2, bottom + d * scale / 2
+        pdf.setFont("Helvetica-Bold", 9)
+        pdf.drawCentredString(cx, cy + 12, label)
+        pdf.setFont("Helvetica", 8)
+        pdf.drawCentredString(cx, cy, f"{w} x {d}")
+        pdf.drawCentredString(cx, cy - 11, f"{sqft} Sq.ft")
+
+
+def _levels(pdf, levels, left: float, base: float, per_cm: float) -> None:  # noqa: ANN001
+    """Level lines and marks ("+345 LVL"), a building outline between ground and the top level."""
+    pdf.setLineWidth(1.5)
+    pdf.rect(left, base, 520, max(levels) * per_cm)
+    pdf.setFont("Helvetica", 9)
+    for v in levels:
+        y = base + v * per_cm
+        pdf.line(left - 30, y, left + 560, y)
+        pdf.drawString(left + 570, y - 3, f"{'±' if v == 0 else '+'}{v} LVL")
+
+
+def drawing_set_bytes() -> bytes:
+    """The whole set, eight A3 sheets (green_villa.DRAWINGS), each with its title block."""
+    from reportlab.lib.pagesizes import A3, landscape
+    from reportlab.pdfgen import canvas
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=landscape(A3), invariant=1)
+    pdf.setTitle("Green Villa: drawing set rev A")
+    width, height = landscape(A3)
+    for number, title, kind in green_villa.DRAWINGS:
+        pdf.setLineWidth(1.2)
+        pdf.rect(30, 30, width - 60, height - 60)
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(70, height - 75, title)
+        scale_text = "1:100"
+        if number == "A-101":
+            _rooms(pdf, ROOMS, 70, height - 110, 0.6)
+        elif number == "A-102":
+            _rooms(pdf, green_villa.FIRST_FLOOR_ROOMS, 70, height - 110, 0.6)
+        elif kind in ("elevation", "section"):
+            _levels(pdf, green_villa.ELEVATION_LEVELS if kind == "elevation" else green_villa.SECTION_LEVELS, 120, 160, 0.7)
+        elif number == "S-101":
+            pdf.setFont("Helvetica", 9)
+            spots = [(140 + i * 150, 520) for i in range(4)] + [(140 + i * 300, 330) for i in range(2)]
+            marks = [(f[0], f[1], f[2], col) for f in green_villa.FOOTINGS for col in f[5]]
+            for (x, y), (mark, a, b, col) in zip(spots, marks, strict=True):
+                pdf.rect(x, y, a * 0.5, b * 0.5)
+                pdf.drawString(x, y + b * 0.5 + 6, f"{mark}-{a}X{b}")
+                pdf.drawString(x + 10, y + 10, col)
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(780, 600, "FOOTING SCHEDULE")
+            pdf.setFont("Helvetica", 9)
+            for i, (mark, a, b, depth, pcc, _cols, bars, dia) in enumerate(green_villa.FOOTINGS):
+                pdf.drawString(780, 580 - i * 16, f"{mark} {a}X{b} {depth} {pcc} {bars} nos. {dia} dia bars {bars} nos. {dia} dia bars")
+            pdf.drawString(780, 530, "CONCRETE M20, PCC 1:4:8 10 CM THICK BELOW FOOTINGS")
+        elif number == "S-102":
+            scale_text = "1:50"
+            pdf.setFont("Helvetica", 10)
+            for i, (mark, a, b, main, ties) in enumerate(green_villa.COLUMNS):
+                pdf.drawString(120, 600 - i * 22, f"{mark}-{a}X{b}")
+                pdf.drawString(260, 600 - i * 22, main)
+                pdf.drawString(380, 600 - i * 22, ties)
+        else:  # services: the points and runs, by room name only (no sizes: the architect's plan has them)
+            pdf.setFont("Helvetica", 10)
+            notes = (("LIGHT POINTS: 22", "FAN POINTS: 7", "5A SOCKETS: 18", "15A POWER: 6", "DB-1 NEAR MAIN DOOR")
+                     if number == "E-101" else
+                     ("CPVC 1 INCH MAIN FROM SUMP TO OVERHEAD TANK", "WATER SUPPLY POINTS: 6", "SOIL AND WASTE: 110/75 MM PVC",
+                      "INSPECTION CHAMBERS: 3", "RAINWATER DOWN PIPES: 4"))
+            for i, line in enumerate(notes):
+                pdf.drawString(120, 600 - i * 22, line)
+        _title_block(pdf, width, number, title, scale_text)
+        pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()
+
+
+def permit_bytes() -> bytes:
+    p = green_villa.PERMIT
+    rows = [["Particular", "", "", "", "Allowed"], ["Plot", "", "", "", p["plot"]], ["Floors", "", "", "", p["floors"]],
+            ["Built-up area", "", "", "", f"{p['built_up_sqft']:,} sq ft"], ["Validity", "", "", "", p["valid"]]]
+    return _doc("Building permit", [("Issued by", p["authority"]), ("Permit no.", p["number"]), ("Date", p["date"]),
+                                    ("Owner", green_villa.CLIENT["name"]), ("Site", green_villa.CLIENT["address"])],
+                rows, ["Construction to follow the approved drawings (Rev A). Keep this permit on site."],
+                widths=(110, 10, 10, 10, 370))
+
+
+def rate_card_bytes() -> bytes:
+    r = green_villa.RATE_CARD
+    rows = [["Material", "Unit", "", "", "Rate (Rs)"]] + [[m.title(), u, "", "", f"{rate:,}"] for m, u, rate in r["rates"]]
+    return _doc("Rate card", [("From", f"{r['vendor']}, Aluva"), ("Ref", r["ref"]), ("To", "Green Villa Builders"),
+                              ("Valid from", r["from"]), ("Delivery", "At site, Thrissur, by tipper lorry")],
+                rows, ["Rates before GST (5%). Any change will be told in writing a week before."])
+
+
+def return_note_bytes() -> bytes:
+    r = green_villa.RETURN
+    value = r["quantity"] * r["rate"]
+    rows = [["Item", "Unit", "Qty", "Rate (Rs)", "Value (Rs)"], [r["material"], r["unit"], f"{r['quantity']}", f"{r['rate']}",
+                                                                 _rupees(value)[3:]]]
+    return _doc("Return note", [("From", "Green Villa Builders, Green Villa site"), ("Note no.", r["note"]),
+                                ("To", f"{r['vendor']}, Palakkad"), ("Against", f"Challan {r['against']}"),
+                                ("Reason", r["reason"])],
+                rows, ["Please send a credit note or replace with the next load.", "Sent by: ____________"])
+
+
+def hire_bill_bytes() -> bytes:
+    h = green_villa.HIRE
+    amount = h["billed_hours"] * h["rate_per_hour"]
+    gst = amount * 18 // 100
+    rows = [["Machine", "Unit", "Hours", "Rate (Rs)", "Amount (Rs)"],
+            [h["machine"], "hour", f"{h['billed_hours']}", f"{h['rate_per_hour']}", _rupees(amount)[3:]],
+            ["GST 18%", "", "", "", _rupees(gst)[3:]], ["Total", "", "", "", _rupees(amount + gst)[3:]]]
+    return _doc("Hire bill", [("From", h["vendor"]), ("Bill no.", h["bill"]), ("To", "Green Villa Builders"),
+                              ("Site", f"Green Villa, {h['site']}"), ("For", h["for"])],
+                rows, ["Hours as per our operator's log. Payment within 15 days."])
+
+
+def handover_bytes() -> bytes:
+    h = green_villa.HANDOVER
+    rows = [["Handed over", "", "", "", "Count"], ["Keys (main door, back door, Annex)", "", "", "", f"{h['keys']}"],
+            ["Drawings as built (Rev A)", "", "", "", "1 set"], ["Warranty papers (pump, fittings)", "", "", "", "1 file"]]
+    return _doc("Handover certificate", [("Project", "Green Villa, Puthur Road, Thrissur"), ("Client", green_villa.CLIENT["name"]),
+                                         ("Agreement", green_villa.CONTRACT["contract_no"]), ("Handed over on", h["date"]),
+                                         ("Defects period until", h["defects_until"])],
+                rows, [h["note"], "For the contractor: ____________     For the client: ____________"],
+                widths=(320, 10, 10, 10, 160))
+
+
 def _rupees(amount: float) -> str:
     """Rs 82,06,050: Indian grouping."""
     whole = str(round(amount))
@@ -425,7 +605,9 @@ def _fixed_zip(data: bytes) -> bytes:
 
 def build() -> dict[str, bytes]:
     files = {ESTIMATE: estimate_bytes(), MATERIALS: materials_bytes(), CONTRACT: contract_bytes(), PLAN: plan_bytes(),
-             CHALLAN: challan_bytes(), BILL: bill_bytes(), MEASURE: measurement_bytes(), SUB_BILL: sub_bill_bytes()}
+             CHALLAN: challan_bytes(), BILL: bill_bytes(), MEASURE: measurement_bytes(), SUB_BILL: sub_bill_bytes(),
+             DRAWING_SET: drawing_set_bytes(), PERMIT: permit_bytes(), RATE_CARD: rate_card_bytes(),
+             RETURN_NOTE: return_note_bytes(), HIRE_BILL: hire_bill_bytes(), HANDOVER: handover_bytes()}
     files.update({name: quote_bytes(vendor) for name, vendor in zip(QUOTES, QUOTE_RATES, strict=True)})
     manifest = {"name": "Green Villa starter kit", "zip": ZIP, "files": list(MANIFEST)}
     files["kit.json"] = (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode()

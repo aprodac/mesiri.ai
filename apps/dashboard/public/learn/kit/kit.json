@@ -80,6 +80,60 @@
       "what": "The flooring measured room by room, and the subcontractor's bill for it.",
       "goes": "Subcontract: measurement, then the bill",
       "catch": "The bill asks for more square metres than were measured: Mesiri says how many more."
+    },
+    {
+      "file": "Green Villa - drawing set rev A.pdf",
+      "title": "The drawing set (8 sheets)",
+      "kind": "pdf",
+      "page": "/planning/drawing-check",
+      "what": "The architect's and consultants' set: both floor plans, the elevation, a section, the footings, the columns, electrical and plumbing.",
+      "goes": "Drawing check, then Documents (each sheet kept, its rooms and footings tracked as places)",
+      "catch": "The first-floor toilet is drawn smaller than the one below it, and the roof is +660 on the elevation but +655 on the section: Mesiri asks which is right before the slab is cast."
+    },
+    {
+      "file": "Green Villa - building permit.pdf",
+      "title": "Building permit",
+      "kind": "pdf",
+      "page": "/planning/documents",
+      "what": "The municipality's permit: the plot, the built-up area, the floors allowed.",
+      "goes": "Documents: Approvals",
+      "catch": "None: it is kept where everyone on the project can find the latest one."
+    },
+    {
+      "file": "Periyar - rate card.pdf",
+      "title": "Periyar's rate card",
+      "kind": "pdf",
+      "page": "/procurement/rates",
+      "what": "The rates agreed with the sand and aggregate supplier for the year.",
+      "goes": "Rates (and the rate on each order)",
+      "catch": "M sand is agreed at Rs 1,650 a cum, but the later loads come at Rs 1,750: Rates shows the rise."
+    },
+    {
+      "file": "Malabar - return note GV-RN-014.pdf",
+      "title": "Return note",
+      "kind": "pdf",
+      "page": "/procurement/returns",
+      "what": "Six torn bags from Malabar's load sent back.",
+      "goes": "Returns: from the delivery",
+      "catch": "The debit note takes Rs 2,400 off what you owe Malabar at once, before their next bill."
+    },
+    {
+      "file": "Kerala Earthmovers - hire bill KEE-0118.pdf",
+      "title": "A hire bill",
+      "kind": "pdf",
+      "page": "/equipment/hire",
+      "what": "The concrete mixer hired for the Annex, billed by the hour.",
+      "goes": "Equipment: Hire check",
+      "catch": "42 hours billed, 36 logged on site: Mesiri shows the 6 hours (Rs 2,700) to question."
+    },
+    {
+      "file": "Green Villa - handover certificate.pdf",
+      "title": "Handover certificate",
+      "kind": "pdf",
+      "page": "/planning/documents",
+      "what": "Green Villa handed over to Dr. Anand Krishnan, the defects period starting.",
+      "goes": "Documents: Handover",
+      "catch": "None: it starts the 12-month defects period, after which the retention is released."
     }
   ]
 }

@@ -68,16 +68,16 @@ makes it from the records; nobody types it.
 | Estimate / BOQ (34 lines, rates, labour and material cost) | Owner, from the drawings | Tender | BOQ & budget: Import from Excel | **Yes** (kit) |
 | Contract summary (client, value, dates, advance, retention, defects, delay) | Owner and client | Signing, 20 Oct 2026 | Project start: the contract step | **Yes** (kit) |
 | Architectural drawings: A-101 ground floor plan | Architect | Before start | Drawing check, Documents | **Yes** (kit) |
-| A-102 first floor plan, A-201 elevations, A-301 section | Architect | Before start | Documents (and Drawing check for plans) | To make |
-| Structural drawings: S-101 footing layout, S-102 column schedule, S-201 slab reinforcement | Structural consultant | Before start; revisions on site | Documents | To make |
-| Services: E-101 electrical layout, P-101 plumbing layout | Consultants | Before the services stage | Documents | To make |
-| Building permit | Municipality | Before start | Documents | To make |
+| A-102 first floor plan, A-201 elevations, A-301 section | Architect | Before start | Documents (and Drawing check for plans) | Made: the kit's drawing set |
+| Structural drawings: S-101 footing layout, S-102 column schedule, S-201 slab reinforcement | Structural consultant | Before start; revisions on site | Documents | Made: S-101, S-102 in the set (S-201 with the revision, batch 3) |
+| Services: E-101 electrical layout, P-101 plumbing layout | Consultants | Before the services stage | Documents | Made: in the set |
+| Building permit | Municipality | Before start | Documents | Made: the kit's permit |
 | Materials and suppliers (items, shops, opening stock, minimums) | Anil | Setup | Bring your data | **Yes** (kit) |
-| Supplier rate list | Suppliers | Setup, then as quoted | Rates | To make |
+| Supplier rate list | Suppliers | Setup, then as quoted | Rates | Made: Periyar's rate card (catch: M sand later 1,750 against 1,650) |
 | Schedule (stages per site, from the BOQ) | Anil | Setup | Schedule | Generated from BOQ + dates; to check |
 | Material plan (what to buy when) | Mesiri | Setup | Material plan | Generated |
 | Team and their WhatsApp numbers | Owner | Setup | Team, WhatsApp | Seeded |
-| Places (blocks, floors, rooms) | Anil | Setup | Places | To make |
+| Places (blocks, floors, rooms) | Anil | Setup | Places | From the drawing set (Track reads its rooms and footings): no paper |
 
 ### Along the way: days 1 to 62 (episodes 3 to 10)
 
@@ -89,12 +89,12 @@ makes it from the records; nobody types it.
 | Quotations (three suppliers) | Suppliers, asked by Anil | Before a big order | Quotations | **Yes** (kit: cement and steel) |
 | Purchase order (PDF) | Anil | Per request | Purchase orders | Generated; plan |
 | Delivery challan | Supplier, with the lorry | Each delivery | Record delivery (a photo of the challan) | **Yes** (kit: one) |
-| Return note (damaged or extra) | Ravi | When a load is wrong | Returns | To make (batch 2) |
+| Return note (damaged or extra) | Ravi | When a load is wrong | Returns | Made: Malabar note GV/RN/014, 6 torn bags; played in batch 2 |
 | Supplier bill | Supplier | After deliveries | Suppliers: bills, checked against order and delivery | **Yes** (kit: one); plan |
 | Payment advice | Meera | On the due date | Suppliers: payments, Money | Plan |
-| Stock count sheet | Ravi | Month end | Stock count | To make (batch 2) |
+| Stock count sheet | Ravi | Month end | Stock count | No paper: counted on the phone (batch 2) |
 | Machine log (hours, diesel, breakdown) | Ravi | Daily, each machine | Equipment: Daily log | To make (batch 2) |
-| Hire bill (a hired mixer, a JCB) | Hire company | Monthly | Equipment: Hire check | To make (batch 2) |
+| Hire bill (a hired mixer, a JCB) | Hire company | Monthly | Equipment: Hire check | Made: KEE/2027/0118, 42 h billed against 36 logged; played in batch 2 |
 | Wage sheet (weekly) | Mesiri, from attendance | Weekly | Wages: approve, pay | Generated; plan |
 | Advance slip | Meera | When given | Advances | Plan |
 | Problem (with a photo) | Ravi, on WhatsApp | When it happens | Issues; a task for whoever fixes it | Plan; tasks batch 3 |
@@ -114,8 +114,8 @@ makes it from the records; nobody types it.
 | Document | From | When | In Mesiri | Exists? |
 |---|---|---|---|---|
 | Snag list | Owner and client walk-through | Days 55 to 60 | Tasks (one per snag) | To make (batch 3) |
-| Final bill | Owner | Handover | RA bills (final) | To make (D2) |
-| Handover certificate | Owner and client | Day 62 | Documents; project stage "handed over" | To make |
+| Final bill | Owner | Handover | RA bills (final) | Generated; plan day 62 (D2) |
+| Handover certificate | Owner and client | Day 62 | Documents; project stage "handed over" | Made: the kit's certificate |
 | Retention release request | Owner | After the 12-month defects period | Receivables | To make |
 | Defect complaints | Client | During the defects period | Issues | To make |
 
@@ -159,9 +159,14 @@ makes it from the records; nobody types it.
      and 3). Its work is counted on the estimate's lines; a running bill on day 30 and the final bill at handover, each
      less 10% advance and 5% retention plus GST; the client pays 15 days later. Played through the API for all 62 days
      with no failure: bill 1 net Rs 11,92,169 (paid day 45), final bill net Rs 9,41,008.
-2. **The documents to make:** the drawing set (A-102, A-201, A-301, S-101, S-102, S-201, E-101, P-101), the building
+2. **Done (LRN-F5): the documents to make:** the drawing set (A-102, A-201, A-301, S-101, S-102, S-201, E-101, P-101), the building
    permit, the supplier rate list, the places, the return note, the stock count sheet, the hire bill, the handover
    certificate: added to the starter kit's generator (`make_kit.py`), each with its page and, where it fits, a catch.
+   Six new files (one source, `green_villa.py`): the eight-sheet drawing set rev A (Drawing check finds exactly its
+   three catches: a copied BEDROOM-2 label, the roof at +660 on the elevation and +655 on the section, the first-floor
+   toilet drawn 210 x 150 over a 240 x 150 one; 6 footings counted), the permit, Periyar's rate card, Malabar's return
+   note, Kerala Earthmovers' hire bill and the handover certificate. Places come from the drawing set; the stock count
+   is done on the phone, so neither is paper. S-201 comes with the slab revision (batch 3).
 3. **The seed:** names (D3), money accounts (D5), Green Villa's client, Lake View's full estimate and terms.
 4. **The 62-day plan:** Green Villa's RA bills, final bill and retention (D2), then story batches 1 to 3
    ([SERIES_PLAN.md](SERIES_PLAN.md) section 7).
