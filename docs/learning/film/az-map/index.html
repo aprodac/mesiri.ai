@@ -157,6 +157,42 @@ svg.links circle { fill: var(--ink); }
 @media (max-width: 760px) { .daygrid { grid-template-columns: 1fr; } .step { grid-template-columns: 54px minmax(0, 1fr); } .step .what { grid-column: 1 / -1; } .wait { padding-left: 0; } }
 .note { font-size: 12.5px; color: var(--dim); margin-top: 8px; }
 :focus-visible { outline: 2px solid var(--brand-ink); outline-offset: 2px; }
+
+/* Every page */
+.states { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.state { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 12px 6px 8px; font: 500 13px var(--f-body); color: var(--ink); cursor: pointer; }
+.state[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.state b { font: 600 13px var(--f-mono); }
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 1px 8px; font: 600 10.5px/1.6 var(--f-mono); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.st-recorded { color: var(--c-bill); background: color-mix(in srgb, var(--c-bill) 12%, transparent); }
+.st-shows { color: var(--c-mat); background: color-mix(in srgb, var(--c-mat) 12%, transparent); }
+.st-setup { color: var(--brand-ink); background: color-mix(in srgb, var(--brand) 22%, transparent); }
+.st-gap { color: var(--c-bad); background: color-mix(in srgb, var(--c-bad) 10%, transparent); }
+.mods { columns: 3 300px; column-gap: 12px; }
+.mod { break-inside: avoid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.mod header { padding: 10px 12px 8px; border-bottom: 1px solid var(--grid); display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mod header h3 { font-size: 14px; }
+.mod header small { font: 500 10.5px var(--f-mono); color: var(--faint); text-transform: uppercase; letter-spacing: .08em; }
+.pg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; width: 100%; text-align: left; padding: 8px 12px; border: 0; border-top: 1px solid var(--grid); background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.pg:first-of-type { border-top: 0; }
+.pg:hover { background: rgba(var(--shade), .04); }
+.pg.sel { background: rgba(var(--shade), .07); }
+.pg .t { font-size: 13.5px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg .who { display: flex; gap: 3px; align-items: center; justify-content: flex-end; }
+.pg .who .av { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font: 700 9px var(--f-display); color: #111; }
+.spark { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(62, 1fr); gap: 1px; height: 6px; }
+.spark i { background: var(--grid); border-radius: 1px; }
+.spark i.on { background: var(--c-bill); }
+.spark.shows i.on { background: var(--c-mat); }
+.pg .note2 { grid-column: 1 / -1; font-size: 11.5px; color: var(--dim); }
+.hidden-by-filter { display: none; }
+.pagelinks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pagelinks button { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 9px; font: 500 12.5px var(--f-body); color: var(--ink); cursor: pointer; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.facts div { background: var(--bg); border-radius: 8px; padding: 9px 11px; font-size: 13px; }
+.facts b { display: block; font: 600 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin-bottom: 2px; }
+@media (max-width: 640px) { .facts { grid-template-columns: 1fr; } }
 .loading { color: var(--dim); padding: 24px; }
 @media (prefers-reduced-motion: no-preference) { .panel { animation: rise .25s ease-out; } @keyframes rise { from { opacity: .4; transform: translateY(6px); } } }
 </style>
@@ -198,6 +234,16 @@ svg.links circle { fill: var(--ink); }
       <p>Four people keep the whole project in Mesiri. Tap one to see only their lane.</p>
     </div>
     <div class="people" id="people"></div>
+  </section>
+
+  <section aria-labelledby="h-pages">
+    <div class="sec-head">
+      <h2 id="h-pages">Every page in Mesiri</h2>
+      <p>Each page against the story: where something is recorded, where its results show, what is set up before day 1, and what the 62 days don't use yet. Tap a page to see who uses it, when, and what feeds it.</p>
+    </div>
+    <div class="states" id="states"></div>
+    <div class="mods" id="mods"></div>
+    <div id="pagepanel"></div>
   </section>
 
   <section aria-labelledby="h-map">
@@ -279,8 +325,70 @@ svg.links circle { fill: var(--ink); }
     { key: 'problem', label: 'A problem on site', find: (e) => e.k === 'issue' },
   ]
 
+  const STATE = {
+    recorded: { name: 'Recorded in the story', short: 'Recorded', why: 'Someone records something on this page during the 62 days.' },
+    shows: { name: 'Shows the results', short: 'Shows', why: 'Nobody types here; it shows what the others recorded.' },
+    setup: { name: 'Set up before day 1', short: 'Setup', why: 'Done once while the company and project are set up, before the story starts.' },
+    gap: { name: 'Not in the story yet', short: 'Not yet', why: 'The 62 days never use this page yet. It will be added to the story.' },
+  }
+  const SECTION_ORDER = ['plan', 'daily', 'site', 'buy', 'money', 'tasks', 'settings']
+  const SECTION_NAME = { plan: 'Plan', daily: 'Every day', site: 'Site', buy: 'Buy', money: 'Money', tasks: 'Tasks', settings: 'Settings' }
+  let stateFilter = null, selPage = null
+  const pageByUrl = new Map()
+
+  function renderPages() {
+    for (const m of meta.modules) for (const pg of m.pages) if (!pg.shortcut) pageByUrl.set(pg.url, { ...pg, module: m.title })
+    const counts = {}
+    for (const pg of pageByUrl.values()) counts[pg.state] = (counts[pg.state] || 0) + 1
+    const st = document.getElementById('states')
+    st.innerHTML = Object.entries(STATE).map(([k, v]) => `<button type="button" class="state" data-state="${k}" aria-pressed="${stateFilter === k}"><span class="pill st-${k}">${v.short}</span>${v.name}<b>${counts[k] || 0}</b></button>`).join('') +
+      `<span class="note" style="align-self:center;margin:0">${pageByUrl.size} pages in all</span>`
+    st.querySelectorAll('[data-state]').forEach((b) => b.addEventListener('click', () => { stateFilter = stateFilter === b.dataset.state ? null : b.dataset.state; renderPages() }))
+    const mods = [...meta.modules].sort((a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section))
+    const box = document.getElementById('mods')
+    box.innerHTML = mods.map((m) => {
+      const rows = m.pages.filter((pg) => !pg.shortcut).map((pg) => {
+        const p = pageByUrl.get(pg.url)
+        const days = new Set(p.days)
+        const spark = (p.state === 'recorded' || p.state === 'shows') ? `<span class="spark ${p.state}" aria-hidden="true">${meta.days.map((d) => `<i class="${days.has(d.d) ? 'on' : ''}"></i>`).join('')}</span>` : ''
+        const who = p.roles.map((r) => `<span class="av" style="background:${PERSON[r].color}" title="${PERSON[r].name}">${PERSON[r].letter}</span>`).join('')
+        const note = p.state === 'setup' ? `<span class="note2">${esc(p.setup || 'Company setup')}</span>` : p.setup ? `<span class="note2">Also: ${esc(p.setup)}</span>` : ''
+        return `<button type="button" class="pg${selPage === p.url ? ' sel' : ''}${stateFilter && stateFilter !== p.state ? ' hidden-by-filter' : ''}" data-url="${esc(p.url)}"><span class="t">${esc(p.title)}</span><span class="who">${who}<span class="pill st-${p.state}">${STATE[p.state].short}</span></span>${spark}${note}</button>`
+      }).join('')
+      const anyShown = !stateFilter || m.pages.some((pg) => !pg.shortcut && pageByUrl.get(pg.url).state === stateFilter)
+      return `<div class="mod${anyShown ? '' : ' hidden-by-filter'}"><header><h3>${esc(m.title)}</h3><small>${SECTION_NAME[m.section] || ''}</small></header>${rows}</div>`
+    }).join('')
+    box.querySelectorAll('[data-url]').forEach((b) => b.addEventListener('click', () => openPage(b.dataset.url)))
+  }
+
+  function openPage(url) {
+    const p = pageByUrl.get(url)
+    if (!p) return
+    selPage = url
+    renderPages()
+    const days = p.days
+    const span = days.length ? `Day ${days[0]} to ${days[days.length - 1]} · on ${days.length} of 62 days` : '—'
+    const ents = entries.filter((e) => p.kinds.includes(e.k))
+    const samples = p.state === 'recorded' ? ents.filter((e) => !ROUTINE.has(e.k)).slice(0, 4).concat(ents.filter((e) => ROUTINE.has(e.k)).slice(0, ents.some((e) => !ROUTINE.has(e.k)) ? 0 : 3)) : []
+    const link = (u) => { const q = pageByUrl.get(u); return q ? `<button type="button" data-url="${esc(u)}">${esc(q.module)} · ${esc(q.title)}</button>` : '' }
+    let html = `<div class="panel"><div class="eyebrow">${esc(p.module)}</div><h3 style="margin-top:4px">${esc(p.title)} <span class="pill st-${p.state}" style="vertical-align:3px">${STATE[p.state].short}</span></h3>
+      <p class="sub">${esc(p.about)}</p><p class="sub">${STATE[p.state].why}${p.setup ? ` ${esc(p.setup)}.` : ''}</p>`
+    if (p.state === 'recorded' || p.state === 'shows') {
+      html += `<div class="facts"><div><b>${p.state === 'recorded' ? 'Who records here' : 'What it shows'}</b>${p.state === 'recorded' ? p.roles.map((r) => `${PERSON[r].name} (${PERSON[r].role.toLowerCase()})`).join(', ') : p.kinds.map((k) => esc(meta.kinds[k] || k)).join(', ')}</div><div><b>When</b>${span}</div><div><b>${p.state === 'recorded' ? 'Entries' : 'Fed by'}</b>${p.state === 'recorded' ? fmt(p.count) : [...new Set(p.kinds.map((k) => Object.entries(KIND).find(([kk]) => kk === k)?.[1][1]).filter(Boolean))].join(', ') || 'the site records'}</div></div>`
+    }
+    if (p.from?.length) html += `<p class="sub" style="margin-top:12px">Comes from</p><div class="pagelinks">${p.from.map(link).join('')}</div>`
+    if (p.to?.length) html += `<p class="sub" style="margin-top:10px">Leads to</p><div class="pagelinks">${p.to.map(link).join('')}</div>`
+    if (samples.length) html += `<p class="sub" style="margin-top:12px">In the story · tap one to follow its chain</p><ul class="steps" style="margin-top:4px">${samples.map((e) => `<li class="step"><div class="when">Day ${e.d}<small>${meta.days[e.d - 1]?.wd || ''}</small></div><div class="who">${personCell(e.r)}</div><div class="what"><button type="button" class="link" data-id="${esc(e.i)}">${esc(e.t)}</button></div></li>`).join('')}</ul>`
+    html += '</div>'
+    const panel = document.getElementById('pagepanel')
+    panel.innerHTML = html
+    panel.querySelectorAll('[data-url]').forEach((b) => b.addEventListener('click', () => openPage(b.dataset.url)))
+    panel.querySelectorAll('[data-id]').forEach((b) => b.addEventListener('click', () => { openChain(b.dataset.id, null); document.getElementById('h-map').scrollIntoView({ behavior: 'smooth', block: 'start' }) }))
+  }
+
   function render() {
     renderPeople()
+    renderPages()
     renderChips()
     renderBoard()
     renderLegend()
