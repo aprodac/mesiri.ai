@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { api } from './api'
+import { GUIDE_AUDIO } from './guide-audio.gen'
 
 // Mesiri's voice on Live (WEB-63): a short line spoken at a moment ("Saved: 50
 // bags of cement", the Meet Mesiri narration), from Sarvam through the API
@@ -10,8 +11,8 @@ import { api } from './api'
 // presenter mode turns it on, and Mute turns it off. If the voice is not set
 // up or fails, Live stays silent and says so once.
 //
-// The walkthroughs (SS-61) use the same hook with `voice: 'guide'`: the narrator's voice (a male Indian-English voice,
-// set on the server), longer lines (a step's title and text), MP3, a speed (1x to 2x, the pitch kept), pause and
+// The walkthroughs (SS-61) use the same hook with `voice: 'guide'`: the narrator's voice (UX-76: their steps recorded
+// once with ElevenLabs, static files in public/learn/voice; any other line from the server's voice), longer lines (a step's title and text), MP3, a speed (1x to 2x, the pitch kept), pause and
 // resume, and the next step's audio fetched ahead so it starts at once.
 
 export type VoiceName = 'live' | 'guide'
@@ -75,7 +76,17 @@ export function useVoice(options: { voice?: VoiceName; on?: boolean; rate?: numb
       let url = clips.current.get(words)
       if (!url) {
         const params = name === 'live' ? { text: words } : { text: words, voice: name }
-        url = api.get<Blob>('/dpr/live/voice', { params, responseType: 'blob' }).then((res) => URL.createObjectURL(res.data))
+        const server = () =>
+          api.get<Blob>('/dpr/live/voice', { params, responseType: 'blob' }).then((res) => URL.createObjectURL(res.data))
+        // UX-76: a walkthrough line recorded with ElevenLabs plays from its static file; any other line (a step
+        // changed since it was recorded, a hint) is read by the server's voice.
+        const recorded = name === 'guide' ? GUIDE_AUDIO[words] : undefined
+        url = recorded
+          ? fetch(`/learn/voice/${recorded}.mp3`)
+              .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
+              .then((blob) => URL.createObjectURL(blob))
+              .catch(server)
+          : server()
         url.catch(() => clips.current.delete(words)) // a failed fetch is tried again next time
         clips.current.set(words, url)
       }
