@@ -99,3 +99,13 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 - [ ] `steps-04.cjs` for `move`, `compare`, `match`, written against the pages on the day (as `steps-02.cjs`).
 - [ ] The compare and the bill match: say only what the screen shows (the split, the quantity difference); log what it
       does not show.
+
+## Episode 5, "Wages week": before recording
+
+- [ ] The week plays as the plan has it (days 2 to 7); nothing to add to the story.
+- [ ] Roles and days: Meera on day 4 (`advance`: the plan's advance to Suresh is hers), the owner on day 7 (`muster`,
+      `sheet`: approve), Meera on day 7 (`pay`), the owner after (`worth`: Green / red).
+- [ ] `steps-05.cjs` for `advance`, `muster`, `sheet`, `pay`, written against the pages on the day.
+- [ ] Every figure read off the screen: the sheet's total (the plan's gross is Rs 75,000 for both sites), Suresh's
+      row, and what Green / red shows (per day or for the week).
+
