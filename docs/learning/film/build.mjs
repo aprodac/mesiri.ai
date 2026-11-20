@@ -114,8 +114,13 @@ if (process.env.STILLS) {
     await pg.addInitScript((d) => { window.SCENE = d }, data)
     await pg.goto(pathToFileURL(join(here, 'film.html')).href)
     await pg.evaluate(() => window.ready)
-    await pg.evaluate((t) => window.seek(t), s.dur - 800)
-    await pg.screenshot({ path: join(OUT, 'stills', `${String(s.index + 1).padStart(2, '0')}-${s.scene.id}.jpg`), type: 'jpeg', quality: 80 })
+    // STILLS=beats: one picture at the end of every beat (to check each zoom and highlight), else the scene's end.
+    const times = process.env.STILLS === 'beats' ? s.beats.map((b) => b.at + b.len) : [s.dur - 800]
+    for (const [i, t] of times.entries()) {
+      await pg.evaluate((x) => window.seek(x), t)
+      const tag = times.length > 1 ? `-${i}` : ''
+      await pg.screenshot({ path: join(OUT, 'stills', `${String(s.index + 1).padStart(2, '0')}-${s.scene.id}${tag}.jpg`), type: 'jpeg', quality: 80 })
+    }
     await ctx.close()
   }
   await browser.close()
