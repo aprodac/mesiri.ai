@@ -4,11 +4,18 @@ Found by the demo reset's test on a real Postgres: deleting a company with recor
 
 1. **People first fails.** 57 links point at ``users`` (``created_by`` ...) without ON DELETE, so the company's people
    can only go after its records. Every company table cascades from ``organizations``, so the company goes first,
-   then its people (``users.organization_id`` is not a foreign key, so nothing cascades to them).
+   then whatever is left of its people. (``users.organization_id`` cascades from ``organizations`` too, migration
+   0361: see 3.)
 2. **Some cascades meet in the wrong order.** A row that is deleted through one cascade path can still be pointed at
    by a row deleted through another path, with a NO ACTION link between them (attendance lines -> workers,
    interactions -> workflow instances, budget allocations -> expense categories, report sources -> daily reports).
    Postgres checks that link before the other cascade has removed the pointing row, and refuses.
+
+3. **People can go before what they wrote** (LRN-F16, 20 Nov 2026: a sample company where the assistant had been used
+   could not be reset). The company's people cascade straight from ``organizations``; a site update
+   (``progress_updates``) cascades two steps away, through its activity, and points at its person with a NO ACTION
+   link. Postgres checks that link when the person goes, before the update's own cascade has removed it, and refuses.
+   So every row pointing at the company's people is cleared before the company goes, not after.
 
 So: the blocking links are read from the catalogue (not listed by hand, so a new table can't break it again), the
 pointing rows of this company are deleted first, then the company, then its people. All in the caller's transaction:
@@ -101,10 +108,14 @@ async def delete_company(conn: AsyncConnection, organization_id: uuid.UUID) -> N
         child, col, parent = _table(link["child"]), link["col"], _table(link["parent"])
         await _clear(conn, links_to, child,
                      f"{_ident(col)} IN (SELECT id FROM {_ident(parent)} WHERE organization_id = :o)", params)  # noqa: S608
-    await conn.execute(sa.text("DELETE FROM organizations WHERE id = :o"), params)
-    # Rows outside the company tables that still point at its people (e.g. interactions.user_id) go with them.
+    # Every row that points at the company's people goes before the company (3. above): the people cascade from it, and a
+    # row two cascades away (a site update) would still point at them when they go. The same rows as went after the
+    # company before (interactions.user_id ...), and the company's own records that were going with it anyway.
+    people = "(SELECT id FROM users WHERE organization_id = :o)"
     for link in (await conn.execute(_USER_LINKS)).mappings().all():
-        await conn.execute(sa.text(
-            f"DELETE FROM {_ident(_table(link['child']))} WHERE {_ident(link['col'])} IN "  # noqa: S608
-            "(SELECT id FROM users WHERE organization_id = :o)"), params)
+        child = _table(link["child"])
+        if child in ("users", "organizations"):  # the people and the company themselves go next, in one step
+            continue
+        await _clear(conn, links_to, child, f"{_ident(link['col'])} IN {people}", params, ("users",))
+    await conn.execute(sa.text("DELETE FROM organizations WHERE id = :o"), params)
     await conn.execute(sa.text("DELETE FROM users WHERE organization_id = :o"), params)

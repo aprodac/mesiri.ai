@@ -49,9 +49,8 @@ ONLY=rain node docs/learning/film/record.cjs 03 <own token>   # one scene again;
   token, and the sample's session (its token and own date) in the tab, so every "today" is the sample's day. For
   screens: `SAMPLE=<the next-day answer as JSON> node shoot.cjs NN <own token> ...` (`SKIP_STEPS=1` for screens only).
 - **Light mode** is the default for every picture (asked 20 Nov); `THEME=dark` for the old look.
-- **Resetting the sample company fails** once Tell Mesiri was used in it (LRN-F16, waiting for approval). Until it is
-  fixed, on the local copy only: `DELETE FROM progress_updates WHERE reported_by_user_id IN (SELECT u.id FROM users u
-  JOIN organizations o ON o.id = u.organization_id WHERE o.sandbox_of IS NOT NULL)`, then reset.
+- **Never run the integration tests against the filming database**: they create and clean up companies and end the
+  sample company's sessions mid-recording ("Sign in again", 20 Nov). Use a separate database for tests.
 - Mesiri answers Ravi in his own mix (Malayalam in English letters): the narration says so, never translates it away.
 
 ## Episode 2, "Setting up": recorded 20 Nov
@@ -70,16 +69,14 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 - [ ] Check every figure said against the screen (Drawing check's questions; the material plan's 6 of 34 lines and
       its cement and blocks; the 9 pm report time).
 
-## Episode 3, "A day on site": recorded 20 Nov, two scenes left
+## Episode 3, "A day on site": recorded 20 Nov
 
 - [x] Screens (Today, Stock, Green Villa's day-2 report), light, an owner's copy on day 2 (Mon 16 Nov).
-- [x] Real replies on day 2 as Ravi: morning attendance, the steel before the pour (the photo dropped, Ilan 20 Nov),
-      the evening voice note (Malayalam as written, Ilan: "it's fine as it is"), the Main block's cement. The words
-      changed to the real cards.
-- [ ] **`office`**: Anil types Ravi's phoned-in line into New (the website has no attendance form of its own:
-      `steps-03.cjs`). Needs the model: `ONLY=office node record.cjs 03 <token>`.
-- [ ] **`rain`** on day 10. Needs the model: `ONLY=rain node record.cjs 03 <token>`.
-- [ ] Re-take **`short`** if its card again says "2 bags not in the list" (WA-316): today's real card has it.
+- [x] Every chat, real, as Ravi on day 2 (and the rain on day 10), first take, after the fixes below; the photo
+      dropped (Ilan). The Malayalam voice note as written (Ilan: "it's fine as it is").
+- [x] `office`: Anil types Ravi's phoned-in line into New (the website has no attendance form of its own). It needed
+      WA-316 (5): as a project manager the assistant put names in `worker_id` and Save was refused.
+- [x] Built: `node docs/learning/film/build.mjs 03` → `out/episode-03.mp4` (about 7 minutes).
 
 ## Then, for each episode
 

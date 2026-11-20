@@ -84,7 +84,10 @@ async def test_the_demo_comes_back_with_its_people_settings_and_fresh_records(wo
     # the site's work counted on it, the client's contract and a first bill sent.
     assert result.seeded.get("minimum stock") == 6 and result.seeded.get("order") == 2 and result.seeded.get("supplier bill") == 1
     assert result.seeded.get("advance") == 3 and result.seeded.get("wage sheet approved") == 2
-    assert result.seeded.get("estimate section") == 2 and result.seeded.get("estimate line") == 8
+    # LRN-F7: Lake View's whole estimate (learn/lake_view.py), every section and line.
+    from mesiri.application.learn import lake_view
+    assert result.seeded.get("estimate section") == len(lake_view.ESTIMATE)
+    assert result.seeded.get("estimate line") == sum(len(rows) for _n, _t, rows in lake_view.ESTIMATE)
     assert result.seeded.get("work counted", 0) >= 18 and result.seeded.get("contract") == 1
     assert result.seeded.get("client bill") == 1 and result.seeded.get("client bill sent") == 1
     # A demo full of records (attendance with workers, expenses ...) resets again: the delete step clears the links

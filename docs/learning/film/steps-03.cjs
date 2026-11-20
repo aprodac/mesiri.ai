@@ -24,7 +24,10 @@ module.exports = {
     },
     async (pg, h) => {
       await pg.locator(`${PANEL} button:has-text("Save")`).last().click()
-      await h.wait(4000)
+      // Mesiri's answer to Save: ✅ for what was saved; a ❌ line is a refusal, never filmed as a save.
+      await pg.locator(PANEL).getByText(/✅|❌/).last().waitFor({ timeout: 90000 })
+      if (await pg.locator(PANEL).getByText('❌').count()) throw new Error('office: Save was refused (❌ on the reply)')
+      await h.wait(1500)
       await h.go('/labour?project={Green Villa}')
       return 'tbody tr:first-child'
     },

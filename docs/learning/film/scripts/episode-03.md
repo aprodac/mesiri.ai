@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can follow one site day from Ravi's first WhatsApp message to the owner's evening report, and say what each kind of record is for: attendance, work done, material used, money spent, and the day's conditions.
 
-**Length:** 14 scenes, 1138 words of narration (about 8 minutes)
+**Length:** 14 scenes, 1143 words of narration (about 8 minutes)
 
 ## Cold open
 
@@ -64,7 +64,7 @@ Narration:
 
 On screen:
 
-- The words and the card are drawn for the film; the assistant's own reply is checked before filming.
+- Mesiri's own reply, recorded in the sample company.
 
 **Record (real reply):**
 
@@ -77,7 +77,7 @@ Narration:
 
 > At five past eight, Ravi tells Mesiri who came. He types it the way he would say it.
 >
-> Mesiri does not save anything yet. It sends back a card: Manoj, Satheesh and Vinod, and Rahim's crew as four helpers, at the Annex. It answers in Ravi's own mix of Malayalam and English.
+> Mesiri does not save anything yet. It sends back a card: Manoj, Satheesh, Vinod and four helpers, at the Annex. It answers in Ravi's own mix of Malayalam and English.
 >
 > Ravi checks it and taps Save. That is the attendance. Nobody copies a register into Excel on Saturday.
 
@@ -196,7 +196,7 @@ Narration:
 >
 > The same card comes back, because it is the same Mesiri. Anil checks it and taps Save.
 >
-> And the day is in the attendance: the same record Ravi's message would have made. One record, two ways in, never counted twice.
+> And the day is in the attendance: each person with his trade and day's wage from the register. The same record Ravi's message makes. One record, two ways in, never counted twice.
 
 ## Who does what, when
 
