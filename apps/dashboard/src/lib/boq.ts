@@ -8,6 +8,10 @@ export interface BoqTotals {
   contract_value: string | null
   budget_cost: string | null
   margin: string | null
+  /** The margin of the lines with both rates, and their contract value: shown, marked not final, while some lines
+   *  have no rate (`margin` waits for every line). */
+  margin_priced?: string | null
+  priced_contract_value?: string | null
   lines_without_client_rate: number
   lines_without_budget_rate: number
   /** CC-04: budget earned by the work done; null when no priced line has work. */

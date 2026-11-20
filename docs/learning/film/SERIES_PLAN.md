@@ -4,8 +4,8 @@
 > each episode, what the objective is ... After that, only start creating the episodes." This page is that note.
 > Nothing is filmed until it is agreed. Status: **draft for Ilan's review**.
 >
-> **To continue the work, start at [CONTINUE_HERE.md](CONTINUE_HERE.md)** (20 Nov): where things stand, a proposed
-> change to section 5 (drawings get their own episode; planning joins setting up), and the step-by-step plan.
+> **The learning order (watch an episode, then play its days in the simulation), what is made and what is next:
+> [../LEARNING_PATH.md](../LEARNING_PATH.md)** (20 Nov), including a review of this syllabus against the simulation.
 
 ## 1. Why we are making this
 
@@ -153,7 +153,7 @@ Each built page (lib/module-map.ts) appears in the episode where a project first
 
 ## Open questions for Ilan
 
-- Keep the **Prologue** as it is, or redo it in the series' look?
-- **Language:** English narration with English subtitles first; Malayalam later?
-- **Length:** 6 to 10 minutes an episode (about 80 in all), or shorter?
+- ~~Keep the **Prologue** as it is, or redo it in the series' look?~~ Kept as it is (20 Nov); file `episode-00.json`.
+- ~~**Language:** English narration with English subtitles first; Malayalam later?~~ English first (20 Nov).
+- ~~**Length:** 6 to 10 minutes an episode (about 80 in all), or shorter?~~ Agreed 20 Nov: 6 to 10 minutes.
 - Anything the series must teach that is missing from section 5?

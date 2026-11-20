@@ -61,7 +61,8 @@ async def test_the_whole_plan_plays_to_handover(world):
         moved = await player.next_day(engine, app, person, role="ADMIN", days=days)
         assert not moved.failed, moved.failed[:3]
     assert moved.day == sample_plan.plan().last_day and not moved.waiting
-    assert [f.kind for f in moved.for_you] == ["stage"]  # handing Green Villa over is the person's
+    # The last day is the owner's: Green Villa's final running bill, then the handover (project bible D2).
+    assert [f.kind for f in moved.for_you] == ["ra_bill", "stage"]
     async with engine.connect() as conn:
         today = (await conn.execute(text("SELECT sandbox_today FROM organizations WHERE id = :o"),
                                     {"o": opened.organization_id})).scalar()
@@ -69,7 +70,7 @@ async def test_the_whole_plan_plays_to_handover(world):
                                           "AND status = 'played' AND entry_id NOT LIKE 'day:%'"),
                                      {"o": opened.organization_id})).scalar()
     assert today == opened.today + dt.timedelta(days=moved.day)
-    assert played == len(sample_plan.plan().entries) - 1
+    assert played == len(sample_plan.plan().entries) - len(moved.for_you)
     assert jwt.decode(moved.token, SECRET_KEY, algorithms=[ALGORITHM])["today"] == today.isoformat()
     with pytest.raises(sandbox.SandboxError):
         await player.next_day(engine, app, person, role="ADMIN", days=1)  # handed over: start over to play again

@@ -20,7 +20,7 @@ export const SCENE_AUDIO = {
   'open-cast-FINANCE': 6766,
   'open-cast-PROJECT_MANAGER': 7184,
   'open-cast-SITE_ENGINEER': 7654,
-  'open-day': 1855,
+  'open-day': 2090,
   'open-title': 4310,
   'pass-back': 967,
   'pass-dawn': 967,

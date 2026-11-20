@@ -55,7 +55,7 @@ def test_the_estimate_reads_with_its_catches(make_kit) -> None:
 
 def test_every_work_the_sample_site_reports_has_its_line(make_kit) -> None:
     """Green Villa's sites are the first two of the story's four; their work must count on the estimate's lines."""
-    reported = {(work, unit) for site in sample_story.DEMO_WORK[:2] for work, _n, unit, _q in site}
+    reported = {(work, unit) for site in sample_story.DEMO_WORK[:2] for work, _n, unit, *_ in site}
     assert reported == set(make_kit.SITE_WORK)
     lines = {(work, unit) for _h, rows in make_kit.SECTIONS for _c, work, unit, *_ in rows}
     assert reported <= lines

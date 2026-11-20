@@ -144,12 +144,19 @@ const SCENES = {
     bar.style.cssText = 'display:flex;height:170px;border-radius:22px;overflow:hidden;margin-top:40px;background:rgba(255,255,255,.04)'
     const labels = el('div', '', '', b)
     labels.style.cssText = 'display:flex;margin-top:26px'
+    // A label never narrower than 17% (a 5% slice's "₹50,000" overlapped its neighbour): the small ones take that,
+    // the rest share what is left in proportion.
+    const MIN = 17
+    const small = sc.segments.filter((x) => x.pct < MIN)
+    const rest = 100 - small.length * MIN
+    const big = sc.segments.reduce((t, x) => t + (x.pct < MIN ? 0 : x.pct), 0)
+    const labelWidth = (x) => (x.pct < MIN ? MIN : (x.pct / big) * rest)
     for (const s of sc.segments) {
       const seg = el('div', '', '', bar)
       seg.style.cssText = `width:${s.pct}%;background:${s.tone};transform-origin:left;${s.label === 'Margin' ? 'box-shadow:inset 0 0 0 4px #fff' : ''}`
       on(seg, 'grow', s.at, 100, 1100)
       const lab = el('div', '', `<div class="brand" style="font-size:${s.pct >= 20 ? 52 : 36}px;font-weight:600;color:${s.tone}">${esc(/^\d/.test(s.range) ? `₹${s.range}` : s.range.replace(/^~(\d)/, '~₹$1'))}</div><div style="font-size:26px;color:var(--dim);margin-top:6px;padding-right:20px">${esc(s.label)}</div>`, labels)
-      lab.style.width = `${s.pct}%`
+      lab.style.width = `${labelWidth(s)}%`
       on(lab, 'rise', s.at, 400)
     }
     const c = el('div', 'card', `<div class="brand" style="font-size:56px;font-weight:600;color:var(--red)">${esc(sc.callout.big)}</div><div style="font-size:36px;margin-top:10px">${esc(sc.callout.small)}</div>`, b)

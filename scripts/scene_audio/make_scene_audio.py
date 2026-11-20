@@ -44,7 +44,7 @@ LINES: dict[str, str] = {
     "open-cast-PROJECT_MANAGER": "Meet the team. The owner. Ravi, on site. Meera, in accounts. And you, Anil, the project manager.",
     "open-cast-SITE_ENGINEER": "Meet the team. The owner. Anil, the project manager. Meera, in accounts. And you, Ravi, on site.",
     "open-cast-FINANCE": "Meet the team. The owner. Anil, the project manager. Ravi, on site. And you, Meera, in accounts.",
-    "open-day": "Day one. Let's begin.",
+    "open-day": "Before day one. Let's begin.",
     "open-back": "Welcome back on site.",
     "pass-dusk": "The sun goes down on site. The team works through the day.",
     "pass-dawn": "Good morning.",

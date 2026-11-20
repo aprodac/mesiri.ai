@@ -47,7 +47,7 @@ _TOWER: tuple[tuple[str, tuple[tuple[str, str, float, float, float, float], ...]
 #: Work for the whole project, on no tower: (work, unit, quantity, client rate, labour rate, material rate).
 _COMMON: tuple[tuple[str, str, float, float, float, float], ...] = (
     ("Site clearance and setting out", "sqm", 2400, 25, 20, 0),
-    ("Dewatering during the basement", "month", 4, 65000, 15000, 40000),
+    ("Dewatering during the basement, per month", "nos", 4, 65000, 15000, 40000),
     ("Scaffolding for both towers", "sqm", 2600, 180, 90, 60),
 )
 

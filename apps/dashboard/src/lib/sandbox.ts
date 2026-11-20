@@ -272,12 +272,30 @@ export function takeSandboxEnded(): boolean {
   return true
 }
 
+/** The walkthrough waiting to start inside the sandbox, left in place (`takeSandboxStart` uses it up). Read with this
+ *  and take it only when it starts: React runs a mount effect twice in development, and a start taken by the first
+ *  run, which is then cancelled, would never happen. */
+export function peekSandboxStart(): string | null {
+  return store()?.getItem(START_KEY) ?? null
+}
+
 /** Read once: the walkthrough to start now that the app has loaded inside the sandbox. */
 export function takeSandboxStart(): string | null {
   const s = store()
   const id = s?.getItem(START_KEY) ?? null
   if (id) s?.removeItem(START_KEY)
   return id
+}
+
+/** A day of the sample company as people say it. Day 0 is the seeded weeks' last day (a Saturday), before the plan's
+ *  day 1: "Before day 1", never "Day 0" (20 Nov test). */
+export function dayTitle(day: number): string {
+  return day <= 0 ? 'Before day 1' : `Day ${day}`
+}
+
+/** A day title's size class for the scenes' big type: "Before day 1" is twice as long as "Day 12". */
+export function dayTitleSize(day: number, big: string, long: string): string {
+  return day <= 0 ? long : big
 }
 
 /** The role's name as the banner says it. */

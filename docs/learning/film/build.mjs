@@ -34,6 +34,25 @@ const ep = (process.argv[2] || '01').padStart(2, '0')
 const script = JSON.parse(readFileSync(join(here, `episode-${ep}.json`), 'utf8'))
 const CACHE = join(here, '.cache')
 const OUT = join(here, 'out')
+
+// A screen scene's focus and boxes may name a mark (`{ "at": 1, "mark": "value" }`): where shoot.cjs found that thing
+// on the picture (.cache/shots/<shot>.json), with `pad` (a share of the picture) round it. Never placed by hand.
+for (const sc of script.scenes.filter((s) => s.kind === 'screen')) {
+  const file = join(CACHE, 'shots', `${sc.shot}.json`)
+  const named = [...(sc.focus || []), ...(sc.boxes || [])].filter((f) => f.mark)
+  if (!named.length) continue
+  if (!existsSync(file)) throw new Error(`${sc.shot}: no marks yet: run shoot.cjs ${ep} first`)
+  const marks = JSON.parse(readFileSync(file, 'utf8'))
+  const place = (f, pad) => {
+    const m = marks[f.mark]
+    if (!m) throw new Error(`${sc.shot}: no mark "${f.mark}"`)
+    const p = f.pad ?? pad
+    const { mark: _m, pad: _p, ...rest } = f
+    return { ...rest, x: m.x - p, y: m.y - p, w: m.w + 2 * p, h: m.h + 2 * p }
+  }
+  sc.focus = (sc.focus || []).map((f) => (f.mark ? place(f, 0.05) : f))
+  sc.boxes = (sc.boxes || []).map((f) => (f.mark ? place(f, 0.004) : f))
+}
 const SOUNDS = join(root, 'apps', 'dashboard', 'public', 'learn', 'scenes')
 mkdirSync(CACHE, { recursive: true })
 mkdirSync(OUT, { recursive: true })

@@ -98,6 +98,12 @@ step's words in another place.
   `id`), `check.rows` the key holding the rows, and `{project}` in `check.path` is the picked project. Already true
   when the step opens: it passes at once. `file:` offers a starter-kit file in the bubble; `pick:` names the project to
   open when the page asks for one ("Open Green Villa from the list"; the list is lit and the bubble sits beside it).
+- **A step whose only ask is "open this project"** (`pick`, no `target`, no `try` or `ask`) moves on by itself once the
+  project opens (UX-77); a `pick` step with a target stays, since what it shows is on the page the pick opened.
+- **While a dialog is open** the bubble steps aside to a corner note that keeps a "Your turn" step's words, so the values
+  to copy (a contract's figures) never have to be remembered (UX-77). Write those steps with the figures in `text`.
+- **Counts in the bubble are per chapter** in the guided project ("Set up Green Villa · 2 of 5").
+- **Day 0 is "Before day 1"**: name a sample-company day with `dayTitle(day)` (`lib/sandbox.ts`), never `Day ${n}`.
 - **A quick check** (SS-72): `ask: { answer, right, wrong }`, the answer a `data-guide` marker (the build checks it).
   The bubble docks in the corner with nothing dimmed until they tap; a wrong tap lights the answer.
 - **Inside the sample company no page tour opens by itself** (the guided project does the showing); Help's "Show me

@@ -54,8 +54,9 @@ NORMS = green_villa.NORMS
 #: The work the sample site reports for Green Villa (sample_story.DEMO_WORK, Main block and Annex): each must be a line
 #: here with the same unit, or that work can't count on the BOQ. "Plastering" is a catch too: three plastering lines
 #: (internal, external, ceiling), so Mesiri suggests none and the person picks (the BOQ page's "Change line").
-SITE_WORK = (("Block work", "sqm"), ("Lintel concreting", "cum"), ("Plastering", "sqm"), ("Electrical conduits", "nos"),
-             ("Excavation", "cum"), ("PCC", "cum"), ("Footing concreting", "cum"), ("Plinth beam", "rmt"))
+SITE_WORK = (("Parapet wall", "rmt"), ("Brick work in partitions", "sqm"), ("Plastering", "sqm"), ("Electrical conduits", "nos"),
+             ("Site clearance", "sqm"), ("Excavation", "cum"), ("Anti-termite treatment", "sqm"), ("PCC", "cum"),
+             ("Footing concreting", "cum"))
 
 #: The materials workbook (the materials import's four sheets). Rows already in the sample company (Cement, Malabar, Joy)
 #: are the catch: the preview shows them "already in Mesiri, left as they are", so importing twice is safe.
