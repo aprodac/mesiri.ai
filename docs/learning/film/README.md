@@ -5,14 +5,11 @@ pitching it. Asked 19 Nov 2026: "a big movie ... so that a beginner like us can 
 going to any pitch". Agreed: a series of short episodes, not one long film, so each can be redone on its own as the
 product changes.
 
-| # | Episode | Source | Status |
-|---|---|---|---|
-| 1 | How a construction company works | Field Guide 00 (`../src/00-big-picture.html`) | built 19 Nov, watched by Ilan ("understood many things"; asked where the software is: from episode 2) |
-| 2 | What owners want, and why they buy | Field Guide 00a (roles), and the real screens: Today, Home, Cost control, Live | built 20 Nov, to be reviewed |
-| 3 | One day at Green Villa (site → WhatsApp → report → Live) | the product, the sample company | to do |
-| 4 | Material, from request to payment | Field Guide 03, the product | to do |
-| 5 | The BOQ, and "is it making money?" | the product | to do |
-| 6 | Putting it together for a pitch | needs the team's pitch, pricing and objections | to do |
+**The series is now planned in [SERIES_PLAN.md](SERIES_PLAN.md)** (20 Nov 2026): the overall objective, how each
+episode is built, each episode's objective, and every page's episode. Nothing new is filmed until it is agreed.
+
+Made so far: Episode 1 "How a construction company works" (kept as the Prologue) and Episode 2 "What owners want"
+(retired: it was about selling, not understanding).
 
 **Check before using with customers:** the business facts come from the field guides, which are drafts: typical
 figures, to be checked by someone who has run sites.
