@@ -72,6 +72,13 @@ def test_stock_never_goes_below_zero(plan):
     for e in plan.entries:
         if e.kind == "delivery":
             stock[(e.site, e.data["material"])] += e.data["quantity"]
+        elif e.kind == "transfer":  # LRN-F18: from the other site to this one, never more than it holds
+            stock[(e.data["from_site"], e.data["material"])] -= e.data["quantity"]
+            stock[(e.site, e.data["material"])] += e.data["quantity"]
+            assert stock[(e.data["from_site"], e.data["material"])] >= -1e-6, f"{e.id}: moved more than there was"
+        elif e.kind == "return":
+            stock[(e.site, e.data["material"])] -= e.data["quantity"]
+            assert stock[(e.site, e.data["material"])] >= -1e-6, f"{e.id}: returned more than there was"
         elif e.kind == "use":
             stock[(e.site, e.data["material"])] -= e.data["quantity"]
             assert stock[(e.site, e.data["material"])] >= -1e-6, f"{e.id}: {e.data['material']} below zero"
@@ -81,28 +88,45 @@ def test_asked_for_is_ordered_delivered_billed_and_paid(plan):
     by_id = plan.by_id()
     requests = [e for e in plan.entries if e.kind == "request"]
     orders = [e for e in plan.entries if e.kind == "order"]
+    awards = [e for e in plan.entries if e.kind == "award"]  # LRN-F18: quotes, then each line from its cheapest
     deliveries = [e for e in plan.entries if e.kind == "delivery"]
-    bills = [e for e in plan.entries if e.kind == "supplier_bill"]
+    taken_back = {e.needs[0] for e in plan.entries if e.kind == "bill_reverse"}
+    bills = [e for e in plan.entries if e.kind == "supplier_bill" and e.id not in taken_back]
+    returned = defaultdict(float)
+    for e in plan.entries:
+        if e.kind == "return":
+            returned[e.needs[0]] += e.data["quantity"]
     paid = {b for e in plan.entries if e.kind == "supplier_payment" for b in e.data["bills"]}
     last = plan.last_day
     lead = max(sp.LEAD_DAYS.values()) + 2
     # Every request is ordered (the last days' may still be waiting), with the same material and quantity.
-    ordered = {e.needs[0] for e in orders}
+    ordered = {e.needs[0] for e in orders} | {a.data["request"] for a in awards}
     for r in requests:
         if r.day < last - 2:
             assert r.id in ordered, f"{r.id} never ordered"
     for o in orders:
         req = by_id[o.needs[0]]
         assert (req.data["material"], req.data["quantity"]) == (o.data["material"], o.data["quantity"])
+    for a in awards:  # the request's material is on the award, at least as much as was asked
+        req = by_id[a.data["request"]]
+        assert any(line["material"] == req.data["material"] and line["quantity"] >= req.data["quantity"]
+                   for line in a.data["lines"])
     # Every order arrives in full; deliveries match their order.
     delivered = defaultdict(float)
     for d in deliveries:
         if d.needs:
             delivered[d.needs[0]] += d.data["quantity"]
-            assert by_id[d.needs[0]].data["material"] == d.data["material"]
+            source = by_id[d.needs[0]]
+            materials = [line["material"] for line in source.data["lines"]] if source.kind == "award" else [source.data["material"]]
+            assert d.data["material"] in materials
     for o in orders:
         if o.day < last - lead:
             assert delivered[o.id] == o.data["quantity"], f"{o.id} not delivered in full"
+    for a in awards:
+        for line in a.data["lines"]:
+            got = sum(d.data["quantity"] for d in deliveries if d.needs and d.needs[0] == a.id
+                      and d.data["material"] == line["material"])
+            assert got == line["quantity"], f"{a.id}: {line['material']} not delivered in full"
     # The seed's own orders: what comes against them is no more than what was still to come.
     from_seed = defaultdict(float)
     for d in deliveries:
@@ -115,7 +139,8 @@ def test_asked_for_is_ordered_delivered_billed_and_paid(plan):
     for d in deliveries:
         if d.day < last - sp.BILL_AFTER - 1:
             assert d.id in billed, f"{d.id} never billed"
-            assert billed[d.id].data["amount"] == round(d.data["quantity"] * d.data["rate"], 2)
+            # What stayed, at the agreed rate: a return comes off the bill (LRN-F18's corrected bill).
+            assert billed[d.id].data["amount"] == round((d.data["quantity"] - returned[d.id]) * d.data["rate"], 2)
     for b in bills:
         if b.day <= last - sp.CREDIT_DAYS - 7:
             assert b.id in paid, f"{b.id} never paid"
@@ -233,3 +258,24 @@ def test_every_kind_has_a_real_route():
 def test_the_readable_plan_in_docs_is_up_to_date(plan):
     assert sp.DOC.read_text(encoding="utf-8") == sp.render(plan), (
         "docs/plans/sample-plan.md is out of date: run `python -m mesiri.application.learn.sample_plan` from backend/")
+
+
+def test_the_cement_story_plays_the_kits_paperwork(plan):
+    """LRN-F18 (episode 4): the Main block's first cement request, as the starter kit's papers have it."""
+    cs = sp.CEMENT_STORY
+    first = next(e for e in plan.entries if e.kind == "request" and e.site == cs["site"] and e.data["material"] == "cement")
+    story = [e for e in plan.entries if first.id in e.needs or e.kind in ("quote", "award", "return", "bill_reverse",
+                                                                             "return_settle")]
+    kinds = [e.kind for e in story]
+    for kind in ("transfer", "rfq", "quote", "award", "return", "bill_reverse", "return_settle"):
+        assert kind in kinds, kind
+    award = next(e for e in plan.entries if e.kind == "award")
+    assert {(line["material"], line["vendor"], line["rate"]) for line in award.data["lines"]} == {
+        ("cement", "Malabar Cements Agency", 400), ("steel", "Kerala Steels", 66)}
+    lorry = next(e for e in plan.entries if e.kind == "delivery" and e.needs == (award.id,) and e.data["material"] == "cement")
+    assert lorry.data["quantity"] == cs["sent"] and lorry.data["rate"] == 400
+    wrong = next(e for e in plan.entries if e.kind == "supplier_bill" and e.data["bill_number"] == cs["bill"])
+    assert wrong.data["amount"] == cs["sent"] * cs["bill_rate"]
+    right = next(e for e in plan.entries if e.kind == "supplier_bill" and e.data["bill_number"] == f"{cs['bill']}-R")
+    assert right.data["amount"] == (cs["sent"] - cs["torn"]) * 400
+    assert plan.last_day == 62  # D1: the handover stays on day 62

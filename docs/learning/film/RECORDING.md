@@ -88,12 +88,14 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 
 ## Episode 4, "Cement runs short": before recording
 
-- [ ] **LRN-F18 in the plan first**: the move from the Annex (day 3), the quotes and the order of 200 bags at Rs 400
+- [x] **LRN-F18 in the plan** (done 20 Nov): the move from the Annex (day 3), the quotes and the order of 200 bags at Rs 400
       (day 4), the lorry with 190 on the challan, 6 torn returned, 184 kept (day 6), the bill at Rs 410 (day 8). Without
       it the sample company orders 100 bags at Rs 410 and none of the kit's papers happen.
-- [ ] **LRN-F17**: the kit's cement GST at 18%, the quotes and the bill rebuilt, the paper scenes re-shot.
-- [ ] Roles and days: Anil on day 3 (`move`) and day 4 (`compare`), Ravi on day 6 (`gate`, a real reply; if the model is
-      capped, the website way the scene names), Meera on day 8 (`match`), the owner on day 8 (`stock`).
+- [x] **LRN-F17** (done 20 Nov): the kit's cement GST at 18%, the quotes and the bill rebuilt, the paper scenes re-shot.
+- [ ] Roles and days (the plan's own entries; play the role so they are the person's to-do, and film them done on
+      screen): Anil on day 3 (`move`: the transfer and the request for quotes) and day 4 (`compare`: the three quotes
+      and the award), Ravi on day 6 (`gate`: the delivery of 190, then Anil's return), Meera on days 9 and 10 (`match`:
+      the bill at Rs 410, taking it back, the corrected bill, the return settled), the owner after (`stock`).
 - [ ] `steps-04.cjs` for `move`, `compare`, `match`, written against the pages on the day (as `steps-02.cjs`).
 - [ ] The compare and the bill match: say only what the screen shows (the split, the quantity difference); log what it
       does not show.

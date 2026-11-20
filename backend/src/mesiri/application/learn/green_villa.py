@@ -261,10 +261,29 @@ PERMIT = {"authority": "Thrissur Municipal Corporation", "number": "TMC/BP/2026/
 RATE_CARD = {"vendor": "Periyar Sand & Aggregates", "ref": "PSA/RC/2026-27", "from": "1 October 2026",
              "rates": (("m sand", "cum", 1650), ("p sand", "cum", 1900), ("aggregate 20mm", "cum", 1450))}
 
+#: LRN-F18 (episode 4, "Cement runs short"): the Main block's first cement request, as the kit's paperwork has it and the
+#: 62-day plan plays it (sample_plan.py). Anil moves bags from the Annex so the masons work, asks three suppliers for
+#: cement and the staircase's steel, and orders each line from its cheapest; the lorry brings 190 of 200 (challan), 6
+#: torn go back (RETURN below); Malabar bills 190 at Rs 410 against the order's Rs 400. The one source for the quotes,
+#: the challan, the bill (scripts/learn_kit/make_kit.py) and the plan.
+CEMENT_STORY = {
+    "site": "main", "from_site": "annex", "move": 40,
+    #: The request for quotes: (material as the sample company names it, as the papers print it, unit, quantity).
+    "lines": (("cement", "Cement (OPC 53)", "bags", 200), ("steel", "Steel (TMT Fe 500)", "kg", 1000)),
+    #: (supplier, where, quotation no., {material: rate}). Malabar is cheapest for cement, Kerala Steels in total;
+    #: each line from its cheapest is cheaper still (Rs 1,46,000 against Rs 1,48,400).
+    "quotes": (("Malabar Cements Agency", "Palakkad", "MCA/Q/0412", {"cement": 400, "steel": 72}),
+               ("Kerala Steels", "Industrial Estate, Kalamassery", "KS/Q/2280", {"cement": 412, "steel": 66}),
+               ("Sri Hardwares", "MG Road, Thrissur", "SH/Q/117", {"cement": 408, "steel": 70})),
+    "challan": "MCA/DC/2611", "ordered": 200, "sent": 190, "torn": 6, "return_note": "GV/RN/014",
+    "bill": "MCA/INV/2611", "bill_rate": 410,
+}
+
 #: A return to the supplier (Returns): bags torn in Malabar's load (the kit's challan, 190 bags). The debit note lowers
 #: what Green Villa Builders owes Malabar at once, at the order's rate.
-RETURN = {"vendor": "Malabar Cements Agency", "note": "GV/RN/014", "against": "MCA/DC/2611", "material": "Cement (OPC 53)",
-          "unit": "bags", "quantity": 6, "rate": 400, "reason": "Bags torn and set hard; refused at the gate"}
+RETURN = {"vendor": "Malabar Cements Agency", "note": CEMENT_STORY["return_note"], "against": CEMENT_STORY["challan"],
+          "material": "Cement (OPC 53)", "unit": "bags", "quantity": CEMENT_STORY["torn"], "rate": 400,
+          "reason": "Bags torn and set hard; refused at the gate"}
 
 #: A hired machine (Equipment, Hire check): the bill against the hours logged on site. The catch: billed 42 hours,
 #: 36 logged (two half days the mixer stood idle with the motor fault are billed as working).

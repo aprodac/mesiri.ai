@@ -124,6 +124,10 @@ PAGE = {
     "sub_bill": "/subcontract/bills", "sub_payment": "/subcontract/bills", "advance": "/labour/advances",
     "wage_pay": "/labour/wages", "client_receipt": "/accounts/receivables", "wage_approve": "/labour/wages",
     "ra_bill": "/billing/ra-bills", "stage": "/planning/setup", "contract": "/planning/setup", "boq_import": "/boq",
+    # LRN-F18: the Main block's cement, as the kit's paperwork has it.
+    "transfer": "/materials", "rfq": "/procurement/quotations", "quote": "/procurement/quotations",
+    "award": "/procurement/quotations", "return": "/procurement/returns", "return_settle": "/procurement/returns",
+    "bill_reverse": "/finance/vendors",
 }
 
 #: How a "for you" entry is known to be done: records of its kind saved by the person's user since that day began, at
@@ -150,6 +154,12 @@ _DONE: dict[str, tuple[str, str, str, str, tuple[str, str] | None]] = {
     "client_receipt": ("client_receipts", "created_by", "created_at", "count(*)", ("project", "project_id")),
     "wage_approve": ("wage_sheets", "approved_by", "approved_at", "count(*)", ("project", "project_id")),
     "ra_bill": ("ra_bills", "submitted_by", "submitted_at", "count(*)", ("project", "project_id")),
+    "transfer": ("material_movements", "recorded_by_user_id", "created_at", "count(DISTINCT source_id)", ("site", "site_id")),
+    "rfq": ("rfqs", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "quote": ("rfq_vendors", "quoted_by", "quoted_at", "count(*)", None),
+    "award": ("rfqs", "status_by", "status_at", "count(*)", ("site", "site_id")),
+    "return": ("material_returns", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "return_settle": ("material_returns", "status_by", "settled_on", "count(*)", ("site", "site_id")),
 }
 
 
@@ -174,6 +184,10 @@ async def _outcome_done(conn: Any, org: uuid.UUID, e: sp.Entry, ids: dict[str, d
     if e.kind == "boq_import":  # D2: the project has a BOQ (here, or imported in the guided project's chapter 3)
         return bool(await scalar("SELECT count(*) FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
                                  "WHERE w.organization_id = :o AND w.project_id = :p", p=ids["project"].get(e.project or "")))
+    if e.kind == "bill_reverse":  # LRN-F18: the supplier's bill of that number was taken back
+        return bool(await scalar("SELECT count(*) FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
+                                 "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status <> 'confirmed'",
+                                 n=e.data["bill_number"]))
     if e.kind == "boq_count":  # nothing of that work left off its BOQ line
         return not await scalar(
             "SELECT count(*) FROM activities a JOIN activity_quantities q ON q.activity_id = a.id "
@@ -290,6 +304,17 @@ def _ok(res: Any, what: str) -> dict[str, Any]:
 # --- Making each kind of entry -----------------------------------------------------------------------------------
 
 
+async def _story_receipt(w: _World, e: sp.Entry, want: dict[str, Any]) -> Any:
+    """LRN-F18: the delivery a story entry is about: the supplier's latest delivery of that material at the site (the
+    lorry of the given quantity, when said)."""
+    mid, _uid = w.materials[want["material"]]
+    return await w.one("SELECT id FROM material_receipts WHERE organization_id = :o AND site_id = :s AND vendor_id = :v "
+                       "AND material_id = :m AND reverses_movement_id IS NULL AND quantity > 0 "
+                       + ("AND quantity = :q " if want.get("quantity") else "") + "ORDER BY occurred_date DESC, created_at DESC LIMIT 1",
+                       s=w.sites[e.site][1], v=w.vendors[want["vendor"]], m=mid,
+                       **({"q": want["quantity"]} if want.get("quantity") else {}))
+
+
 async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915 -- one branch per kind
     d, iso, role = e.data, w.date.isoformat(), e.role
     project, site = w.sites.get(e.site or "", (w.projects.get(e.project or "", ""), None))
@@ -388,18 +413,78 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
             "unit_cost": d["rate"], "total_cost": round(qty * d["rate"], 2), "purchase_order_line_id": str(line["id"])}), e.kind)
     if e.kind == "supplier_bill":
         vid = w.vendors.get(d["vendor"])
-        mine = await w.all("SELECT id, total_cost FROM material_receipts WHERE organization_id = :o AND vendor_id = :v "
-                           "AND site_id = :s AND invoice_id IS NULL AND reverses_movement_id IS NULL AND quantity > 0 "
-                           "ORDER BY occurred_date, created_at LIMIT 1", v=vid, s=site)
-        if not mine:
+        if d.get("receipt"):  # LRN-F18: the bill is for one delivery (the lorry of a given day), whatever came before
+            mine = [await _story_receipt(w, e, d["receipt"])]
+        else:
+            mine = await w.all("SELECT id, total_cost FROM material_receipts WHERE organization_id = :o AND vendor_id = :v "
+                               "AND site_id = :s AND invoice_id IS NULL AND reverses_movement_id IS NULL AND quantity > 0 "
+                               "ORDER BY occurred_date, created_at LIMIT 1", v=vid, s=site)
+        if not mine or not mine[0]:
             raise _Wait("no delivery to bill")
-        return _ok(await w.call(role, "POST", f"/finance/vendors/{vid}/bills", json={
-            "receipt_ids": [str(r["id"]) for r in mine], "bill_number": d["bill_number"], "bill_date": iso}), e.kind)
+        body = {"receipt_ids": [str(r["id"]) for r in mine], "bill_number": d["bill_number"], "bill_date": iso}
+        if d.get("receipt"):
+            body["amount"] = d["amount"]  # what the supplier billed, which may not be what came (the check shows it)
+        return _ok(await w.call(role, "POST", f"/finance/vendors/{vid}/bills", json=body), e.kind)
+    if e.kind == "transfer":
+        mid, uid = material(d["material"])
+        _from = w.sites[d["from_site"]][1]
+        return _ok(await w.call(role, "POST", "/materials/transfers", json={
+            "from_site_id": _from, "to_site_id": site, "material_id": mid, "unit_id": uid, "quantity": d["quantity"],
+            "occurred_date": iso, "notes": e.what}), e.kind)
+    if e.kind == "rfq":
+        lines = []
+        for line in d["lines"]:
+            mid, uid = material(line["material"])
+            req = await w.one("SELECT l.id FROM material_request_lines l JOIN material_requests r ON r.id = l.request_id "
+                              "WHERE r.organization_id = :o AND r.site_id = :s AND l.material_id = :m AND r.status = 'waiting' "
+                              "ORDER BY r.created_at LIMIT 1", s=site, m=mid)
+            lines.append({"material_id": mid, "unit_id": uid, "quantity": line["quantity"],
+                          **({"request_line_id": str(req["id"])} if req else {})})
+        return _ok(await w.call(role, "POST", "/procurement/rfqs", json={
+            "project_id": project, "site_id": site, "lines": lines, "vendor_ids": [w.vendors[v] for v in d["vendors"]],
+            "due_date": (w.date + dt.timedelta(days=1)).isoformat()}), e.kind)
+    if e.kind in ("quote", "award"):
+        rfq = await w.one("SELECT id FROM rfqs WHERE organization_id = :o AND site_id = :s AND status IN ('open', 'ready') "
+                          "ORDER BY created_at DESC LIMIT 1", s=site)
+        if not rfq:
+            raise _Wait("no request for quotes yet")
+        if e.kind == "award":
+            return _ok(await w.call(role, "POST", f"/procurement/rfqs/{rfq['id']}/award", json={
+                "mode": d["mode"], "expected_date": (w.date + dt.timedelta(days=2)).isoformat(),
+                "confirm_duplicate": True}), e.kind)
+        return _ok(await w.call(role, "POST", f"/procurement/rfqs/{rfq['id']}/quotes", json={
+            "vendor_id": w.vendors[d["vendor"]], "their_ref": d["their_ref"], "gst_percent": d["gst_percent"],
+            "delivery_days": d["delivery_days"], "valid_until": (w.date + dt.timedelta(days=d["valid_days"])).isoformat(),
+            "lines": [{"material_id": material(m)[0], "rate": r} for m, r in d["rates"].items()]}), e.kind)
+    if e.kind == "return":
+        got = await _story_receipt(w, e, d.get("receipt") or {"material": d["material"], "vendor": d["vendor"]})
+        return _ok(await w.call(role, "POST", "/procurement/returns", json={
+            "vendor_id": w.vendors[d["vendor"]], "project_id": project, "site_id": site, "returned_on": iso,
+            "notes": f"Return note {d['note']}",
+            "lines": [{"quantity": d["quantity"], "reason": d["reason"], "rate": d["rate"], "receipt_id": str(got["id"])}]}), e.kind)
+    if e.kind == "bill_reverse":
+        bill = await w.one("SELECT i.expense_id FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
+                           "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status = 'confirmed' "
+                           "ORDER BY i.created_at DESC LIMIT 1", n=d["bill_number"])
+        if not bill:
+            raise _Wait("no bill of that number")
+        return _ok(await w.call(role, "POST", f"/expenses/{bill['expense_id']}/reverse"), e.kind)
+    if e.kind == "return_settle":
+        ret = await w.one("SELECT id FROM material_returns WHERE organization_id = :o AND site_id = :s AND vendor_id = :v "
+                          "AND status IN ('waiting', 'sent') ORDER BY created_at LIMIT 1", s=site, v=w.vendors[d["vendor"]])
+        bill = await w.one("SELECT i.expense_id FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
+                           "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status = 'confirmed' "
+                           "ORDER BY i.created_at DESC LIMIT 1", n=d["bill_number"])
+        if not ret or not bill:
+            raise _Wait("no return or bill to settle it against")
+        return _ok(await w.call(role, "POST", f"/procurement/returns/{ret['id']}/settle", json={
+            "how": d["how"], "expense_id": str(bill["expense_id"]), "settled_on": iso}), e.kind)
     if e.kind in ("supplier_payment", "sub_payment"):
         vid = w.vendors.get(d["vendor"])
         bills = await w.all("SELECT e.id, e.amount - COALESCE((SELECT SUM(p.amount) FROM expense_payments p "
                             "WHERE p.expense_id = e.id AND p.status <> 'reversed'), 0) AS due FROM expenses e "
                             "WHERE e.organization_id = :o AND e.vendor_id = :v AND e.occurred_date <= :d "
+                            "AND e.workflow_status = 'confirmed' "  # a bill taken back is never paid (LRN-F18)
                             "AND e.amount > COALESCE((SELECT SUM(p.amount) FROM expense_payments p "
                             "WHERE p.expense_id = e.id AND p.status <> 'reversed'), 0) ORDER BY e.occurred_date",
                             v=vid, d=w.date - dt.timedelta(days=sp.CREDIT_DAYS if e.kind == "supplier_payment" else 0))

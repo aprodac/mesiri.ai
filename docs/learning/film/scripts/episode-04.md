@@ -2,11 +2,11 @@
 
 > Made from `episode-04.json` by `script_md.py`; edit the JSON, then run it again.
 
-**Status:** PLAN and DRAFT script for Ilan's review (20 Nov 2026). Not recorded. Needs first: story batch 2 for the Main block's cement (sample_plan.py, LRN-F18: the move from the Annex, the three quotes, the order of 200 bags at Rs 400, the lorry with 190 and 6 torn, the return, the bill at Rs 410), so the sample company plays the kit's paperwork; the kit's cement GST corrected to 18% (LRN-F17). Recording brief: RECORDING.md.
+**Status:** DRAFT script for Ilan's review (20 Nov 2026), ready to record: the sample company now plays the kit's paperwork (LRN-F18) and the kit's cement GST is 18% (LRN-F17). Recording brief: RECORDING.md.
 
 **Objective:** By the end you can walk a material chain across the four people: the request, the quotes, the order, the delivery checked at the gate (a short load, torn bags returned), the stock, the supplier's bill checked against the order and the delivery, and the payment. The month-end stock count moves to episode 10 (month end).
 
-**Length:** 14 scenes, 1120 words of narration (about 7 minutes)
+**Length:** 14 scenes, 1141 words of narration (about 8 minutes)
 
 ## Cold open
 
@@ -114,7 +114,7 @@ Narration:
 
 Narration:
 
-> Then the order itself. Cement for the next weeks, and steel for the Annex's beams: three hundred bags and two thousand kilos. Anil asks three suppliers for a price on the same list.
+> Then the order itself. Cement for the next weeks, and steel for the Main block's staircase: two hundred bags and a thousand kilos. Anil asks three suppliers for a price on the same list.
 >
 > Malabar comes back with cement at four hundred rupees a bag, the cheapest of the three. But its steel is seventy-two rupees a kilo.
 >
@@ -131,8 +131,8 @@ Narration:
 - beat 1 · open `/procurement/quotations?project={Green Villa}` · picture: the request to Malabar, Kerala Steels and Sri Hardwares · light: the request
 - beat 1 · do: enter the three quotes' rates (the kit's papers) · picture: the three columns of rates · light: the table
 - beat 2 · picture: the compare: cheapest cement, cheapest total · light: the totals
-- beat 3 · picture: the split: Rs 2,52,000 · light: the split
-- beat 4 · do: order: cement 200 bags from Malabar at Rs 400 · picture: the purchase order · light: the order
+- beat 3 · picture: the split: Rs 1,46,000 · light: the split
+- beat 4 · do: Order each line from its cheapest · picture: the two orders: cement from Malabar at Rs 400, steel from Kerala Steels at Rs 66 · light: the order
 
 *As Anil on day 4 (18 Nov), by steps-04.cjs. The compare's words and totals are read off the screen; if it does not show the split, say only what it shows and log it.*
 
@@ -140,11 +140,11 @@ Narration:
 
 > In Mesiri, Anil sends the request to the three from Quotations, and their rates go in as they come.
 >
-> The compare shows what the eye misses. Cheapest cement: Malabar. Cheapest in total: Kerala Steels, at two lakh fifty-five thousand six hundred.
+> The compare shows what the eye misses. Cheapest cement: Malabar. Cheapest in total: Kerala Steels, at one lakh forty-eight thousand four hundred.
 >
-> And cheaper than both: split it. Cement from Malabar, steel from Kerala. Two lakh fifty-two thousand. Three thousand six hundred saved by reading one table.
+> And cheaper than both: split it. Cement from Malabar, steel from Kerala. One lakh forty-six thousand. Two thousand four hundred saved by reading one table.
 >
-> Anil orders the split. The cement order: two hundred bags now from Malabar, at four hundred, two days to deliver.
+> Anil orders the split: two hundred bags of cement from Malabar at four hundred, two days to deliver, and the steel from Kerala Steels at sixty-six.
 
 ## On a real site
 
@@ -171,17 +171,17 @@ On screen:
 **Record (real reply):**
 
 - Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 6
-- Send: `Main block: Malabar cement came, 190 bags on challan, 6 torn, sent back. 184 ok`
+- Send: `Main block: Malabar cement came, 190 bags on challan, 6 torn, sent back`
 - Then: Save
-- Record it: send these words in the sample company through Tell Mesiri, as Ravi, and film Mesiri's real reply. If the model is not available (the key's monthly cap), film the website way instead: the order's Material came, 184 bags, then Returns.
+- Record it: send these words in the sample company through Tell Mesiri, as Ravi, and film Mesiri's real reply. If the model is not available (the key's monthly cap), film the website way: the order's Material came, 190 bags, then Returns (the plan's day 6 does both).
 
 Narration:
 
-> Ravi tells Mesiri what came, against the order: a hundred and eighty-four good bags, six torn and sent back.
+> Ravi tells Mesiri what came, against the order: a hundred and ninety bags on the challan, six of them torn and sent back.
 >
-> Mesiri ties it to Anil's order. The order now shows a hundred and eighty-four received, and sixteen still to come: the ten the challan promised, and six to replace the torn ones.
+> Mesiri ties it to Anil's order. The order now shows a hundred and ninety received, and ten still to come.
 >
-> The six torn bags go back on a return note, so Malabar owes Green Villa for them. Nobody has to remember it at the month's end.
+> The six torn bags go back on a return note, a credit Malabar owes Green Villa. Nobody has to remember it at the month's end.
 
 ## On a real site
 
@@ -193,7 +193,7 @@ Narration:
 
 > This is the return note that goes back with the lorry: six bags, torn and set hard, two thousand four hundred rupees.
 >
-> In Mesiri it is a debit note against Malabar the same day. What the company owes Malabar drops by two thousand four hundred at once, before their bill even arrives.
+> In Mesiri it is a return against Malabar the same day, with a debit note: what the company owes Malabar drops by two thousand four hundred, before their bill even arrives.
 
 ### 10. The bill: one line, two problems
 
@@ -201,7 +201,7 @@ Narration:
 
 Narration:
 
-> Sunday, Malabar's bill. One line: a hundred and ninety bags of cement, at four hundred and ten.
+> Monday, Malabar's bill, dated Sunday. One line: a hundred and ninety bags of cement, at four hundred and ten.
 >
 > Two problems in one line. The rate: the order said four hundred. And the quantity: a hundred and ninety, when a hundred and eighty-four were good and six went back.
 >
@@ -215,20 +215,20 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/finance/vendors` · picture: Malabar Cements Agency: what is owed, with the return note's Rs 2,400 off · light: Malabar
-- beat 1 · do: Add the bill MCA/INV/2611: 190 bags at Rs 410; match it to Friday's delivery · picture: the bill matched to the delivery · light: the match
-- beat 2 · picture: the difference: rate above the order; billed more than kept · light: the difference
-- beat 3 · do: Pay what is right (or hold the bill for a corrected one) · picture: the payment, or the bill held, and why · light: the payment
+- beat 1 · open `/finance/vendors` · picture: Malabar Cements Agency: what is owed · light: Malabar
+- beat 1 · do: the bill MCA/INV/2611: 190 bags at Rs 410, against Friday's delivery · picture: the bill against the delivery · light: the bill
+- beat 2 · picture: the difference Mesiri shows: the rate above the order, and the bags returned · light: the difference
+- beat 3 · do: take the bill back; the corrected bill MCA/INV/2611-R, 184 bags at Rs 400, Rs 73,600; settle the return against it · picture: the corrected bill, the return settled · light: the corrected bill
 
-*As Meera (FINANCE) on day 8, by steps-04.cjs. Read the difference and the amounts off the screen and say them; if Mesiri does not flag the quantity (only the rate), say only the rate and log it.*
+*As Meera (FINANCE) on days 9 and 10, by steps-04.cjs (the plan's own entries for those days are hers: record them on screen instead of letting the cast play them). Read the difference off the screen and say only what it shows; log what it does not flag.*
 
 Narration:
 
-> Meera puts the bill in under Malabar, and matches it to the delivery it is for.
+> Meera puts the bill in under Malabar, against Friday's delivery, exactly as it came.
 >
-> Mesiri lays the three side by side: ordered at four hundred, billed at four hundred and ten. A hundred and ninety billed, a hundred and eighty-four kept. And the difference, in rupees, before anything is paid.
+> Mesiri lays it beside the order and the gate: ordered at four hundred, billed at four hundred and ten. A hundred and ninety billed, six of them sent back. The difference, in rupees, before anything is paid.
 >
-> Meera asks Malabar for a corrected bill, and pays only what the order and the gate agree on, less the return note.
+> Meera takes that bill back and asks Malabar for a corrected one. It comes the next day: a hundred and eighty-four bags at four hundred, seventy-three thousand six hundred. The return is settled against it, and that is what she pays on Saturday.
 >
 > The money that leaks in most companies, a few rupees a bag, a few bags a load, stays here.
 
@@ -240,7 +240,7 @@ Narration:
 
 > And on site, the cement is back. The Main block holds what the gate kept, less what has been used since, above its least of a hundred bags.
 >
-> Sixteen bags are still to come on Malabar's order. Anil does not chase them from memory: the order shows them as not yet delivered, until they are.
+> Ten bags are still to come on Malabar's order. Anil does not chase them from memory: the order shows them as not yet delivered, until they are.
 
 ## What can go wrong
 
@@ -251,7 +251,7 @@ Narration:
 On screen:
 
 - Idle crew · 2 days × 6 people, paid for nothing
-- One quote, or the wrong total · Rs 3,600 left on the table
+- One quote, or the wrong total · Rs 2,400 left on the table
 - Short load signed for · 190 on paper, 184 usable
 - Torn bags kept · Rs 2,400, gone
 - Bill paid as it came · Rs 10 a bag above the order
