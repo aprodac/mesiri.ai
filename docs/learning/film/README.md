@@ -5,7 +5,7 @@ pitching it. Asked 19 Nov 2026: "a big movie ... so that a beginner like us can 
 going to any pitch". Agreed: a series of short episodes, not one long film, so each can be redone on its own as the
 product changes.
 
-**The series is now planned in [SERIES_PLAN.md](SERIES_PLAN.md)** (20 Nov 2026): the overall objective, how each
+**Start at [CONTINUE_HERE.md](CONTINUE_HERE.md)** (where things stand and what is next). **The series is now planned in [SERIES_PLAN.md](SERIES_PLAN.md)** (20 Nov 2026): the overall objective, how each
 episode is built, each episode's objective, and every page's episode. Nothing new is filmed until it is agreed.
 
 Made so far: Episode 1 "How a construction company works" (kept as the Prologue) and Episode 2 "What owners want"

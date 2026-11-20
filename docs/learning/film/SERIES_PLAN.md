@@ -3,6 +3,9 @@
 > Asked 20 Nov 2026 (Ilan): "First, let's properly know what the objective is overall. Let's note down that, and for
 > each episode, what the objective is ... After that, only start creating the episodes." This page is that note.
 > Nothing is filmed until it is agreed. Status: **draft for Ilan's review**.
+>
+> **To continue the work, start at [CONTINUE_HERE.md](CONTINUE_HERE.md)** (20 Nov): where things stand, a proposed
+> change to section 5 (drawings get their own episode; planning joins setting up), and the step-by-step plan.
 
 ## 1. Why we are making this
 
