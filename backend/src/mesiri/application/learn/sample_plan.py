@@ -201,6 +201,9 @@ KINDS: dict[str, Kind] = {
     "return": Kind(PM, (("POST", "/procurement/returns"),)),
     "return_settle": Kind(PM, (("POST", "/procurement/returns/{return_id}/settle"),)),
     "bill_reverse": Kind(ACCOUNTS, (("POST", "/expenses/{expense_id}/reverse"),)),
+    # LRN-F23: the month-end count at the Main block, and the owner's approval of its difference.
+    "stock_count": Kind(ENGINEER, (("POST", "/materials/stock-counts"), ("PUT", "/materials/stock-counts/{count_id}/lines"))),
+    "count_approve": Kind(OWNER, (("POST", "/materials/stock-counts/{count_id}/approve"),)),
     "boq_count": Kind(PM, (("PUT", "/projects/{project_id}/boq/work/{quantity_id}"),)),
     "issue_resolve": Kind(PM, (("POST", "/progress/issues/{issue_id}/resolve"),)),
     "work_order": Kind(PM, (("POST", "/subcontracts/work-orders"),)),
@@ -228,6 +231,7 @@ ROUTER_MODULES = (
     "mesiri.domains.expenses.router", "mesiri.domains.procurement.router", "mesiri.domains.procurement.orders_router",
     "mesiri.domains.subcontracts.router", "mesiri.domains.vendors.router", "mesiri.domains.billing.router",
     "mesiri.domains.schedule.router", "mesiri.domains.procurement.rfqs_router", "mesiri.domains.procurement.returns_router",
+    "mesiri.domains.materials.stock_count_router",
 )
 
 
@@ -683,6 +687,17 @@ def build() -> Plan:
                                       "needed_by_days": LEAD_DAYS[m] + 1, "purpose": nxt.work if nxt else s.work})
                 coming[(site, m)] += qty
                 to_order.append((_working_after(day, 1), request))
+
+        # LRN-F23: the month's end at the Main block: the store counted after the day's use, the difference approved.
+        if story_used and day == CEMENT_STORY["count_day"]:
+            cs, site = CEMENT_STORY, CEMENT_STORY["site"]
+            book = stock[(site, "cement")]
+            counted = b.add(day, "stock_count", f"Count {_of(SITE_NAME[site])} store: cement {_fmt(book - cs['count_short'])} bags "
+                            f"against {_fmt(book)} in the book, {cs['count_short']} short ({cs['count_reason']})", site=site,
+                            data={"material": "cement", "short": cs["count_short"], "reason": cs["count_reason"], "book": book})
+            b.add(day, "count_approve", f"Approve {_of(SITE_NAME[site])} stock count: {cs['count_short']} bags cement written off "
+                  f"({cs['count_reason']})", site=site, data={"material": "cement"}, needs=(counted.id,))
+            stock[(site, "cement")] -= cs["count_short"]
 
         # Issues seen today (closed on their day).
         for issue_day, site, kind, severity, narrative, close_day, note in ISSUES:

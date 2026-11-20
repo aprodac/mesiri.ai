@@ -248,12 +248,12 @@ Narration:
 
 On screen:
 
-- {book} and {counted} are filled in from the sample company's Main block cement on day 16 once the story is played (counted = book − 3).
+- Book 106 and counted 103: the played sample company's Main block cement on day 16 (LRN-F23, its integration test).
 
 **Record (real reply):**
 
 - Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 16
-- Send: `Main block stock count: cement {counted} bags. 3 bag wastage`
+- Send: `Main block stock count: cement 103 bags. 3 bag wastage`
 - Then: Save
 - Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
 

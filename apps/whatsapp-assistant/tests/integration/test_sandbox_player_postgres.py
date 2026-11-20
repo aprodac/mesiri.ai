@@ -113,3 +113,22 @@ async def test_what_i_did_not_do_holds_up_what_needs_it(world):
     assert any(w["what"].startswith("Order ") for w in moved.waiting)
     with pytest.raises(sandbox.SandboxError):
         await player.next_day(engine, app, person, role="SITE_ENGINEER", days=player.MAX_DAYS + 1)
+
+
+async def test_the_month_end_count_plays_on_the_real_api(world):
+    """LRN-F23: on day 16 Ravi's count of the Main block is saved through the stock-count routes, 3 bags short
+    (wastage); approving it is the owner's own entry that day, left for the person playing the owner."""
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    for days in (1, 5, 6, 4):  # to day 16
+        moved = await player.next_day(engine, app, person, role="ADMIN", days=days)
+        assert not moved.failed, moved.failed[:3]
+    async with engine.connect() as conn:
+        counts = (await conn.execute(text(
+            "SELECT c.status, l.book_qty, l.counted_qty, l.reason FROM stock_counts c "
+            "JOIN stock_count_lines l ON l.count_id = c.id JOIN materials_catalog m ON m.id = l.material_id "
+            "JOIN sites s ON s.id = c.site_id WHERE c.organization_id = :o AND s.name = 'Main block' "
+            "AND m.name ILIKE 'cement%' AND l.counted_qty IS NOT NULL"), {"o": opened.organization_id})).mappings().all()
+    assert len(counts) == 1 and counts[0]["status"] == "open" and counts[0]["reason"] == "wastage"
+    assert float(counts[0]["book_qty"]) - float(counts[0]["counted_qty"]) == 3
+    assert "count_approve" in {f.kind for f in moved.for_you}

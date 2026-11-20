@@ -79,6 +79,9 @@ def test_stock_never_goes_below_zero(plan):
         elif e.kind == "return":
             stock[(e.site, e.data["material"])] -= e.data["quantity"]
             assert stock[(e.site, e.data["material"])] >= -1e-6, f"{e.id}: returned more than there was"
+        elif e.kind == "stock_count":  # LRN-F23: the shortfall, written off when the owner approves
+            assert abs(e.data["book"] - stock[(e.site, e.data["material"])]) < 1e-6, f"{e.id}: the book is not the plan's stock"
+            stock[(e.site, e.data["material"])] -= e.data["short"]
         elif e.kind == "use":
             stock[(e.site, e.data["material"])] -= e.data["quantity"]
             assert stock[(e.site, e.data["material"])] >= -1e-6, f"{e.id}: {e.data['material']} below zero"
@@ -279,3 +282,18 @@ def test_the_cement_story_plays_the_kits_paperwork(plan):
     right = next(e for e in plan.entries if e.kind == "supplier_bill" and e.data["bill_number"] == f"{cs['bill']}-R")
     assert right.data["amount"] == (cs["sent"] - cs["torn"]) * 400
     assert plan.last_day == 62  # D1: the handover stays on day 62
+
+
+def test_the_month_end_count_of_episode_4(plan):
+    """LRN-F23 (Ilan, 20 Nov: "keep the count in episode 4"): on day 16, the month's end, Ravi counts the Main block's
+    store after the day's use, 3 bags short of the book (wastage), and the owner approves it, the same day."""
+    cs = gv.CEMENT_STORY
+    counts = [e for e in plan.entries if e.kind == "stock_count"]
+    approvals = [e for e in plan.entries if e.kind == "count_approve"]
+    assert len(counts) == len(approvals) == 1
+    count, approve = counts[0], approvals[0]
+    assert (count.day, count.site, count.role) == (cs["count_day"], "main", sp.ENGINEER) == (16, "main", sp.ENGINEER)
+    assert (approve.day, approve.role, approve.needs) == (16, sp.OWNER, (count.id,))
+    assert count.data["short"] == 3 and count.data["reason"] == "wastage" and count.data["book"] > 3
+    day16 = plan.day(16)
+    assert all(day16.index(count) > day16.index(e) for e in day16 if e.kind == "use" and e.site == "main")  # after the use

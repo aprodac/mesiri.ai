@@ -127,7 +127,7 @@ PAGE = {
     # LRN-F18: the Main block's cement, as the kit's paperwork has it.
     "transfer": "/materials", "rfq": "/procurement/quotations", "quote": "/procurement/quotations",
     "award": "/procurement/quotations", "return": "/procurement/returns", "return_settle": "/procurement/returns",
-    "bill_reverse": "/finance/vendors",
+    "bill_reverse": "/finance/vendors", "stock_count": "/materials/counts", "count_approve": "/materials/counts",
 }
 
 #: How a "for you" entry is known to be done: records of its kind saved by the person's user since that day began, at
@@ -160,6 +160,9 @@ _DONE: dict[str, tuple[str, str, str, str, tuple[str, str] | None]] = {
     "award": ("rfqs", "status_by", "status_at", "count(*)", ("site", "site_id")),
     "return": ("material_returns", "created_by", "created_at", "count(*)", ("site", "site_id")),
     "return_settle": ("material_returns", "status_by", "settled_on", "count(*)", ("site", "site_id")),
+    # LRN-F23: the month-end count, and its approval.
+    "stock_count": ("stock_counts", "created_by", "created_at", "count(*)", ("site", "site_id")),
+    "count_approve": ("stock_counts", "approved_by", "approved_at", "count(*)", ("site", "site_id")),
 }
 
 
@@ -462,6 +465,21 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
             "vendor_id": w.vendors[d["vendor"]], "project_id": project, "site_id": site, "returned_on": iso,
             "notes": f"Return note {d['note']}",
             "lines": [{"quantity": d["quantity"], "reason": d["reason"], "rate": d["rate"], "receipt_id": str(got["id"])}]}), e.kind)
+    if e.kind == "stock_count":  # LRN-F23: started at the site (the book frozen now), then what was counted
+        mid, uid = material(d["material"])
+        made = _ok(await w.call(role, "POST", "/materials/stock-counts", json={"site_id": site, "scope": "all",
+                                                                            "notes": "Month end"}), e.kind)
+        book = next((x["book"] for x in made.get("lines", []) if str(x.get("material_id")) == str(mid)), None)
+        if not made.get("id") or book is None:
+            raise _Failed(f"the count has no {d['material']} line")
+        return _ok(await w.call(role, "PUT", f"/materials/stock-counts/{made['id']}/lines", json={"lines": [{
+            "material_id": mid, "unit_id": uid, "counted": max(0.0, float(book) - d["short"]), "reason": d["reason"]}]}), e.kind)
+    if e.kind == "count_approve":
+        count = await w.one("SELECT id FROM stock_counts WHERE organization_id = :o AND site_id = :s AND status = 'open' "
+                            "ORDER BY created_at DESC LIMIT 1", s=site)
+        if not count:
+            raise _Wait("no count to approve")
+        return _ok(await w.call(role, "POST", f"/materials/stock-counts/{count['id']}/approve"), e.kind)
     if e.kind == "bill_reverse":
         bill = await w.one("SELECT i.expense_id FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
                            "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status = 'confirmed' "

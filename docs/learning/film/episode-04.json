@@ -504,7 +504,7 @@
         {
           "at": 0,
           "from": "site",
-          "text": "Main block stock count: cement {counted} bags. 3 bag wastage"
+          "text": "Main block stock count: cement 103 bags. 3 bag wastage"
         },
         {
           "at": 1,
@@ -512,7 +512,7 @@
           "card": {
             "title": "Stock count · Main block",
             "rows": [
-              "Cement · book {book} · counted {counted}",
+              "Cement · book 106 · counted 103",
               "3 bags short · wastage"
             ],
             "button": "Save"
@@ -533,12 +533,12 @@
         "via": "Tell Mesiri in the top bar (same assistant as WhatsApp)",
         "as": "Site engineer (Ravi)",
         "day": 16,
-        "send": "Main block stock count: cement {counted} bags. 3 bag wastage",
+        "send": "Main block stock count: cement 103 bags. 3 bag wastage",
         "tap": "Save",
         "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
         "role": "SITE_ENGINEER"
       },
-      "note": "{book} and {counted} are filled in from the sample company's Main block cement on day 16 once the story is played (counted = book − 3)."
+      "note": "Book 106 and counted 103: the played sample company's Main block cement on day 16 (LRN-F23, its integration test)."
     },
     {
       "id": "owner",

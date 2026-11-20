@@ -277,6 +277,9 @@ CEMENT_STORY = {
                ("Sri Hardwares", "MG Road, Thrissur", "SH/Q/117", {"cement": 408, "steel": 70})),
     "challan": "MCA/DC/2611", "ordered": 200, "sent": 190, "torn": 6, "return_note": "GV/RN/014",
     "bill": "MCA/INV/2611", "bill_rate": 410,
+    #: The month's end (day 16, Monday 30 Nov): Ravi counts the Main block's store, 3 bags short of the book (wastage),
+    #: and the owner approves it (Ilan, 20 Nov: "keep the count in episode 4"; LRN-F23).
+    "count_day": 16, "count_short": 3, "count_reason": "wastage",
 }
 
 #: A return to the supplier (Returns): bags torn in Malabar's load (the kit's challan, 190 bags). The debit note lowers
