@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Ink } from '@/components/live/ink'
 import { prefersReducedMotion } from '@/lib/timeline'
-import type { DaysPassed, ForYou } from '@/lib/sandbox'
+import { dayTitle, dayTitleSize, type DaysPassed, type ForYou } from '@/lib/sandbox'
 import { typingIn } from '@/lib/keys'
 import { sceneSoundOn, soundMs, useSceneSound, useSounds } from '@/lib/scene-sound'
 import { cn } from '@/lib/utils'
@@ -250,7 +250,8 @@ export function DayPassScene({ mode, fromDay, toDay, origin, result, onFinished 
       : [{ id: 'sfx-rewind', volume: 0.4, loop: true }, { id: 'pass-back', delay: 250 }]
   useSounds(dawn ? null : night, `pass-${mode}-${dawn}`)
   useSounds(dawn && mode !== 'back' ? [{ id: 'pass-dawn', delay: 150 }, { id: 'sfx-dawn', volume: 0.4 }] : null, `dawn-${mode}-${dawn}`)
-  const title = `Day ${result?.day ?? (mode === 'next' ? toDay : counter)}`
+  const titleDay = result?.day ?? (mode === 'next' ? toDay : counter)
+  const title = dayTitle(titleDay)
 
   return createPortal(
     <div
@@ -270,9 +271,9 @@ export function DayPassScene({ mode, fromDay, toDay, origin, result, onFinished 
           {mode === 'back' ? 'Going back' : mode === 'skip' ? `Skipping ahead · ${toDay - fromDay} days` : dawn ? 'Morning at Green Villa Builders' : 'Night falls on site'}
         </span>
         {mode === 'next' ? (
-          <RisingTitle key={dawn ? 'dawn' : 'night'} text={dawn ? title : `Day ${fromDay}`} show={open} delay={dawn ? 100 : 350} className="text-[clamp(56px,12vw,150px)]" />
+          <RisingTitle key={dawn ? 'dawn' : 'night'} text={dawn ? title : dayTitle(fromDay)} show={open} delay={dawn ? 100 : 350} className={dayTitleSize(dawn ? titleDay : fromDay, 'text-[clamp(56px,12vw,150px)]', 'text-[clamp(40px,8vw,96px)]')} />
         ) : (
-          <div className={cn('font-brand text-[clamp(64px,14vw,170px)] leading-none tabular-nums transition-transform', !result && 'animate-pulse')}>{title}</div>
+          <div className={cn('font-brand leading-none tabular-nums transition-transform', dayTitleSize(titleDay, 'text-[clamp(64px,14vw,170px)]', 'text-[clamp(40px,8vw,96px)]'), !result && 'animate-pulse')}>{title}</div>
         )}
         {dawn && result && <Ink text={dayName(result.date)} writing delay={250} className="text-[clamp(16px,2.2vw,24px)] text-white/80" />}
         {!dawn && mode === 'next' && <p className="m-0 text-[15px] text-white/60">The team works through the day…</p>}
@@ -660,9 +661,10 @@ export function OpeningScene({ kind, name, role, day, date, onDone }: {
   )
   // The cast in the order the narrator names them: the others, then the person's own part.
   const order = [...CAST_ORDER.filter((w) => w !== me), me]
-  const dayTitle = `Day ${day ?? 1}`
+  const openingDay = day ?? 1
+  const openingTitle = dayTitle(openingDay)
   return createPortal(
-    <div className="fixed inset-0 z-[95] overflow-hidden text-white" style={{ backgroundColor: INK }} role="status" aria-live="polite" aria-label={`${name}, ${dayTitle}`}>
+    <div className="fixed inset-0 z-[95] overflow-hidden text-white" style={{ backgroundColor: INK }} role="status" aria-live="polite" aria-label={`${name}, ${openingTitle}`}>
       <Sky phase={phase === 'title' ? 'night' : 'dawn'} />
       <div className="relative mx-auto flex h-full max-w-3xl flex-col justify-center gap-5 px-6 pb-[26vh] [text-shadow:0_1px_12px_rgba(0,0,0,.45)]">
         {phase === 'title' && (
@@ -686,7 +688,7 @@ export function OpeningScene({ kind, name, role, day, date, onDone }: {
         {phase === 'day' && (
           <>
             <span className="font-mono text-[12px] tracking-[0.14em] text-white/60 uppercase">Morning at {name}</span>
-            <RisingTitle text={dayTitle} show delay={100} className="text-[clamp(56px,12vw,150px)]" />
+            <RisingTitle text={openingTitle} show delay={100} className={dayTitleSize(openingDay, 'text-[clamp(56px,12vw,150px)]', 'text-[clamp(40px,8vw,96px)]')} />
             {date && <Ink text={dayName(date)} writing delay={350} className="text-[clamp(16px,2.2vw,24px)] text-white/80" />}
           </>
         )}

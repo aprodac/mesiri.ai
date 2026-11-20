@@ -407,9 +407,14 @@ export const PLANNED_PAGES = ALL_PAGES.filter((p) => p.page.status === 'planned'
  *  tab title, the ? help, the page strip and the WhatsApp button all agree. */
 const SAME_AS: [RegExp, string][] = [[/^\/projects\/[^/]+\/boq\/?$/, '/boq']]
 
+/** The module page's own address for an address that is the same page (`SAME_AS`), else the address itself. */
+export function pagePath(pathname: string): string {
+  return SAME_AS.find(([pattern]) => pattern.test(pathname))?.[1] ?? pathname
+}
+
 export function findPage(pathname: string, search = ''): { group: ModuleGroup; page: ModulePage } | null {
-  const alias = SAME_AS.find(([pattern]) => pattern.test(pathname))?.[1]
-  if (alias) {
+  const alias = pagePath(pathname)
+  if (alias !== pathname) {
     pathname = alias
     search = ''
   }

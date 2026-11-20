@@ -58,7 +58,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useNavCounts, useTaskCounts, useWaitingCounts } from '@/lib/nav-counts'
-import { MODULE_GROUPS, findPage } from '@/lib/module-map'
+import { MODULE_GROUPS, findPage, pagePath } from '@/lib/module-map'
 import { usePlannedPreview } from '@/lib/preview'
 import { useStartMode } from '@/lib/start-mode'
 import { initialsOf } from '@/lib/initials'
@@ -181,8 +181,11 @@ const NAV_LINK_BASE =
   'group/row flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-lg text-sm transition-colors'
 
 // Settings' pages keep their own addresses (UX-04); the Settings row lights up on any of them (lib/scope-url.ts).
+// A page whose address sits under another module (a project's BOQ under /projects) lights its own row, never
+// Settings: the same table the breadcrumb reads (module-map `SAME_AS`).
 
-function checkIsItemActive(pathname: string, itemUrl: string): boolean {
+function checkIsItemActive(rawPathname: string, itemUrl: string): boolean {
+  const pathname = pagePath(rawPathname)
   if (pathname === itemUrl) return true
   if (itemUrl === '/settings') return SETTINGS_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   if (itemUrl === '/home' && pathname === '/') return true

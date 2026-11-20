@@ -99,8 +99,10 @@ export function ProjectPickList({ to, empty, newProject = true }: { to: (id: str
                 <StageChip stage={p.stage} label={p.stage_label} className="shrink-0" />
               </span>
               <span className="flex flex-col gap-1.5">
+                {/* "Done" is measured on the BOQ: with none there is no measure, which is not "not started" (a running
+                    site with no BOQ read "Not started", 20 Nov test). */}
                 <span className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="font-semibold tabular-nums">{p.progress !== null ? `${p.progress}% done` : 'Not started'}</span>
+                  <span className="font-semibold tabular-nums">{p.progress !== null ? `${p.progress}% done` : p.activities ? 'Nothing measured yet' : 'No BOQ yet'}</span>
                   <span className={cn('truncate text-xs', LINE_TONE[line.tone])}>{line.text}</span>
                 </span>
                 <span className="block h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${done}% done`}>
