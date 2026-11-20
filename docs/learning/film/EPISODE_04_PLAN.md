@@ -1,5 +1,9 @@
 # Episode 4, "Cement runs short": the plan
 
+> **Merged 20 Nov** (Ilan: "merge as you recommended, keep the count in episode 4"): the script is `episode-04.json`
+> (a second session's, LRN-F19) with this plan's `pay`, `count` and `owner` scenes added. Where the two differ, the
+> script and LRN-F18 rule: 40 bags moved (not 20), 16 still to come after the gate (10 + 6 to replace), the bill on day 8.
+
 > Asked 20 Nov 2026 (Ilan): "plan episode 4". Status: **draft for Ilan's review**. Scripted 20 Nov (asked: "start episode 4 script") on section 7's
 > recommended answers: `episode-04.json`, readable `scripts/episode-04.md`. Not filmed. Series objective and the episode's row: [SERIES_PLAN.md](SERIES_PLAN.md)
 > section 5. Recording rules: [RECORDING.md](RECORDING.md) (real entries only). Tracker: LRN-F17.

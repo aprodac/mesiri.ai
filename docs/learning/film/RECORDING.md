@@ -49,9 +49,8 @@ ONLY=rain node docs/learning/film/record.cjs 03 <own token>   # one scene again;
   token, and the sample's session (its token and own date) in the tab, so every "today" is the sample's day. For
   screens: `SAMPLE=<the next-day answer as JSON> node shoot.cjs NN <own token> ...` (`SKIP_STEPS=1` for screens only).
 - **Light mode** is the default for every picture (asked 20 Nov); `THEME=dark` for the old look.
-- **Resetting the sample company fails** once Tell Mesiri was used in it (LRN-F16, waiting for approval). Until it is
-  fixed, on the local copy only: `DELETE FROM progress_updates WHERE reported_by_user_id IN (SELECT u.id FROM users u
-  JOIN organizations o ON o.id = u.organization_id WHERE o.sandbox_of IS NOT NULL)`, then reset.
+- **Never run the integration tests against the filming database**: they create and clean up companies and end the
+  sample company's sessions mid-recording ("Sign in again", 20 Nov). Use a separate database for tests.
 - Mesiri answers Ravi in his own mix (Malayalam in English letters): the narration says so, never translates it away.
 
 ## Episode 2, "Setting up": recorded 20 Nov
@@ -70,32 +69,14 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 - [ ] Check every figure said against the screen (Drawing check's questions; the material plan's 6 of 34 lines and
       its cement and blocks; the 9 pm report time).
 
-## Episode 3, "A day on site": recorded 20 Nov, two scenes left
+## Episode 3, "A day on site": recorded 20 Nov
 
 - [x] Screens (Today, Stock, Green Villa's day-2 report), light, an owner's copy on day 2 (Mon 16 Nov).
-- [x] Real replies on day 2 as Ravi: morning attendance, the steel before the pour (the photo dropped, Ilan 20 Nov),
-      the evening voice note (Malayalam as written, Ilan: "it's fine as it is"), the Main block's cement. The words
-      changed to the real cards.
-- [ ] **`office`**: Anil types Ravi's phoned-in line into New (the website has no attendance form of its own:
-      `steps-03.cjs`). Needs the model: `ONLY=office node record.cjs 03 <token>`.
-- [ ] **`rain`** on day 10. Needs the model: `ONLY=rain node record.cjs 03 <token>`.
-- [ ] Re-take **`short`** if its card again says "2 bags not in the list" (WA-316): today's real card has it.
-
-## Episode 4, "Cement runs short": scripted 20 Nov, not recorded
-
-Script `episode-04.json` (plan: EPISODE_04_PLAN.md). Light mode, as every episode. In this order:
-
-- [ ] **The story first (LRN-F17):** the Main block's cement days 3 to 16 in `sample_plan.py` made the kit's chain
-      (20 bags from the Annex on day 3; quotes asked day 3, compared day 4, 200 bags from Malabar at ₹400 and 2,000 kg
-      steel for the Annex from Kerala Steels; 190 came day 6, 6 returned; bill day 9 at ₹410 taken at ₹400; 10 bags
-      day 10; 100 more ordered day 12; paid day 14; count day 16, 3 short). The kit's quotation to say "Green Villa"
-      (steel for the Annex). Day 2 stays exactly as episode 3 recorded it. Tests; the 62 days replayed.
-- [ ] `{book}` and `{counted}` in scene `count` filled in from the played day 16 (counted = book − 3).
-- [ ] `steps-04.cjs` written for the steps scenes: `request`, `compare` (Anil), `return` (Anil, after `gate`'s
-      delivery is saved), `match`, `pay` (Meera, FINANCE), `owner` (the owner, after `count`).
-- [ ] Papers: `shoot.cjs 04` for `quote`, `challan`, `bill` (marks named in the script); screen `stock` on day 12.
-- [ ] Real replies (needs the model key): `transfer` (day 3), `gate` (day 6), `count` (day 16), as Ravi.
-- [ ] Narration (needs the ElevenLabs key): George, about 9 minutes.
+- [x] Every chat, real, as Ravi on day 2 (and the rain on day 10), first take, after the fixes below; the photo
+      dropped (Ilan). The Malayalam voice note as written (Ilan: "it's fine as it is").
+- [x] `office`: Anil types Ravi's phoned-in line into New (the website has no attendance form of its own). It needed
+      WA-316 (5): as a project manager the assistant put names in `worker_id` and Save was refused.
+- [x] Built: `node docs/learning/film/build.mjs 03` → `out/episode-03.mp4` (about 7 minutes).
 
 ## The owner beats (added 20 Nov): one screen per episode to shoot
 
@@ -115,3 +96,18 @@ build again (only the new scene is drawn; episode 1's rule "do not rebuild" is l
 3. `node docs/learning/film/build.mjs NN` (about 30 to 40 minutes; only changed scenes are drawn again).
 4. Watch the frames at a few points, check the sound, send the `.mp4` and `.srt`, and update the tracker row
    (LRN-F11, LRN-F13) and LEARNING_PATH.md's table.
+
+## Episode 4, "Cement runs short": before recording
+
+- [ ] **LRN-F18 in the plan first**: the move from the Annex (day 3), the quotes and the order of 200 bags at Rs 400
+      (day 4), the lorry with 190 on the challan, 6 torn returned, 184 kept (day 6), the bill at Rs 410 (day 8). Without
+      it the sample company orders 100 bags at Rs 410 and none of the kit's papers happen.
+- [ ] **LRN-F17**: the kit's cement GST at 18%, the quotes and the bill rebuilt, the paper scenes re-shot.
+- [ ] Roles and days: Anil on day 3 (`move`) and day 4 (`compare`), Ravi on day 6 (`gate`, a real reply; if the model is
+      capped, the website way the scene names), Meera on day 8 (`match`), the owner on day 8 (`stock`).
+- [ ] Added in the merge (Ilan, 20 Nov): `pay` (Meera, FINANCE, day 14), `count` (Ravi, a real reply, day 16: fill
+      `{book}` and `{counted}` from the played day 16, counted = book − 3) and `owner` (the owner, day 16, after the count).
+      LRN-F18 must also play the payment and the count.
+- [ ] `steps-04.cjs` for `move`, `compare`, `match`, `pay`, `owner`, written against the pages on the day (as `steps-02.cjs`).
+- [ ] The compare and the bill match: say only what the screen shows (the split, the quantity difference); log what it
+      does not show.

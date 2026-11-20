@@ -25,7 +25,9 @@ const out = join(__dirname, '.cache', 'shots')
 mkdirSync(out, { recursive: true })
 
 async function call(tok, method, path, body) {
-  const r = await fetch(apiBase + path, { method, headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+  const send = () => fetch(apiBase + path, { method, headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+  // A kept-alive connection the server closed while shoot.cjs ran fails at once: one more try on a new one.
+  const r = await send().catch(() => send())
   const text = await r.text()
   if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${text.slice(0, 300)}`)
   return text ? JSON.parse(text) : {}
@@ -98,7 +100,7 @@ function steps(sc, mine) {
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null
   const chats = script.scenes.filter((s) => s.kind === 'chat' && s.capture && (!only || only.includes(s.id)))
   const webs = script.scenes.filter((s) => s.kind === 'steps' && s.as && (!only || only.includes(s.id)))
-  const mine = chats[0]?.capture.role || 'OWNER'
+  const mine = script.scenes.find((s) => s.capture)?.capture.role || 'ADMIN'
   // A fresh sample company, on day 0: never record on a copy left from an earlier run (its days would be wrong).
   for (let i = 0; ; i++) {
     try {

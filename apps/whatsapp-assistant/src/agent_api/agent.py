@@ -41,6 +41,7 @@ from .fill import (
     NARRATIVE_REFUSAL,
     fill_body,
     missing_in_body,
+    names_for_ids,
     not_english,
     to_english,
     translate_body,
@@ -200,6 +201,57 @@ async def record_by_ref(client: ApiClient, tools: dict[str, ApiTool], tool: ApiT
         str(r.get("ref") or "").casefold() == said.strip().casefold()
         or (number is not None and (r.get("number") == number or _number_of(str(r.get("ref") or "")) == number)))]
     return (str(hits[0]["id"]), lister.name) if len(hits) == 1 else (None, lister.name)
+
+
+async def register_ids(client: ApiClient, body: dict[str, Any], said: str = "") -> dict[str, Any]:
+    """WA-316: a line naming a person is the register's person (GET /labour/workers): the id of the one active worker
+    of that name, and, from the register, the trade and daily wage the person did not say. 20 Nov, recording episode
+    3: Anil's "Manoj, Satheesh, Vinod present" was held as names with a made-up trade ("Site Engineer") and saved with
+    no wage, so the day had no labour cost. A name that is no one's, or more than one person's, stays as it was; a
+    trade or wage the message said wins over the register's. Read once per body."""
+    lines = body.get("lines")
+    if not isinstance(lines, list) or not any(
+            isinstance(x, dict) and (str(x.get("worker_name") or "").strip() or _is_uuid(x.get("worker_id")))
+            for x in lines):
+        return body
+    rows: list[Any] = []
+    for page in range(10):  # the route gives at most 200 a page
+        try:
+            got = await client.call("GET", "/labour/workers", params={"limit": 200, "offset": page * 200})
+        except Exception:  # noqa: BLE001 -- the lines are saved as they were held, as before
+            return body
+        items = (got.body or {}).get("items") if got.ok and isinstance(got.body, dict) else None
+        if not isinstance(items, list):
+            return body
+        rows += items
+        if len(items) < 200:
+            break
+    active = [r for r in rows if isinstance(r, dict) and r.get("id") and str(r.get("status") or "active") == "active"]
+    by_id = {str(r["id"]): r for r in active}
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for r in active:
+        by_name.setdefault(" ".join(str(r.get("name") or "").casefold().split()), []).append(r)
+    words = " ".join(said.casefold().split())
+    out = []
+    for x in lines:
+        if not isinstance(x, dict):
+            out.append(x)
+            continue
+        person = by_id.get(str(x.get("worker_id") or ""))
+        if person is None and not _is_uuid(x.get("worker_id")):
+            same = by_name.get(" ".join(str(x.get("worker_name") or "").casefold().split()), [])
+            person = same[0] if len(same) == 1 else None
+        if person is None:
+            out.append(x)
+            continue
+        line = {**x, "worker_id": str(person["id"])}
+        trade = str(x.get("trade") or "").strip()
+        if person.get("trade") and not (trade and trade.casefold() in words):
+            line["trade"] = person["trade"]  # a trade nobody said is the register's
+        if line.get("daily_wage") in (None, "") and person.get("default_daily_wage") is not None:
+            line["daily_wage"] = person["default_daily_wage"]
+        out.append(line)
+    return {**body, "lines": out}
 
 
 @dataclass(frozen=True)
@@ -1571,6 +1623,8 @@ class ApiAgent:
                 # [233]: what the code can derive is filled before the line is held (a work update with no narrative
                 # takes the entry's own words), and a body the API would refuse for a missing field is not held.
                 body = fill_body(name, body, str(arguments.get(CONFIRM_ARG) or ""), _place_names(places))
+                body = names_for_ids(tool.spec.parameters, body)  # a name held in an id field (WA-316)
+                body = await register_ids(client, body, text)  # a named person is the register's (WA-316)
                 if gaps := missing_in_body(tool.spec.parameters, body):
                     return ToolOutcome(content={"error": f"missing: {', '.join(gaps)}. Nothing was prepared. Ask the "
                                                          "person for it in this reply (one question)."})

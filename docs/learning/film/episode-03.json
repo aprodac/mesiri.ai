@@ -81,7 +81,7 @@
       "title": "Who came",
       "beats": [
         "At five past eight, Ravi tells Mesiri who came. He types it the way he would say it.",
-        "Mesiri does not save anything yet. It sends back a card: Manoj, Satheesh and Vinod, and Rahim's crew as four helpers, at the Annex. It answers in Ravi's own mix of Malayalam and English.",
+        "Mesiri does not save anything yet. It sends back a card: Manoj, Satheesh, Vinod and four helpers, at the Annex. It answers in Ravi's own mix of Malayalam and English.",
         "Ravi checks it and taps Save. That is the attendance. Nobody copies a register into Excel on Saturday."
       ],
       "messages": [
@@ -108,7 +108,7 @@
       "side": [
         {
           "at": 1,
-          "text": "The names as Ravi wrote them"
+          "text": "Names matched to the worker register"
         },
         {
           "at": 1,
@@ -119,7 +119,7 @@
           "text": "Nothing is saved until Ravi taps Save"
         }
       ],
-      "note": "The words and the card are drawn for the film; the assistant's own reply is checked before filming.",
+      "note": "Mesiri's own reply, recorded in the sample company.",
       "capture": {
         "via": "Tell Mesiri in the top bar (same assistant as WhatsApp)",
         "as": "Site engineer (Ravi)",
@@ -358,7 +358,7 @@
         "Not every site has a phone that works all day. When Ravi calls the office instead, Anil puts the same day in from the website.",
         "He taps New, at the top of every page, and types what Ravi told him on the phone, the same words Ravi would have sent.",
         "The same card comes back, because it is the same Mesiri. Anil checks it and taps Save.",
-        "And the day is in the attendance: the same record Ravi's message would have made. One record, two ways in, never counted twice."
+        "And the day is in the attendance: each person with his trade and day's wage from the register. The same record Ravi's message makes. One record, two ways in, never counted twice."
       ],
       "frames": [
         {
@@ -367,11 +367,13 @@
         },
         {
           "at": 1,
-          "show": "New open, the words typed"
+          "show": "New open, the words typed",
+          "pad": 0.2
         },
         {
           "at": 2,
-          "show": "Mesiri's card, before Save"
+          "show": "Mesiri's card, before Save",
+          "pad": 0.12
         },
         {
           "at": 3,
@@ -449,6 +451,20 @@
         {
           "at": 0,
           "full": true
+        },
+        {
+          "at": 1,
+          "x": 0.14,
+          "y": 0.38,
+          "w": 0.6,
+          "h": 0.4
+        },
+        {
+          "at": 2,
+          "x": 0.74,
+          "y": 0.38,
+          "w": 0.25,
+          "h": 0.29000000000000004
         }
       ],
       "boxes": []
@@ -471,6 +487,20 @@
         {
           "at": 0,
           "full": true
+        },
+        {
+          "at": 1,
+          "x": 0.14,
+          "y": 0.62,
+          "w": 0.42999999999999994,
+          "h": 0.30000000000000004
+        },
+        {
+          "at": 2,
+          "x": 0.14,
+          "y": 0.62,
+          "w": 0.42999999999999994,
+          "h": 0.30000000000000004
         }
       ],
       "boxes": []
@@ -494,6 +524,27 @@
         {
           "at": 0,
           "full": true
+        },
+        {
+          "at": 1,
+          "x": 0.14,
+          "y": 0.33,
+          "w": 0.66,
+          "h": 0.31
+        },
+        {
+          "at": 2,
+          "x": 0.14,
+          "y": 0.22,
+          "w": 0.85,
+          "h": 0.12000000000000002
+        },
+        {
+          "at": 3,
+          "x": 0.14,
+          "y": 0.17,
+          "w": 0.85,
+          "h": 0.17
         }
       ],
       "boxes": []
