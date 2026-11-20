@@ -153,7 +153,7 @@ Each built page (lib/module-map.ts) appears in the episode where a project first
 
 ## Open questions for Ilan
 
-- Keep the **Prologue** as it is, or redo it in the series' look?
-- **Language:** English narration with English subtitles first; Malayalam later?
+- ~~Keep the **Prologue** as it is, or redo it in the series' look?~~ Kept as it is (20 Nov); file `episode-00.json`.
+- ~~**Language:** English narration with English subtitles first; Malayalam later?~~ English first (20 Nov).
 - ~~**Length:** 6 to 10 minutes an episode (about 80 in all), or shorter?~~ Agreed 20 Nov: 6 to 10 minutes.
 - Anything the series must teach that is missing from section 5?

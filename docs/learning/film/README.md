@@ -9,8 +9,10 @@ product changes.
 episode is built, each episode's objective, and every page's episode. Nothing new is filmed until it is agreed. The order to learn in
 (episode, then the simulation) and what to make next: [../LEARNING_PATH.md](../LEARNING_PATH.md).
 
-Made so far: Episode 1 "How a construction company works" (kept as the Prologue) and Episode 2 "What owners want"
-(retired: it was about selling, not understanding).
+Made so far: the Prologue "How a construction company works" (`episode-00.json`, kept as it is, 20 Nov) and the old
+Episode 2 "What owners want" (retired: it was about selling; `retired/`). Episode 1 "The job is won" (`episode-01.json`)
+is scripted, for review: read it in [scripts/episode-01.md](scripts/episode-01.md) (`python3 script_md.py 01` remakes it
+from the JSON). English narration first (agreed 20 Nov).
 
 **Check before using with customers:** the business facts come from the field guides, which are drafts: typical
 figures, to be checked by someone who has run sites.
@@ -35,8 +37,8 @@ changes: `PYTHONPATH=backend/src:shared/contracts/src:platform/ai/src python3 do
 ```bash
 node docs/learning/film/build.mjs 01            # the whole episode (only changed scenes are drawn again)
 STILLS=1 node docs/learning/film/build.mjs 01   # each scene's last frame in out/stills, to check the layout
-STILLS=beats node docs/learning/film/build.mjs 02  # a picture at the end of every beat (each zoom, each highlight)
-ONLY=cement node docs/learning/film/build.mjs 01  # one scene as a video
+STILLS=beats node docs/learning/film/build.mjs 01  # a picture at the end of every beat (each zoom, each highlight)
+ONLY=boq node docs/learning/film/build.mjs 01  # one scene as a video
 ```
 
 ## Screens (episode 2 on)

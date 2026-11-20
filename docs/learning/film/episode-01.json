@@ -1,285 +1,286 @@
 {
   "episode": 1,
-  "title": "How a construction company works",
-  "source": "docs/learning/src/00-big-picture.html (Field Guide 00, draft 7 Nov 2026): typical figures, to be checked by someone who has run sites",
+  "title": "The job is won",
+  "status": "DRAFT for Ilan's review (20 Nov 2026). Not filmed. Screen scenes: url and focus to be set when the shots are taken (sample company after the guided project's chapters 2 and 3).",
+  "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 1's objective); the figures are Green Villa's own paperwork (backend/src/mesiri/application/learn/green_villa.py: the estimate and the contract) and the sample company after the guided project's set-up and BOQ chapters, played 20 Nov 2026. RA bill money as Mesiri works it out (backend/src/mesiri/domains/billing/ra.py). Construction practice: typical, to be checked by someone who has run sites.",
+  "objective": "By the end you can explain what is agreed before the first brick (drawings, BOQ, rates, contract: advance, retention, defects period, delay) and why the BOQ is the yardstick for everything after.",
   "scenes": [
     {
       "id": "open",
       "kind": "title",
+      "part": "Cold open",
       "eyebrow": "Mesiri · The course · Episode 1",
-      "title": "How a construction company works",
+      "title": "The job is won",
       "beats": [
-        "Before we pitch anything, we need to understand the people we're selling to.",
-        "This is a construction company. It turns money, material and labour into a building, usually for someone else.",
-        "In the next few minutes, you'll see how it wins work, spends money, gets paid, and where its profit quietly disappears."
+        "Thrissur, the twentieth of October. Doctor Anand Krishnan signs a contract for his family's new house: Green Villa.",
+        "Eighty-two lakh rupees. Nine months. A two-storey villa, and a small annex beside it.",
+        "Not one brick is laid yet. But the things that decide whether this job makes money are already on paper. This episode is about that paper."
       ],
       "lines": [
-        { "at": 1, "text": "Money + material + labour → a building" },
-        { "at": 2, "text": "Win · spend · get paid · leak" }
+        { "at": 1, "text": "₹82,06,050 · 9 months · Main block + Annex" },
+        { "at": 2, "text": "Decided before the first brick" }
       ]
     },
     {
-      "id": "kinds",
-      "kind": "cards",
-      "eyebrow": "1 · The kinds of companies",
-      "title": "Four kinds you'll meet",
-      "beats": [
-        "There are four kinds of construction company you'll meet.",
-        "Building contractors build for a client, under a contract. They are our main buyer: several sites at once, and five to fifty engineers.",
-        "Builders and developers buy land, build flats or villas, and sell them. They are their own client.",
-        "Government contractors build roads and public buildings, with tenders and strict paperwork. They come later for us.",
-        "And specialists, like electrical or plumbing firms, are often our customers' own subcontractors and suppliers."
-      ],
-      "cards": [
-        { "at": 1, "title": "Building contractor", "text": "Builds for a client under a contract. Several sites, 5 to 50 engineers.", "tag": "Our main buyer" },
-        { "at": 2, "title": "Builder / developer", "text": "Buys land, builds flats or villas, sells them. Its own client.", "tag": "Yes, for the building side" },
-        { "at": 3, "title": "Government contractor", "text": "Roads and public buildings. Tenders, strict billing rules.", "tag": "Later" },
-        { "at": 4, "title": "Specialist", "text": "One trade: electrical, plumbing, waterproofing.", "tag": "Often our customers' suppliers" }
-      ]
-    },
-    {
-      "id": "contracts",
-      "kind": "rows",
-      "eyebrow": "1 · How they're paid",
-      "title": "The contract decides who carries the risk",
-      "beats": [
-        "How a contractor is paid decides who carries the risk if the job costs more than planned.",
-        "With an item-rate contract, built on the BOQ, the bill of quantities, they're paid a rate for each unit of work, on the quantity actually measured.",
-        "With a lump sum, it's one fixed price for the whole job, so almost all the risk sits with the contractor.",
-        "Labour-only means the client buys the material, and the contractor supplies the people.",
-        "And cost-plus means actual cost plus a fee. The client carries the risk, but the contractor has to prove every single cost."
-      ],
-      "rows": [
-        { "at": 1, "name": "Item rate (BOQ)", "text": "₹ per m³ of concrete, ₹ per sq ft of plaster, on measured quantity", "risk": 0.55 },
-        { "at": 2, "name": "Lump sum", "text": "One fixed price, paid in stages", "risk": 0.95 },
-        { "at": 3, "name": "Labour only", "text": "Client buys material; contractor supplies labour", "risk": 0.4 },
-        { "at": 4, "name": "Cost plus", "text": "Actual cost + a fee; every cost must be proved", "risk": 0.15 }
-      ],
-      "riskLabel": "Contractor's risk"
-    },
-    {
-      "id": "money",
-      "kind": "stack",
-      "eyebrow": "1 · Where the money goes",
-      "title": "Out of every ₹100 of contract value",
-      "note": "Rough ranges for building work; every company and project differs.",
-      "beats": [
-        "Now, follow the money. Out of every hundred rupees a client pays...",
-        "material takes around forty to sixty.",
-        "Labour takes twenty to thirty.",
-        "Subcontractors, equipment, transport and overheads take most of the rest.",
-        "And what's left, the margin, is often only around ten rupees.",
-        "So here's the number to remember. With a ten percent margin, if just three percent of the material is lost, about a quarter of the profit is gone."
-      ],
-      "segments": [
-        { "at": 1, "label": "Material", "range": "40–60", "pct": 50, "tone": "#38bdf8" },
-        { "at": 2, "label": "Labour", "range": "20–30", "pct": 25, "tone": "#fb923c" },
-        { "at": 3, "label": "Subcontract, equipment, overheads", "range": "the rest", "pct": 15, "tone": "#a78bfa" },
-        { "at": 4, "label": "Margin", "range": "~10", "pct": 10, "tone": "#facc15" }
-      ],
-      "callout": { "at": 5, "big": "3% of material lost", "small": "≈ a quarter of the profit gone" }
-    },
-    {
-      "id": "life",
+      "id": "before",
       "kind": "timeline",
-      "eyebrow": "2 · The life of a project",
-      "title": "Six phases, from winning the job to the last rupee",
+      "part": "On a real site",
+      "eyebrow": "Before day 1",
+      "title": "From drawings to a signed contract",
       "beats": [
-        "Every project goes through six phases.",
-        "One: win. The drawings become a BOQ, every work item with its quantity and rate. Set a rate too low, and the job loses money before the first brick.",
-        "Two: set up. The estimate becomes the budget, and the team, suppliers and subcontractors are lined up.",
-        "Three: execute. This lasts months, sometimes years. It's where most of the money is spent, and where most of it leaks.",
-        "Four: bill and collect. Every month, the work done is measured and billed to the client, as a running-account bill, an R A bill.",
-        "Five: hand over. Snags are fixed, and the final bill goes in.",
-        "And six: the defects period. Often about a year, while part of every bill, called retention, is still held back."
+        "Every job starts as drawings. The architect draws what to build. The structural consultant sizes the footings, the columns and the steel.",
+        "From the drawings, the builder measures everything: so many cubic metres of excavation, so many square metres of plastering. That list is the bill of quantities: the BOQ.",
+        "Each line gets two prices. What the client will pay for one unit. And what it will cost the builder: the labour and the material.",
+        "The builder quotes, the client compares, and they agree.",
+        "Then the contract: the price, the dates, and the rules for how money moves for the next nine months."
       ],
       "phases": [
-        { "at": 1, "name": "Win", "text": "Estimate · BOQ · contract", "risk": "A rate too low loses money before the first brick" },
-        { "at": 2, "name": "Set up", "text": "Budget · team · suppliers", "risk": "A budget nobody tracks is just a document" },
-        { "at": 3, "name": "Execute", "text": "Work · labour · material · issues, every day", "risk": "Most money is spent, and leaks, here", "big": true },
-        { "at": 4, "name": "Bill & collect", "text": "RA bill every month", "risk": "Late or short bills starve cash" },
-        { "at": 5, "name": "Hand over", "text": "Snags · final bill", "risk": "Unbilled extras forgotten" },
-        { "at": 6, "name": "Defects period", "text": "~1 year · retention held", "risk": "Retention never chased" }
+        { "at": 0, "name": "Drawings", "text": "Architect and structural consultant: what to build", "risk": "A wrong drawing is built wrong" },
+        { "at": 1, "name": "Quantities", "text": "Measured off the drawings, line by line: the BOQ", "risk": "Measured short, built free" },
+        { "at": 2, "name": "Rates", "text": "Client's rate, and your labour and material cost", "risk": "Priced below cost, lost on every unit", "big": true },
+        { "at": 3, "name": "Quote", "text": "The price the client compares and accepts", "risk": "Won cheap, lost slowly" },
+        { "at": 4, "name": "Contract", "text": "Price, dates, advance, retention, defects, delay", "risk": "Terms unread, cash planned wrong" }
       ]
     },
     {
-      "id": "people",
-      "kind": "people",
-      "eyebrow": "3 · Who's who",
-      "title": "The people, and what keeps them awake",
+      "id": "boq",
+      "kind": "cards",
+      "part": "On a real site",
+      "eyebrow": "The BOQ",
+      "title": "One line, four numbers",
       "beats": [
-        "Now, the people. Each one owns a piece of the business, and each one worries about something different.",
-        "The owner asks: are we making money on this project, and will the client pay on time?",
-        "The general manager releases the payments, and asks: was fifteen thousand rupees of work really done, for the fifteen thousand we paid?",
-        "The project manager watches time and cost across the sites. The site engineer runs one site, day by day.",
-        "The supervisor runs the workers. The storekeeper counts material in and out.",
-        "The quantity surveyor measures the work and checks the bills. Purchase buys. Accounts pays and collects, and an outside accountant, the C A, keeps the books in Tally.",
-        "In a small company, one person wears several of these hats. But the jobs still exist."
+        "Take one line of Green Villa's BOQ: plastering the inside walls. One thousand four hundred and fifty square metres.",
+        "The client pays four hundred and twenty rupees for each square metre.",
+        "It costs the builder three hundred and thirty: two hundred and ten for labour, a hundred and twenty for cement and sand.",
+        "So every square metre plastered leaves ninety rupees. On the whole line, about one lakh thirty thousand. Green Villa has thirty-four lines like this one, in nine sections."
       ],
-      "people": [
-        { "at": 1, "who": "Owner", "worry": "Are we making money? Will the client pay on time?", "tone": "#facc15" },
-        { "at": 2, "who": "General manager", "worry": "Was ₹15,000 of work done for the ₹15,000 we paid?", "tone": "#facc15" },
-        { "at": 3, "who": "Project manager", "worry": "On time? Which site is slipping?", "tone": "#38bdf8" },
-        { "at": 3, "who": "Site engineer", "worry": "Will the slab be ready Friday?", "tone": "#fb923c" },
-        { "at": 4, "who": "Supervisor", "worry": "Are my people here?", "tone": "#fb923c" },
-        { "at": 4, "who": "Storekeeper", "worry": "Who took the cement?", "tone": "#fb923c" },
-        { "at": 5, "who": "Quantity surveyor", "worry": "Does the material match the work?", "tone": "#2dd4bf" },
-        { "at": 5, "who": "Purchase", "worry": "Best rate? Already ordered?", "tone": "#2dd4bf" },
-        { "at": 5, "who": "Accounts", "worry": "Which bills are due?", "tone": "#a78bfa" },
-        { "at": 5, "who": "CA (outside)", "worry": "Books complete and filed?", "tone": "#a78bfa" }
-      ],
-      "footer": { "at": 6, "text": "Small company: one person, many hats. The jobs still exist." }
-    },
-    {
-      "id": "rhythm",
-      "kind": "rhythm",
-      "eyebrow": "4 · The rhythm",
-      "title": "Every day, every week, every month",
-      "beats": [
-        "The whole business runs to a rhythm.",
-        "Every day: work done, attendance, deliveries, material used, problems on site, photos, and the daily progress report, the D P R.",
-        "Every week: the labour is paid, often in cash or by UPI, and next week's material is ordered.",
-        "And every month: the R A bill to the client, the subcontractor and supplier bills, a stock check, and the books go to the C A."
-      ],
-      "columns": [
-        { "at": 1, "when": "Daily", "items": ["Work done", "Attendance", "Deliveries & material used", "Issues & photos", "Daily progress report (DPR)"] },
-        { "at": 2, "when": "Weekly", "items": ["Labour paid (cash / UPI)", "Site review", "Next week's material ordered"] },
-        { "at": 3, "when": "Monthly", "items": ["RA bill to the client", "Subcontractor & supplier bills", "Stock check", "Books to the CA · GST · TDS"] }
+      "cards": [
+        { "at": 0, "title": "4.1 Plastering", "text": "1,450 sqm, measured off the drawings", "tag": "quantity", "main": true },
+        { "at": 1, "title": "₹420 a sqm", "text": "What the client pays: the client rate", "tag": "client rate" },
+        { "at": 2, "title": "₹330 a sqm", "text": "₹210 labour + ₹120 material: your cost", "tag": "budget" },
+        { "at": 3, "title": "₹90 a sqm", "text": "₹1,30,500 on the line; 34 lines in 9 sections", "tag": "margin" }
       ]
     },
     {
-      "id": "cash",
-      "kind": "flow",
-      "eyebrow": "5 · How money flows",
-      "title": "Money goes out every day. It comes in once a month, late.",
-      "beats": [
-        "And here's the problem hidden in that rhythm.",
-        "Money goes out all the time: to suppliers, on thirty to sixty days' credit; to labour, every week; to subcontractors; and to salaries, fuel and hire.",
-        "But money comes in once a month, from the client, and usually late.",
-        "So the contractor pays for the client's building for one or two months, with its own money, supplier credit, or a bank overdraft.",
-        "On top of that, the client often holds back about five percent of every bill, as retention. It's real money owed, and it's easy to forget.",
-        "That's why every late or short bill hurts: it's one more week of financing someone else's building."
-      ],
-      "outs": [
-        { "label": "Suppliers", "sub": "credit, 30–60 days" },
-        { "label": "Labour", "sub": "every week" },
-        { "label": "Subcontractors", "sub": "measured bills" },
-        { "label": "Overheads", "sub": "salaries · fuel · hire" }
-      ],
-      "in": { "at": 2, "label": "Client pays RA bills", "sub": "monthly · late · minus retention" },
-      "gap": { "at": 3, "text": "The cash gap: 1–2 months funded by the contractor", "sub": "own money · supplier credit · bank overdraft" },
-      "retention": { "at": 4, "text": "~5% of every bill held as retention" }
-    },
-    {
-      "id": "leaks",
-      "kind": "leaks",
-      "eyebrow": "6 · Where the profit disappears",
-      "title": "The ten biggest money leaks",
-      "beats": [
-        "So where does the profit actually disappear? Here are the ten biggest leaks.",
-        "Material paid for, but never received: short lorries, accepted on the delivery note.",
-        "Material used beyond the work: nine bags of cement, where the work needed seven.",
-        "Labour not matched by output: six thousand four hundred rupees of masons, for four thousand rupees of plastering.",
-        "Subcontractors overpaid. Bills to the client sent late, or short. Supplier bills paid twice, or at the wrong rate.",
-        "Idle time, when a team waits a whole day for cement that ran out. And rework, when a slab is broken and redone.",
-        "Petty cash with no bills. And retention and advances, simply forgotten.",
-        "None of these is dramatic on its own. Together, they're the difference between profit and loss."
-      ],
-      "leaks": [
-        { "at": 1, "title": "Material paid, not received", "eg": "Short lorries accepted" },
-        { "at": 2, "title": "Material used beyond the work", "eg": "9 bags where 7 were needed" },
-        { "at": 3, "title": "Labour not matched by output", "eg": "₹6,400 of masons, ₹4,000 of work" },
-        { "at": 4, "title": "Subcontractors overpaid", "eg": "Paid before measuring" },
-        { "at": 4, "title": "Client bills late or short", "eg": "October's work billed in December" },
-        { "at": 4, "title": "Supplier bills paid wrong", "eg": "₹420 a bag, ordered at ₹400" },
-        { "at": 5, "title": "Idle time and delays", "eg": "A day waiting for cement" },
-        { "at": 5, "title": "Rework", "eg": "A slab broken and redone" },
-        { "at": 6, "title": "Petty cash", "eg": "Hundreds of payments, no bill" },
-        { "at": 6, "title": "Retention & advances forgotten", "eg": "5% never chased" }
-      ],
-      "footer": { "at": 7, "text": "Small leaks. Together: profit or loss." }
-    },
-    {
-      "id": "info",
-      "kind": "info",
-      "eyebrow": "7 · The information problem",
-      "title": "Everything is recorded somewhere. Nothing is known in time.",
-      "beats": [
-        "Here's the strange part. The company usually already has all of this information.",
-        "It's in paper registers on site, which reach the office days later, if they ever do.",
-        "It's in WhatsApp chats and photos, where everything is there, and nothing can be found or added up.",
-        "It's in Excel files: one person's file, in many versions. It's in Tally: accurate, but after the fact. And it's in phone calls, answered from memory.",
-        "So problems are found at month end, at closeout, or by the accountant, when it's too late to do anything about them.",
-        "What the general manager we met asked for was the opposite: to know the same day, while it can still be fixed."
-      ],
-      "sources": [
-        { "at": 1, "where": "Paper registers", "problem": "Reach the office days later, if ever" },
-        { "at": 2, "where": "WhatsApp chats", "problem": "Everything is there; nothing can be found or totalled" },
-        { "at": 3, "where": "Excel", "problem": "One person's file, many versions" },
-        { "at": 3, "where": "Tally", "problem": "Accurate, but after the fact" },
-        { "at": 3, "where": "Phone calls", "problem": "Answered from memory" }
-      ],
-      "late": { "at": 4, "text": "Found at month end. Too late." },
-      "want": { "at": 5, "text": "Know the same day, while it can still be fixed." }
-    },
-    {
-      "id": "cement",
+      "id": "yardstick",
       "kind": "story",
-      "eyebrow": "9 · One load of cement",
-      "title": "Follow 200 bags through the whole business",
+      "part": "On a real site",
+      "eyebrow": "Why it matters",
+      "title": "The BOQ is the yardstick for everything after",
       "beats": [
-        "Let's put it all together, and follow one load of cement through the whole business.",
-        "The BOQ has a hundred and twenty cubic metres of concrete. That needs about nine hundred and sixty bags of cement, budgeted at four hundred rupees a bag.",
-        "The site engineer sees the first-floor slab is due on Friday, with only thirty bags left. So they ask for two hundred.",
-        "Purchase orders two hundred bags from the supplier, at four hundred rupees a bag, plus GST.",
-        "On Tuesday the lorry arrives. Three bags are torn, and rejected. A hundred and ninety-seven are accepted.",
-        "On Friday the slab is poured: twenty-four cubic metres, using all two hundred bags. It should have taken about a hundred and ninety-two. That's four percent over.",
-        "Then the supplier's bill arrives: two hundred bags, at four hundred and twenty rupees. It matches neither the order, nor the delivery. Corrected, it's five thousand two hundred rupees less.",
-        "At month end, the slab is measured and billed to the client, minus five percent retention.",
-        "Without connected records, nobody would have seen that the cement was four percent over, the bill was five thousand two hundred rupees too high, and three bags never arrived."
+        "Here is why the BOQ matters so much. It is not a document you file away. Everything after day one is measured against it.",
+        "Every piece of work the site reports lands on a BOQ line, so you know how far each line has got.",
+        "The material each line needs comes from it. So does the check on whether the labour was worth the work it did.",
+        "A subcontractor is measured and paid on its lines. And every month, the client is billed for the quantity done on each line, at its rate.",
+        "And at any moment, comparing what each line earned with what it really cost tells you if the job is making money.",
+        "Get the BOQ wrong, and every one of these is wrong too."
       ],
       "steps": [
-        { "at": 1, "module": "Planning", "text": "BOQ: 120 m³ concrete → ~960 bags at ₹400" },
-        { "at": 2, "module": "Site", "text": "Slab due Friday, 30 bags left → ask for 200" },
-        { "at": 3, "module": "Procurement", "text": "Order 200 bags at ₹400 + GST" },
-        { "at": 4, "module": "Materials", "text": "3 torn, rejected · 197 accepted", "flag": "3 bags short" },
-        { "at": 5, "module": "Cost control", "text": "24 m³ used 200 bags; should be ~192", "flag": "4% over" },
-        { "at": 6, "module": "Finance", "text": "Bill: 200 × ₹420 → corrected to 197 × ₹400", "flag": "₹5,200 too high" },
-        { "at": 7, "module": "Client billing", "text": "24 m³ billed at the BOQ rate, minus 5% retention" }
+        { "at": 1, "module": "A day on site · Ep 3", "text": "Each piece of work reported lands on its line" },
+        { "at": 2, "module": "Material · Ep 4", "text": "What each line needs: cement, sand, steel" },
+        { "at": 2, "module": "Wages · Ep 5", "text": "Labour paid against the work it earned" },
+        { "at": 3, "module": "Subcontract · Ep 7", "text": "The tiler measured and paid on his lines" },
+        { "at": 3, "module": "Billing · Ep 8", "text": "Each month: quantity done × client rate" },
+        { "at": 4, "module": "Making money? · Ep 9", "text": "Earned against spent, line by line" }
       ],
-      "footer": { "at": 8, "text": "Three problems nobody sees, unless the records are connected." }
+      "footer": { "at": 5, "text": "A wrong BOQ makes every later number wrong." }
     },
     {
-      "id": "map",
-      "kind": "map",
-      "eyebrow": "8 · The module map",
-      "title": "One business, nine connected parts",
+      "id": "contract",
+      "kind": "cards",
+      "part": "On a real site",
+      "eyebrow": "The contract, GV/2026/007",
+      "title": "What the contract adds",
       "beats": [
-        "And that's the whole business on one map.",
-        "Planning sets what to build and what it should cost. Procurement buys it. Materials knows what's on site. The site records what happened each day.",
-        "Labour and subcontract knows who worked, and what they produced. Cost control compares every day's cost with the value of the work done.",
-        "Finance pays and keeps the books. Client billing turns measured work into money. And the owner's view sits on top of all of it.",
-        "Every part feeds the next. When they're connected, the owner knows the same day.",
-        "In episode two, we'll meet the owners themselves: what they're afraid of, what they want, and why they buy."
+        "The contract adds the rules for money and time. Eighty-two lakh rupees for the work, with GST at eighteen percent on top.",
+        "A mobilisation advance: ten percent, about eight lakh twenty thousand, paid at the start so the builder can set up the site. It is taken back, ten percent from every bill, until it is all recovered.",
+        "Retention: five percent of every bill is held back by the client, and released only when the defects period ends, twelve months after handover.",
+        "Bills every month, on the work measured, at the BOQ rates, paid within fifteen days.",
+        "And handover on the thirty-first of July. Every week late costs twenty-five thousand rupees."
       ],
-      "nodes": [
-        { "at": 1, "id": "plan", "name": "Planning & BOQ", "sub": "what to build, at what cost", "x": 12, "y": 22 },
-        { "at": 1, "id": "buy", "name": "Procurement", "sub": "order · receive · bill", "x": 38, "y": 8 },
-        { "at": 1, "id": "mat", "name": "Materials", "sub": "stock · use · reconcile", "x": 64, "y": 22 },
-        { "at": 1, "id": "site", "name": "Site", "sub": "work done · issues", "x": 38, "y": 48 },
-        { "at": 2, "id": "lab", "name": "Labour & subcontract", "sub": "attendance · output · bills", "x": 12, "y": 74 },
-        { "at": 2, "id": "cost", "name": "Cost control", "sub": "cost vs budget · green / red", "x": 64, "y": 74 },
-        { "at": 3, "id": "fin", "name": "Finance & accounts", "sub": "pay · record · books", "x": 38, "y": 94 },
-        { "at": 3, "id": "bill", "name": "Client billing", "sub": "RA bills · retention", "x": 88, "y": 52 },
-        { "at": 3, "id": "owner", "name": "Owner's view", "sub": "profit · cash · risks", "x": 88, "y": 10, "top": true }
+      "cards": [
+        { "at": 0, "title": "₹82,06,050", "text": "The work at the BOQ rates; GST 18% on top", "tag": "contract value", "main": true },
+        { "at": 1, "title": "Advance 10%", "text": "₹8,20,605 at the start; 10% of each bill taken back", "tag": "mobilisation" },
+        { "at": 2, "title": "Retention 5%", "text": "Held from each bill until 12 months after handover", "tag": "defects period" },
+        { "at": 3, "title": "Monthly bills", "text": "Measured work × BOQ rates; paid within 15 days", "tag": "RA bills" },
+        { "at": 4, "title": "₹25,000 a week", "text": "For each week past 31 July 2027", "tag": "delay" }
+      ]
+    },
+    {
+      "id": "bill",
+      "kind": "stack",
+      "part": "On a real site",
+      "eyebrow": "What the terms do to cash",
+      "title": "₹10 lakh of work: what reaches the bank",
+      "beats": [
+        "See what those terms do to cash. Say the site does ten lakh rupees of work in a month, at the BOQ rates.",
+        "One lakh is taken back against the advance the builder already received.",
+        "Fifty thousand is held as retention, for well over a year.",
+        "So eight and a half lakh is what the company gets to spend this month. GST of one lakh eighty thousand comes in on top, and goes straight on to the government.",
+        "A builder who plans on the full ten lakh will run short, every single month."
       ],
-      "links": [
-        ["plan", "buy", 1], ["buy", "mat", 1], ["mat", "site", 1], ["plan", "site", 1],
-        ["site", "lab", 2], ["site", "cost", 2], ["mat", "cost", 2], ["lab", "cost", 2],
-        ["lab", "fin", 3], ["buy", "fin", 3], ["cost", "bill", 3], ["bill", "fin", 3],
-        ["cost", "owner", 3], ["bill", "owner", 3], ["fin", "owner", 3]
+      "segments": [
+        { "at": 3, "pct": 85, "range": "8,50,000", "label": "To spend this month", "tone": "#4ade80" },
+        { "at": 1, "pct": 10, "range": "1,00,000", "label": "Advance taken back", "tone": "#facc15" },
+        { "at": 2, "pct": 5, "range": "50,000", "label": "Retention", "tone": "#fb923c" }
       ],
-      "next": { "at": 5, "text": "Next · Episode 2 · What owners want" }
+      "callout": { "at": 4, "big": "₹8.5 L, not ₹10 L", "small": "Plan cash on what reaches the bank" },
+      "note": "GST ₹1,80,000 is added on top and passed to the government. Green Villa's client is a person, so no TDS."
+    },
+    {
+      "id": "who",
+      "kind": "people",
+      "part": "Who does what, when",
+      "eyebrow": "Before day 1",
+      "title": "Who does what, before the first brick",
+      "beats": [
+        "Who does what, before the first brick?",
+        "The architect and the structural consultant make the drawings.",
+        "Ramesh Nair, the owner of Green Villa Builders, measures the BOQ, sets the rates, quotes, and signs the contract.",
+        "Doctor Krishnan, the client, pays the advance, and later, each month's bill.",
+        "And two people who will live by this paper for nine months: Anil, the project manager, who counts the work against the BOQ; and Meera in accounts, who bills the client and recovers the advance."
+      ],
+      "people": [
+        { "at": 1, "who": "Architect and consultant", "worry": "Here is what to build, and how strong", "tone": "#93c5fd" },
+        { "at": 2, "who": "Ramesh Nair, owner", "worry": "Is every line measured, and priced above cost?", "tone": "#facc15" },
+        { "at": 3, "who": "Dr. Anand Krishnan, client", "worry": "What do I pay, and when?", "tone": "#4ade80" },
+        { "at": 4, "who": "Anil, project manager", "worry": "I will count the site's work on these lines", "tone": "#fb923c" },
+        { "at": 4, "who": "Meera, accounts", "worry": "I bill on it, and take the advance back", "tone": "#c4b5fd" }
+      ],
+      "footer": { "at": 4, "text": "The paper is made once. It is used every day for nine months." }
+    },
+    {
+      "id": "setup",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep01-project-start",
+      "url": "/planning/setup?project={Green Villa}",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · Project start",
+      "title": "Three things in, before anything else",
+      "beats": [
+        "Now, in Mesiri. A new project opens on Project start: everything the office must put in before the site's records mean anything.",
+        "The dates from the contract: work starts on the second of November, handover on the thirty-first of July.",
+        "The client and the contract: the value, the advance, the retention, the defects period. Typed once, from the contract summary.",
+        "And the BOQ. Each step ticks itself the moment it is saved. Nobody marks anything done by hand."
+      ],
+      "focus": [{ "at": 0, "full": true }],
+      "boxes": []
+    },
+    {
+      "id": "import",
+      "kind": "story",
+      "part": "In Mesiri",
+      "eyebrow": "In Mesiri · BOQ from Excel",
+      "title": "The estimate goes in as it is",
+      "beats": [
+        "The BOQ is not typed again. The estimate Ramesh priced in Excel goes in as it is.",
+        "Mesiri reads the columns: the item number, the work, the unit, the quantity, the client's rate, the labour and the material cost.",
+        "It shows what it read before anything is saved: nine sections, thirty-four lines, and the totals.",
+        "And it says what is not finished: three lines have no cost yet. The tiling and the granite are waiting for the tiler's price."
+      ],
+      "steps": [
+        { "at": 0, "module": "Green Villa - estimate.xlsx", "text": "The owner's own estimate, from the tender" },
+        { "at": 1, "module": "Columns read", "text": "Item no. · Work · Unit · Qty · Rate · Labour · Material" },
+        { "at": 2, "module": "Before saving", "text": "9 sections · 34 lines · ₹82,06,050 to the client · ₹61,31,500 cost" },
+        { "at": 3, "module": "Said, not hidden", "text": "3 lines with no cost yet: tiling and granite", "flag": "not final" }
+      ],
+      "footer": { "at": 3, "text": "Checked before it is saved; nothing typed twice." }
+    },
+    {
+      "id": "totals",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep01-boq-totals",
+      "url": "/boq?project={Green Villa}",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · BOQ and budget",
+      "title": "Green Villa at a glance",
+      "beats": [
+        "This is the BOQ page. Across the top, Green Villa at a glance.",
+        "What the client pays: eighty-two lakh. What it should cost: sixty-one lakh, seventy-five percent of the contract.",
+        "The margin, on the lines that have a cost: thirteen lakh, about eighteen percent. Marked not final, because three lines have no cost yet.",
+        "Thirty-one of thirty-four lines are priced. Until the tiler's price is in, nobody should quote a profit figure for this job."
+      ],
+      "focus": [{ "at": 0, "full": true }],
+      "boxes": []
+    },
+    {
+      "id": "loss",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep01-boq-loss",
+      "url": "/boq?project={Green Villa}",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · A line in red",
+      "title": "A loss decided at the tender",
+      "beats": [
+        "Look down the margin column. One line is red.",
+        "The staircase waist slab: seven thousand nine hundred rupees a cubic metre from the client, eight thousand two hundred to build.",
+        "Every cubic metre loses three hundred rupees. Nine cubic metres: two thousand seven hundred.",
+        "Small, but it was decided the day the price was written. Mesiri shows it before the first bag of cement is used, not at the end."
+      ],
+      "focus": [{ "at": 0, "full": true }],
+      "boxes": []
+    },
+    {
+      "id": "counted",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep01-boq-progress",
+      "url": "/boq?project={Green Villa}",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · The yardstick at work",
+      "title": "The site's work, on its lines",
+      "beats": [
+        "In the sample company you will play, you meet Green Villa seven months in, and the office has only now put the BOQ in. That happens on real jobs too. For two weeks Ravi, the site engineer, has sent each day's work on WhatsApp: twenty-four pieces of work, waiting for a BOQ.",
+        "Mesiri matched twenty-one of them to their lines by name and unit. Three just said plastering, and the BOQ has three plastering lines, so a person chose.",
+        "Now each line shows how far it has got. The annex: site clearance twenty-seven percent, excavation twenty-three, the footings twenty-six.",
+        "The months before Mesiri are on paper, so this counts from here. From now on, every message from site moves these bars by itself."
+      ],
+      "focus": [{ "at": 0, "full": true }],
+      "boxes": []
+    },
+    {
+      "id": "wrong",
+      "kind": "leaks",
+      "part": "What can go wrong",
+      "eyebrow": "What can go wrong",
+      "title": "Five ways a job is lost on paper",
+      "beats": [
+        "Five ways a job is lost before the first brick.",
+        "A line priced below its cost, like the staircase. And lines with no cost at all, which make the margin look bigger than it is.",
+        "Work with no line. Green Villa's estimate has no line for putty and primer. The site will do it, and it can never be billed.",
+        "A quantity copied wrong from the drawings. Bedroom two is printed as a hundred and sixty-three square feet. Drawn, it is about a hundred and forty.",
+        "And contract terms nobody reads: the advance coming back out of every bill, the retention, and twenty-five thousand rupees for every week late."
+      ],
+      "leaks": [
+        { "at": 1, "title": "Priced below cost", "eg": "Staircase: -₹300 a cum" },
+        { "at": 1, "title": "Lines with no cost", "eg": "Tiling: margin looks bigger" },
+        { "at": 2, "title": "Work with no line", "eg": "Putty and primer: never billed" },
+        { "at": 3, "title": "Quantity copied wrong", "eg": "Bedroom-2: 163 sq ft printed, ~140 drawn" },
+        { "at": 4, "title": "Terms unread", "eg": "Advance, retention, ₹25,000 a week late" }
+      ],
+      "footer": { "at": 4, "text": "Each one is fixed for free on paper, and paid for on site." }
+    },
+    {
+      "id": "check",
+      "kind": "questions",
+      "part": "Recap and check yourself",
+      "eyebrow": "Check yourself",
+      "title": "Three questions",
+      "beats": [
+        "Three questions. Pause, and answer them before you go on.",
+        "One: why is the BOQ called the yardstick? Because everything after it, the site's work, material, labour, the bills and the profit, is measured against its lines.",
+        "Two: of ten lakh rupees of work in a month, how much does Green Villa Builders get to spend? Eight and a half lakh: one lakh goes back against the advance, fifty thousand is retention, and the GST passes to the government.",
+        "Three: name one thing on paper that loses money on site. A line priced below cost, a line with no cost, work with no line, a quantity copied wrong, or terms nobody read.",
+        "Next: setting up. Everything that must exist before Ravi sends his first message. Now open the sample company, and do this episode yourself: chapters two and three of the guided project."
+      ],
+      "questions": [
+        { "at": 1, "text": "Why is the BOQ called the yardstick?" },
+        { "at": 2, "text": "Of ₹10 lakh of work, how much can be spent?" },
+        { "at": 3, "text": "Name one thing on paper that loses money on site." }
+      ]
     }
   ]
 }

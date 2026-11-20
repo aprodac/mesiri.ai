@@ -30,7 +30,7 @@ Green Villa's story.
 | Step | Watch | Then play (role) | You can then... | Episode | Sim chapter |
 |---|---|---|---|---|---|
 | 0 | **Prologue:** how a construction company works | Open the sample company, look around (Owner) | name the phases, the people, how money flows, the big leaks | done (19 Nov) | ch. 1 "Your sample company": done |
-| 1 | **Ep 1: The job is won** (drawings, BOQ, rates, contract, retention, advance) | ch. 2 "Set up Green Villa" (contract, BOQ upload) and ch. 3 "The BOQ" (Owner) | say what is agreed before the first brick and why the BOQ is the yardstick | to script | **written**, tested and fixed 20 Nov (UX-77) |
+| 1 | **Ep 1: The job is won** (drawings, BOQ, rates, contract, retention, advance) | ch. 2 "Set up Green Villa" (contract, BOQ upload) and ch. 3 "The BOQ" (Owner) | say what is agreed before the first brick and why the BOQ is the yardstick | **scripted, for review** ([film/scripts/episode-01.md](film/scripts/episode-01.md)) | **written**, tested and fixed 20 Nov (UX-77) |
 | 2 | **Ep 2: Setting up** (sites, team on WhatsApp, items, suppliers, rates, schedule, report time) | Project start's other steps: schedule, team, suppliers (Owner) | list what must exist before day 1, and who sets it up | to script | **missing**: the sample company comes already set up; needs a short chapter (see 3.2) |
 | 3 | **Ep 3: A day on site** | ch. 4 "A day on site" (Ravi, then the Owner's evening report) | follow one site day from Ravi's message to the daily report | to script | general |
 | 4 | **Ep 4: Cement runs short** (request, quote, order, delivery, short load, stock, supplier bill, payment) | ch. 5 "Material" (Ravi, Anil) and ch. 8 "Money out" (Meera) | walk the material chain across all four people | to script | general |
@@ -74,9 +74,10 @@ cement chain. That is fine; play ch. 5 and ch. 8 after Ep 4.
 
 Tick as done; each item also has a tracker row.
 
-- [ ] **Answer the open questions** (section 6). Length is answered: 6 to 10 minutes.
-- [ ] **Ep 1 script** (`film/episode-01.json` is the old Prologue; the new one gets its own number), from SERIES_PLAN
-      section 5's objective, read and agreed before filming.
+- [ ] **Answer the open questions** (section 6). Answered 20 Nov: length 6 to 10 minutes; keep the Prologue; English first.
+- [x] **Ep 1 script**: `film/episode-01.json` (the Prologue is now `episode-00.json`), readable in
+      [film/scripts/episode-01.md](film/scripts/episode-01.md). Drafted 20 Nov.
+- [ ] **Ep 1 script agreed** (Ilan), then the screens shot from the sample company and the narration recorded.
 - [ ] **Film Ep 1**, review it.
 - [ ] Play Ep 1 + sim ch. 2 and 3 as someone new (Owner); note what was unclear.
 - [ ] **Ep 2 script**, then the new "Setting up" chapter (3.2), film, play-test.
@@ -98,8 +99,8 @@ Tick as done; each item also has a tracker row.
 
 ## 6. Open questions for Ilan
 
-1. Keep the **Prologue** as it is, or redo it in the series' look?
-2. **Language:** English narration and subtitles first, Malayalam later?
+1. ~~Keep the Prologue as it is?~~ Yes, kept (20 Nov).
+2. ~~Language?~~ English first (20 Nov).
 3. **Quality and safety** (3.5): told as outside Mesiri for now, or pages first?
 4. The three new simulation chapters (**Setting up**, **Problems and machines**, **Handover**: 3.2, 3.3): agreed?
 
