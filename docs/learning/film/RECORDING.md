@@ -85,7 +85,9 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 - `steps-04.cjs`: **`move` works** (Stock's own "Move from Annex": Annex 100 → 60, Main block 0 → 40). **`compare`
   stops at the award (UX-85):** quotes asked from Quotations are not linked to Ravi's request, so the award warns
   "Already on order"; asked from the request, the form locks the items to its 100 bags of cement. Waits for Ilan.
-  `gate`, `match`, `count`, `owner` not written yet.
+  **Later (same day):** UX-85 fixed; `compare` plays through (RFQ-0001 for REQ-0001, PO-0003 and PO-0004); `gate` works
+  (190 on PO-0003, 10 to come). `match` records the bill but Mesiri can't show the Rs 10 a bag (UX-87, waits for Ilan).
+  `count`, `owner` not written yet. The bill's date must be picked as 22 Nov (the dialog defaults to the day).
 - Local copy notes: the dashboard installs with `pnpm install` (no npm lockfile) and builds with
   `VITE_API_URL=http://localhost:8000 pnpm exec vite build`; serve with `vite preview --port 5199`. The answer of
   `go-back` has no role in it: take a fresh `POST /learn/sandbox` with the role before shooting a scene (record.cjs

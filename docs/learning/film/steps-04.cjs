@@ -125,4 +125,33 @@ module.exports = {
       return card(pg, /^10 bags still to come/)
     },
   ],
+  // Meera, day 9: Malabar's bill MCA/INV/2611 as it came (190 bags at Rs 410, GST 18%), against Friday's delivery.
+  match: [
+    async (pg, h) => {
+      await h.go('/finance/vendors')
+      await pg.getByText('Malabar Cements Agency', { exact: true }).first().click()
+      await h.wait(3000)
+      return pg.locator('main').getByText('We owe', { exact: true }).first().locator('xpath=ancestor::*[3]')
+    },
+    async (pg, h) => {
+      await pg.getByRole('tab', { name: /Not billed/ }).or(pg.getByRole('button', { name: /^Not billed/ })).first().click()
+      await h.wait(1500)
+      const row = pg.locator('main li').filter({ hasText: /190 bags/ }).first()
+      await row.locator('input[type="checkbox"]').check()
+      await pg.getByRole('button', { name: 'Bill these' }).click()
+      await h.wait(1500)
+      const dlg = pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last()
+      await dlg.locator('#b-amount').fill('91922')
+      await dlg.locator('#b-gst').fill('14022')
+      await dlg.locator('#b-no').fill('MCA/INV/2611')
+      return dlg
+    },
+    async (pg, h) => {
+      const dlg = pg.getByRole('dialog').filter({ has: pg.locator('#b-amount') }).last()
+      await dlg.getByRole('button', { name: 'Record bill' }).click()
+      await h.wait(3000)
+      return 'main'
+    },
+    async () => null,
+  ],
 }
