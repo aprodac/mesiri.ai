@@ -392,86 +392,18 @@ def sub_bill_bytes() -> bytes:
                 rows, ["Labour only; tiles and adhesive supplied by the contractor."])
 
 
-def _title_block(pdf, width: float, number: str, title: str, scale: str) -> None:  # noqa: ANN001
-    """The title block every sheet of the set carries, bottom right, the way Drawing check reads it."""
-    bx, by, bw, bh = width - 320, 40, 280, 222
-    pdf.setLineWidth(1)
-    pdf.rect(bx, by, bw, bh)
-    pdf.setFont("Helvetica", 9)
-    block = (("PROJECT:", "GREEN VILLA, PUTHUR ROAD, THRISSUR"), ("CLIENT:", green_villa.CLIENT["name"].upper()),
-             ("", green_villa.ARCHITECT.split(",")[0].upper()),
-             ("DWG.TITLE:", title), ("DWG.NO:", number), ("REV:", "A"), ("SCALE:", scale), ("DATE:", "09.10.2026"),
-             ("DRAWN BY:", "SK"), ("CHECKED BY:", "AR" if number[0] in "AEP" else "RA"))
-    for i, (key, value) in enumerate(block):
-        pdf.drawString(bx + 12, by + bh - 22 - i * 18, f"{key} {value}".strip())
-    pdf.drawString(bx + 12, by + 10, "ALL DIMENSIONS ARE IN CM")
-    pdf.drawString(70, 45, f"{green_villa.ARCHITECT if number[0] != 'S' else green_villa.CONSULTANT}. "
-                           "Sample drawing for learning Mesiri. Not for construction.")
-
-
-def _rooms(pdf, rooms, left0: float, top0: float, scale: float) -> None:  # noqa: ANN001
-    pdf.setLineWidth(2)
-    for label, x, y, w, d, sqft in rooms:
-        left, bottom = left0 + x * scale, top0 - (y + d) * scale
-        pdf.rect(left, bottom, w * scale, d * scale)
-        cx, cy = left + w * scale / 2, bottom + d * scale / 2
-        pdf.setFont("Helvetica-Bold", 9)
-        pdf.drawCentredString(cx, cy + 12, label)
-        pdf.setFont("Helvetica", 8)
-        pdf.drawCentredString(cx, cy, f"{w} x {d}")
-        pdf.drawCentredString(cx, cy - 11, f"{sqft} Sq.ft")
-
-
-def _levels(pdf, levels, left: float, base: float, per_cm: float) -> None:  # noqa: ANN001
-    """Level lines and marks ("+345 LVL"), a building outline between ground and the top level."""
-    pdf.setLineWidth(1.5)
-    pdf.rect(left, base, 520, max(levels) * per_cm)
-    pdf.setFont("Helvetica", 9)
-    for v in levels:
-        y = base + v * per_cm
-        pdf.line(left - 30, y, left + 560, y)
-        pdf.drawString(left + 570, y - 3, f"{'±' if v == 0 else '+'}{v} LVL")
-
-
 def drawing_set_bytes() -> bytes:
-    """The whole set, eight A3 sheets (green_villa.DRAWINGS), each with its title block."""
-    from reportlab.lib.pagesizes import A3, landscape
+    """The whole set, eight A3 sheets (green_villa.DRAWINGS), drawn by gv_drawings."""
     from reportlab.pdfgen import canvas
 
+    sheets = {"A-101": gv_drawings.ground_floor, "A-102": gv_drawings.first_floor, "A-201": gv_drawings.front_elevation,
+              "A-301": gv_drawings.section_aa, "S-101": gv_drawings.footing_layout, "S-102": gv_drawings.column_schedule,
+              "E-101": gv_drawings.electrical, "P-101": gv_drawings.plumbing}
     buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=landscape(A3), invariant=1)
+    pdf = canvas.Canvas(buffer, pagesize=gv_drawings.landscape(gv_drawings.A3), invariant=1)
     pdf.setTitle("Green Villa: drawing set rev A")
-    width, height = landscape(A3)
-    for number, title, kind in green_villa.DRAWINGS:
-        if number in ("A-101", "S-101"):
-            (gv_drawings.ground_floor if number == "A-101" else gv_drawings.footing_layout)(pdf)
-            pdf.showPage()
-            continue
-        pdf.setLineWidth(1.2)
-        pdf.rect(30, 30, width - 60, height - 60)
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawString(70, height - 75, title)
-        scale_text = "1:100"
-        if number == "A-102":
-            _rooms(pdf, green_villa.FIRST_FLOOR_ROOMS, 70, height - 110, 0.6)
-        elif kind in ("elevation", "section"):
-            _levels(pdf, green_villa.ELEVATION_LEVELS if kind == "elevation" else green_villa.SECTION_LEVELS, 120, 160, 0.7)
-        elif number == "S-102":
-            scale_text = "1:50"
-            pdf.setFont("Helvetica", 10)
-            for i, (mark, a, b, main, ties) in enumerate(green_villa.COLUMNS):
-                pdf.drawString(120, 600 - i * 22, f"{mark}-{a}X{b}")
-                pdf.drawString(260, 600 - i * 22, main)
-                pdf.drawString(380, 600 - i * 22, ties)
-        else:  # services: the points and runs, by room name only (no sizes: the architect's plan has them)
-            pdf.setFont("Helvetica", 10)
-            notes = (("LIGHT POINTS: 22", "FAN POINTS: 7", "5A SOCKETS: 18", "15A POWER: 6", "DB-1 NEAR MAIN DOOR")
-                     if number == "E-101" else
-                     ("CPVC 1 INCH MAIN FROM SUMP TO OVERHEAD TANK", "WATER SUPPLY POINTS: 6", "SOIL AND WASTE: 110/75 MM PVC",
-                      "INSPECTION CHAMBERS: 3", "RAINWATER DOWN PIPES: 4"))
-            for i, line in enumerate(notes):
-                pdf.drawString(120, 600 - i * 22, line)
-        _title_block(pdf, width, number, title, scale_text)
+    for number, _title, _kind in green_villa.DRAWINGS:
+        sheets[number](pdf)
         pdf.showPage()
     pdf.save()
     return buffer.getvalue()

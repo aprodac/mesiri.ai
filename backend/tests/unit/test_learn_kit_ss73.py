@@ -178,9 +178,15 @@ def test_the_drawing_set_reads_with_exactly_its_three_catches(make_kit) -> None:
     assert out["structure"]["foundation"]["footings"] == sum(len(f[5]) for f in green_villa.FOOTINGS) == 14
     on_plan = {f["mark"]: sorted(f["columns"]) for f in out["structure"]["footings"]}
     assert on_plan == {f[0]: sorted(f[5]) for f in green_villa.FOOTINGS}  # every footing found with its own columns
-    plan = out["sheets"][0]
-    assert {(r["label"], r["a"], r["b"]) for r in plan["rooms"]} == {
-        (label, w, d) for label, _x, _y, w, d, _a in green_villa.GROUND_FLOOR_ROOMS}
+    for page, rooms in ((0, green_villa.GROUND_FLOOR_ROOMS), (1, green_villa.FIRST_FLOOR_ROOMS)):
+        assert {(r["label"], r["a"], r["b"]) for r in out["sheets"][page]["rooms"]} == {
+            (label, w, d) for label, _x, _y, w, d, _a in rooms}
+    # The column schedule gives every column on the footing plan its size, and nothing else is read twice: the
+    # services sheets name rooms without sizes, so only the two floor plans hold rooms and fixtures.
+    sizes = {c["mark"]: c["size"] for c in out["structure"]["columns"]}
+    assert sizes == {m: f"{a}×{b}" for m, a, b, _main, _ties in green_villa.COLUMNS}
+    assert [len(s["rooms"]) for s in out["sheets"][2:]] == [0] * 6
+    assert [s["scale"] for s in out["sheets"]] == ["1:50"] * 4 + ["1:75", "1:15", "1:50", "1:50"]
 
 
 def test_the_papers_agree_with_the_story(make_kit) -> None:

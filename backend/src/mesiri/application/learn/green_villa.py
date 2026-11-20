@@ -135,16 +135,13 @@ DRAWINGS: tuple[tuple[str, str, str], ...] = (
     ("S-101", "FOOTING LAYOUT AND SCHEDULE", "structure"), ("S-102", "COLUMN SCHEDULE", "schedule"),
     ("E-101", "ELECTRICAL LAYOUT GROUND FLOOR", "services"), ("P-101", "PLUMBING LAYOUT GROUND FLOOR", "services"),
 )
-#: The first floor (A-102): (label, x, y, width, depth in cm, printed sq ft). The catch: the TOILET is drawn 210 deep
-#: here and 240 on the ground floor (A-101), though the floors are meant to stack: Drawing check asks "intended?".
-FIRST_FLOOR_ROOMS: tuple[tuple[str, int, int, int, int, int], ...] = (
-    ("FAMILY LIVING", 0, 0, 520, 430, 241), ("BEDROOM-3", 520, 0, 400, 360, 155), ("BALCONY", 920, 0, 330, 150, 53),
-    ("MASTER BEDROOM", 0, 430, 420, 400, 181), ("DRESS", 420, 430, 200, 180, 39), ("TOILET", 780, 430, 210, 150, 34),
-)
 #: Levels in cm above ground. The elevation and the section agree, except the roof: +660 on the elevation, +655 on the
 #: section (the catch: Drawing check asks which is right before the slab is cast).
 ELEVATION_LEVELS = (0, 45, 345, 660, 765)
 SECTION_LEVELS = (0, 45, 345, 655, 765)
+#: What each level is: ground, plinth (ground floor), first floor, roof slab, top of parapet. The terrace over
+#: BEDROOM-1 is the first floor's slab; its parapet is 100 high.
+LEVEL_NAMES = ("GROUND", "PLINTH, GROUND FLOOR", "FIRST FLOOR", "ROOF", "TOP OF PARAPET")
 #: The ground floor (A-101), Main block, drawn at 1:50. Walls: 23 cm outside, 10 cm partitions. Three bays across
 #: (clear 520, 360, 420), 740 deep inside. Rooms: (label, x, y, width, depth in cm, printed sq ft), x from the inside
 #: face of the left wall, y from the inside face of the front wall (the road side), the sizes clear inside. The catch:
@@ -180,13 +177,45 @@ GROUND_WINDOWS = (
     ("h", 200, 320, (740, 763), "W2", 1), ("h", 760, 880, (740, 763), "W2", 1),
     ("h", 960, 1020, (740, 763), "V1", 1), ("h", 1200, 1260, (740, 763), "V1", 1),
 )
-#: The door and window list printed on A-101: mark, type, width, height (cm), how many on this floor.
-OPENING_SCHEDULE = (
-    ("D1", "TEAK, PANELLED", "120", "210", "1"), ("D2", "FLUSH, TEAK FRAME", "90", "210", "3"),
-    ("D3", "PVC, FOR WET AREAS", "75", "210", "2"), ("D4", "FLUSH, STEEL GRILL", "90", "210", "1"),
-    ("W1", "UPVC, 3 SHUTTERS", "150", "135", "5"), ("W2", "UPVC, 2 SHUTTERS", "120", "120", "3"),
-    ("W3", "UPVC, 2 SHUTTERS", "90", "135", "1"), ("V1", "UPVC LOUVRE", "60", "60", "2"),
+#: Door and window types: mark, type, width, height (cm). Each plan's list counts its own marks.
+OPENING_TYPES = (
+    ("D1", "TEAK, PANELLED", 120, 210), ("D2", "FLUSH, TEAK FRAME", 90, 210), ("D3", "PVC, FOR WET AREAS", 75, 210),
+    ("D4", "FLUSH, STEEL GRILL", 90, 210), ("D5", "UPVC, GLAZED, 2 LEAVES", 120, 210),
+    ("W1", "UPVC, 3 SHUTTERS", 150, 135), ("W2", "UPVC, 2 SHUTTERS", 120, 120), ("W3", "UPVC, 2 SHUTTERS", 90, 135),
+    ("V1", "UPVC LOUVRE", 60, 60),
 )
+#: Window sill and lintel above the floor (cm); the lintel band runs at 210.
+SILL, LINTEL = 75, 210
+
+#: The first floor (A-102), on the same walls and grid: the main block over the left and middle bays, the stair hall,
+#: a utility and a toilet over the right bay's back, an open terrace over BEDROOM-1, a balcony over the sit out. The
+#: catch: this TOILET is drawn 210 x 150 over the ground floor's 240 x 150, though toilets stack (Drawing check asks
+#: "intended?"). Printed area 0: the terrace is not carpet area, none is printed.
+FIRST_FLOOR_ROOMS: tuple[tuple[str, int, int, int, int, int], ...] = (
+    ("FAMILY LIVING", 0, 0, 520, 430, 241), ("BEDROOM-3", 0, 440, 520, 300, 168),
+    ("BEDROOM-4", 530, 0, 360, 360, 140), ("PASSAGE", 530, 370, 360, 120, 46), ("STUDY", 530, 500, 360, 240, 93),
+    ("STAIR", 900, 370, 420, 210, 95), ("UTILITY", 900, 590, 200, 150, 32), ("TOILET", 1110, 590, 210, 150, 34),
+    ("TERRACE", 900, 0, 420, 360, 0), ("BALCONY", 110, -173, 330, 150, 53),
+)
+FIRST_OPENINGS = ((520, 380, 10, 100), (890, 380, 10, 100))
+FIRST_DOORS = (
+    ("h", 200, 320, (-23, 0), 1, "l", "D5"),
+    ("h", 400, 490, (430, 440), 1, "r", "D2"),
+    ("h", 790, 880, (360, 370), -1, "r", "D2"),
+    ("h", 540, 630, (490, 500), 1, "l", "D2"),
+    ("h", 905, 995, (360, 370), -1, "r", "D4"),
+    ("h", 985, 1060, (580, 590), 1, "r", "D3"),
+    ("h", 1130, 1205, (580, 590), 1, "l", "D3"),
+)
+FIRST_WINDOWS = (
+    ("v", 120, 270, (-23, 0), "W1", -1), ("v", 500, 650, (-23, 0), "W1", -1), ("h", 420, 510, (-23, 0), "W3", -1),
+    ("h", 635, 785, (-23, 0), "W1", -1), ("h", 200, 320, (740, 763), "W2", 1), ("h", 650, 770, (740, 763), "W2", 1),
+    ("v", 400, 520, (1320, 1343), "W2", -1), ("h", 960, 1020, (740, 763), "V1", 1),
+    ("h", 1200, 1260, (740, 763), "V1", 1),
+)
+#: Columns that stop at the first floor: the terrace's front corner and the sit out's two (their roof is the balcony).
+STOP_AT_FIRST = ("C4", "C13", "C14")
+
 #: The column grid, on the walls' centre lines, from the building's outside front-left corner (cm).
 GRID_X = (("A", 11.5), ("B", 548), ("C", 918), ("D", CLEAR_W + 2 * WALL_EXT - 11.5))
 GRID_Y = (("1", 11.5), ("2", 388), ("3", CLEAR_D + 2 * WALL_EXT - 11.5))

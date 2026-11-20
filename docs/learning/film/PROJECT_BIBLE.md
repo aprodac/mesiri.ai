@@ -170,8 +170,13 @@ makes it from the records; nobody types it.
    **LRN-F6, drawn like a real set (20 Nov, "it's too simple"):** A-101 and S-101 redrawn at 1:50 and 1:75 from one
    layout in `green_villa.py`: 23 cm walls and 10 cm partitions, a column grid A-D / 1-3 with 14 columns, doors with
    their swing, windows, the stair, furniture, dimension chains, a door and window list, the footing layout with every
-   footing to scale (F1 to F4), its schedule and a typical section. Drawing check still finds exactly the three
-   catches. The other six sheets follow once these two are agreed.
+   footing to scale (F1 to F4), its schedule and a typical section. Then the other six (Ilan: "Yes do the remaining
+   sheets"): A-102 first floor on the same walls (family living, bedrooms 3 and 4, study, utility, the 210 x 150 toilet
+   over the 240 x 150 one, a terrace over BEDROOM-1, a balcony over the sit out), A-201 front elevation (+660 roof),
+   A-301 section A-A (+655 roof), S-102 a panel for each of the 14 columns with a beam schedule and a typical column,
+   E-101 electrical (42 points, 10 switch boards, the DB, meter and earth pits) and P-101 plumbing (sump, overhead
+   tank, every point, inspection chambers, septic tank, soak pit, rainwater to a recharge pit). Drawing check still
+   finds exactly the three catches, and now every column's size.
 3. **The seed:** names (D3), money accounts (D5), Green Villa's client, Lake View's full estimate and terms.
 4. **The 62-day plan:** Green Villa's RA bills, final bill and retention (D2), then story batches 1 to 3
    ([SERIES_PLAN.md](SERIES_PLAN.md) section 7).
