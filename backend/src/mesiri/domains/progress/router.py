@@ -651,12 +651,19 @@ async def resolve_issue(
     return {"status": "success", "message": "Site issue resolved"}
 
 
+#: The gallery's kind filter. 'work'/'issue' are progress photos (every
+#: assigned member sees them); 'attendance' a muster sheet; 'material' a
+#: supplier delivery/invoice; 'expense' a receipt. The last two carry money, so
+#: the endpoint only returns them to roles that may view expenses (SEC-01 /
+#: EXPENSE_VIEW_ROLES), exactly as the standalone receipt gallery does.
+GalleryKind = Literal["all", "work", "issue", "attendance", "material", "expense"]
+
+
 @router.get("/gallery")
 async def list_gallery(
     project_id: uuid.UUID | None = None,
     site_id: uuid.UUID | None = None,
-    attachment_type: str | None = None,
-    parent_type: Literal["ACTIVITY", "SITE_ISSUE"] | None = None,
+    kind: GalleryKind = "all",
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
     limit: int = Query(default=50, ge=1, le=100),
@@ -665,23 +672,32 @@ async def list_gallery(
     conn: AsyncConnection = Depends(get_db_conn),
     object_storage: ObjectStoragePort = Depends(get_object_storage),
 ):
-    """List site media gallery attachments within organization & scope.
-    Each item carries `url`, a short-lived link to the photo (WEB-24), or
-    null when storage can't give one. `parent_type` filters by kind
-    (ACTIVITY = work photo, SITE_ISSUE = issue photo); `date_from`/`date_to`
-    filter on the photo's work day, so paging stays correct across the range
-    (WEB-104)."""
+    """Every image across the company, of every kind the caller may see, newest
+    day first (WEB-105): work and issue photos, attendance sheets, supplier
+    deliveries and receipts, UNION-ed into one page so the total and paging stay
+    true to the filter. Each item carries `kind`, its parent record id, and a
+    short-lived `url` (null when storage can't sign one).
+
+    Scope is the same project/site authorization the standalone galleries use.
+    The money kinds — `material` (supplier cost) and `expense` (a receipt) — are
+    returned only to roles that may view expenses (`may_view_expenses`), so the
+    unified view never shows money to someone who could not already see it; a
+    site engineer asking for `kind=expense` gets an empty page, not a 403, so
+    the filter still works for the kinds they can see."""
+    from mesiri.authorization.roles import may_view_expenses
+
     project_ids, denied = _resolve_project_ids(auth_context, project_id)
     if denied or _site_filter_denied(auth_context, project_id, site_id):
         return {"items": [], "total": 0}
 
+    kinds = None if kind == "all" else {kind}
     repo = PostgresProgressReadRepository(conn)
-    items, total = await repo.list_gallery(
+    items, total = await repo.list_media_gallery(
         organization_id=auth_context.organization_id,
         project_ids=project_ids,
         site_id=site_id,
-        attachment_type=attachment_type,
-        parent_type=parent_type,
+        kinds=kinds,
+        include_money=may_view_expenses(auth_context.role),
         date_from=date_from,
         date_to=date_to,
         limit=limit,

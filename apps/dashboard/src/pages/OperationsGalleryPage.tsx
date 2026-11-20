@@ -8,14 +8,19 @@ import {
   ChevronRight,
   ExternalLink,
   HardHat,
-  ImageOff,
   Images,
+  ImageOff,
+  Receipt,
   RefreshCw,
   Search,
   Sparkles,
   TriangleAlert,
+  Truck,
+  Users,
+  type LucideIcon,
 } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
+import { useAuth } from '@/lib/AuthContext'
 import { fetchSiteGalleryApi, type GalleryItem, type GalleryKind } from '@/lib/api'
 import { longDate, plural, siteDayPath } from '@/lib/site-day'
 import { useSiteNames } from '@/lib/site-names'
@@ -29,31 +34,81 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
-// A photo hangs off a work item or an issue — the gallery's "kind" (WEB-104).
-type KindFilter = 'all' | 'work' | 'issue'
-const KIND_PARENT: Record<Exclude<KindFilter, 'all'>, GalleryKind> = { work: 'ACTIVITY', issue: 'SITE_ISSUE' }
-function kindOf(item: GalleryItem): 'issue' | 'work' {
-  return item.parent_type === 'SITE_ISSUE' ? 'issue' : 'work'
+// Gallery (WEB-105): every image the company holds, of every kind the person
+// may see — work and issue photos, attendance sheets, supplier deliveries and
+// receipts — newest day first, one block per site, reading GET /progress/gallery
+// (one paged, scoped query). Opening an image shows it large with prev/next.
+// The money kinds (deliveries, receipts) are only offered to money-capable
+// roles; the server returns nothing for the rest, so the filter is safe.
+
+type KindFilter = 'all' | GalleryKind
+
+// Mirrors backend EXPENSE_VIEW_ROLES (authorization/roles.py): who may see
+// money. The server is the real gate; this only hides the money filter options
+// from people who would always get an empty page.
+const MONEY_VIEW_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE', 'PROJECT_MANAGER']
+
+const KIND_META: Record<GalleryKind, { label: string; icon: LucideIcon; badge: string; soft: string; money?: boolean }> = {
+  work: { label: 'Work', icon: HardHat, badge: 'bg-black/55', soft: 'bg-muted text-muted-foreground' },
+  issue: { label: 'Issue', icon: TriangleAlert, badge: 'bg-amber-600/80', soft: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },
+  attendance: { label: 'Attendance', icon: Users, badge: 'bg-sky-600/80', soft: 'bg-sky-500/15 text-sky-700 dark:text-sky-400' },
+  material: { label: 'Delivery', icon: Truck, badge: 'bg-emerald-600/80', soft: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400', money: true },
+  expense: { label: 'Receipt', icon: Receipt, badge: 'bg-rose-600/80', soft: 'bg-rose-500/15 text-rose-700 dark:text-rose-400', money: true },
 }
 
-// Gallery (WEB-24): every photo the sites sent, newest day first, one block
-// per site with a link to that day's site report. Reads GET /progress/gallery,
-// which since WEB-24 returns a short-lived `url` per photo plus the work
-// item's date and title. Opening a photo shows it large with prev/next.
+const KIND_OPTIONS: { value: KindFilter; label: string; money?: boolean }[] = [
+  { value: 'all', label: 'All images' },
+  { value: 'work', label: 'Work' },
+  { value: 'issue', label: 'Issues' },
+  { value: 'attendance', label: 'Attendance' },
+  { value: 'material', label: 'Deliveries', money: true },
+  { value: 'expense', label: 'Receipts', money: true },
+]
 
 const PAGE = 60
+const NO_SITE = '—'
 
 function dayOf(item: GalleryItem): string {
   return item.work_date ?? item.created_at.slice(0, 10)
 }
 
 function titleOf(item: GalleryItem): string {
-  const t = item.caption || item.parent_title || 'Site photo'
+  const t = item.caption || item.title || `${KIND_META[item.kind].label} photo`
   return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+function amountText(item: GalleryItem): string | null {
+  return item.amount != null ? `₹${Number(item.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : null
+}
+
+// Where a photo's record lives: a receipt opens its expense; everything else
+// with a site opens that day's site report. A company-wide expense or a photo
+// with no site has no deep link.
+function recordLink(item: GalleryItem): string | null {
+  if (item.kind === 'expense') return `/finance/expenses/${item.parent_id}`
+  if (item.site_id) return siteDayPath(item.site_id, dayOf(item))
+  return null
+}
+
+function KindBadge({ kind, className, tone = 'solid' }: { kind: GalleryKind; className?: string; tone?: 'solid' | 'soft' }) {
+  const meta = KIND_META[kind]
+  const Icon = meta.icon
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+        tone === 'solid' ? cn('text-white backdrop-blur', meta.badge) : meta.soft,
+        className,
+      )}
+    >
+      <Icon className="size-3" /> {meta.label}
+    </span>
+  )
 }
 
 function Thumb({ item, onOpen }: { item: GalleryItem; onOpen: () => void }) {
   const [broken, setBroken] = React.useState(false)
+  const amount = amountText(item)
   return (
     <button
       type="button"
@@ -70,13 +125,13 @@ function Thumb({ item, onOpen }: { item: GalleryItem; onOpen: () => void }) {
         />
       ) : (
         <span className="flex size-full flex-col items-center justify-center gap-1 text-xs text-muted-foreground">
-          <ImageOff className="size-5" /> Photo unavailable
+          <ImageOff className="size-5" /> {item.url ? 'Open file' : 'Image unavailable'}
         </span>
       )}
       <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pt-6 pb-2 text-xs font-medium text-white">
-        <span className="line-clamp-1">{titleOf(item)}</span>
+        <span className="line-clamp-1">{amount ? `${titleOf(item)} · ${amount}` : titleOf(item)}</span>
       </span>
-      <KindBadge item={item} className="absolute top-2 left-2" />
+      <KindBadge kind={item.kind} className="absolute top-2 left-2" />
       {item.ai_caption && (
         <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur">
           <Sparkles className="size-3" /> AI note
@@ -86,24 +141,9 @@ function Thumb({ item, onOpen }: { item: GalleryItem; onOpen: () => void }) {
   )
 }
 
-function KindBadge({ item, className }: { item: GalleryItem; className?: string }) {
-  const issue = kindOf(item) === 'issue'
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur',
-        issue ? 'bg-amber-600/80' : 'bg-black/55',
-        className,
-      )}
-    >
-      {issue ? <TriangleAlert className="size-3" /> : <HardHat className="size-3" />}
-      {issue ? 'Issue' : 'Work'}
-    </span>
-  )
-}
-
 export default function OperationsGalleryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { scope } = useScope()
+  const { me } = useAuth()
   const names = useSiteNames()
   const [search, setSearch] = useUrlState<string>('q', '')
   const [kind, setKind] = useUrlState<KindFilter>('kind', 'all')
@@ -111,19 +151,20 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
   const [to, setTo] = useUrlState<string>('to', '')
   const [open, setOpen] = React.useState<number | null>(null)
 
+  const canSeeMoney = MONEY_VIEW_ROLES.includes(String(me?.role ?? '').toUpperCase())
+  const kindOptions = KIND_OPTIONS.filter((o) => !o.money || canSeeMoney)
+
   const projectId = scope.mode !== 'portfolio' ? scope.projectId : undefined
   const siteId = scope.mode === 'site' ? scope.siteId : undefined
-  const parentType = kind === 'all' ? undefined : KIND_PARENT[kind]
   const filtered = kind !== 'all' || !!from || !!to
 
-  // UX-37: numbered pages, the server sends one page at a time. The kind and
-  // day filters are server-side (WEB-104), so the total and paging stay true to
+  // UX-37: numbered pages, the server sends one page at a time. Kind and day
+  // filters are server-side (WEB-104/105), so the total and paging stay true to
   // the filter — unlike the free-text search, which refines the page in hand.
   const server = useServerPage({ size: PAGE, resetOn: JSON.stringify(['gallery', projectId, siteId, kind, from, to]) })
   const query = useQuery({
     queryKey: ['gallery', projectId, siteId, kind, from, to, server.offset],
-    queryFn: () =>
-      fetchSiteGalleryApi({ projectId, siteId, parentType, dateFrom: from, dateTo: to, limit: server.limit, offset: server.offset }),
+    queryFn: () => fetchSiteGalleryApi({ projectId, siteId, kind, dateFrom: from, dateTo: to, limit: server.limit, offset: server.offset }),
     placeholderData: keepPreviousData,
   })
   const total = query.data?.total ?? 0
@@ -133,22 +174,31 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
     const q = search.trim().toLowerCase()
     if (!q) return items
     return items.filter((i) =>
-      [i.caption, i.ai_caption, i.parent_title, names.get(i.site_id)?.name].some((t) => (t ?? '').toLowerCase().includes(q)),
+      [i.caption, i.ai_caption, i.title, KIND_META[i.kind].label, i.site_id ? names.get(i.site_id)?.name : ''].some((t) =>
+        (t ?? '').toLowerCase().includes(q),
+      ),
     )
   }, [items, search, names])
 
-  // Newest day first; within a day, one block per site. `index` is the
-  // photo's place in `shown`, for the viewer's prev/next.
+  // Newest day first; within a day, one block per site (NO_SITE for a
+  // company-wide record). `index` is the photo's place in `shown`, for the
+  // viewer's prev/next.
   const days = React.useMemo(() => {
     const byDay = new Map<string, Map<string, { item: GalleryItem; index: number }[]>>()
     shown.forEach((item, index) => {
       const day = byDay.get(dayOf(item)) ?? new Map()
-      day.set(item.site_id, [...(day.get(item.site_id) ?? []), { item, index }])
+      const siteKey = item.site_id ?? NO_SITE
+      day.set(siteKey, [...(day.get(siteKey) ?? []), { item, index }])
       byDay.set(dayOf(item), day)
     })
     return [...byDay.entries()].sort(([a], [b]) => b.localeCompare(a))
   }, [shown])
 
+  const clearFilters = () => {
+    setKind('all')
+    setFrom('')
+    setTo('')
+  }
 
   return (
     <div className={embedded ? 'flex flex-col gap-4' : 'mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2'}>
@@ -170,18 +220,18 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full sm:w-60">
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input placeholder="Search this page…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
         </div>
         <Select value={kind} onValueChange={(v) => setKind(v as KindFilter)}>
-          <SelectTrigger className="h-9 w-[132px]" aria-label="Kind">
+          <SelectTrigger className="h-9 w-[140px]" aria-label="Kind">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All photos</SelectItem>
-            <SelectItem value="work">Work</SelectItem>
-            <SelectItem value="issue">Issues</SelectItem>
+            {kindOptions.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <div className="flex items-center gap-1.5">
@@ -190,18 +240,18 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
           <DatePicker value={to} onChange={setTo} min={from || undefined} placeholder="To" className="w-[140px]" aria-label="To day" />
         </div>
         {filtered && (
-          <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={() => { setKind('all'); setFrom(''); setTo('') }}>
+          <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={clearFilters}>
             Clear
           </Button>
         )}
         <span className="ml-auto text-sm text-muted-foreground">
-          {search ? `${shown.length} of ${items.length} on this page` : plural(total, 'photo')}
+          {search ? `${shown.length} of ${items.length} on this page` : plural(total, 'image')}
         </span>
       </div>
 
       {query.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => query.refetch()}>Try again</Button>}>
-          The photos could not be loaded.
+          The images could not be loaded.
         </Callout>
       ) : query.isLoading ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -210,12 +260,12 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
       ) : days.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
           <Images className="size-6 text-muted-foreground" />
-          <p className="text-sm font-medium">{search ? 'No photos match' : filtered ? 'No photos in this filter' : 'No photos yet'}</p>
+          <p className="text-sm font-medium">{search ? 'No images match' : filtered ? 'No images in this filter' : 'No images yet'}</p>
           <p className="text-sm text-muted-foreground">
-            {search ? 'Try another word.' : filtered ? 'Try a wider day range or another kind.' : 'Photos the sites send on WhatsApp show here.'}
+            {search ? 'Try another word.' : filtered ? 'Try a wider day range or another kind.' : 'Photos, attendance sheets and receipts show here as the sites send them.'}
           </p>
           {filtered && !search && (
-            <Button variant="outline" size="sm" className="mt-1 bg-background" onClick={() => { setKind('all'); setFrom(''); setTo('') }}>
+            <Button variant="outline" size="sm" className="mt-1 bg-background" onClick={clearFilters}>
               Clear filters
             </Button>
           )}
@@ -226,29 +276,34 @@ export default function OperationsGalleryPage({ embedded = false }: { embedded?:
             <section key={day} className="flex flex-col gap-3">
               <h2 className="sticky top-[60px] z-10 -mx-1 flex items-baseline gap-2 bg-background/95 px-1 py-1.5 text-sm font-semibold backdrop-blur">
                 {longDate(day)}
-                <span className="font-normal text-muted-foreground">{plural([...sites.values()].flat().length, 'photo')}</span>
+                <span className="font-normal text-muted-foreground">{plural([...sites.values()].flat().length, 'image')}</span>
               </h2>
-              {[...sites.entries()].map(([site, photos]) => (
-                <div key={site} className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 truncate">
-                      <span className="font-medium">{names.get(site)?.name ?? 'Site'}</span>
-                      {names.get(site)?.project && <span className="text-muted-foreground"> · {names.get(site)?.project}</span>}
-                    </span>
-                    <Link to={siteDayPath(site, day)} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline">
-                      Site report <ChevronRight className="size-3.5" />
-                    </Link>
+              {[...sites.entries()].map(([site, photos]) => {
+                const siteName = site === NO_SITE ? 'Company-wide' : names.get(site)?.name ?? 'Site'
+                return (
+                  <div key={site} className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{siteName}</span>
+                        {site !== NO_SITE && names.get(site)?.project && <span className="text-muted-foreground"> · {names.get(site)?.project}</span>}
+                      </span>
+                      {site !== NO_SITE && (
+                        <Link to={siteDayPath(site, day)} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline">
+                          Site report <ChevronRight className="size-3.5" />
+                        </Link>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                      {photos.map(({ item, index }) => (
+                        <Thumb key={item.id} item={item} onOpen={() => setOpen(index)} />
+                      ))}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                    {photos.map(({ item, index }) => (
-                      <Thumb key={item.id} item={item} onOpen={() => setOpen(index)} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </section>
           ))}
-          <Pager {...server.pager(total, items.length)} noun="photos" className={cn(query.isPlaceholderData && 'opacity-60')} />
+          <Pager {...server.pager(total, items.length)} noun="images" className={cn(query.isPlaceholderData && 'opacity-60')} />
         </div>
       )}
 
@@ -282,7 +337,10 @@ function Viewer({
     return () => window.removeEventListener('keydown', onKey)
   }, [index, prev, next, onIndex])
 
-  const site = item ? names.get(item.site_id) : undefined
+  const site = item?.site_id ? names.get(item.site_id) : undefined
+  const amount = item ? amountText(item) : null
+  const link = item ? recordLink(item) : null
+  const linkLabel = item?.kind === 'expense' ? 'Open expense' : 'Site report'
   return (
     <Dialog open={item !== null} onOpenChange={(o) => !o && onIndex(null)}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-4xl [&>button:last-child]:z-10 [&>button:last-child]:flex [&>button:last-child]:size-8 [&>button:last-child]:items-center [&>button:last-child]:justify-center [&>button:last-child]:rounded-full [&>button:last-child]:bg-black/55 [&>button:last-child]:text-white [&>button:last-child]:opacity-100 [&>button:last-child]:top-3 [&>button:last-child]:right-3">
@@ -293,16 +351,16 @@ function Viewer({
                 <img src={item.url} alt={titleOf(item)} className="max-h-[70vh] w-full object-contain" />
               ) : (
                 <span className="flex h-64 items-center gap-2 text-sm text-white/70">
-                  <ImageOff className="size-5" /> Photo unavailable
+                  <ImageOff className="size-5" /> Image unavailable
                 </span>
               )}
               {prev !== null && (
-                <button type="button" onClick={() => onIndex(prev)} aria-label="Previous photo" className="absolute left-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
+                <button type="button" onClick={() => onIndex(prev)} aria-label="Previous image" className="absolute left-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
                   <ChevronLeft className="size-5" />
                 </button>
               )}
               {next !== null && (
-                <button type="button" onClick={() => onIndex(next)} aria-label="Next photo" className="absolute right-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
+                <button type="button" onClick={() => onIndex(next)} aria-label="Next image" className="absolute right-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
                   <ChevronRight className="size-5" />
                 </button>
               )}
@@ -313,16 +371,13 @@ function Viewer({
             <div className="flex flex-col gap-3 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <DialogTitle className="text-base font-semibold">{titleOf(item)}</DialogTitle>
-                    <span className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium', kindOf(item) === 'issue' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'bg-muted text-muted-foreground')}>
-                      {kindOf(item) === 'issue' ? <TriangleAlert className="size-3" /> : <HardHat className="size-3" />}
-                      {kindOf(item) === 'issue' ? 'Issue' : 'Work'}
-                    </span>
+                    <KindBadge kind={item.kind} tone="soft" />
+                    {amount && <span className="text-sm font-semibold tabular-nums">{amount}</span>}
                   </div>
                   <DialogDescription className="mt-0.5 text-sm">
-                    {[longDate(dayOf(item)), site?.name, site?.project].filter(Boolean).join(' · ')}
-                    {item.caption && item.parent_title ? ` · ${item.parent_title}` : ''}
+                    {[longDate(dayOf(item)), site?.name, site?.project].filter(Boolean).join(' · ') || 'Company-wide'}
                   </DialogDescription>
                 </div>
                 <div className="flex items-center gap-1">
@@ -333,11 +388,13 @@ function Viewer({
                       </a>
                     </Button>
                   )}
-                  <Button asChild variant="outline" size="sm" className="gap-1">
-                    <Link to={siteDayPath(item.site_id, dayOf(item))}>
-                      Site report <ChevronRight className="size-4" />
-                    </Link>
-                  </Button>
+                  {link && (
+                    <Button asChild variant="outline" size="sm" className="gap-1">
+                      <Link to={link}>
+                        {linkLabel} <ChevronRight className="size-4" />
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               </div>
               {item.ai_caption && (

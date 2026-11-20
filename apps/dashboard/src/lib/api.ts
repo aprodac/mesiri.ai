@@ -460,26 +460,32 @@ export async function resolveSiteIssueApi(
   return res.data
 }
 
+/** The unified gallery's image kinds (WEB-105). 'work'/'issue' are progress
+ *  photos; 'attendance' a muster sheet; 'material' a supplier delivery/invoice;
+ *  'expense' a receipt (the last two are shown only to money-capable roles). */
+export type GalleryKind = 'work' | 'issue' | 'attendance' | 'material' | 'expense'
+
 export interface GalleryItem {
   id: string
-  organization_id: string
-  project_id: string
-  site_id: string
-  parent_type: string
+  kind: GalleryKind
+  /** The record this photo hangs off (activity / issue / report / invoice / expense). */
   parent_id: string
+  project_id?: string | null
+  site_id?: string | null
   media_object_key: string
-  attachment_type: string
   mime_type?: string | null
+  attachment_type: string
   caption?: string | null
   ai_caption?: string | null
-  role?: string | null
-  captured_at?: string | null
-  created_at: string
-  /** Short-lived link to the photo (WEB-24); null when storage can't give one. */
+  /** A caption for the thumbnail: work type, issue, supplier, expense description. */
+  title?: string | null
+  /** For money kinds (material / expense): the amount, in rupees. */
+  amount?: number | null
+  /** Short-lived link to the image (WEB-24); null when storage can't give one. */
   url?: string | null
-  /** The work item's (or issue's) date and title (WEB-24). */
+  /** The record's day, for grouping and ordering (WEB-24). */
   work_date?: string | null
-  parent_title?: string | null
+  created_at: string
 }
 
 export interface GalleryListResponse {
@@ -487,16 +493,12 @@ export interface GalleryListResponse {
   total: number
 }
 
-/** The gallery's "kind" filter — a photo hung off a work item or off an issue. */
-export type GalleryKind = 'ACTIVITY' | 'SITE_ISSUE'
-
 export async function fetchSiteGalleryApi(params: {
   projectId?: string
   siteId?: string
-  attachmentType?: string
-  /** ACTIVITY = work photo, SITE_ISSUE = issue photo (WEB-104). */
-  parentType?: GalleryKind
-  /** Filter on the photo's work day; server-side, so paging stays correct. */
+  /** The kind filter; 'all' (or omitted) returns every kind the caller may see. */
+  kind?: 'all' | GalleryKind
+  /** Filter on the record's day; server-side, so paging stays correct (WEB-104). */
   dateFrom?: string
   dateTo?: string
   limit?: number
@@ -506,8 +508,7 @@ export async function fetchSiteGalleryApi(params: {
     params: {
       project_id: params.projectId,
       site_id: params.siteId,
-      attachment_type: params.attachmentType && params.attachmentType !== 'ALL' ? params.attachmentType : undefined,
-      parent_type: params.parentType,
+      kind: params.kind && params.kind !== 'all' ? params.kind : undefined,
       date_from: params.dateFrom || undefined,
       date_to: params.dateTo || undefined,
       limit: params.limit ?? 50,

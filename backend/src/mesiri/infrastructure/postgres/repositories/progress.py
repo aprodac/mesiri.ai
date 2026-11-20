@@ -508,89 +508,155 @@ class PostgresProgressReadRepository:
             )
         return res.rowcount > 0
 
-    async def list_gallery(
+    #: The image kinds the unified gallery (WEB-105) can show, newest first.
+    #: 'work'/'issue' are progress photos; 'attendance' a muster sheet;
+    #: 'material' a supplier delivery/invoice; 'expense' a receipt. The last
+    #: two carry money, so a caller only gets them when `include_money` is True
+    #: (the router passes `may_view_expenses(role)`), exactly as the standalone
+    #: receipt gallery gates them -- the unified view never widens who sees money.
+    _MEDIA_KINDS = ("work", "issue", "attendance", "material", "expense")
+    _MONEY_KINDS = frozenset({"material", "expense"})
+
+    async def list_media_gallery(
         self,
         organization_id: uuid.UUID,
+        *,
         project_ids: set[uuid.UUID] | None = None,
         site_id: uuid.UUID | None = None,
-        attachment_type: str | None = None,
-        parent_type: str | None = None,
+        kinds: set[str] | None = None,
+        include_money: bool = False,
         date_from: datetime.date | None = None,
         date_to: datetime.date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        # progress_attachments has no organization/project/site of its own
-        # (migration 0430): they come from the parent -- the work item, or the
-        # issue -- the same join the DPR photo counts use. The gallery query
-        # used to read pa.organization_id etc. directly and failed on every
-        # call (WEB-24). Photos of removed work items are left out.
-        source = """
-            FROM progress_attachments pa
-            LEFT JOIN activities a
-              ON pa.parent_type = 'ACTIVITY' AND a.id = pa.parent_id AND a.deleted_at IS NULL
-            LEFT JOIN site_issues si
-              ON pa.parent_type = 'SITE_ISSUE' AND si.id = pa.parent_id
-        """
-        where = ["COALESCE(a.organization_id, si.organization_id) = :organization_id"]
-        params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
+        """Every image across the company, of every kind, newest day first
+        (WEB-105): work and issue photos (progress_attachments), attendance
+        sheets (labour_attendance_attachments), supplier deliveries
+        (material_invoice_attachments) and receipts (expense_attachments),
+        UNION-ed into one page so the total and paging stay true to the filter.
 
+        Each source is joined to its parent for tenant + project/site scope and
+        a caption; a photo whose parent work item was removed is left out, as
+        `list_gallery` already does. Money kinds are dropped unless
+        `include_money`. `kinds` (a subset of `_MEDIA_KINDS`) is the kind filter;
+        None means all the caller may see. Columns are uniform across the union
+        so a single ORDER BY / LIMIT / OFFSET pages the lot.
+        """
+        wanted = set(kinds) if kinds is not None else set(self._MEDIA_KINDS)
+        wanted &= set(self._MEDIA_KINDS)
+        if not include_money:
+            wanted -= self._MONEY_KINDS
+        if not wanted:
+            return [], 0
+
+        params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
         if project_ids is not None:
-            where.append("COALESCE(a.project_id, si.project_id) = ANY(:project_ids)")
             params["project_ids"] = list(project_ids)
         if site_id is not None:
-            where.append("COALESCE(a.site_id, si.site_id) = :site_id")
             params["site_id"] = site_id
-        if attachment_type is not None:
-            where.append("pa.attachment_type = :attachment_type")
-            params["attachment_type"] = attachment_type
-        if parent_type is not None:
-            # 'ACTIVITY' (work) or 'SITE_ISSUE' (an issue's photo) -- the gallery's
-            # "kind" filter. Same literal the SELECT returns as pa.parent_type.
-            where.append("pa.parent_type = :parent_type")
-            params["parent_type"] = parent_type
-        # Filter on the same day the photo is grouped and ordered by (work_date),
-        # so the server pages the chosen range correctly rather than the client
-        # trimming one already-fetched page.
-        _work_date = "COALESCE(a.activity_date, (si.occurred_at AT TIME ZONE 'UTC')::date)"
         if date_from is not None:
-            where.append(f"{_work_date} >= :date_from")
             params["date_from"] = date_from
         if date_to is not None:
-            where.append(f"{_work_date} <= :date_to")
             params["date_to"] = date_to
 
-        where_clause = " AND ".join(where)
+        def _scope(project_expr: str, site_expr: str, date_expr: str, extra: list[str]) -> str:
+            # The project/site/date filters, shared across every source so one
+            # bound param set serves the whole union.
+            w = list(extra)
+            if project_ids is not None:
+                w.append(f"{project_expr} = ANY(:project_ids)")
+            if site_id is not None:
+                w.append(f"{site_expr} = :site_id")
+            if date_from is not None:
+                w.append(f"{date_expr} >= :date_from")
+            if date_to is not None:
+                w.append(f"{date_expr} <= :date_to")
+            return " AND ".join(w)
 
+        fragments: list[str] = []
+
+        # Work and issue photos (one source, two kinds via parent_type).
+        progress_kinds = wanted & {"work", "issue"}
+        if progress_kinds:
+            pdate = "COALESCE(a.activity_date, (si.occurred_at AT TIME ZONE 'UTC')::date)"
+            extra = ["COALESCE(a.organization_id, si.organization_id) = :organization_id"]
+            if progress_kinds == {"work"}:
+                extra.append("pa.parent_type = 'ACTIVITY'")
+            elif progress_kinds == {"issue"}:
+                extra.append("pa.parent_type = 'SITE_ISSUE'")
+            fragments.append(f"""
+                SELECT pa.id,
+                    CASE WHEN pa.parent_type = 'SITE_ISSUE' THEN 'issue' ELSE 'work' END AS kind,
+                    pa.parent_id,
+                    COALESCE(a.project_id, si.project_id) AS project_id,
+                    COALESCE(a.site_id, si.site_id) AS site_id,
+                    pa.media_object_key, pa.mime_type, pa.attachment_type,
+                    pa.caption, pa.ai_caption,
+                    COALESCE(a.work_type, si.narrative) AS title,
+                    NULL::numeric AS amount,
+                    {pdate} AS work_date, pa.created_at
+                FROM progress_attachments pa
+                LEFT JOIN activities a ON pa.parent_type = 'ACTIVITY' AND a.id = pa.parent_id AND a.deleted_at IS NULL
+                LEFT JOIN site_issues si ON pa.parent_type = 'SITE_ISSUE' AND si.id = pa.parent_id
+                WHERE {_scope("COALESCE(a.project_id, si.project_id)", "COALESCE(a.site_id, si.site_id)", pdate, extra)}
+            """)
+
+        if "attendance" in wanted:
+            extra = ["r.organization_id = :organization_id"]
+            fragments.append(f"""
+                SELECT la.id, 'attendance' AS kind, la.report_id AS parent_id,
+                    r.project_id, r.site_id,
+                    la.media_object_key, NULL::text AS mime_type, la.attachment_type,
+                    NULL::text AS caption, NULL::text AS ai_caption,
+                    'Attendance sheet' AS title, NULL::numeric AS amount,
+                    r.occurred_date AS work_date, la.created_at
+                FROM labour_attendance_attachments la
+                JOIN labour_attendance_reports r ON r.id = la.report_id
+                WHERE {_scope("r.project_id", "r.site_id", "r.occurred_date", extra)}
+            """)
+
+        if "material" in wanted:
+            extra = ["mi.organization_id = :organization_id"]
+            mdate = "COALESCE(mi.invoice_date, mi.created_at::date)"
+            fragments.append(f"""
+                SELECT ma.id, 'material' AS kind, ma.invoice_id AS parent_id,
+                    mi.project_id, mi.site_id,
+                    ma.media_object_key, NULL::text AS mime_type, ma.attachment_type,
+                    NULL::text AS caption, NULL::text AS ai_caption,
+                    COALESCE(mi.supplier_name, 'Delivery') AS title, mi.invoice_total AS amount,
+                    {mdate} AS work_date, ma.created_at
+                FROM material_invoice_attachments ma
+                JOIN material_invoices mi ON mi.id = ma.invoice_id
+                WHERE {_scope("mi.project_id", "mi.site_id", mdate, extra)}
+            """)
+
+        if "expense" in wanted:
+            extra = ["e.organization_id = :organization_id"]
+            fragments.append(f"""
+                SELECT ea.id, 'expense' AS kind, ea.expense_id AS parent_id,
+                    e.project_id, e.site_id,
+                    ea.media_object_key, NULL::text AS mime_type, ea.attachment_type,
+                    NULL::text AS caption, NULL::text AS ai_caption,
+                    COALESCE(e.description, 'Expense') AS title, e.amount AS amount,
+                    e.occurred_date AS work_date, ea.created_at
+                FROM expense_attachments ea
+                JOIN expenses e ON e.id = ea.expense_id
+                WHERE {_scope("e.project_id", "e.site_id", "e.occurred_date", extra)}
+            """)
+
+        union = " UNION ALL ".join(f"({f})" for f in fragments)
         total_row = (
-            await self._conn.execute(text(f"SELECT COUNT(*) AS total {source} WHERE {where_clause}"), params)
+            await self._conn.execute(text(f"SELECT COUNT(*) AS total FROM ({union}) g"), params)
         ).mappings().first()
         total = total_row["total"] if total_row else 0
 
-        query = f"""
-            SELECT
-                pa.id,
-                COALESCE(a.organization_id, si.organization_id) AS organization_id,
-                COALESCE(a.project_id, si.project_id) AS project_id,
-                COALESCE(a.site_id, si.site_id) AS site_id,
-                pa.parent_type,
-                pa.parent_id,
-                pa.media_object_key,
-                pa.attachment_type,
-                pa.mime_type,
-                pa.caption,
-                pa.ai_caption,
-                pa.role,
-                pa.captured_at,
-                pa.created_at,
-                COALESCE(a.activity_date, (si.occurred_at AT TIME ZONE 'UTC')::date) AS work_date,
-                COALESCE(a.work_type, si.narrative) AS parent_title
-            {source}
-            WHERE {where_clause}
-            ORDER BY work_date DESC NULLS LAST, pa.created_at DESC
-            LIMIT :limit OFFSET :offset
-        """
-        rows = (await self._conn.execute(text(query), params)).mappings().all()
+        rows = (
+            await self._conn.execute(
+                text(f"SELECT * FROM ({union}) g ORDER BY work_date DESC NULLS LAST, created_at DESC LIMIT :limit OFFSET :offset"),
+                params,
+            )
+        ).mappings().all()
         return [dict(r) for r in rows], total
 
     # ------------------------------------------------------------------
