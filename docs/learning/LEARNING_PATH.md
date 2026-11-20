@@ -92,6 +92,7 @@ Tick as done; each item also has a tracker row.
 - [ ] **Film Ep 1**, review it.
 - [ ] Play Ep 1 + sim ch. 2 and 3 as someone new (Owner); note what was unclear.
 - [x] **Ep 2 script** (20 Nov): [film/scripts/episode-02.md](film/scripts/episode-02.md).
+- [ ] Episodes 2 and 3 recorded by the brief [film/RECORDING.md](film/RECORDING.md) (real entries only, LRN-F15).
 - [ ] Ep 2 reviewed; then the "Setting up" chapter (3.2) played in the sample company, UX-81 fixed, film, play-test.
 - [ ] Ep 3 script, film; rewrite ch. 4 for Green Villa's day; play-test. Then Ep 4 with ch. 5 and 8; Ep 5 with ch. 6.
 - [ ] Ep 6 with its new chapter (3.3); Ep 7 with ch. 7; Ep 8 with ch. 9; Ep 9 with ch. 10.

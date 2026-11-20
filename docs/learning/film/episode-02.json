@@ -1,7 +1,7 @@
 {
   "episode": 2,
   "title": "Setting up",
-  "status": "DRAFT for Ilan's review (20 Nov 2026). Not filmed. Before filming, in the sample company: the drawing set put through Drawing check and kept in Documents, Places set from it, the schedule's quick plan, the materials workbook brought in (the 'Setting up' chapter, LRN-F9); Rates showing M sand's rise (UX-81); the owner's login named Ramesh Nair.",
+  "status": "DRAFT for Ilan's review (20 Nov 2026). Not filmed. Recording brief: RECORDING.md. Real data entry only: each setting-up step is done on the website in the sample company and filmed step by step (kind \"steps\").",
   "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 2's objective); the starter kit's drawing set (A-201, A-301), materials and suppliers workbook, Periyar's rate card and the building permit (apps/dashboard/public/learn/kit, kit.json's catches); the sample company's setup pages as they stand after the guided project's chapters 2 and 3, 20 Nov 2026. Construction practice: typical, to be checked by someone who has run sites.",
   "objective": "By the end you can list what must exist before day 1 and who sets it up: the company, the project and its sites, the team on WhatsApp, drawings and documents, items, suppliers and rates, the schedule and the material plan, and the daily report time.",
   "scenes": [
@@ -239,11 +239,8 @@
     },
     {
       "id": "drawingcheck",
-      "kind": "screen",
+      "kind": "steps",
       "part": "In Mesiri",
-      "shot": "ep02-drawing-check",
-      "url": "/planning/drawing-check?project={Green Villa}",
-      "wait": 9000,
       "eyebrow": "In Mesiri · Drawing check",
       "title": "The drawings, read before they are built",
       "beats": [
@@ -253,13 +250,35 @@
         "And the toilet upstairs is drawn smaller than the one below it, though toilets stack. Intended?",
         "Two questions for the architect, before a single brick."
       ],
-      "focus": [
+      "frames": [
         {
           "at": 0,
-          "full": true
+          "url": "/planning/drawing-check?project={Green Villa}",
+          "show": "Drawing check, empty",
+          "mark": "the drop area"
+        },
+        {
+          "at": 0,
+          "do": "drop the kit's 'Green Villa - drawing set rev A.pdf'",
+          "show": "the set being read, sheet by sheet"
+        },
+        {
+          "at": 1,
+          "show": "what it read: the sheets, rooms, levels, doors and windows",
+          "mark": "the list of sheets"
+        },
+        {
+          "at": 2,
+          "show": "the question about the roof: +660 on A-201, +655 on A-301",
+          "mark": "that question"
+        },
+        {
+          "at": 3,
+          "show": "the question about the first-floor toilet",
+          "mark": "that question"
         }
       ],
-      "boxes": []
+      "record": "Upload the real kit file in the sample company; film what Drawing check really says, and change the narration if its words differ."
     },
     {
       "id": "documents",
@@ -347,11 +366,8 @@
     },
     {
       "id": "bring",
-      "kind": "screen",
+      "kind": "steps",
       "part": "In Mesiri",
-      "shot": "ep02-bring-data",
-      "url": "/bring-data",
-      "wait": 5000,
       "eyebrow": "In Mesiri · Bring your data",
       "title": "The Excel goes in as it is",
       "beats": [
@@ -359,13 +375,31 @@
         "The workbook goes in as it is. Mesiri shows what it read first: the cement, Malabar and Joy Tiling are already in, so it leaves them alone.",
         "And anything else? Send the file on WhatsApp, with a line saying what it is."
       ],
-      "focus": [
+      "frames": [
         {
           "at": 0,
-          "full": true
+          "url": "/bring-data",
+          "show": "Bring your data: the steps in order",
+          "mark": "the materials step"
+        },
+        {
+          "at": 1,
+          "do": "Upload the Excel: the kit's 'Green Villa - materials and suppliers.xlsx'",
+          "show": "the preview before anything is saved",
+          "mark": "the rows marked already in Mesiri (Cement, Malabar, Joy Tiling)"
+        },
+        {
+          "at": 1,
+          "do": "Import",
+          "show": "what was added: items, vendors with Colour World's ₹12,500, opening stock, the least to hold"
+        },
+        {
+          "at": 2,
+          "show": "the WhatsApp line: send any other file on WhatsApp",
+          "mark": "that line"
         }
       ],
-      "boxes": []
+      "record": "Upload the real kit file in the sample company and film its real preview."
     },
     {
       "id": "ratecard",
@@ -417,11 +451,8 @@
     },
     {
       "id": "schedule",
-      "kind": "screen",
+      "kind": "steps",
       "part": "In Mesiri",
-      "shot": "ep02-schedule",
-      "url": "/planning/schedule?project={Green Villa}",
-      "wait": 6000,
       "eyebrow": "In Mesiri · Schedule",
       "title": "When each part of the work happens",
       "beats": [
@@ -429,13 +460,37 @@
         "What it needs is dates. Quick plan lays the sections one after another from the start day, each linked to the one before, so a delay moves the rest. Anil sets the days for each, then drags the bars where work overlaps, like the wiring alongside the walls.",
         "From now on, late means something: late against this plan, and how many days it pushes the handover."
       ],
-      "focus": [
+      "frames": [
         {
           "at": 0,
-          "full": true
+          "url": "/planning/schedule?project={Green Villa}",
+          "show": "9 sections without dates; handover 31 Jul 2027 from the contract",
+          "mark": "the handover"
+        },
+        {
+          "at": 1,
+          "do": "Quick plan",
+          "show": "the dialog: the sections in order, days for each, from 2 Nov 2026",
+          "mark": "the days column"
+        },
+        {
+          "at": 1,
+          "do": "set the days (Anil's judgement; say them as filmed), Save",
+          "show": "the bars, one after another"
+        },
+        {
+          "at": 1,
+          "do": "drag Electrical to overlap Masonry",
+          "show": "wiring alongside the walls",
+          "mark": "the two bars"
+        },
+        {
+          "at": 2,
+          "show": "the forecast finish against the handover",
+          "mark": "the forecast"
         }
       ],
-      "boxes": []
+      "record": "Do it in the sample company on the website; use the days actually set in the narration if they are said."
     },
     {
       "id": "materialplan",
@@ -462,26 +517,47 @@
     },
     {
       "id": "team",
-      "kind": "screen",
+      "kind": "steps",
       "part": "In Mesiri",
-      "shot": "ep02-team",
-      "url": "/team",
-      "wait": 5000,
       "eyebrow": "In Mesiri · Team",
       "title": "Everyone, with a role and a number",
       "beats": [
         "Last, the people. Ramesh adds the team: Anil, Meera and Ravi, each with a role, and the projects they work on.",
         "The role decides what each one sees. Ravi sees his sites' day, but never the rupees. Meera sees the bills and the payments.",
-        "And the number decides who can talk to Mesiri. Look: no one here has a WhatsApp number yet, and Mesiri says so. Until Ravi's is in, his first message on day one goes nowhere.",
+        "And the number decides who can talk to Mesiri. Look: no one here has a WhatsApp number yet, and Mesiri says so. Ramesh opens Ravi's menu and adds his number. Until it is in, Ravi's first message on day one goes nowhere.",
         "The report time is set once for the company: nine every evening. From day one, the owner and the client get the day's report without asking."
       ],
-      "focus": [
+      "frames": [
         {
           "at": 0,
-          "full": true
+          "url": "/team",
+          "show": "the team: Anil, Meera, Ravi and the owner, roles and projects",
+          "mark": "the list"
+        },
+        {
+          "at": 1,
+          "show": "what each role sees (the role column)",
+          "mark": "Ravi's role"
+        },
+        {
+          "at": 2,
+          "show": "the warning: no one has a WhatsApp number",
+          "mark": "the warning"
+        },
+        {
+          "at": 2,
+          "do": "Ravi's ⋯ menu → add his number; type a number; do NOT save",
+          "show": "the number field filled",
+          "note": "the sample company never takes a WhatsApp number (nothing is sent from it): film the form, then Cancel"
+        },
+        {
+          "at": 3,
+          "url": "/company",
+          "show": "the company page: the letterhead and the report time",
+          "mark": "the report time"
         }
       ],
-      "boxes": []
+      "record": "In the sample company a WhatsApp number cannot be saved, on purpose; film the filled form and Cancel, and keep the narration's 'until Ravi's is in'."
     },
     {
       "id": "wrong",

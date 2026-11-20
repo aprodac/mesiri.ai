@@ -45,6 +45,27 @@ def main(ep: str) -> None:
             shown.append(s["note"])
         if shown:
             out += ["On screen:", "", *[f"- {x}" for x in shown], ""]
+        if s.get("capture"):
+            c = s["capture"]
+            out += ["**Record (real reply):**", "",
+                    f"- Via: {c['via']}, as {c['as']}, on day {c['day']}",
+                    f"- Send: `{c['send']}`" + (f" (shown as {c['shown_as']})" if c.get("shown_as") else ""),
+                    f"- Then: {c['tap']}", f"- {c['real']}", ""]
+        if s.get("frames"):
+            out += ["**Record (on the website, step by step):**", ""]
+            for f in s["frames"]:
+                bits = [f"beat {f['at'] + 1}"]
+                if f.get("url"):
+                    bits.append(f"open `{f['url']}`")
+                if f.get("do"):
+                    bits.append(f"do: {f['do']}")
+                bits.append(f"picture: {f['show']}")
+                if f.get("mark"):
+                    bits.append(f"light: {f['mark']}")
+                if f.get("note"):
+                    bits.append(f"({f['note']})")
+                out.append("- " + " · ".join(bits))
+            out += ["", f"*{s['record']}*", ""] if s.get("record") else [""]
         out += ["Narration:", "", "\n>\n".join(f"> {b}" for b in s["beats"]), ""]
     target = HERE / "scripts" / f"episode-{ep}.md"
     target.parent.mkdir(exist_ok=True)

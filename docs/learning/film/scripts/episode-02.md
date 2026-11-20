@@ -2,11 +2,11 @@
 
 > Made from `episode-02.json` by `script_md.py`; edit the JSON, then run it again.
 
-**Status:** DRAFT for Ilan's review (20 Nov 2026). Not filmed. Before filming, in the sample company: the drawing set put through Drawing check and kept in Documents, Places set from it, the schedule's quick plan, the materials workbook brought in (the 'Setting up' chapter, LRN-F9); Rates showing M sand's rise (UX-81); the owner's login named Ramesh Nair.
+**Status:** DRAFT for Ilan's review (20 Nov 2026). Not filmed. Recording brief: RECORDING.md. Real data entry only: each setting-up step is done on the website in the sample company and filmed step by step (kind "steps").
 
 **Objective:** By the end you can list what must exist before day 1 and who sets it up: the company, the project and its sites, the team on WhatsApp, drawings and documents, items, suppliers and rates, the schedule and the material plan, and the daily report time.
 
-**Length:** 17 scenes, 1321 words of narration (about 9 minutes)
+**Length:** 17 scenes, 1329 words of narration (about 9 minutes)
 
 ## Cold open
 
@@ -133,7 +133,17 @@ Narration:
 
 ### 7. The drawings, read before they are built
 
-*In Mesiri · Drawing check · screen · screen `/planning/drawing-check?project={Green Villa}`*
+*In Mesiri · Drawing check · steps*
+
+**Record (on the website, step by step):**
+
+- beat 1 · open `/planning/drawing-check?project={Green Villa}` · picture: Drawing check, empty · light: the drop area
+- beat 1 · do: drop the kit's 'Green Villa - drawing set rev A.pdf' · picture: the set being read, sheet by sheet
+- beat 2 · picture: what it read: the sheets, rooms, levels, doors and windows · light: the list of sheets
+- beat 3 · picture: the question about the roof: +660 on A-201, +655 on A-301 · light: that question
+- beat 4 · picture: the question about the first-floor toilet · light: that question
+
+*Upload the real kit file in the sample company; film what Drawing check really says, and change the narration if its words differ.*
 
 Narration:
 
@@ -191,7 +201,16 @@ Narration:
 
 ### 11. The Excel goes in as it is
 
-*In Mesiri · Bring your data · screen · screen `/bring-data`*
+*In Mesiri · Bring your data · steps*
+
+**Record (on the website, step by step):**
+
+- beat 1 · open `/bring-data` · picture: Bring your data: the steps in order · light: the materials step
+- beat 2 · do: Upload the Excel: the kit's 'Green Villa - materials and suppliers.xlsx' · picture: the preview before anything is saved · light: the rows marked already in Mesiri (Cement, Malabar, Joy Tiling)
+- beat 2 · do: Import · picture: what was added: items, vendors with Colour World's ₹12,500, opening stock, the least to hold
+- beat 3 · picture: the WhatsApp line: send any other file on WhatsApp · light: that line
+
+*Upload the real kit file in the sample company and film its real preview.*
 
 Narration:
 
@@ -219,7 +238,17 @@ Narration:
 
 ### 13. When each part of the work happens
 
-*In Mesiri · Schedule · screen · screen `/planning/schedule?project={Green Villa}`*
+*In Mesiri · Schedule · steps*
+
+**Record (on the website, step by step):**
+
+- beat 1 · open `/planning/schedule?project={Green Villa}` · picture: 9 sections without dates; handover 31 Jul 2027 from the contract · light: the handover
+- beat 2 · do: Quick plan · picture: the dialog: the sections in order, days for each, from 2 Nov 2026 · light: the days column
+- beat 2 · do: set the days (Anil's judgement; say them as filmed), Save · picture: the bars, one after another
+- beat 2 · do: drag Electrical to overlap Masonry · picture: wiring alongside the walls · light: the two bars
+- beat 3 · picture: the forecast finish against the handover · light: the forecast
+
+*Do it in the sample company on the website; use the days actually set in the narration if they are said.*
 
 Narration:
 
@@ -245,7 +274,17 @@ Narration:
 
 ### 15. Everyone, with a role and a number
 
-*In Mesiri · Team · screen · screen `/team`*
+*In Mesiri · Team · steps*
+
+**Record (on the website, step by step):**
+
+- beat 1 · open `/team` · picture: the team: Anil, Meera, Ravi and the owner, roles and projects · light: the list
+- beat 2 · picture: what each role sees (the role column) · light: Ravi's role
+- beat 3 · picture: the warning: no one has a WhatsApp number · light: the warning
+- beat 3 · do: Ravi's ⋯ menu → add his number; type a number; do NOT save · picture: the number field filled · (the sample company never takes a WhatsApp number (nothing is sent from it): film the form, then Cancel)
+- beat 4 · open `/company` · picture: the company page: the letterhead and the report time · light: the report time
+
+*In the sample company a WhatsApp number cannot be saved, on purpose; film the filled form and Cancel, and keep the narration's 'until Ravi's is in'.*
 
 Narration:
 
@@ -253,7 +292,7 @@ Narration:
 >
 > The role decides what each one sees. Ravi sees his sites' day, but never the rupees. Meera sees the bills and the payments.
 >
-> And the number decides who can talk to Mesiri. Look: no one here has a WhatsApp number yet, and Mesiri says so. Until Ravi's is in, his first message on day one goes nowhere.
+> And the number decides who can talk to Mesiri. Look: no one here has a WhatsApp number yet, and Mesiri says so. Ramesh opens Ravi's menu and adds his number. Until it is in, Ravi's first message on day one goes nowhere.
 >
 > The report time is set once for the company: nine every evening. From day one, the owner and the client get the day's report without asking.
 

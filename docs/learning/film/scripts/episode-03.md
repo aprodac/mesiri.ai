@@ -2,11 +2,11 @@
 
 > Made from `episode-03.json` by `script_md.py`; edit the JSON, then run it again.
 
-**Status:** DRAFT for Ilan's review (20 Nov 2026). Not filmed. Before filming: the sample company played to day 2 (a Monday) as the owner; the WhatsApp messages drawn as chats (the words and cards to be checked against the assistant's real replies); the daily report PDF shot as a paper.
+**Status:** DRAFT for Ilan's review (20 Nov 2026). Not filmed. Recording brief: RECORDING.md. Real data entry only: every WhatsApp card is Mesiri's real reply (capture), every website entry is filmed step by step (kind "steps").
 
 **Objective:** By the end you can follow one site day from Ravi's first WhatsApp message to the owner's evening report, and say what each kind of record is for: attendance, work done, material used, money spent, and the day's conditions.
 
-**Length:** 13 scenes, 990 words of narration (about 7 minutes)
+**Length:** 14 scenes, 1086 words of narration (about 7 minutes)
 
 ## Cold open
 
@@ -66,6 +66,13 @@ On screen:
 
 - The words and the card are drawn for the film; the assistant's own reply is checked before filming.
 
+**Record (real reply):**
+
+- Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 2
+- Send: `Annex: Manoj, Satheesh, Vinod present. Rahim crew 4 helpers`
+- Then: Save
+- Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
+
 Narration:
 
 > At five past eight, Ravi tells Mesiri who came. He types it the way he would say it.
@@ -81,6 +88,13 @@ Narration:
 On screen:
 
 - Work that will be covered (steel, conduits, pipes) is photographed before it is.
+
+**Record (real reply):**
+
+- Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 2
+- Send: `(attach the photo of the plinth beam steel) Annex plinth beam steel before pour` (shown as 📷 a photo with one line)
+- Then: Save
+- Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
 
 Narration:
 
@@ -98,9 +112,16 @@ On screen:
 
 - A voice note, a typed line or a photo of the work: the same card.
 
+**Record (real reply):**
+
+- Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 2
+- Send: `അനക്സ്: പ്ലിന്ത് ബീം 24 മീറ്റർ കഴിഞ്ഞു. 10 ചാക്ക് സിമന്റ്, 1.5 ക്യൂബിക് മീറ്റർ മെറ്റൽ, 0.8 എം സാൻഡ്, 120 കിലോ കമ്പി ഉപയോഗിച്ചു. ചായക്ക് 650 രൂപ.` (shown as 🎤 Ravi's voice note, as Mesiri heard it (the Malayalam words above; to be checked by a Malayalam speaker))
+- Then: Save
+- Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
+
 Narration:
 
-> At twenty to six, the beam is done. Ravi is tired, and he does not type. He sends a voice note, in Malayalam.
+> At twenty to six, the beam is done. Ravi is tired, and he does not type. He sends a voice note, in Malayalam. Mesiri hears it as these words.
 >
 > Mesiri understands it and answers with one card. The work: twenty-four running metres of plinth beam. The material used: ten bags of cement, aggregate, sand, and a hundred and twenty kilos of steel.
 >
@@ -115,6 +136,13 @@ Narration:
 On screen:
 
 - A request waits for the office; the site can ask how it is going.
+
+**Record (real reply):**
+
+- Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 2
+- Send: `Main block: cement over, only 2 bags this morning. Conduit work half done. Need 100 bags cement`
+- Then: Save
+- Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
 
 Narration:
 
@@ -132,6 +160,13 @@ On screen:
 
 - Hours lost are counted in the report, beside the work.
 
+**Record (real reply):**
+
+- Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 10
+- Send: `Annex: heavy rain from 11, 4 hours lost. Block work 9 sqm only`
+- Then: Save
+- Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
+
 Narration:
 
 > Not every day goes to plan. Eight days later, it rains on all four sites from eleven, and four hours are lost.
@@ -140,9 +175,32 @@ Narration:
 >
 > Without that line, the half day looks like a slow crew. With it, the report says rain. And months later, when someone asks why the job ran late, the rain is on record, day by day.
 
+### 8. The same day, entered in the office
+
+*In Mesiri · The website · steps*
+
+**Record (on the website, step by step):**
+
+- beat 1 · open `/labour?project={Green Villa}` · picture: the Attendance page, the Annex · light: [data-guide="labour.add"] · (day 2 picked)
+- beat 2 · do: open the day's attendance for the Annex; tick Manoj, Satheesh, Vinod present; add the contractor's crew: Rahim, helpers, 4 · picture: the form filled, before Save · light: the crew line
+- beat 3 · do: Save · picture: the saved day, 7 on site · light: the day's total
+- beat 4 · open `/today` · picture: Today: the Annex, 7 workers · light: the Annex's card
+
+*Film it on a copy of the sample company where Ravi's morning message was not sent (or Cancelled), so the website makes the record. Clicks as the page has them on the day: the frames say what each picture must show.*
+
+Narration:
+
+> Not every site has a phone that works all day. When Ravi calls the office instead, Anil can put the same day in on the website.
+>
+> On Attendance, he picks the Annex and the day, and ticks who came: Manoj, Satheesh, Vinod. Rahim's crew goes in as a count: four.
+>
+> He saves, and it is the same record Ravi's message would have made: the same wages, the same report.
+>
+> One record, two ways in. The site talks on WhatsApp; the office types on the website. Mesiri never counts it twice.
+
 ## Who does what, when
 
-### 8. Who does what with the day
+### 9. Who does what with the day
 
 *One day, five people · people*
 
@@ -167,7 +225,7 @@ Narration:
 
 ## In Mesiri
 
-### 9. Every site's day, as it happens
+### 10. Every site's day, as it happens
 
 *In Mesiri · Today · screen · screen `/today`*
 
@@ -179,7 +237,7 @@ Narration:
 >
 > And the problems come first: cement at the Main block, before anyone has picked up a phone.
 
-### 10. What should still be there
+### 11. What should still be there
 
 *In Mesiri · Stock · screen · screen `/materials`*
 
@@ -191,7 +249,7 @@ Narration:
 >
 > The Main block: no cement. Red, below its least of a hundred bags. The count says what Ravi said, without anyone counting bags.
 
-### 11. Nine o'clock: the day, on one page
+### 12. Nine o'clock: the day, on one page
 
 *In Mesiri · The daily report · screen · screen `/reports`*
 
@@ -207,7 +265,7 @@ Narration:
 
 ## What can go wrong
 
-### 12. Five ways a site day is lost
+### 13. Five ways a site day is lost
 
 *What can go wrong · leaks*
 
@@ -234,7 +292,7 @@ Narration:
 
 ## Recap and check yourself
 
-### 13. Three questions
+### 14. Three questions
 
 *Check yourself · questions*
 

@@ -17,6 +17,9 @@ from the JSON). English narration first (agreed 20 Nov).
 **Check before using with customers:** the business facts come from the field guides, which are drafts: typical
 figures, to be checked by someone who has run sites.
 
+**Recording an episode:** [RECORDING.md](RECORDING.md), the brief (real entries only, what the tools still need, each
+episode's checklist).
+
 ## The A-to-Z map (the storyboard)
 
 `az-map/index.html` shows the sample company's whole planned project (62 days, 1,477 entries, from
