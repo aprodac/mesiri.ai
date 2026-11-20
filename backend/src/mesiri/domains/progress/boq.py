@@ -60,7 +60,9 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Totals over lines that already carry ``line_amounts``.
 
     ``margin`` is only given when every line has both a contract value and a budget cost;
-    otherwise the missing counts say why it is absent.
+    otherwise the missing counts say why it is absent. ``margin_priced`` is the margin of the lines that have both
+    (with their ``priced_contract_value``), so a half-priced BOQ can say "so far, on the priced lines, not final"
+    instead of nothing, and never counts an unpriced line's contract value as profit (test of 20 Nov 2026).
     """
     lines = list(lines)
     contract = [ln["contract_value"] for ln in lines if ln["contract_value"] is not None]
@@ -70,6 +72,7 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     contract_value = sum(contract, Decimal(0)) if contract else None
     budget_cost = sum(budget, Decimal(0)) if budget else None
     complete = lines and missing_client == 0 and missing_budget == 0
+    priced = [ln for ln in lines if ln["contract_value"] is not None and ln["budget_cost"] is not None]
     progress = {}
     if any("earned" in ln for ln in lines):  # CC-04: lines that carry the work done
         earned = [ln["earned"] for ln in lines if ln.get("earned") is not None]
@@ -80,6 +83,8 @@ def totals(lines: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         "contract_value": contract_value,
         "budget_cost": budget_cost,
         "margin": contract_value - budget_cost if complete else None,
+        "margin_priced": sum((ln["contract_value"] - ln["budget_cost"] for ln in priced), Decimal(0)) if priced else None,
+        "priced_contract_value": sum((ln["contract_value"] for ln in priced), Decimal(0)) if priced else None,
         "lines_without_client_rate": missing_client,
         "lines_without_budget_rate": missing_budget,
     }

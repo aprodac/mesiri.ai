@@ -76,6 +76,23 @@ function Money({ value, title }: { value: string | null; title?: string }) {
   return <span title={[formatRupees(value), title].filter(Boolean).join(' · ')}>{formatRupeesShort(value)}</span>
 }
 
+/** The margin figure. Every line priced: the margin and its share of the contract. Some lines without a rate: the
+ *  margin of the priced lines, marked not final (the import's preview says the same), never a blank and never an
+ *  unpriced line's value counted as margin (20 Nov test). */
+function marginStat(totals: BoqTotals): Stat {
+  const full = totals.margin !== null
+  const value = full ? totals.margin : totals.margin_priced ?? null
+  const base = full ? totals.contract_value : totals.priced_contract_value ?? null
+  const pct = marginPct(value, base)
+  const hint = full
+    ? pct !== null ? `${pct}% of contract` : undefined
+    : value !== null ? `${pct !== null ? `${pct}% ` : ''}so far · not final` : undefined
+  return {
+    label: 'Margin', explain: { term: 'margin' }, value: formatRupees(value), kind: 'margin', hint,
+    tone: value === null ? 'default' : Number(value) < 0 ? 'bad' : full ? 'good' : 'attention',
+  }
+}
+
 function TotalsStrip({ totals }: { totals: BoqTotals }) {
   // UX-15: the figures draw what they mean: margin by colour, the budget's share of the contract and the budget
   // earned so far as bars, the priced lines as "x of y" (amber while some still have no rate).
@@ -90,7 +107,7 @@ function TotalsStrip({ totals }: { totals: BoqTotals }) {
       label: 'Budget cost', value: formatRupees(totals.budget_cost), kind: 'bill', explain: { term: 'budget cost' },
       share: contract && budget !== null ? budget / contract : undefined, hint: contract && budget !== null ? `${Math.round((budget / contract) * 100)}% of contract` : undefined,
     },
-    { label: 'Margin', explain: { term: 'margin' }, value: formatRupees(totals.margin), kind: 'margin', tone: totals.margin === null ? 'default' : Number(totals.margin) < 0 ? 'bad' : 'good', hint: marginPct(totals.margin, totals.contract_value) !== null ? `${marginPct(totals.margin, totals.contract_value)}% of contract` : undefined },
+    marginStat(totals),
     ...(totals.earned !== undefined
       ? [{
           label: 'Earned so far', explain: { term: 'earned so far' }, value: formatRupees(totals.earned), kind: 'progress' as const,

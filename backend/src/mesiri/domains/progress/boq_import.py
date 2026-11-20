@@ -388,6 +388,11 @@ class Report:
     problems: int = 0
     contract_value: Decimal = Decimal(0)
     budget_cost: Decimal = Decimal(0)
+    #: The lines with both a client rate and a budget: their contract value and margin, and how many lines lack a
+    #: budget (boq.totals' ``margin_priced``: an unpriced line's value is never shown as margin).
+    priced_contract_value: Decimal = Decimal(0)
+    margin_priced: Decimal = Decimal(0)
+    lines_without_budget_rate: int = 0
     dated_sections: int = 0
     links: int = 0
     #: CC-13: lines whose materials per unit were set / were already the same.
@@ -427,6 +432,8 @@ def _out(report: Report, sheet: Sheet, *, saved: bool) -> dict[str, Any]:
         "sections_added": report.sections_added, "sections_found": report.sections_found,
         "lines_added": report.lines_added, "lines_kept": report.lines_kept, "problems": report.problems,
         "contract_value": str(report.contract_value), "budget_cost": str(report.budget_cost),
+        "priced_contract_value": str(report.priced_contract_value), "margin_priced": str(report.margin_priced),
+        "lines_without_budget_rate": report.lines_without_budget_rate,
         "dated_sections": report.dated_sections, "links": report.links,
         "materials_sheet": sheet.norms_sheet, "material_lines_set": report.material_lines_set,
         "material_lines_kept": report.material_lines_kept,
@@ -518,6 +525,11 @@ async def _apply(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.UUID, u
                 entry["value"] += money["contract_value"]
             if money["budget_cost"] is not None:
                 report.budget_cost += money["budget_cost"]
+            else:
+                report.lines_without_budget_rate += 1
+            if money["margin"] is not None:
+                report.priced_contract_value += money["contract_value"]
+                report.margin_priced += money["margin"]
             report.note(r.row, "added", work, None, entry["name"])
         except HTTPException as exc:
             report.note(r.row, "problem", label, str(exc.detail), r.section or current)

@@ -60,6 +60,17 @@ def test_totals_margin_only_when_every_line_is_priced():
     assert partial["lines_without_client_rate"] == 0
 
 
+def test_a_half_priced_boq_gives_the_margin_of_its_priced_lines_only():
+    """20 Nov test: the unpriced line's ₹250 of contract value is never counted as margin."""
+    priced = {**_line("10", client="100", labour="80"), **line_amounts(_line("10", client="100", labour="80"))}
+    half = {**_line("5", client="50"), **line_amounts(_line("5", client="50"))}
+    partial = totals([priced, half])
+    assert partial["margin"] is None  # the full margin still waits for every line
+    assert partial["margin_priced"] == Decimal("200.00")
+    assert partial["priced_contract_value"] == Decimal("1000.00")
+    assert totals([half])["margin_priced"] is None
+
+
 def test_totals_of_nothing():
     empty = totals([])
     assert empty["line_count"] == 0

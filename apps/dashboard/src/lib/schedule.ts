@@ -213,6 +213,10 @@ export interface BoqImportReport {
   problems: number
   contract_value: string
   budget_cost: string
+  /** The lines with both a client rate and your own cost: their value and margin (an unpriced line is never margin). */
+  priced_contract_value?: string
+  margin_priced?: string
+  lines_without_budget_rate?: number
   dated_sections: number
   links: number
   sections: { id: string; name: string; lines: number; contract_value: string; start: string | null; finish: string | null }[]
