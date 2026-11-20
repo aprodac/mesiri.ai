@@ -24,6 +24,8 @@ import datetime as dt
 import uuid
 from typing import Any
 
+from mesiri.application.learn import lake_view
+
 #: The first project and its sites: the company is created with them (``create_company``).
 DEMO_PROJECT = "Green Villa"
 DEMO_SITES = ("Main block", "Annex")
@@ -110,13 +112,6 @@ DEMO_ORDERS = ((2, "cement", 800, 410), (3, "steel", 24000, 68))
 DEMO_RATE_NOW = {(2, "cement"): (420, 2), (None, "m sand"): (1750, 3)}  # None: at every site
 #: A supplier's bill for more than its deliveries come to: (vendor, how many of its first deliveries, extra billed).
 DEMO_BILL = ("Thrissur Blocks", 1, 2400, "TB/2611")
-#: The estimate (BOQ) of the second project, per work of DEMO_WORK: planned quantity, client rate, labour rate,
-#: material rate. The work recorded on site is counted on these lines, except the newest day's (the office's tap).
-DEMO_BOQ = {
-    "Column casting": (60, 9800, 1900, 5600), "Slab shuttering": (900, 620, 260, 210), "Slab reinforcement": (14000, 92, 12, 70),
-    "Slab concreting": (240, 8900, 900, 6100), "Excavation": (600, 480, 300, 0), "Raft reinforcement": (22000, 90, 11, 70),
-    "Raft concreting": (380, 8700, 850, 6000), "Retaining wall": (520, 640, 270, 220),
-}
 #: Bags of cement a cubic metre of concrete uses (the lines whose work is concreting).
 DEMO_CEMENT_PER_CUM = 8
 #: Advances still out: (worker, amount, days back).
@@ -126,9 +121,9 @@ DEMO_ADVANCES = (("Rajan", 3000, 5), ("Biju", 5000, 3), ("Shaji", 1500, 2))
 #: site (opening float). The sample company's player uses the same bank account (learn/sandbox_player.py).
 DEMO_BANK = ("Federal Bank current account", "Federal Bank", 2500000)
 DEMO_PETTY_FLOAT = 20000
-#: The second project's client and contract.
-DEMO_CLIENT = {"name": "Lake View Builders", "contact_person": "Mr. Varghese", "address": "Kakkanad, Kochi"}
-DEMO_CONTRACT = {"contract_no": "LVB/2026/014", "contract_value": 42000000, "retention_pct": 5, "gst_pct": 18}
+#: The second project's client and contract: Lake View's own paperwork (learn/lake_view.py, also the 62-day plan's).
+DEMO_CLIENT = lake_view.CLIENT
+DEMO_CONTRACT = lake_view.CONTRACT
 
 
 async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[dict[str, int], list[str]]:
@@ -359,26 +354,30 @@ async def _stories(call: Any, post: Any, *, sites: list[tuple[str, str]], projec
 
     if len(projects) < 2:
         return
-    # The second project's estimate: a section per site, a line per work, the site's work counted on its line.
+    # The second project's estimate, the whole of it (learn/lake_view.py): site works, then per tower its
+    # substructure, structure, and masonry and plaster; the site's work counted on its own tower's line.
     project = projects[1]
     lines: dict[tuple[str, str], str] = {}  # (site id, work) -> line id
     cement = material("cement")
-    for at, (site_project, site) in enumerate(sites):
-        if site_project != project:
+    tower_site = {name: site for at, (site_project, site) in enumerate(sites)
+                  if site_project == project for name in [(DEMO_SITES + DEMO_SITES_2)[at]]}
+    for name, tower, rows in lake_view.ESTIMATE:
+        site = tower_site.get(tower) if tower else None
+        if tower and not site:
             continue
         section = await post("estimate section", f"/projects/{project}/boq/sections",
-                             {"name": f"Structure · {(DEMO_SITES + DEMO_SITES_2)[at]}", "site_id": site})
+                             {"name": name, **({"site_id": site} if site else {})})
         if not section or not section.get("id"):
             continue
-        for work, _narrative, unit, _per_day in DEMO_WORK[at]:
-            planned, client_rate, labour_rate, material_rate = DEMO_BOQ[work]
+        for work, unit, planned, client_rate, labour_rate, material_rate in rows:
             line = await post("estimate line", f"/projects/{project}/boq/sections/{section['id']}/lines", {
                 "work": work, "unit": unit, "planned_quantity": planned, "client_rate": client_rate,
                 "labour_rate": labour_rate, "material_rate": material_rate})
             if not line or not line.get("id"):
                 continue
-            lines[(site, work)] = str(line["id"])
-            if cement and unit == "cum" and "concreting" in work.lower() or work == "Column casting" and cement:
+            if site:
+                lines[(site, work)] = str(line["id"])
+            if cement and unit == "cum" and ("concreting" in work.lower() or work in ("Column casting", "PCC")):
                 await call("estimate norm", "PUT", f"/projects/{project}/boq/lines/{line['id']}/norms",
                            {"norms": [{"material_id": cement[0], "quantity_per_unit": DEMO_CEMENT_PER_CUM, "wastage_pct": 3}]})
     recorded = await call("work to count", "GET", f"/projects/{project}/boq/work", params={"unlinked": True, "limit": 500})
@@ -389,8 +388,9 @@ async def _stories(call: Any, post: Any, *, sites: list[tuple[str, str]], projec
             await call("work counted", "PUT", f"/projects/{project}/boq/work/{item['id']}", {"line_id": line})
 
     # The client, the contract, and a first bill sent for the work measured up to a week ago.
-    if await call("contract", "PUT", f"/projects/{project}/contract", {"new_client": DEMO_CLIENT, **DEMO_CONTRACT,
-                                                                       "signed_on": (today - dt.timedelta(days=30)).isoformat()}):
+    if await call("contract", "PUT", f"/projects/{project}/contract", {
+            "new_client": DEMO_CLIENT, **DEMO_CONTRACT,
+            "signed_on": (today - dt.timedelta(days=lake_view.SIGNED_DAYS_AGO)).isoformat()}):
         week_ago = (today - dt.timedelta(days=7)).isoformat()
         bill = await post("client bill", f"/projects/{project}/ra-bills", {"bill_date": week_ago, "period_to": week_ago})
         if bill and bill.get("id"):

@@ -82,3 +82,41 @@ def test_a_failing_route_is_counted_never_raised() -> None:
     seeded, failed = _run(_FakeApi(fail="/progress/issues"))
     assert seeded["worker"] == len(sample_story.DEMO_WORKERS)
     assert any(f.startswith("issue: RuntimeError") for f in failed)
+
+
+def test_lake_view_gets_its_whole_estimate_and_its_contract() -> None:
+    """Project bible section 8 item 3: Lake View's full estimate (learn/lake_view.py) goes in as its BOQ, every line,
+    each tower's sections on its own site; the contract is the estimate's total with its terms (TDS, no advance)."""
+    from mesiri.application.learn import lake_view
+
+    api = _FakeApi()
+    _, failed = _run(api)
+    assert failed == []
+    sections = [b for m, p, b in api.calls if m == "POST" and p.endswith("/boq/sections")]
+    assert [s["name"] for s in sections] == [name for name, _t, _l in lake_view.ESTIMATE]
+    assert [bool(s.get("site_id")) for s in sections] == [tower is not None for _n, tower, _l in lake_view.ESTIMATE]
+    lines = [b for m, p, b in api.calls if m == "POST" and "/boq/sections/" in p and p.endswith("/lines")]
+    assert [(b["work"], b["planned_quantity"], b["client_rate"]) for b in lines] == [
+        (w, q, r) for _n, _t, rows in lake_view.ESTIMATE for w, _u, q, r, _lr, _mr in rows]
+    contract = next(b for m, p, b in api.calls if m == "PUT" and p.endswith("/contract"))
+    assert contract["contract_value"] == sum(b["planned_quantity"] * b["client_rate"] for b in lines)
+    assert (contract["tds_pct"], contract.get("mobilisation_advance")) == (2, None)
+
+
+def test_lake_view_lines_hold_all_the_work_the_story_counts_on_them() -> None:
+    """Every work Lake View's sites record, in the seed's two weeks and the 62 days, has a line on its tower, and the
+    line's planned quantity is more than all of it: a line never shows more done than its tower holds."""
+    from mesiri.application.learn import lake_view, sample_plan
+
+    for key, tower in (("tower_a", "Tower A"), ("tower_b", "Tower B")):
+        planned = {w: q for w, _u, q, *_ in lake_view.lines_of(tower)}
+        at = (sample_story.DEMO_SITES + sample_story.DEMO_SITES_2).index(tower)
+        done: dict[str, float] = {}
+        works = sample_story.DEMO_WORK[at]
+        for work, _n, _u, per_day in works:  # the seed's 14 days share the site's works in turn
+            done[work] = done.get(work, 0) + per_day * (14 // len(works) + 1)
+        for stage in sample_plan.STAGES[key]:
+            done[stage.work] = done.get(stage.work, 0) + stage.per_day * stage.days
+        for work, qty in done.items():
+            assert work in planned, f"{tower}: no line for {work}"
+            assert qty < planned[work], f"{tower}: {work} {qty} done against {planned[work]} planned"

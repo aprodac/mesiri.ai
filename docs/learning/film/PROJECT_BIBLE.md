@@ -45,16 +45,17 @@ Kerala Tiles and Sanitary; subcontractor: Joy Tiling Works.
 
 | | Green Villa | Lake View Apartments |
 |---|---|---|
-| What | A two-storey villa (Main block) with a single-storey Annex | A residential block, Towers A and B |
+| What | A two-storey villa (Main block) with a single-storey Annex | Two residential towers (A and B), each a basement, ground and six floors; **civil works only** (substructure, frame, block work, plastering, waterproofing) |
 | Client | Dr. Anand Krishnan, Puthur Road, Thrissur | Lake View Builders (Mr. Varghese), Kakkanad, Kochi |
 | Agreement | GV/2026/007, signed 20 Oct 2026 | LVB/2026/014 |
-| Value | ₹82,06,050 + 18% GST (the estimate's 34 lines) | ₹4,20,00,000 + 18% GST |
+| Value | ₹82,06,050 + 18% GST (the estimate's 34 lines) | ₹5,34,72,800 + 18% GST (the estimate's 38 lines, `learn/lake_view.py`) |
 | Dates | Starts 2 Nov 2026; handover 31 Jul 2027 (9 months) | Running; frame of floors 3 to 6 in the 62 days |
-| Advance | 10% on signing, recovered at 10% of each RA bill | (to state) |
+| Advance | 10% on signing, recovered at 10% of each RA bill | None: the developer pays each month |
 | Retention | 5% of each RA bill, released after the defects period | 5% |
-| Defects period | 12 months from handover | (to state) |
+| Defects period | 12 months from handover | 12 months from handover |
 | Billing | Monthly RA bills on measured work at BOQ rates; paid in 15 days | Running bills (days 23, 51 in the plan) |
-| Delay | ₹25,000 a week beyond handover, at most 5% of the value | (to state) |
+| Delay | ₹25,000 a week beyond handover, at most 5% of the value | ₹50,000 a week, at most 5% of the value |
+| TDS | None (the client is a person) | 2% deducted from each payment (the client is a company) |
 
 ## 5. Documents and drawings: the register
 
@@ -130,7 +131,7 @@ makes it from the records; nobody types it.
 | Machines | None | A mixer and a vibrator per site; a hired JCB for the Annex; a tipper (batch 2) |
 | Money accounts | None | Federal Bank current account; petty cash per site (D5) |
 | Clients | Lake View Builders | Dr. Anand Krishnan (Green Villa) |
-| BOQ | Green Villa: imported in the guided project; Lake View: 8 seeded lines | Lake View's full estimate, so its RA bills read right |
+| BOQ | Green Villa: imported in the guided project; Lake View: its full estimate, 38 lines (done) | — |
 | Cost centres, chart of accounts | Made by Mesiri | — |
 
 ## 7. The rules that keep it true
@@ -178,6 +179,10 @@ makes it from the records; nobody types it.
    tank, every point, inspection chambers, septic tank, soak pit, rainwater to a recharge pit). Drawing check still
    finds exactly the three catches, and now every column's size.
 3. **The seed:** names (D3), money accounts (D5), Green Villa's client, Lake View's full estimate and terms.
+   - Done (LRN-F7): Lake View's estimate in `learn/lake_view.py`, one source for the seed: site works, then per tower
+     substructure, structure, masonry and plaster (38 lines, ₹5,34,72,800 = the contract value); the contract with TDS
+     2%, retention 5%, no advance, 12 months' defects. Played 62 days through the API with no failure: Lake View's
+     bills 1 to 3 net ₹25,56,330, ₹23,65,632 and ₹18,74,346 after retention and TDS.
 4. **The 62-day plan:** Green Villa's RA bills, final bill and retention (D2), then story batches 1 to 3
    ([SERIES_PLAN.md](SERIES_PLAN.md) section 7).
 5. **A consistency check** (a test): the rules in section 7, so a change to the seed, the kit or the plan that breaks
