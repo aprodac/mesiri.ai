@@ -52,12 +52,12 @@ export function WhatsAppPageButton() {
       type="button"
       onClick={openWhatsAppPreview}
       data-guide="app.whatsapp"
-      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-success/30 bg-success-soft px-2.5 text-xs font-medium text-success hover:border-success/60"
+      // UX-74: an icon beside New, not a labelled pill: the top bar keeps only what is global.
+      className="inline-flex size-8 items-center justify-center rounded-full text-success hover:bg-success-soft"
       title={`How ${page.title} works from WhatsApp`}
       aria-label={`How ${page.title} works from WhatsApp`}
     >
-      <MessageSquareText className="size-4" aria-hidden />
-      <span className="hidden sm:inline">On WhatsApp</span>
+      <MessageSquareText className="size-[18px]" aria-hidden />
     </button>
   )
 }

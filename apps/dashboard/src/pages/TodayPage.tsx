@@ -333,7 +333,6 @@ export default function TodayPage() {
         onToday={() => shiftDay(daysBack)}
         onRefresh={refresh}
         refreshing={daysQuery.isFetching}
-        showLive={isToday && projects.length > 0}
         canTell={!readOnly}
       />
 

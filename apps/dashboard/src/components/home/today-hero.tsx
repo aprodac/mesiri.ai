@@ -1,7 +1,6 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
-import { ChevronLeft, ChevronRight, Clock, MessageSquarePlus, Radio, RefreshCw, TriangleAlert } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, MessageSquarePlus, RefreshCw, TriangleAlert } from 'lucide-react'
 import { appNow } from '@/lib/clock'
 import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { cn } from '@/lib/utils'
@@ -61,7 +60,6 @@ export function TodayHero({
   onToday,
   onRefresh,
   refreshing,
-  showLive,
   canTell,
 }: {
   isToday: boolean
@@ -76,7 +74,6 @@ export function TodayHero({
   onToday: () => void
   onRefresh: () => void
   refreshing: boolean
-  showLive: boolean
   canTell: boolean
 }) {
   const [now] = React.useState(() => appNow())
@@ -102,11 +99,6 @@ export function TodayHero({
             >
               <MessageSquarePlus className="size-4" /> <span className="hidden sm:inline">Tell Mesiri</span>
             </button>
-          )}
-          {showLive && (
-            <Link to="/live" className="hidden h-8 items-center gap-1.5 rounded-lg border bg-card px-2.5 text-sm hover:bg-muted sm:inline-flex" title="Watch every message to Mesiri land">
-              <Radio className="size-4 text-primary-ink" /> Live
-            </Link>
           )}
           <div className="flex items-center rounded-lg border bg-card" data-guide="today.day">
             <button type="button" className={btn} onClick={() => onDay(-1)} title="Previous day" aria-label="Previous day">

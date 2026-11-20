@@ -75,7 +75,8 @@ export interface Tour {
 /** The first tour: the app around the page, once per person. */
 export const APP_TOUR: Tour = {
   key: '/tour/app',
-  version: 1,
+  // 2: UX-74, the sidebar shows what you need now; All pages has the rest; the top bar is Search, New, Help, the bell.
+  version: 2,
   steps: [
     {
       title: "Hi, I'm Mesiri",
@@ -84,16 +85,17 @@ export const APP_TOUR: Tour = {
     },
     {
       target: 'app.nav',
-      title: 'Everything is here',
-      text: 'Every part of Mesiri, in the order a project runs: Plan, Site, Buy, Money. You start with the everyday pages; "Show all" opens the rest.',
+      title: 'What you need now',
+      text: 'Your everyday pages are at the top. While you set up, your next steps are here too, and pages with nothing in them yet wait with a lock.',
     },
     {
       target: 'app.pins',
       title: 'Your pages',
-      text: 'The pages your role opens most. Pin any page with its pin; Customise orders or hides the rest.',
+      text: 'The pages your role opens most. Pin any page to keep it here.',
       mood: 'happy',
     },
-    { target: 'app.search', title: 'Find anything', text: 'Search finds any page, project or record; Ctrl K opens it from anywhere. New, beside it, starts a record in one sentence.', mood: 'look' },
+    { target: 'app.all', title: 'Everything else', text: 'All pages opens every page you can use, in the order a project runs: Plan, Site, Buy, Money.' },
+    { target: 'app.search', title: 'Find anything', text: 'Search finds any page, project or record; Ctrl K opens it from anywhere.', mood: 'look' },
     { target: 'app.scope', title: 'One project or all', text: 'Pick a project or a site here, and every page shows just that one.' },
     {
       target: 'app.whatsapp',
@@ -102,8 +104,8 @@ export const APP_TOUR: Tour = {
     },
     {
       target: 'app.tell',
-      title: 'Or tell me here',
-      text: 'Type or speak to me from any page, the way you would on WhatsApp. You get the same card to Save or Cancel.',
+      title: 'New, or tell me here',
+      text: 'New starts anything you record, in one sentence, or tell me anything the way you would on WhatsApp. You get the same card to Save or Cancel.',
       mood: 'listen',
     },
     { target: 'app.help', title: 'Stuck?', text: 'Help explains the page and its words, and plays this tour again.', mood: 'happy' },
