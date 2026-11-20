@@ -149,7 +149,9 @@ if (process.env.STILLS) {
 const parts = []
 for (const s of scenes) {
   if (process.env.ONLY && process.env.ONLY !== s.scene.id) continue
-  const key = hash(JSON.stringify([s.scene, s.beats.map((b) => [b.at, b.len]), s.dur, s.index, scenes.length, page]))
+  // A screen scene's picture is part of its key: a re-shot screen is drawn again even when the script is unchanged.
+  const shot = s.scene.shot && existsSync(join(CACHE, 'shots', `${s.scene.shot}.png`)) ? hash(readFileSync(join(CACHE, 'shots', `${s.scene.shot}.png`)).toString('base64')) : ''
+  const key = hash(JSON.stringify([s.scene, s.beats.map((b) => [b.at, b.len]), s.dur, s.index, scenes.length, page, shot]))
   const file = join(CACHE, `scene-${s.scene.id}-${key}.mp4`)
   if (!existsSync(file)) {
     const t0 = Date.now()
