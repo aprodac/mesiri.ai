@@ -45,7 +45,7 @@ Green Villa's story.
 ## 3. Is this the right syllabus and order? The review (20 Nov)
 
 **The order is right.** It is the order a project runs: won, set up, the daily site, material, labour, problems,
-subcontract, billing, the health check, month end, handover. Each episode needs only what came before it. Five things
+subcontract, billing, the health check, month end, handover. Each episode needs only what came before it. Seven things
 need fixing so the episodes and the simulation match:
 
 1. **Episodes 1 and 2 are the other way round in the simulation.** The simulation's ch. 2 sets the contract and
@@ -66,6 +66,15 @@ need fixing so the episodes and the simulation match:
    tests, the client's engineer signing off; a safety talk, a near miss). Mesiri has no page for them yet, so no
    episode can show them on screen. Decide: mention them in Ep 3's "On a real site" as work done outside Mesiri, or
    plan the pages first. **Open question for Ilan.**
+
+6. **Every phase of building is seen once.** The 62 days are Green Villa's finishing and Lake View's frame (project
+   bible D1), so the foundation and the frame happen only at Lake View. Rule for every cold open: open on a site
+   moment from that day's phase (Lake View for foundation and frame, Green Villa for finishing), so by the end the
+   viewer has seen each phase. No new episode.
+7. **Drawings could become their own episode.** Ep 1 already reads one sheet (A-101 and its copied label). The kit's
+   set is now all 8 sheets drawn like a real one (LRN-F6: both plans, elevation, section, footings, columns,
+   electrical, plumbing, three planted mistakes). If Ep 1 feels rushed on review, split it into "The drawings" and
+   "The estimate and the contract". **Open question for Ilan** (section 6).
 
 "Money out" (the simulation's ch. 8, supplier bills and payments) is not its own episode: it is the end of Ep 4's
 cement chain. That is fine; play ch. 5 and ch. 8 after Ep 4.
@@ -105,6 +114,7 @@ Tick as done; each item also has a tracker row.
 2. ~~Language?~~ English first (20 Nov).
 3. **Quality and safety** (3.5): told as outside Mesiri for now, or pages first?
 4. The three new simulation chapters (**Setting up**, **Problems and machines**, **Handover**: 3.2, 3.3): agreed?
+5. Split Ep 1 into **The drawings** and **The estimate and the contract** (3.7), only if it feels rushed on review?
 
 ## 7. Where things live
 
