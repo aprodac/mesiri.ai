@@ -29,13 +29,30 @@
 6. **Do not rebuild episode 1** unless asked (Ilan, 20 Nov). Its sidebar shows the old login name; that waits.
 7. `.cache` and `out` are not committed. Send the finished `out/episode-NN.mp4` and `.srt` to the person as files.
 
-## What the tools still need (build these first, LRN-F15)
+## Recording real replies: record.cjs (built 20 Nov, LRN-F15)
 
-| Need | Where | What |
-|---|---|---|
-| Real replies in chat scenes | `shoot.cjs` | For a scene with `capture`: in the sample company as that role, on that day, open Tell Mesiri (`[data-guide="app.tell"]`), send `capture.send`, wait for the card, take the reply's text and card (title, rows, buttons) and write them into `.cache/shots/<scene id>.chat.json`; `build.mjs` uses them in place of the script's `messages`. Tap `capture.tap` (Save, or Cancel) after the picture. A photo: attach the picture named. |
-| Step-by-step website scenes (**built 20 Nov**, episode 2) | `film.html`, `shoot.cjs`, `build.mjs` | Kind `steps`: `frames`, each a picture taken after its action (`url` to open, `do` to perform, `show` what it must show, `mark` what to light), shown in turn on its beat (`at`), the box on `mark`. Simplest: shoot each frame as a page picture with its marks (as `screen` does), and draw `steps` as a `screen` whose picture changes on each frame's beat. The `do` lines are plain words: turn them into Playwright actions in a small per-episode file (`steps-NN.cjs`) rather than guessing selectors in the JSON. |
-| The role and the day | `shoot.cjs` | Open the sample company as the role a scene names (`POST /learn/sandbox` with that role) and play it to the scene's day ("Next day" through `POST /learn/sandbox/next-day`) before shooting. |
+```bash
+node docs/learning/film/record.cjs 03 "$(cat scripts/training-video/cost/admin.token)" http://localhost:5199
+ONLY=rain node docs/learning/film/record.cjs 03 <own token>   # one scene again; its days are still played from 0
+```
+
+- Starts the person's sample company afresh (it stops if the copy does not open on day 0), then goes day by day:
+  a `steps` scene with `as` (a role) and `day` is filmed first by `shoot.cjs` (its `steps-NN.cjs`) inside the sample
+  company as that role; then **Go back** puts the day back, and the chat scenes of that day are sent for real as
+  `capture.role` through `POST /assistant/messages` (the same handler as WhatsApp). `capture.choose` names the answers
+  to tap when Mesiri asks first (which metal, which cash box), then `capture.tap` (Save). Each reply and tap goes to
+  `.cache/shots/<scene>.chat.json`; `build.mjs` draws them in place of the script's guess (`REAL=0` builds the guess).
+- **The assistant needs a model key** on the local API: `MESIRI_GEMINI__API_KEY` and `MESIRI_GEMINI__MODEL=gemini-3.5-
+  flash-lite` (production's). One recording of episode 3 is about 8 model calls of some 39,000 tokens each. The key
+  used on 20 Nov hit its monthly spending cap after three runs: check the budget first.
+- **Pages inside the sample company** are opened the way the dashboard does (`sample-session.cjs`): the person's own
+  token, and the sample's session (its token and own date) in the tab, so every "today" is the sample's day. For
+  screens: `SAMPLE=<the next-day answer as JSON> node shoot.cjs NN <own token> ...` (`SKIP_STEPS=1` for screens only).
+- **Light mode** is the default for every picture (asked 20 Nov); `THEME=dark` for the old look.
+- **Resetting the sample company fails** once Tell Mesiri was used in it (LRN-F16, waiting for approval). Until it is
+  fixed, on the local copy only: `DELETE FROM progress_updates WHERE reported_by_user_id IN (SELECT u.id FROM users u
+  JOIN organizations o ON o.id = u.organization_id WHERE o.sandbox_of IS NOT NULL)`, then reset.
+- Mesiri answers Ravi in his own mix (Malayalam in English letters): the narration says so, never translates it away.
 
 ## Episode 2, "Setting up": recorded 20 Nov
 
@@ -53,18 +70,16 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 - [ ] Check every figure said against the screen (Drawing check's questions; the material plan's 6 of 34 lines and
       its cement and blocks; the 9 pm report time).
 
-## Episode 3, "A day on site": before recording
+## Episode 3, "A day on site": recorded 20 Nov, two scenes left
 
-- [ ] The sample company played to **day 2** (a Monday) as the owner; the chats sent as **Ravi** (site engineer) on
-      day 2, and the rain chat on **day 10**.
-- [ ] Ravi's evening line is sent as the Malayalam words in the script (as Mesiri hears his voice note): **have a
-      Malayalam speaker check them** first.
-- [ ] The photo: any clear photo of tied plinth beam steel the team may use (none in the kit; add one to the kit if
-      it is kept).
-- [ ] The website scene (`office`) on a copy where Ravi's morning attendance was not saved (Cancel it), so the
-      website makes the record.
-- [ ] The daily report: the PDF of day 2 shot as a paper (add it to `shoot.cjs` as a paper from a downloaded file).
-- [ ] The labour contractor is "Rahim" on screen; if LRN-F14 renames him, change the narration.
+- [x] Screens (Today, Stock, Green Villa's day-2 report), light, an owner's copy on day 2 (Mon 16 Nov).
+- [x] Real replies on day 2 as Ravi: morning attendance, the steel before the pour (the photo dropped, Ilan 20 Nov),
+      the evening voice note (Malayalam as written, Ilan: "it's fine as it is"), the Main block's cement. The words
+      changed to the real cards.
+- [ ] **`office`**: Anil types Ravi's phoned-in line into New (the website has no attendance form of its own:
+      `steps-03.cjs`). Needs the model: `ONLY=office node record.cjs 03 <token>`.
+- [ ] **`rain`** on day 10. Needs the model: `ONLY=rain node record.cjs 03 <token>`.
+- [ ] Re-take **`short`** if its card again says "2 bags not in the list" (WA-316): today's real card has it.
 
 ## Then, for each episode
 

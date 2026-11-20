@@ -94,6 +94,8 @@ def stage_on(at: int, index: int) -> tuple[str, str, str, float, tuple[str, ...]
     return work, narrative, unit, days[-1], uses
 
 
+#: Materials counted in whole pieces, so a day's use of them is a whole number (LRN-F14).
+DEMO_WHOLE = ("cement", "solid blocks")
 #: Per site, daily use: (material, how much a day). Deliveries keep each site stocked; Main block's cement runs low.
 DEMO_USE = (
     (("cement", 22), ("m sand", 1.5), ("solid blocks", 260), ("p sand", 1.2)),
@@ -293,6 +295,8 @@ async def seed(client: Any, info: dict[str, Any], *, today: dt.date) -> tuple[di
                     continue
                 found = material(name)
                 use = round(per_day * (0.5 if rained else 1) * (1 + ((index + at) % 3 - 1) * 0.1), 2)
+                if name in DEMO_WHOLE:  # LRN-F14: cement in whole bags, blocks in whole pieces
+                    use = float(round(use))
                 if not found or stock.get((at, name), 0) < use:
                     continue
                 if await post("material used", "/materials/outflows", {

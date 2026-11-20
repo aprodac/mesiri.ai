@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can follow one site day from Ravi's first WhatsApp message to the owner's evening report, and say what each kind of record is for: attendance, work done, material used, money spent, and the day's conditions.
 
-**Length:** 14 scenes, 1086 words of narration (about 7 minutes)
+**Length:** 14 scenes, 1138 words of narration (about 8 minutes)
 
 ## Cold open
 
@@ -77,7 +77,7 @@ Narration:
 
 > At five past eight, Ravi tells Mesiri who came. He types it the way he would say it.
 >
-> Mesiri does not save anything yet. It sends back a card: the three people it found in the worker register, by name, and Rahim's crew as a count of four.
+> Mesiri does not save anything yet. It sends back a card: Manoj, Satheesh and Vinod, and Rahim's crew as four helpers, at the Annex. It answers in Ravi's own mix of Malayalam and English.
 >
 > Ravi checks it and taps Save. That is the attendance. Nobody copies a register into Excel on Saturday.
 
@@ -87,12 +87,12 @@ Narration:
 
 On screen:
 
-- Work that will be covered (steel, conduits, pipes) is photographed before it is.
+- Work that will be covered (steel, conduits, pipes) is recorded before it is.
 
 **Record (real reply):**
 
 - Via: Tell Mesiri in the top bar (same assistant as WhatsApp), as Site engineer (Ravi), on day 2
-- Send: `(attach the photo of the plinth beam steel) Annex plinth beam steel before pour` (shown as 📷 a photo with one line)
+- Send: `Annex plinth beam steel tied, ready for pour after lunch`
 - Then: Save
 - Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.
 
@@ -100,9 +100,9 @@ Narration:
 
 > At half past twelve the beam's steel is tied, and the concrete goes in after lunch. Once it does, nobody will see that steel again.
 >
-> So Ravi sends a photo. Mesiri keeps it with today's work on the plinth beam.
+> So Ravi tells Mesiri now, before the pour, while the steel can still be checked.
 >
-> If anyone later asks how many bars went in, or the client wants to see his foundations, the answer is a photo with a date on it, not a memory.
+> If anyone later asks whether the beam was checked before it was cast, the answer is a record with a time on it, not a memory.
 
 ### 5. What was done, and what it took
 
@@ -123,11 +123,11 @@ Narration:
 
 > At twenty to six, the beam is done. Ravi is tired, and he does not type. He sends a voice note, in Malayalam. Mesiri hears it as these words.
 >
-> Mesiri understands it and answers with one card. The work: twenty-four running metres of plinth beam. The material used: ten bags of cement, aggregate, sand, and a hundred and twenty kilos of steel.
+> Mesiri answers with one card: twenty-four metres of plinth beam; ten bags of cement, one and a half cubic metres of aggregate, point eight of M sand and a hundred and twenty kilos of steel; and six hundred and fifty rupees for tea.
 >
-> And the six hundred and fifty rupees he spent on tea for the crew.
+> It asks the one thing it cannot know: which cash box paid for the tea. Ravi taps the Annex's petty cash, and it is all saved.
 >
-> One message, one tap. Three records: the work, the material and the spend.
+> One voice note, one tap. Six records: the work, four materials and the spend.
 
 ### 6. A problem, said the same day
 
@@ -148,9 +148,9 @@ Narration:
 
 > At the Main block, the day went differently. Only two bags of cement were left this morning, and the conduit work stopped halfway.
 >
-> Ravi says so, and asks for a hundred bags.
+> Ravi says so, and asks for a hundred bags. The card has both: the conduit work, half done, and a request for a hundred bags of cement.
 >
-> Mesiri makes it a request for material, waiting for Anil in the office. Tomorrow morning it is the first thing he sees. That is the next episode.
+> Ravi taps Save, and the request waits for Anil in the office. Tomorrow morning it is the first thing he sees. That is the next episode.
 
 ### 7. A slow day, explained
 
@@ -181,22 +181,22 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/labour?project={Green Villa}` · picture: the Attendance page, the Annex · light: [data-guide="labour.add"] · (day 2 picked)
-- beat 2 · do: open the day's attendance for the Annex; tick Manoj, Satheesh, Vinod present; add the contractor's crew: Rahim, helpers, 4 · picture: the form filled, before Save · light: the crew line
-- beat 3 · do: Save · picture: the saved day, 7 on site · light: the day's total
-- beat 4 · open `/today` · picture: Today: the Annex, 7 workers · light: the Annex's card
+- beat 1 · picture: the attendance ledger: the last day saved is Saturday
+- beat 2 · picture: New open, the words typed
+- beat 3 · picture: Mesiri's card, before Save
+- beat 4 · picture: the ledger after Save: today's Annex lines on top
 
-*Film it on a copy of the sample company where Ravi's morning message was not sent (or Cancelled), so the website makes the record. Clicks as the page has them on the day: the frames say what each picture must show.*
+*record.cjs does it: in the sample company on day 2, as Anil, before Ravi's own messages of the day (then the day is put back for them). The website has no attendance form of its own: the office uses New, the same assistant.*
 
 Narration:
 
-> Not every site has a phone that works all day. When Ravi calls the office instead, Anil can put the same day in on the website.
+> Not every site has a phone that works all day. When Ravi calls the office instead, Anil puts the same day in from the website.
 >
-> On Attendance, he picks the Annex and the day, and ticks who came: Manoj, Satheesh, Vinod. Rahim's crew goes in as a count: four.
+> He taps New, at the top of every page, and types what Ravi told him on the phone, the same words Ravi would have sent.
 >
-> He saves, and it is the same record Ravi's message would have made: the same wages, the same report.
+> The same card comes back, because it is the same Mesiri. Anil checks it and taps Save.
 >
-> One record, two ways in. The site talks on WhatsApp; the office types on the website. Mesiri never counts it twice.
+> And the day is in the attendance: the same record Ravi's message would have made. One record, two ways in, never counted twice.
 
 ## Who does what, when
 
@@ -247,19 +247,19 @@ Narration:
 >
 > The Annex: the cement, steel and sand it used today are gone from its count, and what is left is what Ravi should find tomorrow morning.
 >
-> The Main block: no cement. Red, below its least of a hundred bags. The count says what Ravi said, without anyone counting bags.
+> The Main block: no cement at all, a hundred bags asked for. And the page offers the two ways out: move bags from the Annex, or order two hundred.
 
-### 12. Nine o'clock: the day, on one page
+### 12. Before nine: the day, on one page
 
-*In Mesiri · The daily report · screen · screen `/reports`*
+*In Mesiri · The daily report · screen · screen `/reports/2026-11-16/projects/{Green Villa}`*
 
 Narration:
 
-> At nine, Mesiri makes the day's report for each project, on the company's letterhead. Nobody writes it.
+> Before nine, the day's report for each project is already here, as it would go out now. Nobody writes it.
 >
-> The people on site, by trade and by contractor. The work done, with its quantities. The material that came, was used, and is left.
+> The sites in it, the people on site, the work done and the material used, from what Ravi said during the day.
 >
-> The open problems, the weather, and tomorrow's plan, taken from what Ravi said.
+> It goes out when every site's engineer has confirmed his day, or at nine o'clock, whichever comes first.
 >
 > It goes to Ramesh and to Doctor Krishnan on WhatsApp. A site that did not report is shown as not reported, never left out quietly.
 

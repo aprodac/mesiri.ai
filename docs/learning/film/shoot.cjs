@@ -4,6 +4,7 @@
 // camera's focus and the highlight boxes (`{ "mark": "name" }`), so nothing is placed by guesswork.
 //
 //   node docs/learning/film/shoot.cjs 01 <token> [http://localhost:5173] [http://localhost:8000]
+//   SAMPLE=<next-day answer .json> node docs/learning/film/shoot.cjs 03 <own token> ...   # inside the sample company
 //
 // Three kinds of picture:
 // - a Mesiri page (`url`): from a local copy of Mesiri, never production, with a demo or sample company's token (for the
@@ -13,11 +14,12 @@
 //   the page as it prints, on a dark desk; a mark is the run of words on the page.
 // - a sheet from the kit (`sheet`: { "xlsx": "<file>", "sheet": "BOQ", "rows": 14, "marks": { name: "<item no.>" } }):
 //   the workbook's rows drawn as a spreadsheet; a mark is the row whose first cell is that item number.
-// Theme dark, the guide's voice off, any first-visit tour closed.
+// Theme light (THEME=dark for the old look), the guide's voice off, any first-visit tour closed.
 const { chromium } = require('playwright')
 const { readFileSync, writeFileSync, mkdirSync, existsSync } = require('fs')
 const { join, resolve } = require('path')
 const { spawnSync } = require('child_process')
+const { sessionFor, enter, THEME } = require('./sample-session.cjs')
 
 const [, , ep = '01', token, base = 'http://localhost:5173', apiBase = 'http://localhost:8000'] = process.argv
 const script = JSON.parse(readFileSync(join(__dirname, `episode-${ep.padStart(2, '0')}.json`), 'utf8'))
@@ -32,7 +34,8 @@ const saveMarks = (shot, marks) => writeFileSync(join(out, `${shot}.json`), JSON
 
 async function projectIds() {
   if (!token) return {}
-  const r = await fetch(`${apiBase}/projects`, { headers: { Authorization: `Bearer ${token}` } })
+  const sample = process.env.SAMPLE ? JSON.parse(readFileSync(process.env.SAMPLE, 'utf8')) : null
+  const r = await fetch(`${apiBase}/projects`, { headers: { Authorization: `Bearer ${sample ? sample.token : token}` } })
   const body = await r.json()
   const list = Array.isArray(body) ? body : body.items || body.projects || []
   return Object.fromEntries(list.map((p) => [p.name, p.id]))
@@ -197,15 +200,15 @@ async function stepsShots(ctx, sc, ids) {
 
 ;(async () => {
   const b = await chromium.launch()
-  const ctx = await b.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 2, colorScheme: 'dark' })
-  await ctx.addInitScript((t) => {
-    if (t) localStorage.setItem('mesiri_dashboard_token', t)
-    localStorage.setItem('theme', 'dark')
-    localStorage.setItem('mesiri_guide_voice', JSON.stringify({ on: false }))
-  }, token || '')
+  const ctx = await b.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 2, colorScheme: THEME })
+  // SAMPLE=<file>: the answer of POST /learn/sandbox (or next-day) for the sample company to shoot; the token argument is
+  // then the person's own, and the pages are on the sample's own day (sample-session.cjs).
+  const sample = process.env.SAMPLE ? JSON.parse(readFileSync(process.env.SAMPLE, 'utf8')) : null
+  await enter(ctx, token || '', sample ? sessionFor(token, sample) : null)
   const ids = script.scenes.some((s) => (s.kind === 'screen' && s.url && !s.paper && !s.sheet) || s.kind === 'steps') ? await projectIds() : {}
   for (const sc of script.scenes.filter((s) => s.kind === 'steps')) {
     if (process.env.ONLY && process.env.ONLY !== sc.id) continue
+    if (process.env.SKIP_STEPS) continue
     await stepsShots(ctx, sc, ids)
   }
   for (const sc of script.scenes.filter((s) => s.kind === 'screen')) {

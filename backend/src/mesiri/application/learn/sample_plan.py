@@ -156,8 +156,8 @@ ISSUES = (
 ADVANCES = ((4, "Suresh", 2000), (13, "Joseph", 1500), (23, "Rajesh", 3000), (30, "Vinod", 1000), (41, "Manoj", 2500))
 #: The tiling subcontract with Joy Tiling Works: the agreed rate a square metre, retention.
 TILING_RATE, TILING_RETENTION = 95, 5
-#: Units of work counted in whole pieces: a day's share of them is rounded to a whole number.
-WHOLE_UNITS = ("nos",)
+#: Units counted in whole pieces (work in nos, cement in bags): a day's share is a whole number (LRN-F14).
+WHOLE_UNITS = ("nos", "bags")
 #: Lake View's running bill to the client, sent by the owner on these days.
 RA_BILL_DAYS = (23, 51)
 #: Green Villa's running bill (project bible D2): monthly by its contract, so one in the 62 days, and the final bill on
@@ -518,6 +518,8 @@ def build() -> Plan:
             ratio = weather * can
             for m, q in want.items():
                 used = round(q * can, 2)
+                if UNITS[m] in WHOLE_UNITS:  # never more than the share: a bag is opened whole or not at all
+                    used = math.floor(used)
                 if used > 0:
                     stock[(site, m)] = round(stock[(site, m)] - used, 2)
                     b.add(day, "use", f"Used {_fmt(used)} {UNITS[m]} {m} for {s.work.lower()}", site=site,

@@ -376,17 +376,31 @@ const SCENES = {
     on(phone, 'rise', 0, 200, 900)
     const top = el('div', '', `<span style="width:52px;height:52px;border-radius:50%;background:var(--primary);color:#111;display:grid;place-items:center;font-weight:700;font-size:24px">M</span><span><div style="font-size:26px;font-weight:600">Mesiri</div><div style="font-size:18px;color:#8696a0">your site assistant</div></span>`, phone)
     top.style.cssText = 'display:flex;align-items:center;gap:16px;padding:22px 26px;background:#202c33'
-    const list = el('div', '', '', phone)
-    list.style.cssText = 'display:flex;flex-direction:column;gap:18px;padding:28px 22px'
+    // The chat sits on its newest message, as a phone does: older ones move up and out of the top (LRN-F15: real
+    // replies are long).
+    const win = el('div', '', '', phone)
+    win.style.cssText = 'position:absolute;left:0;right:0;top:96px;bottom:0;overflow:hidden'
+    const list = el('div', '', '', win)
+    list.style.cssText = 'position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:16px;padding:22px 22px 26px'
     for (const m of sc.messages) {
       const mine = m.from === 'site'
       const bub = el('div', '', '', list)
-      bub.style.cssText = `align-self:${mine ? 'flex-end' : 'flex-start'};max-width:86%;padding:16px 20px;border-radius:18px;font-size:25px;line-height:1.35;background:${mine ? '#005c4b' : '#202c33'}`
-      if (m.card) {
+      bub.style.cssText = `align-self:${mine ? 'flex-end' : 'flex-start'};max-width:88%;padding:14px 18px;border-radius:18px;font-size:23px;line-height:1.32;background:${mine ? '#005c4b' : '#202c33'}`
+      if (m.reply) {
+        // Mesiri's real reply (record.cjs): WhatsApp's *bold*, its lines as sent, its buttons under it.
+        const words = esc(m.reply.text).replace(/\*([^*\n]+)\*/g, '<b>$1</b>')
+        const small = m.reply.text.length > 260
+        bub.innerHTML = `<div style="white-space:pre-line;font-size:${small ? 19 : 22}px">${words}</div>` +
+          (m.reply.buttons || []).map((b) => `<div style="margin-top:8px;padding:8px;text-align:center;border-radius:10px;background:rgba(255,255,255,.08);color:#53bdeb;font-weight:600;font-size:20px">${esc(b)}</div>`).join('')
+        bub.style.minWidth = '360px'
+      } else if (m.tap) {
+        bub.innerHTML = `<span style="font-size:20px;color:#d1d7db">tapped</span> <b style="color:#53bdeb">${esc(m.tap)}</b>`
+        bub.style.padding = '10px 16px'
+      } else if (m.card) {
         bub.innerHTML = `<div style="font-weight:600;font-size:24px">${esc(m.card.title)}</div>${m.card.rows.map((r) => `<div style="font-size:22px;color:#d1d7db;margin-top:8px">${esc(r)}</div>`).join('')}<div style="margin-top:16px;padding:10px;text-align:center;border-radius:12px;background:rgba(255,255,255,.08);color:#53bdeb;font-weight:600;font-size:23px">${esc(m.card.button)}</div>`
         bub.style.minWidth = '380px'
       } else bub.textContent = m.text
-      on(bub, 'pop', m.at, 500)
+      on(bub, 'pop', m.at, 500 + (m.plus || 0))
     }
     const side = el('div', '', '', b)
     side.style.cssText = 'position:absolute;left:860px;right:0;top:60px;display:flex;flex-direction:column;gap:30px'

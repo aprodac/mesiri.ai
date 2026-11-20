@@ -10,7 +10,7 @@ Who: **Ravi** (site engineer), **Anil** (project manager), **Meera** (accounts),
 
 | Site | Stock |
 |---|---|
-| Main block | cement 2.2 bags, m sand 6 cum, p sand 4.4 cum, solid blocks 1,440 nos |
+| Main block | cement 2 bags, m sand 6 cum, p sand 4.4 cum, solid blocks 1,440 nos |
 | Annex | aggregate 20mm 10 cum, cement 120 bags, m sand 7 cum, steel 3,640 kg |
 | Tower A | aggregate 20mm 14 cum, binding wire 42 kg, cement 140 bags, m sand 6 cum, steel 4,200 kg |
 | Tower B | aggregate 20mm 10 cum, binding wire 56 kg, cement 84 bags, steel 5,200 kg |
@@ -33,7 +33,7 @@ Sunday: nobody works.
 ### Day 2 · Monday
 
 **Ravi**
-- Main block: Electrical conduits: 12 nos; 7 on site; used cement 2.2 bags, m sand 0.17 cum; spent ₹1,840 (nails, binding wire, cover blocks); clear; short of cement
+- Main block: Electrical conduits: 11 nos; 7 on site; used cement 2 bags, m sand 0.15 cum; spent ₹1,840 (nails, binding wire, cover blocks); clear; short of cement
 - Annex: Plinth beam: 24 rmt; 7 on site; used cement 10 bags, aggregate 20mm 1.5 cum, m sand 0.8 cum, steel 120 kg; spent ₹650 (tea and snacks for the crew); clear
 - Tower A: Column casting: 4 cum; 11 on site; used cement 32 bags, aggregate 20mm 3 cum, m sand 1.6 cum, steel 300 kg; spent ₹2,300 (diesel for the mixer and pump); clear
 - Tower B: Retaining wall: 35 sqm; 8 on site; used cement 24 bags, aggregate 20mm 2.5 cum, steel 400 kg, binding wire 6 kg; spent ₹900 (shifting cement bags from the road); clear
@@ -203,7 +203,7 @@ Sunday: nobody works.
 - Main block: Ceiling plastering: 35 sqm; 9 on site; used cement 14 bags, m sand 1.2 cum; spent ₹1,840 (nails, binding wire, cover blocks); clear
 - Annex: Block work: 18 sqm; 7 on site; used cement 10 bags, solid blocks 240 nos, m sand 1 cum; spent ₹650 (tea and snacks for the crew); clear
 - Tower A: Slab reinforcement: 900 kg; 10 on site; used steel 900 kg, binding wire 9 kg; spent ₹2,300 (diesel for the mixer and pump); clear
-- Tower B: Column casting: 1.95 cum; 8 on site; used cement 15.6 bags, aggregate 20mm 1.56 cum, m sand 0.78 cum, steel 169 kg; spent ₹900 (shifting cement bags from the road); clear; short of aggregate 20mm, m sand
+- Tower B: Column casting: 1.95 cum; 8 on site; used cement 15 bags, aggregate 20mm 1.56 cum, m sand 0.78 cum, steel 169 kg; spent ₹900 (shifting cement bags from the road); clear; short of aggregate 20mm, m sand
 - Received 4,000 kg steel from Kerala Steels at Tower A
 - Received 6 cum m sand from Periyar Sand & Aggregates at Main block
 - Ask for 100 bags cement for Main block
@@ -624,7 +624,7 @@ Sunday: nobody works.
 - Main block: External plastering: 45 sqm; 9 on site; used cement 18 bags, m sand 1.8 cum; spent ₹1,840 (nails, binding wire, cover blocks); clear
 - Annex: Plastering: 35 sqm; 7 on site; used cement 14 bags, m sand 1.3 cum; spent ₹650 (tea and snacks for the crew); clear
 - Tower A: Slab reinforcement: 900 kg; 9 on site; used steel 900 kg, binding wire 9 kg; spent ₹2,300 (diesel for the mixer and pump); clear
-- Tower B: Column casting: 1.95 cum; 8 on site; used cement 15.6 bags, aggregate 20mm 1.56 cum, m sand 0.78 cum, steel 169 kg; spent ₹900 (shifting cement bags from the road); clear; short of aggregate 20mm
+- Tower B: Column casting: 1.95 cum; 8 on site; used cement 15 bags, aggregate 20mm 1.56 cum, m sand 0.78 cum, steel 169 kg; spent ₹900 (shifting cement bags from the road); clear; short of aggregate 20mm
 - Ask for 100 bags cement for Annex
 
 **Anil**
@@ -784,7 +784,6 @@ Sunday: nobody works.
 - Received 50 kg binding wire from Kerala Steels at Tower B
 - Received 6 cum m sand from Periyar Sand & Aggregates at Main block
 - Received 6 cum m sand from Periyar Sand & Aggregates at Annex
-- Ask for 100 bags cement for Tower B
 
 **Anil**
 - Order 50 kg binding wire from Kerala Steels for Tower A at ₹85 a kg
@@ -801,9 +800,9 @@ Sunday: nobody works.
 - Tower A: Slab shuttering: 60 sqm; 9 on site; spent ₹2,300 (diesel for the mixer and pump); clear
 - Tower B: Slab reinforcement: 1,000 kg; 7 on site; used steel 1,000 kg, binding wire 10 kg; spent ₹900 (shifting cement bags from the road); clear
 - Received 4,000 kg steel from Kerala Steels at Tower B
+- Ask for 100 bags cement for Tower B
 
 **Anil**
-- Order 100 bags cement from Malabar Cements Agency for Tower B at ₹410 a bag
 - Count Main block's floor tiling of day 40 on the BOQ line Vitrified tile flooring
 - Count Annex's flooring of day 40 on the BOQ line Vitrified tile flooring
 - Count Tower A's slab shuttering of day 40 on its BOQ line
@@ -820,6 +819,7 @@ Sunday: nobody works.
 - Tower B: Slab reinforcement: 1,000 kg; 7 on site; used steel 1,000 kg, binding wire 10 kg; spent ₹720 (tea and snacks for the crew); clear
 
 **Anil**
+- Order 100 bags cement from Malabar Cements Agency for Tower B at ₹410 a bag
 - Count Main block's floor tiling of day 41 on the BOQ line Vitrified tile flooring
 - Count Annex's flooring of day 41 on the BOQ line Vitrified tile flooring
 - Count Tower A's slab shuttering of day 41 on its BOQ line
@@ -852,7 +852,6 @@ Sunday: nobody works.
 - Tower B: Slab reinforcement: 1,000 kg; 6 on site; used steel 1,000 kg, binding wire 10 kg; spent ₹900 (shifting cement bags from the road); clear
 - Received 50 kg binding wire from Kerala Steels at Tower A
 - Received 4,000 kg steel from Kerala Steels at Tower A
-- Received 100 bags cement from Malabar Cements Agency at Tower B
 - Hollow sound in two floor tiles in the ground floor bedroom
 
 **Anil**
@@ -871,6 +870,7 @@ Sunday: nobody works.
 - Annex: Painting: 70 sqm; 5 on site; spent ₹3,400 (conduit pipes and boxes); clear
 - Tower A: Slab reinforcement: 900 kg; 9 on site; used steel 900 kg, binding wire 9 kg; spent ₹5,600 (plywood sheets for shuttering); clear
 - Tower B: Slab concreting: 15 cum; 9 on site; used cement 18 bags, m sand 1 cum; spent ₹720 (tea and snacks for the crew); clear
+- Received 100 bags cement from Malabar Cements Agency at Tower B
 - Ask for 100 bags cement for Tower A
 - Ask for 6 cum m sand for Tower B
 - Bar benders short this week, slab steel slow
@@ -903,7 +903,6 @@ Sunday: nobody works.
 **Meera**
 - Bill from Kerala Steels: 50 kg binding wire for Tower A on day 44, ₹4,250
 - Bill from Kerala Steels: 4,000 kg steel for Tower A on day 44, ₹272,000
-- Bill from Malabar Cements Agency: 100 bags cement for Tower B on day 44, ₹41,000
 
 ### Day 47 · Thursday
 
@@ -919,6 +918,9 @@ Sunday: nobody works.
 - Count Main block's floor tiling of day 46 on the BOQ line Vitrified tile flooring
 - Count Annex's painting of day 46 on the BOQ line Interior emulsion
 - Count Tower A's slab reinforcement of day 46 on its BOQ line
+
+**Meera**
+- Bill from Malabar Cements Agency: 100 bags cement for Tower B on day 45, ₹41,000
 
 ### Day 48 · Friday
 

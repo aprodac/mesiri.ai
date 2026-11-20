@@ -81,7 +81,7 @@
       "title": "Who came",
       "beats": [
         "At five past eight, Ravi tells Mesiri who came. He types it the way he would say it.",
-        "Mesiri does not save anything yet. It sends back a card: the three people it found in the worker register, by name, and Rahim's crew as a count of four.",
+        "Mesiri does not save anything yet. It sends back a card: Manoj, Satheesh and Vinod, and Rahim's crew as four helpers, at the Annex. It answers in Ravi's own mix of Malayalam and English.",
         "Ravi checks it and taps Save. That is the attendance. Nobody copies a register into Excel on Saturday."
       ],
       "messages": [
@@ -108,7 +108,7 @@
       "side": [
         {
           "at": 1,
-          "text": "Names matched to the worker register"
+          "text": "The names as Ravi wrote them"
         },
         {
           "at": 1,
@@ -126,7 +126,8 @@
         "day": 2,
         "send": "Annex: Manoj, Satheesh, Vinod present. Rahim crew 4 helpers",
         "tap": "Save",
-        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else."
+        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
+        "role": "SITE_ENGINEER"
       }
     },
     {
@@ -137,23 +138,22 @@
       "title": "Before the concrete covers it",
       "beats": [
         "At half past twelve the beam's steel is tied, and the concrete goes in after lunch. Once it does, nobody will see that steel again.",
-        "So Ravi sends a photo. Mesiri keeps it with today's work on the plinth beam.",
-        "If anyone later asks how many bars went in, or the client wants to see his foundations, the answer is a photo with a date on it, not a memory."
+        "So Ravi tells Mesiri now, before the pour, while the steel can still be checked.",
+        "If anyone later asks whether the beam was checked before it was cast, the answer is a record with a time on it, not a memory."
       ],
       "messages": [
         {
           "at": 0,
           "from": "site",
-          "text": "📷 Photo · plinth beam steel, before the pour"
+          "text": "Annex plinth beam steel tied, ready for pour after lunch"
         },
         {
           "at": 1,
           "from": "mesiri",
           "card": {
-            "title": "Photo · Annex · Monday",
+            "title": "Work · Annex · Monday",
             "rows": [
-              "Kept with: plinth beam, today",
-              "Shows on: the day's report, Live"
+              "Plinth beam: steel tied"
             ],
             "button": "Save"
           }
@@ -166,18 +166,18 @@
         },
         {
           "at": 2,
-          "text": "Proof for the client and the engineer"
+          "text": "A time on it, for the client and the engineer"
         }
       ],
-      "note": "Work that will be covered (steel, conduits, pipes) is photographed before it is.",
+      "note": "Work that will be covered (steel, conduits, pipes) is recorded before it is.",
       "capture": {
         "via": "Tell Mesiri in the top bar (same assistant as WhatsApp)",
         "as": "Site engineer (Ravi)",
         "day": 2,
-        "send": "(attach the photo of the plinth beam steel) Annex plinth beam steel before pour",
+        "send": "Annex plinth beam steel tied, ready for pour after lunch",
         "tap": "Save",
         "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
-        "shown_as": "📷 a photo with one line"
+        "role": "SITE_ENGINEER"
       }
     },
     {
@@ -188,9 +188,9 @@
       "title": "What was done, and what it took",
       "beats": [
         "At twenty to six, the beam is done. Ravi is tired, and he does not type. He sends a voice note, in Malayalam. Mesiri hears it as these words.",
-        "Mesiri understands it and answers with one card. The work: twenty-four running metres of plinth beam. The material used: ten bags of cement, aggregate, sand, and a hundred and twenty kilos of steel.",
-        "And the six hundred and fifty rupees he spent on tea for the crew.",
-        "One message, one tap. Three records: the work, the material and the spend."
+        "Mesiri answers with one card: twenty-four metres of plinth beam; ten bags of cement, one and a half cubic metres of aggregate, point eight of M sand and a hundred and twenty kilos of steel; and six hundred and fifty rupees for tea.",
+        "It asks the one thing it cannot know: which cash box paid for the tea. Ravi taps the Annex's petty cash, and it is all saved.",
+        "One voice note, one tap. Six records: the work, four materials and the spend."
       ],
       "messages": [
         {
@@ -219,7 +219,7 @@
         },
         {
           "at": 1,
-          "text": "Material → the Annex's stock"
+          "text": "Four materials → the Annex's stock"
         },
         {
           "at": 2,
@@ -234,7 +234,12 @@
         "send": "അനക്സ്: പ്ലിന്ത് ബീം 24 മീറ്റർ കഴിഞ്ഞു. 10 ചാക്ക് സിമന്റ്, 1.5 ക്യൂബിക് മീറ്റർ മെറ്റൽ, 0.8 എം സാൻഡ്, 120 കിലോ കമ്പി ഉപയോഗിച്ചു. ചായക്ക് 650 രൂപ.",
         "tap": "Save",
         "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
-        "shown_as": "🎤 Ravi's voice note, as Mesiri heard it (the Malayalam words above; to be checked by a Malayalam speaker)"
+        "shown_as": "🎤 Ravi's voice note, as Mesiri heard it (the Malayalam words above; to be checked by a Malayalam speaker)",
+        "role": "SITE_ENGINEER",
+        "choose": [
+          "Aggregate 20mm",
+          "Petty cash · Annex"
+        ]
       }
     },
     {
@@ -245,8 +250,8 @@
       "title": "A problem, said the same day",
       "beats": [
         "At the Main block, the day went differently. Only two bags of cement were left this morning, and the conduit work stopped halfway.",
-        "Ravi says so, and asks for a hundred bags.",
-        "Mesiri makes it a request for material, waiting for Anil in the office. Tomorrow morning it is the first thing he sees. That is the next episode."
+        "Ravi says so, and asks for a hundred bags. The card has both: the conduit work, half done, and a request for a hundred bags of cement.",
+        "Ravi taps Save, and the request waits for Anil in the office. Tomorrow morning it is the first thing he sees. That is the next episode."
       ],
       "messages": [
         {
@@ -285,7 +290,11 @@
         "day": 2,
         "send": "Main block: cement over, only 2 bags this morning. Conduit work half done. Need 100 bags cement",
         "tap": "Save",
-        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else."
+        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
+        "role": "SITE_ENGINEER",
+        "choose": [
+          "100 bags"
+        ]
       }
     },
     {
@@ -335,7 +344,8 @@
         "day": 10,
         "send": "Annex: heavy rain from 11, 4 hours lost. Block work 9 sqm only",
         "tap": "Save",
-        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else."
+        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
+        "role": "SITE_ENGINEER"
       }
     },
     {
@@ -345,39 +355,32 @@
       "eyebrow": "In Mesiri · The website",
       "title": "The same day, entered in the office",
       "beats": [
-        "Not every site has a phone that works all day. When Ravi calls the office instead, Anil can put the same day in on the website.",
-        "On Attendance, he picks the Annex and the day, and ticks who came: Manoj, Satheesh, Vinod. Rahim's crew goes in as a count: four.",
-        "He saves, and it is the same record Ravi's message would have made: the same wages, the same report.",
-        "One record, two ways in. The site talks on WhatsApp; the office types on the website. Mesiri never counts it twice."
+        "Not every site has a phone that works all day. When Ravi calls the office instead, Anil puts the same day in from the website.",
+        "He taps New, at the top of every page, and types what Ravi told him on the phone, the same words Ravi would have sent.",
+        "The same card comes back, because it is the same Mesiri. Anil checks it and taps Save.",
+        "And the day is in the attendance: the same record Ravi's message would have made. One record, two ways in, never counted twice."
       ],
       "frames": [
         {
           "at": 0,
-          "url": "/labour?project={Green Villa}",
-          "show": "the Attendance page, the Annex",
-          "mark": "[data-guide=\"labour.add\"]",
-          "note": "day 2 picked"
+          "show": "the attendance ledger: the last day saved is Saturday"
         },
         {
           "at": 1,
-          "do": "open the day's attendance for the Annex; tick Manoj, Satheesh, Vinod present; add the contractor's crew: Rahim, helpers, 4",
-          "show": "the form filled, before Save",
-          "mark": "the crew line"
+          "show": "New open, the words typed"
         },
         {
           "at": 2,
-          "do": "Save",
-          "show": "the saved day, 7 on site",
-          "mark": "the day's total"
+          "show": "Mesiri's card, before Save"
         },
         {
           "at": 3,
-          "url": "/today",
-          "show": "Today: the Annex, 7 workers",
-          "mark": "the Annex's card"
+          "show": "the ledger after Save: today's Annex lines on top"
         }
       ],
-      "record": "Film it on a copy of the sample company where Ravi's morning message was not sent (or Cancelled), so the website makes the record. Clicks as the page has them on the day: the frames say what each picture must show."
+      "record": "record.cjs does it: in the sample company on day 2, as Anil, before Ravi's own messages of the day (then the day is put back for them). The website has no attendance form of its own: the office uses New, the same assistant.",
+      "as": "PROJECT_MANAGER",
+      "day": 2
     },
     {
       "id": "who",
@@ -462,7 +465,7 @@
       "beats": [
         "Every use Ravi reported comes off the stock, site by site.",
         "The Annex: the cement, steel and sand it used today are gone from its count, and what is left is what Ravi should find tomorrow morning.",
-        "The Main block: no cement. Red, below its least of a hundred bags. The count says what Ravi said, without anyone counting bags."
+        "The Main block: no cement at all, a hundred bags asked for. And the page offers the two ways out: move bags from the Annex, or order two hundred."
       ],
       "focus": [
         {
@@ -477,14 +480,14 @@
       "kind": "screen",
       "part": "In Mesiri",
       "shot": "ep03-dpr",
-      "url": "/reports",
+      "url": "/reports/2026-11-16/projects/{Green Villa}",
       "wait": 6000,
       "eyebrow": "In Mesiri · The daily report",
-      "title": "Nine o'clock: the day, on one page",
+      "title": "Before nine: the day, on one page",
       "beats": [
-        "At nine, Mesiri makes the day's report for each project, on the company's letterhead. Nobody writes it.",
-        "The people on site, by trade and by contractor. The work done, with its quantities. The material that came, was used, and is left.",
-        "The open problems, the weather, and tomorrow's plan, taken from what Ravi said.",
+        "Before nine, the day's report for each project is already here, as it would go out now. Nobody writes it.",
+        "The sites in it, the people on site, the work done and the material used, from what Ravi said during the day.",
+        "It goes out when every site's engineer has confirmed his day, or at nine o'clock, whichever comes first.",
         "It goes to Ramesh and to Doctor Krishnan on WhatsApp. A site that did not report is shown as not reported, never left out quietly."
       ],
       "focus": [
