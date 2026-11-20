@@ -17,6 +17,13 @@ product changes.
 **Check before using with customers:** the business facts come from the field guides, which are drafts: typical
 figures, to be checked by someone who has run sites.
 
+## The A-to-Z map (the storyboard)
+
+`az-map/index.html` shows the sample company's whole planned project (62 days, 1,477 entries, from
+`backend/.../learn/sample_plan.py`): the six phases, who does what, the days as swimlanes, and any chain of handoffs
+(request → order → delivery → bill → payment). The film's episodes follow its chains. Rebuild its data when the plan
+changes: `PYTHONPATH=backend/src:shared/contracts/src:platform/ai/src python3 docs/learning/film/az_map.py`.
+
 ## How an episode is made
 
 - `episode-NN.json`: the script. Each scene has a `kind` (how it is drawn), its words as `beats` (one sentence or two

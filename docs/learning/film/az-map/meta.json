@@ -1,0 +1,641 @@
+{
+ "last_day": 62,
+ "who": {
+  "owner": "Owner",
+  "pm": "Anil · project manager",
+  "engineer": "Ravi · site engineer",
+  "accounts": "Meera · accounts"
+ },
+ "sites": {
+  "main": {
+   "name": "Main block",
+   "project": "Green Villa"
+  },
+  "annex": {
+   "name": "Annex",
+   "project": "Green Villa"
+  },
+  "tower_a": {
+   "name": "Tower A",
+   "project": "Lake View Apartments"
+  },
+  "tower_b": {
+   "name": "Tower B",
+   "project": "Lake View Apartments"
+  }
+ },
+ "stages": {
+  "annex": [
+   {
+    "work": "Plinth beam",
+    "from": 2,
+    "to": 4
+   },
+   {
+    "work": "Plinth filling",
+    "from": 5,
+    "to": 7
+   },
+   {
+    "work": "Block work",
+    "from": 9,
+    "to": 18
+   },
+   {
+    "work": "Slab shuttering",
+    "from": 19,
+    "to": 23
+   },
+   {
+    "work": "Slab concreting",
+    "from": 24,
+    "to": 24
+   },
+   {
+    "work": "Slab curing",
+    "from": 25,
+    "to": 30
+   },
+   {
+    "work": "Plastering",
+    "from": 31,
+    "to": 39
+   },
+   {
+    "work": "Flooring",
+    "from": 40,
+    "to": 44
+   },
+   {
+    "work": "Painting",
+    "from": 45,
+    "to": 49
+   }
+  ],
+  "main": [
+   {
+    "work": "Electrical conduits",
+    "from": 2,
+    "to": 2
+   },
+   {
+    "work": "Electrical conduits",
+    "from": 5,
+    "to": 7
+   },
+   {
+    "work": "Ceiling plastering",
+    "from": 9,
+    "to": 16
+   },
+   {
+    "work": "Plastering",
+    "from": 17,
+    "to": 25
+   },
+   {
+    "work": "External plastering",
+    "from": 26,
+    "to": 37
+   },
+   {
+    "work": "Floor tiling",
+    "from": 38,
+    "to": 46
+   },
+   {
+    "work": "Putty and primer",
+    "from": 47,
+    "to": 53
+   },
+   {
+    "work": "Painting",
+    "from": 54,
+    "to": 60
+   },
+   {
+    "work": "Snag list",
+    "from": 61,
+    "to": 62
+   }
+  ],
+  "tower_a": [
+   {
+    "work": "Column casting",
+    "from": 2,
+    "to": 4
+   },
+   {
+    "work": "Slab shuttering",
+    "from": 5,
+    "to": 9
+   },
+   {
+    "work": "Slab reinforcement",
+    "from": 10,
+    "to": 14
+   },
+   {
+    "work": "Slab concreting",
+    "from": 16,
+    "to": 18
+   },
+   {
+    "work": "Column casting",
+    "from": 19,
+    "to": 21
+   },
+   {
+    "work": "Slab shuttering",
+    "from": 23,
+    "to": 26
+   },
+   {
+    "work": "Slab reinforcement",
+    "from": 27,
+    "to": 32
+   },
+   {
+    "work": "Slab concreting",
+    "from": 33,
+    "to": 35
+   },
+   {
+    "work": "Column casting",
+    "from": 37,
+    "to": 39
+   },
+   {
+    "work": "Slab shuttering",
+    "from": 40,
+    "to": 44
+   },
+   {
+    "work": "Slab reinforcement",
+    "from": 45,
+    "to": 48
+   },
+   {
+    "work": "Slab concreting",
+    "from": 49,
+    "to": 52
+   }
+  ],
+  "tower_b": [
+   {
+    "work": "Retaining wall",
+    "from": 2,
+    "to": 5
+   },
+   {
+    "work": "Column casting",
+    "from": 6,
+    "to": 11
+   },
+   {
+    "work": "Slab shuttering",
+    "from": 12,
+    "to": 17
+   },
+   {
+    "work": "Slab reinforcement",
+    "from": 18,
+    "to": 23
+   },
+   {
+    "work": "Slab concreting",
+    "from": 24,
+    "to": 26
+   },
+   {
+    "work": "Column casting",
+    "from": 27,
+    "to": 32
+   },
+   {
+    "work": "Slab shuttering",
+    "from": 33,
+    "to": 38
+   },
+   {
+    "work": "Slab reinforcement",
+    "from": 39,
+    "to": 44
+   },
+   {
+    "work": "Slab concreting",
+    "from": 45,
+    "to": 47
+   },
+   {
+    "work": "Column casting",
+    "from": 48,
+    "to": 52
+   },
+   {
+    "work": "Slab shuttering",
+    "from": 53,
+    "to": 58
+   },
+   {
+    "work": "Slab reinforcement",
+    "from": 59,
+    "to": 62
+   }
+  ]
+ },
+ "milestones": [
+  {
+   "d": 23,
+   "k": "ra_bill",
+   "t": "Send Lake View Apartments' running bill to the client, work up to today",
+   "p": "lake_view"
+  },
+  {
+   "d": 34,
+   "k": "work_order",
+   "t": "Work order to Joy Tiling Works: floor tiling, 240 sqm at ₹95",
+   "p": "green_villa"
+  },
+  {
+   "d": 35,
+   "k": "client_receipt",
+   "t": "Lake View Builders paid the running bill of day 23",
+   "p": "lake_view"
+  },
+  {
+   "d": 51,
+   "k": "ra_bill",
+   "t": "Send Lake View Apartments' running bill to the client, work up to today",
+   "p": "lake_view"
+  },
+  {
+   "d": 62,
+   "k": "stage",
+   "t": "Green Villa handed over to the client",
+   "p": "green_villa"
+  }
+ ],
+ "days": [
+  {
+   "d": 1,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 2,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 3,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 4,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 5,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 6,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 7,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 8,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 9,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 10,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 11,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 12,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 13,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 14,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 15,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 16,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 17,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 18,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 19,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 20,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 21,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 22,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 23,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 24,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 25,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 26,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 27,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 28,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 29,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 30,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 31,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 32,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 33,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 34,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 35,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 36,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 37,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 38,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 39,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 40,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 41,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 42,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 43,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 44,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 45,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 46,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 47,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 48,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 49,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 50,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 51,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 52,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 53,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 54,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 55,
+   "wd": "Friday",
+   "sun": false
+  },
+  {
+   "d": 56,
+   "wd": "Saturday",
+   "sun": false
+  },
+  {
+   "d": 57,
+   "wd": "Sunday",
+   "sun": true
+  },
+  {
+   "d": 58,
+   "wd": "Monday",
+   "sun": false
+  },
+  {
+   "d": 59,
+   "wd": "Tuesday",
+   "sun": false
+  },
+  {
+   "d": 60,
+   "wd": "Wednesday",
+   "sun": false
+  },
+  {
+   "d": 61,
+   "wd": "Thursday",
+   "sun": false
+  },
+  {
+   "d": 62,
+   "wd": "Friday",
+   "sun": false
+  }
+ ],
+ "kinds": {
+  "conditions": "Site conditions",
+  "attendance": "Attendance",
+  "work": "Work done",
+  "use": "Material used",
+  "expense": "Site expense",
+  "issue": "Problem raised",
+  "request": "Material request",
+  "delivery": "Delivery received",
+  "order": "Purchase order",
+  "boq_count": "Work counted on the BOQ",
+  "issue_resolve": "Problem fixed",
+  "work_order": "Subcontract work order",
+  "measurement": "Subcontract work measured",
+  "supplier_bill": "Supplier bill",
+  "supplier_payment": "Supplier paid",
+  "sub_bill": "Subcontractor bill",
+  "sub_payment": "Subcontractor paid",
+  "advance": "Advance to a worker",
+  "wage_pay": "Wages paid",
+  "client_receipt": "Client paid",
+  "wage_approve": "Wages approved",
+  "ra_bill": "Running bill to the client",
+  "stage": "Project stage"
+ },
+ "counts": {
+  "wage_approve": 18,
+  "wage_pay": 18,
+  "use": 351,
+  "attendance": 192,
+  "work": 190,
+  "expense": 192,
+  "conditions": 192,
+  "request": 54,
+  "order": 54,
+  "boq_count": 48,
+  "issue": 6,
+  "delivery": 59,
+  "issue_resolve": 6,
+  "advance": 5,
+  "supplier_bill": 59,
+  "supplier_payment": 22,
+  "ra_bill": 2,
+  "work_order": 1,
+  "client_receipt": 1,
+  "measurement": 2,
+  "sub_bill": 2,
+  "sub_payment": 2,
+  "stage": 1
+ }
+}
