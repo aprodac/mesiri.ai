@@ -2,11 +2,11 @@
 
 > Made from `episode-01.json` by `script_md.py`; edit the JSON, then run it again.
 
-**Status:** DRAFT for Ilan's review (20 Nov 2026). Not filmed. Screen scenes: url and focus to be set when the shots are taken (sample company after the guided project's chapters 2 and 3).
+**Status:** DRAFT for Ilan's review (20 Nov 2026). Built 20 Nov from the sample company after the guided project's chapters 2 and 3, and the starter kit's own drawing, estimate and contract summary.
 
 **Objective:** By the end you can explain what is agreed before the first brick (drawings, BOQ, rates, contract: advance, retention, defects period, delay) and why the BOQ is the yardstick for everything after.
 
-**Length:** 14 scenes, 1332 words of narration (about 9 minutes)
+**Length:** 16 scenes, 1530 words of narration (about 10 minutes)
 
 ## Cold open
 
@@ -53,7 +53,21 @@ Narration:
 >
 > Then the contract: the price, the dates, and the rules for how money moves for the next nine months.
 
-### 3. One line, four numbers
+### 3. What the architect drew
+
+*The paper · Drawing A-101 · screen*
+
+Narration:
+
+> These are Green Villa's drawings: eight sheets from the architect and the consultants. This one is A-101, the ground floor plan.
+>
+> Every room, every wall, every door and window, drawn to scale. The BOQ's quantities are measured off sheets like this one.
+>
+> Bedroom one is four point two metres by three point six. Its label says a hundred and sixty-three square feet, and that is right.
+>
+> Bedroom two is three point six by three point six. Its label also says a hundred and sixty-three. Keep that in mind: we will come back to it.
+
+### 4. One line, four numbers
 
 *The BOQ · cards*
 
@@ -74,18 +88,32 @@ Narration:
 >
 > So every square metre plastered leaves ninety rupees. On the whole line, about one lakh thirty thousand. Green Villa has thirty-four lines like this one, in nine sections.
 
-### 4. The BOQ is the yardstick for everything after
+### 5. The whole estimate, in Excel
+
+*The paper · The estimate · screen*
+
+Narration:
+
+> And here is the whole estimate, as Ramesh priced it in Excel: the item number, the work, the unit, the quantity, the client's rate, and his own labour and material cost.
+>
+> There is the plastering line: one thousand four hundred and fifty square metres, at four hundred and twenty.
+>
+> Two things are hiding in this sheet. The staircase: the client's rate is seven thousand nine hundred, but labour and material add up to eight thousand two hundred.
+>
+> And the tiling: the client's rate is there, but the cost columns are empty. Nobody has the tiler's price yet.
+
+### 6. The BOQ is the yardstick for everything after
 
 *Why it matters · story*
 
 On screen:
 
-- A day on site · Ep 3 · Each piece of work reported lands on its line
+- Site day · Ep 3 · Each piece of work reported lands on its line
 - Material · Ep 4 · What each line needs: cement, sand, steel
 - Wages · Ep 5 · Labour paid against the work it earned
 - Subcontract · Ep 7 · The tiler measured and paid on his lines
 - Billing · Ep 8 · Each month: quantity done × client rate
-- Making money? · Ep 9 · Earned against spent, line by line
+- Profit · Ep 9 · Earned against spent, line by line
 - A wrong BOQ makes every later number wrong.
 
 Narration:
@@ -102,17 +130,9 @@ Narration:
 >
 > Get the BOQ wrong, and every one of these is wrong too.
 
-### 5. What the contract adds
+### 7. What the contract adds
 
-*The contract, GV/2026/007 · cards*
-
-On screen:
-
-- ₹82,06,050 · The work at the BOQ rates; GST 18% on top
-- Advance 10% · ₹8,20,605 at the start; 10% of each bill taken back
-- Retention 5% · Held from each bill until 12 months after handover
-- Monthly bills · Measured work × BOQ rates; paid within 15 days
-- ₹25,000 a week · For each week past 31 July 2027
+*The paper · Contract summary, GV/2026/007 · screen*
 
 Narration:
 
@@ -126,7 +146,7 @@ Narration:
 >
 > And handover on the thirty-first of July. Every week late costs twenty-five thousand rupees.
 
-### 6. ₹10 lakh of work: what reaches the bank
+### 8. ₹10 lakh of work: what reaches the bank
 
 *What the terms do to cash · stack*
 
@@ -152,7 +172,7 @@ Narration:
 
 ## Who does what, when
 
-### 7. Who does what, before the first brick
+### 9. Who does what, before the first brick
 
 *Before day 1 · people*
 
@@ -179,7 +199,7 @@ Narration:
 
 ## In Mesiri
 
-### 8. Three things in, before anything else
+### 10. Three things in, before anything else
 
 *In Mesiri · Project start · screen · screen `/planning/setup?project={Green Villa}`*
 
@@ -193,7 +213,7 @@ Narration:
 >
 > And the BOQ. Each step ticks itself the moment it is saved. Nobody marks anything done by hand.
 
-### 9. The estimate goes in as it is
+### 11. The estimate goes in as it is
 
 *In Mesiri · BOQ from Excel · story*
 
@@ -215,7 +235,7 @@ Narration:
 >
 > And it says what is not finished: three lines have no cost yet. The tiling and the granite are waiting for the tiler's price.
 
-### 10. Green Villa at a glance
+### 12. Green Villa at a glance
 
 *In Mesiri · BOQ and budget · screen · screen `/boq?project={Green Villa}`*
 
@@ -229,7 +249,7 @@ Narration:
 >
 > Thirty-one of thirty-four lines are priced. Until the tiler's price is in, nobody should quote a profit figure for this job.
 
-### 11. A loss decided at the tender
+### 13. A loss decided at the tender
 
 *In Mesiri · A line in red · screen · screen `/boq?project={Green Villa}`*
 
@@ -243,7 +263,7 @@ Narration:
 >
 > Small, but it was decided the day the price was written. Mesiri shows it before the first bag of cement is used, not at the end.
 
-### 12. The site's work, on its lines
+### 14. The site's work, on its lines
 
 *In Mesiri · The yardstick at work · screen · screen `/boq?project={Green Villa}`*
 
@@ -259,7 +279,7 @@ Narration:
 
 ## What can go wrong
 
-### 13. Five ways a job is lost on paper
+### 15. Five ways a job is lost on paper
 
 *What can go wrong · leaks*
 
@@ -268,7 +288,7 @@ On screen:
 - Priced below cost · Staircase: -₹300 a cum
 - Lines with no cost · Tiling: margin looks bigger
 - Work with no line · Putty and primer: never billed
-- Quantity copied wrong · Bedroom-2: 163 sq ft printed, ~140 drawn
+- Quantity from a wrong label · Bedroom-2: 163 sq ft printed, ~140 drawn
 - Terms unread · Advance, retention, ₹25,000 a week late
 - Each one is fixed for free on paper, and paid for on site.
 
@@ -280,13 +300,13 @@ Narration:
 >
 > Work with no line. Green Villa's estimate has no line for putty and primer. The site will do it, and it can never be billed.
 >
-> A quantity copied wrong from the drawings. Bedroom two is printed as a hundred and sixty-three square feet. Drawn, it is about a hundred and forty.
+> A quantity taken from a wrong label. Remember bedroom two: drawn at about a hundred and forty square feet, labelled a hundred and sixty-three. Measure from the label, and the BOQ is wrong.
 >
 > And contract terms nobody reads: the advance coming back out of every bill, the retention, and twenty-five thousand rupees for every week late.
 
 ## Recap and check yourself
 
-### 14. Three questions
+### 16. Three questions
 
 *Check yourself · questions*
 

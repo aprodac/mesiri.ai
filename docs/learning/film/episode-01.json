@@ -1,7 +1,7 @@
 {
   "episode": 1,
   "title": "The job is won",
-  "status": "DRAFT for Ilan's review (20 Nov 2026). Not filmed. Screen scenes: url and focus to be set when the shots are taken (sample company after the guided project's chapters 2 and 3).",
+  "status": "DRAFT for Ilan's review (20 Nov 2026). Built 20 Nov from the sample company after the guided project's chapters 2 and 3, and the starter kit's own drawing, estimate and contract summary.",
   "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 1's objective); the figures are Green Villa's own paperwork (backend/src/mesiri/application/learn/green_villa.py: the estimate and the contract) and the sample company after the guided project's set-up and BOQ chapters, played 20 Nov 2026. RA bill money as Mesiri works it out (backend/src/mesiri/domains/billing/ra.py). Construction practice: typical, to be checked by someone who has run sites.",
   "objective": "By the end you can explain what is agreed before the first brick (drawings, BOQ, rates, contract: advance, retention, defects period, delay) and why the BOQ is the yardstick for everything after.",
   "scenes": [
@@ -17,8 +17,14 @@
         "Not one brick is laid yet. But the things that decide whether this job makes money are already on paper. This episode is about that paper."
       ],
       "lines": [
-        { "at": 1, "text": "₹82,06,050 · 9 months · Main block + Annex" },
-        { "at": 2, "text": "Decided before the first brick" }
+        {
+          "at": 1,
+          "text": "₹82,06,050 · 9 months · Main block + Annex"
+        },
+        {
+          "at": 2,
+          "text": "Decided before the first brick"
+        }
       ]
     },
     {
@@ -35,11 +41,88 @@
         "Then the contract: the price, the dates, and the rules for how money moves for the next nine months."
       ],
       "phases": [
-        { "at": 0, "name": "Drawings", "text": "Architect and structural consultant: what to build", "risk": "A wrong drawing is built wrong" },
-        { "at": 1, "name": "Quantities", "text": "Measured off the drawings, line by line: the BOQ", "risk": "Measured short, built free" },
-        { "at": 2, "name": "Rates", "text": "Client's rate, and your labour and material cost", "risk": "Priced below cost, lost on every unit", "big": true },
-        { "at": 3, "name": "Quote", "text": "The price the client compares and accepts", "risk": "Won cheap, lost slowly" },
-        { "at": 4, "name": "Contract", "text": "Price, dates, advance, retention, defects, delay", "risk": "Terms unread, cash planned wrong" }
+        {
+          "at": 0,
+          "name": "Drawings",
+          "text": "Architect and structural consultant: what to build",
+          "risk": "A wrong drawing is built wrong"
+        },
+        {
+          "at": 1,
+          "name": "Quantities",
+          "text": "Measured off the drawings, line by line: the BOQ",
+          "risk": "Measured short, built free"
+        },
+        {
+          "at": 2,
+          "name": "Rates",
+          "text": "Client's rate, and your labour and material cost",
+          "risk": "Priced below cost, lost on every unit",
+          "big": true
+        },
+        {
+          "at": 3,
+          "name": "Quote",
+          "text": "The price the client compares and accepts",
+          "risk": "Won cheap, lost slowly"
+        },
+        {
+          "at": 4,
+          "name": "Contract",
+          "text": "Price, dates, advance, retention, defects, delay",
+          "risk": "Terms unread, cash planned wrong"
+        }
+      ]
+    },
+    {
+      "id": "drawing",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep01-drawing-a101",
+      "paper": {
+        "pdf": "Green Villa - drawing set rev A.pdf",
+        "page": 1,
+        "marks": {
+          "bed1": "BEDROOM-1",
+          "bed2": "BEDROOM-2"
+        }
+      },
+      "eyebrow": "The paper · Drawing A-101",
+      "title": "What the architect drew",
+      "beats": [
+        "These are Green Villa's drawings: eight sheets from the architect and the consultants. This one is A-101, the ground floor plan.",
+        "Every room, every wall, every door and window, drawn to scale. The BOQ's quantities are measured off sheets like this one.",
+        "Bedroom one is four point two metres by three point six. Its label says a hundred and sixty-three square feet, and that is right.",
+        "Bedroom two is three point six by three point six. Its label also says a hundred and sixty-three. Keep that in mind: we will come back to it."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 2,
+          "mark": "bed1",
+          "pad": 0.1
+        },
+        {
+          "at": 3,
+          "mark": "bed2",
+          "pad": 0.1
+        }
+      ],
+      "boxes": [
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "bed1",
+          "pad": 0.032
+        },
+        {
+          "at": 3,
+          "mark": "bed2",
+          "pad": 0.032
+        }
       ]
     },
     {
@@ -55,10 +138,98 @@
         "So every square metre plastered leaves ninety rupees. On the whole line, about one lakh thirty thousand. Green Villa has thirty-four lines like this one, in nine sections."
       ],
       "cards": [
-        { "at": 0, "title": "4.1 Plastering", "text": "1,450 sqm, measured off the drawings", "tag": "quantity", "main": true },
-        { "at": 1, "title": "₹420 a sqm", "text": "What the client pays: the client rate", "tag": "client rate" },
-        { "at": 2, "title": "₹330 a sqm", "text": "₹210 labour + ₹120 material: your cost", "tag": "budget" },
-        { "at": 3, "title": "₹90 a sqm", "text": "₹1,30,500 on the line; 34 lines in 9 sections", "tag": "margin" }
+        {
+          "at": 0,
+          "title": "4.1 Plastering",
+          "text": "1,450 sqm, measured off the drawings",
+          "tag": "quantity",
+          "main": true
+        },
+        {
+          "at": 1,
+          "title": "₹420 a sqm",
+          "text": "What the client pays: the client rate",
+          "tag": "client rate"
+        },
+        {
+          "at": 2,
+          "title": "₹330 a sqm",
+          "text": "₹210 labour + ₹120 material: your cost",
+          "tag": "budget"
+        },
+        {
+          "at": 3,
+          "title": "₹90 a sqm",
+          "text": "₹1,30,500 on the line; 34 lines in 9 sections",
+          "tag": "margin"
+        }
+      ]
+    },
+    {
+      "id": "estimate",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep01-estimate",
+      "sheet": {
+        "xlsx": "Green Villa - estimate.xlsx",
+        "sheet": "BOQ",
+        "rows": 32,
+        "marks": {
+          "head": "Item no.",
+          "plaster": "4.1",
+          "stair": "2.9",
+          "tiles": "5.1"
+        }
+      },
+      "eyebrow": "The paper · The estimate",
+      "title": "The whole estimate, in Excel",
+      "beats": [
+        "And here is the whole estimate, as Ramesh priced it in Excel: the item number, the work, the unit, the quantity, the client's rate, and his own labour and material cost.",
+        "There is the plastering line: one thousand four hundred and fifty square metres, at four hundred and twenty.",
+        "Two things are hiding in this sheet. The staircase: the client's rate is seven thousand nine hundred, but labour and material add up to eight thousand two hundred.",
+        "And the tiling: the client's rate is there, but the cost columns are empty. Nobody has the tiler's price yet."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 1,
+          "mark": "plaster",
+          "pad": 0.12
+        },
+        {
+          "at": 2,
+          "mark": "stair",
+          "pad": 0.12
+        },
+        {
+          "at": 3,
+          "mark": "tiles",
+          "pad": 0.12
+        }
+      ],
+      "boxes": [
+        {
+          "at": 0,
+          "until": 1,
+          "mark": "head"
+        },
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "plaster"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "stair"
+        },
+        {
+          "at": 3,
+          "mark": "tiles"
+        }
       ]
     },
     {
@@ -76,20 +247,62 @@
         "Get the BOQ wrong, and every one of these is wrong too."
       ],
       "steps": [
-        { "at": 1, "module": "A day on site · Ep 3", "text": "Each piece of work reported lands on its line" },
-        { "at": 2, "module": "Material · Ep 4", "text": "What each line needs: cement, sand, steel" },
-        { "at": 2, "module": "Wages · Ep 5", "text": "Labour paid against the work it earned" },
-        { "at": 3, "module": "Subcontract · Ep 7", "text": "The tiler measured and paid on his lines" },
-        { "at": 3, "module": "Billing · Ep 8", "text": "Each month: quantity done × client rate" },
-        { "at": 4, "module": "Making money? · Ep 9", "text": "Earned against spent, line by line" }
+        {
+          "at": 1,
+          "module": "Site day · Ep 3",
+          "text": "Each piece of work reported lands on its line"
+        },
+        {
+          "at": 2,
+          "module": "Material · Ep 4",
+          "text": "What each line needs: cement, sand, steel"
+        },
+        {
+          "at": 2,
+          "module": "Wages · Ep 5",
+          "text": "Labour paid against the work it earned"
+        },
+        {
+          "at": 3,
+          "module": "Subcontract · Ep 7",
+          "text": "The tiler measured and paid on his lines"
+        },
+        {
+          "at": 3,
+          "module": "Billing · Ep 8",
+          "text": "Each month: quantity done × client rate"
+        },
+        {
+          "at": 4,
+          "module": "Profit · Ep 9",
+          "text": "Earned against spent, line by line"
+        }
       ],
-      "footer": { "at": 5, "text": "A wrong BOQ makes every later number wrong." }
+      "footer": {
+        "at": 5,
+        "text": "A wrong BOQ makes every later number wrong."
+      }
     },
     {
       "id": "contract",
-      "kind": "cards",
+      "kind": "screen",
       "part": "On a real site",
-      "eyebrow": "The contract, GV/2026/007",
+      "shot": "ep01-contract-summary",
+      "paper": {
+        "pdf": "Green Villa - contract summary.pdf",
+        "page": 1,
+        "marks": {
+          "value": "line: Contract value",
+          "advance": "line: Mobilisation advance",
+          "recovery": "line: Advance recovery",
+          "retention": "line: Retention",
+          "defects": "line: Defects period",
+          "billing": "line: Billing",
+          "handover": "line: Handover",
+          "delay": "line: Delay"
+        }
+      },
+      "eyebrow": "The paper · Contract summary, GV/2026/007",
       "title": "What the contract adds",
       "beats": [
         "The contract adds the rules for money and time. Eighty-two lakh rupees for the work, with GST at eighteen percent on top.",
@@ -98,12 +311,72 @@
         "Bills every month, on the work measured, at the BOQ rates, paid within fifteen days.",
         "And handover on the thirty-first of July. Every week late costs twenty-five thousand rupees."
       ],
-      "cards": [
-        { "at": 0, "title": "₹82,06,050", "text": "The work at the BOQ rates; GST 18% on top", "tag": "contract value", "main": true },
-        { "at": 1, "title": "Advance 10%", "text": "₹8,20,605 at the start; 10% of each bill taken back", "tag": "mobilisation" },
-        { "at": 2, "title": "Retention 5%", "text": "Held from each bill until 12 months after handover", "tag": "defects period" },
-        { "at": 3, "title": "Monthly bills", "text": "Measured work × BOQ rates; paid within 15 days", "tag": "RA bills" },
-        { "at": 4, "title": "₹25,000 a week", "text": "For each week past 31 July 2027", "tag": "delay" }
+      "focus": [
+        {
+          "at": 0,
+          "mark": "value",
+          "pad": 0.12
+        },
+        {
+          "at": 1,
+          "mark": "advance",
+          "pad": 0.12
+        },
+        {
+          "at": 2,
+          "mark": "retention",
+          "pad": 0.12
+        },
+        {
+          "at": 3,
+          "mark": "billing",
+          "pad": 0.12
+        },
+        {
+          "at": 4,
+          "mark": "delay",
+          "pad": 0.12
+        }
+      ],
+      "boxes": [
+        {
+          "at": 0,
+          "until": 1,
+          "mark": "value"
+        },
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "advance"
+        },
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "recovery"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "retention"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "defects"
+        },
+        {
+          "at": 3,
+          "until": 4,
+          "mark": "billing"
+        },
+        {
+          "at": 4,
+          "mark": "handover"
+        },
+        {
+          "at": 4,
+          "mark": "delay"
+        }
       ]
     },
     {
@@ -120,11 +393,33 @@
         "A builder who plans on the full ten lakh will run short, every single month."
       ],
       "segments": [
-        { "at": 3, "pct": 85, "range": "8,50,000", "label": "To spend this month", "tone": "#4ade80" },
-        { "at": 1, "pct": 10, "range": "1,00,000", "label": "Advance taken back", "tone": "#facc15" },
-        { "at": 2, "pct": 5, "range": "50,000", "label": "Retention", "tone": "#fb923c" }
+        {
+          "at": 3,
+          "pct": 85,
+          "range": "8,50,000",
+          "label": "To spend this month",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 1,
+          "pct": 10,
+          "range": "1,00,000",
+          "label": "Advance taken back",
+          "tone": "#facc15"
+        },
+        {
+          "at": 2,
+          "pct": 5,
+          "range": "50,000",
+          "label": "Retention",
+          "tone": "#fb923c"
+        }
       ],
-      "callout": { "at": 4, "big": "₹8.5 L, not ₹10 L", "small": "Plan cash on what reaches the bank" },
+      "callout": {
+        "at": 4,
+        "big": "₹8.5 L, not ₹10 L",
+        "small": "Plan cash on what reaches the bank"
+      },
       "note": "GST ₹1,80,000 is added on top and passed to the government. Green Villa's client is a person, so no TDS."
     },
     {
@@ -141,13 +436,41 @@
         "And two people who will live by this paper for nine months: Anil, the project manager, who counts the work against the BOQ; and Meera in accounts, who bills the client and recovers the advance."
       ],
       "people": [
-        { "at": 1, "who": "Architect and consultant", "worry": "Here is what to build, and how strong", "tone": "#93c5fd" },
-        { "at": 2, "who": "Ramesh Nair, owner", "worry": "Is every line measured, and priced above cost?", "tone": "#facc15" },
-        { "at": 3, "who": "Dr. Anand Krishnan, client", "worry": "What do I pay, and when?", "tone": "#4ade80" },
-        { "at": 4, "who": "Anil, project manager", "worry": "I will count the site's work on these lines", "tone": "#fb923c" },
-        { "at": 4, "who": "Meera, accounts", "worry": "I bill on it, and take the advance back", "tone": "#c4b5fd" }
+        {
+          "at": 1,
+          "who": "Architect and consultant",
+          "worry": "Here is what to build, and how strong",
+          "tone": "#93c5fd"
+        },
+        {
+          "at": 2,
+          "who": "Ramesh Nair, owner",
+          "worry": "Is every line measured, and priced above cost?",
+          "tone": "#facc15"
+        },
+        {
+          "at": 3,
+          "who": "Dr. Anand Krishnan, client",
+          "worry": "What do I pay, and when?",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 4,
+          "who": "Anil, project manager",
+          "worry": "I will count the site's work on these lines",
+          "tone": "#fb923c"
+        },
+        {
+          "at": 4,
+          "who": "Meera, accounts",
+          "worry": "I bill on it, and take the advance back",
+          "tone": "#c4b5fd"
+        }
       ],
-      "footer": { "at": 4, "text": "The paper is made once. It is used every day for nine months." }
+      "footer": {
+        "at": 4,
+        "text": "The paper is made once. It is used every day for nine months."
+      }
     },
     {
       "id": "setup",
@@ -164,8 +487,49 @@
         "The client and the contract: the value, the advance, the retention, the defects period. Typed once, from the contract summary.",
         "And the BOQ. Each step ticks itself the moment it is saved. Nobody marks anything done by hand."
       ],
-      "focus": [{ "at": 0, "full": true }],
-      "boxes": []
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 1,
+          "mark": "dates",
+          "pad": 0.08
+        },
+        {
+          "at": 2,
+          "mark": "contract",
+          "pad": 0.08
+        },
+        {
+          "at": 3,
+          "mark": "steps",
+          "pad": 0.02
+        }
+      ],
+      "boxes": [
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "dates"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "contract"
+        },
+        {
+          "at": 3,
+          "mark": "boq"
+        }
+      ],
+      "marks": {
+        "dates": "[data-guide=\"setup.steps\"] > li:nth-child(1)",
+        "contract": "[data-guide=\"setup.steps\"] > li:nth-child(2)",
+        "boq": "[data-guide=\"setup.steps\"] > li:nth-child(3)",
+        "steps": "[data-guide=\"setup.steps\"]"
+      }
     },
     {
       "id": "import",
@@ -180,12 +544,32 @@
         "And it says what is not finished: three lines have no cost yet. The tiling and the granite are waiting for the tiler's price."
       ],
       "steps": [
-        { "at": 0, "module": "Green Villa - estimate.xlsx", "text": "The owner's own estimate, from the tender" },
-        { "at": 1, "module": "Columns read", "text": "Item no. · Work · Unit · Qty · Rate · Labour · Material" },
-        { "at": 2, "module": "Before saving", "text": "9 sections · 34 lines · ₹82,06,050 to the client · ₹61,31,500 cost" },
-        { "at": 3, "module": "Said, not hidden", "text": "3 lines with no cost yet: tiling and granite", "flag": "not final" }
+        {
+          "at": 0,
+          "module": "Green Villa - estimate.xlsx",
+          "text": "The owner's own estimate, from the tender"
+        },
+        {
+          "at": 1,
+          "module": "Columns read",
+          "text": "Item no. · Work · Unit · Qty · Rate · Labour · Material"
+        },
+        {
+          "at": 2,
+          "module": "Before saving",
+          "text": "9 sections · 34 lines · ₹82,06,050 to the client · ₹61,31,500 cost"
+        },
+        {
+          "at": 3,
+          "module": "Said, not hidden",
+          "text": "3 lines with no cost yet: tiling and granite",
+          "flag": "not final"
+        }
       ],
-      "footer": { "at": 3, "text": "Checked before it is saved; nothing typed twice." }
+      "footer": {
+        "at": 3,
+        "text": "Checked before it is saved; nothing typed twice."
+      }
     },
     {
       "id": "totals",
@@ -202,8 +586,51 @@
         "The margin, on the lines that have a cost: thirteen lakh, about eighteen percent. Marked not final, because three lines have no cost yet.",
         "Thirty-one of thirty-four lines are priced. Until the tiler's price is in, nobody should quote a profit figure for this job."
       ],
-      "focus": [{ "at": 0, "full": true }],
-      "boxes": []
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 1,
+          "mark": "totals",
+          "pad": 0.04
+        },
+        {
+          "at": 3,
+          "mark": "totals",
+          "pad": 0.04
+        }
+      ],
+      "boxes": [
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "contract"
+        },
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "budget"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "margin"
+        },
+        {
+          "at": 3,
+          "mark": "priced"
+        }
+      ],
+      "marks": {
+        "totals": "[data-guide=\"boq.totals\"]",
+        "contract": "[data-guide=\"boq.totals\"] > :nth-child(1)",
+        "budget": "[data-guide=\"boq.totals\"] > :nth-child(2)",
+        "margin": "[data-guide=\"boq.totals\"] > :nth-child(3)",
+        "earned": "[data-guide=\"boq.totals\"] > :nth-child(4)",
+        "priced": "[data-guide=\"boq.totals\"] > :nth-child(5)"
+      }
     },
     {
       "id": "loss",
@@ -220,8 +647,50 @@
         "Every cubic metre loses three hundred rupees. Nine cubic metres: two thousand seven hundred.",
         "Small, but it was decided the day the price was written. Mesiri shows it before the first bag of cement is used, not at the end."
       ],
-      "focus": [{ "at": 0, "full": true }],
-      "boxes": []
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 1,
+          "mark": "row",
+          "pad": 0.06
+        },
+        {
+          "at": 3,
+          "mark": "row",
+          "pad": 0.1
+        }
+      ],
+      "boxes": [
+        {
+          "at": 0,
+          "until": 1,
+          "mark": "margin"
+        },
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "rate"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "margin"
+        },
+        {
+          "at": 3,
+          "mark": "row"
+        }
+      ],
+      "scroll": "tr[data-guide=\"boq.loss\"]",
+      "scrollOffset": 330,
+      "marks": {
+        "row": "tr[data-guide=\"boq.loss\"]",
+        "rate": "tr[data-guide=\"boq.loss\"] [data-guide=\"boq.rate\"]",
+        "margin": "tr[data-guide=\"boq.loss\"] [data-guide=\"boq.margin\"]"
+      }
     },
     {
       "id": "counted",
@@ -238,8 +707,45 @@
         "Now each line shows how far it has got. The annex: site clearance twenty-seven percent, excavation twenty-three, the footings twenty-six.",
         "The months before Mesiri are on paper, so this counts from here. From now on, every message from site moves these bars by itself."
       ],
-      "focus": [{ "at": 0, "full": true }],
-      "boxes": []
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 3,
+          "mark": "earned",
+          "pad": 0.1
+        }
+      ],
+      "boxes": [
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "clearance"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "excavation"
+        },
+        {
+          "at": 2,
+          "until": 3,
+          "mark": "footing"
+        },
+        {
+          "at": 3,
+          "mark": "earned"
+        }
+      ],
+      "marks": {
+        "clearance": "tr:has-text(\"Site clearance\")",
+        "excavation": "tr:has-text(\"Excavation\")",
+        "footing": "tr:has-text(\"Footing concreting\")",
+        "earned": "[data-guide=\"boq.totals\"] > :nth-child(4)",
+        "lines": "[data-guide=\"boq.lines\"]"
+      }
     },
     {
       "id": "wrong",
@@ -251,17 +757,40 @@
         "Five ways a job is lost before the first brick.",
         "A line priced below its cost, like the staircase. And lines with no cost at all, which make the margin look bigger than it is.",
         "Work with no line. Green Villa's estimate has no line for putty and primer. The site will do it, and it can never be billed.",
-        "A quantity copied wrong from the drawings. Bedroom two is printed as a hundred and sixty-three square feet. Drawn, it is about a hundred and forty.",
+        "A quantity taken from a wrong label. Remember bedroom two: drawn at about a hundred and forty square feet, labelled a hundred and sixty-three. Measure from the label, and the BOQ is wrong.",
         "And contract terms nobody reads: the advance coming back out of every bill, the retention, and twenty-five thousand rupees for every week late."
       ],
       "leaks": [
-        { "at": 1, "title": "Priced below cost", "eg": "Staircase: -₹300 a cum" },
-        { "at": 1, "title": "Lines with no cost", "eg": "Tiling: margin looks bigger" },
-        { "at": 2, "title": "Work with no line", "eg": "Putty and primer: never billed" },
-        { "at": 3, "title": "Quantity copied wrong", "eg": "Bedroom-2: 163 sq ft printed, ~140 drawn" },
-        { "at": 4, "title": "Terms unread", "eg": "Advance, retention, ₹25,000 a week late" }
+        {
+          "at": 1,
+          "title": "Priced below cost",
+          "eg": "Staircase: -₹300 a cum"
+        },
+        {
+          "at": 1,
+          "title": "Lines with no cost",
+          "eg": "Tiling: margin looks bigger"
+        },
+        {
+          "at": 2,
+          "title": "Work with no line",
+          "eg": "Putty and primer: never billed"
+        },
+        {
+          "at": 3,
+          "title": "Quantity from a wrong label",
+          "eg": "Bedroom-2: 163 sq ft printed, ~140 drawn"
+        },
+        {
+          "at": 4,
+          "title": "Terms unread",
+          "eg": "Advance, retention, ₹25,000 a week late"
+        }
       ],
-      "footer": { "at": 4, "text": "Each one is fixed for free on paper, and paid for on site." }
+      "footer": {
+        "at": 4,
+        "text": "Each one is fixed for free on paper, and paid for on site."
+      }
     },
     {
       "id": "check",
@@ -277,9 +806,18 @@
         "Next: setting up. Everything that must exist before Ravi sends his first message. Now open the sample company, and do this episode yourself: chapters two and three of the guided project."
       ],
       "questions": [
-        { "at": 1, "text": "Why is the BOQ called the yardstick?" },
-        { "at": 2, "text": "Of ₹10 lakh of work, how much can be spent?" },
-        { "at": 3, "text": "Name one thing on paper that loses money on site." }
+        {
+          "at": 1,
+          "text": "Why is the BOQ called the yardstick?"
+        },
+        {
+          "at": 2,
+          "text": "Of ₹10 lakh of work, how much can be spent?"
+        },
+        {
+          "at": 3,
+          "text": "Name one thing on paper that loses money on site."
+        }
       ]
     }
   ]
