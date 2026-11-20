@@ -1,0 +1,761 @@
+{
+  "episode": 4,
+  "title": "Cement runs short",
+  "status": "DRAFT for Ilan's review (20 Nov 2026). Not filmed. Plan and decisions: EPISODE_04_PLAN.md (written on its recommended answers). Recording needs the story first: the Main block's cement chain in sample_plan.py made the kit's (LRN-F17). Real data entry only: every chat card is Mesiri's real reply (capture), every website entry filmed step by step (kind \"steps\", steps-04.cjs, light mode).",
+  "source": "docs/learning/film/EPISODE_04_PLAN.md (the chain day by day); the starter kit's papers (scripts/learn_kit/make_kit.py: three quotations, Malabar's challan and bill; green_villa.RETURN: return note GV/RN/014); the assistant's tools (apps/whatsapp-assistant/src/agent_api/tools.py: record_transfer, record_receipt on an order, return_to_supplier, count_stock). Construction practice (storing cement, checking at the gate): typical, to be checked by someone who has run sites.",
+  "objective": "By the end you can walk a material chain across all four people: request, quotations and rate, order, delivery (and a damaged load sent back), stock and use, the supplier's bill checked against order and delivery, payment; and a month-end stock count.",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "part": "Cold open",
+      "eyebrow": "Mesiri · The course · Episode 4",
+      "title": "Cement runs short",
+      "beats": [
+        "Monday evening at the Main block. Two bags of cement left, and the conduit work stopped halfway.",
+        "Ravi has asked for a hundred bags. By the end of the month, that one line will have passed through four people and eight papers.",
+        "Three times on the way, money can quietly leak. This is how it is stopped."
+      ],
+      "lines": [
+        {
+          "at": 0,
+          "text": "Main block · 2 bags left"
+        },
+        {
+          "at": 1,
+          "text": "One request · four people · eight papers"
+        }
+      ]
+    },
+    {
+      "id": "chain",
+      "kind": "story",
+      "part": "On a real site",
+      "eyebrow": "On a real site",
+      "title": "How a site buys material",
+      "beats": [
+        "Every material on a site is bought the same way, and every step leaves a paper.",
+        "The site asks: a request. The office asks the shops for their prices: quotations. It chooses one and orders: a purchase order.",
+        "The lorry comes with a challan, what the shop says it sent. The site counts it at the gate, and sends back what is not fit.",
+        "Then the shop's bill. Accounts puts it beside the order and the challan, and pays only for what was ordered, at the rate agreed, and what came."
+      ],
+      "steps": [
+        {
+          "at": 1,
+          "module": "Request",
+          "text": "The site asks"
+        },
+        {
+          "at": 1,
+          "module": "Quotations · Order",
+          "text": "The office prices it and orders"
+        },
+        {
+          "at": 2,
+          "module": "Challan · Return",
+          "text": "Counted at the gate; the bad sent back"
+        },
+        {
+          "at": 3,
+          "module": "Bill · Payment",
+          "text": "Order, delivery and bill side by side, then paid"
+        }
+      ],
+      "footer": {
+        "at": 3,
+        "text": "Pay for what was ordered, at the rate agreed, and what came."
+      }
+    },
+    {
+      "id": "howmuch",
+      "kind": "story",
+      "part": "On a real site",
+      "eyebrow": "On a real site",
+      "title": "Why not just order three hundred bags",
+      "beats": [
+        "Why not ring the usual shop and order everything at once?",
+        "Because the usual shop's price is only a price. Three quotations tell you what the price really is, today.",
+        "And because cement does not keep. In a damp store it sets in its bag within weeks. A site orders what its store can hold dry, and the rest when there is room.",
+        "At the gate, every load is counted, and every bag pressed. A bag that is torn, or hard as a stone, is refused there, before anyone signs for it."
+      ],
+      "steps": [
+        {
+          "at": 1,
+          "module": "Three quotes",
+          "text": "The real price, today"
+        },
+        {
+          "at": 2,
+          "module": "What the store holds",
+          "text": "Cement goes hard if it waits"
+        },
+        {
+          "at": 3,
+          "module": "At the gate",
+          "text": "Count it, press it, refuse the bad"
+        }
+      ]
+    },
+    {
+      "id": "request",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "Tuesday · day 3 · Anil",
+      "title": "A hundred bags, or three hundred",
+      "beats": [
+        "Tuesday morning. Ravi's request is the first thing on Anil's Requests page: a hundred bags for the Main block, asked yesterday evening.",
+        "Anil looks further than tomorrow. The Main block's plastering starts next week, and the material plan says it needs about three hundred bags this month.",
+        "So he asks three suppliers to quote, from Quotations: three hundred bags of cement for the Main block, and two thousand kilos of steel for the Annex's columns.",
+        "Malabar, Kerala Steels and Sri Hardwares. Each one is asked the same thing, on the same day."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/materials/requests",
+          "show": "Requests: Main block, cement, 100 bags, Ravi, yesterday",
+          "mark": "the request"
+        },
+        {
+          "at": 1,
+          "url": "/planning/materials?project={Green Villa}",
+          "show": "the material plan: cement, the weeks ahead",
+          "mark": "cement"
+        },
+        {
+          "at": 2,
+          "url": "/procurement/quotations",
+          "do": "New: cement 300 bags (Main block), steel 2,000 kg (Annex)",
+          "show": "the request for quotations, two lines",
+          "mark": "the lines"
+        },
+        {
+          "at": 3,
+          "do": "three suppliers chosen, sent",
+          "show": "sent to Malabar, Kerala Steels, Sri Hardwares",
+          "mark": "the suppliers"
+        }
+      ],
+      "record": "Done for real by steps-04.cjs, as Anil on day 3. The request is Ravi's own of day 2 (episode 3's 'short'). Check: the material plan's cement for the month is about 300 bags; if not, say what it says.",
+      "as": "PROJECT_MANAGER",
+      "day": 3
+    },
+    {
+      "id": "transfer",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "Tuesday · day 3 · 9:10 am",
+      "title": "Twenty bags tonight",
+      "beats": [
+        "Quotes take a day. The conduit work cannot wait a day.",
+        "Anil rings Ravi: take twenty bags from the Annex, which has enough for this week. Ravi has them carried across, and says so.",
+        "Mesiri's card: twenty bags out of the Annex's stock, into the Main block's. One movement, two stocks, neither counted twice."
+      ],
+      "messages": [
+        {
+          "at": 1,
+          "from": "site",
+          "text": "Annex il ninnu 20 bag cement Main block ilekku maatti"
+        },
+        {
+          "at": 2,
+          "from": "mesiri",
+          "card": {
+            "title": "Transfer · cement",
+            "rows": [
+              "From Annex · 20 bags",
+              "To Main block"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 2,
+          "text": "Annex's stock − 20"
+        },
+        {
+          "at": 2,
+          "text": "Main block's stock + 20"
+        }
+      ],
+      "capture": {
+        "via": "Tell Mesiri in the top bar (same assistant as WhatsApp)",
+        "as": "Site engineer (Ravi)",
+        "day": 3,
+        "send": "Annex il ninnu 20 bag cement Main block ilekku maatti",
+        "tap": "Save",
+        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
+        "role": "SITE_ENGINEER"
+      }
+    },
+    {
+      "id": "quote",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep04-quote",
+      "paper": {
+        "pdf": "Quote - Malabar Cements Agency.pdf",
+        "page": 1,
+        "marks": {
+          "rates": "Rate (Rs)",
+          "valid": "Valid for 7 days"
+        }
+      },
+      "eyebrow": "The paper · three quotations",
+      "title": "Three prices, the same day",
+      "beats": [
+        "Wednesday, the quotations come back. This is Malabar's: four hundred rupees a bag of cement, seventy-two a kilo of steel, unloaded at site.",
+        "Valid for seven days, GST extra, delivery two days after the order.",
+        "Kerala Steels quotes four hundred and twelve and sixty-six. Sri Hardwares, four hundred and eight and seventy."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 0,
+          "mark": "rates",
+          "pad": 0.12
+        },
+        {
+          "at": 1,
+          "mark": "valid",
+          "pad": 0.12
+        },
+        {
+          "at": 2,
+          "full": true
+        }
+      ],
+      "boxes": [
+        {
+          "at": 0,
+          "until": 1,
+          "mark": "rates"
+        },
+        {
+          "at": 1,
+          "until": 2,
+          "mark": "valid"
+        }
+      ],
+      "note": "The kit's quotation says 'For Green Villa, Main block' for both items: it changes to 'Green Villa' (steel for the Annex) with the story (LRN-F17)."
+    },
+    {
+      "id": "compare",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "Wednesday · day 4 · Anil",
+      "title": "Cheapest is not one supplier",
+      "beats": [
+        "Anil puts each supplier's rates in, from their papers.",
+        "Mesiri puts them side by side. Cheapest in total is Kerala Steels. But cheapest for cement is Malabar, and for steel, Kerala. Buying each from its cheapest saves three thousand six hundred rupees more.",
+        "So Anil orders the cement from Malabar, and the steel from Kerala Steels.",
+        "And not three hundred bags: two hundred. That is what the Main block's store can keep dry. The other hundred, when there is room."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "do": "the three quotes typed in, from the papers",
+          "show": "three suppliers, both lines priced",
+          "mark": "the rates"
+        },
+        {
+          "at": 1,
+          "do": "Compare",
+          "show": "lowest per item: cement Malabar ₹400, steel Kerala ₹66; lowest total Kerala",
+          "mark": "the comparison"
+        },
+        {
+          "at": 2,
+          "do": "award cement to Malabar, steel to Kerala Steels",
+          "show": "the award",
+          "mark": "the award"
+        },
+        {
+          "at": 3,
+          "url": "/procurement/orders",
+          "show": "the orders: Malabar 200 bags at ₹400; Kerala Steels 2,000 kg at ₹66",
+          "mark": "the orders"
+        }
+      ],
+      "record": "Done for real by steps-04.cjs, as Anil on day 4. Check whether the award can order 200 of the 300 bags; if not, award, then change the order to 200 on Purchase orders, and say so. Figures: per item ₹1,20,000 + ₹1,32,000 = ₹2,52,000 against Kerala's total ₹2,55,600 (before GST); read the screen's.",
+      "as": "PROJECT_MANAGER",
+      "day": 4
+    },
+    {
+      "id": "who",
+      "kind": "people",
+      "part": "Who does what, when",
+      "eyebrow": "Days 2 to 16",
+      "title": "Four people, one load of cement",
+      "beats": [
+        "Who does what with these bags?",
+        "Ravi asks for them, counts them at the gate, and counts what is left at the month's end.",
+        "Anil prices them, orders them, and sends back what is not fit.",
+        "Meera checks the bill against the order and the delivery, and pays.",
+        "And Ramesh, the owner, sees what is owed, and signs off what the count found."
+      ],
+      "people": [
+        {
+          "at": 1,
+          "who": "Ravi, site engineer",
+          "worry": "Ask · count at the gate · count the store",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 2,
+          "who": "Anil, project manager",
+          "worry": "Quotes · order · return",
+          "tone": "#fb923c"
+        },
+        {
+          "at": 3,
+          "who": "Meera, accounts",
+          "worry": "Bill against order and delivery · pay",
+          "tone": "#c4b5fd"
+        },
+        {
+          "at": 4,
+          "who": "Ramesh Nair, owner",
+          "worry": "What we owe · approve the count",
+          "tone": "#facc15"
+        },
+        {
+          "at": 2,
+          "who": "Malabar Cements Agency",
+          "worry": "Quote · lorry · bill",
+          "tone": "#93c5fd"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "Each one checks the step before."
+      }
+    },
+    {
+      "id": "challan",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep04-challan",
+      "paper": {
+        "pdf": "Malabar - delivery challan.pdf",
+        "page": 1,
+        "marks": {
+          "sent": "Sent",
+          "follow": "to follow"
+        }
+      },
+      "eyebrow": "The paper · Malabar's challan",
+      "title": "What the lorry says it brought",
+      "beats": [
+        "Friday, Malabar's lorry is at the Main block's gate. With it, the challan.",
+        "Ordered, two hundred. Sent, one hundred and ninety. Ten to follow with the next load."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 1,
+          "mark": "sent",
+          "pad": 0.12
+        }
+      ],
+      "boxes": [
+        {
+          "at": 1,
+          "mark": "sent"
+        },
+        {
+          "at": 1,
+          "mark": "follow"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "Friday · day 6 · 10:30 am",
+      "title": "Counted at the gate",
+      "beats": [
+        "Ravi counts the bags off the lorry: one hundred and ninety. Six of them are torn, and set hard. He puts them aside, on the lorry.",
+        "He tells Mesiri what came, and what is wrong with it.",
+        "The card puts the hundred and ninety on Malabar's order by itself, and says what the order still has to bring: ten bags.",
+        "The six bad bags are for the office to send back. Ravi taps Save."
+      ],
+      "messages": [
+        {
+          "at": 1,
+          "from": "site",
+          "text": "Malabar cement vannu, 190 bag. 10 bag pinne varum. 6 bag kiriyathum kattiyayathum, maatti vechu"
+        },
+        {
+          "at": 2,
+          "from": "mesiri",
+          "card": {
+            "title": "Received · Main block",
+            "rows": [
+              "Cement · 190 bags · Malabar Cements Agency",
+              "On order PO · 10 still to come",
+              "6 bags torn and hard: to send back"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 2,
+          "text": "The delivery finds its order"
+        },
+        {
+          "at": 2,
+          "text": "10 bags still owed by Malabar"
+        }
+      ],
+      "capture": {
+        "via": "Tell Mesiri in the top bar (same assistant as WhatsApp)",
+        "as": "Site engineer (Ravi)",
+        "day": 6,
+        "send": "Malabar cement vannu, 190 bag. 10 bag pinne varum. 6 bag kiriyathum kattiyayathum, maatti vechu",
+        "tap": "Save",
+        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
+        "role": "SITE_ENGINEER"
+      }
+    },
+    {
+      "id": "return",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "Friday · day 6 · Anil",
+      "title": "Sending back what is torn",
+      "beats": [
+        "Anil sends the six bags back, on the same lorry, from Returns: from Friday's delivery, six bags, torn and set hard.",
+        "Mesiri writes the return note, and a debit note to Malabar: two thousand four hundred rupees, six bags at the order's rate.",
+        "It comes off what we owe Malabar at once, before their bill even arrives. And the six bags leave the Main block's stock: what is left is what is really there."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/procurement/returns",
+          "do": "New return, from Friday's delivery: 6 bags, damaged",
+          "show": "the return, before Save",
+          "mark": "the form"
+        },
+        {
+          "at": 1,
+          "do": "Save",
+          "show": "the debit note: ₹2,400 to Malabar",
+          "mark": "the debit note"
+        },
+        {
+          "at": 2,
+          "url": "/finance/vendors",
+          "show": "Malabar: owed, less the debit note",
+          "mark": "Malabar"
+        }
+      ],
+      "record": "Done for real by steps-04.cjs, as Anil on day 6, after Ravi's delivery is saved (the return is from it): record.cjs films steps before the day's messages, so this scene's frames are taken after 'gate' (check record.cjs handles the order; if not, run it with ONLY=return after). Check the debit note's figure (6 × ₹400; with GST or not) and say the screen's.",
+      "as": "PROJECT_MANAGER",
+      "day": 6
+    },
+    {
+      "id": "bill",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep04-bill",
+      "paper": {
+        "pdf": "Malabar - bill MCA-INV-2611.pdf",
+        "page": 1,
+        "marks": {
+          "rate": "410",
+          "total": "Total"
+        }
+      },
+      "eyebrow": "The paper · Malabar's bill",
+      "title": "Ten rupees a bag",
+      "beats": [
+        "Monday, Malabar's bill reaches Meera. One hundred and ninety bags, at four hundred and ten rupees a bag, and GST.",
+        "Look again at the rate. The order said four hundred."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 1,
+          "mark": "rate",
+          "pad": 0.14
+        }
+      ],
+      "boxes": [
+        {
+          "at": 1,
+          "mark": "rate"
+        }
+      ]
+    },
+    {
+      "id": "match",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "Monday · day 9 · Meera",
+      "title": "The bill beside the order and the delivery",
+      "beats": [
+        "Meera puts the bill in, against Malabar's delivery.",
+        "Mesiri puts three things side by side: what was ordered, at four hundred; what came and was kept; and what is billed. The quantity agrees. The rate does not: ten rupees a bag more, one thousand nine hundred rupees before GST.",
+        "Nobody would see it on a busy Monday. Mesiri shows it before anyone pays.",
+        "Meera rings Malabar. The order's rate was agreed in writing, and Malabar accepts it: the bill is paid at four hundred."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/finance/vendors",
+          "do": "Malabar · Add bill MCA/INV/2611: 190 bags at ₹410",
+          "show": "the bill, before Save",
+          "mark": "the form"
+        },
+        {
+          "at": 1,
+          "do": "Save",
+          "show": "the match: ordered ₹400, billed ₹410; ₹1,900 more before GST",
+          "mark": "the difference"
+        },
+        {
+          "at": 3,
+          "show": "the bill at the order's rate, as the product takes it",
+          "mark": "the bill"
+        }
+      ],
+      "record": "Done for real by steps-04.cjs, as Meera (FINANCE) on day 9. How the product takes the agreed rate is to check when recording (the bill's rate changed to ₹400, or a debit note for the difference); the last beat's words follow the screen.",
+      "as": "FINANCE",
+      "day": 9
+    },
+    {
+      "id": "stock",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep04-stock",
+      "url": "/materials",
+      "wait": 6000,
+      "eyebrow": "Thursday · day 12 · Stock",
+      "title": "Came, minus used",
+      "beats": [
+        "The plastering has started: fourteen bags a day at the Main block, each one said by Ravi in his evening message.",
+        "On Tuesday the ten bags still owed came, and the order is complete.",
+        "Stock shows what is left, and how many days it lasts at this week's use. The store has room again, so Anil orders the other hundred bags from Malabar, at the quoted four hundred."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": [],
+      "note": "Shot as Anil on day 12, after the second order. Every figure said is read off this screen when it is shot."
+    },
+    {
+      "id": "pay",
+      "kind": "steps",
+      "part": "In Mesiri",
+      "eyebrow": "Saturday · day 14 · Meera",
+      "title": "Paying the right amount",
+      "beats": [
+        "Saturday, Meera pays Malabar from the Federal Bank account.",
+        "Not the bill as it came: the bill at the order's rate, less the debit note for the six bags.",
+        "Malabar's page now says what is paid, what is still owed, and against which bill. Nothing is remembered; everything is written."
+      ],
+      "frames": [
+        {
+          "at": 0,
+          "url": "/finance/vendors",
+          "do": "Malabar · Pay",
+          "show": "the payment: the bill, less the debit note, from Federal Bank",
+          "mark": "the payment"
+        },
+        {
+          "at": 2,
+          "do": "Save",
+          "show": "Malabar: paid, owed now",
+          "mark": "Malabar"
+        }
+      ],
+      "record": "Done for real by steps-04.cjs, as Meera on day 14. The amount said is the screen's.",
+      "as": "FINANCE",
+      "day": 14
+    },
+    {
+      "id": "count",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "Monday · day 16 · month end",
+      "title": "What is really there",
+      "beats": [
+        "The last day of November. Ravi counts the Main block's store, bag by bag, and says what he finds.",
+        "Mesiri compares it with the book: what came, minus what was used, minus what went back. Three bags fewer than the book.",
+        "Ravi says why: wastage, spilt and set on the mixing floor. A small, honest difference, and now it is written down."
+      ],
+      "messages": [
+        {
+          "at": 0,
+          "from": "site",
+          "text": "Main block stock count: cement {counted} bags. 3 bag wastage"
+        },
+        {
+          "at": 1,
+          "from": "mesiri",
+          "card": {
+            "title": "Stock count · Main block",
+            "rows": [
+              "Cement · book {book} · counted {counted}",
+              "3 bags short · wastage"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 1,
+          "text": "Book: came − used − returned"
+        },
+        {
+          "at": 2,
+          "text": "The owner approves the difference"
+        }
+      ],
+      "capture": {
+        "via": "Tell Mesiri in the top bar (same assistant as WhatsApp)",
+        "as": "Site engineer (Ravi)",
+        "day": 16,
+        "send": "Main block stock count: cement {counted} bags. 3 bag wastage",
+        "tap": "Save",
+        "real": "Record it: send these words in the sample company through Tell Mesiri (the same assistant as WhatsApp), as the role named, and film Mesiri's real reply card. The card here is only what we expect: replace it with the real one, and change the narration if the real card says something else.",
+        "role": "SITE_ENGINEER"
+      },
+      "note": "{book} and {counted} are filled in from the sample company's Main block cement on day 16 once the story is played (counted = book − 3)."
+    },
+    {
+      "id": "owner",
+      "kind": "steps",
+      "part": "What the owner sees",
+      "eyebrow": "What the owner sees · Monday · day 16",
+      "title": "Paying for what came",
+      "beats": [
+        "What does Ramesh see of all this? Two screens.",
+        "Malabar, on Suppliers: the bill, the six bags sent back, the ten rupees a bag not paid, and what is owed now. He did not have to ask anyone.",
+        "And the month's count: three bags short at the Main block, wastage, twelve hundred rupees. He approves it, and the book is the store again.",
+        "Three leaks this month, each caught by the person whose step it was: at the gate, at the bill, and at the count."
+      ],
+      "frames": [
+        {
+          "at": 1,
+          "url": "/finance/vendors",
+          "do": "open Malabar Cements Agency",
+          "show": "the bill, the debit note, the payment, owed now",
+          "mark": "Malabar"
+        },
+        {
+          "at": 2,
+          "url": "/materials/counts",
+          "do": "open the Main block's count; Approve",
+          "show": "3 bags short, wastage, the rupees; approved",
+          "mark": "the difference"
+        },
+        {
+          "at": 3,
+          "url": "/materials/counts",
+          "show": "the count approved",
+          "mark": "the count"
+        }
+      ],
+      "record": "Owner beat (SERIES_PLAN 5a). Done for real by steps-04.cjs, as the owner on day 16, after Ravi's count. The rupees of 3 bags are the screen's.",
+      "as": "OWNER",
+      "day": 16
+    },
+    {
+      "id": "wrong",
+      "kind": "leaks",
+      "part": "What can go wrong",
+      "eyebrow": "What can go wrong",
+      "title": "Six ways a load of cement leaks",
+      "beats": [
+        "Six ways a load of cement leaks.",
+        "Ordered from the usual shop without a quote: a little more every bag, every month.",
+        "Ordered more than the store holds: bags gone hard before they are used.",
+        "Signed for two hundred when a hundred and ninety came. And torn bags kept, because sending them back was a bother.",
+        "A bill paid as it came, ten rupees above the order. And a store never counted, so nobody knows what is missing until the job is over."
+      ],
+      "leaks": [
+        {
+          "at": 1,
+          "title": "No quotes",
+          "eg": "The usual shop's price"
+        },
+        {
+          "at": 2,
+          "title": "Ordered too much",
+          "eg": "Bags set hard in the store"
+        },
+        {
+          "at": 3,
+          "title": "Signed for what did not come",
+          "eg": "200 signed, 190 came"
+        },
+        {
+          "at": 3,
+          "title": "Bad bags kept",
+          "eg": "6 torn bags paid for"
+        },
+        {
+          "at": 4,
+          "title": "Bill above the order",
+          "eg": "₹410 paid for ₹400"
+        },
+        {
+          "at": 4,
+          "title": "Never counted",
+          "eg": "The book is not the store"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "Each step checks the one before."
+      }
+    },
+    {
+      "id": "check",
+      "kind": "questions",
+      "part": "Recap and check yourself",
+      "eyebrow": "Check yourself",
+      "title": "Three questions",
+      "beats": [
+        "Three questions. Pause, and answer them before you go on.",
+        "One: why did Anil order two hundred bags when the month needs three hundred? Because the store can keep two hundred dry. Cement that waits goes hard.",
+        "Two: what three things does Meera put side by side before she pays? The order, the delivery, and the bill.",
+        "Three: who sends the torn bags back, and what does it change? Anil, from Returns. The debit note takes them off what we owe Malabar at once, and off the stock.",
+        "Next: wages week. Ravi's attendance becomes Saturday's wages. Now play the material chain yourself: chapters five and eight of the guided project."
+      ],
+      "questions": [
+        {
+          "at": 1,
+          "text": "Why order 200 bags when the month needs 300?"
+        },
+        {
+          "at": 2,
+          "text": "What three things are side by side before Meera pays?"
+        },
+        {
+          "at": 3,
+          "text": "Who sends the torn bags back, and what does it change?"
+        }
+      ]
+    }
+  ]
+}

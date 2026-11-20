@@ -81,6 +81,22 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 - [ ] **`rain`** on day 10. Needs the model: `ONLY=rain node record.cjs 03 <token>`.
 - [ ] Re-take **`short`** if its card again says "2 bags not in the list" (WA-316): today's real card has it.
 
+## Episode 4, "Cement runs short": scripted 20 Nov, not recorded
+
+Script `episode-04.json` (plan: EPISODE_04_PLAN.md). Light mode, as every episode. In this order:
+
+- [ ] **The story first (LRN-F17):** the Main block's cement days 3 to 16 in `sample_plan.py` made the kit's chain
+      (20 bags from the Annex on day 3; quotes asked day 3, compared day 4, 200 bags from Malabar at ₹400 and 2,000 kg
+      steel for the Annex from Kerala Steels; 190 came day 6, 6 returned; bill day 9 at ₹410 taken at ₹400; 10 bags
+      day 10; 100 more ordered day 12; paid day 14; count day 16, 3 short). The kit's quotation to say "Green Villa"
+      (steel for the Annex). Day 2 stays exactly as episode 3 recorded it. Tests; the 62 days replayed.
+- [ ] `{book}` and `{counted}` in scene `count` filled in from the played day 16 (counted = book − 3).
+- [ ] `steps-04.cjs` written for the steps scenes: `request`, `compare` (Anil), `return` (Anil, after `gate`'s
+      delivery is saved), `match`, `pay` (Meera, FINANCE), `owner` (the owner, after `count`).
+- [ ] Papers: `shoot.cjs 04` for `quote`, `challan`, `bill` (marks named in the script); screen `stock` on day 12.
+- [ ] Real replies (needs the model key): `transfer` (day 3), `gate` (day 6), `count` (day 16), as Ravi.
+- [ ] Narration (needs the ElevenLabs key): George, about 9 minutes.
+
 ## The owner beats (added 20 Nov): one screen per episode to shoot
 
 Each episode's scene `owner` (part "What the owner sees", SERIES_PLAN 5a) is a screen shot as the owner on that day,

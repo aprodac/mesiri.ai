@@ -1,7 +1,7 @@
 # Episode 4, "Cement runs short": the plan
 
-> Asked 20 Nov 2026 (Ilan): "plan episode 4". Status: **draft for Ilan's review**. Nothing is scripted or filmed
-> until the decisions in section 7 are agreed. Series objective and the episode's row: [SERIES_PLAN.md](SERIES_PLAN.md)
+> Asked 20 Nov 2026 (Ilan): "plan episode 4". Status: **draft for Ilan's review**. Scripted 20 Nov (asked: "start episode 4 script") on section 7's
+> recommended answers: `episode-04.json`, readable `scripts/episode-04.md`. Not filmed. Series objective and the episode's row: [SERIES_PLAN.md](SERIES_PLAN.md)
 > section 5. Recording rules: [RECORDING.md](RECORDING.md) (real entries only). Tracker: LRN-F17.
 
 ## 1. Objective
