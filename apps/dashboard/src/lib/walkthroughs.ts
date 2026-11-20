@@ -349,7 +349,7 @@ export const WORKFLOWS: Walkthrough[] = [
         title: 'Try it: mark attendance',
         text: 'Send this. The card shows the team and how many came. This is practice: look at the card, then tap Cancel.', say: 'Try it. Send this message. The card shows the team and how many turned up. It\'s practice, so just look at the card, then tap Cancel.',
         mood: 'send',
-        try: { kind: 'whatsapp', say: 'Suresh team: 4 masons, 2 helpers', tools: ['record_attendance'], save: false },
+        try: { kind: 'whatsapp', say: "Rahim's crew: 4 helpers, 2 masons", tools: ['record_attendance'], save: false },
       },
       { page: '/labour', target: 'labour.views', title: 'By day and by month', text: 'Attendance by day, and the muster roll for the month, fill from those messages.', say: 'Attendance by day, and the muster roll for the whole month, fill themselves from those messages. No register to copy out.' },
     ],
@@ -366,7 +366,7 @@ export const WORKFLOWS: Walkthrough[] = [
       {
         page: '/labour/wages',
         title: 'The wage sheet',
-        text: "The week's attendance at each worker's daily wage, less any advance. Approve it, then pay it. On WhatsApp: \"What do I pay Suresh's team this week?\".", say: 'At the end of the week, here\'s the wage sheet: each worker\'s days at their daily wage, minus any advance. Approve it, then pay it. You can even ask on WhatsApp: what do I pay Suresh\'s team this week?',
+        text: "The week's attendance at each worker's daily wage, less any advance. Approve it, then pay it. On WhatsApp: \"What do I pay Rahim's crew this week?\".", say: 'At the end of the week, here\'s the wage sheet: each worker\'s days at their daily wage, minus any advance. Approve it, then pay it. You can even ask on WhatsApp: what do I pay Rahim\'s crew this week?',
       },
       { page: '/labour/advances', title: 'Advances', text: 'Money given ahead is kept per person and comes off their next wages by itself.', say: 'When someone takes money in advance, it\'s kept against their name, and it comes off their next wages by itself. No more notebooks.' },
       {
@@ -848,7 +848,7 @@ export const OUTCOMES: Outcome[] = [
   // The site engineer: mostly WhatsApp (plan 5.1).
   { id: 'day-in-one-message', roles: ENGINEERS, title: "Send the day's update in one message", why: 'Who came, what was done, what is stuck: one message, and the daily report writes itself.', walks: ['site-update'] },
   { id: 'material-on-time', roles: ENGINEERS, title: 'Get material on site on time', why: 'Ask on WhatsApp, then record it when it comes and when it is used.', walks: ['material-request', 'delivery'] },
-  { id: 'attendance-one-line', roles: ENGINEERS, title: 'Mark attendance in one line', why: '"Suresh team: 4 masons, 2 helpers", and the muster roll fills itself.', walks: ['attendance'] },
+  { id: 'attendance-one-line', roles: ENGINEERS, title: 'Mark attendance in one line', why: '"Rahim\'s crew: 4 helpers, 2 masons", and the muster roll fills itself.', walks: ['attendance'] },
   { id: 'problem-fixed', roles: ENGINEERS, title: 'Report a problem and get it fixed', why: 'Say what is wrong; it stays open until someone acts on it.', walks: ['issue'] },
   // The project manager (SS-48; plan 5.1: W6, W1, W2, W5, W9).
   { id: 'pm-start', roles: MANAGERS, title: 'Get a new project going', why: 'BOQ, schedule and site team set up, and the first report the same week.', walks: ['new-project'] },

@@ -15,7 +15,7 @@ export const GUIDE_AUDIO: Record<string, string> = {
   "At a glance: how many are open, and how long they've been waiting.": '06f0860e9d2d',
   "At a glance: what to order today, what by the end of this week, what later, and what is already covered. Tap any of them to see only those materials.": 'cca8ba162fa7',
   "At month end, here's the full picture: work, labour, material and money, for each project. Or ask on WhatsApp: send me October's report for Green Villa.": '6f4c38064c43',
-  "At the end of the week, here's the wage sheet: each worker's days at their daily wage, minus any advance. Approve it, then pay it. You can even ask on WhatsApp: what do I pay Suresh's team this week?": '9dc3f43eda73',
+  "At the end of the week, here's the wage sheet: each worker's days at their daily wage, minus any advance. Approve it, then pay it. You can even ask on WhatsApp: what do I pay Rahim's crew this week?": '007d7b18b148',
   "Attendance by day, and the muster roll for the whole month, fill themselves from those messages. No register to copy out.": 'd3c1faf1e5eb',
   "Bills and checks. Their bill against the work measured and the rate agreed, less advances and retention. Approve it, or send it back with why.": '691620044e95',
   "Delivered, no bill. Material that came with no bill yet. When the bill comes, match it to those deliveries, so nothing is paid twice or for what never came.": '937dae59a8bf',

@@ -185,7 +185,8 @@ def estimate_bytes() -> bytes:
     book = Workbook()
     sheet = book.active
     sheet.title = "BOQ"
-    sheet.append(["GREEN VILLA, PUTHUR ROAD, THRISSUR: ESTIMATE (G+1 residence, 3,200 sq ft)"])
+    sheet.append([f"GREEN VILLA, PUTHUR ROAD, THRISSUR: ESTIMATE (G+1 residence and annex, "
+                  f"{sum(green_villa.BUILT_UP.values()):,} sq ft built-up)"])
     sheet.append(["Client: Dr. Anand Krishnan. Rates in rupees per unit. Labour and material rates are our cost."])
     sheet.append([])
     header = ["Item no.", "Description", "Unit", "Qty", "Rate", "Labour rate", "Material rate", "Amount"]

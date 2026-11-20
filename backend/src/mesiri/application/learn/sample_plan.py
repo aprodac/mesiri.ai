@@ -156,6 +156,8 @@ ISSUES = (
 ADVANCES = ((4, "Suresh", 2000), (13, "Joseph", 1500), (23, "Rajesh", 3000), (30, "Vinod", 1000), (41, "Manoj", 2500))
 #: The tiling subcontract with Joy Tiling Works: the agreed rate a square metre, retention.
 TILING_RATE, TILING_RETENTION = 95, 5
+#: Units of work counted in whole pieces: a day's share of them is rounded to a whole number.
+WHOLE_UNITS = ("nos",)
 #: Lake View's running bill to the client, sent by the owner on these days.
 RA_BILL_DAYS = (23, 51)
 #: Green Villa's running bill (project bible D2): monthly by its contract, so one in the 62 days, and the final bill on
@@ -531,6 +533,8 @@ def build() -> Plan:
                                                   "daily_wage": 700}})
             if ratio > 0:
                 qty = round(s.per_day * ratio, 2)
+                if s.unit in WHOLE_UNITS:  # LRN-F14: points and pieces are counted whole ("12 nos", never 12.1)
+                    qty = max(1, round(qty))
                 work = b.add(day, "work", f"{s.work}: {_fmt(qty)} {s.unit}" + (f" (by {s.by})" if s.by else ""), site=site,
                              data={"work": s.work, "narrative": s.narrative, "quantity": qty, "unit": s.unit, "by": s.by})
                 if (site, s.work) in boq_lines or (SITE_PROJECT[site] == GREEN_VILLA and gv.STAGE_LINE.get(s.work)):
