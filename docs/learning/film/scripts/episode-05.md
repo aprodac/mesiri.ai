@@ -2,11 +2,11 @@
 
 > Made from `episode-05.json` by `script_md.py`; edit the JSON, then run it again.
 
-**Status:** DRAFT script for Ilan's review (20 Nov 2026). Not recorded. The sample company plays this week as it is (days 2 to 7, from the 62-day plan); no story change is needed. Recording brief: RECORDING.md.
+**Status:** DRAFT for Ilan's review (20 Nov 2026). Recorded from real entries in the sample company (days 4 and 7, as Meera and the owner); the words follow the screens.
 
 **Objective:** By the end you can run the weekly labour cycle: the morning attendance, the muster roll, the wage sheet, the owner's approval, Meera's payment; an advance given and taken back; and compare what labour was paid with the work it did.
 
-**Length:** 10 scenes, 781 words of narration (about 5 minutes)
+**Length:** 10 scenes, 832 words of narration (about 6 minutes)
 
 ## Cold open
 
@@ -86,9 +86,9 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/labour/advances?project={Green Villa}` · picture: Advances: what is owed, by person · light: the list
-- beat 2 · do: Give an advance: Suresh, Rs 2,000, from the account it is paid from · picture: the advance filled in, before Save · light: the form
-- beat 3 · do: Save · picture: Suresh owes Rs 2,000 · light: Suresh's balance
+- beat 1 · open `/labour/advances?project={Green Villa}` · picture: Advances: nothing outstanding yet · light: Give advance
+- beat 2 · do: Give an advance: Suresh, Rs 2,000, Main block, from Petty cash · Main block · picture: the form filled, before Give · light: the form
+- beat 3 · do: Give · picture: Rs 2,000 outstanding, to be taken back from the next wages · light: the outstanding figure
 
 *As Meera (FINANCE) on day 4: the plan's entry 'Advance of Rs 2,000 to Suresh' is hers; do it on screen (steps-05.cjs).*
 
@@ -96,7 +96,7 @@ Narration:
 
 > Wednesday. Suresh, a mason at the Main block, needs two thousand rupees before Saturday.
 >
-> Meera gives it, and puts it in Mesiri: Suresh, two thousand, today, and the account it was paid from.
+> Meera gives it from the Main block's petty cash, and puts it in Mesiri: Suresh, two thousand, today, from that cash box.
 >
 > Now it is owed. Suresh's balance shows it, and so will Saturday's sheet. Nobody has to remember it on a slip of paper.
 
@@ -106,9 +106,9 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/labour?view=muster&project={Green Villa}&site={Main block}` · picture: the Main block's muster: each worker, each day · light: the grid
-- beat 2 · picture: Sunil absent Thursday, Prakash Friday, Joseph Saturday · light: the three absences
-- beat 3 · picture: Rahim's crew, a headcount per day · light: the crew's line
+- beat 1 · open `/labour?view=muster&project={Green Villa}` · do: Site: Green Villa › Main block · picture: the Main block's month, each worker, each day · light: the grid
+- beat 2 · picture: Sunil's row: absent Thursday 19 · light: Sunil's row
+- beat 3 · picture: the helpers' headcount, 2 then 4 · light: the headcount row
 
 *As the owner on day 7, before approving. Say only the absences the screen shows.*
 
@@ -116,9 +116,9 @@ Narration:
 
 > The muster roll is the register, made from Ravi's mornings. Each worker, each day: present, half day, or absent.
 >
-> At the Main block, Sunil was away on Thursday, Prakash on Friday, Joseph on Saturday. Nobody wrote a register; Ravi said who came.
+> At the Main block this week, Sunil was away on Thursday, Prakash on Friday, Joseph on Saturday. Nobody kept a register; Ravi said who came.
 >
-> Rahim's crew is a count, not names: two helpers most days, four when the ceiling plastering began.
+> Rahim's crew is a count, not names: two helpers most days, four once the ceiling plastering began.
 
 ### 6. The wage sheet makes itself
 
@@ -126,22 +126,22 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/labour/wages?project={Green Villa}` · picture: the week's sheet, a row per person · light: the sheet
-- beat 2 · picture: Suresh's row: 6 days, Rs 6,600, advance Rs 2,000 taken back, Rs 4,600 · light: Suresh's row
-- beat 3 · picture: Rahim's crew: one row, paid to the contractor · light: the crew's row
-- beat 4 · do: Approve · picture: the sheet approved, its total · light: the total
+- beat 1 · open `/labour/wages?project={Green Villa}` · picture: the draft sheet, 15 to 21 Nov, a row per person · light: the figures
+- beat 2 · picture: Suresh: 6 days, Rs 6,600, advance back Rs 2,000, Rs 4,600 · light: Suresh's row
+- beat 3 · picture: Bengal crew (Rahim): 43 man-days, Rs 30,100 · light: the crew's row
+- beat 4 · do: Approve · picture: Approved · to pay; Rs 73,000 · light: the figures
 
 *As the owner (ADMIN) on day 7: the plan's 'Approve Green Villa's wage sheet for the week' is his. Read every figure off the sheet; the Rs 75,000 is the plan's gross for both sites, days 2 to 7.*
 
 Narration:
 
-> Saturday. The week's wage sheet is already made from the attendance: each person's days, times their wage.
+> Saturday. The week's wage sheet is already made from the attendance: each person's days, times their wage. Eighty-seven man-days across both sites.
 >
-> Suresh: six days at eleven hundred, six thousand six hundred. Less the two thousand advance from Wednesday: four thousand six hundred to pay.
+> Suresh: six days at eleven hundred, six thousand six hundred. Less the two thousand from Wednesday: four thousand six hundred to pay.
 >
-> Rahim's crew is one line, paid to Rahim: their days, at seven hundred a day.
+> Rahim's crew is one line: forty-three man-days at seven hundred, thirty thousand one hundred, paid to Rahim.
 >
-> Ramesh reads the total, seventy-five thousand for the week, and approves it. Until he does, nothing can be paid.
+> Ramesh reads it: seventy-five thousand of wages, two thousand taken back, seventy-three thousand to pay. He approves. Until he does, nothing can be paid.
 
 ### 7. Paid, and written down as it is paid
 
@@ -149,19 +149,19 @@ Narration:
 
 **Record (on the website, step by step):**
 
-- beat 1 · open `/labour/wages?project={Green Villa}` · do: Pay all due, from the bank account · picture: the pay dialog · light: the dialog
-- beat 2 · picture: every row paid · light: the paid rows
-- beat 3 · picture: one worker's slip · light: the slip
+- beat 1 · open `/labour/wages?project={Green Villa}` · do: Pay Rs 73,000 · picture: the pay dialog: from the Federal Bank current account · light: the dialog
+- beat 2 · do: Pay · picture: every row paid · light: the figures
+- beat 3 · picture: Rahim's row, paid · light: the crew's row
 
 *As Meera (FINANCE) on day 7: the plan's 'Pay Green Villa's wages for the week' is hers.*
 
 Narration:
 
-> Then Meera pays, from the bank and the site's cash, every row still due.
+> Then Meera pays every row still due, from the bank account, in one go: seventy-three thousand rupees.
 >
-> Each payment is a record: who, how much, from which account, on which day. The cash box and the bank go down by exactly that.
+> Each payment is a record: who, how much, from which account, on which day. The bank goes down by exactly that, and the sheet says paid.
 >
-> And each worker's slip is there, if one ever asks how this week's money was worked out.
+> Rahim's thirty thousand one hundred goes to Rahim, and he pays his crew. Everyone else, by name.
 
 ### 8. Did the labour buy the work?
 
@@ -171,13 +171,13 @@ Narration:
 
 > Paying the right people the right amount is half of it. The other half: did that labour buy the work?
 >
-> The BOQ already says what each unit of work should cost in labour. Every day, Mesiri puts the labour paid beside the labour the work earned.
+> The BOQ already says what each unit of work should cost in labour. Green / red puts, line by line, the labour spent beside the labour the work earned, this week.
 >
-> The Annex is green: its crew of seven cast twenty-four metres of plinth beam a day, worth more than ten thousand rupees of labour, for less than six thousand paid.
+> The plinth beam at the Annex: thirty thousand rupees of labour earned, ten and a half thousand spent. Green.
 >
-> The Main block is red. Seven people, six and a half thousand rupees a day, on conduit work the BOQ pays ninety rupees a point for: about two thousand a day earned.
+> The electrical conduits at the Main block: eleven thousand three hundred spent, for six thousand nine hundred earned. Red: more people than the work allows. Anil's question for Monday: the masons are waiting for the plastering. Start it, or send two of them to the Annex.
 >
-> That is Anil's question for Monday: the masons are waiting for the plastering. Start it, or send two of them to the Annex.
+> And Mesiri says what it cannot judge: thirty-seven thousand rupees of the week's labour is on no BOQ line yet. Until it is put on its lines, nobody can say whether it was worth it.
 
 ## What can go wrong
 
@@ -190,7 +190,7 @@ On screen:
 - Names, not people · Present on paper, not on site
 - Crew over-billed · 6 billed, 4 counted
 - Advance forgotten · Rs 2,000 on a lost slip
-- Paid, not productive · Rs 6,550 a day for Rs 1,980 of work
+- Paid, not productive · Rs 11,281 spent for Rs 6,930 of work
 - Paid before approved · Nobody checked the total
 - Who came, what they did, what they were paid: one register.
 
@@ -226,6 +226,6 @@ Narration:
 >
 > Two: how is Rahim's crew paid? As one line on the sheet, their days at the crew's rate, paid to Rahim.
 >
-> Three: the Main block's crew was paid in full and was present every day. Why is it red? Because the work it did earned far less labour than it was paid.
+> Three: the Main block's crew was present every day and paid in full. Why is its conduit line red? Because the work it did earned less labour than it was paid: eleven thousand three hundred spent for six thousand nine hundred earned.
 >
 > Next: problems and machines. A problem from WhatsApp to closed, and a machine's day. Now play a wages week yourself: chapter six of the guided project.
