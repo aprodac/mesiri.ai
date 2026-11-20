@@ -46,6 +46,7 @@ html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; backgro
 @keyframes cap { 0%, 99.5% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(-3%, -2%) scale(1.06); } }
 @keyframes bar { from { width: 0; } to { width: 100%; } }
+@keyframes fadeout { from { opacity: 1; } to { opacity: 0; } }
 </style>
 </head>
 <body>
@@ -69,6 +70,7 @@ function on(e, kind, n, plus = 0, len = 700, extra = '') {
   e.style.animation = `${kind} ${len}ms cubic-bezier(.2,.75,.2,1) ${at}ms both${extra}`
   return e
 }
+const layoutHooks = []
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 
 // The frame every scene shares.
@@ -118,9 +120,9 @@ const SCENES = {
     const b = body()
     b.style.cssText += ';display:grid;grid-template-columns:repeat(4,1fr);gap:28px;align-items:start'
     sc.cards.forEach((c, i) => {
-      const k = el('div', 'card', `<div class="brand" style="font-size:34px;font-weight:600">${esc(c.title)}</div><div style="font-size:26px;color:var(--dim);margin-top:16px;line-height:1.4">${esc(c.text)}</div><span class="tag ${i === 0 ? 'main' : ''}">${esc(c.tag)}</span>`, b)
+      const k = el('div', 'card', `<div class="brand" style="font-size:34px;font-weight:600">${esc(c.title)}</div><div style="font-size:26px;color:var(--dim);margin-top:16px;line-height:1.4">${esc(c.text)}</div><span class="tag ${(c.main ?? i === 0) ? 'main' : ''}">${esc(c.tag)}</span>`, b)
       on(k, 'rise', c.at, 200)
-      if (i === 0) k.style.border = '2px solid var(--primary)'
+      if (c.main ?? (i === 0 && !sc.cards.some((x) => x.main))) k.style.border = '2px solid var(--primary)'
     })
   },
   rows() {
@@ -285,7 +287,7 @@ const SCENES = {
     svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;overflow:visible'
     b.appendChild(svg)
     const pct = Object.fromEntries(sc.nodes.map((n) => [n.id, [n.x / 100, n.y / 100]]))
-    window.afterLayout = () => {
+    layoutHooks.push(() => {
       const W = b.clientWidth, H = b.clientHeight
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
       for (const [a, z, at] of sc.links) {
@@ -297,7 +299,7 @@ const SCENES = {
         svg.appendChild(line)
         on(line, 'draw', at, 900, 1400)
       }
-    }
+    })
     const pos = Object.fromEntries(sc.nodes.map((n) => [n.id, [n.x, n.y]]))
     sc.nodes.forEach((n, i) => {
       const [x, y] = pos[n.id]
@@ -311,6 +313,133 @@ const SCENES = {
     const nx = el('div', 'brand', esc(sc.next.text), stage)
     nx.style.cssText = 'position:absolute;left:96px;bottom:140px;font-size:44px;font-weight:600;color:var(--primary)'
     on(nx, 'rise', sc.next.at, 200)
+  },
+  questions() {
+    heading()
+    const b = body()
+    sc.questions.forEach((q, i) => {
+      const row = el('div', '', `<span class="brand" style="font-size:64px;font-weight:700;color:var(--primary);width:110px;flex:none">${i + 1}</span><span class="brand" style="font-size:44px;font-weight:600;line-height:1.15">${esc(q.text)}</span>`, b)
+      row.style.cssText = 'display:flex;align-items:center;gap:20px;padding:16px 0;border-bottom:1px solid var(--line)'
+      on(row, 'rise', q.at, 100)
+    })
+  },
+  quote() {
+    heading()
+    const b = body()
+    const q = el('div', '', `<div class="brand" style="font-size:66px;font-weight:600;line-height:1.12;color:var(--primary)">“${esc(sc.quote.text)}”</div><div class="mono" style="font-size:20px;color:var(--dim);margin-top:22px">${esc(sc.quote.who)}</div>`, b)
+    q.style.cssText = 'max-width:1500px;padding-left:36px;border-left:8px solid var(--primary)'
+    on(q, 'rise', sc.quote.at, 100, 900)
+    const ul = el('div', '', '', b)
+    ul.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:56px'
+    sc.bullets.items.forEach((t, i) => {
+      const k = el('div', 'card', `<div style="font-size:28px;line-height:1.35">${esc(t)}</div>`, ul)
+      on(k, 'rise', sc.bullets.at, 300 + i * 1600)
+    })
+  },
+  versus() {
+    heading()
+    const b = body()
+    const cols = el('div', '', '', b)
+    cols.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:36px'
+    for (const side of [sc.left, sc.right]) {
+      const k = el('div', 'card', `<div class="mono" style="font-size:22px;color:${side.tone}">${esc(side.title)}</div>`, cols)
+      k.style.cssText += `;border-top:6px solid ${side.tone};padding:34px 38px`
+      on(k, 'rise', side.at, 100)
+      side.items.forEach((t, i) => {
+        const it = el('div', 'brand', esc(t), k)
+        it.style.cssText = `font-size:${side.items.length > 1 ? 34 : 46}px;font-weight:600;line-height:1.2;margin-top:${i ? 14 : 22}px`
+        on(it, 'rise', side.at, 300 + i * 700)
+      })
+    }
+    if (sc.middle) {
+      const m = el('div', 'flag', esc(sc.middle.text), b)
+      m.style.cssText += ';margin-top:40px;font-size:30px;padding:14px 26px'
+      on(m, 'pop', sc.middle.at, 400)
+    }
+    const f = el('div', 'brand', esc(sc.footer.text), b)
+    f.style.cssText = 'font-size:48px;font-weight:600;color:var(--primary);margin-top:44px;line-height:1.15'
+    on(f, 'rise', sc.footer.at, 300, 900)
+  },
+  chat() {
+    heading()
+    const b = body()
+    b.style.cssText += ';top:230px;bottom:150px'
+    const phone = el('div', '', '', b)
+    phone.style.cssText = 'position:absolute;left:180px;top:0;bottom:0;width:560px;border-radius:44px;background:#0b141a;border:10px solid #1f2328;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5)'
+    on(phone, 'rise', 0, 200, 900)
+    const top = el('div', '', `<span style="width:52px;height:52px;border-radius:50%;background:var(--primary);color:#111;display:grid;place-items:center;font-weight:700;font-size:24px">M</span><span><div style="font-size:26px;font-weight:600">Mesiri</div><div style="font-size:18px;color:#8696a0">your site assistant</div></span>`, phone)
+    top.style.cssText = 'display:flex;align-items:center;gap:16px;padding:22px 26px;background:#202c33'
+    const list = el('div', '', '', phone)
+    list.style.cssText = 'display:flex;flex-direction:column;gap:18px;padding:28px 22px'
+    for (const m of sc.messages) {
+      const mine = m.from === 'site'
+      const bub = el('div', '', '', list)
+      bub.style.cssText = `align-self:${mine ? 'flex-end' : 'flex-start'};max-width:86%;padding:16px 20px;border-radius:18px;font-size:25px;line-height:1.35;background:${mine ? '#005c4b' : '#202c33'}`
+      if (m.card) {
+        bub.innerHTML = `<div style="font-weight:600;font-size:24px">${esc(m.card.title)}</div>${m.card.rows.map((r) => `<div style="font-size:22px;color:#d1d7db;margin-top:8px">${esc(r)}</div>`).join('')}<div style="margin-top:16px;padding:10px;text-align:center;border-radius:12px;background:rgba(255,255,255,.08);color:#53bdeb;font-weight:600;font-size:23px">${esc(m.card.button)}</div>`
+        bub.style.minWidth = '380px'
+      } else bub.textContent = m.text
+      on(bub, 'pop', m.at, 500)
+    }
+    const side = el('div', '', '', b)
+    side.style.cssText = 'position:absolute;left:860px;right:0;top:60px;display:flex;flex-direction:column;gap:30px'
+    sc.side.forEach((t, i) => {
+      const r = el('div', '', `<span class="brand" style="font-size:40px;font-weight:700;color:var(--primary);width:70px;flex:none">${i + 1}</span><span style="font-size:36px;line-height:1.25">${esc(t.text)}</span>`, side)
+      r.style.cssText = 'display:flex;gap:18px;align-items:baseline'
+      on(r, 'rise', t.at, 900)
+    })
+    const n = el('div', 'mono', esc(sc.note), b)
+    n.style.cssText = 'position:absolute;left:860px;bottom:0;font-size:18px;color:var(--dim)'
+    on(n, 'fade', 0, 1200)
+  },
+  screen() {
+    heading()
+    const b = body()
+    b.style.cssText += ';bottom:150px'
+    b.style.borderRadius = '22px'
+    b.style.overflow = 'hidden'
+    b.style.background = '#08090b'
+    b.style.boxShadow = '0 0 0 2px rgba(255,255,255,.12), 0 30px 80px rgba(0,0,0,.55)'
+    const IW = 1728, IH = 1080
+    const cam = el('div', '', '', b)
+    cam.style.cssText = `position:absolute;left:0;top:0;width:${IW}px;height:${IH}px;transform-origin:0 0`
+    const img = el('img', '', null, cam)
+    img.src = `.cache/shots/${sc.shot}.png`
+    img.style.cssText = `width:${IW}px;height:${IH}px;display:block`
+    for (const bx of sc.boxes || []) {
+      const outer = el('div', '', '', cam)
+      outer.style.cssText = `position:absolute;left:${bx.x * 100}%;top:${bx.y * 100}%;width:${bx.w * 100}%;height:${bx.h * 100}%`
+      if (bx.until != null) on(outer, 'fadeout', bx.until, 0, 500, '')
+      outer.style.animationFillMode = 'forwards'
+      const inner = el('div', '', '', outer)
+      inner.style.cssText = 'position:absolute;inset:-6px;border:4px solid var(--primary);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.28), 0 0 24px rgba(250,204,21,.5)'
+      on(inner, 'pop', bx.at, 700, 600)
+    }
+    // The camera: a keyframe per focus, moving over a second at its beat.
+    layoutHooks.push(() => {
+      const VW = b.clientWidth, VH = b.clientHeight
+      const fit = (f) => {
+        const r = f.full ? { x: 0, y: 0, w: 1, h: 1 } : f
+        const s = Math.min(2.4, VW / (r.w * IW), VH / (r.h * IH))
+        const clampAxis = (v, size, view) => (size <= view ? (view - size) / 2 : Math.min(0, Math.max(view - size, v)))
+        const tx = clampAxis(VW / 2 - s * (r.x + r.w / 2) * IW, s * IW, VW)
+        const ty = clampAxis(VH / 2 - s * (r.y + r.h / 2) * IH, s * IH, VH)
+        return `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${s.toFixed(4)})`
+      }
+      const D = S.dur
+      const pct = (t) => `${Math.min(100, Math.max(0, (t / D) * 100)).toFixed(3)}%`
+      const steps = sc.focus.map((f) => ({ t: beat(f.at) + (f.plus || 0), tf: fit(f) }))
+      let frames = `0% { transform: ${steps[0].tf}; animation-timing-function: ease-in-out; }`
+      for (let i = 1; i < steps.length; i++) {
+        frames += ` ${pct(steps[i].t)} { transform: ${steps[i - 1].tf}; animation-timing-function: cubic-bezier(.65,0,.35,1); }`
+        frames += ` ${pct(steps[i].t + 1100)} { transform: ${steps[i].tf}; }`
+      }
+      frames += ` 100% { transform: ${steps[steps.length - 1].tf}; }`
+      const style = document.createElement('style')
+      style.textContent = `@keyframes cam-${sc.id} { ${frames} }`
+      document.head.appendChild(style)
+      cam.style.animation = `cam-${sc.id} ${D}ms linear 0ms both`
+    })
   },
 }
 
@@ -362,7 +491,7 @@ window.ready = document.fonts.ready.then(() => {
   const h = document.querySelector('.head')
   const b = document.querySelector('.body')
   if (h && b) b.style.top = `${Math.max(parseInt(getComputedStyle(b).top), h.offsetTop + h.offsetHeight + 44)}px`
-  window.afterLayout?.()
+  layoutHooks.forEach((f) => f())
   return true
 })
 </script>

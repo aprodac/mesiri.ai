@@ -1,0 +1,267 @@
+{
+  "episode": 2,
+  "title": "What owners want, and why they buy",
+  "source": "Field Guide 00a (roles: the owner and GM cards, where roles pull against each other) and the dashboard itself: the demo company (scripts/training-video/cost/seed.py) on a local copy, 20 Nov 2026",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "eyebrow": "Mesiri · The course · Episode 2",
+      "title": "What owners want, and why they buy",
+      "beats": [
+        "In episode one, we saw how a construction company works, and where its money leaks.",
+        "Now, let's meet the person who decides whether to buy Mesiri: the owner.",
+        "And this time, we'll see the software itself."
+      ],
+      "lines": [
+        { "at": 1, "text": "The owner buys. The site uses it." },
+        { "at": 2, "text": "The owner's questions, and the screens that answer them" }
+      ]
+    },
+    {
+      "id": "owner",
+      "kind": "cards",
+      "eyebrow": "The owner",
+      "title": "Rarely on site, always on the phone",
+      "beats": [
+        "The owner, or managing director, spends the day winning work, meeting clients and banks, and finding cash.",
+        "They hear about their sites by phone, and in meetings, from memory.",
+        "They won't enter data. They won't learn a complicated system. And they won't read long reports.",
+        "So whatever we show them has to fit on one screen, or in one message."
+      ],
+      "cards": [
+        { "at": 0, "title": "Their day", "text": "Winning work, clients, banks, cash, a few big decisions.", "tag": "Owner / MD" },
+        { "at": 1, "title": "How they hear", "text": "Phone calls and meetings. Answers from memory.", "tag": "Too late, too vague" },
+        { "at": 2, "title": "Won't do", "text": "Enter data. Learn a complex system. Read long reports.", "tag": "Never ask them to" },
+        { "at": 3, "title": "What works", "text": "One screen, or one message: profit, cash, risks.", "tag": "Mesiri's rule", "main": true }
+      ]
+    },
+    {
+      "id": "questions",
+      "kind": "questions",
+      "eyebrow": "What keeps them awake",
+      "title": "Four questions every owner carries",
+      "beats": [
+        "Every owner carries the same four questions.",
+        "One: which projects are making money, and which are losing it?",
+        "Two: how much cash will I need next month?",
+        "Three: who owes me money, and whom do I owe?",
+        "And four: is anything going badly wrong, right now?",
+        "Keep these four in mind. The screens in this episode answer them."
+      ],
+      "questions": [
+        { "at": 1, "text": "Which projects make money, which lose it?" },
+        { "at": 2, "text": "How much cash do I need next month?" },
+        { "at": 3, "text": "Who owes me, and whom do I owe?" },
+        { "at": 4, "text": "Is anything going badly wrong right now?" }
+      ]
+    },
+    {
+      "id": "gm",
+      "kind": "quote",
+      "eyebrow": "The general manager",
+      "title": "Often the one who decides",
+      "beats": [
+        "In bigger companies, the general manager often decides on the purchase.",
+        "The general manager we met asked one question, again and again.",
+        "Was fifteen thousand rupees of work done, for the fifteen thousand we paid?",
+        "What they want is green or red for every project, every day; approvals in one place, with the facts beside them; and what material came, what was used, and what's missing."
+      ],
+      "quote": { "at": 2, "text": "Was ₹15,000 of work done for the ₹15,000 we paid?", "who": "The GM we met" },
+      "bullets": { "at": 3, "items": ["Green or red, every project, every day", "Approvals in one place, facts beside them", "Material: what came, what was used, what's missing"] }
+    },
+    {
+      "id": "adopt",
+      "kind": "versus",
+      "eyebrow": "Why they buy, why they quit",
+      "title": "One real loss, caught early",
+      "beats": [
+        "Here's what decides whether an owner keeps using software.",
+        "They adopt it when it catches one real loss, early. Just one is enough.",
+        "They quit when its numbers disagree with their accountant, or with their general manager.",
+        "So in a pitch, we never promise everything. We show one leak, caught the same day, with numbers they can trust."
+      ],
+      "left": { "at": 1, "title": "Adopts when", "items": ["It catches one real loss early"], "tone": "#4ade80" },
+      "right": { "at": 2, "title": "Quits when", "items": ["Its numbers disagree with Tally or the GM"], "tone": "#f87171" },
+      "footer": { "at": 3, "text": "Pitch: one leak, caught the same day, with numbers they trust." }
+    },
+    {
+      "id": "pull",
+      "kind": "versus",
+      "eyebrow": "The catch",
+      "title": "The owner wants detail. The site wants to type less.",
+      "beats": [
+        "But there's a catch. The owner wants detail, and the engineer on site wants to type as little as possible.",
+        "Most software takes the owner's side, with long forms for the site. So the site stops using it, and the owner's screens go empty.",
+        "Mesiri settles it differently: the site speaks, and the owner reads."
+      ],
+      "left": { "at": 0, "title": "The owner", "items": ["Every number, every day"], "tone": "#facc15" },
+      "right": { "at": 0, "title": "The site engineer", "items": ["As little typing as possible"], "tone": "#fb923c" },
+      "middle": { "at": 1, "text": "Long forms → the site stops → the owner's screens go empty" },
+      "footer": { "at": 2, "text": "Mesiri: the site speaks, the owner reads." }
+    },
+    {
+      "id": "whatsapp",
+      "kind": "chat",
+      "eyebrow": "Capture",
+      "title": "The site speaks, on WhatsApp",
+      "beats": [
+        "On site, the engineer already uses WhatsApp all day. So that's where Mesiri listens.",
+        "They send a line, or a voice note, in Malayalam, Manglish or English. Like this: Main block, six masons, four helpers, plinth beam shuttering done.",
+        "Mesiri understands it, and replies with a card: the attendance and the work, ready to save.",
+        "One tap, and it's recorded. No app to install, and no form to fill."
+      ],
+      "messages": [
+        { "at": 1, "from": "site", "text": "Main block: 6 masons, 4 helpers. Plinth beam shuttering done" },
+        { "at": 2, "from": "mesiri", "card": { "title": "Main block · today", "rows": ["Attendance · 6 masons, 4 helpers", "Work · plinth beam shuttering"], "button": "Save" } },
+        { "at": 3, "from": "mesiri", "text": "Saved ✓ It's in today's report." }
+      ],
+      "side": [
+        { "at": 1, "text": "Malayalam, Manglish or English · typed or voice" },
+        { "at": 2, "text": "Understood, shown back as a card" },
+        { "at": 3, "text": "One tap. Nothing to install." }
+      ],
+      "note": "Illustration of the WhatsApp conversation"
+    },
+    {
+      "id": "today",
+      "kind": "screen",
+      "shot": "today",
+      "url": "/today",
+      "wait": 4500,
+      "eyebrow": "On screen · Today",
+      "title": "Every site's day, as it happens",
+      "beats": [
+        "In the office, every message lands here, on the Today page.",
+        "All four sites have reported. Thirty-seven workers are on site, and there are three open issues.",
+        "Each site shows its workers, its work and its material, with the engineer's own words.",
+        "And the worst problems come first: an inspection the slab pour is waiting for, and cement that may run short by Friday."
+      ],
+      "focus": [
+        { "at": 0, "full": true },
+        { "at": 1, "x": 0.14, "y": 0.13, "w": 0.85, "h": 0.14 },
+        { "at": 2, "x": 0.14, "y": 0.27, "w": 0.6, "h": 0.25 },
+        { "at": 3, "x": 0.74, "y": 0.27, "w": 0.25, "h": 0.29 }
+      ],
+      "boxes": [
+        { "at": 1, "until": 2, "x": 0.145, "y": 0.137, "w": 0.16, "h": 0.122 },
+        { "at": 2, "until": 3, "x": 0.147, "y": 0.47, "w": 0.287, "h": 0.045 },
+        { "at": 3, "x": 0.749, "y": 0.34, "w": 0.235, "h": 0.15 }
+      ]
+    },
+    {
+      "id": "home",
+      "kind": "screen",
+      "shot": "home",
+      "url": "/home",
+      "wait": 4500,
+      "eyebrow": "On screen · Home",
+      "title": "The owner's morning, on one screen",
+      "beats": [
+        "This is the owner's home page. It answers the four questions on one screen.",
+        "Who owes me, and whom do I owe? Clients owe twenty-one lakh rupees. The company owes suppliers thirty-three lakh. And one point seven lakh of wages are due.",
+        "Which project is slipping? One of two is over budget: Lake View Apartments.",
+        "And what needs me this week? Approve the wages. Check the costs on Lake View. Raise the next bill to the client. Chase the payment that's late.",
+        "Problems are pushed to the owner, not hunted for."
+      ],
+      "focus": [
+        { "at": 0, "full": true },
+        { "at": 1, "x": 0.14, "y": 0.31, "w": 0.85, "h": 0.14 },
+        { "at": 2, "x": 0.14, "y": 0.44, "w": 0.56, "h": 0.12 },
+        { "at": 3, "x": 0.14, "y": 0.56, "w": 0.6, "h": 0.24 },
+        { "at": 4, "full": true }
+      ],
+      "boxes": [
+        { "at": 1, "until": 2, "x": 0.145, "y": 0.34, "w": 0.84, "h": 0.1 },
+        { "at": 2, "until": 3, "x": 0.145, "y": 0.452, "w": 0.275, "h": 0.098 },
+        { "at": 3, "until": 4, "x": 0.145, "y": 0.57, "w": 0.59, "h": 0.22 }
+      ]
+    },
+    {
+      "id": "cost",
+      "kind": "screen",
+      "shot": "cost",
+      "url": "/cost",
+      "wait": 4500,
+      "eyebrow": "On screen · Cost control",
+      "title": "Which projects make money, and which lose it",
+      "beats": [
+        "Question one, in detail: is each project making money?",
+        "Cost control compares what was spent with the value of the work actually done.",
+        "Lake View Apartments is red: its spending is running ahead of its work, and it's heading over budget. Green Villa is green.",
+        "And it points to what's still missing: labour and work that haven't been put on the BOQ yet, so the picture is complete."
+      ],
+      "focus": [
+        { "at": 0, "full": true },
+        { "at": 1, "x": 0.14, "y": 0.11, "w": 0.85, "h": 0.12 },
+        { "at": 2, "x": 0.14, "y": 0.48, "w": 0.85, "h": 0.2 },
+        { "at": 3, "x": 0.14, "y": 0.31, "w": 0.85, "h": 0.06 }
+      ],
+      "boxes": [
+        { "at": 1, "until": 2, "x": 0.313, "y": 0.118, "w": 0.336, "h": 0.1 },
+        { "at": 2, "until": 3, "x": 0.146, "y": 0.52, "w": 0.838, "h": 0.075 },
+        { "at": 3, "x": 0.146, "y": 0.322, "w": 0.838, "h": 0.044 }
+      ]
+    },
+    {
+      "id": "live",
+      "kind": "screen",
+      "shot": "live",
+      "url": "/live",
+      "wait": 9000,
+      "eyebrow": "On screen · Live",
+      "title": "The owner's board",
+      "beats": [
+        "And then there's Live: the owner's board, updated as the messages arrive from site.",
+        "Caught today: one delivery came in above its order's rate. A thousand rupees, caught the same day.",
+        "Is anything leaking? A supplier billed two thousand four hundred rupees more than was delivered.",
+        "What do I owe, and who owes me? Wages, advances, supplier bills, and work that can be billed to the client right now.",
+        "And what will stop work tomorrow? Cement at Main block is below its minimum, and it isn't ordered yet.",
+        "Remember leaks one and six from episode one? Here they are, caught on the day, not at month end."
+      ],
+      "focus": [
+        { "at": 0, "full": true },
+        { "at": 1, "x": 0.69, "y": 0.2, "w": 0.3, "h": 0.15 },
+        { "at": 2, "x": 0.69, "y": 0.46, "w": 0.3, "h": 0.15 },
+        { "at": 3, "x": 0.69, "y": 0.67, "w": 0.3, "h": 0.2 },
+        { "at": 4, "x": 0.69, "y": 0.85, "w": 0.3, "h": 0.1 },
+        { "at": 5, "x": 0.68, "y": 0.18, "w": 0.31, "h": 0.78 }
+      ],
+      "boxes": [
+        { "at": 1, "until": 2, "x": 0.703, "y": 0.23, "w": 0.267, "h": 0.102 },
+        { "at": 2, "until": 3, "x": 0.703, "y": 0.475, "w": 0.267, "h": 0.12 },
+        { "at": 3, "until": 4, "x": 0.703, "y": 0.68, "w": 0.267, "h": 0.175 },
+        { "at": 4, "until": 5, "x": 0.703, "y": 0.865, "w": 0.267, "h": 0.075 }
+      ]
+    },
+    {
+      "id": "honest",
+      "kind": "versus",
+      "eyebrow": "Before any pitch",
+      "title": "Show what's ready. Check the rest.",
+      "beats": [
+        "One last thing, before any pitch: be honest about what's ready.",
+        "Capture on WhatsApp, Today, daily reports, issues, materials, cost control and Live: you've just seen them working.",
+        "Other parts, like accounts and the Tally link, are newer. Check what's switched on for a customer before you promise it.",
+        "Remember: an owner quits when the numbers disagree. Over-promising is the fastest way to lose one."
+      ],
+      "left": { "at": 1, "title": "Show with confidence", "items": ["WhatsApp capture", "Today and daily reports", "Issues and materials", "Cost control and Live"], "tone": "#4ade80" },
+      "right": { "at": 2, "title": "Check with the team first", "items": ["Accounts", "The Tally link", "Anything not switched on for them"], "tone": "#facc15" },
+      "footer": { "at": 3, "text": "Over-promising is the fastest way to lose an owner." }
+    },
+    {
+      "id": "close",
+      "kind": "title",
+      "eyebrow": "Episode 2 · In one line",
+      "title": "The owner buys. The site uses it.",
+      "beats": [
+        "So: the owner buys, and the site uses it. The owner wants answers, not registers. And they stay when Mesiri catches a real loss, early.",
+        "In episode three, we'll spend one whole day at Green Villa: from the first WhatsApp message in the morning, to the owner's report at night."
+      ],
+      "lines": [
+        { "at": 0, "text": "Answers, not registers · one real loss, caught early" },
+        { "at": 1, "text": "Next · Episode 3 · One day at Green Villa" }
+      ]
+    }
+  ]
+}
