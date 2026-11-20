@@ -153,7 +153,9 @@ ALWAYS_ON_MODULES: frozenset[str] = frozenset({"dpr"})
 # report; migration 0521 switched it on for companies whose list was already stored).
 # Tasks joined on 9 Nov 2026 (asked in session by Adarsh: "want new module proper"; Alan not asked yet, said in the
 # report; migration 0533 switched it on for companies whose list was already stored).
-V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials", "finance", "equipment", "cost", "tasks")
+# Accounts joined on 20 Nov 2026 (Ilan: "We are changing what V1 is, okay, let it be on for everything. V1 is bigger
+# now"; migration 0563 switched it on for companies whose list was already stored). Automations stays per company.
+V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials", "finance", "equipment", "cost", "tasks", "accounts")
 
 # A company that has never had its modules set gets V1. Flipped from "every
 # module on" in the same release as the dashboard hiding (WEB-02) and the

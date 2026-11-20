@@ -40,6 +40,8 @@ def test_default_is_v1():
 def test_v1_modules_are_known_and_include_dpr():
     assert set(settings.V1_MODULES) <= set(settings.MODULES)
     assert "dpr" in settings.V1_MODULES
+    # 20 Nov 2026: Accounts is part of V1, on for every company (migration 0563).
+    assert "accounts" in settings.V1_MODULES
 
 
 def test_validate_canonicalises_order_case_and_duplicates():
