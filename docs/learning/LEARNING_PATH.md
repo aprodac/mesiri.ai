@@ -31,7 +31,7 @@ Green Villa's story.
 |---|---|---|---|---|---|
 | 0 | **Prologue:** how a construction company works | Open the sample company, look around (Owner) | name the phases, the people, how money flows, the big leaks | done (19 Nov) | ch. 1 "Your sample company": done |
 | 1 | **Ep 1: The job is won** (drawings, BOQ, rates, contract, retention, advance) | ch. 2 "Set up Green Villa" (contract, BOQ upload) and ch. 3 "The BOQ" (Owner) | say what is agreed before the first brick and why the BOQ is the yardstick | **built, for review** (9.8 min; script [film/scripts/episode-01.md](film/scripts/episode-01.md)) | **written**, tested and fixed 20 Nov (UX-77) |
-| 2 | **Ep 2: Setting up** (sites, team on WhatsApp, items, suppliers, rates, schedule, report time) | Project start's other steps: schedule, team, suppliers (Owner) | list what must exist before day 1, and who sets it up | to script | **missing**: the sample company comes already set up; needs a short chapter (see 3.2) |
+| 2 | **Ep 2: Setting up** (sites, team on WhatsApp, items, suppliers, rates, schedule, report time) | Project start's other steps: schedule, team, suppliers (Owner) | list what must exist before day 1, and who sets it up | **scripted, for review** ([film/scripts/episode-02.md](film/scripts/episode-02.md)) | **missing**: the sample company comes already set up; needs a short chapter (see 3.2) |
 | 3 | **Ep 3: A day on site** | ch. 4 "A day on site" (Ravi, then the Owner's evening report) | follow one site day from Ravi's message to the daily report | to script | general |
 | 4 | **Ep 4: Cement runs short** (request, quote, order, delivery, short load, stock, supplier bill, payment) | ch. 5 "Material" (Ravi, Anil) and ch. 8 "Money out" (Meera) | walk the material chain across all four people | to script | general |
 | 5 | **Ep 5: Wages week** | ch. 6 "Labour and wages" (Ravi, Owner, Meera) | run the weekly labour cycle, advances included | to script | general |
@@ -91,7 +91,8 @@ Tick as done; each item also has a tracker row.
 - [ ] **Ep 1 reviewed** (Ilan); changes to the words are re-recorded line by line, then rebuilt.
 - [ ] **Film Ep 1**, review it.
 - [ ] Play Ep 1 + sim ch. 2 and 3 as someone new (Owner); note what was unclear.
-- [ ] **Ep 2 script**, then the new "Setting up" chapter (3.2), film, play-test.
+- [x] **Ep 2 script** (20 Nov): [film/scripts/episode-02.md](film/scripts/episode-02.md).
+- [ ] Ep 2 reviewed; then the "Setting up" chapter (3.2) played in the sample company, UX-81 fixed, film, play-test.
 - [ ] Ep 3 script, film; rewrite ch. 4 for Green Villa's day; play-test. Then Ep 4 with ch. 5 and 8; Ep 5 with ch. 6.
 - [ ] Ep 6 with its new chapter (3.3); Ep 7 with ch. 7; Ep 8 with ch. 9; Ep 9 with ch. 10.
 - [ ] Story batch 1 (month end and the books, SERIES_PLAN 7.1), then Ep 10 with ch. 11. Parked until before Ep 10.

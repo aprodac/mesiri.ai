@@ -1,0 +1,560 @@
+{
+  "episode": 2,
+  "title": "Setting up",
+  "status": "DRAFT for Ilan's review (20 Nov 2026). Not filmed. Before filming, in the sample company: the drawing set put through Drawing check and kept in Documents, Places set from it, the schedule's quick plan, the materials workbook brought in (the 'Setting up' chapter, LRN-F9); Rates showing M sand's rise (UX-81); the owner's login named Ramesh Nair.",
+  "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 2's objective); the starter kit's drawing set (A-201, A-301), materials and suppliers workbook, Periyar's rate card and the building permit (apps/dashboard/public/learn/kit, kit.json's catches); the sample company's setup pages as they stand after the guided project's chapters 2 and 3, 20 Nov 2026. Construction practice: typical, to be checked by someone who has run sites.",
+  "objective": "By the end you can list what must exist before day 1 and who sets it up: the company, the project and its sites, the team on WhatsApp, drawings and documents, items, suppliers and rates, the schedule and the material plan, and the daily report time.",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "part": "Cold open",
+      "eyebrow": "Mesiri · The course · Episode 2",
+      "title": "Setting up",
+      "beats": [
+        "The second of November, six in the morning. Ravi, the site engineer, is at Green Villa with ten workers and a lorry of sand.",
+        "In an hour he will send his first message. Attendance, the sand that came, the work begun.",
+        "Where does that message go? Who reads it? What is it measured against? All of that is decided in the two weeks before. This episode is those two weeks."
+      ],
+      "lines": [
+        {
+          "at": 1,
+          "text": "Day 1 · Monday, 2 November 2026"
+        },
+        {
+          "at": 2,
+          "text": "Everything a message needs, ready before it is sent"
+        }
+      ]
+    },
+    {
+      "id": "why",
+      "kind": "versus",
+      "part": "On a real site",
+      "eyebrow": "Why it matters",
+      "title": "Set up before day 1, or chase it for nine months",
+      "beats": [
+        "Every builder sets up a job. The only question is when.",
+        "Set up before day one, and every message from site lands in the right place: the right site, the right BOQ line, the right supplier.",
+        "Set up later, and the first weeks pile up. Deliveries with no supplier, work with no line, stock nobody counted, and a report nobody gets.",
+        "Two weeks of setting up save months of sorting out."
+      ],
+      "left": {
+        "at": 1,
+        "title": "Before day 1",
+        "items": [
+          "Each message lands in its place",
+          "Stock counted from the first bag",
+          "The report goes out on day 1"
+        ],
+        "tone": "#4ade80"
+      },
+      "right": {
+        "at": 2,
+        "title": "Later",
+        "items": [
+          "Deliveries with no supplier",
+          "Work with no BOQ line",
+          "Stock nobody counted"
+        ],
+        "tone": "#f87171"
+      },
+      "footer": {
+        "at": 3,
+        "text": "Two weeks of setting up save months of sorting out."
+      }
+    },
+    {
+      "id": "list",
+      "kind": "story",
+      "part": "On a real site",
+      "eyebrow": "Before day 1",
+      "title": "What must exist before the first message",
+      "beats": [
+        "Here is everything that must exist before Ravi's first message.",
+        "The company, with its name and letterhead, and the time the daily report goes out. The project, and its two sites: the Main block and the Annex.",
+        "The team, each person with a role and a WhatsApp number. Without a number, a person cannot report from site.",
+        "The drawings, checked, and every document in one place: the permit, the contract, the estimate.",
+        "What the site will use and who supplies it: the items, the suppliers, their rates, and what is already on site.",
+        "And the plan: when each part of the work happens, and the material it needs, week by week."
+      ],
+      "steps": [
+        {
+          "at": 1,
+          "module": "Company · Project",
+          "text": "Name, letterhead, report time · Green Villa: Main block, Annex"
+        },
+        {
+          "at": 2,
+          "module": "Team",
+          "text": "Roles, and a WhatsApp number each"
+        },
+        {
+          "at": 3,
+          "module": "Drawings · Documents",
+          "text": "Checked; permit, contract and estimate kept together"
+        },
+        {
+          "at": 4,
+          "module": "Items · Suppliers · Rates",
+          "text": "What is used, from whom, at what price; opening stock"
+        },
+        {
+          "at": 5,
+          "module": "Schedule · Material plan",
+          "text": "When each section happens, and what it needs, week by week"
+        }
+      ],
+      "footer": {
+        "at": 5,
+        "text": "Episode 1 put in the contract and the BOQ. This is the rest."
+      }
+    },
+    {
+      "id": "who",
+      "kind": "people",
+      "part": "Who does what, when",
+      "eyebrow": "The two weeks before",
+      "title": "Who sets up what",
+      "beats": [
+        "Who sets up what?",
+        "Ramesh, the owner, sets up the company, the project and its sites, and the team.",
+        "Anil, the project manager, checks the drawings, plans the work, and fills in the items, suppliers and rates.",
+        "Meera, in accounts, puts in what the company already owes, and where its money is kept.",
+        "And Ravi gets one thing: his number added, so that on day one he can simply start talking."
+      ],
+      "people": [
+        {
+          "at": 1,
+          "who": "Ramesh Nair, owner",
+          "worry": "Company, project, sites, team",
+          "tone": "#facc15"
+        },
+        {
+          "at": 2,
+          "who": "Anil, project manager",
+          "worry": "Drawings, schedule, items, suppliers, rates",
+          "tone": "#fb923c"
+        },
+        {
+          "at": 3,
+          "who": "Meera, accounts",
+          "worry": "What we already owe; the bank and petty cash",
+          "tone": "#c4b5fd"
+        },
+        {
+          "at": 4,
+          "who": "Ravi, site engineer",
+          "worry": "My number in. Then I just talk.",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 2,
+          "who": "Architect and consultant",
+          "worry": "Answer the questions the drawings raise",
+          "tone": "#93c5fd"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "The office sets up, so the site only has to talk."
+      }
+    },
+    {
+      "id": "elevation",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep02-drawing-a201",
+      "paper": {
+        "pdf": "Green Villa - drawing set rev A.pdf",
+        "page": 3,
+        "marks": {
+          "roof": "+660"
+        }
+      },
+      "eyebrow": "The paper · Drawing A-201, the elevation",
+      "title": "The roof, as the elevation draws it",
+      "beats": [
+        "Anil starts with the drawings. Eight sheets: plans, an elevation, a section, the structure, the wiring and the plumbing.",
+        "This is A-201, the front elevation: the house seen from the road.",
+        "The roof slab is marked here: six hundred and sixty centimetres above the ground."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 2,
+          "mark": "roof",
+          "pad": 0.12
+        }
+      ],
+      "boxes": [
+        {
+          "at": 2,
+          "mark": "roof",
+          "pad": 0.012
+        }
+      ]
+    },
+    {
+      "id": "section",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep02-drawing-a301",
+      "paper": {
+        "pdf": "Green Villa - drawing set rev A.pdf",
+        "page": 4,
+        "marks": {
+          "roof": "+655"
+        }
+      },
+      "eyebrow": "The paper · Drawing A-301, the section",
+      "title": "The same roof, five centimetres lower",
+      "beats": [
+        "And this is A-301, the section: the house cut through, so you see every floor's height.",
+        "The same roof: six hundred and fifty-five.",
+        "Five centimetres. Nobody would notice on paper. On site, it decides where the carpenters set the shuttering, the day the roof is poured.",
+        "Found now, it is one phone call to the architect. Found after the pour, it is a broken slab, or a staircase that does not fit."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 1,
+          "mark": "roof",
+          "pad": 0.12
+        }
+      ],
+      "boxes": [
+        {
+          "at": 1,
+          "mark": "roof",
+          "pad": 0.012
+        }
+      ]
+    },
+    {
+      "id": "drawingcheck",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep02-drawing-check",
+      "url": "/planning/drawing-check?project={Green Villa}",
+      "wait": 9000,
+      "eyebrow": "In Mesiri · Drawing check",
+      "title": "The drawings, read before they are built",
+      "beats": [
+        "In Mesiri, Anil drops the whole drawing set on Drawing check.",
+        "It reads every sheet: the rooms, their sizes, the levels, the doors and windows.",
+        "And it asks what does not agree. The roof: plus six sixty on the elevation, plus six fifty-five on the section. Which is right?",
+        "The toilet upstairs is drawn smaller than the one below it, though toilets stack. Intended? And the bedroom label that was copied, from episode one.",
+        "Three questions for the architect, before a single brick."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "documents",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep02-documents",
+      "url": "/planning/documents?project={Green Villa}",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · Documents",
+      "title": "One place for every paper",
+      "beats": [
+        "The checked set goes into Documents, each sheet kept on its own.",
+        "With it, the building permit from the municipality, the contract, and the estimate.",
+        "When a drawing is revised, the new one is kept with the old, and everyone on the project opens the latest. Nobody builds from last month's print."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "places",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep02-places",
+      "url": "/planning/places?project={Green Villa}",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · Places",
+      "title": "Every floor and room, from the drawings",
+      "beats": [
+        "From the same drawings, Mesiri lists the places: each floor, each room, each footing.",
+        "Nobody types them. They come off the plans.",
+        "So later, when Ravi says plastering done in bedroom two, the work lands on that room, and Live can colour it in."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "workbook",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep02-vendors",
+      "sheet": {
+        "xlsx": "Green Villa - materials and suppliers.xlsx",
+        "sheet": "Vendors",
+        "rows": 6,
+        "marks": {
+          "colour": "Colour World Paints",
+          "joy": "Joy Tiling Works"
+        }
+      },
+      "eyebrow": "The paper · Materials and suppliers",
+      "title": "What the office already knows, in one Excel",
+      "beats": [
+        "Next, what the site will use, and who supplies it. Anil has it in one Excel, the way most offices do.",
+        "Four sheets: the items, the suppliers, the stock already on site, and the least each site should hold.",
+        "One line matters to Meera: the company already owes Colour World Paints twelve thousand five hundred rupees, from before. If it is not put in now, it is forgotten, or paid twice.",
+        "And the least to hold: a hundred bags of cement at the Main block, forty at the Annex. Below that, someone must order."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 2,
+          "mark": "colour",
+          "pad": 0.1
+        }
+      ],
+      "boxes": [
+        {
+          "at": 2,
+          "mark": "colour"
+        }
+      ]
+    },
+    {
+      "id": "bring",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep02-bring-data",
+      "url": "/bring-data",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · Bring your data",
+      "title": "The Excel goes in as it is",
+      "beats": [
+        "In Mesiri, Bring your data takes things in the order a job needs them: the projects and sites, the team, the materials and suppliers, the BOQ, the drawings.",
+        "The workbook goes in as it is. Mesiri shows what it read first: the cement, Malabar and Joy Tiling are already in, so it leaves them alone.",
+        "And anything else? Send the file on WhatsApp, with a line saying what it is."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "ratecard",
+      "kind": "screen",
+      "part": "On a real site",
+      "shot": "ep02-rate-card",
+      "paper": {
+        "pdf": "Periyar - rate card.pdf",
+        "page": 1,
+        "marks": {
+          "msand": "line: M Sand",
+          "gst": "Rates before GST"
+        }
+      },
+      "eyebrow": "The paper · Periyar's rate card",
+      "title": "The price agreed, in writing",
+      "beats": [
+        "Then the rates. Periyar Sand and Aggregates sends its rate card: M sand at one thousand six hundred and fifty rupees a cubic metre, delivered at site.",
+        "Before GST, and any change told in writing, a week before.",
+        "Put the agreed rates in now, and every delivery is checked against them. In a few weeks, Periyar's sand will start coming at seventeen fifty. Mesiri will show it the day it happens."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        },
+        {
+          "at": 0,
+          "mark": "msand",
+          "pad": 0.12
+        },
+        {
+          "at": 1,
+          "mark": "gst",
+          "pad": 0.12
+        }
+      ],
+      "boxes": [
+        {
+          "at": 0,
+          "until": 1,
+          "mark": "msand"
+        },
+        {
+          "at": 1,
+          "mark": "gst"
+        }
+      ]
+    },
+    {
+      "id": "schedule",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep02-schedule",
+      "url": "/planning/schedule?project={Green Villa}",
+      "wait": 6000,
+      "eyebrow": "In Mesiri · Schedule",
+      "title": "When each part of the work happens",
+      "beats": [
+        "Now the plan. The schedule already has its sections, straight from the BOQ: earthwork, concrete, masonry, plastering, all nine. And its finish, from the contract: the thirty-first of July.",
+        "What it needs is dates. Quick plan lays the sections one after another from the start day, each linked to the one before, so a delay moves the rest. Anil sets the days for each, then drags the bars where work overlaps, like the wiring alongside the walls.",
+        "From now on, late means something: late against this plan, and how many days it pushes the handover."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "materialplan",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep02-material-plan",
+      "url": "/planning/materials?project={Green Villa}",
+      "wait": 6000,
+      "eyebrow": "In Mesiri · Material plan",
+      "title": "What to buy, and when",
+      "beats": [
+        "With the dates and the BOQ together, Mesiri works out the material plan: what each week's work needs, against what is in stock and on order.",
+        "For Green Villa, about one thousand five hundred bags of cement, seven thousand seven hundred blocks, and so on, week by week.",
+        "But only six of the thirty-four lines say what they use. The plan is honest about it: fill in the rest, and it covers the whole job.",
+        "A week turns red before it runs short, not on the day the site stops."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "team",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep02-team",
+      "url": "/team",
+      "wait": 5000,
+      "eyebrow": "In Mesiri · Team",
+      "title": "Everyone, with a role and a number",
+      "beats": [
+        "Last, the people. Ramesh adds the team: Anil, Meera and Ravi, each with a role, and the projects they work on.",
+        "The role decides what each one sees. Ravi sees his sites' day, but never the rupees. Meera sees the bills and the payments.",
+        "And the number decides who can talk to Mesiri. Look: no one here has a WhatsApp number yet, and Mesiri says so. Until Ravi's is in, his first message on day one goes nowhere.",
+        "The report time is set once for the company: nine every evening. From day one, the owner and the client get the day's report without asking."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "wrong",
+      "kind": "leaks",
+      "part": "What can go wrong",
+      "eyebrow": "What can go wrong",
+      "title": "Five ways a job starts badly",
+      "beats": [
+        "Five ways a job starts badly.",
+        "A number missing: the site's messages go nowhere, and the office finds out a week later.",
+        "Drawings not checked: the roof level is argued about on the day of the pour.",
+        "No least-stock: the cement runs out on a Friday, and the masons go home.",
+        "An old balance not put in: a supplier is paid twice, or argues for a year. And no dates: nobody can say whether the job is late."
+      ],
+      "leaks": [
+        {
+          "at": 1,
+          "title": "No WhatsApp number",
+          "eg": "Day 1's messages go nowhere"
+        },
+        {
+          "at": 2,
+          "title": "Drawings unchecked",
+          "eg": "Roof +660 or +655, at the pour"
+        },
+        {
+          "at": 3,
+          "title": "No least-stock",
+          "eg": "Cement out on a Friday"
+        },
+        {
+          "at": 4,
+          "title": "Old balance not in",
+          "eg": "Colour World paid twice"
+        },
+        {
+          "at": 4,
+          "title": "No dates",
+          "eg": "Late against what?"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "Each one costs minutes now, and weeks later."
+      }
+    },
+    {
+      "id": "check",
+      "kind": "questions",
+      "part": "Recap and check yourself",
+      "eyebrow": "Check yourself",
+      "title": "Three questions",
+      "beats": [
+        "Three questions. Pause, and answer them before you go on.",
+        "One: what must Ravi have before he can report from site? A WhatsApp number, on the team, with his role and his sites.",
+        "Two: the elevation says plus six sixty, the section says plus six fifty-five. What do you do, and when? Ask the architect, before the roof is shuttered.",
+        "Three: why put in what the company already owes? So nobody pays it twice, and the supplier's account starts right.",
+        "Next: a day on site. Ravi's first message, and everything it fills, up to the report at nine."
+      ],
+      "questions": [
+        {
+          "at": 1,
+          "text": "What must Ravi have before he can report?"
+        },
+        {
+          "at": 2,
+          "text": "+660 or +655: what do you do, and when?"
+        },
+        {
+          "at": 3,
+          "text": "Why put in what you already owe?"
+        }
+      ]
+    }
+  ]
+}
