@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can follow one site day from Ravi's first WhatsApp message to the owner's evening report, and say what each kind of record is for: attendance, work done, material used, money spent, and the day's conditions.
 
-**Length:** 14 scenes, 1138 words of narration (about 8 minutes)
+**Length:** 15 scenes, 1233 words of narration (about 8 minutes)
 
 ## Cold open
 
@@ -263,9 +263,29 @@ Narration:
 >
 > It goes to Ramesh and to Doctor Krishnan on WhatsApp. A site that did not report is shown as not reported, never left out quietly.
 
+## What the owner sees
+
+### 13. What needs Ramesh tonight
+
+*What the owner sees · Home · screen · screen `/home`*
+
+On screen:
+
+- Owner beat (asked by Ilan, 20 Nov). Day 2 (Mon 16 Nov), evening. Shot as the owner (Ramesh Nair) in the sample company on the episode's day. Every figure said is read off this screen when it is shot; the words change to fit the screen, never the other way.
+
+Narration:
+
+> Ramesh does not open Today, and he does not read every message. He opens Home.
+>
+> It says what needs him, and how each project is doing. Tonight: the Main block is out of cement, and a request for a hundred bags is waiting.
+>
+> At nine the reports come to his phone. All four sites, read in a few minutes, and he knows which call to make tomorrow morning.
+>
+> Ravi's three messages are why this page is true. If Ravi had not said it, Ramesh would hear about the cement on Wednesday, from an idle crew.
+
 ## What can go wrong
 
-### 13. Five ways a site day is lost
+### 14. Five ways a site day is lost
 
 *What can go wrong · leaks*
 
@@ -292,7 +312,7 @@ Narration:
 
 ## Recap and check yourself
 
-### 14. Three questions
+### 15. Three questions
 
 *Check yourself · questions*
 

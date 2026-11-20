@@ -81,6 +81,17 @@ tracking, the import and the quick plan are saved). Kept below as the record of 
 - [ ] **`rain`** on day 10. Needs the model: `ONLY=rain node record.cjs 03 <token>`.
 - [ ] Re-take **`short`** if its card again says "2 bags not in the list" (WA-316): today's real card has it.
 
+## The owner beats (added 20 Nov): one screen per episode to shoot
+
+Each episode's scene `owner` (part "What the owner sees", SERIES_PLAN 5a) is a screen shot as the owner on that day,
+then the words checked against it (every figure read off it). Episodes 1 and 2 are built: shoot the new screen and
+build again (only the new scene is drawn; episode 1's rule "do not rebuild" is lifted for this scene only, as asked).
+
+- [ ] Episode 1: `/cost` (Green Villa's contract, BOQ cost and margin), day 0 after the guided project's chapter 3.
+- [ ] Episode 2: `/planning/setup?project={Green Villa}`, day 0 after the setting up.
+- [ ] Episode 3: `/home` as the owner on day 2 (evening): does it show the Main block's cement request? If not, the
+      narration changes, or it goes to the tracker as a Home gap.
+
 ## Then, for each episode
 
 1. `node docs/learning/film/shoot.cjs NN <sample token>` (and the new captures and steps).

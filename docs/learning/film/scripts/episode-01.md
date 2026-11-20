@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can explain what is agreed before the first brick (drawings, BOQ, rates, contract: advance, retention, defects period, delay) and why the BOQ is the yardstick for everything after.
 
-**Length:** 16 scenes, 1530 words of narration (about 10 minutes)
+**Length:** 17 scenes, 1585 words of narration (about 11 minutes)
 
 ## Cold open
 
@@ -277,9 +277,25 @@ Narration:
 >
 > The months before Mesiri are on paper, so this counts from here. From now on, every message from site moves these bars by itself.
 
+## What the owner sees
+
+### 15. The line every month is measured against
+
+*What the owner sees · Cost control · screen · screen `/cost`*
+
+On screen:
+
+- Owner beat (asked by Ilan, 20 Nov). Day 0 (after the guided project's chapter 3). Shot as the owner (Ramesh Nair) in the sample company on the episode's day. Every figure said is read off this screen when it is shot; the words change to fit the screen, never the other way.
+
+Narration:
+
+> What does Ramesh take from all this? One line, in Cost control: what the client pays, what the BOQ says it should cost, and the margin between them.
+>
+> From tomorrow, every bag, every wage and every bill is measured against that margin. If it is thin here, no site engineer can make it fatter later.
+
 ## What can go wrong
 
-### 15. Five ways a job is lost on paper
+### 16. Five ways a job is lost on paper
 
 *What can go wrong · leaks*
 
@@ -306,7 +322,7 @@ Narration:
 
 ## Recap and check yourself
 
-### 16. Three questions
+### 17. Three questions
 
 *Check yourself · questions*
 

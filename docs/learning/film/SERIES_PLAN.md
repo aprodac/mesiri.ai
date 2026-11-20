@@ -62,6 +62,7 @@ The storyboard is the A-to-Z map (`az-map/`, published as "Green Villa A to Z"):
 | On a real site | What this part of the work is and why it matters, with no software: the trade, the people, the money, what goes wrong | 1 to 2 min |
 | Who does what, when | The swimlane for these days: each person's steps and the handoffs between them, from the map | 1 min |
 | In Mesiri | The chain played step by step: the WhatsApp message or the page, the card or the record, where it shows next | 3 to 5 min |
+| What the owner sees | One screen, as the owner (Ramesh) sees it on that day: what this chain changes on his page, and the decision it lets him make. Section 5a lists each episode's (added 20 Nov, Ilan: "add an owner beat to each script") | 30 to 45 s |
 | What can go wrong | The leak this part prevents, and what Mesiri shows when it happens (a short load, a bill above the order, a red line) | 1 min |
 | Recap and check yourself | Three questions with answers; then "next episode" | 1 min |
 | What we found | Shown only to the team: steps that were hard, unclear or repeated on screen, each a tracker item | (notes) |
@@ -90,6 +91,26 @@ old Episode 2 ("What owners want") is retired: it was about selling.
 | 9 | **Is it making money?** | around 30 | read a project's health halfway: work counted on the BOQ, green and red, budget against actual, materials against the BOQ, cost centres; and decide what to do about a red line | BOQ counts → cost control |
 | 10 | **Month end** | 30 and 60 | close a month: GST and TDS, the cash and bank book, the books from the records (ledgers, trial balance, P&L, balance sheet), closing the month, the Tally export | month-end entries (batch 1) |
 | 11 | **Handover, and after** | 55 to 62, then a year | close a project: the last stages, the snag list, the final bill, handover; then the defects period and the retention released; the credits | handover → retention |
+
+### 5a. What the owner sees, episode by episode
+
+Added 20 Nov (Ilan). Episode 9 is the owner's own episode; every other episode ends its "In Mesiri" part on the one
+screen where its chain reaches the owner, so the owner's view runs through the whole series and Episode 9 is where
+it all adds up. The Prologue has no software and no beat. Every figure is read off the screen when it is shot.
+
+| # | Screen (as the owner, on the episode's day) | The owner's question it answers | Script |
+|---|---|---|---|
+| 1 | Cost control: Green Villa's contract value, its BOQ cost, the margin | "What did I sign for?" | added |
+| 2 | Project start: every step ticked or not; the 9 pm report set for him | "Can it start on Monday?" | added |
+| 3 | Home on day 2: what needs him (the Main block's cement); the 9 pm report | "Which call do I make tomorrow?" | added |
+| 4 | Suppliers: what is owed to Malabar after the debit note and the ₹10 a bag held; the stock count he approves | "Am I paying for what came?" | in the plan |
+| 5 | Approvals: the wage sheet he approves, beside the work done that week | "Am I paying for work or for heads?" | to script |
+| 6 | Home: the open problem and who owns it; Hire check's hours to question | "What is stuck, and what is idle costing me?" | to script |
+| 7 | Subcontract: Joy Tiling's bill against the measurement, the retention held | "Am I paying only for what was measured?" | to script |
+| 8 | Receivables: what the client owes, by age, and the variation billed | "When does my money come in?" | to script |
+| 9 | (the whole episode is the owner's: Cost control, Project P&L) | "Is it making money, and where does it leak?" | to script |
+| 10 | Accounts home: cash and bank, owed to and by us, the month's profit | "How did the month end?" | to script |
+| 11 | Project P&L at handover; the retention still held | "What did the job really make?" | to script |
 
 ## 6. Every page has an episode
 

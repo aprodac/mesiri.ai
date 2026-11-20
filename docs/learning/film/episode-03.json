@@ -499,6 +499,30 @@
       "boxes": []
     },
     {
+      "id": "owner",
+      "kind": "screen",
+      "part": "What the owner sees",
+      "shot": "ep03-owner-home",
+      "url": "/home",
+      "wait": 6000,
+      "eyebrow": "What the owner sees · Home",
+      "title": "What needs Ramesh tonight",
+      "beats": [
+        "Ramesh does not open Today, and he does not read every message. He opens Home.",
+        "It says what needs him, and how each project is doing. Tonight: the Main block is out of cement, and a request for a hundred bags is waiting.",
+        "At nine the reports come to his phone. All four sites, read in a few minutes, and he knows which call to make tomorrow morning.",
+        "Ravi's three messages are why this page is true. If Ravi had not said it, Ramesh would hear about the cement on Wednesday, from an idle crew."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": [],
+      "note": "Owner beat (asked by Ilan, 20 Nov). Day 2 (Mon 16 Nov), evening. Shot as the owner (Ramesh Nair) in the sample company on the episode's day. Every figure said is read off this screen when it is shot; the words change to fit the screen, never the other way."
+    },
+    {
       "id": "wrong",
       "kind": "leaks",
       "part": "What can go wrong",

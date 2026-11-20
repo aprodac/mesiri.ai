@@ -612,6 +612,30 @@
       "record": "Done for real by steps-02.cjs; the numbers are never saved in a sample company."
     },
     {
+      "id": "owner",
+      "kind": "screen",
+      "part": "What the owner sees",
+      "shot": "ep02-owner-setup",
+      "url": "/planning/setup?project={Green Villa}",
+      "wait": 6000,
+      "eyebrow": "What the owner sees · Project start",
+      "title": "Ready to start, or not",
+      "beats": [
+        "Ramesh did none of this himself. He checks one page: Project start.",
+        "Each step is ticked or it is not: the contract, the BOQ, the schedule, the team, the suppliers. One look says whether Green Villa can start on Monday.",
+        "And one thing is set for him from day one: the evening report, on his phone at nine, every day, without asking anyone.",
+        "An owner who sees a step not ticked asks today. Not in the third month, when the site has already started without it."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": [],
+      "note": "Owner beat (asked by Ilan, 20 Nov). Day 0, after the setting up. Shot as the owner (Ramesh Nair) in the sample company on the episode's day. Every figure said is read off this screen when it is shot; the words change to fit the screen, never the other way."
+    },
+    {
       "id": "wrong",
       "kind": "leaks",
       "part": "What can go wrong",

@@ -748,6 +748,28 @@
       }
     },
     {
+      "id": "owner",
+      "kind": "screen",
+      "part": "What the owner sees",
+      "shot": "ep01-owner-cost",
+      "url": "/cost",
+      "wait": 6000,
+      "eyebrow": "What the owner sees · Cost control",
+      "title": "The line every month is measured against",
+      "beats": [
+        "What does Ramesh take from all this? One line, in Cost control: what the client pays, what the BOQ says it should cost, and the margin between them.",
+        "From tomorrow, every bag, every wage and every bill is measured against that margin. If it is thin here, no site engineer can make it fatter later."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": [],
+      "note": "Owner beat (asked by Ilan, 20 Nov). Day 0 (after the guided project's chapter 3). Shot as the owner (Ramesh Nair) in the sample company on the episode's day. Every figure said is read off this screen when it is shot; the words change to fit the screen, never the other way."
+    },
+    {
       "id": "wrong",
       "kind": "leaks",
       "part": "What can go wrong",

@@ -83,6 +83,7 @@ Same shape as every episode (SERIES_PLAN section 4). About 15 scenes, ~1,300 wor
 | 11 | In Mesiri | Came, minus used | screen | Stock: Main block's cement coming down 14 a day; days left; the 10 bags still to come |
 | 12 | In Mesiri | Paying the right amount | steps or chat | the payment: the order's rate, less the debit note |
 | 13 | In Mesiri | Month end: what is really there | chat + steps | the count on WhatsApp; the difference and its reason; approved |
+| 13a | What the owner sees | Paying for what came | screen | as Ramesh: Suppliers, Malabar: the bill, the debit note and the ₹10 a bag held; what is owed now; then the count he approves (SERIES_PLAN 5a) |
 | 14 | What can go wrong | Six ways a load of cement leaks | leaks | no quotes; ordered more than the store holds; signed for 200, got 190; torn bags kept; billed above the order and paid; never counted |
 | 15 | Recap | Three questions | questions | e.g. "Who sends the torn bags back, and what does it change?", "What three things does Meera put side by side before she pays?", "Why order 200 when you need 300?"; next: Wages week |
 
@@ -144,5 +145,6 @@ Finance Suppliers (bills, payments). Stock value and Suppliers (the list) appear
 5. **The count's difference:** how many bags short, and why (spillage and hardened bags are the honest usual
    reasons; theft is the dramatic one). *Recommended:* 3 bags, "wastage", approved by the owner: small, normal, and
    the reason the count exists.
-6. **The owner's part:** only approving the count (as above), or also approving the 200-bag order. The product has
-   no order approval step today; *recommended:* the count only, and say so in "What we found" if it should have one.
+6. **The owner's part:** his beat is scene 13a (Suppliers, then approving the count); not also approving the 200-bag
+   order: the product has no order approval step today. *Recommended:* as 13a, and say so in "What we found" if it
+   should have one.

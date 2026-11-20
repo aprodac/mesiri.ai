@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can list what must exist before day 1 and who sets it up: the company, the project and its sites, the team on WhatsApp, drawings and documents, items, suppliers and rates, the schedule and the material plan, and the daily report time.
 
-**Length:** 16 scenes, 1385 words of narration (about 9 minutes)
+**Length:** 17 scenes, 1471 words of narration (about 10 minutes)
 
 ## Cold open
 
@@ -298,9 +298,29 @@ Narration:
 >
 > And each project's report. Green Villa's day closes at six, and the report goes by nine. Ramesh switches on send automatically, and adds Doctor Krishnan, who agreed to get it on WhatsApp.
 
+## What the owner sees
+
+### 15. Ready to start, or not
+
+*What the owner sees · Project start · screen · screen `/planning/setup?project={Green Villa}`*
+
+On screen:
+
+- Owner beat (asked by Ilan, 20 Nov). Day 0, after the setting up. Shot as the owner (Ramesh Nair) in the sample company on the episode's day. Every figure said is read off this screen when it is shot; the words change to fit the screen, never the other way.
+
+Narration:
+
+> Ramesh did none of this himself. He checks one page: Project start.
+>
+> Each step is ticked or it is not: the contract, the BOQ, the schedule, the team, the suppliers. One look says whether Green Villa can start on Monday.
+>
+> And one thing is set for him from day one: the evening report, on his phone at nine, every day, without asking anyone.
+>
+> An owner who sees a step not ticked asks today. Not in the third month, when the site has already started without it.
+
 ## What can go wrong
 
-### 15. Five ways a job starts badly
+### 16. Five ways a job starts badly
 
 *What can go wrong · leaks*
 
@@ -327,7 +347,7 @@ Narration:
 
 ## Recap and check yourself
 
-### 16. Three questions
+### 17. Three questions
 
 *Check yourself · questions*
 
