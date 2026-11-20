@@ -132,3 +132,16 @@ async def test_the_month_end_count_plays_on_the_real_api(world):
     assert len(counts) == 1 and counts[0]["status"] == "open" and counts[0]["reason"] == "wastage"
     assert float(counts[0]["book_qty"]) - float(counts[0]["counted_qty"]) == 3
     assert "count_approve" in {f.kind for f in moved.for_you}
+
+
+async def test_playing_ravi_the_return_waits_for_his_delivery(world):
+    """Found recording episode 4: arriving on day 6 as Ravi, his delivery of Malabar's 190 bags is left for him; Anil's
+    return of the 6 torn bags must wait for it, never fail the day (next-day answered 500 before)."""
+    app, engine, person = world
+    await sandbox.open_sandbox(engine, app, person)
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=5)  # to day 5, the cast does it all
+    assert not moved.failed, moved.failed[:3]
+    moved = await player.next_day(engine, app, person, role="SITE_ENGINEER", days=1)  # lands on day 6 as Ravi
+    assert not moved.failed, moved.failed[:3]
+    assert any(f.kind == "delivery" and "190" in f.what for f in moved.for_you)
+    assert any(w["what"].startswith("Send back 6 torn bags") for w in moved.waiting)

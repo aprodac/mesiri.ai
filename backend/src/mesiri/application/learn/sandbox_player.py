@@ -309,13 +309,17 @@ def _ok(res: Any, what: str) -> dict[str, Any]:
 
 async def _story_receipt(w: _World, e: sp.Entry, want: dict[str, Any]) -> Any:
     """LRN-F18: the delivery a story entry is about: the supplier's latest delivery of that material at the site (the
-    lorry of the given quantity, when said)."""
+    lorry of the given quantity, when said). Not saved yet (the person plays Ravi and has not recorded it): the entry waits,
+    as every entry whose record is not there yet does, instead of failing the whole day."""
     mid, _uid = w.materials[want["material"]]
-    return await w.one("SELECT id FROM material_receipts WHERE organization_id = :o AND site_id = :s AND vendor_id = :v "
+    got = await w.one("SELECT id FROM material_receipts WHERE organization_id = :o AND site_id = :s AND vendor_id = :v "
                        "AND material_id = :m AND reverses_movement_id IS NULL AND quantity > 0 "
                        + ("AND quantity = :q " if want.get("quantity") else "") + "ORDER BY occurred_date DESC, created_at DESC LIMIT 1",
                        s=w.sites[e.site][1], v=w.vendors[want["vendor"]], m=mid,
                        **({"q": want["quantity"]} if want.get("quantity") else {}))
+    if not got:
+        raise _Wait(f"no delivery of {want['material']} from {want['vendor']} yet")
+    return got
 
 
 async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915 -- one branch per kind
