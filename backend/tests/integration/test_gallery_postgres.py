@@ -100,3 +100,54 @@ async def test_project_and_site_filters_and_removed_work_items(conn) -> None:
     assert total == 1
     _, total = await repo.list_gallery(organization_id=mine.organization_id, site_id=uuid.uuid4())
     assert total == 0
+
+
+async def _issue_photo(conn, created, *, key: str, when: dt.date) -> uuid.UUID:
+    """A photo hung off a site issue (parent_type SITE_ISSUE), dated `when`."""
+    issue_id = uuid.uuid4()
+    await conn.execute(
+        text(
+            "INSERT INTO site_issues (id, organization_id, project_id, site_id, occurred_at, narrative, issue_type, severity, status)"
+            " VALUES (:id, :org, :project, :site, :occurred_at, 'Water logging', 'WEATHER', 'MEDIUM', 'OPEN')"
+        ),
+        {
+            "id": issue_id,
+            "org": created.organization_id,
+            "project": created.project_id,
+            "site": created.site_id,
+            "occurred_at": dt.datetime.combine(when, dt.time(9, 0), tzinfo=dt.UTC),
+        },
+    )
+    photo_id = uuid.uuid4()
+    await conn.execute(
+        text(
+            "INSERT INTO progress_attachments (id, parent_type, parent_id, media_object_key, attachment_type)"
+            " VALUES (:id, 'SITE_ISSUE', :parent, :key, 'site_photo')"
+        ),
+        {"id": photo_id, "parent": issue_id, "key": key},
+    )
+    return photo_id
+
+
+async def test_kind_and_date_filters(conn) -> None:
+    # A work photo on DAY, and an issue photo the day before (WEB-104).
+    mine = await _company(conn, "Mine")
+    work = await _photo(conn, mine, key="m/work.jpg")
+    issue = await _issue_photo(conn, mine, key="m/issue.jpg", when=DAY - dt.timedelta(days=1))
+    repo = PostgresProgressReadRepository(conn)
+
+    # Kind filter: ACTIVITY (work) vs SITE_ISSUE (issue).
+    items, total = await repo.list_gallery(organization_id=mine.organization_id, parent_type="ACTIVITY")
+    assert total == 1 and [i["id"] for i in items] == [work]
+    items, total = await repo.list_gallery(organization_id=mine.organization_id, parent_type="SITE_ISSUE")
+    assert total == 1 and [i["id"] for i in items] == [issue]
+
+    # Date filter on the work day: DAY keeps the work photo, DAY-1 the issue.
+    _, total = await repo.list_gallery(organization_id=mine.organization_id, date_from=DAY)
+    assert total == 1  # only the work photo is on or after DAY
+    items, total = await repo.list_gallery(
+        organization_id=mine.organization_id, date_from=DAY - dt.timedelta(days=1), date_to=DAY - dt.timedelta(days=1)
+    )
+    assert total == 1 and [i["id"] for i in items] == [issue]
+    _, total = await repo.list_gallery(organization_id=mine.organization_id, date_to=DAY)
+    assert total == 2  # both days fall on or before DAY

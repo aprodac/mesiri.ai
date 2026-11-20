@@ -656,6 +656,9 @@ async def list_gallery(
     project_id: uuid.UUID | None = None,
     site_id: uuid.UUID | None = None,
     attachment_type: str | None = None,
+    parent_type: Literal["ACTIVITY", "SITE_ISSUE"] | None = None,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     auth_context: AuthorizationContext = Depends(get_auth_context),
@@ -664,7 +667,10 @@ async def list_gallery(
 ):
     """List site media gallery attachments within organization & scope.
     Each item carries `url`, a short-lived link to the photo (WEB-24), or
-    null when storage can't give one."""
+    null when storage can't give one. `parent_type` filters by kind
+    (ACTIVITY = work photo, SITE_ISSUE = issue photo); `date_from`/`date_to`
+    filter on the photo's work day, so paging stays correct across the range
+    (WEB-104)."""
     project_ids, denied = _resolve_project_ids(auth_context, project_id)
     if denied or _site_filter_denied(auth_context, project_id, site_id):
         return {"items": [], "total": 0}
@@ -675,6 +681,9 @@ async def list_gallery(
         project_ids=project_ids,
         site_id=site_id,
         attachment_type=attachment_type,
+        parent_type=parent_type,
+        date_from=date_from,
+        date_to=date_to,
         limit=limit,
         offset=offset,
     )

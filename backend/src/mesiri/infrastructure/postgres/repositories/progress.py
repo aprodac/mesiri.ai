@@ -514,6 +514,9 @@ class PostgresProgressReadRepository:
         project_ids: set[uuid.UUID] | None = None,
         site_id: uuid.UUID | None = None,
         attachment_type: str | None = None,
+        parent_type: str | None = None,
+        date_from: datetime.date | None = None,
+        date_to: datetime.date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -541,6 +544,21 @@ class PostgresProgressReadRepository:
         if attachment_type is not None:
             where.append("pa.attachment_type = :attachment_type")
             params["attachment_type"] = attachment_type
+        if parent_type is not None:
+            # 'ACTIVITY' (work) or 'SITE_ISSUE' (an issue's photo) -- the gallery's
+            # "kind" filter. Same literal the SELECT returns as pa.parent_type.
+            where.append("pa.parent_type = :parent_type")
+            params["parent_type"] = parent_type
+        # Filter on the same day the photo is grouped and ordered by (work_date),
+        # so the server pages the chosen range correctly rather than the client
+        # trimming one already-fetched page.
+        _work_date = "COALESCE(a.activity_date, (si.occurred_at AT TIME ZONE 'UTC')::date)"
+        if date_from is not None:
+            where.append(f"{_work_date} >= :date_from")
+            params["date_from"] = date_from
+        if date_to is not None:
+            where.append(f"{_work_date} <= :date_to")
+            params["date_to"] = date_to
 
         where_clause = " AND ".join(where)
 

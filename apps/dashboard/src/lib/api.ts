@@ -487,10 +487,18 @@ export interface GalleryListResponse {
   total: number
 }
 
+/** The gallery's "kind" filter — a photo hung off a work item or off an issue. */
+export type GalleryKind = 'ACTIVITY' | 'SITE_ISSUE'
+
 export async function fetchSiteGalleryApi(params: {
   projectId?: string
   siteId?: string
   attachmentType?: string
+  /** ACTIVITY = work photo, SITE_ISSUE = issue photo (WEB-104). */
+  parentType?: GalleryKind
+  /** Filter on the photo's work day; server-side, so paging stays correct. */
+  dateFrom?: string
+  dateTo?: string
   limit?: number
   offset?: number
 } = {}): Promise<GalleryListResponse> {
@@ -499,6 +507,9 @@ export async function fetchSiteGalleryApi(params: {
       project_id: params.projectId,
       site_id: params.siteId,
       attachment_type: params.attachmentType && params.attachmentType !== 'ALL' ? params.attachmentType : undefined,
+      parent_type: params.parentType,
+      date_from: params.dateFrom || undefined,
+      date_to: params.dateTo || undefined,
       limit: params.limit ?? 50,
       offset: params.offset ?? 0,
     },
