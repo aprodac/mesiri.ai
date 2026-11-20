@@ -1,8 +1,7 @@
 import * as React from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ChevronLeft, ChevronRight, Clock, MessageSquarePlus, RefreshCw, TriangleAlert } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, RefreshCw, TriangleAlert } from 'lucide-react'
 import { appNow } from '@/lib/clock'
-import { openTellMesiri } from '@/lib/tell-mesiri-events'
 import { cn } from '@/lib/utils'
 
 // UX-66 (asked 18 Nov 2026: "the Today page looks so boring"; a dark day card was tried and rejected, then this look
@@ -40,12 +39,7 @@ function cutoffLine(cutoff: string | null, now: Date): { text: string; late: boo
 }
 
 /** One icon colour per figure, the same in every role's Today. */
-const FIG_TONE = [
-  'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
-  'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-  'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
-  'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
-]
+const FIG_TONE = ['text-sky-600 dark:text-sky-400', 'text-amber-600 dark:text-amber-400', 'text-violet-600 dark:text-violet-400', 'text-rose-600 dark:text-rose-400']
 
 export function TodayHero({
   isToday,
@@ -60,7 +54,6 @@ export function TodayHero({
   onToday,
   onRefresh,
   refreshing,
-  canTell,
 }: {
   isToday: boolean
   dateLabel: string
@@ -74,7 +67,6 @@ export function TodayHero({
   onToday: () => void
   onRefresh: () => void
   refreshing: boolean
-  canTell: boolean
 }) {
   const [now] = React.useState(() => appNow())
   const left = isToday ? cutoffLine(cutoff, now) : null
@@ -91,15 +83,6 @@ export function TodayHero({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          {isToday && canTell && (
-            <button
-              type="button"
-              onClick={() => openTellMesiri()}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
-            >
-              <MessageSquarePlus className="size-4" /> <span className="hidden sm:inline">Tell Mesiri</span>
-            </button>
-          )}
           <div className="flex items-center rounded-lg border bg-card" data-guide="today.day">
             <button type="button" className={btn} onClick={() => onDay(-1)} title="Previous day" aria-label="Previous day">
               <ChevronLeft className="size-4" />
@@ -119,8 +102,9 @@ export function TodayHero({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <div className="col-span-2 flex flex-col justify-between rounded-xl border bg-card p-3.5 shadow-xs sm:col-span-1">
+      {/* UX-75: one strip, not five cards of equal weight: the day's progress leads, the figures follow it. */}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border shadow-xs sm:grid-cols-[1.4fr_repeat(4,1fr)]">
+        <div className="col-span-2 flex flex-col justify-center bg-card p-3.5 sm:col-span-1">
           <div className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
             Sites reported
             {sites > 0 && (
@@ -129,32 +113,29 @@ export function TodayHero({
               </span>
             )}
           </div>
-          <div className="mt-1 text-2xl font-semibold tabular-nums">
+          <div className="mt-0.5 text-2xl font-semibold tabular-nums">
             {reported}
             <span className="text-base text-muted-foreground">/{sites}</span>
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${reported} of ${sites} sites reported`}>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${reported} of ${sites} sites reported`}>
             <div className={cn('h-full rounded-full transition-[width] duration-700', all ? 'bg-success' : 'bg-primary')} style={{ width: `${sites ? (reported / sites) * 100 : 0}%` }} />
           </div>
           {left && (
-            <p className={cn('mt-2 flex items-center gap-1 text-xs', left.late ? 'font-medium text-draft' : 'text-muted-foreground')}>
+            <p className={cn('mt-1.5 flex items-center gap-1 text-xs', left.late ? 'font-medium text-draft' : 'text-muted-foreground')}>
               <Clock className="size-3" aria-hidden /> {left.text}
             </p>
           )}
         </div>
         {figures.map((f, i) => (
-          <div key={f.label} className="flex items-center gap-3 rounded-xl border bg-card p-3.5 shadow-xs">
-            <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg', FIG_TONE[i % FIG_TONE.length])} aria-hidden>
-              <f.icon className="size-5" />
-            </span>
-            <div className="min-w-0">
-              <div className={cn('text-2xl font-semibold tabular-nums', !f.value && 'text-muted-foreground/50', f.bad && f.value > 0 && 'text-destructive')}>{f.value}</div>
-              <div className="truncate text-xs text-muted-foreground">{f.label}</div>
+          <div key={f.label} className="flex flex-col justify-center bg-card p-3.5">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <f.icon className={cn('size-3.5', FIG_TONE[i % FIG_TONE.length])} aria-hidden />
+              <span className="truncate">{f.label}</span>
             </div>
+            <div className={cn('mt-0.5 text-2xl font-semibold tabular-nums', !f.value && 'text-muted-foreground/50', f.bad && f.value > 0 && 'text-destructive')}>{f.value}</div>
           </div>
         ))}
       </div>
-
       {lines.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {lines.slice(0, 4).map((l) => (

@@ -116,25 +116,26 @@ export const APP_TOUR: Tour = {
 export const PAGE_TOURS: Record<string, Tour> = {
   '/today': {
     key: '/tour/today',
-    // 3: the site's day only; This week and the checklist moved to Home (UX-68).
-    version: 3,
+    // 3: the site's day only; This week and the checklist moved to Home (UX-68). 4: UX-75, sites as a list; Tell me
+    // is the top bar's New.
+    version: 4,
     introFromPage: true,
     steps: [
       { target: 'today.day', title: 'Any day', text: 'Move between days here. Each day keeps what the sites sent.' },
-      { target: 'today.sites', title: "Each site's day", text: "Who came, what work was done, what came in and what is missing. Open a site to see its whole day." },
+      { target: 'today.sites', title: "Each site's day", text: "One line a site: who sent the last update, the day's figures, and what is still missing. Open a site to see its whole day." },
       { target: 'today.send', title: 'The daily report', text: 'When the day looks right, send the daily report (DPR) to the owner and the client. It can also go by itself every evening.', mood: 'send' },
       { target: 'today.issues', title: 'What is stuck', text: 'Problems from site wait here until someone acts on them.', mood: 'worry' },
-      { target: 'today.tell', title: 'Tell me here too', text: 'You can tell me things right here, the way you would on WhatsApp.', mood: 'happy' },
     ],
   },
   '/home': {
     key: '/tour/home',
-    version: 1,
+    // 2: UX-75, Needs you first; the figures moved beside it as "At a glance".
+    version: 2,
     introFromPage: true,
     steps: [
       { target: 'home.checklist', title: 'Getting started', text: 'Your first steps. Each one ticks itself when it is done.' },
-      { target: 'home.figures', title: 'Your figures', text: 'The numbers your role watches. Tap one to open its page.', mood: 'look' },
-      { target: 'home.week', title: 'This week', text: 'What waits on you, worst first. Each line opens the page that does it.', mood: 'look' },
+      { target: 'home.week', title: 'Needs you', text: 'What waits on you this week, worst first. Each line opens the page that does it.', mood: 'look' },
+      { target: 'home.figures', title: 'At a glance', text: 'The numbers your role watches; red and amber mean look now. Tap one to open its page.', mood: 'look' },
       { target: 'home.projects', title: 'Your projects', text: 'Each project in one line: budget, late work, who is on site today.' },
       { target: 'home.today', title: "The site's day", text: 'Today shows every site\'s day and sends the daily report.', mood: 'happy' },
     ],

@@ -50,7 +50,9 @@ export function ProjectsNow() {
       <header className="flex items-center gap-2 border-b px-4 py-2.5">
         <h2 className="text-[15px] font-semibold">Your projects</h2>
         {projects.length > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums">{projects.length}</span>}
-        <span className="ml-auto text-xs text-muted-foreground">Today on site</span>
+        <Link to="/today" className="ml-auto inline-flex items-center gap-0.5 text-xs font-medium text-primary-ink hover:underline" data-guide="home.today">
+          Today on site <ChevronRight className="size-3.5" aria-hidden />
+        </Link>
       </header>
       {days.isLoading ? (
         <div className="flex flex-col gap-2 p-4">

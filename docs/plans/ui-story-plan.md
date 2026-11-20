@@ -182,6 +182,30 @@ The app tour (`lib/tours.ts` APP_TOUR, version 2) tells the new sidebar: what yo
 Not done here: Home and Today themselves (next), and the project's stage (planning / running / handover) shaping the
 rows: today the stage is the company's setup only.
 
+### 4.5 UX-75: Home and Today, redesigned (20 Nov 2026)
+
+Asked: *"the home page is the one with the worst designs. Home page and today"*, then *"yes start the home and today
+redesign"*. Research (dashboard guidance from Domo, UX Pilot's summary of Tableau eye-tracking, field-ops patterns):
+lead with what needs attention, keep a handful of figures with red/amber/green beside it rather than a row of equal
+cards (the last cards in a row of five are barely seen), and show many sites as a status list, not a grid of cards.
+
+**Home** (`pages/HomePage.tsx`):
+
+| Where | What |
+|---|---|
+| Header | the greeting, the date, and one status pill from Needs you: "3 urgent things need you, 2 more this week" (red), "N things need you this week" (amber), "Nothing needs you right now" (green). No buttons: New is in the top bar, Today in the sidebar |
+| Getting started | the full checklist only while no site has sent its first update, or when asked (`/home?setup=1`, the sidebar's "N more steps"); otherwise the sidebar's Set up carries the next step |
+| Left | **Needs you** (was This week: one column, worst first, each line its amount and its page), then **Your projects** ("Today on site" is now a link) |
+| Right | **At a glance**: the role's figures as rows with a coloured dot (`RoleHome list`, the same tiles and rules, drawn small), then tasks, what waits on suppliers and bills, time saved |
+
+**Today** (`pages/TodayPage.tsx`, `components/home/today-hero.tsx`): the five figure cards became one strip (sites
+reported leads, with its bar and the time to the cutoff; workers, work done, photos, open issues follow); each site is
+one row in its project's list: its state, who sent the last update and when, the day's figures inline (zeros faded),
+the latest words or what is missing, and Review / No work today. The page's Tell Mesiri button and the Tell box at the
+bottom went (the top bar's New). Issues stay on the right, worst first.
+
+Tours: Home's (version 2) names Needs you and At a glance; Today's (version 4) drops the Tell step.
+
 ## 4b. A home for each role (UX-11)
 
 **Today becomes Home**, one address (`/today`) with a different first screen per role. The page is built from tiles

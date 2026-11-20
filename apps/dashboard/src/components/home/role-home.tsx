@@ -12,7 +12,11 @@ import { fetchOrders } from '@/lib/orders'
 import { fetchPortfolio } from '@/lib/cost'
 import { fetchMachines } from '@/lib/equipment'
 import { fetchPaySummary } from '@/lib/labour-pay'
+import { Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { Section, Tile, TileGrid } from '@/components/page/page-kit'
+import type { KpiProps } from '@/components/page/kpi'
+import { cn } from '@/lib/utils'
 import { localIsoDate, plural } from '@/lib/site-day'
 import { appNow } from '@/lib/clock'
 
@@ -33,8 +37,43 @@ const TITLES: Record<Role, { title: string; note: string }> = {
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0
 const monthName = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
-/** `rail`: Today's right-hand column (UX-66): one tile a row on a laptop. */
-export function RoleHome({ rail = false }: { rail?: boolean } = {}) {
+/** UX-75: a figure as one row of Home's "At a glance" card: the same props as a tile, drawn small. */
+const ROW_TONE: Record<string, { dot: string; value: string }> = {
+  default: { dot: 'bg-muted-foreground/30', value: '' },
+  good: { dot: 'bg-success', value: 'text-success' },
+  info: { dot: 'bg-info', value: 'text-info' },
+  attention: { dot: 'bg-draft', value: 'text-draft' },
+  warn: { dot: 'bg-draft', value: 'text-draft' },
+  bad: { dot: 'bg-destructive', value: 'text-destructive' },
+}
+function GlanceRow({ label, value, hint, tone, tag, loading, to }: Omit<KpiProps, 'to'> & { to: string }) {
+  const look = ROW_TONE[tone ?? 'default'] ?? ROW_TONE.default
+  return (
+    <li>
+      <Link to={to} className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40">
+        <span aria-hidden className={cn('size-2 shrink-0 rounded-full', look.dot)} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm text-muted-foreground">
+            {label}
+            {tag && <span className="ml-1.5 rounded bg-muted px-1 py-px text-[10px] font-medium">{tag}</span>}
+          </span>
+          {hint && <span className="block truncate text-xs text-muted-foreground/80">{hint}</span>}
+        </span>
+        {loading ? (
+          <span className="h-5 w-14 animate-pulse rounded bg-muted" />
+        ) : (
+          <span className={cn('shrink-0 text-base font-semibold tabular-nums', look.value)}>{value}</span>
+        )}
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" aria-hidden />
+      </Link>
+    </li>
+  )
+}
+
+/** `rail`: Today's right-hand column (UX-66): one tile a row on a laptop. `list` (UX-75): Home's "At a glance" card,
+ *  one row per figure, so the page leads with what needs you and the figures sit beside it. */
+export function RoleHome({ rail = false, list = false }: { rail?: boolean; list?: boolean } = {}) {
+  const T = list ? GlanceRow : Tile
   const { me } = useAuth()
   const { scope } = useScope()
   const isModuleEnabled = useModuleEnabled()
@@ -82,7 +121,7 @@ export function RoleHome({ rail = false }: { rail?: boolean } = {}) {
 
   // --- the questions, in the order each role asks them -------------------------------------------------
   const cashTile = show(home, wants.home) && (home.data?.cash_bank || home.isLoading) && (
-    <Tile key="cash" label="Cash and bank" to="/accounts/cash-bank" loading={home.isLoading} value={home.data?.cash_bank ? short(home.data.cash_bank.total) : undefined}
+    <T key="cash" label="Cash and bank" to="/accounts/cash-bank" loading={home.isLoading} value={home.data?.cash_bank ? short(home.data.cash_bank.total) : undefined}
       hint={home.data?.cash_bank ? `${plural(home.data.cash_bank.accounts.length, 'account')} today` : undefined} />
   )
   // With a project picked: its open bills only (money on account stays with the client, not a project).
@@ -98,35 +137,35 @@ export function RoleHome({ rail = false }: { rail?: boolean } = {}) {
   }, [receivables.data, projectId])
   const old = owedToUs?.old ?? 0
   const receivableTile = show(receivables, wants.receivables) && (
-    <Tile key="receivable" label="Clients owe you" tag={wider('project')} to="/accounts/receivables" loading={receivables.isLoading} tone={old > 0 ? 'attention' : 'default'}
+    <T key="receivable" label="Clients owe you" tag={wider('project')} to="/accounts/receivables" loading={receivables.isLoading} tone={old > 0 ? 'attention' : 'default'}
       value={owedToUs ? short(owedToUs.outstanding) : undefined}
       hint={owedToUs ? (old > 0 ? `${short(old)} over 60 days` : `${plural(owedToUs.clients, 'client')}`) : undefined} />
   )
   const owe = payables.data?.totals
   const payableTile = show(payables, wants.payables) && (
-    <Tile key="payable" label={role === 'FINANCE' ? 'Payments due' : 'You owe suppliers'} tag={wider('project')} to="/finance/vendors" loading={payables.isLoading}
+    <T key="payable" label={role === 'FINANCE' ? 'Payments due' : 'You owe suppliers'} tag={wider('project')} to="/finance/vendors" loading={payables.isLoading}
       tone={owe && n(owe.overdue) > 0 ? 'bad' : 'default'} value={owe ? short(owe.payable) : undefined}
       hint={owe ? (n(owe.overdue) > 0 ? `${short(owe.overdue)} overdue` : 'Nothing overdue') : undefined} />
   )
   const unbilledTile = show(payables, wants.payables) && role === 'FINANCE' && owe && n(owe.unbilled) > 0 && (
-    <Tile key="unbilled" label="Delivered, not billed" tag={wider('project')} to="/finance/vendors" tone="attention" value={short(owe.unbilled)} hint="Deliveries waiting for the supplier's bill" />
+    <T key="unbilled" label="Delivered, not billed" tag={wider('project')} to="/finance/vendors" tone="attention" value={short(owe.unbilled)} hint="Deliveries waiting for the supplier's bill" />
   )
   const month = home.data?.this_month
   const profitTile = show(home, wants.home) && role === 'ADMIN' && (
-    <Tile key="profit" label="Profit this month (books)" tag={wider('project')} to="/accounts/pl" loading={home.isLoading} tone={month && n(month.net_profit) < 0 ? 'bad' : 'default'}
+    <T key="profit" label="Profit this month (books)" tag={wider('project')} to="/accounts/pl" loading={home.isLoading} tone={month && n(month.net_profit) < 0 ? 'bad' : 'default'}
       value={month ? short(month.net_profit) : undefined}
       hint={month ? `${short(month.income)} billed · ${short(n(month.direct) + n(month.indirect))} cost` : undefined} />
   )
   const gst = home.data?.gst_this_month
   const gstTile = show(home, wants.home) && role === 'FINANCE' && gst && (
-    <Tile key="gst" label="GST this month" to="/accounts/gst" value={short(gst.payable)} hint={`${short(gst.output)} output · ${short(gst.input)} input`} />
+    <T key="gst" label="GST this month" to="/accounts/gst" value={short(gst.payable)} hint={`${short(gst.output)} output · ${short(gst.input)} input`} />
   )
   const tdsTile = show(home, wants.home) && role === 'FINANCE' && home.data?.tds_to_deposit !== undefined && (
-    <Tile key="tds" label="TDS to deposit" to="/accounts/tds" tone={n(home.data.tds_to_deposit) > 0 ? 'attention' : 'default'} value={short(home.data.tds_to_deposit)} hint="Due by the 7th" />
+    <T key="tds" label="TDS to deposit" to="/accounts/tds" tone={n(home.data.tds_to_deposit) > 0 ? 'attention' : 'default'} value={short(home.data.tds_to_deposit)} hint="Due by the 7th" />
   )
   const lastOpen = months.data?.months.filter((m) => m.status === 'open' && m.ends_on < today).at(-1)
   const closeTile = show(months, wants.months) && months.data && (
-    <Tile key="close" label="Month close" tag={wider('company')} to="/accounts/periods" tone={lastOpen ? 'attention' : 'good'}
+    <T key="close" label="Month close" tag={wider('company')} to="/accounts/periods" tone={lastOpen ? 'attention' : 'good'}
       value={lastOpen ? `${monthName(lastOpen.starts_on)} open` : 'Up to date'} hint={lastOpen ? 'Close it once the bills are in' : 'Every past month is closed'} />
   )
   const costRows = (portfolio.data?.projects ?? []).filter((p) => !projectId || p.project_id === projectId)
@@ -134,18 +173,18 @@ export function RoleHome({ rail = false }: { rail?: boolean } = {}) {
   const redLines = costRows.reduce((sum, p) => sum + (p.week?.red_lines ?? 0), 0) ?? 0
   const costTile = show(portfolio, wants.portfolio) && (portfolio.isLoading || costRows.length > 0) && (
     role === 'ADMIN' ? (
-      <Tile key="cost" label="Projects over budget" tag={wider('project')} to="/cost" loading={portfolio.isLoading} tone={projectsRed.length ? 'bad' : 'good'}
+      <T key="cost" label="Projects over budget" tag={wider('project')} to="/cost" loading={portfolio.isLoading} tone={projectsRed.length ? 'bad' : 'good'}
         value={portfolio.data ? `${projectsRed.length} of ${costRows.length}` : undefined}
         hint={projectsRed[0] ? `Worst: ${projectsRed[0].name}` : 'All on or under budget'} />
     ) : (
-      <Tile key="red" label="Work items over budget this week" tag={wider('project')} to="/cost/green-red" loading={portfolio.isLoading} tone={redLines ? 'bad' : 'good'}
+      <T key="red" label="Work items over budget this week" tag={wider('project')} to="/cost/green-red" loading={portfolio.isLoading} tone={redLines ? 'bad' : 'good'}
         value={portfolio.data ? String(redLines) : undefined} hint={redLines ? 'Labour above what the work earned' : 'All green or amber'} />
     )
   )
   const waiting = requests.data?.counts.waiting ?? 0
   const late = requests.data?.counts.late ?? 0
   const requestTile = show(requests, wants.requests) && (
-    <Tile key="requests" label={role === 'SITE_ENGINEER' ? 'Your requests' : 'Requests to decide'} to="/materials/requests" loading={requests.isLoading}
+    <T key="requests" label={role === 'SITE_ENGINEER' ? 'Your requests' : 'Requests to decide'} to="/materials/requests" loading={requests.isLoading}
       tone={role !== 'SITE_ENGINEER' && waiting ? 'attention' : late ? 'bad' : 'default'}
       value={requests.data ? (role === 'SITE_ENGINEER' ? `${waiting} waiting` : String(waiting)) : undefined}
       hint={requests.data ? (late ? `${late} past the date needed` : `${requests.data.counts.ordered ?? 0} ordered`) : undefined} />
@@ -154,20 +193,20 @@ export function RoleHome({ rail = false }: { rail?: boolean } = {}) {
   const dueToday = openOrders.filter((o) => o.expected_date === today).length
   const lateOrders = openOrders.filter((o) => o.expected_date && o.expected_date < today).length
   const deliveryTile = show(orders, wants.orders) && (
-    <Tile key="deliveries" label="Deliveries" to={lateOrders ? '/procurement/pending?show=late' : '/procurement/pending'} loading={orders.isLoading} tone={lateOrders ? 'bad' : dueToday ? 'info' : 'default'}
+    <T key="deliveries" label="Deliveries" to={lateOrders ? '/procurement/pending?show=late' : '/procurement/pending'} loading={orders.isLoading} tone={lateOrders ? 'bad' : dueToday ? 'info' : 'default'}
       value={orders.data ? `${dueToday} due today` : undefined}
       hint={orders.data ? (lateOrders ? `${plural(lateOrders, 'order')} late` : `${plural(openOrders.length, 'order')} still coming`) : undefined} />
   )
   const machineCounts = machines.data?.counts
   const machineTile = show(machines, wants.machines) && (machines.isLoading || (machines.data?.items.length ?? 0) > 0) && (
-    <Tile key="machines" label="Machines today" to="/equipment/log" loading={machines.isLoading}
+    <T key="machines" label="Machines today" to="/equipment/log" loading={machines.isLoading}
       tone={machineCounts && (machineCounts.breakdown || machineCounts.not_logged) ? 'attention' : 'default'}
       value={machineCounts ? `${machineCounts.working} working` : undefined}
       hint={machineCounts ? [machineCounts.breakdown ? `${machineCounts.breakdown} broken down` : '', machineCounts.not_logged ? `${machineCounts.not_logged} not logged` : ''].filter(Boolean).join(' · ') || 'All logged' : undefined} />
   )
   const w = wagesQ.data
   const wagesTile = show(wagesQ, wants.wages) && (wagesQ.isLoading || (w && (n(w.due) > 0 || w.drafts > 0 || n(w.advances_outstanding) > 0))) && (
-    <Tile key="wages" label="Wages" tag={wider('project')} to="/labour/wages" loading={wagesQ.isLoading} tone={w && n(w.due) > 0 ? 'attention' : w && w.drafts ? 'info' : 'default'}
+    <T key="wages" label="Wages" tag={wider('project')} to="/labour/wages" loading={wagesQ.isLoading} tone={w && n(w.due) > 0 ? 'attention' : w && w.drafts ? 'info' : 'default'}
       value={w ? (n(w.due) > 0 ? `${short(w.due)} to pay` : w.drafts ? `${w.drafts} week${w.drafts > 1 ? 's' : ''} to approve` : 'Up to date') : undefined}
       hint={w ? (n(w.advances_outstanding) > 0 ? `${short(w.advances_outstanding)} advance to take back` : 'No advance outstanding') : undefined} />
   )
@@ -180,6 +219,20 @@ export function RoleHome({ rail = false }: { rail?: boolean } = {}) {
   }
   for (const tile of order[role]) if (tile) tiles.push(tile)
   if (tiles.length === 0) return null
+
+  const heading =
+    scope.mode === 'site' && role !== 'SITE_ENGINEER' ? `${scope.siteName} today` : scope.mode === 'project' && role === 'ADMIN' ? `${scope.projectName} today` : TITLES[role].title
+  if (list) {
+    return (
+      <section className="overflow-hidden rounded-xl border bg-card shadow-xs" aria-label="At a glance">
+        <header className="border-b px-4 py-2.5">
+          <h2 className="text-[15px] font-semibold">At a glance</h2>
+          <p className="text-xs text-muted-foreground">{heading}: {TITLES[role].note.toLowerCase()}</p>
+        </header>
+        <ul className="divide-y">{tiles}</ul>
+      </section>
+    )
+  }
 
   return (
     <Section
