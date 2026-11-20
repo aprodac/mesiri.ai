@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can list what must exist before day 1 and who sets it up: the company, the project and its sites, the team on WhatsApp, drawings and documents, items, suppliers and rates, the schedule and the material plan, and the daily report time.
 
-**Length:** 17 scenes, 1319 words of narration (about 9 minutes)
+**Length:** 17 scenes, 1317 words of narration (about 9 minutes)
 
 ## Cold open
 
@@ -109,7 +109,7 @@ Narration:
 
 Narration:
 
-> Anil starts with the drawings. Eight sheets: plans, an elevation, a section, the structure, the wiring and the plumbing.
+> Anil starts with the drawings from episode one. This time he reads the sheets against each other, because a mistake often hides between two of them.
 >
 > This is A-201, the front elevation: the house seen from the road.
 >
@@ -143,9 +143,9 @@ Narration:
 >
 > And it asks what does not agree. The roof: plus six sixty on the elevation, plus six fifty-five on the section. Which is right?
 >
-> The toilet upstairs is drawn smaller than the one below it, though toilets stack. Intended? And the bedroom label that was copied, from episode one.
+> And the toilet upstairs is drawn smaller than the one below it, though toilets stack. Intended?
 >
-> Three questions for the architect, before a single brick.
+> Two questions for the architect, before a single brick.
 
 ### 8. One place for every paper
 
