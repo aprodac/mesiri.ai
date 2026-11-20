@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can list what must exist before day 1 and who sets it up: the company, the project and its sites, the team on WhatsApp, drawings and documents, items, suppliers and rates, the schedule and the material plan, and the daily report time.
 
-**Length:** 17 scenes, 1317 words of narration (about 9 minutes)
+**Length:** 17 scenes, 1321 words of narration (about 9 minutes)
 
 ## Cold open
 
@@ -306,4 +306,4 @@ Narration:
 >
 > Three: why put in what the company already owes? So nobody pays it twice, and the supplier's account starts right.
 >
-> Next: a day on site. Ravi's first message, and everything it fills, up to the report at nine.
+> Next: a day on site. One Monday at the Annex, seven months in: from Ravi's first message to the report at nine.

@@ -1,0 +1,489 @@
+{
+  "episode": 3,
+  "title": "A day on site",
+  "status": "DRAFT for Ilan's review (20 Nov 2026). Not filmed. Before filming: the sample company played to day 2 (a Monday) as the owner; the WhatsApp messages drawn as chats (the words and cards to be checked against the assistant's real replies); the daily report PDF shot as a paper.",
+  "source": "docs/learning/film/SERIES_PLAN.md section 5 (episode 3's objective); the sample company's day 2 from the planned simulation (docs/plans/sample-plan.md: the Annex's plinth beam, 7 on site, its material and spend; the Main block short of cement, asking for 100 bags); the worker register and the labour contractor as the seed has them (backend/.../organizations/sample_story.py); the daily report's sections (apps/whatsapp-assistant/src/channel/dpr_document/template.py). Construction practice: typical, to be checked by someone who has run sites.",
+  "objective": "By the end you can follow one site day from Ravi's first WhatsApp message to the owner's evening report, and say what each kind of record is for: attendance, work done, material used, money spent, and the day's conditions.",
+  "scenes": [
+    {
+      "id": "open",
+      "kind": "title",
+      "part": "Cold open",
+      "eyebrow": "Mesiri · The course · Episode 3",
+      "title": "A day on site",
+      "beats": [
+        "Seven months in. The Main block is up to its parapet. At the Annex, the footings are cast, and today the plinth beam goes on.",
+        "Monday, a quarter to eight. Ravi counts heads at the Annex: Manoj the mason, Satheesh the plumber, Vinod, and four helpers from Rahim's crew. Seven people.",
+        "By nine tonight, Ramesh and Doctor Krishnan will each have a report of this day. Ravi will not write it. He will only talk."
+      ],
+      "lines": [
+        {
+          "at": 1,
+          "text": "Monday · Annex · 7 on site"
+        },
+        {
+          "at": 2,
+          "text": "From the first message to the 9 pm report"
+        }
+      ]
+    },
+    {
+      "id": "records",
+      "kind": "story",
+      "part": "On a real site",
+      "eyebrow": "On a real site",
+      "title": "Five records, and what each one protects",
+      "beats": [
+        "A site day leaves five kinds of record. Each one protects something.",
+        "Attendance protects the wages: pay for the people who came, and only them.",
+        "Work done protects the bill. It is counted on its BOQ line, and at the month's end, the client pays for exactly that.",
+        "Material used protects the stock. What came, minus what was used, is what should still be there.",
+        "The day's small spends protect the petty cash: tea, diesel, nails. Small, every day, and gone by the month's end if nobody writes them.",
+        "And the day's conditions: rain, hours lost, a machine down. They explain a slow day, today and when someone asks why the job was late."
+      ],
+      "steps": [
+        {
+          "at": 1,
+          "module": "Attendance",
+          "text": "Wages: pay for who came, and only them"
+        },
+        {
+          "at": 2,
+          "module": "Work done",
+          "text": "The bill: counted on its BOQ line"
+        },
+        {
+          "at": 3,
+          "module": "Material used",
+          "text": "Stock: came, minus used, should be there"
+        },
+        {
+          "at": 4,
+          "module": "Small spends",
+          "text": "Petty cash: tea, diesel, nails"
+        },
+        {
+          "at": 5,
+          "module": "Conditions",
+          "text": "Why a day was slow: rain, hours lost, breakdowns"
+        }
+      ],
+      "footer": {
+        "at": 5,
+        "text": "Written the same day, they are facts. Remembered later, they are guesses."
+      }
+    },
+    {
+      "id": "morning",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "8:05 am · Annex",
+      "title": "Who came",
+      "beats": [
+        "At five past eight, Ravi tells Mesiri who came. He types it the way he would say it.",
+        "Mesiri does not save anything yet. It sends back a card: the three people it found in the worker register, by name, and Rahim's crew as a count of four.",
+        "Ravi checks it and taps Save. That is the attendance. Nobody copies a register into Excel on Saturday."
+      ],
+      "messages": [
+        {
+          "at": 0,
+          "from": "site",
+          "text": "Annex: Manoj, Satheesh, Vinod present. Rahim crew 4 helpers"
+        },
+        {
+          "at": 1,
+          "from": "mesiri",
+          "card": {
+            "title": "Attendance · Annex · Monday",
+            "rows": [
+              "Manoj · mason · present",
+              "Satheesh · plumber · present",
+              "Vinod · helper · present",
+              "Rahim's crew · 4 helpers"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 1,
+          "text": "Names matched to the worker register"
+        },
+        {
+          "at": 1,
+          "text": "A contractor's crew counted as heads"
+        },
+        {
+          "at": 2,
+          "text": "Nothing is saved until Ravi taps Save"
+        }
+      ],
+      "note": "The words and the card are drawn for the film; the assistant's own reply is checked before filming."
+    },
+    {
+      "id": "photo",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "12:30 pm · Annex",
+      "title": "Before the concrete covers it",
+      "beats": [
+        "At half past twelve the beam's steel is tied, and the concrete goes in after lunch. Once it does, nobody will see that steel again.",
+        "So Ravi sends a photo. Mesiri keeps it with today's work on the plinth beam.",
+        "If anyone later asks how many bars went in, or the client wants to see his foundations, the answer is a photo with a date on it, not a memory."
+      ],
+      "messages": [
+        {
+          "at": 0,
+          "from": "site",
+          "text": "📷 Photo · plinth beam steel, before the pour"
+        },
+        {
+          "at": 1,
+          "from": "mesiri",
+          "card": {
+            "title": "Photo · Annex · Monday",
+            "rows": [
+              "Kept with: plinth beam, today",
+              "Shows on: the day's report, Live"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 1,
+          "text": "Kept with the day's work"
+        },
+        {
+          "at": 2,
+          "text": "Proof for the client and the engineer"
+        }
+      ],
+      "note": "Work that will be covered (steel, conduits, pipes) is photographed before it is."
+    },
+    {
+      "id": "evening",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "5:40 pm · Annex",
+      "title": "What was done, and what it took",
+      "beats": [
+        "At twenty to six, the beam is done. Ravi is tired, and he does not type. He sends a voice note, in Malayalam.",
+        "Mesiri understands it and answers with one card. The work: twenty-four running metres of plinth beam. The material used: ten bags of cement, aggregate, sand, and a hundred and twenty kilos of steel.",
+        "And the six hundred and fifty rupees he spent on tea for the crew.",
+        "One message, one tap. Three records: the work, the material and the spend."
+      ],
+      "messages": [
+        {
+          "at": 0,
+          "from": "site",
+          "text": "🎤 Voice note · 0:21 · Malayalam"
+        },
+        {
+          "at": 1,
+          "from": "mesiri",
+          "card": {
+            "title": "Annex · Monday",
+            "rows": [
+              "Work: plinth beam, 24 rmt",
+              "Used: cement 10 bags · aggregate 1.5 cum · M sand 0.8 cum · steel 120 kg",
+              "Spent: ₹650, tea for the crew"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 1,
+          "text": "Work → BOQ line 2.3, plinth beam"
+        },
+        {
+          "at": 1,
+          "text": "Material → the Annex's stock"
+        },
+        {
+          "at": 2,
+          "text": "₹650 → expenses, the Annex's petty cash"
+        }
+      ],
+      "note": "A voice note, a typed line or a photo of the work: the same card."
+    },
+    {
+      "id": "short",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "5:55 pm · Main block",
+      "title": "A problem, said the same day",
+      "beats": [
+        "At the Main block, the day went differently. Only two bags of cement were left this morning, and the conduit work stopped halfway.",
+        "Ravi says so, and asks for a hundred bags.",
+        "Mesiri makes it a request for material, waiting for Anil in the office. Tomorrow morning it is the first thing he sees. That is the next episode."
+      ],
+      "messages": [
+        {
+          "at": 0,
+          "from": "site",
+          "text": "Main block: cement over, only 2 bags this morning. Conduit work half done. Need 100 bags cement"
+        },
+        {
+          "at": 2,
+          "from": "mesiri",
+          "card": {
+            "title": "Material request · Main block",
+            "rows": [
+              "Cement · 100 bags",
+              "Why: 2 bags left, conduit work stopped",
+              "Goes to: Anil"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 1,
+          "text": "Said on the day, not on the phone tomorrow"
+        },
+        {
+          "at": 2,
+          "text": "Waits for Anil until it is ordered"
+        }
+      ],
+      "note": "A request waits for the office; the site can ask how it is going."
+    },
+    {
+      "id": "rain",
+      "kind": "chat",
+      "part": "In Mesiri",
+      "eyebrow": "Another day · day 10, a Tuesday",
+      "title": "A slow day, explained",
+      "beats": [
+        "Not every day goes to plan. Eight days later, it rains on all four sites from eleven, and four hours are lost.",
+        "Ravi says so, with the work that did get done: nine square metres of block work at the Annex, half a normal day.",
+        "Without that line, the half day looks like a slow crew. With it, the report says rain. And months later, when someone asks why the job ran late, the rain is on record, day by day."
+      ],
+      "messages": [
+        {
+          "at": 0,
+          "from": "site",
+          "text": "Annex: heavy rain from 11, 4 hours lost. Block work 9 sqm only"
+        },
+        {
+          "at": 1,
+          "from": "mesiri",
+          "card": {
+            "title": "Annex · Tuesday",
+            "rows": [
+              "Weather: rain · 4 hours lost",
+              "Work: block work, 9 sqm"
+            ],
+            "button": "Save"
+          }
+        }
+      ],
+      "side": [
+        {
+          "at": 1,
+          "text": "The day's conditions, said with its work"
+        },
+        {
+          "at": 2,
+          "text": "On record when the delay is argued"
+        }
+      ],
+      "note": "Hours lost are counted in the report, beside the work."
+    },
+    {
+      "id": "who",
+      "kind": "people",
+      "part": "Who does what, when",
+      "eyebrow": "One day, five people",
+      "title": "Who does what with the day",
+      "beats": [
+        "Who does what with Ravi's day?",
+        "Ravi only reports. Three messages, at the times things happen.",
+        "Anil sees the request and the problem, and orders. Meera sees the attendance that will become wages, and the petty cash.",
+        "Ramesh reads the evening report. And Doctor Krishnan, the client, gets it too, every evening, without asking."
+      ],
+      "people": [
+        {
+          "at": 1,
+          "who": "Ravi, site engineer",
+          "worry": "Three messages. No register, no diary.",
+          "tone": "#4ade80"
+        },
+        {
+          "at": 2,
+          "who": "Anil, project manager",
+          "worry": "The request and the problem: I order",
+          "tone": "#fb923c"
+        },
+        {
+          "at": 2,
+          "who": "Meera, accounts",
+          "worry": "Attendance for wages; the petty cash",
+          "tone": "#c4b5fd"
+        },
+        {
+          "at": 3,
+          "who": "Ramesh Nair, owner",
+          "worry": "Every site's day, at nine",
+          "tone": "#facc15"
+        },
+        {
+          "at": 3,
+          "who": "Dr. Anand Krishnan, client",
+          "worry": "What was done on my house today",
+          "tone": "#93c5fd"
+        }
+      ],
+      "footer": {
+        "at": 3,
+        "text": "The site talks once. Everyone else reads."
+      }
+    },
+    {
+      "id": "today",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep03-today",
+      "url": "/today",
+      "wait": 6000,
+      "eyebrow": "In Mesiri · Today",
+      "title": "Every site's day, as it happens",
+      "beats": [
+        "In the office, every Save lands on Today, as it happens.",
+        "All four sites of both projects have reported. Each one shows its workers, its work and its material, in the engineer's own words.",
+        "And the problems come first: cement at the Main block, before anyone has picked up a phone."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "stock",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep03-stock",
+      "url": "/materials",
+      "wait": 6000,
+      "eyebrow": "In Mesiri · Stock",
+      "title": "What should still be there",
+      "beats": [
+        "Every use Ravi reported comes off the stock, site by site.",
+        "The Annex: the cement, steel and sand it used today are gone from its count, and what is left is what Ravi should find tomorrow morning.",
+        "The Main block: no cement. Red, below its least of a hundred bags. The count says what Ravi said, without anyone counting bags."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "report",
+      "kind": "screen",
+      "part": "In Mesiri",
+      "shot": "ep03-dpr",
+      "url": "/reports",
+      "wait": 6000,
+      "eyebrow": "In Mesiri · The daily report",
+      "title": "Nine o'clock: the day, on one page",
+      "beats": [
+        "At nine, Mesiri makes the day's report for each project, on the company's letterhead. Nobody writes it.",
+        "The people on site, by trade and by contractor. The work done, with its quantities. The material that came, was used, and is left.",
+        "The open problems, the weather, and tomorrow's plan, taken from what Ravi said.",
+        "It goes to Ramesh and to Doctor Krishnan on WhatsApp. A site that did not report is shown as not reported, never left out quietly."
+      ],
+      "focus": [
+        {
+          "at": 0,
+          "full": true
+        }
+      ],
+      "boxes": []
+    },
+    {
+      "id": "wrong",
+      "kind": "leaks",
+      "part": "What can go wrong",
+      "eyebrow": "What can go wrong",
+      "title": "Five ways a site day is lost",
+      "beats": [
+        "Five ways a site day is lost.",
+        "Reported tomorrow, from memory: the numbers are guesses, and nobody can check them.",
+        "A crew counted as six when four came. Two days' wages for nobody, every day, all year.",
+        "Material used but not said: the stock on paper is more than the stock on site, and nobody knows where it went.",
+        "Tea and diesel in a pocket diary. And a problem said only on the phone: nobody writes it down, so nobody owns it."
+      ],
+      "leaks": [
+        {
+          "at": 1,
+          "title": "Reported from memory",
+          "eg": "Tomorrow's guesses for today's facts"
+        },
+        {
+          "at": 2,
+          "title": "Heads not counted",
+          "eg": "6 paid, 4 came"
+        },
+        {
+          "at": 3,
+          "title": "Use not said",
+          "eg": "Stock on paper > stock on site"
+        },
+        {
+          "at": 4,
+          "title": "Spends in a diary",
+          "eg": "Petty cash nobody can add up"
+        },
+        {
+          "at": 4,
+          "title": "Problem on the phone",
+          "eg": "Not written, not owned"
+        }
+      ],
+      "footer": {
+        "at": 4,
+        "text": "Said the same day, by the person who saw it."
+      }
+    },
+    {
+      "id": "check",
+      "kind": "questions",
+      "part": "Recap and check yourself",
+      "eyebrow": "Check yourself",
+      "title": "Three questions",
+      "beats": [
+        "Three questions. Pause, and answer them before you go on.",
+        "One: what does attendance protect, and what does work done protect? Attendance protects the wages. Work done protects the bill.",
+        "Two: Ravi's voice note became three records. Which? The work on its BOQ line, the material off the stock, and the spend in the petty cash.",
+        "Three: who gets the day's report, and who writes it? Ramesh and the client get it at nine. Nobody writes it: Mesiri makes it from what Ravi said.",
+        "Next: cement runs short. Ravi's request for a hundred bags, from Anil's desk to Malabar's lorry, and the bill. Now play a day on site yourself: chapter four of the guided project."
+      ],
+      "questions": [
+        {
+          "at": 1,
+          "text": "What does attendance protect? And work done?"
+        },
+        {
+          "at": 2,
+          "text": "One voice note, three records: which?"
+        },
+        {
+          "at": 3,
+          "text": "Who gets the day's report, and who writes it?"
+        }
+      ]
+    }
+  ]
+}
