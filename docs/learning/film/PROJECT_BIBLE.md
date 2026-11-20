@@ -164,9 +164,14 @@ makes it from the records; nobody types it.
    certificate: added to the starter kit's generator (`make_kit.py`), each with its page and, where it fits, a catch.
    Six new files (one source, `green_villa.py`): the eight-sheet drawing set rev A (Drawing check finds exactly its
    three catches: a copied BEDROOM-2 label, the roof at +660 on the elevation and +655 on the section, the first-floor
-   toilet drawn 210 x 150 over a 240 x 150 one; 6 footings counted), the permit, Periyar's rate card, Malabar's return
+   toilet drawn 210 x 150 over a 240 x 150 one; 14 footings counted), the permit, Periyar's rate card, Malabar's return
    note, Kerala Earthmovers' hire bill and the handover certificate. Places come from the drawing set; the stock count
    is done on the phone, so neither is paper. S-201 comes with the slab revision (batch 3).
+   **LRN-F6, drawn like a real set (20 Nov, "it's too simple"):** A-101 and S-101 redrawn at 1:50 and 1:75 from one
+   layout in `green_villa.py`: 23 cm walls and 10 cm partitions, a column grid A-D / 1-3 with 14 columns, doors with
+   their swing, windows, the stair, furniture, dimension chains, a door and window list, the footing layout with every
+   footing to scale (F1 to F4), its schedule and a typical section. Drawing check still finds exactly the three
+   catches. The other six sheets follow once these two are agreed.
 3. **The seed:** names (D3), money accounts (D5), Green Villa's client, Lake View's full estimate and terms.
 4. **The 62-day plan:** Green Villa's RA bills, final bill and retention (D2), then story batches 1 to 3
    ([SERIES_PLAN.md](SERIES_PLAN.md) section 7).

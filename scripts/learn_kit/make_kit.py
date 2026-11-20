@@ -24,6 +24,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend" / "src"))
 from mesiri.application.learn import green_villa  # noqa: E402, I001  (after the path)
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import gv_drawings  # noqa: E402
+
 OUT = ROOT / "apps" / "dashboard" / "public" / "learn" / "kit"
 
 ESTIMATE = "Green Villa - estimate.xlsx"
@@ -92,12 +95,9 @@ CONTRACT_TERMS = (
     ("Delay", "Rs 25,000 per week of delay beyond handover, at most 5% of the contract value"),
 )
 
-#: The ground floor plan, drawn the way Drawing check reads a plan: each room's name, its size in cm under it, and the
+#: The ground floor's rooms (green_villa, drawn by gv_drawings): each room's name, its size in cm under it, and the
 #: area the architect printed. Bedroom 2 is drawn 360 x 360 but labelled 163 sq ft, Bedroom 1's area: the catch.
-#: (label, x cm, y cm, width cm, depth cm, printed sq ft)
-ROOMS = (("LIVING", 0, 0, 520, 430, 241), ("DINING", 520, 0, 400, 360, 155), ("KITCHEN", 920, 0, 330, 300, 107),
-         ("BEDROOM-1", 0, 430, 420, 360, 163), ("BEDROOM-2", 420, 430, 360, 360, 163), ("TOILET", 780, 430, 240, 150, 39),
-         ("SIT OUT", 1020, 430, 300, 240, 78))
+ROOMS = green_villa.GROUND_FLOOR_ROOMS
 
 #: The quotation request: 300 bags of cement and 2,000 kg of steel for Main block. Malabar is cheapest for cement,
 #: Kerala Steels cheapest in total; buying each item from its cheapest (cement Malabar, steel Kerala) is cheaper
@@ -314,41 +314,13 @@ def _doc(title: str, head: list[tuple[str, str]], table: list[list[str]], foot: 
 
 
 def plan_bytes() -> bytes:
-    """A3 sheet, 1:100 in centimetres, with a title block Drawing check reads."""
-    from reportlab.lib.pagesizes import A3, landscape
+    """A-101 issued alone (rev B), A3 at 1:50, the same drawing as the set's first sheet."""
     from reportlab.pdfgen import canvas
 
     buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=landscape(A3), invariant=1)
+    pdf = canvas.Canvas(buffer, pagesize=gv_drawings.landscape(gv_drawings.A3), invariant=1)
     pdf.setTitle("Green Villa: ground floor plan A-101")
-    width, height = landscape(A3)
-    scale, left0, top0 = 0.6, 70, height - 110  # points per cm; the plan hangs from its top-left corner
-    pdf.setLineWidth(1.2)
-    pdf.rect(30, 30, width - 60, height - 60)  # the sheet's border
-    pdf.setLineWidth(2)
-    for label, x, y, w, d, sqft in ROOMS:
-        left, bottom = left0 + x * scale, top0 - (y + d) * scale
-        pdf.rect(left, bottom, w * scale, d * scale)
-        cx, cy = left + w * scale / 2, bottom + d * scale / 2
-        pdf.setFont("Helvetica-Bold", 9)
-        pdf.drawCentredString(cx, cy + 12, label)
-        pdf.setFont("Helvetica", 8)
-        pdf.drawCentredString(cx, cy, f"{w} x {d}")
-        pdf.drawCentredString(cx, cy - 11, f"{sqft} Sq.ft")
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(left0, height - 75, "GROUND FLOOR PLAN")
-    # The title block, boxed, bottom right, clear of the plan.
-    bx, by, bw, bh = width - 320, 40, 280, 200
-    pdf.setLineWidth(1)
-    pdf.rect(bx, by, bw, bh)
-    pdf.setFont("Helvetica", 9)
-    block = (("PROJECT:", "GREEN VILLA, PUTHUR ROAD, THRISSUR"), ("CLIENT:", "DR. ANAND KRISHNAN"),
-             ("DWG.TITLE:", "GROUND FLOOR PLAN"), ("DWG.NO:", "A-101"), ("REV:", "B"), ("SCALE:", "1:100"),
-             ("DATE:", "09.10.2026"), ("DRAWN BY:", "SK"), ("CHECKED BY:", "AR"))
-    for i, (key, value) in enumerate(block):
-        pdf.drawString(bx + 12, by + bh - 22 - i * 18, f"{key} {value}".strip())
-    pdf.drawString(bx + 12, by + 10, "ALL DIMENSIONS ARE IN CM")
-    pdf.drawString(left0, 45, "Sample drawing for learning Mesiri. Not for construction.")
+    gv_drawings.ground_floor(pdf, rev="B")
     pdf.showPage()
     pdf.save()
     return buffer.getvalue()
@@ -471,31 +443,19 @@ def drawing_set_bytes() -> bytes:
     pdf.setTitle("Green Villa: drawing set rev A")
     width, height = landscape(A3)
     for number, title, kind in green_villa.DRAWINGS:
+        if number in ("A-101", "S-101"):
+            (gv_drawings.ground_floor if number == "A-101" else gv_drawings.footing_layout)(pdf)
+            pdf.showPage()
+            continue
         pdf.setLineWidth(1.2)
         pdf.rect(30, 30, width - 60, height - 60)
         pdf.setFont("Helvetica-Bold", 14)
         pdf.drawString(70, height - 75, title)
         scale_text = "1:100"
-        if number == "A-101":
-            _rooms(pdf, ROOMS, 70, height - 110, 0.6)
-        elif number == "A-102":
+        if number == "A-102":
             _rooms(pdf, green_villa.FIRST_FLOOR_ROOMS, 70, height - 110, 0.6)
         elif kind in ("elevation", "section"):
             _levels(pdf, green_villa.ELEVATION_LEVELS if kind == "elevation" else green_villa.SECTION_LEVELS, 120, 160, 0.7)
-        elif number == "S-101":
-            pdf.setFont("Helvetica", 9)
-            spots = [(140 + i * 150, 520) for i in range(4)] + [(140 + i * 300, 330) for i in range(2)]
-            marks = [(f[0], f[1], f[2], col) for f in green_villa.FOOTINGS for col in f[5]]
-            for (x, y), (mark, a, b, col) in zip(spots, marks, strict=True):
-                pdf.rect(x, y, a * 0.5, b * 0.5)
-                pdf.drawString(x, y + b * 0.5 + 6, f"{mark}-{a}X{b}")
-                pdf.drawString(x + 10, y + 10, col)
-            pdf.setFont("Helvetica-Bold", 10)
-            pdf.drawString(780, 600, "FOOTING SCHEDULE")
-            pdf.setFont("Helvetica", 9)
-            for i, (mark, a, b, depth, pcc, _cols, bars, dia) in enumerate(green_villa.FOOTINGS):
-                pdf.drawString(780, 580 - i * 16, f"{mark} {a}X{b} {depth} {pcc} {bars} nos. {dia} dia bars {bars} nos. {dia} dia bars")
-            pdf.drawString(780, 530, "CONCRETE M20, PCC 1:4:8 10 CM THICK BELOW FOOTINGS")
         elif number == "S-102":
             scale_text = "1:50"
             pdf.setFont("Helvetica", 10)

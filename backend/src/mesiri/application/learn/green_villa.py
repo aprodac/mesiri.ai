@@ -145,17 +145,76 @@ FIRST_FLOOR_ROOMS: tuple[tuple[str, int, int, int, int, int], ...] = (
 #: section (the catch: Drawing check asks which is right before the slab is cast).
 ELEVATION_LEVELS = (0, 45, 345, 660, 765)
 SECTION_LEVELS = (0, 45, 345, 655, 765)
-#: The footings (S-101): type, size in cm, depth, the columns on them (C-marks) and the bars each way.
+#: The ground floor (A-101), Main block, drawn at 1:50. Walls: 23 cm outside, 10 cm partitions. Three bays across
+#: (clear 520, 360, 420), 740 deep inside. Rooms: (label, x, y, width, depth in cm, printed sq ft), x from the inside
+#: face of the left wall, y from the inside face of the front wall (the road side), the sizes clear inside. The catch:
+#: BEDROOM-2 is drawn 360 x 360 but printed 163 sq ft, BEDROOM-1's area (Drawing check: "the label looks copied").
+WALL_EXT, WALL_INT = 23, 10
+BAYS_X = (520, 360, 420)
+CLEAR_W, CLEAR_D = sum(BAYS_X) + 2 * WALL_INT, 740
+GROUND_FLOOR_ROOMS: tuple[tuple[str, int, int, int, int, int], ...] = (
+    ("LIVING", 0, 0, 520, 430, 241), ("DINING", 0, 440, 520, 300, 168),
+    ("BEDROOM-2", 530, 0, 360, 360, 163), ("PASSAGE", 530, 370, 360, 120, 46), ("KITCHEN", 530, 500, 360, 240, 93),
+    ("BEDROOM-1", 900, 0, 420, 360, 163), ("STAIR", 900, 370, 420, 210, 95), ("STORE", 900, 590, 170, 150, 27),
+    ("TOILET", 1080, 590, 240, 150, 39), ("SIT OUT", 110, -263, 300, 240, 78),
+)
+#: Openings with no door (x, y, width, depth, inside coordinates): the arch between living and dining, living to the
+#: passage, the passage to the stair lobby.
+GROUND_OPENINGS = ((40, 430, 440, 10), (520, 380, 10, 100), (890, 380, 10, 100))
+#: Doors: ("h" in a wall across the sheet | "v" up it, from, to, the wall's two faces, opens +1 up/right | -1, hinge
+#: "l"/"r" or "b"/"t", mark).
+GROUND_DOORS = (
+    ("h", 200, 320, (-23, 0), 1, "l", "D1"),
+    ("h", 790, 880, (360, 370), -1, "r", "D2"),
+    ("h", 905, 995, (360, 370), -1, "r", "D2"),
+    ("h", 540, 630, (490, 500), 1, "l", "D2"),
+    ("h", 1100, 1175, (580, 590), 1, "l", "D3"),
+    ("h", 985, 1060, (580, 590), 1, "r", "D3"),
+    ("h", 640, 730, (740, 763), -1, "l", "D4"),
+)
+#: Windows: (direction, from, to, the wall's faces, mark, which side the mark is written).
+GROUND_WINDOWS = (
+    ("v", 120, 270, (-23, 0), "W1", -1), ("v", 500, 650, (-23, 0), "W1", -1),
+    ("h", 420, 510, (-23, 0), "W3", -1), ("h", 635, 785, (-23, 0), "W1", -1), ("h", 1030, 1180, (-23, 0), "W1", -1),
+    ("v", 110, 260, (1320, 1343), "W1", -1), ("v", 400, 520, (1320, 1343), "W2", -1),
+    ("h", 200, 320, (740, 763), "W2", 1), ("h", 760, 880, (740, 763), "W2", 1),
+    ("h", 960, 1020, (740, 763), "V1", 1), ("h", 1200, 1260, (740, 763), "V1", 1),
+)
+#: The door and window list printed on A-101: mark, type, width, height (cm), how many on this floor.
+OPENING_SCHEDULE = (
+    ("D1", "TEAK, PANELLED", "120", "210", "1"), ("D2", "FLUSH, TEAK FRAME", "90", "210", "3"),
+    ("D3", "PVC, FOR WET AREAS", "75", "210", "2"), ("D4", "FLUSH, STEEL GRILL", "90", "210", "1"),
+    ("W1", "UPVC, 3 SHUTTERS", "150", "135", "5"), ("W2", "UPVC, 2 SHUTTERS", "120", "120", "3"),
+    ("W3", "UPVC, 2 SHUTTERS", "90", "135", "1"), ("V1", "UPVC LOUVRE", "60", "60", "2"),
+)
+#: The column grid, on the walls' centre lines, from the building's outside front-left corner (cm).
+GRID_X = (("A", 11.5), ("B", 548), ("C", 918), ("D", CLEAR_W + 2 * WALL_EXT - 11.5))
+GRID_Y = (("1", 11.5), ("2", 388), ("3", CLEAR_D + 2 * WALL_EXT - 11.5))
+#: Every column where it stands: (mark, x, y, size across, size up the sheet), numbered from the front left, row by
+#: row; C13 and C14 carry the sit out's roof.
+COLUMN_SPOTS: tuple[tuple[str, float, float, int, int], ...] = (
+    *((f"C{1 + r * 4 + c}", x, y, 23, 30 if (r, c) in ((1, 1), (1, 2)) else 23)
+      for r, (_ny, y) in enumerate(GRID_Y) for c, (_nx, x) in enumerate(GRID_X)),
+    ("C13", 144.5, -228.5, 23, 23), ("C14", 421.5, -228.5, 23, 23),
+)
+#: Plinth beams: on every grid line between its end columns, and from the sit out's columns to the front wall.
+PLINTH_BEAMS = (
+    *(((x, GRID_Y[0][1]), (x, GRID_Y[-1][1])) for _n, x in GRID_X),
+    *(((GRID_X[0][1], y), (GRID_X[-1][1], y)) for _n, y in GRID_Y),
+    ((144.5, -228.5), (144.5, 11.5)), ((421.5, -228.5), (421.5, 11.5)), ((144.5, -228.5), (421.5, -228.5)),
+)
+#: The footings (S-101): (type, A, B, depth D at the column, edge thickness C, the columns on it, bars each way, bar
+#: dia). Corners light, edges heavier, the two inside columns heaviest, the sit out's smallest.
 FOOTINGS: tuple[tuple[str, int, int, int, int, tuple[str, ...], int, int], ...] = (
-    # (type, A, B, depth, PCC, columns, bars each way, bar dia)
-    ("F1", 150, 150, 45, 10, ("C1", "C2", "C3", "C4"), 8, 12),
-    ("F2", 180, 180, 50, 10, ("C5", "C6"), 10, 12),
+    ("F1", 150, 150, 45, 20, ("C1", "C4", "C9", "C12"), 8, 12),
+    ("F2", 180, 180, 50, 20, ("C2", "C3", "C5", "C8", "C10", "C11"), 10, 12),
+    ("F3", 200, 200, 55, 25, ("C6", "C7"), 12, 12),
+    ("F4", 100, 100, 30, 15, ("C13", "C14"), 6, 10),
 )
 #: The columns (S-102): mark, size in cm, main bars, ties.
-COLUMNS: tuple[tuple[str, int, int, str, str], ...] = (
-    ("C1", 23, 45, "6-T16", "T8 @ 15 CM"), ("C2", 23, 45, "6-T16", "T8 @ 15 CM"), ("C3", 23, 45, "6-T16", "T8 @ 15 CM"),
-    ("C4", 23, 45, "6-T16", "T8 @ 15 CM"), ("C5", 23, 60, "8-T16", "T8 @ 15 CM"), ("C6", 23, 60, "8-T16", "T8 @ 15 CM"),
-)
+COLUMNS: tuple[tuple[str, int, int, str, str], ...] = tuple(
+    (m, a, b, "6-T16" if b > 23 else ("4-T12" if m in ("C13", "C14") else "4-T16"), "T8 @ 15 CM")
+    for m, _x, _y, a, b in COLUMN_SPOTS)
 ARCHITECT = "Sreekumar Architects, Thrissur"
 CONSULTANT = "R. Anand, Structural Consultant"
 
