@@ -386,3 +386,13 @@ def test_the_plastering_rework_is_noticed_and_acted_on(plan):
     assert any(g > rw["gang"] for d, g in gangs.items() if d <= rw["noticed"])
     # The handover stays on day 62 (the rework is in the work recorded, not the stage's days).
     assert plan.last_day == 62
+
+
+def test_every_kind_has_words_for_the_person() -> None:
+    """21 Nov play-through: "Days 1 to 2 passed" showed "boq_import 1, machine_log 4" (19 kinds had no words in the
+    dashboard's own table). The words now live on the kind; none may be empty or look like a code name."""
+    from mesiri.application.learn.sample_plan import KINDS
+
+    for key, kind in KINDS.items():
+        for words in (kind.said, kind.short):
+            assert words.strip() and "_" not in words, (key, words)
