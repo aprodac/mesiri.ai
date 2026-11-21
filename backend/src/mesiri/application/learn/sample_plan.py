@@ -231,6 +231,7 @@ KINDS: dict[str, Kind] = {
     # D2: Green Villa's contract and its estimate as the BOQ (the guided project's chapters 2 and 3 do the same; when the
     # person did them, these find them done).
     "contract": Kind(OWNER, (("GET", "/projects/{project_id}/contract"), ("PUT", "/projects/{project_id}/contract"))),
+    "boq_norms": Kind(PM, (("GET", "/projects/{project_id}/boq"), ("PUT", "/projects/{project_id}/boq/lines/{line_id}/norms"))),
     "boq_import": Kind(PM, (("GET", "/projects/{project_id}/boq"), ("POST", "/projects/{project_id}/boq/sections"),
                             ("POST", "/projects/{project_id}/boq/sections/{section_id}/lines"))),
 }
@@ -552,6 +553,10 @@ def build() -> Plan:
                                              "payment_terms")}})
             gv_setup["boq"] = b.add(day, "boq_import", f"Put {_of(story.DEMO_PROJECT)} estimate in as its BOQ: "
                                     f"{sum(len(r) for _h, r in gv.ESTIMATE)} lines", project=GREEN_VILLA)
+            # LRN-F30: what a unit of each line should use (the kit's "Materials per unit" sheet): Materials vs BOQ.
+            b.add(day, "boq_norms", f"Put the materials a unit uses on {_of(story.DEMO_PROJECT)} BOQ: "
+                  f"{len({c for c, *_ in gv.NORMS})} lines, {gv.NORM_WASTAGE}% wastage", project=GREEN_VILLA,
+                  data={"wastage_pct": gv.NORM_WASTAGE}, needs=(gv_setup["boq"].id,))
             # The seeded weeks' last pay week (to day 0) is still to be approved and paid: the first thing on Monday.
             for project in (GREEN_VILLA, LAKE_VIEW):
                 approve = b.add(day, "wage_approve", f"Approve {_of(PROJECT_NAME[project])} wage sheet for last week",
@@ -651,16 +656,24 @@ def build() -> Plan:
                      "status": "absent" if (day + i) % 9 == 0 else "half_day" if rained else "present"}
                     for i, (n, t, w) in enumerate(workers[at])]
             gang = max(1, round(s.gang * (0.5 if can < 0.5 else 1)))
+            rw = gv.REWORK  # LRN-F30: after the rework is noticed, the rest of the stage with fewer helpers
+            if site == rw["site"] and s.work == rw["work"] and rw["noticed"] < day:
+                gang = min(gang, rw["gang"])
             present = sum(1 for c in crew if c["status"] != "absent") + gang
             b.add(day, "attendance", f"Attendance: {present} on site", site=site,
                   data={"workers": crew, "gang": {"contractor": "Bengal crew (Rahim)", "trade": "helper", "headcount": gang,
                                                   "daily_wage": 700}})
             if ratio > 0:
                 qty = round(s.per_day * ratio, 2)
+                redo = site == rw["site"] and s.work == rw["work"] and day in rw["days"]
+                if redo:  # LRN-F30: a full day's crew and cement, part of it on walls plastered again
+                    qty = round(qty * rw["share"], 2)
                 if s.unit in WHOLE_UNITS:  # LRN-F14: points and pieces are counted whole ("12 nos", never 12.1)
                     qty = max(1, round(qty))
-                work = b.add(day, "work", f"{s.work}: {_fmt(qty)} {s.unit}" + (f" (by {s.by})" if s.by else ""), site=site,
-                             data={"work": s.work, "narrative": s.narrative, "quantity": qty, "unit": s.unit, "by": s.by})
+                work = b.add(day, "work", f"{s.work}: {_fmt(qty)} {s.unit}" + (f" (by {s.by})" if s.by else "")
+                             + (f", the rest of the day {rw['why']}" if redo else ""), site=site,
+                             data={"work": s.work, "quantity": qty, "unit": s.unit, "by": s.by,
+                                   "narrative": s.narrative + (f"; {rw['why']}" if redo else "")})
                 if (site, s.work) in boq_lines or (SITE_PROJECT[site] == GREEN_VILLA and gv.STAGE_LINE.get(s.work)):
                     to_count.append((_working_after(day, 1), work))
                 if s.by:
@@ -712,6 +725,12 @@ def build() -> Plan:
             b.add(day, "count_approve", f"Approve {_of(SITE_NAME[site])} stock count: {cs['count_short']} bags cement written off "
                   f"({cs['count_reason']})", site=site, data={"material": "cement"}, needs=(counted.id,))
             stock[(site, "cement")] -= cs["count_short"]
+
+        # LRN-F30 (episode 9): the plastering line red, noticed; Ravi to mark the conduits before the next room.
+        if day == gv.REWORK["noticed"]:
+            rw = gv.REWORK
+            b.add(day, "task", f"Task for {WHO[ENGINEER]}: {rw['task']} (plastering red on Green / red: {rw['why']})",
+                  site=rw["site"], data={"title": rw["task"], "for": ENGINEER, "due_days": rw["task_due_days"]})
 
         # LRN-F25 (episode 6): the Annex mixer (green_villa.HIRE).
         hire, mixer_site = gv.HIRE, "annex"

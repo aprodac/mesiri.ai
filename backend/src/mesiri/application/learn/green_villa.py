@@ -70,11 +70,29 @@ ESTIMATE: tuple[tuple[str, tuple[tuple[str, str, str, float, float, float | None
 #: What one unit of a line uses (the "Materials per unit" sheet), in the material's stock unit. Names as the sample
 #: company's catalogue has them (domains/materials/defaults.py).
 NORMS: tuple[tuple[str, str, str, float, str], ...] = (
+    # LRN-F30 (episode 9): set to what the sample company's crews use a unit (sample_plan.STAGES) less the wastage
+    # allowance, so Materials vs BOQ is near the line except where the story says otherwise (the plastering rework).
     ("2.1", "PCC", "Cement", 4.5, "bags"), ("2.2", "Footing concreting", "Cement", 8, "bags"),
-    ("2.5", "Lintel concreting", "Cement", 8, "bags"), ("2.6", "Roof slab concreting", "Cement", 8, "bags"),
-    ("3.1", "Block work", "Solid Blocks", 12.5, "nos"), ("3.1", "Block work", "Cement", 0.4, "bags"),
-    ("4.1", "Plastering", "Cement", 0.25, "bags"), ("4.1", "Plastering", "P Sand", 0.02, "cum"),
+    ("2.3", "Plinth beam", "Cement", 0.4, "bags"), ("2.3", "Plinth beam", "Steel", 4.8, "kg"),
+    ("2.5", "Lintel concreting", "Cement", 8, "bags"),
+    ("2.6", "Roof slab concreting", "Cement", 7.6, "bags"), ("2.6", "Roof slab concreting", "Aggregate 20mm", 0.8, "cum"),
+    ("3.1", "Block work", "Solid Blocks", 12.7, "nos"), ("3.1", "Block work", "Cement", 0.53, "bags"),
+    ("4.1", "Plastering", "Cement", 0.38, "bags"), ("4.1", "Plastering", "M Sand", 0.035, "cum"),
+    ("4.2", "External plastering", "Cement", 0.38, "bags"), ("4.2", "External plastering", "M Sand", 0.038, "cum"),
+    ("4.3", "Ceiling plastering", "Cement", 0.38, "bags"), ("4.3", "Ceiling plastering", "M Sand", 0.033, "cum"),
+    ("5.1", "Vitrified tile flooring", "Cement", 0.24, "bags"), ("5.1", "Vitrified tile flooring", "M Sand", 0.024, "cum"),
 )
+#: The wastage allowed on every norm (%), the BOQ's own allowance on top of the quantity a unit.
+NORM_WASTAGE = 5
+#: A subcontracted line's rate a unit, for Cost control's subcontract budget (the work order's, green_villa.TILING).
+SUBCONTRACT_RATES: dict[str, float] = {"5.1": 320}
+#: The red line episode 9 follows (EPISODE_09_PLAN section 5): the Main block's internal plastering. On these days
+#: walls chased for conduits missed on the first pass are plastered again: the crew and the cement are a full day's,
+#: the new work is ``share`` of it. On ``noticed`` Anil sees the line red on Green / red, gives Ravi a task (mark every
+#: conduit point before the next room) and cuts Rahim's helpers to ``gang`` for the rest of the stage.
+REWORK = {"site": "main", "work": "Plastering", "days": (16, 17, 18), "share": 0.4, "noticed": 18, "gang": 2,
+          "why": "walls chased for conduits missed on the first pass, plastered again",
+          "task": "Mark every conduit point before the next room is plastered", "task_due_days": 1}
 
 #: The contract value: the estimate's total, GST extra.
 CONTRACT_VALUE: float = sum(q * r for _h, rows in ESTIMATE for _c, _w, _u, q, r, *_ in rows)

@@ -215,11 +215,11 @@ def estimate_bytes() -> bytes:
             cell.alignment = Alignment(horizontal="right")
 
     norms = book.create_sheet("Materials per unit")
-    norms.append(["Item no.", "Work", "Material", "Quantity per unit", "Material unit"])
+    norms.append(["Item no.", "Work", "Material", "Quantity per unit", "Material unit", "Wastage %"])
     for cell in norms[1]:
         cell.font = bold
     for row in NORMS:
-        norms.append(list(row))
+        norms.append([*row, green_villa.NORM_WASTAGE])
     norms.column_dimensions["B"].width = 24
     norms.column_dimensions["C"].width = 16
     norms.column_dimensions["D"].width = 18

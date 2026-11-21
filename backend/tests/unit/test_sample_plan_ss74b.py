@@ -336,7 +336,7 @@ def test_the_mixer_story_plays_the_kits_hire_bill(plan):
     assert machine.day == hire["on_day"] and all(machine.id in e.needs for e in logs)
     broke = [e for e in logs if e.data["breakdown"]]
     assert len(broke) == 1  # one breakdown, one problem
-    (task,) = [e for e in plan.entries if e.kind == "task"]
+    (task,) = [e for e in plan.entries if e.kind == "task" and e.data["title"] == hire["task"]]
     assert task.day == broke[0].day and broke[0].id in task.needs and task.data["for"] == sp.ENGINEER
     (done,) = [e for e in plan.entries if e.kind == "task_status"]
     close = next(e for e in plan.entries if e.kind == "issue_resolve" and broke[0].id in e.needs)
@@ -348,3 +348,39 @@ def test_the_mixer_story_plays_the_kits_hire_bill(plan):
     assert {e.id for e in logs} <= set(bill.needs)
     # The hire company is one of the sample company's suppliers.
     assert hire["vendor"] in {v for v, _a in story.DEMO_VENDORS}
+
+
+def test_the_norms_are_what_the_crews_use_so_materials_vs_boq_is_near_the_line():
+    """LRN-F30 (episode 9): a norm (plus its wastage) is within 6% of what the sample's crews use a unit, so Materials
+    vs BOQ shows the rework (the story's one red line) and not every line red from a mismatched sheet."""
+    by_line = {(code, mat.lower()): per for code, _w, mat, per, _u in gv.NORMS}
+    checked = 0
+    for site in ("main", "annex"):
+        for st in sp.STAGES[site]:
+            line = gv.line_of(st.work)
+            for mat, q in st.use:
+                per = by_line.get((line[0], mat)) if line else None
+                if per is None:
+                    continue
+                allowed = per * (1 + gv.NORM_WASTAGE / 100)
+                assert abs(q / st.per_day - allowed) / allowed < 0.06, (st.work, mat, q / st.per_day, allowed)
+                checked += 1
+    assert checked >= 12
+
+
+def test_the_plastering_rework_is_noticed_and_acted_on(plan):
+    """LRN-F30 (episode 9): on the rework days the Main block's plastering does part of a day's new work with a full
+    crew (labour over its line); the day it is noticed Ravi gets a task; after it the helpers are cut, the output back."""
+    rw = gv.REWORK
+    work = {e.day: e for e in plan.entries if e.kind == "work" and e.site == rw["site"] and e.data["work"] == rw["work"]}
+    assert set(rw["days"]) <= set(work)
+    full = max(e.data["quantity"] for d, e in work.items() if d not in rw["days"])
+    assert all(work[d].data["quantity"] <= full * rw["share"] + 1e-6 and rw["why"] in work[d].what for d in rw["days"])
+    (task,) = [e for e in plan.entries if e.kind == "task" and e.data["title"] == rw["task"]]
+    assert task.day == rw["noticed"] and task.data["for"] == sp.ENGINEER
+    gangs = {e.day: e.data["gang"]["headcount"] for e in plan.entries if e.kind == "attendance" and e.site == rw["site"]
+             and e.day in work}
+    assert all(g <= rw["gang"] for d, g in gangs.items() if d > rw["noticed"])
+    assert any(g > rw["gang"] for d, g in gangs.items() if d <= rw["noticed"])
+    # The handover stays on day 62 (the rework is in the work recorded, not the stage's days).
+    assert plan.last_day == 62

@@ -128,7 +128,7 @@ PAGE = {
     "transfer": "/materials", "rfq": "/procurement/quotations", "quote": "/procurement/quotations",
     "award": "/procurement/quotations", "return": "/procurement/returns", "return_settle": "/procurement/returns",
     "bill_reverse": "/finance/vendors", "stock_count": "/materials/counts", "count_approve": "/materials/counts",
-    "sub_bill_reject": "/subcontract/bills",
+    "sub_bill_reject": "/subcontract/bills", "boq_norms": "/boq",
     # LRN-F25: the Annex mixer.
     "machine": "/equipment", "machine_log": "/equipment/log", "task": "/tasks?view=all", "task_status": "/tasks?view=all",
     "hire_bill": "/equipment/hire", "hire_bill_fix": "/equipment/hire",
@@ -195,6 +195,11 @@ async def _outcome_done(conn: Any, org: uuid.UUID, e: sp.Entry, ids: dict[str, d
         return bool(await scalar("SELECT count(*) FROM material_invoices i JOIN expenses x ON x.id = i.expense_id "
                                  "WHERE i.organization_id = :o AND i.invoice_number = :n AND x.workflow_status <> 'confirmed'",
                                  n=e.data["bill_number"]))
+    if e.kind == "boq_norms":  # LRN-F30: the project's BOQ lines carry their materials a unit
+        return bool(await scalar("SELECT count(*) FROM boq_material_norms n JOIN work_package_planned_items i "
+                                 "ON i.id = n.planned_item_id JOIN work_packages wp ON wp.id = i.work_package_id "
+                                 "WHERE n.organization_id = :o AND wp.project_id = :p",
+                                 p=ids["project"].get(e.project or "")))
     if e.kind == "sub_bill_reject":  # LRN-F28: that bill turned down (here or by the person, on screen)
         return bool(await scalar("SELECT count(*) FROM work_order_bills WHERE organization_id = :o AND their_bill_no = :n "
                                  "AND check_status = 'rejected'", n=e.data["bill"]))
@@ -654,9 +659,24 @@ async def _play(w: _World, e: sp.Entry) -> dict[str, Any]:  # noqa: C901, PLR091
             for code, work, unit, qty, client, labour, material in rows:
                 _ok(await w.call(role, "POST", f"/projects/{project}/boq/sections/{section['id']}/lines", json={
                     "work": work, "unit": unit, "planned_quantity": qty, "boq_code": code, "client_rate": client,
-                    "labour_rate": labour, "material_rate": material}), "BOQ line")
+                    "labour_rate": labour, "material_rate": material,
+                    **({"subcontract_rate": gv.SUBCONTRACT_RATES[code]} if code in gv.SUBCONTRACT_RATES else {})}), "BOQ line")
                 lines += 1
         return {"lines": lines}
+    if e.kind == "boq_norms":  # LRN-F30: the kit's materials per unit on the BOQ lines, by item number
+        boq = _ok(await w.call(role, "GET", f"/projects/{project}/boq"), "BOQ")
+        by_code = {str(ln.get("boq_code")): ln for sec in boq.get("sections") or [] for ln in sec.get("lines") or []}
+        lines: dict[str, list[dict]] = {}
+        for code, _work, mat, per, _unit in gv.NORMS:
+            if code in by_code and mat.lower() in w.materials:
+                lines.setdefault(code, []).append({"material_id": w.materials[mat.lower()][0], "quantity_per_unit": per,
+                                                   "wastage_pct": d["wastage_pct"]})
+        if not lines:
+            raise _Wait("the BOQ is not in yet")
+        for code, norms in lines.items():
+            _ok(await w.call(role, "PUT", f"/projects/{project}/boq/lines/{by_code[code]['id']}/norms",
+                             json={"norms": norms}), "norms")
+        return {"lines": len(lines)}
     raise _Failed(f"unknown kind {e.kind}")
 
 
@@ -685,14 +705,16 @@ async def _machine_story(w: Any, e: sp.Entry, role: str, site: str, project: str
     if e.kind == "task":
         if await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t", t=d["title"]):
             return {"already": True}  # given by the person, on screen
-        issue = await w.one("SELECT id FROM site_issues WHERE organization_id = :o AND narrative = :n "
-                            "ORDER BY created_at DESC LIMIT 1", n=d["narrative"])
-        if not issue:
-            raise _Wait("the breakdown has not raised its problem yet")
+        issue = None
+        if d.get("narrative"):  # a task that fixes a problem (episode 6); episode 9's has none
+            issue = await w.one("SELECT id FROM site_issues WHERE organization_id = :o AND narrative = :n "
+                                "ORDER BY created_at DESC LIMIT 1", n=d["narrative"])
+            if not issue:
+                raise _Wait("the breakdown has not raised its problem yet")
         due = (dt.date.fromisoformat(iso) + dt.timedelta(days=d["due_days"])).isoformat()
         return _ok(await w.call(role, "POST", "/tasks", json={
             "project_id": project, "site_id": site, "title": d["title"], "due_date": due, "priority": "high",
-            "assignee_user_id": str(w.users[d["for"]][0]), "site_issue_id": str(issue["id"])}), e.kind)
+            "assignee_user_id": str(w.users[d["for"]][0]), **({"site_issue_id": str(issue["id"])} if issue else {})}), e.kind)
     if e.kind == "task_status":
         task = await w.one("SELECT id FROM tasks WHERE organization_id = :o AND title = :t ORDER BY created_at DESC LIMIT 1",
                            t=d["title"])

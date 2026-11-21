@@ -240,3 +240,25 @@ async def test_the_tiling_subcontract_plays_on_the_real_api(world):
     assert [(b["their_bill_no"], b["check_status"]) for b in bills] == [(t["bill"], "rejected"), (t["corrected"], "passed")]
     assert float(bills[1]["gross"]) == round(gv.ground_floor_tiled() * t["rate"], 2)
     assert float(bills[1]["tds_pct"]) == t["tds_pct"]
+
+
+async def test_the_boq_carries_its_norms_and_the_tiling_rate(world):
+    """LRN-F30 (episode 9): after day 1 Green Villa's BOQ lines carry the kit's materials a unit (Materials vs BOQ has
+    something to read) and the tiling line its subcontract rate (Cost control's subcontract budget)."""
+    from mesiri.application.learn import green_villa as gv
+
+    app, engine, person = world
+    opened = await sandbox.open_sandbox(engine, app, person)
+    moved = await player.next_day(engine, app, person, role="ADMIN", days=2)
+    assert not moved.failed, moved.failed[:3]
+    async with engine.connect() as conn:
+        o = {"o": opened.organization_id}
+        normed = (await conn.execute(text(
+            "SELECT count(DISTINCT n.planned_item_id) FROM boq_material_norms n JOIN work_package_planned_items i "
+            "ON i.id = n.planned_item_id JOIN work_packages w ON w.id = i.work_package_id JOIN projects p ON p.id = w.project_id "
+            "WHERE n.organization_id = :o AND p.name = 'Green Villa'"), o)).scalar()
+        rate = (await conn.execute(text(
+            "SELECT i.subcontract_rate FROM work_package_planned_items i JOIN work_packages w ON w.id = i.work_package_id "
+            "WHERE w.organization_id = :o AND i.boq_code = '5.1' AND i.superseded_by_id IS NULL"), o)).scalar()
+    assert normed == len({c for c, *_ in gv.NORMS})
+    assert float(rate) == gv.SUBCONTRACT_RATES["5.1"]
