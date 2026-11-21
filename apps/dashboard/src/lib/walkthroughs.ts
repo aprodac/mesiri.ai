@@ -101,8 +101,8 @@ export interface WalkStep extends TourStep {
   /** The guided project (SS-67): the chapter this step belongs to, for the chapter list in the bubble. Set by
    *  `journey(...)`, never by hand. */
   chapter?: string
-  /** The guided project: the story day the sample company must be on for this step (its chapter's `day`, on the
-   *  chapter's first step). Earlier, the days are played on to it first; later, nothing changes (never back). Set by
+  /** The guided project: the story day the sample company must be on for this step (its chapter's `day`, on every
+   *  step of the chapter, so a jump into its middle plays the days too). Earlier, the days are played on to it first; later, nothing changes (never back). Set by
    *  `journey(...)`. */
   day?: number
 }
@@ -1000,7 +1000,7 @@ const JOURNEY_HELLO: WalkStep[] = [
 function journey(id: string, title: string, about: string, chapters: { title: string; walks: string[]; day?: number }[]): Walkthrough {
   const steps = chapters.flatMap((c, i) => {
     const own = i === 0 ? JOURNEY_HELLO : c.walks.flatMap((x) => made.find((w) => w.id === x)?.steps ?? [])
-    return own.map((s, k) => ({ ...s, chapter: c.title, ...(k === 0 && c.day ? { day: c.day } : {}) }))
+    return own.map((s) => ({ ...s, chapter: c.title, ...(c.day ? { day: c.day } : {}) }))
   })
   return { id, kind: 'workflow', title, about, roles: STARTERS, sandbox: true, minutes: minutesFor(steps.length), steps }
 }

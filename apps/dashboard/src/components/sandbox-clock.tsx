@@ -101,14 +101,17 @@ export function SandboxClock() {
   const day = clock.data?.day
   const lastDay = clock.data?.last_day
   const playing = React.useRef(false)
+  /** A scene, the opening or the briefing is on screen now. */
+  const visual = React.useRef(false)
   React.useEffect(() => {
     const go = () => {
       const target = sandboxTarget()
       if (target === null || day === undefined || lastDay === undefined || playing.current) return
       const to = Math.min(target, lastDay)
       if (day >= to) {
+        // Reached: only the request goes; the briefing (or any scene) still on screen keeps the project waiting.
         clearSandboxTarget()
-        setSandboxSceneBusy(false)
+        setSandboxSceneBusy(visual.current)
         return
       }
       playing.current = true
@@ -128,7 +131,8 @@ export function SandboxClock() {
   }, [day, lastDay]) // eslint-disable-line react-hooks/exhaustive-deps
   // The guided project waits while the opening, a scene or the morning briefing is up.
   React.useEffect(() => {
-    setSandboxSceneBusy(!!(scene || iris || briefing || credits || (opening && !reduced)) || sandboxTarget() !== null)
+    visual.current = !!(scene || iris || briefing || credits || (opening && !reduced))
+    setSandboxSceneBusy(visual.current || sandboxTarget() !== null)
   }, [scene, iris, briefing, credits, opening, reduced])
 
   // Another tab moved the days on: this one opens the sample again on the current date (once).
