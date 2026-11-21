@@ -6,7 +6,7 @@
 
 **Objective:** By the end you can walk a material chain across the four people: the request, the quotes, the order, the delivery checked at the gate (a short load, torn bags returned), the stock, the supplier's bill checked against the order and the delivery, and the payment; and the month-end stock count.
 
-**Length:** 16 scenes, 1324 words of narration (about 9 minutes)
+**Length:** 16 scenes, 1331 words of narration (about 9 minutes)
 
 ## Cold open
 
@@ -215,9 +215,10 @@ Narration:
 - beat 1 · open `/finance/vendors` · picture: Malabar Cements Agency: what is owed · light: Malabar
 - beat 1 · do: the bill MCA/INV/2611: 190 bags at Rs 410, against Friday's delivery · picture: the bill against the delivery · light: the bill
 - beat 2 · picture: the difference Mesiri shows: the rate above the order, and the bags returned · light: the difference
-- beat 3 · do: take the bill back; the corrected bill MCA/INV/2611-R, 184 bags at Rs 400, Rs 73,600; settle the return against it · picture: the corrected bill, the return settled · light: the corrected bill
+- beat 2 · do: Record bill · picture: the bill in Bills to pay, Rs 91,922 · light: the bill
+- beat 3 · do: take the bill back (Expenses, its menu, Take back); the corrected bill and the settled return follow on day 10 · picture: Malabar's account after the take-back: the Rs 91,922 no longer owed · light: the bill taken back
 
-*As Meera (FINANCE) on day 9, by steps-04.cjs: the bill at Rs 410 and taking it back are her own entries that day (played as her, they are left to do on screen). The corrected bill (the plan's day 10) is entered on screen the same day, then the day goes back. Read the difference off the screen and say only what it shows.*
+*As Meera (FINANCE) on day 9, by steps-04.cjs: the bill at Rs 410 and taking it back are her own entries that day (played as her, they are left to do on screen), kept for the days after. The corrected bill and the return settled are the plan's day 10, made by the cast once it sees the bill taken back; the owner sees them on day 16.*
 
 Narration:
 
@@ -231,11 +232,18 @@ Narration:
 
 ### 12. Back above the line
 
-*In Mesiri · Stock · screen · screen `/materials?project={Green Villa}&site={Green Villa › Main block}`*
+*In Mesiri · Stock · steps*
+
+**Record (on the website, step by step):**
+
+- beat 1 · open `/materials?project={Green Villa}&site={Green Villa › Main block}` · picture: the Main block's stock: cement back above the line · light: cement
+- beat 2 · picture: what is still to come on the orders · light: coming
+
+*As the owner on day 9, after Meera's bill (steps-04.cjs, in the recording run: a copy put back to a day loses what was done on screen). The 10 bags come on day 10. Every figure read off the screen.*
 
 Narration:
 
-> And on site, the cement is back. The Main block holds a hundred and eighty-eight bags: what the gate kept, less what has been used since. Twenty-five days at this week's use.
+> And on site, the cement is back. The Main block holds a hundred and ninety-one bags: the forty moved from the Annex and what the gate kept, less what has been used since. Thirty-four days at this week's use.
 >
 > Ten bags are still to come on Malabar's order. Anil does not chase them from memory: the order shows them as not yet delivered, until they are.
 
