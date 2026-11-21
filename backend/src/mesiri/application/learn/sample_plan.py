@@ -95,29 +95,33 @@ class Stage:
 #: After the seeded weeks: each site carries on from the stage the seed ends on (``DEMO_WORK``'s last) to its end.
 #: Green Villa (Main block, a G+1 villa; the Annex from its plinth) runs to handover; Lake View keeps building.
 STAGES: dict[str, tuple[Stage, ...]] = {
+    # LRN-F30 (Ilan, 21 Nov: "fix the story to fit the estimate"): each Green Villa stage's crew and material cost a
+    # day sit just inside what its BOQ line earns a day (green_villa.ESTIMATE's labour and material rates), so Cost
+    # control reads the job near budget and the plastering rework (green_villa.REWORK) is the red line it shows.
     "main": (
-        Stage("Electrical conduits", "First floor conduit and box fixing", "nos", 22, 3, (("cement", 4), ("m sand", 0.3)), 2),
-        Stage("Ceiling plastering", "First floor ceiling plastering", "sqm", 35, 6, (("cement", 14), ("m sand", 1.2)), 4),
-        Stage("Plastering", "First floor internal plastering", "sqm", 40, 8, (("cement", 16), ("m sand", 1.5)), 4),
-        Stage("External plastering", "External plastering, all four sides", "sqm", 45, 10, (("cement", 18), ("m sand", 1.8)), 5),
-        Stage("Floor tiling", "Vitrified floor tiles, ground and first floor", "sqm", 30, 8, (("cement", 8), ("m sand", 0.8)), 2,
-              by="Joy Tiling Works"),
-        Stage("Putty and primer", "Wall putty and primer coat, inside", "sqm", 80, 6, (), 3),
-        Stage("Painting", "Two coats of emulsion inside, exterior paint outside", "sqm", 90, 6, (), 3),
-        Stage("Snag list", "Snag list, touch-ups and cleaning for handover", "nos", 6, 4, (), 3),  # LRN-F18: 4 days keeps the handover on day 62 (D1)
+        Stage("Electrical conduits", "First floor conduit and box fixing", "nos", 50, 3, (("cement", 2), ("m sand", 0.2)), 1),
+        Stage("Ceiling plastering", "First floor ceiling plastering", "sqm", 35, 6, (("cement", 7), ("m sand", 0.65)), 4),
+        Stage("Plastering", "First floor internal plastering", "sqm", 40, 8, (("cement", 8), ("m sand", 0.75)), 4),
+        Stage("External plastering", "External plastering, all four sides", "sqm", 45, 10, (("cement", 11), ("m sand", 1)), 5),
+        # Labour only (Joy's bill); the tiles and adhesive are bought straight for the floor, not drawn from the site
+        # store. Our own crew is off this site while Joy's crew lays (one helper for cleaning and curing).
+        Stage("Floor tiling", "Vitrified floor tiles, ground and first floor", "sqm", 30, 8, (), 1, by="Joy Tiling Works"),
+        Stage("Putty and primer", "Wall putty and primer coat, inside", "sqm", 110, 6, (), 3),
+        Stage("Painting", "Two coats of emulsion inside, exterior paint outside", "sqm", 130, 6, (), 3),
+        Stage("Snag list", "Snag list, touch-ups and cleaning for handover", "nos", 6, 5, (), 3),  # LRN-F18, LRN-F30: 5 days keeps the handover on day 62 (D1)
     ),
     "annex": (
         Stage("Plinth beam", "Plinth beam shuttering, steel and concrete", "rmt", 24, 3,
               (("cement", 10), ("aggregate 20mm", 1.5), ("m sand", 0.8), ("steel", 120)), 4),
-        Stage("Plinth filling", "Plinth filling and PCC base for the floor", "cum", 6, 3,
-              (("cement", 8), ("aggregate 20mm", 1.2), ("m sand", 1)), 5),
-        Stage("Block work", "Block work, plinth to lintel", "sqm", 18, 8, (("cement", 10), ("solid blocks", 240), ("m sand", 1)), 4),
-        Stage("Slab shuttering", "Roof slab shuttering and steel", "sqm", 40, 4, (("steel", 250), ("binding wire", 4)), 4),
+        Stage("Plinth filling", "Plinth filled with excavated earth, rammed in layers", "cum", 30, 3, (), 1),
+        Stage("Block work", "Block work, plinth to lintel", "sqm", 18, 8, (("cement", 3), ("solid blocks", 222), ("m sand", 0.4)), 4),
+        Stage("Slab shuttering", "Roof slab shuttering", "sqm", 40, 2, (), 4),
+        Stage("Slab reinforcement", "Roof slab steel cut, bent and tied", "kg", 500, 2, (("steel", 500), ("binding wire", 8)), 3),
         Stage("Slab concreting", "Roof slab poured, 12 cum", "cum", 12, 1, (("cement", 96), ("aggregate 20mm", 10), ("m sand", 6)), 8),
         Stage("Slab curing", "Roof slab curing, ponding", "sqm", 80, 5, (), 1),
-        Stage("Plastering", "Internal and external plastering", "sqm", 35, 8, (("cement", 14), ("m sand", 1.3)), 4),
-        Stage("Flooring", "Floor tiles laid by our masons", "sqm", 25, 4, (("cement", 6), ("m sand", 0.6)), 2),
-        Stage("Painting", "Putty, primer and two coats", "sqm", 70, 5, (), 3),
+        Stage("Plastering", "Internal and external plastering", "sqm", 35, 8, (("cement", 7), ("m sand", 0.65)), 4),
+        Stage("Flooring", "Floor tiles laid by our masons", "sqm", 25, 4, (), 2),
+        Stage("Painting", "Putty, primer and two coats", "sqm", 100, 5, (), 3),
     ),
     "tower_a": tuple(s for floor in ("Fourth", "Fifth", "Sixth") for s in (
         Stage("Column casting", f"{floor} floor columns cast", "cum", 4, 3,
@@ -557,6 +561,16 @@ def build() -> Plan:
             b.add(day, "boq_norms", f"Put the materials a unit uses on {_of(story.DEMO_PROJECT)} BOQ: "
                   f"{len({c for c, *_ in gv.NORMS})} lines, {gv.NORM_WASTAGE}% wastage", project=GREEN_VILLA,
                   data={"wastage_pct": gv.NORM_WASTAGE}, needs=(gv_setup["boq"].id,))
+            # LRN-F30: the seeded weeks' work counted on the estimate's lines too, so their cost is set against what
+            # they earned (Cost control read them as spent and never earned: half a forecast's overrun).
+            for at in range(2):
+                site = SITES[at][0]
+                for work, *_rest in story.DEMO_WORK[at]:
+                    line = gv.STAGE_LINE.get(work, work)
+                    if gv.line_of(work):
+                        b.add(day, "boq_count", f"Count {_of(SITE_NAME[site])} {work.lower()} of the weeks before on the "
+                              f"BOQ line {line}", site=site, data={"work": work, "line": line, "estimate": True},
+                              needs=(gv_setup["boq"].id,))
             # The seeded weeks' last pay week (to day 0) is still to be approved and paid: the first thing on Monday.
             for project in (GREEN_VILLA, LAKE_VIEW):
                 approve = b.add(day, "wage_approve", f"Approve {_of(PROJECT_NAME[project])} wage sheet for last week",
@@ -654,7 +668,7 @@ def build() -> Plan:
             # People: the site's own workers (one off now and then) and the gang.
             crew = [{"name": n, "trade": t, "daily_wage": w,
                      "status": "absent" if (day + i) % 9 == 0 else "half_day" if rained else "present"}
-                    for i, (n, t, w) in enumerate(workers[at])]
+                    for i, (n, t, w) in enumerate(workers[at])] if not s.by else []  # LRN-F30: a subcontractor's stage
             gang = max(1, round(s.gang * (0.5 if can < 0.5 else 1)))
             rw = gv.REWORK  # LRN-F30: after the rework is noticed, the rest of the stage with fewer helpers
             if site == rw["site"] and s.work == rw["work"] and rw["noticed"] < day:

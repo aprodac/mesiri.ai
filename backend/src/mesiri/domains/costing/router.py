@@ -843,6 +843,14 @@ async def materials_for(conn: AsyncConnection, org: uuid.UUID, project_id: uuid.
         "ON i.id = n.planned_item_id JOIN work_packages w ON w.id = i.work_package_id "
         "WHERE n.organization_id = :org AND w.project_id = :p"), {"org": org, "p": project_id})).scalar()
     since = max(today - datetime.timedelta(days=730), normed_from or today - datetime.timedelta(days=730))
+    if normed_from:  # the work set against it over the same days: what was done on a line before is not counted
+        before = (await conn.execute(text(
+            "SELECT q.planned_item_id, SUM(q.quantity) FROM activity_quantities q JOIN activities a ON a.id = q.activity_id "
+            "WHERE a.organization_id = :org AND a.project_id = :p AND a.deleted_at IS NULL AND a.activity_date < :d "
+            "AND q.planned_item_id IS NOT NULL GROUP BY 1"), {"org": org, "p": project_id, "d": normed_from})).all()
+        earlier = {str(k): Decimal(v or 0) for k, v in before}
+        for line in lines:
+            line["done"] = max(Decimal(line["done"]) - earlier.get(str(line["id"]), Decimal(0)), Decimal(0))
     for r in await PostgresMaterialReadRepository(conn).get_stock_summary(
             org, date_from=since, date_to=today, project_ids={project_id}):
         row = held.setdefault(r["material_id"], {"unit": r["unit"], "on_hand": Decimal(0), "on_order": Decimal(0)})

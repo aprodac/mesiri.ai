@@ -120,7 +120,9 @@ DEMO_SPENDS = (
 )
 #: LRN-F30: the categories the story's spending uses, with the cost centre each counts in (Cost control, CC-01), so no
 #: rupee of the sample company is "not set". The starter set (Materials for suppliers' bills, Labour, ...) comes too.
-DEMO_CATEGORIES = (("Hardware", "materials"), ("Electrical", "materials"), ("Shuttering", "materials"),
+#: Hardware (nails, binding wire, cover blocks) is site consumables, shuttering plywood is reused formwork: neither is a
+#: BOQ line's material, so they count in Other and Site overhead, not Materials (LRN-F30's calibration).
+DEMO_CATEGORIES = (("Hardware", "other"), ("Electrical", "materials"), ("Shuttering", "overhead"),
                    ("Food", "overhead"), ("Transport", "other"), ("Fuel", "fuel"))
 #: (site index, type, severity, narrative, what happens to it: open / acknowledge / resolve + note). The API dates an
 #: issue when it is reported, so these all show as reported on the reset day.

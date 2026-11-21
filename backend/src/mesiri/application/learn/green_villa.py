@@ -70,25 +70,21 @@ ESTIMATE: tuple[tuple[str, tuple[tuple[str, str, str, float, float, float | None
 #: What one unit of a line uses (the "Materials per unit" sheet), in the material's stock unit. Names as the sample
 #: company's catalogue has them (domains/materials/defaults.py).
 NORMS: tuple[tuple[str, str, str, float, str], ...] = (
-    # LRN-F30 (episode 9): set to what the sample company's crews use a unit (sample_plan.STAGES) less the wastage
-    # allowance, so Materials vs BOQ is near the line except where the story says otherwise (the plastering rework).
-    ("1.3", "Backfilling with excavated earth", "Cement", 1.27, "bags"),
-    ("1.3", "Backfilling with excavated earth", "Aggregate 20mm", 0.19, "cum"),
-    ("1.3", "Backfilling with excavated earth", "M Sand", 0.16, "cum"),
+    # LRN-F30 (episode 9): what the sample company's crews use a unit (sample_plan.STAGES, calibrated to the estimate's
+    # rates) less the wastage allowance, so Materials vs BOQ is near the line except the plastering rework.
     ("2.1", "PCC", "Cement", 4.5, "bags"), ("2.2", "Footing concreting", "Cement", 8, "bags"),
     ("2.3", "Plinth beam", "Cement", 0.4, "bags"), ("2.3", "Plinth beam", "Steel", 4.8, "kg"),
     ("2.3", "Plinth beam", "Aggregate 20mm", 0.06, "cum"), ("2.3", "Plinth beam", "M Sand", 0.032, "cum"),
-    ("2.6", "Roof slab concreting", "M Sand", 0.48, "cum"),
-    ("2.7", "Slab shuttering", "Steel", 6, "kg"), ("2.7", "Slab shuttering", "Binding Wire", 0.095, "kg"),
-    ("3.1", "Block work", "M Sand", 0.053, "cum"),
-    ("6.1", "Electrical conduits", "Cement", 0.173, "bags"), ("6.1", "Electrical conduits", "M Sand", 0.013, "cum"),
     ("2.5", "Lintel concreting", "Cement", 8, "bags"),
     ("2.6", "Roof slab concreting", "Cement", 7.6, "bags"), ("2.6", "Roof slab concreting", "Aggregate 20mm", 0.8, "cum"),
-    ("3.1", "Block work", "Solid Blocks", 12.7, "nos"), ("3.1", "Block work", "Cement", 0.53, "bags"),
-    ("4.1", "Plastering", "Cement", 0.38, "bags"), ("4.1", "Plastering", "M Sand", 0.035, "cum"),
-    ("4.2", "External plastering", "Cement", 0.38, "bags"), ("4.2", "External plastering", "M Sand", 0.038, "cum"),
-    ("4.3", "Ceiling plastering", "Cement", 0.38, "bags"), ("4.3", "Ceiling plastering", "M Sand", 0.033, "cum"),
-    ("5.1", "Vitrified tile flooring", "Cement", 0.24, "bags"), ("5.1", "Vitrified tile flooring", "M Sand", 0.024, "cum"),
+    ("2.6", "Roof slab concreting", "M Sand", 0.48, "cum"),
+    ("2.8", "Reinforcement steel", "Steel", 0.952, "kg"), ("2.8", "Reinforcement steel", "Binding Wire", 0.0152, "kg"),
+    ("3.1", "Block work", "Solid Blocks", 11.75, "nos"), ("3.1", "Block work", "Cement", 0.159, "bags"),
+    ("3.1", "Block work", "M Sand", 0.0212, "cum"),
+    ("4.1", "Plastering", "Cement", 0.19, "bags"), ("4.1", "Plastering", "M Sand", 0.0179, "cum"),
+    ("4.2", "External plastering", "Cement", 0.233, "bags"), ("4.2", "External plastering", "M Sand", 0.0212, "cum"),
+    ("4.3", "Ceiling plastering", "Cement", 0.19, "bags"), ("4.3", "Ceiling plastering", "M Sand", 0.0177, "cum"),
+    ("6.1", "Electrical conduits", "Cement", 0.038, "bags"), ("6.1", "Electrical conduits", "M Sand", 0.0038, "cum"),
 )
 #: The wastage allowed on every norm (%), the BOQ's own allowance on top of the quantity a unit.
 NORM_WASTAGE = 5
@@ -133,13 +129,14 @@ STAGE_LINE: dict[str, str | None] = {
     "External plastering": "External plastering",
     "Floor tiling": "Vitrified tile flooring",
     "Flooring": "Vitrified tile flooring",
-    "Putty and primer": None,
+    "Putty and primer": "Interior emulsion",
     "Painting": "Interior emulsion",
     "Snag list": None,
     "Plinth beam": "Plinth beam",
     "Plinth filling": "Backfilling with excavated earth",
     "Block work": "Block work",
     "Slab shuttering": "Slab shuttering",
+    "Slab reinforcement": "Reinforcement steel",
     "Slab concreting": "Roof slab concreting",
     "Slab curing": None,
 }

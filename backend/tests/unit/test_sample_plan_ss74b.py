@@ -239,6 +239,8 @@ def test_names_are_the_stories(plan):
     lines = {(sp.SITES[at][0], work) for at in (2, 3) for work, *_ in story.DEMO_WORK[at]}
     units = {work: unit for _h, rows in gv.ESTIMATE for _c, work, unit, *_ in rows}
     stage_unit = {s.work: s.unit for site in ("main", "annex") for s in sp.STAGES[site]}
+    # LRN-F30: the seeded weeks' work is counted too, in the seed's units.
+    stage_unit |= {w: u for at in (0, 1) for w, _n, u, *_ in story.DEMO_WORK[at] if w not in stage_unit}
     for e in plan.entries:
         if e.kind == "boq_count" and e.project == sp.GREEN_VILLA:
             assert e.data["estimate"] and units.get(e.data["line"]) == stage_unit[e.data["work"]], e.id
